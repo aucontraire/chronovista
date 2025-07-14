@@ -36,11 +36,13 @@ pydantic = "^2.5.0"
 pydantic-settings = "^2.1.0"
 google-api-python-client = "^2.100.0"
 google-auth = "^2.20.0"
+google-auth-oauthlib = "^1.0.0"
 python-dotenv = "^1.0.0"
 click = "^8.0.0"
 rich = "^14.0.0"
 httpx = "^0.28.0"
 aiofiles = "^23.0.0"
+greenlet = "^3.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"

@@ -7,9 +7,11 @@ transcript processing, and data export functionality.
 
 from __future__ import annotations
 
-__all__: list[str] = ["get_service_count"]
+from chronovista.services.youtube_service import YouTubeService, youtube_service
+
+__all__: list[str] = ["YouTubeService", "youtube_service", "get_service_count"]
 
 
 def get_service_count() -> int:
     """Get number of available services."""
-    return 0
+    return 1

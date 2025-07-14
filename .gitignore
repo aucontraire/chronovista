@@ -236,6 +236,7 @@ $RECYCLE.BIN/
 
 # OAuth credentials and secrets
 client_secret.json
+client_secret_*.json
 credentials.json
 token.json
 .oauth_cache/

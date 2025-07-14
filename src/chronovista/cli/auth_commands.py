@@ -7,6 +7,9 @@ from __future__ import annotations
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.table import Table
+
+from chronovista.auth import youtube_oauth
 
 console = Console()
 
@@ -20,50 +23,211 @@ auth_app = typer.Typer(
 @auth_app.command()
 def login() -> None:
     """Login to your YouTube account."""
-    console.print(
-        Panel(
-            "[yellow]Authentication not yet implemented[/yellow]\n"
-            "This will start the OAuth 2.0 flow to authenticate with YouTube.",
-            title="Login",
-            border_style="yellow",
+    try:
+        # Check if already authenticated
+        if youtube_oauth.is_authenticated():
+            console.print(
+                Panel(
+                    "[green]✅ Already authenticated![/green]\n"
+                    "Use [bold]chronovista auth status[/bold] to see details.\n"
+                    "Use [bold]chronovista auth logout[/bold] to sign out.",
+                    title="Authentication Status",
+                    border_style="green",
+                )
+            )
+            return
+
+        console.print(
+            Panel(
+                "[blue]🔐 Starting YouTube OAuth authentication...[/blue]\n"
+                "You will be redirected to Google to authorize chronovista.",
+                title="YouTube Login",
+                border_style="blue",
+            )
         )
-    )
+
+        # Perform interactive authentication
+        token_info = youtube_oauth.authorize_interactive()
+        
+        # Format expiration time
+        expires_str = "Unknown"
+        if token_info.get('expires_in'):
+            try:
+                from datetime import datetime, timezone
+                expires_timestamp = float(token_info['expires_in'])
+                expires_dt = datetime.fromtimestamp(expires_timestamp, tz=timezone.utc)
+                expires_str = expires_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+            except (ValueError, TypeError):
+                expires_str = str(token_info['expires_in'])
+        
+        console.print(
+            Panel(
+                "[green]✅ Authentication successful![/green]\n"
+                f"Access token expires: {expires_str}\n"
+                f"Scopes: {token_info.get('scope', 'Unknown')}\n\n"
+                "You can now use YouTube API commands.",
+                title="Login Complete",
+                border_style="green",
+            )
+        )
+
+    except Exception as e:
+        console.print(
+            Panel(
+                f"[red]❌ Authentication failed:[/red]\n{str(e)}",
+                title="Login Error",
+                border_style="red",
+            )
+        )
 
 
 @auth_app.command()
 def logout() -> None:
     """Logout and clear stored credentials."""
-    console.print(
-        Panel(
-            "[yellow]Logout not yet implemented[/yellow]\n"
-            "This will clear stored authentication credentials.",
-            title="Logout",
-            border_style="yellow",
+    try:
+        if not youtube_oauth.is_authenticated():
+            console.print(
+                Panel(
+                    "[yellow]ℹ️ Not currently authenticated[/yellow]\n"
+                    "Use [bold]chronovista auth login[/bold] to sign in.",
+                    title="Logout",
+                    border_style="yellow",
+                )
+            )
+            return
+
+        # Confirm logout
+        confirm = typer.confirm("Are you sure you want to logout and delete stored credentials?")
+        if not confirm:
+            console.print("[yellow]Logout cancelled.[/yellow]")
+            return
+
+        # Revoke credentials
+        youtube_oauth.revoke_credentials()
+        
+        console.print(
+            Panel(
+                "[green]✅ Successfully logged out![/green]\n"
+                "All stored credentials have been removed.\n"
+                "Use [bold]chronovista auth login[/bold] to sign in again.",
+                title="Logout Complete",
+                border_style="green",
+            )
         )
-    )
+
+    except Exception as e:
+        console.print(
+            Panel(
+                f"[red]❌ Logout failed:[/red]\n{str(e)}",
+                title="Logout Error",
+                border_style="red",
+            )
+        )
 
 
 @auth_app.command()
 def status() -> None:
     """Check authentication status."""
-    console.print(
-        Panel(
-            "[yellow]Authentication status check not yet implemented[/yellow]\n"
-            "This will show whether you are currently authenticated.",
-            title="Auth Status",
-            border_style="yellow",
+    try:
+        if not youtube_oauth.is_authenticated():
+            console.print(
+                Panel(
+                    "[red]❌ Not authenticated[/red]\n"
+                    "Use [bold]chronovista auth login[/bold] to sign in.",
+                    title="Authentication Status",
+                    border_style="red",
+                )
+            )
+            return
+
+        # Get detailed token info
+        token_info = youtube_oauth.get_token_info()
+        if not token_info:
+            console.print(
+                Panel(
+                    "[red]❌ No token information available[/red]",
+                    title="Authentication Status",
+                    border_style="red",
+                )
+            )
+            return
+
+        # Create status table
+        table = Table(title="Authentication Details")
+        table.add_column("Property", style="cyan")
+        table.add_column("Value", style="green")
+
+        # Format expiration time
+        expires_str = "Unknown"
+        if token_info.get("expires_at"):
+            try:
+                from datetime import datetime
+                expires_dt = datetime.fromisoformat(token_info["expires_at"].replace('Z', '+00:00'))
+                expires_str = expires_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+            except (ValueError, TypeError):
+                expires_str = token_info["expires_at"]
+
+        table.add_row("Status", "✅ Authenticated" if token_info["valid"] else "⚠️ Token Expired")
+        table.add_row("Token Valid", "Yes" if token_info["valid"] else "No")
+        table.add_row("Has Refresh Token", "Yes" if token_info["has_refresh_token"] else "No")
+        table.add_row("Expires At", expires_str)
+        table.add_row("Scopes", ", ".join(token_info.get("scopes", [])))
+
+        console.print(table)
+
+        if not token_info["valid"] and token_info["has_refresh_token"]:
+            console.print(
+                Panel(
+                    "[yellow]⚠️ Token expired but can be refreshed[/yellow]\n"
+                    "Use [bold]chronovista auth refresh[/bold] to refresh tokens.",
+                    border_style="yellow",
+                )
+            )
+
+    except Exception as e:
+        console.print(
+            Panel(
+                f"[red]❌ Status check failed:[/red]\n{str(e)}",
+                title="Status Error",
+                border_style="red",
+            )
         )
-    )
 
 
 @auth_app.command()
 def refresh() -> None:
     """Refresh authentication tokens."""
-    console.print(
-        Panel(
-            "[yellow]Token refresh not yet implemented[/yellow]\n"
-            "This will refresh your authentication tokens.",
-            title="Refresh",
-            border_style="yellow",
+    try:
+        if not youtube_oauth.is_authenticated():
+            console.print(
+                Panel(
+                    "[red]❌ Not authenticated[/red]\n"
+                    "Use [bold]chronovista auth login[/bold] to sign in first.",
+                    title="Refresh Tokens",
+                    border_style="red",
+                )
+            )
+            return
+
+        # Get authenticated service (this will trigger refresh if needed)
+        console.print("[blue]🔄 Refreshing authentication tokens...[/blue]")
+        service = youtube_oauth.get_authenticated_service()
+        
+        console.print(
+            Panel(
+                "[green]✅ Tokens refreshed successfully![/green]\n"
+                "Your authentication is now up to date.",
+                title="Refresh Complete",
+                border_style="green",
+            )
         )
-    )
+
+    except Exception as e:
+        console.print(
+            Panel(
+                f"[red]❌ Token refresh failed:[/red]\n{str(e)}\n\n"
+                "You may need to re-authenticate using [bold]chronovista auth login[/bold].",
+                title="Refresh Error",
+                border_style="red",
+            )
+        )

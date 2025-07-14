@@ -245,9 +245,11 @@ config.local.yml
 config.local.yaml
 settings.local.json
 
-# NLP model downloads
-models/
+# NLP model downloads (spaCy, transformers, etc.)
+nlp_models/
 nlp_cache/
+.spacy/
+.huggingface/
 
 # Generated data exports
 exports/

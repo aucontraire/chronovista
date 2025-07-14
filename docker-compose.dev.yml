@@ -1,0 +1,67 @@
+services:
+  postgres-dev:
+    image: postgres:15-alpine
+    container_name: chronovista-postgres-dev
+    environment:
+      POSTGRES_DB: chronovista_dev
+      POSTGRES_USER: dev_user
+      POSTGRES_PASSWORD: dev_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5434:5432"
+    # Use tmpfs for disposable in-memory storage - no persistence!
+    tmpfs:
+      - /var/lib/postgresql/data:rw,noexec,nosuid,size=1g
+    # Add some optimizations for development (not production!)
+    command: >
+      postgres
+      -c shared_preload_libraries=''
+      -c max_connections=50
+      -c shared_buffers=128MB
+      -c effective_cache_size=512MB
+      -c work_mem=4MB
+      -c maintenance_work_mem=64MB
+      -c random_page_cost=1.1
+      -c temp_file_limit=100MB
+      -c log_min_duration_statement=0
+      -c log_statement=all
+      -c log_min_messages=warning
+      -c log_line_prefix='%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+    volumes:
+      # Mount init scripts if needed
+      - ./scripts/init-dev-db.sql:/docker-entrypoint-initdb.d/init-dev-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev_user -d chronovista_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - chronovista-dev
+
+  # Optional: pgAdmin for database inspection during development
+  pgadmin-dev:
+    image: dpage/pgadmin4:latest
+    container_name: chronovista-pgadmin-dev
+    environment:
+      PGADMIN_DEFAULT_EMAIL: dev@chronovista.local
+      PGADMIN_DEFAULT_PASSWORD: dev_password
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    ports:
+      - "8081:80"
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+    volumes:
+      - ./scripts/pgadmin-servers.json:/pgadmin4/servers.json:ro
+    networks:
+      - chronovista-dev
+    profiles:
+      - admin  # Only start with: docker-compose --profile admin up
+
+networks:
+  chronovista-dev:
+    driver: bridge
+
+# No persistent volumes defined - everything is disposable!
+# This ensures we start fresh every time

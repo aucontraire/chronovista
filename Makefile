@@ -38,6 +38,16 @@ help:
 	@echo "  db-upgrade     - Run database migrations"
 	@echo "  db-downgrade   - Rollback database migrations"
 	@echo "  db-revision    - Create new database migration"
+	@echo ""
+	@echo "Docker Development Database:"
+	@echo "  dev-db-up      - Start development database"
+	@echo "  dev-db-down    - Stop development database"
+	@echo "  dev-db-reset   - Reset development database (destroy & recreate)"
+	@echo "  dev-db-logs    - Show development database logs"
+	@echo "  dev-db-shell   - Open development database shell"
+	@echo "  dev-db-admin   - Start pgAdmin for development database"
+	@echo "  dev-migrate    - Run migrations on development database"
+	@echo "  dev-revision   - Create migration using development database"
 
 # Variables with fallback Poetry detection
 POETRY := $(shell command -v poetry 2> /dev/null || echo "$(HOME)/.local/bin/poetry")
@@ -177,6 +187,88 @@ db-revision:
 db-reset:
 	$(POETRY_RUN) alembic downgrade base
 	$(POETRY_RUN) alembic upgrade head
+
+# Docker Development Database targets
+dev-db-up:
+	@echo "🐳 Starting development database..."
+	docker compose -f docker-compose.dev.yml up -d postgres-dev
+	@echo "⏳ Waiting for database to be ready..."
+	@until docker compose -f docker-compose.dev.yml exec postgres-dev pg_isready -U dev_user -d chronovista_dev; do \
+		echo "Database is starting..."; \
+		sleep 2; \
+	done
+	@echo "✅ Development database is ready!"
+	@echo "🔗 Connection: postgresql://dev_user:dev_password@localhost:5434/chronovista_dev"
+
+dev-db-down:
+	@echo "🛑 Stopping development database..."
+	docker compose -f docker-compose.dev.yml down
+	@echo "✅ Development database stopped!"
+
+dev-db-reset:
+	@echo "🔄 Resetting development database (destroying all data)..."
+	docker compose -f docker-compose.dev.yml down -v
+	docker compose -f docker-compose.dev.yml up -d postgres-dev
+	@echo "⏳ Waiting for database to be ready..."
+	@until docker compose -f docker-compose.dev.yml exec postgres-dev pg_isready -U dev_user -d chronovista_dev; do \
+		echo "Database is resetting..."; \
+		sleep 2; \
+	done
+	@echo "✅ Development database reset complete!"
+
+dev-db-logs:
+	@echo "📋 Development database logs:"
+	docker compose -f docker-compose.dev.yml logs -f postgres-dev
+
+dev-db-shell:
+	@echo "🔗 Opening development database shell..."
+	docker compose -f docker-compose.dev.yml exec postgres-dev psql -U dev_user -d chronovista_dev
+
+dev-db-admin:
+	@echo "🐳 Starting pgAdmin for development database..."
+	docker compose -f docker-compose.dev.yml --profile admin up -d
+	@echo "⏳ Waiting for pgAdmin to be ready..."
+	@sleep 5
+	@echo "✅ pgAdmin is ready!"
+	@echo "🌐 Open: http://localhost:8081"
+	@echo "📧 Email: dev@chronovista.local"
+	@echo "🔑 Password: dev_password"
+
+dev-db-admin-down:
+	@echo "🛑 Stopping pgAdmin..."
+	docker compose -f docker-compose.dev.yml --profile admin down
+
+# Development database migrations (using alembic-dev.ini)
+dev-migrate:
+	@echo "📦 Running migrations on development database..."
+	$(POETRY_RUN) alembic -c alembic-dev.ini upgrade head
+	@echo "✅ Development database migrations complete!"
+
+dev-revision:
+	@echo "📝 Creating new migration using development database..."
+	@read -p "Enter migration message: " msg; \
+	$(POETRY_RUN) alembic -c alembic-dev.ini revision --autogenerate -m "$$msg"
+	@echo "✅ Migration created! Review the generated file before committing."
+
+dev-db-status:
+	@echo "📊 Development database status:"
+	@if docker compose -f docker-compose.dev.yml ps postgres-dev | grep -q "Up"; then \
+		echo "✅ Development database is running"; \
+		echo "🔗 Connection: postgresql://dev_user:dev_password@localhost:5434/chronovista_dev"; \
+		$(POETRY_RUN) alembic -c alembic-dev.ini current; \
+	else \
+		echo "❌ Development database is not running"; \
+		echo "💡 Run 'make dev-db-up' to start it"; \
+	fi
+
+# Development workflow combining database and application
+dev-full-setup: dev-db-up dev-migrate
+	@echo "🚀 Full development environment ready!"
+	@echo "🔗 Database: postgresql://dev_user:dev_password@localhost:5434/chronovista_dev"
+	@echo "💡 Run 'make dev-db-admin' to open pgAdmin"
+
+dev-full-reset: dev-db-reset dev-migrate
+	@echo "🔄 Full development environment reset complete!"
 
 # Documentation targets
 docs:

@@ -1,0 +1,20 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "chronovista-dev",
+      "Group": "Development",
+      "Host": "postgres-dev",
+      "Port": 5432,
+      "MaintenanceDB": "chronovista_dev",
+      "Username": "dev_user",
+      "UseSSHTunnel": 0,
+      "TunnelPort": "22",
+      "TunnelAuthentication": 0,
+      "KerberosAuthentication": false,
+      "ConnectionParameters": {
+        "sslmode": "prefer",
+        "connect_timeout": "10"
+      }
+    }
+  }
+}

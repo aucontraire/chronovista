@@ -34,13 +34,26 @@ class DatabaseManager:
     def get_engine(self) -> AsyncEngine:
         """Get or create async database engine."""
         if self._engine is None:
-            self._engine = create_async_engine(
-                settings.database_url,
-                echo=settings.debug,
-                future=True,
-                pool_pre_ping=True,
-                pool_recycle=3600,
-            )
+            # Use development database URL when in development mode
+            database_url = settings.effective_database_url
+            
+            # Development-specific engine configuration
+            engine_kwargs = {
+                "echo": settings.debug or settings.db_log_queries,
+                "future": True,
+                "pool_pre_ping": True,
+                "pool_recycle": 3600,
+            }
+            
+            # Optimize for development if using dev database
+            if settings.is_development_database:
+                engine_kwargs.update({
+                    "pool_size": 5,  # Smaller pool for development
+                    "max_overflow": 0,  # No overflow for development
+                    "pool_timeout": 10,  # Shorter timeout for development
+                })
+            
+            self._engine = create_async_engine(database_url, **engine_kwargs)
         return self._engine
 
     def get_session_factory(self) -> async_sessionmaker:
@@ -88,11 +101,11 @@ class DatabaseManager:
 
     def get_sync_engine(self) -> Engine:
         """Get synchronous engine for Alembic migrations."""
-        # Convert async URL to sync URL for Alembic
-        sync_url = settings.database_url.replace("+asyncpg", "").replace(
-            "+aiomysql", ""
+        sync_url = settings.get_sync_database_url()
+        return create_engine(
+            sync_url, 
+            echo=settings.debug or settings.db_log_queries
         )
-        return create_engine(sync_url, echo=settings.debug)
 
 
 # Global database manager instance

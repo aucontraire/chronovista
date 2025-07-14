@@ -1,0 +1,230 @@
+[tool.poetry]
+name = "chronovista"
+version = "0.1.0"
+description = "Personal YouTube data analytics tool for comprehensive access to your YouTube engagement history"
+authors = ["chronovista <noreply@chronovista.dev>"]
+maintainers = ["chronovista <noreply@chronovista.dev>"]
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/chronovista/chronovista"
+repository = "https://github.com/chronovista/chronovista"
+documentation = "https://docs.chronovista.dev"
+keywords = ["youtube", "analytics", "data", "cli", "oauth", "transcripts"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Linguistic",
+    "Topic :: Utilities"
+]
+packages = [{include = "chronovista", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+typer = "^0.16.0"
+sqlalchemy = "^2.0.0"
+alembic = "^1.13.0"
+asyncpg = "^0.29.0"
+pydantic = "^2.5.0"
+pydantic-settings = "^2.1.0"
+google-api-python-client = "^2.100.0"
+google-auth = "^2.20.0"
+python-dotenv = "^1.0.0"
+click = "^8.0.0"
+rich = "^14.0.0"
+httpx = "^0.28.0"
+aiofiles = "^23.0.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+pytest-asyncio = "^0.23.0"
+pytest-cov = "^4.1.0"
+mypy = "^1.5.0"
+black = "^25.1.0"
+isort = "^5.12.0"
+ruff = "^0.12.0"
+pre-commit = "^3.4.0"
+coverage = "^7.3.0"
+hypothesis = "^6.80.0"
+
+[tool.poetry.group.nlp]
+optional = true
+
+[tool.poetry.group.nlp.dependencies]
+spacy = "^3.7.0"
+keybert = "^0.8.0"
+transformers = "^4.30.0"
+torch = "^2.0.0"
+yake = "^0.4.8"
+
+[tool.poetry.group.database]
+optional = true
+
+[tool.poetry.group.database.dependencies]
+psycopg2-binary = "^2.9.0"
+pymysql = "^1.1.0"
+
+[tool.poetry.scripts]
+chronovista = "chronovista.cli.main:app"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | migrations
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["chronovista"]
+known_third_party = ["typer", "sqlalchemy", "pydantic", "google", "alembic"]
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+default_section = "THIRDPARTY"
+skip_glob = ["*/migrations/*"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+show_error_codes = true
+show_error_context = true
+pretty = true
+
+[[tool.mypy.overrides]]
+module = [
+    "google.auth.*",
+    "google.oauth2.*",
+    "googleapiclient.*",
+    "keybert.*",
+    "yake.*",
+    "spacy.*"
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*", "*Test"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=chronovista",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+    "--cov-fail-under=90"
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "auth: marks tests that require authentication",
+    "db: marks tests that require database"
+]
+asyncio_mode = "auto"
+filterwarnings = [
+    "error",
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning"
+]
+
+[tool.coverage.run]
+source = ["src/chronovista"]
+omit = [
+    "*/tests/*",
+    "*/migrations/*",
+    "*/__main__.py",
+    "*/conftest.py"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod"
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+    "N",  # pep8-naming
+    "S",  # bandit
+    "T20", # flake8-print
+    "SIM", # flake8-simplify
+    "LOG", # flake8-logging
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+    "S101",  # use of assert detected
+    "S603",  # subprocess call: check for execution of untrusted input
+    "S607",  # starting a process with a partial executable path
+    "N805",  # first argument of a method should be named 'self' (conflicts with pydantic validators)
+]
+unfixable = ["F401"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S105", "S106", "S107", "S108"]
+"*/migrations/*" = ["N806", "N815"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["chronovista"]
+known-third-party = ["typer", "sqlalchemy", "pydantic", "google", "alembic"]

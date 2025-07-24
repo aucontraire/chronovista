@@ -50,6 +50,8 @@ help:
 	@echo "  dev-migrate    - Run migrations on development database"
 	@echo "  dev-revision   - Create migration using development database"
 	@echo "  test-models    - Test database models (use DEVELOPMENT_MODE=true for dev DB)"
+	@echo "  validate-schema - Validate database schema with real YouTube API data"
+	@echo "  validate-schema-takeout - Enhanced validation using Takeout + API data"
 
 # Variables with fallback Poetry detection
 POETRY := $(shell command -v poetry 2> /dev/null || echo "$(HOME)/.local/bin/poetry")
@@ -294,6 +296,21 @@ test-models:
 test-models-dev:
 	@echo "🧪 Testing database models with development database..."
 	DEVELOPMENT_MODE=true python scripts/test_models.py
+
+validate-schema:
+	@echo "🔍 Validating database schema with real YouTube API data..."
+	@echo "💡 This will use your development database and real YouTube API data"
+	@echo "📋 Make sure you're authenticated: poetry run chronovista auth login"
+	@echo ""
+	DEVELOPMENT_MODE=true $(POETRY_RUN) python scripts/validate_database_schema.py
+
+validate-schema-takeout:
+	@echo "🔍 Enhanced validation using Takeout data + YouTube API..."
+	@echo "💡 This combines your Google Takeout data with YouTube API data"
+	@echo "📋 Make sure you're authenticated: poetry run chronovista auth login"
+	@echo "📊 Using recommended channels from Takeout analysis"
+	@echo ""
+	DEVELOPMENT_MODE=true $(POETRY_RUN) python scripts/validate_schema_with_takeout.py
 
 # Documentation targets
 docs:

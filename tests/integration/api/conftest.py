@@ -293,7 +293,7 @@ async def established_videos(
                 from chronovista.models.video import VideoCreate
                 from chronovista.repositories.base import BaseSQLAlchemyRepository
 
-                video_repo = BaseSQLAlchemyRepository(DBVideo)
+                video_repo: BaseSQLAlchemyRepository = BaseSQLAlchemyRepository(DBVideo)
 
                 # First check if video already exists
                 from sqlalchemy import select

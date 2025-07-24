@@ -666,3 +666,289 @@ class VideoRepository(
             top_languages=top_languages,
             upload_trend=upload_trend,
         )
+
+    # Video Localization Integration Methods
+
+    async def get_videos_with_preferred_localizations(
+        self,
+        session: AsyncSession,
+        video_ids: List[str],
+        preferred_languages: List[str],
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Get videos with their preferred localizations.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        video_ids : List[str]
+            List of video IDs to get localizations for
+        preferred_languages : List[str]
+            List of preferred language codes in order of preference
+
+        Returns
+        -------
+        Dict[str, Dict[str, Any]]
+            Mapping of video_id to video data with preferred localization
+        """
+        from .video_localization_repository import VideoLocalizationRepository
+
+        if not video_ids:
+            return {}
+
+        # Get videos
+        videos_result = await session.execute(
+            select(VideoDB).where(VideoDB.video_id.in_(video_ids))
+        )
+        videos = {video.video_id: video for video in videos_result.scalars().all()}
+
+        if not videos:
+            return {}
+
+        # Get preferred localizations
+        localization_repo = VideoLocalizationRepository()
+        preferred_localizations = await localization_repo.get_preferred_localizations(
+            session, video_ids, preferred_languages
+        )
+
+        # Combine video data with localizations
+        result = {}
+        for video_id, video in videos.items():
+            localization = preferred_localizations.get(video_id)
+            
+            result[video_id] = {
+                "video": video,
+                "preferred_localization": localization,
+                "localized_title": localization.localized_title if localization else video.title,
+                "localized_description": (
+                    localization.localized_description if localization else video.description
+                ),
+                "localization_language": localization.language_code if localization else video.default_language,
+            }
+
+        return result
+
+    async def get_videos_with_localization_support(
+        self,
+        session: AsyncSession,
+        language_codes: Optional[List[str]] = None,
+        min_localizations: int = 1,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get videos that have localization support in specified languages.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        language_codes : Optional[List[str]]
+            List of language codes to filter by. If None, returns videos with any localizations
+        min_localizations : int
+            Minimum number of localizations required
+        skip : int
+            Number of records to skip
+        limit : int
+            Maximum number of records to return
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of videos with localization information
+        """
+        from .video_localization_repository import VideoLocalizationRepository
+
+        localization_repo = VideoLocalizationRepository()
+
+        if language_codes:
+            # Get videos that have localizations in specific languages
+            video_ids_per_language = {}
+            for lang in language_codes:
+                video_ids = await localization_repo.get_videos_by_language(session, lang)
+                video_ids_per_language[lang] = set(video_ids)
+            
+            # Find videos that appear in enough languages
+            video_counts: Dict[str, int] = {}
+            for lang, video_ids_set in video_ids_per_language.items():
+                for video_id in video_ids_set:
+                    video_counts[video_id] = video_counts.get(video_id, 0) + 1
+            
+            qualified_video_ids = [
+                video_id for video_id, count in video_counts.items()
+                if count >= min_localizations
+            ]
+        else:
+            # Get all videos with localizations
+            multilingual_videos = await localization_repo.get_multilingual_videos(
+                session, min_languages=min_localizations
+            )
+            qualified_video_ids = [video_id for video_id, _ in multilingual_videos]
+
+        if not qualified_video_ids:
+            return []
+
+        # Get video data with pagination
+        videos_result = await session.execute(
+            select(VideoDB)
+            .where(
+                and_(
+                    VideoDB.video_id.in_(qualified_video_ids),
+                    VideoDB.deleted_flag.is_(False),
+                )
+            )
+            .order_by(VideoDB.upload_date.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        videos = list(videos_result.scalars().all())
+
+        # Get localization counts for each video
+        result = []
+        for video in videos:
+            localizations = await localization_repo.get_by_video_id(session, video.video_id)
+            supported_languages = [loc.language_code for loc in localizations]
+            
+            result.append({
+                "video": video,
+                "localization_count": len(localizations),
+                "supported_languages": supported_languages,
+                "localizations": localizations,
+            })
+
+        return result
+
+    async def get_videos_missing_localizations(
+        self,
+        session: AsyncSession,
+        target_languages: List[str],
+        video_ids: Optional[List[str]] = None,
+        limit: int = 50,
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Get videos that are missing localizations in target languages.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        target_languages : List[str]
+            List of target language codes
+        video_ids : Optional[List[str]]
+            Specific video IDs to check. If None, checks all videos
+        limit : int
+            Maximum number of videos to return
+
+        Returns
+        -------
+        Dict[str, Dict[str, Any]]
+            Mapping of video_id to video data with missing language information
+        """
+        from .video_localization_repository import VideoLocalizationRepository
+
+        localization_repo = VideoLocalizationRepository()
+
+        # Get missing localizations
+        missing_localizations = await localization_repo.find_missing_localizations(
+            session, target_languages, video_ids
+        )
+
+        if not missing_localizations:
+            return {}
+
+        # Get video data for videos with missing localizations
+        video_ids_with_missing = list(missing_localizations.keys())[:limit]
+        videos_result = await session.execute(
+            select(VideoDB)
+            .where(
+                and_(
+                    VideoDB.video_id.in_(video_ids_with_missing),
+                    VideoDB.deleted_flag.is_(False),
+                )
+            )
+            .order_by(VideoDB.upload_date.desc())
+        )
+        videos = {video.video_id: video for video in videos_result.scalars().all()}
+
+        # Combine video data with missing language information
+        result = {}
+        for video_id, missing_languages in missing_localizations.items():
+            if video_id in videos:
+                # Get existing localizations for context
+                existing_localizations = await localization_repo.get_by_video_id(
+                    session, video_id
+                )
+                existing_languages = [loc.language_code for loc in existing_localizations]
+
+                result[video_id] = {
+                    "video": videos[video_id],
+                    "missing_languages": missing_languages,
+                    "existing_languages": existing_languages,
+                    "existing_localizations": existing_localizations,
+                    "completion_percentage": (
+                        len(existing_languages) / len(target_languages) * 100
+                        if target_languages else 0
+                    ),
+                }
+
+        return result
+
+    async def get_video_localization_summary(
+        self,
+        session: AsyncSession,
+        video_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get comprehensive localization summary for a single video.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        video_id : str
+            Video ID to get summary for
+
+        Returns
+        -------
+        Optional[Dict[str, Any]]
+            Video localization summary or None if video not found
+        """
+        from .video_localization_repository import VideoLocalizationRepository
+
+        # Get video
+        video = await self.get_by_video_id(session, video_id)
+        if not video:
+            return None
+
+        localization_repo = VideoLocalizationRepository()
+
+        # Get all localizations for this video
+        localizations = await localization_repo.get_by_video_id(session, video_id)
+        
+        # Get language coverage for context
+        language_coverage = await localization_repo.get_language_coverage(session)
+        
+        # Calculate metrics
+        supported_languages = [loc.language_code for loc in localizations]
+        
+        return {
+            "video": video,
+            "localization_count": len(localizations),
+            "supported_languages": supported_languages,
+            "localizations": localizations,
+            "has_localizations": len(localizations) > 0,
+            "most_common_language": (
+                max(language_coverage.items(), key=lambda x: x[1])[0]
+                if language_coverage else None
+            ),
+            "is_multilingual": len(localizations) > 1,
+            "localization_summary": {
+                loc.language_code: {
+                    "title": loc.localized_title,
+                    "has_description": bool(loc.localized_description),
+                    "created_at": loc.created_at,
+                }
+                for loc in localizations
+            },
+        }

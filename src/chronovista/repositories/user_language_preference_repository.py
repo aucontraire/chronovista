@@ -7,7 +7,7 @@ operations and specialized queries for language management.
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 
 from sqlalchemy import and_, delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -410,3 +410,185 @@ class UserLanguagePreferenceRepository(
                 continue
 
         return stats
+
+    # Video Localization Integration Methods
+
+    async def get_user_videos_with_preferred_localizations(
+        self,
+        session: AsyncSession,
+        user_id: str,
+        video_ids: List[str],
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Get videos with localizations in user's preferred languages.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        user_id : str
+            User ID to get preferences for
+        video_ids : List[str]
+            List of video IDs to process
+
+        Returns
+        -------
+        Dict[str, Dict[str, Any]]
+            Mapping of video_id to video data with preferred localization
+        """
+        from .video_repository import VideoRepository
+
+        if not video_ids:
+            return {}
+
+        # Get user's language preferences in priority order
+        preferences = await self.get_user_preferences(session, user_id)
+        
+        # Build preferred languages list (fluent first, then learning, then curious)
+        preferred_languages = []
+        for pref in sorted(preferences, key=lambda x: x.priority or 999):
+            if pref.preference_type in (
+                LanguagePreferenceType.FLUENT,
+                LanguagePreferenceType.LEARNING,
+                LanguagePreferenceType.CURIOUS,
+            ):
+                preferred_languages.append(pref.language_code)
+
+        if not preferred_languages:
+            return {}
+
+        # Get videos with preferred localizations
+        video_repo = VideoRepository()
+        return await video_repo.get_videos_with_preferred_localizations(
+            session, video_ids, preferred_languages
+        )
+
+    async def get_recommended_localization_targets(
+        self,
+        session: AsyncSession,
+        user_id: str,
+        limit: int = 20,
+    ) -> Dict[str, List[str]]:
+        """
+        Get recommended localization targets based on user preferences.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        user_id : str
+            User ID to get recommendations for
+        limit : int
+            Maximum number of videos to check
+
+        Returns
+        -------
+        Dict[str, List[str]]
+            Mapping of video_id to list of recommended localization languages
+        """
+        from .video_repository import VideoRepository
+
+        # Get user's learning and curious languages
+        preferences = await self.get_user_preferences(session, user_id)
+        
+        learning_languages = [
+            pref.language_code for pref in preferences
+            if pref.preference_type == LanguagePreferenceType.LEARNING
+        ]
+        curious_languages = [
+            pref.language_code for pref in preferences
+            if pref.preference_type == LanguagePreferenceType.CURIOUS
+        ]
+        
+        target_languages = learning_languages + curious_languages
+        if not target_languages:
+            return {}
+
+        # Get videos missing localizations in target languages
+        video_repo = VideoRepository()
+        missing_localizations = await video_repo.get_videos_missing_localizations(
+            session, target_languages, limit=limit
+        )
+
+        # Extract just the missing languages for each video
+        return {
+            video_id: data["missing_languages"]
+            for video_id, data in missing_localizations.items()
+        }
+
+    async def get_user_localization_coverage(
+        self,
+        session: AsyncSession,
+        user_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Get localization coverage for user's preferred languages.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        user_id : str
+            User ID to analyze
+
+        Returns
+        -------
+        Dict[str, Any]
+            Localization coverage analysis for user's languages
+        """
+        from .video_localization_repository import VideoLocalizationRepository
+
+        # Get user's language preferences
+        preferences = await self.get_user_preferences(session, user_id)
+        
+        user_languages: Dict[str, Any] = {
+            pref.language_code: pref.preference_type
+            for pref in preferences
+        }
+
+        if not user_languages:
+            return {
+                "user_languages": {},
+                "coverage": {},
+                "total_videos": 0,
+                "localized_videos": 0,
+                "coverage_percentage": 0.0,
+            }
+
+        # Get overall language coverage
+        localization_repo = VideoLocalizationRepository()
+        language_coverage = await localization_repo.get_language_coverage(session)
+        
+        # Filter coverage for user's languages
+        user_coverage = {
+            lang: language_coverage.get(lang, 0)
+            for lang in user_languages.keys()
+        }
+
+        # Calculate summary statistics
+        total_videos_with_localizations = sum(language_coverage.values())
+        user_localized_videos = sum(user_coverage.values())
+        
+        coverage_percentage = (
+            (user_localized_videos / total_videos_with_localizations * 100)
+            if total_videos_with_localizations > 0 else 0.0
+        )
+
+        return {
+            "user_languages": user_languages,
+            "coverage": user_coverage,
+            "total_videos_with_localizations": total_videos_with_localizations,
+            "user_localized_videos": user_localized_videos,
+            "coverage_percentage": coverage_percentage,
+            "language_breakdown": {
+                lang: {
+                    "preference_type": user_languages[lang].value,
+                    "video_count": user_coverage[lang],
+                    "percentage_of_user_content": (
+                        (user_coverage[lang] / user_localized_videos * 100)
+                        if user_localized_videos > 0 else 0.0
+                    ),
+                }
+                for lang in user_languages.keys()
+            },
+        }

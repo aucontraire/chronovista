@@ -108,10 +108,13 @@ def validate_topic_id(v: str) -> str:
             f"TopicId too long (max 50 chars), got {len(cleaned)}: {cleaned}"
         )
 
-    # Allow alphanumeric, hyphens, underscores (as per TopicCategory validation)
-    if not re.match(r"^[a-zA-Z0-9_-]+$", cleaned):
+    # Allow knowledge graph IDs (e.g., /m/019_rr) and custom topic IDs
+    # Pattern allows:
+    # - Knowledge graph IDs: /m/xxx, /g/xxx, etc.
+    # - Custom IDs: alphanumeric, hyphens, underscores
+    if not re.match(r"^(/[mg]/[a-zA-Z0-9_-]+|[a-zA-Z0-9_-]+)$", cleaned):
         raise ValueError(
-            f"TopicId can only contain letters, numbers, hyphens, and underscores: {cleaned}"
+            f"TopicId must be a knowledge graph ID (e.g., /m/019_rr) or alphanumeric with hyphens/underscores: {cleaned}"
         )
 
     return cleaned

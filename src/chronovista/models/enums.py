@@ -34,6 +34,7 @@ class DownloadReason(str, Enum):
     AUTO_PREFERRED = "auto_preferred"
     LEARNING_LANGUAGE = "learning_language"
     API_ENRICHMENT = "api_enrichment"
+    SCHEMA_VALIDATION = "schema_validation"
 
 
 class TrackKind(str, Enum):
@@ -64,6 +65,7 @@ class LanguageCode(str, Enum):
     SPANISH_MX = "es-MX"
     SPANISH_AR = "es-AR"
     SPANISH_CO = "es-CO"
+    SPANISH_419 = "es-419"  # Latin American Spanish
 
     # French variants
     FRENCH = "fr"

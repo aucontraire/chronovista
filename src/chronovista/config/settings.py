@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     database_dev_url: str = Field(
         default="postgresql+asyncpg://dev_user:dev_password@localhost:5434/chronovista_dev"
     )
+    database_integration_url: str = Field(
+        default="postgresql+asyncpg://dev_user:dev_password@localhost:5434/chronovista_integration_test"
+    )
 
     # OAuth
     oauth_redirect_uri: str = Field(default="http://localhost:8080/auth/callback")
@@ -72,7 +75,7 @@ class Settings(BaseSettings):
     pytest_timeout: int = Field(default=30)
     coverage_threshold: int = Field(default=90)
     mypy_strict: bool = Field(default=True)
-    
+
     # Database Development
     development_mode: bool = Field(default=False)
     db_create_all: bool = Field(default=False)  # Use create_all() instead of migrations
@@ -133,17 +136,17 @@ class Settings(BaseSettings):
     def is_mysql(self) -> bool:
         """Check if database is MySQL."""
         return "mysql" in self.database_url
-    
+
     @property
     def effective_database_url(self) -> str:
         """Get the effective database URL based on development mode."""
         return self.database_dev_url if self.development_mode else self.database_url
-    
+
     @property
     def is_development_database(self) -> bool:
         """Check if using development database."""
         return self.development_mode or "chronovista_dev" in self.effective_database_url
-    
+
     def get_sync_database_url(self) -> str:
         """Get synchronous database URL for Alembic migrations."""
         url = self.effective_database_url

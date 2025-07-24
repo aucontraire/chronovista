@@ -24,7 +24,7 @@ auth_app = typer.Typer(
 def login() -> None:
     """Login to your YouTube account."""
     try:
-        # Check if already authenticated
+        # Check if already authenticated with valid token
         if youtube_oauth.is_authenticated():
             console.print(
                 Panel(
@@ -37,6 +37,39 @@ def login() -> None:
             )
             return
 
+        # Check if we have expired credentials that might be refreshable
+        try:
+            token_info = youtube_oauth.get_token_info()
+            if (
+                token_info
+                and not token_info["valid"]
+                and token_info["has_refresh_token"]
+            ):
+                console.print(
+                    "[yellow]🔄 Found expired token with refresh capability. Attempting to refresh...[/yellow]"
+                )
+
+                # Try to refresh the token
+                try:
+                    youtube_oauth.get_authenticated_service()  # This triggers refresh
+                    console.print(
+                        Panel(
+                            "[green]✅ Token refreshed successfully![/green]\n"
+                            "You are now authenticated and ready to use YouTube API commands.",
+                            title="Login Complete",
+                            border_style="green",
+                        )
+                    )
+                    return
+                except Exception as refresh_error:
+                    console.print(
+                        f"[yellow]⚠️ Token refresh failed: {refresh_error}[/yellow]\n"
+                        "[blue]Proceeding with fresh authentication...[/blue]"
+                    )
+        except Exception:
+            # If token info fails, just proceed with fresh auth
+            pass
+
         console.print(
             Panel(
                 "[blue]🔐 Starting YouTube OAuth authentication...[/blue]\n"
@@ -48,18 +81,19 @@ def login() -> None:
 
         # Perform interactive authentication
         token_info = youtube_oauth.authorize_interactive()
-        
+
         # Format expiration time
         expires_str = "Unknown"
-        if token_info.get('expires_in'):
+        if token_info.get("expires_in"):
             try:
                 from datetime import datetime, timezone
-                expires_timestamp = float(token_info['expires_in'])
+
+                expires_timestamp = float(token_info["expires_in"])
                 expires_dt = datetime.fromtimestamp(expires_timestamp, tz=timezone.utc)
                 expires_str = expires_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
             except (ValueError, TypeError):
-                expires_str = str(token_info['expires_in'])
-        
+                expires_str = str(token_info["expires_in"])
+
         console.print(
             Panel(
                 "[green]✅ Authentication successful![/green]\n"
@@ -97,14 +131,16 @@ def logout() -> None:
             return
 
         # Confirm logout
-        confirm = typer.confirm("Are you sure you want to logout and delete stored credentials?")
+        confirm = typer.confirm(
+            "Are you sure you want to logout and delete stored credentials?"
+        )
         if not confirm:
             console.print("[yellow]Logout cancelled.[/yellow]")
             return
 
         # Revoke credentials
         youtube_oauth.revoke_credentials()
-        
+
         console.print(
             Panel(
                 "[green]✅ Successfully logged out![/green]\n"
@@ -162,14 +198,21 @@ def status() -> None:
         if token_info.get("expires_at"):
             try:
                 from datetime import datetime
-                expires_dt = datetime.fromisoformat(token_info["expires_at"].replace('Z', '+00:00'))
+
+                expires_dt = datetime.fromisoformat(
+                    token_info["expires_at"].replace("Z", "+00:00")
+                )
                 expires_str = expires_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
             except (ValueError, TypeError):
                 expires_str = token_info["expires_at"]
 
-        table.add_row("Status", "✅ Authenticated" if token_info["valid"] else "⚠️ Token Expired")
+        table.add_row(
+            "Status", "✅ Authenticated" if token_info["valid"] else "⚠️ Token Expired"
+        )
         table.add_row("Token Valid", "Yes" if token_info["valid"] else "No")
-        table.add_row("Has Refresh Token", "Yes" if token_info["has_refresh_token"] else "No")
+        table.add_row(
+            "Has Refresh Token", "Yes" if token_info["has_refresh_token"] else "No"
+        )
         table.add_row("Expires At", expires_str)
         table.add_row("Scopes", ", ".join(token_info.get("scopes", [])))
 
@@ -178,9 +221,18 @@ def status() -> None:
         if not token_info["valid"] and token_info["has_refresh_token"]:
             console.print(
                 Panel(
-                    "[yellow]⚠️ Token expired but can be refreshed[/yellow]\n"
-                    "Use [bold]chronovista auth refresh[/bold] to refresh tokens.",
+                    "[yellow]⚠️ Token expired but may be refreshable[/yellow]\n"
+                    "Use [bold]chronovista auth refresh[/bold] to attempt token refresh.\n"
+                    "If refresh fails, use [bold]chronovista auth login[/bold] for fresh authentication.",
                     border_style="yellow",
+                )
+            )
+        elif not token_info["valid"]:
+            console.print(
+                Panel(
+                    "[red]❌ Token expired and cannot be refreshed[/red]\n"
+                    "Use [bold]chronovista auth login[/bold] to authenticate again.",
+                    border_style="red",
                 )
             )
 
@@ -212,7 +264,7 @@ def refresh() -> None:
         # Get authenticated service (this will trigger refresh if needed)
         console.print("[blue]🔄 Refreshing authentication tokens...[/blue]")
         service = youtube_oauth.get_authenticated_service()
-        
+
         console.print(
             Panel(
                 "[green]✅ Tokens refreshed successfully![/green]\n"

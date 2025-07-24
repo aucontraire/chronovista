@@ -4,7 +4,14 @@ Personal YouTube data analytics tool for comprehensive access to your YouTube en
 
 ## Overview
 
-chronovista is a CLI-first application that enables users to access, store, and explore their personal YouTube account data using the YouTube Data API. It provides insights into watch history, playlists, video metadata, transcripts, and engagement data with a focus on data ownership and privacy.
+chronovista is a CLI application that enables users to access, store, and explore their personal YouTube account data using the YouTube Data API. Built with modern Python architecture and comprehensive testing, it provides insights into watch history, playlists, video metadata, transcripts, and engagement data with a focus on data ownership and privacy.
+
+### **Project Status**
+- **1,365+ tests** with **90%+ coverage** across all modules
+- **Comprehensive Pydantic models** with advanced validation and type safety
+- **Real API integration testing** with YouTube API data validation
+- **Advanced repository pattern** with async support and composite keys
+- **Rate-limited API service** with intelligent error handling and retry logic
 
 ## Features
 
@@ -27,6 +34,7 @@ chronovista is a CLI-first application that enables users to access, store, and 
 - Poetry (dependency management)
 - PostgreSQL or MySQL database
 - YouTube Data API credentials
+- Docker (optional for database setup)
 
 ### Install from Source
 
@@ -184,6 +192,11 @@ make test-cov          # Run tests with coverage (90% threshold)
 make test-cov-dev      # Run tests with coverage (development-friendly)
 make test-fast         # Quick test run
 
+# Integration Testing (with real YouTube API data)
+./scripts/setup-integration-db.sh    # Setup integration test database
+make test-integration                 # Run integration tests (requires YouTube API auth)
+make test-integration-reset           # Reset integration test database (clean slate)
+
 # Development
 make run               # Show CLI help
 make run-status        # Test CLI status command
@@ -311,14 +324,78 @@ poetry env use python  # Use current Python for Poetry
 poetry install       # Reinstall dependencies
 ```
 
-## Architecture
+### Integration Testing with Real YouTube API Data
 
-chronovista follows a layered architecture pattern:
+ChronoVista includes comprehensive integration tests that validate the complete data flow from YouTube API through Pydantic models to database persistence. These tests use real YouTube API data to ensure robustness in production.
 
-- **CLI Layer** - Typer-based command-line interface
-- **Service Layer** - Business logic and API integration
-- **Data Layer** - SQLAlchemy models and repositories
-- **Database Layer** - PostgreSQL/MySQL storage
+#### **Quick Setup**
+```bash
+# 1. Setup integration test database (reuses dev container, different DB)
+./scripts/setup-integration-db.sh
+
+# 2. Authenticate with YouTube API (one-time setup)
+poetry run chronovista auth login
+
+# 3. Run integration tests
+poetry run pytest tests/integration/api/ -v
+
+# If tests are failing due to stale database state, reset first:
+make test-integration-reset
+poetry run pytest tests/integration/api/ -v
+
+# Or run specific test tiers
+poetry run pytest tests/integration/api/test_tier1_independent.py -v    # Channel, UserLanguagePreference
+poetry run pytest tests/integration/api/test_tier2_channel_deps.py -v   # ChannelKeyword, Playlist  
+poetry run pytest tests/integration/api/test_tier3_video_core.py -v     # Video models
+```
+
+#### **Test Architecture**
+The integration tests follow a **tier-based dependency hierarchy**:
+
+- **Tier 1** (Independent): `Channel`, `UserLanguagePreference`, `TopicCategory`
+- **Tier 2** (Channel-Dependent): `ChannelKeyword`, `Playlist`  
+- **Tier 3** (Video Core): `Video`, `VideoStatistics`, `VideoSearchFilters`
+- **Tier 4** (Video-Dependent): `VideoTranscript`, `VideoTag`, `VideoLocalization`, `UserVideo`
+
+#### **What Gets Tested**
+- ✅ **Real API Data**: Actual YouTube API responses with your authentication
+- ✅ **Model Validation**: Pydantic models with real-world data constraints
+- ✅ **Database Persistence**: Complete data flow from API → Models → Database
+- ✅ **Multi-Language Support**: International content and BCP-47 language codes
+- ✅ **Complex Metadata**: YouTube's rich data structures (ratings, restrictions, etc.)
+- ✅ **Relationship Integrity**: Foreign keys, composite keys, and cascading operations
+
+#### **Configuration**
+Integration tests use a separate database to avoid conflicts:
+- **Port**: 5434 (avoids conflict with your MacBook's port 5432)
+- **Database**: `chronovista_integration_test` (separate from dev data)
+- **Container**: Reuses your existing development PostgreSQL container
+
+See [`tests/integration/README.md`](tests/integration/README.md) for comprehensive documentation and advanced usage.
+
+## Architecture & Technical Highlights
+
+chronovista implements a sophisticated **layered architecture** with modern Python patterns:
+
+- **CLI Layer** - Typer-based interface with rich formatting and comprehensive error handling
+- **Service Layer** - Rate-limited YouTube API integration with retry logic and batch processing
+- **Repository Layer** - Advanced async repository pattern with composite keys and quality scoring
+- **Data Layer** - Comprehensive Pydantic models with custom validators and type safety
+- **Database Layer** - Multi-language PostgreSQL schema with optimized indexing
+
+### 🏗️ **Technical Architecture**
+- **Async-first design** - Full async/await implementation with proper session management
+- **Type-safe models** - Comprehensive Pydantic hierarchy with 10+ core models
+- **Composite key support** - Advanced database relationships with multi-column keys
+- **Quality scoring system** - Intelligent transcript quality assessment with confidence metrics
+- **Multi-environment testing** - Separate dev, test, and integration database environments
+
+### 🧪 **Testing Infrastructure**
+- **Real API integration** - Tests validate complete YouTube API → Database workflows
+- **Factory pattern** - Comprehensive test data generation with factory-boy
+- **Tiered testing** - Dependency-aware test architecture across 4 model tiers
+- **Database automation** - Automated integration database reset and migration
+- **Performance optimized** - 1,365 tests execute in ~20 seconds
 
 For detailed architecture information, see [System Architecture Document](src/chronovista/docs/architecture/system-architecture.md).
 

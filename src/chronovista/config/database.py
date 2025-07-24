@@ -13,15 +13,12 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import declarative_base
 
 from chronovista.config.settings import settings
-
-# SQLAlchemy base class
-Base = declarative_base()
+from chronovista.db.models import Base
 
 # Metadata for migrations
-metadata = MetaData()
+metadata = Base.metadata
 
 
 class DatabaseManager:
@@ -36,7 +33,7 @@ class DatabaseManager:
         if self._engine is None:
             # Use development database URL when in development mode
             database_url = settings.effective_database_url
-            
+
             # Development-specific engine configuration
             engine_kwargs = {
                 "echo": settings.debug or settings.db_log_queries,
@@ -44,15 +41,17 @@ class DatabaseManager:
                 "pool_pre_ping": True,
                 "pool_recycle": 3600,
             }
-            
+
             # Optimize for development if using dev database
             if settings.is_development_database:
-                engine_kwargs.update({
-                    "pool_size": 5,  # Smaller pool for development
-                    "max_overflow": 0,  # No overflow for development
-                    "pool_timeout": 10,  # Shorter timeout for development
-                })
-            
+                engine_kwargs.update(
+                    {
+                        "pool_size": 5,  # Smaller pool for development
+                        "max_overflow": 0,  # No overflow for development
+                        "pool_timeout": 10,  # Shorter timeout for development
+                    }
+                )
+
             self._engine = create_async_engine(database_url, **engine_kwargs)
         return self._engine
 
@@ -102,10 +101,7 @@ class DatabaseManager:
     def get_sync_engine(self) -> Engine:
         """Get synchronous engine for Alembic migrations."""
         sync_url = settings.get_sync_database_url()
-        return create_engine(
-            sync_url, 
-            echo=settings.debug or settings.db_log_queries
-        )
+        return create_engine(sync_url, echo=settings.debug or settings.db_log_queries)
 
 
 # Global database manager instance

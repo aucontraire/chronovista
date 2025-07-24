@@ -21,8 +21,12 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Set the SQLAlchemy URL from settings
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Set the SQLAlchemy URL from settings or command line override
+database_url = context.get_x_argument(as_dictionary=True).get("database_url")
+if database_url:
+    config.set_main_option("sqlalchemy.url", database_url)
+else:
+    config.set_main_option("sqlalchemy.url", settings.database_url)
 
 # Add your model's MetaData object here for 'autogenerate' support
 target_metadata = Base.metadata
@@ -35,6 +39,9 @@ with contextlib.suppress(ImportError):
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
     url = config.get_main_option("sqlalchemy.url")
+    if url is None:
+        raise ValueError("No database URL configured for migrations")
+    
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -56,7 +63,14 @@ def do_run_migrations(connection: Any) -> None:
 
 async def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    connectable = db_manager.get_sync_engine()
+    from sqlalchemy import create_engine
+    
+    # Use the configured URL (which may be overridden via -x database_url)
+    url = config.get_main_option("sqlalchemy.url")
+    if url is None:
+        raise ValueError("No database URL configured for migrations")
+    
+    connectable = create_engine(url)
 
     with connectable.connect() as connection:
         do_run_migrations(connection)

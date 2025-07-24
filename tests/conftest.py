@@ -4,10 +4,16 @@ Pytest configuration and fixtures for chronovista tests.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(
+    0, str(Path(__file__).parent.parent)
+)  # Add project root to path for tests imports
 from chronovista.config.settings import Settings
 
 

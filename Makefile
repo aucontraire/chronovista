@@ -1,5 +1,5 @@
 # Makefile for chronovista development (Poetry-based)
-.PHONY: help install install-dev clean test test-cov test-unit test-integration lint format type-check quality pre-commit run build docs serve-docs
+.PHONY: help install install-dev clean test test-cov test-unit test-integration test-integration-reset lint format type-check quality pre-commit run build docs serve-docs
 
 # Default target
 help:
@@ -19,6 +19,7 @@ help:
 	@echo "  test-cov       - Run tests with coverage report"
 	@echo "  test-unit      - Run unit tests only"
 	@echo "  test-integration - Run integration tests only"
+	@echo "  test-integration-reset - Reset integration test database"
 	@echo "  test-watch     - Run tests in watch mode"
 	@echo ""
 	@echo "Code Quality:"
@@ -48,6 +49,7 @@ help:
 	@echo "  dev-db-admin   - Start pgAdmin for development database"
 	@echo "  dev-migrate    - Run migrations on development database"
 	@echo "  dev-revision   - Create migration using development database"
+	@echo "  test-models    - Test database models (use DEVELOPMENT_MODE=true for dev DB)"
 
 # Variables with fallback Poetry detection
 POETRY := $(shell command -v poetry 2> /dev/null || echo "$(HOME)/.local/bin/poetry")
@@ -126,6 +128,19 @@ test-unit:
 
 test-integration:
 	$(POETRY_RUN) pytest $(TEST_DIR) -v -m "integration"
+
+test-integration-reset:
+	@echo "🔄 Resetting integration test database..."
+	@echo "🗑️  Dropping existing integration test database..."
+	@docker exec chronovista-postgres-dev psql -U dev_user -d chronovista_dev -c "DROP DATABASE IF EXISTS chronovista_integration_test;" || \
+		(echo "❌ Could not connect to development database. Make sure it's running with 'make dev-db-up'" && exit 1)
+	@echo "🆕 Creating fresh integration test database..."
+	@docker exec chronovista-postgres-dev psql -U dev_user -d chronovista_dev -c "CREATE DATABASE chronovista_integration_test;"
+	@echo "📋 Running migrations on integration test database..."
+	@$(POETRY_RUN) alembic -x database_url="postgresql://dev_user:dev_password@localhost:5434/chronovista_integration_test" upgrade head
+	@echo "✅ Integration test database reset complete!"
+	@echo "🔗 Database: chronovista_integration_test"
+	@echo "💡 Run 'make test-integration' to run integration tests"
 
 test-watch:
 	$(POETRY_RUN) pytest $(TEST_DIR) -v --tb=short -x -q --disable-warnings --no-header
@@ -231,7 +246,7 @@ dev-db-admin:
 	@sleep 5
 	@echo "✅ pgAdmin is ready!"
 	@echo "🌐 Open: http://localhost:8081"
-	@echo "📧 Email: dev@chronovista.local"
+	@echo "📧 Email: dev@example.com"
 	@echo "🔑 Password: dev_password"
 
 dev-db-admin-down:
@@ -269,6 +284,16 @@ dev-full-setup: dev-db-up dev-migrate
 
 dev-full-reset: dev-db-reset dev-migrate
 	@echo "🔄 Full development environment reset complete!"
+
+# Test database models
+test-models:
+	@echo "🧪 Testing database models..."
+	@echo "💡 Use: DEVELOPMENT_MODE=true make test-models (for development database)"
+	python scripts/test_models.py
+
+test-models-dev:
+	@echo "🧪 Testing database models with development database..."
+	DEVELOPMENT_MODE=true python scripts/test_models.py
 
 # Documentation targets
 docs:

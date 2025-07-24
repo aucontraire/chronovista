@@ -12,9 +12,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 try:
-    from youtube_transcript_api import (
-        YouTubeTranscriptApi,  # type: ignore[import-untyped]
-    )
+    from youtube_transcript_api import YouTubeTranscriptApi  # type: ignore[import-untyped]
 
     TRANSCRIPT_API_AVAILABLE = True
 except ImportError:

@@ -239,6 +239,7 @@ client_secret.json
 client_secret_*.json
 credentials.json
 token.json
+youtube_token.json
 .oauth_cache/
 
 # Local configuration files
@@ -266,6 +267,8 @@ temp_downloads/
 
 # User data and cache
 user_data/
+data/
+takeout/
 .cache/
 cache/
 

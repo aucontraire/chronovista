@@ -7,7 +7,7 @@ quality indicators, and validation.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -307,7 +307,7 @@ class TranscriptSourceComparison(BaseModel):
     comparison_notes: Optional[str] = Field(
         None, description="Additional notes about the comparison"
     )
-    created_at: datetime = Field(default_factory=lambda: datetime.utcnow())
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def recommended_source(self) -> TranscriptSource:

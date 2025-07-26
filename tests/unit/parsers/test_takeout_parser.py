@@ -580,3 +580,48 @@ class TestTakeoutParserEdgeCases:
                 assert isinstance(entry.watched_at, datetime)
         finally:
             file_path.unlink()
+
+    def test_extract_video_id_community_post(self):
+        """Test video ID extraction from community post URLs (should return None)."""
+        community_post_urls = [
+            "https://www.youtube.com/post/UgkxX1234567890abcdefgh",
+            "https://www.youtube.com/channel/UC123/post/UgkxAnotherPost",
+        ]
+
+        for url in community_post_urls:
+            result = TakeoutParser.extract_video_id(url)
+            assert result is None, f"Community post URL should return None: {url}"
+
+    def test_parse_watch_history_file_with_malformed_entry(self):
+        """Test parsing file with one malformed entry that causes exception."""
+        test_data = [
+            {
+                "header": "YouTube",
+                "title": "Watched Good Video",
+                "titleUrl": "https://www.youtube.com/watch?v=goodvideo",
+                "time": "2023-01-01T10:00:00Z",
+            },
+            {
+                "header": "YouTube",
+                "title": "Watched Bad Video",
+                # Missing titleUrl - will cause KeyError when accessing
+                "time": "2023-01-01T11:00:00Z",
+                "bad_field": None,  # This will cause an exception in processing
+            },
+            {
+                "header": "YouTube",
+                "title": "Watched Another Good Video",
+                "titleUrl": "https://www.youtube.com/watch?v=anothergood",
+                "time": "2023-01-01T12:00:00Z",
+            },
+        ]
+
+        file_path = self.create_test_file(test_data)
+
+        try:
+            # Should continue processing despite one malformed entry
+            entries = list(TakeoutParser.parse_watch_history_file(file_path))
+            # Should get 2 entries (good ones), skipping the malformed one
+            assert len(entries) >= 1, "Should process at least one valid entry"
+        finally:
+            file_path.unlink()

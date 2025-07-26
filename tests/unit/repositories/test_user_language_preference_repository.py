@@ -529,3 +529,430 @@ class TestUserLanguagePreferenceRepositoryEdgeCases:
         result = await repository.get_language_statistics(mock_session, "test_user")
 
         assert result == {}
+
+
+class TestUserLanguagePreferenceRepositoryVideoIntegration:
+    """Test video localization integration methods."""
+
+    @pytest.fixture
+    def repository(self) -> UserLanguagePreferenceRepository:
+        """Create repository instance for testing."""
+        return UserLanguagePreferenceRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> AsyncSession:
+        """Create mock async session."""
+        return AsyncMock(spec=AsyncSession)
+
+    @pytest.fixture
+    def sample_preferences_with_priorities(self) -> List[UserLanguagePreferenceDB]:
+        """Create sample preferences with different priorities and types."""
+        return [
+            UserLanguagePreferenceDB(
+                user_id="test_user",
+                language_code="en-us",
+                preference_type=LanguagePreferenceType.FLUENT.value,
+                priority=1,
+                auto_download_transcripts=True,
+                learning_goal=None,
+                created_at=datetime.now(),
+            ),
+            UserLanguagePreferenceDB(
+                user_id="test_user",
+                language_code="es-es",
+                preference_type=LanguagePreferenceType.LEARNING.value,
+                priority=2,
+                auto_download_transcripts=False,
+                learning_goal="Learn Spanish",
+                created_at=datetime.now(),
+            ),
+            UserLanguagePreferenceDB(
+                user_id="test_user",
+                language_code="fr-fr",
+                preference_type=LanguagePreferenceType.CURIOUS.value,
+                priority=3,
+                auto_download_transcripts=False,
+                learning_goal=None,
+                created_at=datetime.now(),
+            ),
+            UserLanguagePreferenceDB(
+                user_id="test_user",
+                language_code="de-de",
+                preference_type=LanguagePreferenceType.EXCLUDE.value,
+                priority=999,
+                auto_download_transcripts=False,
+                learning_goal=None,
+                created_at=datetime.now(),
+            ),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_get_user_videos_with_preferred_localizations_empty_video_ids(
+        self, repository: UserLanguagePreferenceRepository, mock_session: AsyncSession
+    ):
+        """Test video localization with empty video IDs list."""
+        result = await repository.get_user_videos_with_preferred_localizations(
+            mock_session, "test_user", []
+        )
+
+        assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_get_user_videos_with_preferred_localizations_no_preferences(
+        self, repository: UserLanguagePreferenceRepository, mock_session: AsyncSession
+    ):
+        """Test video localization when user has no language preferences."""
+        # Mock get_user_preferences to return empty list
+        repository.get_user_preferences = AsyncMock(return_value=[])
+
+        result = await repository.get_user_videos_with_preferred_localizations(
+            mock_session, "test_user", ["video1", "video2"]
+        )
+
+        assert result == {}
+        repository.get_user_preferences.assert_called_once_with(
+            mock_session, "test_user"
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_user_videos_with_preferred_localizations_no_eligible_languages(
+        self, repository: UserLanguagePreferenceRepository, mock_session: AsyncSession
+    ):
+        """Test video localization when user has no eligible language preferences."""
+        # Create preferences with only excluded languages
+        exclude_prefs = [
+            UserLanguagePreferenceDB(
+                user_id="test_user",
+                language_code="de-de",
+                preference_type=LanguagePreferenceType.EXCLUDE.value,
+                priority=1,
+                auto_download_transcripts=False,
+                learning_goal=None,
+                created_at=datetime.now(),
+            )
+        ]
+
+        repository.get_user_preferences = AsyncMock(return_value=exclude_prefs)
+
+        result = await repository.get_user_videos_with_preferred_localizations(
+            mock_session, "test_user", ["video1", "video2"]
+        )
+
+        assert result == {}
+        repository.get_user_preferences.assert_called_once_with(
+            mock_session, "test_user"
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_user_videos_with_preferred_localizations_success(
+        self,
+        repository: UserLanguagePreferenceRepository,
+        mock_session: AsyncSession,
+        sample_preferences_with_priorities: List[UserLanguagePreferenceDB],
+    ):
+        """Test successful video localization retrieval."""
+        from unittest.mock import patch
+
+        # Mock get_user_preferences
+        repository.get_user_preferences = AsyncMock(
+            return_value=sample_preferences_with_priorities
+        )
+
+        # Mock VideoRepository and its method
+        mock_video_data = {
+            "video1": {"title": "Test Video 1", "localization": "en-us"},
+            "video2": {"title": "Test Video 2", "localization": "es-es"},
+        }
+
+        with patch(
+            "chronovista.repositories.video_repository.VideoRepository"
+        ) as mock_video_repo_class:
+            mock_video_repo = AsyncMock()
+            mock_video_repo.get_videos_with_preferred_localizations.return_value = (
+                mock_video_data
+            )
+            mock_video_repo_class.return_value = mock_video_repo
+
+            result = await repository.get_user_videos_with_preferred_localizations(
+                mock_session, "test_user", ["video1", "video2"]
+            )
+
+            assert result == mock_video_data
+            repository.get_user_preferences.assert_called_once_with(
+                mock_session, "test_user"
+            )
+            mock_video_repo.get_videos_with_preferred_localizations.assert_called_once_with(
+                mock_session, ["video1", "video2"], ["en-us", "es-es", "fr-fr"]
+            )
+
+    @pytest.mark.asyncio
+    async def test_get_recommended_localization_targets_no_preferences(
+        self, repository: UserLanguagePreferenceRepository, mock_session: AsyncSession
+    ):
+        """Test localization targets when user has no learning/curious preferences."""
+        # Mock preferences with only fluent/exclude types
+        fluent_prefs = [
+            UserLanguagePreferenceDB(
+                user_id="test_user",
+                language_code="en-us",
+                preference_type=LanguagePreferenceType.FLUENT.value,
+                priority=1,
+                auto_download_transcripts=True,
+                learning_goal=None,
+                created_at=datetime.now(),
+            )
+        ]
+
+        repository.get_user_preferences = AsyncMock(return_value=fluent_prefs)
+
+        result = await repository.get_recommended_localization_targets(
+            mock_session, "test_user", limit=20
+        )
+
+        assert result == {}
+        repository.get_user_preferences.assert_called_once_with(
+            mock_session, "test_user"
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_recommended_localization_targets_success(
+        self,
+        repository: UserLanguagePreferenceRepository,
+        mock_session: AsyncSession,
+        sample_preferences_with_priorities: List[UserLanguagePreferenceDB],
+    ):
+        """Test successful localization targets retrieval."""
+        from unittest.mock import patch
+
+        # Mock get_user_preferences
+        repository.get_user_preferences = AsyncMock(
+            return_value=sample_preferences_with_priorities
+        )
+
+        # Mock VideoRepository and its method
+        mock_missing_data = {
+            "video1": {"missing_languages": ["es-es", "fr-fr"]},
+            "video2": {"missing_languages": ["fr-fr"]},
+        }
+
+        with patch(
+            "chronovista.repositories.video_repository.VideoRepository"
+        ) as mock_video_repo_class:
+            mock_video_repo = AsyncMock()
+            mock_video_repo.get_videos_missing_localizations.return_value = (
+                mock_missing_data
+            )
+            mock_video_repo_class.return_value = mock_video_repo
+
+            result = await repository.get_recommended_localization_targets(
+                mock_session, "test_user", limit=20
+            )
+
+            expected = {
+                "video1": ["es-es", "fr-fr"],
+                "video2": ["fr-fr"],
+            }
+            assert result == expected
+            repository.get_user_preferences.assert_called_once_with(
+                mock_session, "test_user"
+            )
+            mock_video_repo.get_videos_missing_localizations.assert_called_once_with(
+                mock_session, ["es-es", "fr-fr"], limit=20
+            )
+
+    @pytest.mark.asyncio
+    async def test_get_user_localization_coverage_no_preferences(
+        self, repository: UserLanguagePreferenceRepository, mock_session: AsyncSession
+    ):
+        """Test localization coverage when user has no preferences."""
+        repository.get_user_preferences = AsyncMock(return_value=[])
+
+        result = await repository.get_user_localization_coverage(
+            mock_session, "test_user"
+        )
+
+        expected = {
+            "user_languages": {},
+            "coverage": {},
+            "total_videos": 0,
+            "localized_videos": 0,
+            "coverage_percentage": 0.0,
+        }
+        assert result == expected
+        repository.get_user_preferences.assert_called_once_with(
+            mock_session, "test_user"
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_user_localization_coverage_success(
+        self,
+        repository: UserLanguagePreferenceRepository,
+        mock_session: AsyncSession,
+        sample_preferences_with_priorities: List[UserLanguagePreferenceDB],
+    ):
+        """Test successful localization coverage analysis."""
+        from unittest.mock import patch
+
+        # Mock get_user_preferences
+        repository.get_user_preferences = AsyncMock(
+            return_value=sample_preferences_with_priorities
+        )
+
+        # Mock VideoLocalizationRepository and its method
+        mock_language_coverage = {
+            "en-us": 100,
+            "es-es": 50,
+            "fr-fr": 25,
+            "it-it": 75,  # Not in user's languages
+        }
+
+        with patch(
+            "chronovista.repositories.video_localization_repository.VideoLocalizationRepository"
+        ) as mock_localization_repo_class:
+            mock_localization_repo = AsyncMock()
+            mock_localization_repo.get_language_coverage.return_value = (
+                mock_language_coverage
+            )
+            mock_localization_repo_class.return_value = mock_localization_repo
+
+            result = await repository.get_user_localization_coverage(
+                mock_session, "test_user"
+            )
+
+            # Verify structure and calculations
+            assert "user_languages" in result
+            assert "coverage" in result
+            assert "total_videos_with_localizations" in result
+            assert "user_localized_videos" in result
+            assert "coverage_percentage" in result
+            assert "language_breakdown" in result
+
+            # Check user languages mapping (preference_type is stored as string value)
+            expected_user_languages = {
+                "en-us": LanguagePreferenceType.FLUENT.value,
+                "es-es": LanguagePreferenceType.LEARNING.value,
+                "fr-fr": LanguagePreferenceType.CURIOUS.value,
+                "de-de": LanguagePreferenceType.EXCLUDE.value,
+            }
+            assert result["user_languages"] == expected_user_languages
+
+            # Check coverage for user's languages only
+            expected_coverage = {
+                "en-us": 100,
+                "es-es": 50,
+                "fr-fr": 25,
+                "de-de": 0,  # Not in mock coverage
+            }
+            assert result["coverage"] == expected_coverage
+
+            # Check calculations
+            assert (
+                result["total_videos_with_localizations"] == 250
+            )  # 100 + 50 + 25 + 75
+            assert result["user_localized_videos"] == 175  # 100 + 50 + 25 + 0
+            assert result["coverage_percentage"] == 70.0  # 175/250 * 100
+
+            # Check language breakdown structure
+            assert "en-us" in result["language_breakdown"]
+            assert (
+                result["language_breakdown"]["en-us"]["preference_type"]
+                == LanguagePreferenceType.FLUENT.value
+            )
+            assert result["language_breakdown"]["en-us"]["video_count"] == 100
+
+            repository.get_user_preferences.assert_called_once_with(
+                mock_session, "test_user"
+            )
+            mock_localization_repo.get_language_coverage.assert_called_once_with(
+                mock_session
+            )
+
+    @pytest.mark.asyncio
+    async def test_get_user_localization_coverage_zero_total_videos(
+        self,
+        repository: UserLanguagePreferenceRepository,
+        mock_session: AsyncSession,
+        sample_preferences_with_priorities: List[UserLanguagePreferenceDB],
+    ):
+        """Test localization coverage when there are no videos with localizations."""
+        from unittest.mock import patch
+
+        # Mock get_user_preferences
+        repository.get_user_preferences = AsyncMock(
+            return_value=sample_preferences_with_priorities
+        )
+
+        # Mock empty language coverage
+        mock_language_coverage = {}
+
+        with patch(
+            "chronovista.repositories.video_localization_repository.VideoLocalizationRepository"
+        ) as mock_localization_repo_class:
+            mock_localization_repo = AsyncMock()
+            mock_localization_repo.get_language_coverage.return_value = (
+                mock_language_coverage
+            )
+            mock_localization_repo_class.return_value = mock_localization_repo
+
+            result = await repository.get_user_localization_coverage(
+                mock_session, "test_user"
+            )
+
+            # Should handle division by zero gracefully
+            assert result["total_videos_with_localizations"] == 0
+            assert result["user_localized_videos"] == 0
+            assert result["coverage_percentage"] == 0.0
+
+            # Check that user languages are still tracked with zero coverage
+            expected_coverage = {
+                "en-us": 0,
+                "es-es": 0,
+                "fr-fr": 0,
+                "de-de": 0,
+            }
+            assert result["coverage"] == expected_coverage
+
+    @pytest.mark.asyncio
+    async def test_get_user_localization_coverage_zero_user_videos(
+        self,
+        repository: UserLanguagePreferenceRepository,
+        mock_session: AsyncSession,
+        sample_preferences_with_priorities: List[UserLanguagePreferenceDB],
+    ):
+        """Test localization coverage when user has no localized videos."""
+        from unittest.mock import patch
+
+        # Mock get_user_preferences
+        repository.get_user_preferences = AsyncMock(
+            return_value=sample_preferences_with_priorities
+        )
+
+        # Mock language coverage with languages not in user's preferences
+        mock_language_coverage = {
+            "it-it": 100,
+            "pt-pt": 50,
+        }
+
+        with patch(
+            "chronovista.repositories.video_localization_repository.VideoLocalizationRepository"
+        ) as mock_localization_repo_class:
+            mock_localization_repo = AsyncMock()
+            mock_localization_repo.get_language_coverage.return_value = (
+                mock_language_coverage
+            )
+            mock_localization_repo_class.return_value = mock_localization_repo
+
+            result = await repository.get_user_localization_coverage(
+                mock_session, "test_user"
+            )
+
+            # Should handle zero user videos gracefully
+            assert result["total_videos_with_localizations"] == 150  # 100 + 50
+            assert (
+                result["user_localized_videos"] == 0
+            )  # No overlap with user languages
+            assert result["coverage_percentage"] == 0.0
+
+            # Check language breakdown percentages
+            for lang_data in result["language_breakdown"].values():
+                assert lang_data["percentage_of_user_content"] == 0.0

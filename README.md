@@ -138,6 +138,113 @@ chronovista sync transcripts
 chronovista sync all
 ```
 
+### Google Takeout Analysis
+
+One of chronovista's most powerful features is the ability to analyze your complete Google Takeout data - giving you insights into your entire YouTube history that goes far beyond what the API provides.
+
+#### **What is Google Takeout?**
+
+Google Takeout is Google's data export service that lets you download a complete archive of your YouTube data, including:
+- **Complete watch history** (including deleted videos with titles preserved)
+- **All playlists** (including private ones)
+- **Search history** with timestamps
+- **Comments and live chat messages**
+- **Channel subscriptions** with dates
+- **Liked videos** and other interactions
+
+#### **Getting Your Takeout Data**
+
+1. Go to [Google Takeout](https://takeout.google.com/)
+2. Select **YouTube and YouTube Music**
+3. Choose your preferred format (JSON recommended)
+4. Download and extract the archive
+5. Point chronovista to your takeout directory
+
+#### **Takeout CLI Commands**
+
+```bash
+# Explore your takeout data structure
+chronovista takeout peek /path/to/your/takeout --summary
+
+# Analyze watch history patterns
+chronovista takeout analyze /path/to/your/takeout --type viewing-patterns
+
+# Discover channel relationships and subscriptions
+chronovista takeout analyze /path/to/your/takeout --type channel-relationships
+
+# Examine temporal viewing patterns
+chronovista takeout analyze /path/to/your/takeout --type temporal-patterns
+
+# Deep-dive into specific content types
+chronovista takeout inspect /path/to/your/takeout --focus playlists
+chronovista takeout inspect /path/to/your/takeout --focus comments
+chronovista takeout inspect /path/to/your/takeout --focus searches
+
+# Export analysis results
+chronovista takeout analyze /path/to/your/takeout --export csv
+chronovista takeout analyze /path/to/your/takeout --export json
+```
+
+#### **Why Takeout Analysis Matters**
+
+**🔍 Complete Historical Data**: Unlike the YouTube API which has limitations, Takeout contains your *entire* YouTube history, including:
+- Videos that have since been deleted or made private
+- Historical data going back to when you first used YouTube
+- Private playlists and unlisted content interactions
+- Detailed timestamps for every interaction
+
+**📊 Advanced Analytics**: chronovista's Takeout analysis provides insights like:
+- **Viewing patterns over time** - See how your interests evolved
+- **Channel relationship mapping** - Discover your subscription clusters
+- **Content discovery paths** - How you found your favorite creators
+- **Engagement analysis** - Your commenting and interaction patterns
+- **Search behavior** - What you were looking for and when
+
+**🔒 Privacy-First Exploration**: All analysis happens locally on your machine - your personal data never leaves your control.
+
+#### **Example Analysis Output**
+
+```bash
+$ chronovista takeout analyze ./takeout --type viewing-patterns
+
+📊 YouTube Viewing Pattern Analysis
+════════════════════════════════════
+
+📺 Total Videos Watched: 15,847
+⏱️  Total Watch Time: 2,341 hours
+📅 Date Range: 2012-03-15 to 2024-01-20
+🎯 Most Active Period: 2020-2021 (pandemic era)
+
+🔥 Top Content Categories:
+   1. Technology & Programming (23.4%)
+   2. News & Politics (18.7%)
+   3. Educational Content (15.2%)
+   4. Entertainment (12.8%)
+
+📈 Viewing Trends:
+   • Peak viewing hours: 7-9 PM
+   • Most active day: Sunday
+   • Average session: 47 minutes
+   • Binge-watching sessions: 234
+```
+
+#### **Integration with API Data**
+
+chronovista can **combine** your Takeout data with live YouTube API data for the most complete picture:
+
+```bash
+# Sync API data first
+chronovista sync all
+
+# Then enhance with takeout analysis
+chronovista takeout integrate /path/to/takeout --merge-with-api
+
+# This gives you:
+# ✅ Current data from API (up-to-date metrics, current video status)
+# ✅ Historical data from Takeout (deleted videos, old metadata)
+# ✅ Complete timeline reconstruction
+```
+
 ### Application Status
 
 ```bash
@@ -430,7 +537,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+GNU Affero General Public License v3.0 - see [LICENSE](LICENSE) for details.
 
 ## Support
 

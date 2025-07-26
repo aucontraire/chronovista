@@ -45,9 +45,7 @@ class PlaylistRepository(
     async def exists(self, session: AsyncSession, playlist_id: str) -> bool:
         """Check if playlist exists by playlist ID."""
         result = await session.execute(
-            select(PlaylistDB.playlist_id).where(
-                PlaylistDB.playlist_id == playlist_id
-            )
+            select(PlaylistDB.playlist_id).where(PlaylistDB.playlist_id == playlist_id)
         )
         return result.first() is not None
 
@@ -108,7 +106,11 @@ class PlaylistRepository(
         return list(result.scalars().all())
 
     async def get_by_privacy_status(
-        self, session: AsyncSession, privacy_status: str, skip: int = 0, limit: int = 100
+        self,
+        session: AsyncSession,
+        privacy_status: str,
+        skip: int = 0,
+        limit: int = 100,
     ) -> List[PlaylistDB]:
         """Get playlists by privacy status."""
         result = await session.execute(
@@ -157,9 +159,7 @@ class PlaylistRepository(
             )
 
         if filters.language_codes:
-            conditions.append(
-                PlaylistDB.default_language.in_(filters.language_codes)
-            )
+            conditions.append(PlaylistDB.default_language.in_(filters.language_codes))
 
         if filters.privacy_statuses:
             conditions.append(PlaylistDB.privacy_status.in_(filters.privacy_statuses))
@@ -219,9 +219,7 @@ class PlaylistRepository(
     ) -> List[PlaylistDB]:
         """Get most recently created playlists."""
         result = await session.execute(
-            select(PlaylistDB)
-            .order_by(desc(PlaylistDB.created_at))
-            .limit(limit)
+            select(PlaylistDB).order_by(desc(PlaylistDB.created_at)).limit(limit)
         )
         return list(result.scalars().all())
 
@@ -259,9 +257,9 @@ class PlaylistRepository(
                         (
                             and_(
                                 PlaylistDB.description.is_not(None),
-                                PlaylistDB.description != ""
+                                PlaylistDB.description != "",
                             ),
-                            1
+                            1,
                         ),
                         else_=0,
                     )
@@ -285,9 +283,7 @@ class PlaylistRepository(
                 PlaylistDB.privacy_status, func.count(PlaylistDB.playlist_id)
             ).group_by(PlaylistDB.privacy_status)
         )
-        privacy_distribution = {
-            row[0]: row[1] for row in privacy_result
-        }
+        privacy_distribution = {row[0]: row[1] for row in privacy_result}
 
         # Language distribution
         language_result = await session.execute(
@@ -295,9 +291,7 @@ class PlaylistRepository(
             .where(PlaylistDB.default_language.is_not(None))
             .group_by(PlaylistDB.default_language)
         )
-        language_distribution = {
-            str(row[0]): row[1] for row in language_result
-        }
+        language_distribution = {str(row[0]): row[1] for row in language_result}
 
         # Top channels by playlist count
         channels_result = await session.execute(
@@ -414,7 +408,7 @@ class PlaylistRepository(
                     description=None,
                     default_language=None,
                     privacy_status=None,
-                    video_count=new_count
+                    video_count=new_count,
                 )
                 await self.update(session, db_obj=playlist, obj_in=update_data)
                 updated_count += 1
@@ -431,9 +425,7 @@ class PlaylistRepository(
             await session.flush()
         return playlist
 
-    async def delete_by_channel_id(
-        self, session: AsyncSession, channel_id: str
-    ) -> int:
+    async def delete_by_channel_id(self, session: AsyncSession, channel_id: str) -> int:
         """Delete all playlists for a specific channel."""
         # Get count first
         count_result = await session.execute(
@@ -489,9 +481,7 @@ class PlaylistRepository(
         similar_playlists.sort(key=lambda x: x[1], reverse=True)
         return similar_playlists[:limit]
 
-    async def get_playlist_analytics(
-        self, session: AsyncSession
-    ) -> PlaylistAnalytics:
+    async def get_playlist_analytics(self, session: AsyncSession) -> PlaylistAnalytics:
         """Get advanced playlist analytics."""
         # Creation trends by month
         creation_trends_result = await session.execute(
@@ -503,9 +493,7 @@ class PlaylistRepository(
             .order_by(func.to_char(PlaylistDB.created_at, "YYYY-MM"))
         )
 
-        creation_trends = {
-            "monthly_counts": [row[1] for row in creation_trends_result]
-        }
+        creation_trends = {"monthly_counts": [row[1] for row in creation_trends_result]}
 
         # Content analysis - basic statistics
         content_analysis = {

@@ -4,7 +4,7 @@ Comprehensive tests for YouTubeService.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -688,3 +688,227 @@ class TestYouTubeServiceIntegration:
 
             videos = await youtube_service.get_channel_videos("UC123")
             assert videos == []
+
+
+class TestYouTubeServiceMissingCoverage:
+    """Test missing coverage areas in YouTube service."""
+
+    @pytest.fixture
+    def youtube_service(self):
+        """Create YouTube service instance."""
+        return YouTubeService()
+
+    @pytest.fixture
+    def mock_service_client(self):
+        """Create mock YouTube API service client."""
+        return MagicMock()
+
+    @pytest.mark.asyncio
+    async def test_get_channel_videos_channel_not_found(
+        self, youtube_service, mock_service_client
+    ):
+        """Test get_channel_videos when channel is not found (line 103)."""
+        youtube_service._service = mock_service_client
+
+        # Mock empty response for channel details
+        mock_response = {"items": []}
+        mock_request = MagicMock()
+        mock_request.execute.return_value = mock_response
+        mock_service_client.channels.return_value.list.return_value = mock_request
+
+        with pytest.raises(ValueError, match="Channel UCnonexistent not found"):
+            await youtube_service.get_channel_videos("UCnonexistent")
+
+    @pytest.mark.asyncio
+    async def test_get_video_captions_exception_handling(
+        self, youtube_service, mock_service_client
+    ):
+        """Test get_video_captions exception handling (lines 240-243)."""
+        youtube_service._service = mock_service_client
+
+        # Mock exception during captions request
+        mock_request = MagicMock()
+        mock_request.execute.side_effect = Exception("API quota exceeded")
+        mock_service_client.captions.return_value.list.return_value = mock_request
+
+        # Should catch exception and return empty list
+        result = await youtube_service.get_video_captions("video123")
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_my_watch_later_videos_exception_handling(
+        self, youtube_service, mock_service_client
+    ):
+        """Test get_my_watch_later_videos exception handling (lines 261-281)."""
+        youtube_service._service = mock_service_client
+
+        # Mock get_my_channel to raise exception
+        youtube_service.get_my_channel = AsyncMock(side_effect=Exception("Auth error"))
+
+        # Should catch exception and return empty list
+        result = await youtube_service.get_my_watch_later_videos()
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_check_video_in_playlist_exception_handling(
+        self, youtube_service, mock_service_client
+    ):
+        """Test check_video_in_playlist exception handling (lines 301-313)."""
+        youtube_service._service = mock_service_client
+
+        # Mock exception during playlist check
+        mock_request = MagicMock()
+        mock_request.execute.side_effect = Exception("Playlist not accessible")
+        mock_service_client.playlistItems.return_value.list.return_value = mock_request
+
+        # Should catch exception and return False
+        result = await youtube_service.check_video_in_playlist("video123", "PLtest123")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_get_user_playlists_for_video_exception_handling(
+        self, youtube_service, mock_service_client
+    ):
+        """Test get_user_playlists_for_video exception handling (lines 329-344)."""
+        youtube_service._service = mock_service_client
+
+        # Mock get_my_playlists to raise exception
+        youtube_service.get_my_playlists = AsyncMock(side_effect=Exception("API error"))
+
+        # Should catch exception and return empty list
+        result = await youtube_service.get_user_playlists_for_video("video123")
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_liked_videos_no_channel_found(
+        self, youtube_service, mock_service_client
+    ):
+        """Test get_liked_videos when no channel found (line 366)."""
+        youtube_service._service = mock_service_client
+
+        # Mock empty channel response
+        mock_response = {"items": []}
+        mock_request = MagicMock()
+        mock_request.execute.return_value = mock_response
+        mock_service_client.channels.return_value.list.return_value = mock_request
+
+        # Should return empty list due to exception handling
+        result = await youtube_service.get_liked_videos()
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_liked_videos_no_likes_playlist(
+        self, youtube_service, mock_service_client
+    ):
+        """Test get_liked_videos when no likes playlist available (line 374)."""
+        youtube_service._service = mock_service_client
+
+        # Mock channel response without likes playlist
+        mock_response = {
+            "items": [
+                {
+                    "contentDetails": {
+                        "relatedPlaylists": {
+                            "uploads": "UUtest123"
+                            # Missing 'likes' key
+                        }
+                    }
+                }
+            ]
+        }
+        mock_request = MagicMock()
+        mock_request.execute.return_value = mock_response
+        mock_service_client.channels.return_value.list.return_value = mock_request
+
+        # Should return empty list when no likes playlist
+        result = await youtube_service.get_liked_videos()
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_liked_videos_empty_playlist(
+        self, youtube_service, mock_service_client
+    ):
+        """Test get_liked_videos with empty likes playlist (line 387)."""
+        youtube_service._service = mock_service_client
+
+        # Mock channel response with likes playlist
+        mock_channel_response = {
+            "items": [{"contentDetails": {"relatedPlaylists": {"likes": "LLtest123"}}}]
+        }
+
+        # Mock empty playlist response
+        mock_playlist_response = {"items": []}
+
+        # Mock the channel call
+        mock_request1 = MagicMock()
+        mock_request1.execute.return_value = mock_channel_response
+        mock_service_client.channels.return_value.list.return_value = mock_request1
+
+        # Mock the playlist call
+        mock_request2 = MagicMock()
+        mock_request2.execute.return_value = mock_playlist_response
+        mock_service_client.playlistItems.return_value.list.return_value = mock_request2
+
+        # Should return empty list when playlist is empty
+        result = await youtube_service.get_liked_videos()
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_liked_videos_no_video_ids(
+        self, youtube_service, mock_service_client
+    ):
+        """Test get_liked_videos when no valid video IDs found (line 397)."""
+        youtube_service._service = mock_service_client
+
+        # Mock channel response
+        mock_channel_response = {
+            "items": [{"contentDetails": {"relatedPlaylists": {"likes": "LLtest123"}}}]
+        }
+
+        # Mock playlist response with malformed items (no videoId)
+        mock_playlist_response = {
+            "items": [
+                {"snippet": {"title": "Video without contentDetails"}},
+                {"contentDetails": {}},  # Missing videoId
+            ]
+        }
+
+        mock_request1 = MagicMock()
+        mock_request1.execute.return_value = mock_channel_response
+        mock_service_client.channels.return_value.list.return_value = mock_request1
+
+        mock_request2 = MagicMock()
+        mock_request2.execute.return_value = mock_playlist_response
+        mock_service_client.playlistItems.return_value.list.return_value = mock_request2
+
+        # Should return empty list when no valid video IDs
+        result = await youtube_service.get_liked_videos()
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_liked_videos_exception_handling(
+        self, youtube_service, mock_service_client
+    ):
+        """Test get_liked_videos exception handling (lines 404-406)."""
+        youtube_service._service = mock_service_client
+
+        # Mock exception during channel request
+        mock_request = MagicMock()
+        mock_request.execute.side_effect = Exception("Network error")
+        mock_service_client.channels.return_value.list.return_value = mock_request
+
+        # Should catch exception and return empty list
+        result = await youtube_service.get_liked_videos()
+        assert result == []
+
+    def test_close_method(self, youtube_service):
+        """Test close method (line 433)."""
+        # Set a service instance
+        youtube_service._service = MagicMock()
+        assert youtube_service._service is not None
+
+        # Call close
+        youtube_service.close()
+
+        # Should reset service to None
+        assert youtube_service._service is None

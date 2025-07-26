@@ -5,8 +5,8 @@ Tests for PlaylistRepository functionality.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
 from typing import List
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,9 +21,9 @@ from chronovista.models.playlist import (
 )
 from chronovista.repositories.playlist_repository import PlaylistRepository
 from tests.factories.playlist_factory import (
+    PlaylistTestData,
     create_playlist,
     create_playlist_create,
-    PlaylistTestData,
 )
 
 
@@ -84,7 +84,9 @@ class TestPlaylistRepository:
         mock_result.scalar_one_or_none.return_value = sample_playlist_db
         mock_session.execute.return_value = mock_result
 
-        result = await repository.get(mock_session, "PLrAXtmRdnqDpVC2bT0Bz-8Q5RWmF6gBkR")
+        result = await repository.get(
+            mock_session, "PLrAXtmRdnqDpVC2bT0Bz-8Q5RWmF6gBkR"
+        )
 
         assert result == sample_playlist_db
         mock_session.execute.assert_called_once()
@@ -112,7 +114,9 @@ class TestPlaylistRepository:
         mock_result.first.return_value = ("PLrAXtmRdnqDpVC2bT0Bz-8Q5RWmF6gBkR",)
         mock_session.execute.return_value = mock_result
 
-        result = await repository.exists(mock_session, "PLrAXtmRdnqDpVC2bT0Bz-8Q5RWmF6gBkR")
+        result = await repository.exists(
+            mock_session, "PLrAXtmRdnqDpVC2bT0Bz-8Q5RWmF6gBkR"
+        )
 
         assert result is True
         mock_session.execute.assert_called_once()
@@ -141,7 +145,9 @@ class TestPlaylistRepository:
         mock_result.scalar_one_or_none.return_value = mock_playlist
         mock_session.execute.return_value = mock_result
 
-        result = await repository.get_with_channel(mock_session, "PLrAXtmRdnqDpVC2bT0Bz-8Q5RWmF6gBkR")
+        result = await repository.get_with_channel(
+            mock_session, "PLrAXtmRdnqDpVC2bT0Bz-8Q5RWmF6gBkR"
+        )
 
         assert result == mock_playlist
         mock_session.execute.assert_called_once()
@@ -200,7 +206,9 @@ class TestPlaylistRepository:
         mock_result.scalars.return_value = mock_scalars
         mock_session.execute.return_value = mock_result
 
-        result = await repository.get_by_channel_id(mock_session, "UC_x5XG1OV2P6uZZ5FSM9Ttw")
+        result = await repository.get_by_channel_id(
+            mock_session, "UC_x5XG1OV2P6uZZ5FSM9Ttw"
+        )
 
         assert result == mock_playlists
         mock_session.execute.assert_called_once()
@@ -352,18 +360,18 @@ class TestPlaylistRepository:
         mock_stats.avg_videos_per_playlist = 10.0
         mock_stats.unique_channels = 25
         mock_stats.playlists_with_descriptions = 75
-        
+
         # Mock first call for basic stats
         basic_stats_result = MagicMock()
         basic_stats_result.first.return_value = mock_stats
-        
+
         # Mock different execute calls for different queries
         mock_session.execute.side_effect = [
             # Basic stats query
             basic_stats_result,
             # Privacy distribution query
             [("public", 60), ("private", 40)],
-            # Language distribution query  
+            # Language distribution query
             [("en", 80), ("es", 20)],
             # Top channels query
             [("UC123", 15), ("UC456", 10)],
@@ -471,7 +479,9 @@ class TestPlaylistRepository:
     ):
         """Test bulk creating with mix of new and existing playlists."""
         # First playlist exists, second doesn't
-        repository.get_by_playlist_id = AsyncMock(side_effect=[sample_playlist_db, None])
+        repository.get_by_playlist_id = AsyncMock(
+            side_effect=[sample_playlist_db, None]
+        )
         repository.create = AsyncMock(return_value=sample_playlist_db)
 
         playlists = [
@@ -503,7 +513,9 @@ class TestPlaylistRepository:
             "PL2": 15,
         }
 
-        result = await repository.bulk_update_video_counts(mock_session, playlist_counts)
+        result = await repository.bulk_update_video_counts(
+            mock_session, playlist_counts
+        )
 
         assert result == 2  # Both playlists updated
         assert repository.get_by_playlist_id.call_count == 2
@@ -566,7 +578,9 @@ class TestPlaylistRepository:
         result = await repository.find_similar_playlists(mock_session, "PL1", limit=5)
 
         assert len(result) > 0
-        assert all(len(item) == 2 for item in result)  # (playlist, similarity_score) tuples
+        assert all(
+            len(item) == 2 for item in result
+        )  # (playlist, similarity_score) tuples
 
     @pytest.mark.asyncio
     async def test_find_similar_playlists_not_found(
@@ -627,7 +641,7 @@ class TestPlaylistRepositoryIntegration:
         playlist_create = create_playlist_create(
             playlist_id="PLrAXtmRdnqDpVC2bT0Bz-8Q5RWmF6gBkR",
             title="Test Playlist",
-            channel_id="UC_x5XG1OV2P6uZZ5FSM9Ttw"
+            channel_id="UC_x5XG1OV2P6uZZ5FSM9Ttw",
         )
 
         # Mock database playlist

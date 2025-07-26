@@ -242,8 +242,9 @@ class YouTubeService:
             print(f"Could not fetch captions for video {video_id}: {e}")
             return []
 
-
-    async def get_my_watch_later_videos(self, max_results: int = 50) -> List[Dict[str, Any]]:
+    async def get_my_watch_later_videos(
+        self, max_results: int = 50
+    ) -> List[Dict[str, Any]]:
         """
         Get videos in the authenticated user's Watch Later playlist.
 
@@ -260,10 +261,12 @@ class YouTubeService:
         try:
             # First get user's channel to find watch later playlist
             my_channel = await self.get_my_channel()
-            
+
             # Get the watch later playlist ID
-            watch_later_playlist_id = my_channel["contentDetails"]["relatedPlaylists"]["watchLater"]
-            
+            watch_later_playlist_id = my_channel["contentDetails"]["relatedPlaylists"][
+                "watchLater"
+            ]
+
             # Get videos from watch later playlist
             request = self.service.playlistItems().list(
                 part="snippet,contentDetails",
@@ -271,13 +274,15 @@ class YouTubeService:
                 maxResults=max_results,
             )
             response = request.execute()
-            
+
             return list(response.get("items", []))
         except Exception as e:
             print(f"Could not fetch Watch Later videos: {e}")
             return []
 
-    async def check_video_in_playlist(self, video_id: VideoId, playlist_id: PlaylistId) -> bool:
+    async def check_video_in_playlist(
+        self, video_id: VideoId, playlist_id: PlaylistId
+    ) -> bool:
         """
         Check if a specific video exists in a playlist.
 
@@ -298,10 +303,10 @@ class YouTubeService:
                 part="contentDetails",
                 playlistId=playlist_id,
                 videoId=video_id,
-                maxResults=1
+                maxResults=1,
             )
             response = request.execute()
-            
+
             return len(response.get("items", [])) > 0
         except Exception as e:
             print(f"Could not check video {video_id} in playlist {playlist_id}: {e}")
@@ -324,15 +329,15 @@ class YouTubeService:
         try:
             # Get all user playlists
             all_playlists = await self.get_my_playlists(max_results=50)
-            
+
             video_playlists = []
-            
+
             # Check each playlist for the video
             for playlist in all_playlists:
                 playlist_id = playlist["id"]
                 if await self.check_video_in_playlist(video_id, playlist_id):
                     video_playlists.append(playlist_id)
-            
+
             return video_playlists
         except Exception as e:
             print(f"Could not get playlists for video {video_id}: {e}")

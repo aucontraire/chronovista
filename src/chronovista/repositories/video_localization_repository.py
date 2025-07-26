@@ -26,14 +26,18 @@ from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
 class VideoLocalizationRepository(
-    BaseSQLAlchemyRepository[VideoLocalizationDB, VideoLocalizationCreate, VideoLocalizationUpdate]
+    BaseSQLAlchemyRepository[
+        VideoLocalizationDB, VideoLocalizationCreate, VideoLocalizationUpdate
+    ]
 ):
     """Repository for video localization operations."""
 
     def __init__(self) -> None:
         super().__init__(VideoLocalizationDB)
 
-    async def get(self, session: AsyncSession, id: Any) -> Optional[VideoLocalizationDB]:
+    async def get(
+        self, session: AsyncSession, id: Any
+    ) -> Optional[VideoLocalizationDB]:
         """Get video localization by composite key tuple (video_id, language_code)."""
         if isinstance(id, tuple) and len(id) == 2:
             video_id, language_code = id
@@ -55,7 +59,7 @@ class VideoLocalizationRepository(
             select(VideoLocalizationDB).where(
                 and_(
                     VideoLocalizationDB.video_id == video_id,
-                    VideoLocalizationDB.language_code == language_code
+                    VideoLocalizationDB.language_code == language_code,
                 )
             )
         )
@@ -69,7 +73,7 @@ class VideoLocalizationRepository(
             select(VideoLocalizationDB.video_id).where(
                 and_(
                     VideoLocalizationDB.video_id == video_id,
-                    VideoLocalizationDB.language_code == language_code
+                    VideoLocalizationDB.language_code == language_code,
                 )
             )
         )
@@ -109,7 +113,7 @@ class VideoLocalizationRepository(
             .where(
                 and_(
                     VideoLocalizationDB.video_id == video_id,
-                    VideoLocalizationDB.language_code == language_code
+                    VideoLocalizationDB.language_code == language_code,
                 )
             )
         )
@@ -147,7 +151,9 @@ class VideoLocalizationRepository(
             conditions.append(VideoLocalizationDB.video_id.in_(filters.video_ids))
 
         if filters.language_codes:
-            conditions.append(VideoLocalizationDB.language_code.in_(filters.language_codes))
+            conditions.append(
+                VideoLocalizationDB.language_code.in_(filters.language_codes)
+            )
 
         if filters.title_query:
             conditions.append(
@@ -156,12 +162,16 @@ class VideoLocalizationRepository(
 
         if filters.description_query:
             conditions.append(
-                VideoLocalizationDB.localized_description.ilike(f"%{filters.description_query}%")
+                VideoLocalizationDB.localized_description.ilike(
+                    f"%{filters.description_query}%"
+                )
             )
 
         if filters.has_description is not None:
             if filters.has_description:
-                conditions.append(VideoLocalizationDB.localized_description.is_not(None))
+                conditions.append(
+                    VideoLocalizationDB.localized_description.is_not(None)
+                )
                 conditions.append(VideoLocalizationDB.localized_description != "")
             else:
                 conditions.append(
@@ -218,7 +228,7 @@ class VideoLocalizationRepository(
         result = await session.execute(
             select(
                 VideoLocalizationDB.video_id,
-                func.count(VideoLocalizationDB.language_code).label("language_count")
+                func.count(VideoLocalizationDB.language_code).label("language_count"),
             )
             .group_by(VideoLocalizationDB.video_id)
             .having(func.count(VideoLocalizationDB.language_code) >= min_languages)
@@ -226,14 +236,12 @@ class VideoLocalizationRepository(
         )
         return [(row[0], row[1]) for row in result]
 
-    async def get_language_coverage(
-        self, session: AsyncSession
-    ) -> Dict[str, int]:
+    async def get_language_coverage(self, session: AsyncSession) -> Dict[str, int]:
         """Get the number of videos available in each language."""
         result = await session.execute(
             select(
                 VideoLocalizationDB.language_code,
-                func.count(VideoLocalizationDB.video_id).label("video_count")
+                func.count(VideoLocalizationDB.video_id).label("video_count"),
             )
             .group_by(VideoLocalizationDB.language_code)
             .order_by(desc("video_count"))
@@ -241,23 +249,26 @@ class VideoLocalizationRepository(
         return {row[0]: row[1] for row in result}
 
     async def find_missing_localizations(
-        self, session: AsyncSession, target_languages: List[str], video_ids: Optional[List[str]] = None
+        self,
+        session: AsyncSession,
+        target_languages: List[str],
+        video_ids: Optional[List[str]] = None,
     ) -> Dict[str, List[str]]:
         """Find videos that are missing localizations in target languages."""
         query = select(VideoLocalizationDB.video_id, VideoLocalizationDB.language_code)
-        
+
         if video_ids:
             query = query.where(VideoLocalizationDB.video_id.in_(video_ids))
-        
+
         result = await session.execute(query)
-        
+
         # Build a map of video_id -> available languages
         video_languages: Dict[str, set[str]] = {}
         for video_id, language_code in result:
             if video_id not in video_languages:
                 video_languages[video_id] = set()
             video_languages[video_id].add(language_code)
-        
+
         # Find missing languages for each video
         missing_localizations: Dict[str, List[str]] = {}
         for video_id, available_languages in video_languages.items():
@@ -266,7 +277,7 @@ class VideoLocalizationRepository(
             ]
             if missing_languages:
                 missing_localizations[video_id] = missing_languages
-        
+
         return missing_localizations
 
     async def get_localization_statistics(
@@ -277,8 +288,12 @@ class VideoLocalizationRepository(
         total_result = await session.execute(
             select(
                 func.count().label("total_localizations"),
-                func.count(func.distinct(VideoLocalizationDB.video_id)).label("unique_videos"),
-                func.count(func.distinct(VideoLocalizationDB.language_code)).label("unique_languages"),
+                func.count(func.distinct(VideoLocalizationDB.video_id)).label(
+                    "unique_videos"
+                ),
+                func.count(func.distinct(VideoLocalizationDB.language_code)).label(
+                    "unique_languages"
+                ),
                 func.sum(
                     case(
                         (VideoLocalizationDB.localized_description.is_not(None), 1),
@@ -291,18 +306,22 @@ class VideoLocalizationRepository(
         # Calculate average localizations per video separately using subquery
         # First get count of localizations per video, then average those counts
         localization_counts_subquery = (
-            select(func.count(VideoLocalizationDB.language_code).label("localization_count"))
+            select(
+                func.count(VideoLocalizationDB.language_code).label(
+                    "localization_count"
+                )
+            )
             .group_by(VideoLocalizationDB.video_id)
             .subquery()
         )
-        
+
         avg_result = await session.execute(
             select(func.avg(localization_counts_subquery.c.localization_count))
         )
 
         stats = total_result.first()
         avg_localizations = avg_result.scalar() or 0.0
-        
+
         if not stats:
             return VideoLocalizationStatistics(
                 total_localizations=0,
@@ -316,7 +335,7 @@ class VideoLocalizationRepository(
         language_result = await session.execute(
             select(
                 VideoLocalizationDB.language_code,
-                func.count(VideoLocalizationDB.video_id)
+                func.count(VideoLocalizationDB.video_id),
             )
             .group_by(VideoLocalizationDB.language_code)
             .order_by(func.count(VideoLocalizationDB.video_id).desc())
@@ -328,9 +347,8 @@ class VideoLocalizationRepository(
         coverage_result = await session.execute(
             select(
                 VideoLocalizationDB.language_code,
-                func.count(VideoLocalizationDB.video_id)
-            )
-            .group_by(VideoLocalizationDB.language_code)
+                func.count(VideoLocalizationDB.video_id),
+            ).group_by(VideoLocalizationDB.language_code)
         )
         localization_coverage = {row[0]: row[1] for row in coverage_result}
 
@@ -364,7 +382,10 @@ class VideoLocalizationRepository(
         return created_localizations
 
     async def bulk_create_video_localizations(
-        self, session: AsyncSession, video_id: str, localizations_data: Dict[str, Dict[str, str]]
+        self,
+        session: AsyncSession,
+        video_id: str,
+        localizations_data: Dict[str, Dict[str, str]],
     ) -> List[VideoLocalizationDB]:
         """Create multiple localizations for a single video efficiently."""
         created_localizations = []
@@ -386,9 +407,7 @@ class VideoLocalizationRepository(
 
         return created_localizations
 
-    async def delete_by_video_id(
-        self, session: AsyncSession, video_id: str
-    ) -> int:
+    async def delete_by_video_id(self, session: AsyncSession, video_id: str) -> int:
         """Delete all localizations for a specific video."""
         # Get count first
         count_result = await session.execute(
@@ -410,12 +429,16 @@ class VideoLocalizationRepository(
         """Delete all localizations for a specific language."""
         # Get count first
         count_result = await session.execute(
-            select(func.count()).where(VideoLocalizationDB.language_code == language_code)
+            select(func.count()).where(
+                VideoLocalizationDB.language_code == language_code
+            )
         )
         count = count_result.scalar() or 0
 
         # Delete localizations
-        localizations = await self.get_by_language_code(session, language_code, limit=1000)
+        localizations = await self.get_by_language_code(
+            session, language_code, limit=1000
+        )
         for localization in localizations:
             await session.delete(localization)
 
@@ -433,7 +456,10 @@ class VideoLocalizationRepository(
         return localization
 
     async def get_preferred_localizations(
-        self, session: AsyncSession, video_ids: List[str], preferred_languages: List[str]
+        self,
+        session: AsyncSession,
+        video_ids: List[str],
+        preferred_languages: List[str],
     ) -> Dict[str, Optional[VideoLocalizationDB]]:
         """Get preferred localizations for videos based on language preference order."""
         if not video_ids or not preferred_languages:
@@ -480,7 +506,9 @@ class VideoLocalizationRepository(
         self, session: AsyncSession, video_id: str, language_code: str, limit: int = 10
     ) -> List[Tuple[VideoLocalizationDB, float]]:
         """Find localizations with similar content based on title similarity."""
-        target_localization = await self.get_by_composite_key(session, video_id, language_code)
+        target_localization = await self.get_by_composite_key(
+            session, video_id, language_code
+        )
         if not target_localization:
             return []
 
@@ -490,7 +518,7 @@ class VideoLocalizationRepository(
             .where(
                 and_(
                     VideoLocalizationDB.language_code == language_code,
-                    VideoLocalizationDB.video_id != video_id
+                    VideoLocalizationDB.video_id != video_id,
                 )
             )
             .limit(100)  # Limit search space for performance
@@ -551,6 +579,8 @@ class VideoLocalizationRepository(
         )
         coverage_stats = desc_coverage_result.first()
         if coverage_stats and coverage_stats.total > 0:
-            metrics["description_coverage"] = float(coverage_stats.with_description / coverage_stats.total)
+            metrics["description_coverage"] = float(
+                coverage_stats.with_description / coverage_stats.total
+            )
 
         return metrics

@@ -251,28 +251,28 @@ class TopicGraphService:
         """Build a content similarity graph based on video tag relationships."""
         # Start with hierarchical graph as base
         graph = await self.build_topic_hierarchy_graph(session)
-        
+
         # Get popular tags to focus on
         popular_tags = await self.video_tag_repo.get_popular_tags(session, limit=100)
         tag_names = [tag[0] for tag in popular_tags]
-        
+
         if not tag_names:
             return graph
-        
+
         # Build tag co-occurrence relationships
         tag_similarity_edges = []
-        
+
         for i, tag_a in enumerate(tag_names):
             # Get related tags that frequently appear with tag_a
             related_tags = await self.video_tag_repo.get_related_tags(
                 session, tag_a, limit=20
             )
-            
+
             for tag_b, cooccurrence_count in related_tags:
                 if cooccurrence_count >= min_tag_cooccurrence and tag_b in tag_names:
                     # Calculate similarity weight based on co-occurrence frequency
                     weight = min(1.0, cooccurrence_count / 50.0)  # Normalize to 0-1
-                    
+
                     # Create content similarity edge
                     edge = TopicEdge(
                         source_topic_id=f"tag:{tag_a}",  # Use tag: prefix for tag-based topics
@@ -286,7 +286,7 @@ class TopicGraphService:
                         },
                     )
                     tag_similarity_edges.append(edge)
-        
+
         # Add tag-based nodes to the graph
         for tag_name, count in popular_tags:
             tag_node = TopicNode(
@@ -299,22 +299,20 @@ class TopicGraphService:
                 level=0,
             )
             graph.nodes[f"tag:{tag_name}"] = tag_node
-        
+
         # Add tag similarity edges to the graph
         graph.edges.extend(tag_similarity_edges)
-        
+
         return graph
 
-    async def build_video_topic_bridge_graph(
-        self, session: AsyncSession
-    ) -> TopicGraph:
+    async def build_video_topic_bridge_graph(self, session: AsyncSession) -> TopicGraph:
         """Build a graph that bridges formal topics with user-generated tags via videos."""
         # Start with hierarchical graph
         graph = await self.build_topic_hierarchy_graph(session)
-        
+
         # Get video statistics for tag analytics
         tag_stats = await self.video_tag_repo.get_video_tag_statistics(session)
-        
+
         # Add tag nodes to the graph
         for tag_name, count in tag_stats.most_common_tags:
             tag_node = TopicNode(
@@ -327,17 +325,17 @@ class TopicGraphService:
                 level=0,
             )
             graph.nodes[f"tag:{tag_name}"] = tag_node
-        
+
         # Create bridge edges between formal topics and tags
         # This would require domain knowledge or ML to map topics to tags
         # For now, create simple heuristic mappings
         bridge_edges = []
-        
+
         # Example heuristic: match topic category names with tag names
         for topic_id, topic_node in graph.nodes.items():
             if not topic_id.startswith("tag:"):  # Skip tag nodes
                 topic_name_lower = topic_node.category_name.lower()
-                
+
                 for tag_name, _ in tag_stats.most_common_tags:
                     # Simple string matching - in practice you'd use more sophisticated methods
                     if (
@@ -357,10 +355,10 @@ class TopicGraphService:
                             },
                         )
                         bridge_edges.append(edge)
-        
+
         # Add bridge edges to the graph
         graph.edges.extend(bridge_edges)
-        
+
         return graph
 
     async def analyze_tag_topic_relationships(
@@ -369,25 +367,25 @@ class TopicGraphService:
         """Analyze relationships between user tags and formal topic categories."""
         # Get tag statistics
         tag_stats = await self.video_tag_repo.get_video_tag_statistics(session)
-        
+
         # Get all topics
         filters = TopicCategorySearchFilters()
         all_topics = await self.topic_repo.search_topics(session, filters)
-        
+
         relationships: Dict[str, Dict[str, float]] = {}
-        
+
         # For each tag, analyze its relationship with formal topics
         for tag_name, tag_count in tag_stats.most_common_tags:
             relationships[tag_name] = {}
-            
+
             # Simple analysis based on name similarity
             for topic in all_topics:
                 topic_name = topic.category_name.lower()
                 tag_lower = tag_name.lower()
-                
+
                 # Calculate similarity score (simple implementation)
                 similarity_score = 0.0
-                
+
                 # Exact match
                 if tag_lower == topic_name:
                     similarity_score = 1.0
@@ -400,11 +398,13 @@ class TopicGraphService:
                     topic_words = set(topic_name.split())
                     overlap = len(tag_words.intersection(topic_words))
                     if overlap > 0:
-                        similarity_score = overlap / max(len(tag_words), len(topic_words))
-                
+                        similarity_score = overlap / max(
+                            len(tag_words), len(topic_words)
+                        )
+
                 if similarity_score > 0.3:  # Only include meaningful relationships
                     relationships[tag_name][topic.topic_id] = similarity_score
-        
+
         return relationships
 
     async def get_topic_clusters(
@@ -452,7 +452,7 @@ class TopicGraphService:
     ) -> Dict[str, float]:
         """Calculate importance scores for topics based on graph metrics and tag data."""
         importance_scores = {}
-        
+
         # Get tag statistics for enhanced scoring
         tag_stats = await self.video_tag_repo.get_video_tag_statistics(session)
         tag_popularity = {tag: count for tag, count in tag_stats.most_common_tags}
@@ -472,19 +472,22 @@ class TopicGraphService:
 
             # Content association importance (more videos = more important)
             score += len(node.related_videos or set()) * 0.1
-            
+
             # Tag-based importance for tag nodes
             if topic_id.startswith("tag:"):
                 tag_name = topic_id[4:]  # Remove "tag:" prefix
                 if tag_name in tag_popularity:
                     # Add tag popularity score (normalized)
-                    max_tag_count = max(tag_popularity.values()) if tag_popularity else 1
+                    max_tag_count = (
+                        max(tag_popularity.values()) if tag_popularity else 1
+                    )
                     normalized_popularity = tag_popularity[tag_name] / max_tag_count
                     score += normalized_popularity * 0.5
-            
+
             # Edge-based importance (topics with more connections are more important)
             edge_count = sum(
-                1 for edge in graph.edges 
+                1
+                for edge in graph.edges
                 if edge.source_topic_id == topic_id or edge.target_topic_id == topic_id
             )
             score += edge_count * 0.1

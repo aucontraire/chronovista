@@ -7,7 +7,7 @@ operations and specialized queries for language management.
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -443,7 +443,7 @@ class UserLanguagePreferenceRepository(
 
         # Get user's language preferences in priority order
         preferences = await self.get_user_preferences(session, user_id)
-        
+
         # Build preferred languages list (fluent first, then learning, then curious)
         preferred_languages = []
         for pref in sorted(preferences, key=lambda x: x.priority or 999):
@@ -490,16 +490,18 @@ class UserLanguagePreferenceRepository(
 
         # Get user's learning and curious languages
         preferences = await self.get_user_preferences(session, user_id)
-        
+
         learning_languages = [
-            pref.language_code for pref in preferences
+            pref.language_code
+            for pref in preferences
             if pref.preference_type == LanguagePreferenceType.LEARNING
         ]
         curious_languages = [
-            pref.language_code for pref in preferences
+            pref.language_code
+            for pref in preferences
             if pref.preference_type == LanguagePreferenceType.CURIOUS
         ]
-        
+
         target_languages = learning_languages + curious_languages
         if not target_languages:
             return {}
@@ -540,10 +542,9 @@ class UserLanguagePreferenceRepository(
 
         # Get user's language preferences
         preferences = await self.get_user_preferences(session, user_id)
-        
+
         user_languages: Dict[str, Any] = {
-            pref.language_code: pref.preference_type
-            for pref in preferences
+            pref.language_code: pref.preference_type for pref in preferences
         }
 
         if not user_languages:
@@ -558,20 +559,20 @@ class UserLanguagePreferenceRepository(
         # Get overall language coverage
         localization_repo = VideoLocalizationRepository()
         language_coverage = await localization_repo.get_language_coverage(session)
-        
+
         # Filter coverage for user's languages
         user_coverage = {
-            lang: language_coverage.get(lang, 0)
-            for lang in user_languages.keys()
+            lang: language_coverage.get(lang, 0) for lang in user_languages.keys()
         }
 
         # Calculate summary statistics
         total_videos_with_localizations = sum(language_coverage.values())
         user_localized_videos = sum(user_coverage.values())
-        
+
         coverage_percentage = (
             (user_localized_videos / total_videos_with_localizations * 100)
-            if total_videos_with_localizations > 0 else 0.0
+            if total_videos_with_localizations > 0
+            else 0.0
         )
 
         return {
@@ -582,11 +583,12 @@ class UserLanguagePreferenceRepository(
             "coverage_percentage": coverage_percentage,
             "language_breakdown": {
                 lang: {
-                    "preference_type": user_languages[lang].value,
+                    "preference_type": user_languages[lang],
                     "video_count": user_coverage[lang],
                     "percentage_of_user_content": (
                         (user_coverage[lang] / user_localized_videos * 100)
-                        if user_localized_videos > 0 else 0.0
+                        if user_localized_videos > 0
+                        else 0.0
                     ),
                 }
                 for lang in user_languages.keys()

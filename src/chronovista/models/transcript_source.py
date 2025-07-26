@@ -9,7 +9,7 @@ This module defines models for handling transcript data from different sources:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional
 
@@ -70,7 +70,7 @@ class RawTranscriptData(BaseModel):
     source_metadata: Optional[dict] = Field(
         None, description="Additional source-specific data"
     )
-    retrieved_at: datetime = Field(default_factory=lambda: datetime.utcnow())
+    retrieved_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def total_duration(self) -> float:
@@ -217,7 +217,7 @@ class TranscriptComparison(BaseModel):
     primary_transcript: RawTranscriptData
     secondary_transcript: RawTranscriptData
     comparison_metrics: dict = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=lambda: datetime.utcnow())
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def text_similarity_score(self) -> Optional[float]:

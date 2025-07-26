@@ -716,15 +716,23 @@ class VideoRepository(
         result = {}
         for video_id, video in videos.items():
             localization = preferred_localizations.get(video_id)
-            
+
             result[video_id] = {
                 "video": video,
                 "preferred_localization": localization,
-                "localized_title": localization.localized_title if localization else video.title,
-                "localized_description": (
-                    localization.localized_description if localization else video.description
+                "localized_title": (
+                    localization.localized_title if localization else video.title
                 ),
-                "localization_language": localization.language_code if localization else video.default_language,
+                "localized_description": (
+                    localization.localized_description
+                    if localization
+                    else video.description
+                ),
+                "localization_language": (
+                    localization.language_code
+                    if localization
+                    else video.default_language
+                ),
             }
 
         return result
@@ -766,17 +774,20 @@ class VideoRepository(
             # Get videos that have localizations in specific languages
             video_ids_per_language = {}
             for lang in language_codes:
-                video_ids = await localization_repo.get_videos_by_language(session, lang)
+                video_ids = await localization_repo.get_videos_by_language(
+                    session, lang
+                )
                 video_ids_per_language[lang] = set(video_ids)
-            
+
             # Find videos that appear in enough languages
             video_counts: Dict[str, int] = {}
             for lang, video_ids_set in video_ids_per_language.items():
                 for video_id in video_ids_set:
                     video_counts[video_id] = video_counts.get(video_id, 0) + 1
-            
+
             qualified_video_ids = [
-                video_id for video_id, count in video_counts.items()
+                video_id
+                for video_id, count in video_counts.items()
                 if count >= min_localizations
             ]
         else:
@@ -807,15 +818,19 @@ class VideoRepository(
         # Get localization counts for each video
         result = []
         for video in videos:
-            localizations = await localization_repo.get_by_video_id(session, video.video_id)
+            localizations = await localization_repo.get_by_video_id(
+                session, video.video_id
+            )
             supported_languages = [loc.language_code for loc in localizations]
-            
-            result.append({
-                "video": video,
-                "localization_count": len(localizations),
-                "supported_languages": supported_languages,
-                "localizations": localizations,
-            })
+
+            result.append(
+                {
+                    "video": video,
+                    "localization_count": len(localizations),
+                    "supported_languages": supported_languages,
+                    "localizations": localizations,
+                }
+            )
 
         return result
 
@@ -879,7 +894,9 @@ class VideoRepository(
                 existing_localizations = await localization_repo.get_by_video_id(
                     session, video_id
                 )
-                existing_languages = [loc.language_code for loc in existing_localizations]
+                existing_languages = [
+                    loc.language_code for loc in existing_localizations
+                ]
 
                 result[video_id] = {
                     "video": videos[video_id],
@@ -888,7 +905,8 @@ class VideoRepository(
                     "existing_localizations": existing_localizations,
                     "completion_percentage": (
                         len(existing_languages) / len(target_languages) * 100
-                        if target_languages else 0
+                        if target_languages
+                        else 0
                     ),
                 }
 
@@ -925,13 +943,13 @@ class VideoRepository(
 
         # Get all localizations for this video
         localizations = await localization_repo.get_by_video_id(session, video_id)
-        
+
         # Get language coverage for context
         language_coverage = await localization_repo.get_language_coverage(session)
-        
+
         # Calculate metrics
         supported_languages = [loc.language_code for loc in localizations]
-        
+
         return {
             "video": video,
             "localization_count": len(localizations),
@@ -940,7 +958,8 @@ class VideoRepository(
             "has_localizations": len(localizations) > 0,
             "most_common_language": (
                 max(language_coverage.items(), key=lambda x: x[1])[0]
-                if language_coverage else None
+                if language_coverage
+                else None
             ),
             "is_multilingual": len(localizations) > 1,
             "localization_summary": {

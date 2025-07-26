@@ -5,8 +5,8 @@ Tests for VideoTagRepository functionality.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
 from typing import List
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,9 +20,9 @@ from chronovista.models.video_tag import (
 )
 from chronovista.repositories.video_tag_repository import VideoTagRepository
 from tests.factories.video_tag_factory import (
+    VideoTagTestData,
     create_video_tag,
     create_video_tag_create,
-    VideoTagTestData,
 )
 
 
@@ -74,7 +74,9 @@ class TestVideoTagRepository:
         mock_result.scalar_one_or_none.return_value = sample_video_tag_db
         mock_session.execute.return_value = mock_result
 
-        result = await repository.get_by_composite_key(mock_session, "dQw4w9WgXcQ", "music")
+        result = await repository.get_by_composite_key(
+            mock_session, "dQw4w9WgXcQ", "music"
+        )
 
         assert result == sample_video_tag_db
         mock_session.execute.assert_called_once()
@@ -88,7 +90,9 @@ class TestVideoTagRepository:
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
 
-        result = await repository.get_by_composite_key(mock_session, "dQw4w9WgXcQ", "nonexistent")
+        result = await repository.get_by_composite_key(
+            mock_session, "dQw4w9WgXcQ", "nonexistent"
+        )
 
         assert result is None
         mock_session.execute.assert_called_once()
@@ -102,7 +106,9 @@ class TestVideoTagRepository:
         mock_result.first.return_value = ("dQw4w9WgXcQ",)
         mock_session.execute.return_value = mock_result
 
-        result = await repository.exists_by_composite_key(mock_session, "dQw4w9WgXcQ", "music")
+        result = await repository.exists_by_composite_key(
+            mock_session, "dQw4w9WgXcQ", "music"
+        )
 
         assert result is True
         mock_session.execute.assert_called_once()
@@ -116,7 +122,9 @@ class TestVideoTagRepository:
         mock_result.first.return_value = None
         mock_session.execute.return_value = mock_result
 
-        result = await repository.exists_by_composite_key(mock_session, "dQw4w9WgXcQ", "nonexistent")
+        result = await repository.exists_by_composite_key(
+            mock_session, "dQw4w9WgXcQ", "nonexistent"
+        )
 
         assert result is False
         mock_session.execute.assert_called_once()
@@ -167,7 +175,9 @@ class TestVideoTagRepository:
         repository.get_by_composite_key = AsyncMock(return_value=None)
         repository.create = AsyncMock(return_value=sample_video_tag_db)
 
-        result = await repository.create_or_update(mock_session, sample_video_tag_create)
+        result = await repository.create_or_update(
+            mock_session, sample_video_tag_create
+        )
 
         assert result == sample_video_tag_db
         repository.get_by_composite_key.assert_called_once_with(
@@ -189,7 +199,9 @@ class TestVideoTagRepository:
         repository.get_by_composite_key = AsyncMock(return_value=sample_video_tag_db)
         repository.update = AsyncMock(return_value=sample_video_tag_db)
 
-        result = await repository.create_or_update(mock_session, sample_video_tag_create)
+        result = await repository.create_or_update(
+            mock_session, sample_video_tag_create
+        )
 
         assert result == sample_video_tag_db
         repository.get_by_composite_key.assert_called_once_with(
@@ -227,7 +239,9 @@ class TestVideoTagRepository:
     ):
         """Test bulk creating with mix of new and existing tags."""
         # First tag exists, second doesn't
-        repository.get_by_composite_key = AsyncMock(side_effect=[sample_video_tag_db, None])
+        repository.get_by_composite_key = AsyncMock(
+            side_effect=[sample_video_tag_db, None]
+        )
         repository.create = AsyncMock(return_value=sample_video_tag_db)
 
         tags = ["music", "entertainment"]
@@ -349,8 +363,8 @@ class TestVideoTagRepository:
         # Mock different execute calls for different queries
         mock_session.execute.side_effect = [
             MagicMock(scalar=lambda: 1000),  # total_tags
-            MagicMock(scalar=lambda: 500),   # unique_tags
-            MagicMock(scalar=lambda: 3.5),   # avg_tags_per_video
+            MagicMock(scalar=lambda: 500),  # unique_tags
+            MagicMock(scalar=lambda: 3.5),  # avg_tags_per_video
             [("music", 100), ("gaming", 85)],  # most_common_tags
         ]
 
@@ -545,11 +559,13 @@ class TestVideoTagRepositoryIntegration:
     ):
         """Test base get method with composite key tuple."""
         repository.get_by_composite_key = AsyncMock(return_value=MagicMock())
-        
+
         result = await repository.get(mock_session, ("dQw4w9WgXcQ", "music"))
-        
+
         assert result is not None
-        repository.get_by_composite_key.assert_called_once_with(mock_session, "dQw4w9WgXcQ", "music")
+        repository.get_by_composite_key.assert_called_once_with(
+            mock_session, "dQw4w9WgXcQ", "music"
+        )
 
     @pytest.mark.asyncio
     async def test_base_get_with_invalid_key(
@@ -557,7 +573,7 @@ class TestVideoTagRepositoryIntegration:
     ):
         """Test base get method with invalid key format."""
         result = await repository.get(mock_session, "invalid_key")
-        
+
         assert result is None
 
     @pytest.mark.asyncio
@@ -566,8 +582,10 @@ class TestVideoTagRepositoryIntegration:
     ):
         """Test base exists method with composite key tuple."""
         repository.exists_by_composite_key = AsyncMock(return_value=True)
-        
+
         result = await repository.exists(mock_session, ("dQw4w9WgXcQ", "music"))
-        
+
         assert result is True
-        repository.exists_by_composite_key.assert_called_once_with(mock_session, "dQw4w9WgXcQ", "music")
+        repository.exists_by_composite_key.assert_called_once_with(
+            mock_session, "dQw4w9WgXcQ", "music"
+        )

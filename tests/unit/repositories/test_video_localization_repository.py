@@ -8,8 +8,8 @@ including CRUD, composite key handling, multi-language analytics, and search.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
 from typing import Dict, List
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,14 +23,16 @@ from chronovista.models.video_localization import (
     VideoLocalizationStatistics,
     VideoLocalizationUpdate,
 )
-from chronovista.repositories.video_localization_repository import VideoLocalizationRepository
+from chronovista.repositories.video_localization_repository import (
+    VideoLocalizationRepository,
+)
 from tests.factories import (
-    VideoLocalizationFactory,
     VideoLocalizationCreateFactory,
-    VideoLocalizationUpdateFactory,
+    VideoLocalizationFactory,
     VideoLocalizationSearchFiltersFactory,
     VideoLocalizationStatisticsFactory,
     VideoLocalizationTestData,
+    VideoLocalizationUpdateFactory,
     create_video_localization,
     create_video_localization_create,
     create_video_localization_update,
@@ -92,7 +94,9 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result
 
         # Act
-        result = await repository.get_by_composite_key(mock_session, "dQw4w9WgXcQ", "en")
+        result = await repository.get_by_composite_key(
+            mock_session, "dQw4w9WgXcQ", "en"
+        )
 
         # Assert
         assert result == expected_localization
@@ -109,7 +113,9 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result
 
         # Act
-        result = await repository.get_by_composite_key(mock_session, "nonexistent", "en")
+        result = await repository.get_by_composite_key(
+            mock_session, "nonexistent", "en"
+        )
 
         # Assert
         assert result is None
@@ -160,7 +166,9 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result
 
         # Act
-        result = await repository.exists_by_composite_key(mock_session, "dQw4w9WgXcQ", "en")
+        result = await repository.exists_by_composite_key(
+            mock_session, "dQw4w9WgXcQ", "en"
+        )
 
         # Assert
         assert result is True
@@ -176,7 +184,9 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result
 
         # Act
-        result = await repository.exists_by_composite_key(mock_session, "nonexistent", "en")
+        result = await repository.exists_by_composite_key(
+            mock_session, "nonexistent", "en"
+        )
 
         # Assert
         assert result is False
@@ -322,11 +332,15 @@ class TestVideoLocalizationRepository:
         repository.create = AsyncMock(return_value=new_localization)
 
         # Act
-        result = await repository.create_or_update(mock_session, sample_localization_create)
+        result = await repository.create_or_update(
+            mock_session, sample_localization_create
+        )
 
         # Assert
         assert result == new_localization
-        repository.create.assert_called_once_with(mock_session, obj_in=sample_localization_create)
+        repository.create.assert_called_once_with(
+            mock_session, obj_in=sample_localization_create
+        )
 
     @pytest.mark.asyncio
     async def test_create_or_update_existing_localization(
@@ -362,7 +376,9 @@ class TestVideoLocalizationRepository:
         repository.update = AsyncMock(return_value=updated_localization)
 
         # Act
-        result = await repository.create_or_update(mock_session, sample_localization_create)
+        result = await repository.create_or_update(
+            mock_session, sample_localization_create
+        )
 
         # Assert
         assert result == updated_localization
@@ -479,7 +495,9 @@ class TestVideoLocalizationRepository:
         """Test getting videos with multiple language localizations."""
         # Arrange
         mock_result = MagicMock()
-        mock_result.__iter__.return_value = iter([("dQw4w9WgXcQ", 3), ("9bZkp7q19f0", 2)])
+        mock_result.__iter__.return_value = iter(
+            [("dQw4w9WgXcQ", 3), ("9bZkp7q19f0", 2)]
+        )
         mock_session.execute.return_value = mock_result
 
         # Act
@@ -514,11 +532,13 @@ class TestVideoLocalizationRepository:
         mock_result = MagicMock()
         # Video 1 has EN and ES, missing FR
         # Video 2 has only EN, missing ES and FR
-        mock_result.__iter__.return_value = iter([
-            ("dQw4w9WgXcQ", "en"),
-            ("dQw4w9WgXcQ", "es"),
-            ("9bZkp7q19f0", "en"),
-        ])
+        mock_result.__iter__.return_value = iter(
+            [
+                ("dQw4w9WgXcQ", "en"),
+                ("dQw4w9WgXcQ", "es"),
+                ("9bZkp7q19f0", "en"),
+            ]
+        )
         mock_session.execute.return_value = mock_result
 
         # Act
@@ -550,6 +570,9 @@ class TestVideoLocalizationRepository:
         mock_result_total = MagicMock()
         mock_result_total.first.return_value = mock_stats
 
+        mock_result_avg = MagicMock()
+        mock_result_avg.scalar.return_value = 2.5
+
         mock_result_languages = MagicMock()
         mock_result_languages.__iter__.return_value = iter([("en", 150), ("es", 100)])
 
@@ -559,6 +582,7 @@ class TestVideoLocalizationRepository:
         # Configure mock to return different results for different queries
         mock_session.execute.side_effect = [
             mock_result_total,
+            mock_result_avg,
             mock_result_languages,
             mock_result_coverage,
         ]
@@ -641,7 +665,9 @@ class TestVideoLocalizationRepository:
         repository.create = AsyncMock(side_effect=created_localizations)
 
         # Act
-        result = await repository.bulk_create_localizations(mock_session, localizations_to_create)
+        result = await repository.bulk_create_localizations(
+            mock_session, localizations_to_create
+        )
 
         # Assert
         assert len(result) == 2
@@ -656,7 +682,10 @@ class TestVideoLocalizationRepository:
         video_id = "dQw4w9WgXcQ"
         localizations_data = {
             "en": {"title": "English Title", "description": "English Description"},
-            "es": {"title": "Título en Español", "description": "Descripción en español"},
+            "es": {
+                "title": "Título en Español",
+                "description": "Descripción en español",
+            },
         }
 
         created_localizations = [
@@ -722,9 +751,14 @@ class TestVideoLocalizationRepository:
         mock_count_result.scalar.return_value = 2
 
         mock_localizations_result = MagicMock()
-        mock_localizations_result.scalars.return_value.all.return_value = localizations_to_delete
+        mock_localizations_result.scalars.return_value.all.return_value = (
+            localizations_to_delete
+        )
 
-        mock_session.execute.side_effect = [mock_count_result, mock_localizations_result]
+        mock_session.execute.side_effect = [
+            mock_count_result,
+            mock_localizations_result,
+        ]
 
         # Act
         result = await repository.delete_by_video_id(mock_session, "dQw4w9WgXcQ")
@@ -761,9 +795,14 @@ class TestVideoLocalizationRepository:
         mock_count_result.scalar.return_value = 2
 
         mock_localizations_result = MagicMock()
-        mock_localizations_result.scalars.return_value.all.return_value = localizations_to_delete
+        mock_localizations_result.scalars.return_value.all.return_value = (
+            localizations_to_delete
+        )
 
-        mock_session.execute.side_effect = [mock_count_result, mock_localizations_result]
+        mock_session.execute.side_effect = [
+            mock_count_result,
+            mock_localizations_result,
+        ]
 
         # Act
         result = await repository.delete_by_language_code(mock_session, "en")
@@ -791,7 +830,9 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result
 
         # Act
-        result = await repository.delete_by_composite_key(mock_session, "dQw4w9WgXcQ", "en")
+        result = await repository.delete_by_composite_key(
+            mock_session, "dQw4w9WgXcQ", "en"
+        )
 
         # Assert
         assert result == localization_to_delete
@@ -889,7 +930,9 @@ class TestVideoLocalizationRepository:
         mock_session.execute.side_effect = [mock_result_target, mock_result_others]
 
         # Act
-        result = await repository.find_similar_content(mock_session, "target_video", "en")
+        result = await repository.find_similar_content(
+            mock_session, "target_video", "en"
+        )
 
         # Assert
         assert len(result) > 0
@@ -927,6 +970,7 @@ class TestVideoLocalizationRepository:
 
 # Integration Tests with Factories
 
+
 class TestVideoLocalizationRepositoryWithFactories:
     """Integration tests using factory_boy factories."""
 
@@ -946,7 +990,7 @@ class TestVideoLocalizationRepositoryWithFactories:
         localization_create = create_video_localization_create(
             video_id="dQw4w9WgXcQ",
             language_code=LanguageCode.ENGLISH,
-            localized_title="Factory Test Title"
+            localized_title="Factory Test Title",
         )
 
         # Assert
@@ -960,7 +1004,7 @@ class TestVideoLocalizationRepositoryWithFactories:
         filters = VideoLocalizationSearchFiltersFactory(
             video_ids=VideoLocalizationTestData.VALID_VIDEO_IDS[:2],
             language_codes=["en", "es"],
-            title_query="tutorial"
+            title_query="tutorial",
         )
 
         # Assert
@@ -972,8 +1016,7 @@ class TestVideoLocalizationRepositoryWithFactories:
         """Test creating statistics using factory."""
         # Act
         stats = VideoLocalizationStatisticsFactory(
-            total_localizations=1000,
-            unique_videos=400
+            total_localizations=1000, unique_videos=400
         )
 
         # Assert
@@ -989,7 +1032,10 @@ class TestVideoLocalizationRepositoryWithFactories:
 
         # Assert
         assert valid_data["video_id"] in VideoLocalizationTestData.VALID_VIDEO_IDS
-        assert valid_data["language_code"] in VideoLocalizationTestData.VALID_LANGUAGE_CODES
+        assert (
+            valid_data["language_code"]
+            in VideoLocalizationTestData.VALID_LANGUAGE_CODES
+        )
         assert minimal_data["localized_title"] == "Minimal Title"
 
     def test_invalid_data_patterns(self):
@@ -1002,6 +1048,7 @@ class TestVideoLocalizationRepositoryWithFactories:
 
 
 # Error Handling Tests
+
 
 class TestVideoLocalizationRepositoryErrorHandling:
     """Test error handling in VideoLocalizationRepository."""

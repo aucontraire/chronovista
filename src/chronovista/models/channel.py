@@ -39,6 +39,9 @@ class ChannelBase(BaseModel):
     thumbnail_url: Optional[str] = Field(
         default=None, max_length=500, description="Channel thumbnail URL"
     )
+    is_subscribed: bool = Field(
+        default=False, description="Whether the user is subscribed to this channel"
+    )
 
     # Channel ID validation now handled by ChannelId custom type
 
@@ -86,6 +89,7 @@ class ChannelUpdate(BaseModel):
     default_language: Optional[LanguageCode] = None
     country: Optional[str] = Field(None, min_length=2, max_length=2)
     thumbnail_url: Optional[str] = Field(None, max_length=500)
+    is_subscribed: Optional[bool] = None
 
     @field_validator("title")
     @classmethod

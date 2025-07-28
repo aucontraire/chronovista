@@ -12,13 +12,12 @@ for dependent model testing in higher tiers.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 import pytest
-from pydantic import ValidationError
-from pydantic_core import ValidationError as PydanticCoreValidationError
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 
+from chronovista.repositories.base import BaseSQLAlchemyRepository
 from chronovista.db.models import Channel as DBChannel
 from chronovista.db.models import ChannelKeyword as DBChannelKeyword
 from chronovista.db.models import Playlist as DBPlaylist
@@ -27,13 +26,10 @@ from chronovista.db.models import Video as DBVideo
 from chronovista.db.models import VideoLocalization as DBVideoLocalization
 from chronovista.db.models import VideoTag as DBVideoTag
 from chronovista.db.models import VideoTranscript as DBVideoTranscript
-from chronovista.models.channel import Channel, ChannelCreate
+from chronovista.models.channel import ChannelCreate
 from chronovista.models.enums import LanguageCode, LanguagePreferenceType
-from chronovista.models.topic_category import TopicCategory, TopicCategoryCreate
-from chronovista.models.user_language_preference import (
-    UserLanguagePreference,
-    UserLanguagePreferenceCreate,
-)
+from chronovista.models.topic_category import TopicCategoryCreate
+from chronovista.models.user_language_preference import UserLanguagePreferenceCreate
 
 
 @pytest.mark.integration
@@ -118,10 +114,6 @@ class TestChannelFromYouTubeAPI:
                 assert channel_create.channel_id == channel_id
                 assert len(channel_create.title) > 0
                 assert channel_create.default_language is not None
-
-                # Use repository pattern for database operations
-                from chronovista.db.models import Channel as DBChannel
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
 
                 channel_repo = BaseSQLAlchemyRepository(DBChannel)
 
@@ -241,10 +233,6 @@ class TestChannelFromYouTubeAPI:
 
         async with integration_db_session() as session:
             try:
-                # First create a channel to update
-                from chronovista.db.models import Channel as DBChannel
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
                 channel_repo = BaseSQLAlchemyRepository(DBChannel)
 
                 # Create initial channel
@@ -332,11 +320,6 @@ class TestChannelFromYouTubeAPI:
                 assert updated_channel.title != "Initial Title"  # Should be updated
                 assert updated_channel.updated_at > initial_channel.created_at
 
-                # Clean up test data (delete related data first due to foreign key constraints)
-                from chronovista.db.models import ChannelKeyword as DBChannelKeyword
-                from chronovista.db.models import Playlist as DBPlaylist
-                from chronovista.db.models import Video as DBVideo
-
                 # Delete all related data first (foreign key constraints)
                 await session.execute(
                     delete(DBChannelKeyword).where(
@@ -376,10 +359,6 @@ class TestChannelFromYouTubeAPI:
 
         async with integration_db_session() as session:
             try:
-                # Use repository pattern like other tests
-                from chronovista.db.models import Channel as DBChannel
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
                 channel_repo = BaseSQLAlchemyRepository(DBChannel)
                 created_channels = []
 
@@ -449,12 +428,6 @@ class TestChannelFromYouTubeAPI:
                 # Verify all created channels have unique IDs
                 channel_ids = [ch.channel_id for ch in created_channels]
                 assert len(channel_ids) == len(set(channel_ids))  # No duplicates
-
-                # Clean up test data (delete related data first due to foreign key constraints)
-                from chronovista.db.models import Channel as DBChannel
-                from chronovista.db.models import ChannelKeyword as DBChannelKeyword
-                from chronovista.db.models import Playlist as DBPlaylist
-                from chronovista.db.models import Video as DBVideo
 
                 for channel in created_channels:
                     # Delete all related data first (foreign key constraints)

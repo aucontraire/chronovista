@@ -14,14 +14,22 @@ Commands:
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from ...models.takeout.takeout_data import TakeoutData
+from ...services.takeout_seeding_service import SeedingResult
+
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
-from rich.text import Text
 
 from ...services.takeout_service import TakeoutParsingError, TakeoutService
+from ...services.takeout_seeding_service import TakeoutSeedingService
+from ...config.database import db_manager
+from ...repositories.channel_repository import ChannelRepository
+from ...repositories.video_repository import VideoRepository
+from ...repositories.user_video_repository import UserVideoRepository
+from ...repositories.playlist_repository import PlaylistRepository
 
 console = Console()
 takeout_app = typer.Typer(
@@ -2012,3 +2020,277 @@ async def _peek_live_chats(
 
     except Exception as e:
         console.print(f"❌ Error analyzing live chats: {e}")
+
+
+@takeout_app.command("seed")
+def seed_database(
+    takeout_path: Path = typer.Argument(
+        Path("./takeout"), help="Path to extracted Google Takeout directory"
+    ),
+    incremental: bool = typer.Option(
+        False, "--incremental", "-i", help="Incremental seeding (safe to re-run)"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", "-d", help="Show what would be seeded without making changes"
+    ),
+    progress: bool = typer.Option(
+        True, "--progress/--no-progress", help="Show progress tracking (default: enabled)"
+    ),
+    only: Optional[str] = typer.Option(
+        None, "--only", help="Seed only specific data types (comma-separated): channels,videos,playlists,user_videos"
+    ),
+    skip: Optional[str] = typer.Option(
+        None, "--skip", help="Skip specific data types (comma-separated): channels,videos,playlists,user_videos"
+    ),
+    user_id: str = typer.Option(
+        "takeout_user", "--user-id", "-u", help="User ID for seeding user-specific data"
+    ),
+    batch_size: int = typer.Option(
+        100, "--batch-size", "-b", help="Batch size for processing (default: 100)"
+    ),
+) -> None:
+    """
+    🌱 Seed database with Google Takeout data.
+    
+    Transform and load your Takeout data into the chronovista database.
+    Handles foreign key dependencies and provides safe incremental updates.
+    
+    Examples:
+        chronovista takeout seed                                    # uses ./takeout
+        chronovista takeout seed ~/Downloads/takeout-20240101       # specific path
+        chronovista takeout seed ./my-google-takeout --incremental  # incremental mode
+        chronovista takeout seed --dry-run                          # preview only
+        chronovista takeout seed --only channels,videos             # selective seeding
+        chronovista takeout seed --skip playlists                   # exclude playlists
+    """
+    import asyncio
+    
+    async def run_seeding() -> None:
+        try:
+            # Validate takeout path
+            if not takeout_path.exists():
+                console.print(f"❌ Takeout path not found: {takeout_path}")
+                console.print("💡 Make sure you've extracted the Takeout archive")
+                raise typer.Exit(1)
+            
+            # Parse data type filters
+            only_types = set()
+            skip_types = set()
+            valid_types = {"channels", "videos", "playlists", "user_videos"}
+            
+            if only:
+                only_types = set(t.strip() for t in only.split(","))
+                invalid = only_types - valid_types
+                if invalid:
+                    console.print(f"❌ Invalid data types in --only: {invalid}")
+                    console.print(f"Valid types: {', '.join(valid_types)}")
+                    raise typer.Exit(1)
+            
+            if skip:
+                skip_types = set(t.strip() for t in skip.split(","))
+                invalid = skip_types - valid_types
+                if invalid:
+                    console.print(f"❌ Invalid data types in --skip: {invalid}")
+                    console.print(f"Valid types: {', '.join(valid_types)}")
+                    raise typer.Exit(1)
+            
+            # Check for conflicting filters
+            if only_types and skip_types:
+                conflicts = only_types & skip_types
+                if conflicts:
+                    console.print(f"❌ Cannot both include and skip: {conflicts}")
+                    raise typer.Exit(1)
+            
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress_tracker:
+                task = progress_tracker.add_task(
+                    "🌱 Initializing seeding process...", total=None
+                )
+                
+                # Initialize services
+                takeout_service = TakeoutService(takeout_path)
+                progress_tracker.update(task, description="📊 Loading Takeout data...")
+                
+                # Parse takeout data
+                takeout_data = await takeout_service.parse_all()
+                
+                if dry_run:
+                    await _show_seeding_preview(takeout_data, only_types, skip_types, progress_tracker, task)
+                    return
+                
+                # Initialize database connection and repositories
+                progress_tracker.update(task, description="🔌 Connecting to database...")
+                
+                # Initialize repositories
+                channel_repo = ChannelRepository()
+                video_repo = VideoRepository()
+                user_video_repo = UserVideoRepository()
+                playlist_repo = PlaylistRepository()
+                
+                # Initialize seeding service
+                seeding_service = TakeoutSeedingService(
+                    channel_repository=channel_repo,
+                    video_repository=video_repo,
+                    user_video_repository=user_video_repo,
+                    playlist_repository=playlist_repo,
+                    user_id=user_id,
+                    batch_size=batch_size,
+                )
+                
+                progress_tracker.update(task, description="🌱 Starting database seeding...")
+                
+                # Perform seeding with database session
+                async for session in db_manager.get_session():
+                    if incremental:
+                        result = await seeding_service.seed_incrementally(
+                            session, takeout_data, data_types=only_types, skip_types=skip_types
+                        )
+                    else:
+                        result = await seeding_service.seed_database(
+                            session, takeout_data, data_types=only_types, skip_types=skip_types
+                        )
+                    
+                    # Display results
+                    _display_seeding_results(result)
+                    
+                    # Show filtering info if applied
+                    if only_types or skip_types:
+                        console.print(f"\n🔍 Filtering Applied:")
+                        if only_types:
+                            console.print(f"   • Only processed: {', '.join(only_types)}")
+                        if skip_types:
+                            console.print(f"   • Skipped: {', '.join(skip_types)}")
+                    
+                    console.print(f"\n✅ Database seeding completed successfully!")
+                
+        except TakeoutParsingError as e:
+            console.print(f"❌ Error parsing Takeout data: {e}")
+            console.print("\n💡 Make sure:")
+            console.print("  • You've extracted the Takeout archive")
+            console.print("  • You selected JSON format for watch history")
+            console.print("  • The path points to the extracted folder")
+            raise typer.Exit(1)
+        except Exception as e:
+            console.print(f"❌ Seeding failed: {e}")
+            raise typer.Exit(1)
+    
+    asyncio.run(run_seeding())
+
+
+async def _show_seeding_preview(
+    takeout_data: TakeoutData, only_types: set[str], skip_types: set[str], progress_tracker: Progress, task_id: Any
+) -> None:
+    """Show what would be seeded in dry-run mode."""
+    progress_tracker.update(task_id, description="📋 Preparing seeding preview...")
+    
+    # Calculate what would be processed
+    unique_channels = set()
+    
+    # From subscriptions
+    for sub in takeout_data.subscriptions:
+        if sub.channel_id:
+            unique_channels.add(sub.channel_id)
+    
+    # From watch history
+    for entry in takeout_data.watch_history:
+        if entry.channel_id:
+            unique_channels.add(entry.channel_id)
+    
+    unique_videos = len(takeout_data.get_unique_video_ids())
+    user_videos = len([entry for entry in takeout_data.watch_history if entry.watched_at])
+    playlists = len(takeout_data.playlists)
+    
+    # Apply filters
+    process_channels = ("channels" not in skip_types) and (not only_types or "channels" in only_types)
+    process_videos = ("videos" not in skip_types) and (not only_types or "videos" in only_types)
+    process_user_videos = ("user_videos" not in skip_types) and (not only_types or "user_videos" in only_types)
+    process_playlists = ("playlists" not in skip_types) and (not only_types or "playlists" in only_types)
+    
+    # Create preview table
+    table = Table(
+        title="🌱 Seeding Preview (Dry Run)",
+        show_header=True,
+        header_style="bold green",
+    )
+    table.add_column("Data Type", style="cyan", width=20)
+    table.add_column("Count", style="green", justify="right", width=10)
+    table.add_column("Status", style="yellow", width=15)
+    table.add_column("Dependencies", style="blue", width=30)
+    
+    # Add rows based on processing order
+    table.add_row(
+        "Channels",
+        str(len(unique_channels)),
+        "✅ Process" if process_channels else "⏭️ Skip",
+        "None (foundation data)"
+    )
+    
+    table.add_row(
+        "Videos",
+        str(unique_videos),
+        "✅ Process" if process_videos else "⏭️ Skip",
+        "Requires: Channels"
+    )
+    
+    table.add_row(
+        "User Videos",
+        str(user_videos),
+        "✅ Process" if process_user_videos else "⏭️ Skip",
+        "Requires: Videos"
+    )
+    
+    table.add_row(
+        "Playlists",
+        str(playlists),
+        "✅ Process" if process_playlists else "⏭️ Skip",
+        "Requires: Channels"
+    )
+    
+    console.print(table)
+    
+    # Show filtering info
+    if only_types or skip_types:
+        console.print(f"\n🔍 Filtering Applied:")
+        if only_types:
+            console.print(f"   • Only processing: {', '.join(only_types)}")
+        if skip_types:
+            console.print(f"   • Skipping: {', '.join(skip_types)}")
+    
+    console.print(f"\n💡 This is a dry run - no data will be written to the database")
+    console.print(f"💡 Remove --dry-run to perform actual seeding")
+
+
+def _display_seeding_results(result: SeedingResult) -> None:
+    """Display seeding results in a formatted table."""
+    console.print(
+        Panel(
+            f"""
+✅ Seeding Completed Successfully
+
+📊 Results Summary:
+   • Channels: {result.channels_seeded} seeded, {result.channels_updated} updated, {result.channels_failed} failed
+   • Videos: {result.videos_seeded} seeded, {result.videos_updated} updated, {result.videos_failed} failed  
+   • User Videos: {result.user_videos_created} created, {result.user_videos_failed} failed
+   • Playlists: {result.playlists_seeded} seeded, {result.playlists_updated} updated, {result.playlists_failed} failed
+
+⏱️  Duration: {result.duration_seconds:.2f} seconds
+📈 Success Rate: {result.success_rate:.1f}%
+🎯 Data Quality Score: {result.data_quality_score:.2f}/1.0
+            """.strip(),
+            title="🌱 Database Seeding Results",
+            border_style="green"
+        )
+    )
+    
+    if result.integrity_issues:
+        console.print(f"\n⚠️  Integrity Issues:")
+        for issue in result.integrity_issues:
+            console.print(f"   • {issue}")
+    
+    if result.suggestions:
+        console.print(f"\n💡 Suggestions:")
+        for suggestion in result.suggestions:
+            console.print(f"   • {suggestion}")

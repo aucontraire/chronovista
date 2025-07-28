@@ -49,6 +49,9 @@ class Channel(Base):
     )  # LanguageCode enum value
     country: Mapped[Optional[str]] = mapped_column(String(2))
     thumbnail_url: Mapped[Optional[str]] = mapped_column(String(500))
+    
+    # Subscription status
+    is_subscribed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Timestamps
     created_at: Mapped[datetime.datetime] = mapped_column(

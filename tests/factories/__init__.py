@@ -83,6 +83,14 @@ from .video_tag_factory import (
     create_video_tag_statistics,
     create_video_tag_update,
 )
+from .id_factory import (
+    YouTubeIdFactory,
+    TestIds,
+    channel_id,
+    video_id,
+    playlist_id,
+    user_id,
+)
 
 __all__ = [
     # VideoTag factories
@@ -156,4 +164,11 @@ __all__ = [
     "create_playlist_filters",
     "create_playlist_statistics",
     "PlaylistTestData",
+    # ID factories
+    "YouTubeIdFactory",
+    "TestIds",
+    "channel_id",
+    "video_id", 
+    "playlist_id",
+    "user_id",
 ]

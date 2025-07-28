@@ -438,3 +438,100 @@ class ChannelRepository(
             top_countries=top_countries,
             top_languages=top_languages,
         )
+
+    async def get_subscribed_channels(
+        self, session: AsyncSession, limit: int = 100
+    ) -> List[ChannelDB]:
+        """
+        Get channels that the user is subscribed to.
+        
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        limit : int
+            Maximum number of channels to return
+            
+        Returns
+        -------
+        List[ChannelDB]
+            List of subscribed channels ordered by title
+        """
+        result = await session.execute(
+            select(ChannelDB)
+            .where(ChannelDB.is_subscribed == True)
+            .order_by(ChannelDB.title)
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def get_watched_only_channels(
+        self, session: AsyncSession, limit: int = 100
+    ) -> List[ChannelDB]:
+        """
+        Get channels that the user has watched but is not subscribed to.
+        
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        limit : int
+            Maximum number of channels to return
+            
+        Returns
+        -------
+        List[ChannelDB]
+            List of watched-only channels ordered by title
+        """
+        result = await session.execute(
+            select(ChannelDB)
+            .where(ChannelDB.is_subscribed == False)
+            .order_by(ChannelDB.title)
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def get_subscription_statistics(self, session: AsyncSession) -> Dict[str, Any]:
+        """
+        Get subscription vs watch-only statistics.
+        
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+            
+        Returns
+        -------
+        Dict[str, Any]
+            Statistics about subscription patterns
+        """
+        # Get counts
+        result = await session.execute(
+            select(
+                func.count().label("total_channels"),
+                func.count().filter(ChannelDB.is_subscribed == True).label("subscribed_channels"),
+                func.count().filter(ChannelDB.is_subscribed == False).label("watched_only_channels"),
+            )
+        )
+        
+        stats = result.first()
+        if stats is None:
+            return {
+                "total_channels": 0,
+                "subscribed_channels": 0,
+                "watched_only_channels": 0,
+                "subscription_rate": 0.0,
+                "discovery_rate": 0.0,
+            }
+
+        total = int(stats.total_channels or 0)
+        subscribed = int(stats.subscribed_channels or 0)
+        watched_only = int(stats.watched_only_channels or 0)
+        
+        return {
+            "total_channels": total,
+            "subscribed_channels": subscribed,
+            "watched_only_channels": watched_only,
+            "subscription_rate": (subscribed / total * 100) if total > 0 else 0.0,
+            "discovery_rate": (watched_only / total * 100) if total > 0 else 0.0,
+        }

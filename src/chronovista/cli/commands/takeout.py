@@ -15,21 +15,19 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ...models.takeout.takeout_data import TakeoutData
-from ...services.takeout_seeding_service import SeedingResult
+# SeedingResult removed - using dict of SeedResult from modular system
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn, MofNCompleteColumn
 from rich.table import Table
 
 from ...services.takeout_service import TakeoutParsingError, TakeoutService
 from ...services.takeout_seeding_service import TakeoutSeedingService
+from ...services.seeding import ProgressCallback
 from ...config.database import db_manager
-from ...repositories.channel_repository import ChannelRepository
-from ...repositories.video_repository import VideoRepository
-from ...repositories.user_video_repository import UserVideoRepository
-from ...repositories.playlist_repository import PlaylistRepository
+# Repository imports removed - handled by TakeoutSeedingService
 
 console = Console()
 takeout_app = typer.Typer(
@@ -2025,7 +2023,7 @@ async def _peek_live_chats(
 @takeout_app.command("seed")
 def seed_database(
     takeout_path: Path = typer.Argument(
-        Path("./takeout"), help="Path to extracted Google Takeout directory"
+        Path("takeout"), help="Path to extracted Google Takeout directory"
     ),
     incremental: bool = typer.Option(
         False, "--incremental", "-i", help="Incremental seeding (safe to re-run)"
@@ -2101,70 +2099,112 @@ def seed_database(
                     console.print(f"❌ Cannot both include and skip: {conflicts}")
                     raise typer.Exit(1)
             
+            # Initialize services first to get progress totals
+            takeout_service = TakeoutService(takeout_path)
+            console.print("📊 Loading Takeout data...")
+            takeout_data = await takeout_service.parse_all()
+            
+            if dry_run:
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    console=console,
+                ) as progress_tracker:
+                    task = progress_tracker.add_task("📋 Preparing preview...", total=None)
+                    await _show_seeding_preview(takeout_data, only_types, skip_types, progress_tracker, task)
+                return
+            
+            # Initialize modular seeding service
+            seeding_service = TakeoutSeedingService(user_id=user_id)
+            
+            # Determine which data types to process  
+            available_types = seeding_service.get_available_types()
+            if only_types:
+                types_to_process = only_types & available_types
+            else:
+                types_to_process = available_types
+            if skip_types:
+                types_to_process = types_to_process - skip_types
+
+            # Calculate totals for proper progress bars
+            progress_totals = {}
+            if "channels" in types_to_process:
+                # Total unique channels from subscriptions + watch history
+                subscription_channels = len(takeout_data.subscriptions)
+                watch_channels = len(set(entry.channel_id or entry.channel_name or "unknown" 
+                                       for entry in takeout_data.watch_history))
+                progress_totals["channels"] = subscription_channels + watch_channels
+                
+            if "videos" in types_to_process:
+                # Unique videos from watch history
+                unique_videos = set()
+                for entry in takeout_data.watch_history:
+                    video_id = entry.video_id or entry.title_url or "unknown"
+                    unique_videos.add(video_id)
+                progress_totals["videos"] = len(unique_videos)
+                
+            if "user_videos" in types_to_process:
+                # All watch entries with timestamps
+                progress_totals["user_videos"] = len([e for e in takeout_data.watch_history if e.watched_at])
+                
+            if "playlists" in types_to_process:
+                progress_totals["playlists"] = len(takeout_data.playlists)
+
+            # Create visual-only progress bars with proper totals
             with Progress(
-                SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TimeElapsedColumn(),
                 console=console,
             ) as progress_tracker:
-                task = progress_tracker.add_task(
-                    "🌱 Initializing seeding process...", total=None
-                )
+                # Add tasks with proper totals
+                task_mapping = {}
+                task_counters = {}
+                for data_type in types_to_process:
+                    total = progress_totals.get(data_type, 1)  # Fallback to 1 if unknown
+                    if data_type == "channels":
+                        task_mapping[data_type] = progress_tracker.add_task("📺 Channels", total=total)
+                    elif data_type == "videos":
+                        task_mapping[data_type] = progress_tracker.add_task("🎥 Videos", total=total)
+                    elif data_type == "user_videos":
+                        task_mapping[data_type] = progress_tracker.add_task("👤 User Videos", total=total)
+                    elif data_type == "playlists":
+                        task_mapping[data_type] = progress_tracker.add_task("📁 Playlists", total=total)
+                    task_counters[data_type] = 0
                 
-                # Initialize services
-                takeout_service = TakeoutService(takeout_path)
-                progress_tracker.update(task, description="📊 Loading Takeout data...")
+                # Progress callback to update Rich progress bars smoothly
+                def update_progress(data_type: str):
+                    if data_type in task_mapping:
+                        task_counters[data_type] += 1
+                        # Update every item for smooth progress
+                        progress_tracker.update(task_mapping[data_type], completed=task_counters[data_type])
                 
-                # Parse takeout data
-                takeout_data = await takeout_service.parse_all()
-                
-                if dry_run:
-                    await _show_seeding_preview(takeout_data, only_types, skip_types, progress_tracker, task)
-                    return
-                
-                # Initialize database connection and repositories
-                progress_tracker.update(task, description="🔌 Connecting to database...")
-                
-                # Initialize repositories
-                channel_repo = ChannelRepository()
-                video_repo = VideoRepository()
-                user_video_repo = UserVideoRepository()
-                playlist_repo = PlaylistRepository()
-                
-                # Initialize seeding service
-                seeding_service = TakeoutSeedingService(
-                    channel_repository=channel_repo,
-                    video_repository=video_repo,
-                    user_video_repository=user_video_repo,
-                    playlist_repository=playlist_repo,
-                    user_id=user_id,
-                    batch_size=batch_size,
-                )
-                
-                progress_tracker.update(task, description="🌱 Starting database seeding...")
-                
-                # Perform seeding with database session
-                async for session in db_manager.get_session():
+                # Perform seeding with database session (disable SQL logging for clean progress)
+                async for session in db_manager.get_session(echo=False):
                     if incremental:
                         result = await seeding_service.seed_incrementally(
-                            session, takeout_data, data_types=only_types, skip_types=skip_types
+                            session, takeout_data, data_types=types_to_process, skip_types=skip_types,
+                            progress_callback=ProgressCallback(update_progress)
                         )
                     else:
                         result = await seeding_service.seed_database(
-                            session, takeout_data, data_types=only_types, skip_types=skip_types
+                            session, takeout_data, data_types=types_to_process, skip_types=skip_types,
+                            progress_callback=ProgressCallback(update_progress)
                         )
-                    
-                    # Display results
-                    _display_seeding_results(result)
-                    
-                    # Show filtering info if applied
-                    if only_types or skip_types:
-                        console.print(f"\n🔍 Filtering Applied:")
-                        if only_types:
-                            console.print(f"   • Only processed: {', '.join(only_types)}")
-                        if skip_types:
-                            console.print(f"   • Skipped: {', '.join(skip_types)}")
-                    
-                    console.print(f"\n✅ Database seeding completed successfully!")
+            
+            # Display results outside the progress tracker
+            _display_seeding_results(result)
+            
+            # Show filtering info if applied
+            if only_types or skip_types:
+                console.print(f"\n🔍 Filtering Applied:")
+                if only_types:
+                    console.print(f"   • Only processed: {', '.join(only_types)}")
+                if skip_types:
+                    console.print(f"   • Skipped: {', '.join(skip_types)}")
+            
+            console.print(f"\n✅ Database seeding completed successfully!")
                 
         except TakeoutParsingError as e:
             console.print(f"❌ Error parsing Takeout data: {e}")
@@ -2263,34 +2303,56 @@ async def _show_seeding_preview(
     console.print(f"💡 Remove --dry-run to perform actual seeding")
 
 
-def _display_seeding_results(result: SeedingResult) -> None:
+def _display_seeding_results(results: dict) -> None:
     """Display seeding results in a formatted table."""
+    # Calculate totals across all data types
+    total_created = sum(r.created for r in results.values())
+    total_updated = sum(r.updated for r in results.values())
+    total_failed = sum(r.failed for r in results.values())
+    total_duration = sum(r.duration_seconds for r in results.values())
+    
+    # Calculate overall success rate
+    total_operations = total_created + total_updated + total_failed
+    success_rate = ((total_created + total_updated) / total_operations * 100) if total_operations > 0 else 0.0
+    
+    # Build summary text
+    summary_lines = ["📊 Results Summary:"]
+    for data_type, result in sorted(results.items()):
+        if data_type == "channels":
+            emoji = "📺"
+        elif data_type == "videos":
+            emoji = "🎥"
+        elif data_type == "user_videos":
+            emoji = "👤"
+        elif data_type == "playlists":
+            emoji = "📁"
+        else:
+            emoji = "📄"
+            
+        summary_lines.append(f"   {emoji} {data_type.title()}: {result.created} created, {result.updated} updated, {result.failed} failed ({result.success_rate:.1f}%)")
+    
     console.print(
         Panel(
             f"""
 ✅ Seeding Completed Successfully
 
-📊 Results Summary:
-   • Channels: {result.channels_seeded} seeded, {result.channels_updated} updated, {result.channels_failed} failed
-   • Videos: {result.videos_seeded} seeded, {result.videos_updated} updated, {result.videos_failed} failed  
-   • User Videos: {result.user_videos_created} created, {result.user_videos_failed} failed
-   • Playlists: {result.playlists_seeded} seeded, {result.playlists_updated} updated, {result.playlists_failed} failed
+{chr(10).join(summary_lines)}
 
-⏱️  Duration: {result.duration_seconds:.2f} seconds
-📈 Success Rate: {result.success_rate:.1f}%
-🎯 Data Quality Score: {result.data_quality_score:.2f}/1.0
+⏱️  Total Duration: {total_duration:.1f} seconds
+📈 Overall Success Rate: {success_rate:.1f}%
+🎯 Operations: {total_created:,} created, {total_updated:,} updated, {total_failed:,} failed
             """.strip(),
             title="🌱 Database Seeding Results",
             border_style="green"
         )
     )
     
-    if result.integrity_issues:
-        console.print(f"\n⚠️  Integrity Issues:")
-        for issue in result.integrity_issues:
-            console.print(f"   • {issue}")
-    
-    if result.suggestions:
-        console.print(f"\n💡 Suggestions:")
-        for suggestion in result.suggestions:
-            console.print(f"   • {suggestion}")
+    # Show detailed errors if any failed
+    total_errors = sum(len(r.errors) for r in results.values() if r.errors)
+    if total_errors > 0:
+        console.print(f"\n⚠️  Found {total_errors} errors across all data types")
+        for data_type, result in results.items():
+            if result.errors:
+                console.print(f"   • {data_type}: {len(result.errors)} errors (showing first 3):")
+                for error in result.errors[:3]:
+                    console.print(f"     - {error}")

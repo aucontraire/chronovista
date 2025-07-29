@@ -192,8 +192,10 @@ class TakeoutService:
 
         for playlist_file in playlist_files:
             try:
-                # Extract playlist name from filename
+                # Extract playlist name from filename and remove "-videos" suffix
                 playlist_name = playlist_file.stem
+                if playlist_name.endswith("-videos"):
+                    playlist_name = playlist_name[:-7]  # Remove "-videos" suffix
 
                 # Parse CSV file
                 videos: List[TakeoutPlaylistItem] = []

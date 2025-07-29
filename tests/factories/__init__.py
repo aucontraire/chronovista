@@ -23,6 +23,20 @@ from .channel_keyword_factory import (
     create_channel_keyword_statistics,
     create_channel_keyword_update,
 )
+from .channel_topic_factory import (
+    ChannelTopicBaseFactory,
+    ChannelTopicCreateFactory,
+    ChannelTopicFactory,
+    ChannelTopicSearchFiltersFactory,
+    ChannelTopicStatisticsFactory,
+    ChannelTopicTestData,
+    ChannelTopicUpdateFactory,
+    create_channel_topic,
+    create_channel_topic_create,
+    create_channel_topic_filters,
+    create_channel_topic_statistics,
+    create_channel_topic_update,
+)
 from .playlist_factory import (
     PlaylistBaseFactory,
     PlaylistCreateFactory,
@@ -83,6 +97,20 @@ from .video_tag_factory import (
     create_video_tag_statistics,
     create_video_tag_update,
 )
+from .video_topic_factory import (
+    VideoTopicBaseFactory,
+    VideoTopicCreateFactory,
+    VideoTopicFactory,
+    VideoTopicSearchFiltersFactory,
+    VideoTopicStatisticsFactory,
+    VideoTopicTestData,
+    VideoTopicUpdateFactory,
+    create_video_topic,
+    create_video_topic_create,
+    create_video_topic_filters,
+    create_video_topic_statistics,
+    create_video_topic_update,
+)
 from .id_factory import (
     YouTubeIdFactory,
     TestIds,
@@ -90,6 +118,7 @@ from .id_factory import (
     video_id,
     playlist_id,
     user_id,
+    topic_id,
 )
 
 __all__ = [
@@ -106,6 +135,19 @@ __all__ = [
     "create_video_tag_filters",
     "create_video_tag_statistics",
     "VideoTagTestData",
+    # VideoTopic factories
+    "VideoTopicBaseFactory",
+    "VideoTopicCreateFactory",
+    "VideoTopicUpdateFactory",
+    "VideoTopicFactory",
+    "VideoTopicSearchFiltersFactory",
+    "VideoTopicStatisticsFactory",
+    "create_video_topic",
+    "create_video_topic_create",
+    "create_video_topic_update",
+    "create_video_topic_filters",
+    "create_video_topic_statistics",
+    "VideoTopicTestData",
     # VideoLocalization factories
     "VideoLocalizationBaseFactory",
     "VideoLocalizationCreateFactory",
@@ -134,6 +176,19 @@ __all__ = [
     "create_channel_keyword_statistics",
     "create_channel_keyword_analytics",
     "ChannelKeywordTestData",
+    # ChannelTopic factories
+    "ChannelTopicBaseFactory",
+    "ChannelTopicCreateFactory",
+    "ChannelTopicUpdateFactory",
+    "ChannelTopicFactory",
+    "ChannelTopicSearchFiltersFactory",
+    "ChannelTopicStatisticsFactory",
+    "create_channel_topic",
+    "create_channel_topic_create",
+    "create_channel_topic_update",
+    "create_channel_topic_filters",
+    "create_channel_topic_statistics",
+    "ChannelTopicTestData",
     # TopicCategory factories
     "TopicCategoryBaseFactory",
     "TopicCategoryCreateFactory",
@@ -171,4 +226,5 @@ __all__ = [
     "video_id", 
     "playlist_id",
     "user_id",
+    "topic_id",
 ]

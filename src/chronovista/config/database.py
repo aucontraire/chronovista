@@ -66,18 +66,54 @@ class DatabaseManager:
             )
         return self._session_factory
 
-    async def get_session(self) -> AsyncGenerator[AsyncSession, None]:
+    async def get_session(self, echo: bool = None) -> AsyncGenerator[AsyncSession, None]:
         """Get async database session."""
-        session_factory = self.get_session_factory()
-        async with session_factory() as session:
-            try:
-                yield session
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                raise
-            finally:
-                await session.close()
+        if echo is not None:
+            # Create a temporary session factory with custom echo setting
+            engine = self.get_engine()
+            # Create a new engine with custom echo setting
+            database_url = settings.effective_database_url
+            engine_kwargs = {
+                "echo": echo,
+                "future": True,
+                "pool_pre_ping": True,
+                "pool_recycle": 3600,
+            }
+            if settings.is_development_database:
+                engine_kwargs.update({
+                    "pool_size": 5,
+                    "max_overflow": 0,
+                    "pool_timeout": 10,
+                })
+            
+            temp_engine = create_async_engine(database_url, **engine_kwargs)
+            temp_session_factory = async_sessionmaker(
+                bind=temp_engine,
+                class_=AsyncSession,
+                expire_on_commit=False,
+            )
+            
+            async with temp_session_factory() as session:
+                try:
+                    yield session
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    raise
+                finally:
+                    await session.close()
+                    await temp_engine.dispose()
+        else:
+            session_factory = self.get_session_factory()
+            async with session_factory() as session:
+                try:
+                    yield session
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    raise
+                finally:
+                    await session.close()
 
     async def close(self) -> None:
         """Close database connections."""

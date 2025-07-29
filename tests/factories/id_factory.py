@@ -107,6 +107,30 @@ class YouTubeIdFactory:
             return f"user_{hashlib.md5(seed.encode()).hexdigest()[:16]}"
         else:
             return f"user_{''.join(random.choices(string.ascii_lowercase + string.digits, k=16))}"
+    
+    @staticmethod
+    def create_topic_id(seed: Optional[str] = None) -> str:
+        """
+        Create a valid topic ID.
+        
+        Parameters
+        ----------
+        seed : Optional[str]
+            Optional seed for deterministic ID generation
+            
+        Returns
+        -------
+        str
+            Valid topic ID (up to 50 characters)
+        """
+        if seed:
+            # Use hash for deterministic generation
+            hash_value = hashlib.md5(seed.encode()).hexdigest()
+            return f"topic_{hash_value[:32]}"  # 38 chars total, well under 50
+        else:
+            # Generate random topic ID
+            suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=16))
+            return f"topic_{suffix}"
 
 
 # Convenience functions for easy access
@@ -128,6 +152,11 @@ def playlist_id(seed: Optional[str] = None) -> str:
 def user_id(seed: Optional[str] = None) -> str:
     """Generate a valid user ID."""
     return YouTubeIdFactory.create_user_id(seed)
+
+
+def topic_id(seed: Optional[str] = None) -> str:
+    """Generate a valid topic ID."""
+    return YouTubeIdFactory.create_topic_id(seed)
 
 
 # Predefined IDs for consistent testing
@@ -154,3 +183,9 @@ class TestIds:
     # Users
     TEST_USER = YouTubeIdFactory.create_user_id("test_user")
     TAKEOUT_USER = YouTubeIdFactory.create_user_id("takeout_user")
+    
+    # Topics
+    MUSIC_TOPIC = YouTubeIdFactory.create_topic_id("music")
+    GAMING_TOPIC = YouTubeIdFactory.create_topic_id("gaming")
+    EDUCATION_TOPIC = YouTubeIdFactory.create_topic_id("education")
+    ENTERTAINMENT_TOPIC = YouTubeIdFactory.create_topic_id("entertainment")

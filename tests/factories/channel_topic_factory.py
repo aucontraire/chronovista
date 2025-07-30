@@ -28,7 +28,9 @@ class ChannelTopicBaseFactory(factory.Factory):
     class Meta:
         model = ChannelTopicBase
 
-    channel_id = Faker("lexify", text="UC??????????????????????")  # 24-char channel ID pattern
+    channel_id = Faker(
+        "lexify", text="UC??????????????????????"
+    )  # 24-char channel ID pattern
     topic_id = Faker("lexify", text="topic_????????????????")  # Valid topic ID pattern
 
 
@@ -63,8 +65,12 @@ class ChannelTopicSearchFiltersFactory(factory.Factory):
     class Meta:
         model = ChannelTopicSearchFilters
 
-    channel_ids = factory.LazyFunction(lambda: ["UCuAXFkgsw1L7xaCfnd5JJOw", "UC_x5XG1OV2P6uZZ5FSM9Ttw"])
-    topic_ids = factory.LazyFunction(lambda: ["topic_music", "topic_gaming", "topic_education"])
+    channel_ids = factory.LazyFunction(
+        lambda: ["UCuAXFkgsw1L7xaCfnd5JJOw", "UC_x5XG1OV2P6uZZ5FSM9Ttw"]
+    )
+    topic_ids = factory.LazyFunction(
+        lambda: ["topic_music", "topic_gaming", "topic_education"]
+    )
     created_after = Faker("date_time", tzinfo=timezone.utc)
     created_before = Faker("date_time", tzinfo=timezone.utc)
 
@@ -76,9 +82,15 @@ class ChannelTopicStatisticsFactory(factory.Factory):
         model = ChannelTopicStatistics
 
     total_channel_topics = Faker("random_int", min=50, max=5000)
-    unique_topics = LazyAttribute(lambda obj: int(obj.total_channel_topics * 0.4))  # 40% unique
-    unique_channels = LazyAttribute(lambda obj: int(obj.total_channel_topics * 0.9))  # 90% unique
-    avg_topics_per_channel = Faker("pyfloat", min_value=1.0, max_value=6.0, right_digits=2)
+    unique_topics = LazyAttribute(
+        lambda obj: int(obj.total_channel_topics * 0.4)
+    )  # 40% unique
+    unique_channels = LazyAttribute(
+        lambda obj: int(obj.total_channel_topics * 0.9)
+    )  # 90% unique
+    avg_topics_per_channel = Faker(
+        "pyfloat", min_value=1.0, max_value=6.0, right_digits=2
+    )
     most_common_topics = factory.LazyFunction(
         lambda: [
             ("topic_music", 85),
@@ -89,7 +101,13 @@ class ChannelTopicStatisticsFactory(factory.Factory):
         ]
     )
     topic_distribution = factory.LazyFunction(
-        lambda: {"topic_music": 45, "topic_gaming": 38, "topic_education": 32, "topic_entertainment": 28, "topic_technology": 25}
+        lambda: {
+            "topic_music": 45,
+            "topic_gaming": 38,
+            "topic_education": 32,
+            "topic_entertainment": 28,
+            "topic_technology": 25,
+        }
     )
 
 
@@ -132,7 +150,7 @@ class ChannelTopicTestData:
 
     VALID_TOPIC_IDS = [
         "topic_music",
-        "topic_gaming", 
+        "topic_gaming",
         "topic_education",
         "topic_entertainment",
         "topic_technology",
@@ -168,8 +186,8 @@ class ChannelTopicTestData:
     def minimal_channel_topic_data(cls) -> dict:
         """Get minimal valid channel topic data."""
         return {
-            "channel_id": cls.VALID_CHANNEL_IDS[1], 
-            "topic_id": cls.VALID_TOPIC_IDS[1]
+            "channel_id": cls.VALID_CHANNEL_IDS[1],
+            "topic_id": cls.VALID_TOPIC_IDS[1],
         }
 
     @classmethod

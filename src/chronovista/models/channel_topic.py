@@ -81,9 +81,13 @@ class ChannelTopicSearchFilters(BaseModel):
 class ChannelTopicStatistics(BaseModel):
     """Channel topic statistics."""
 
-    total_channel_topics: int = Field(..., description="Total number of channel-topic relationships")
+    total_channel_topics: int = Field(
+        ..., description="Total number of channel-topic relationships"
+    )
     unique_topics: int = Field(..., description="Number of unique topics")
-    unique_channels: int = Field(..., description="Number of unique channels with topics")
+    unique_channels: int = Field(
+        ..., description="Number of unique channels with topics"
+    )
     avg_topics_per_channel: float = Field(..., description="Average topics per channel")
     most_common_topics: List[tuple[str, int]] = Field(
         default_factory=list, description="Most common topics with counts"

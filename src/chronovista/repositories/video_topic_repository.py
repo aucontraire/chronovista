@@ -51,7 +51,9 @@ class VideoTopicRepository(
         """Get video topic by composite key (video_id, topic_id)."""
         result = await session.execute(
             select(VideoTopicDB).where(
-                and_(VideoTopicDB.video_id == video_id, VideoTopicDB.topic_id == topic_id)
+                and_(
+                    VideoTopicDB.video_id == video_id, VideoTopicDB.topic_id == topic_id
+                )
             )
         )
         return result.scalar_one_or_none()
@@ -62,7 +64,9 @@ class VideoTopicRepository(
         """Check if video topic exists by composite key."""
         result = await session.execute(
             select(VideoTopicDB.video_id).where(
-                and_(VideoTopicDB.video_id == video_id, VideoTopicDB.topic_id == topic_id)
+                and_(
+                    VideoTopicDB.video_id == video_id, VideoTopicDB.topic_id == topic_id
+                )
             )
         )
         return result.first() is not None
@@ -117,7 +121,8 @@ class VideoTopicRepository(
 
         for i, topic_id in enumerate(topic_ids):
             relevance_type = (
-                relevance_types[i] if relevance_types and i < len(relevance_types) 
+                relevance_types[i]
+                if relevance_types and i < len(relevance_types)
                 else "primary"
             )
 
@@ -143,10 +148,14 @@ class VideoTopicRepository(
     ) -> List[VideoTopicDB]:
         """Replace all topics for a video with new ones."""
         # Delete existing topics for this video
-        await session.execute(delete(VideoTopicDB).where(VideoTopicDB.video_id == video_id))
+        await session.execute(
+            delete(VideoTopicDB).where(VideoTopicDB.video_id == video_id)
+        )
 
         # Create new topics
-        return await self.bulk_create_video_topics(session, video_id, topic_ids, relevance_types)
+        return await self.bulk_create_video_topics(
+            session, video_id, topic_ids, relevance_types
+        )
 
     async def delete_by_video_id(self, session: AsyncSession, video_id: str) -> int:
         """Delete all topics for a specific video."""
@@ -157,7 +166,9 @@ class VideoTopicRepository(
         )
         count = result.scalar() or 0
 
-        await session.execute(delete(VideoTopicDB).where(VideoTopicDB.video_id == video_id))
+        await session.execute(
+            delete(VideoTopicDB).where(VideoTopicDB.video_id == video_id)
+        )
         await session.flush()
 
         return count
@@ -169,7 +180,9 @@ class VideoTopicRepository(
         )
         count = result.scalar() or 0
 
-        await session.execute(delete(VideoTopicDB).where(VideoTopicDB.topic_id == topic_id))
+        await session.execute(
+            delete(VideoTopicDB).where(VideoTopicDB.topic_id == topic_id)
+        )
         await session.flush()
 
         return count
@@ -213,7 +226,10 @@ class VideoTopicRepository(
     ) -> List[Tuple[str, int]]:
         """Get most popular topics by video count."""
         result = await session.execute(
-            select(VideoTopicDB.topic_id, func.count(VideoTopicDB.video_id).label("video_count"))
+            select(
+                VideoTopicDB.topic_id,
+                func.count(VideoTopicDB.video_id).label("video_count"),
+            )
             .group_by(VideoTopicDB.topic_id)
             .order_by(desc("video_count"))
             .limit(limit)
@@ -225,15 +241,21 @@ class VideoTopicRepository(
     ) -> List[Tuple[str, int]]:
         """Get topics that frequently appear with the given topic."""
         # Find videos that have the specified topic
-        videos_with_topic = select(VideoTopicDB.video_id).where(VideoTopicDB.topic_id == topic_id)
+        videos_with_topic = select(VideoTopicDB.video_id).where(
+            VideoTopicDB.topic_id == topic_id
+        )
 
         # Find other topics in those videos
         result = await session.execute(
             select(
-                VideoTopicDB.topic_id, func.count(VideoTopicDB.video_id).label("co_occurrence")
+                VideoTopicDB.topic_id,
+                func.count(VideoTopicDB.video_id).label("co_occurrence"),
             )
             .where(
-                and_(VideoTopicDB.video_id.in_(videos_with_topic), VideoTopicDB.topic_id != topic_id)
+                and_(
+                    VideoTopicDB.video_id.in_(videos_with_topic),
+                    VideoTopicDB.topic_id != topic_id,
+                )
             )
             .group_by(VideoTopicDB.topic_id)
             .order_by(desc("co_occurrence"))
@@ -265,7 +287,9 @@ class VideoTopicRepository(
 
         # Average topics per video
         avg_result = await session.execute(
-            select(func.avg(func.count(VideoTopicDB.topic_id))).group_by(VideoTopicDB.video_id)
+            select(func.avg(func.count(VideoTopicDB.topic_id))).group_by(
+                VideoTopicDB.video_id
+            )
         )
         avg_topics_per_video = float(avg_result.scalar() or 0.0)
 
@@ -280,8 +304,9 @@ class VideoTopicRepository(
 
         # Relevance type distribution
         relevance_result = await session.execute(
-            select(VideoTopicDB.relevance_type, func.count())
-            .group_by(VideoTopicDB.relevance_type)
+            select(VideoTopicDB.relevance_type, func.count()).group_by(
+                VideoTopicDB.relevance_type
+            )
         )
         relevance_type_distribution = {row[0]: row[1] for row in relevance_result}
 
@@ -307,7 +332,10 @@ class VideoTopicRepository(
                 select(VideoTopicDB.video_id)
                 .where(VideoTopicDB.topic_id.in_(topic_ids))
                 .group_by(VideoTopicDB.video_id)
-                .having(func.count(func.distinct(VideoTopicDB.topic_id)) == literal(len(topic_ids)))
+                .having(
+                    func.count(func.distinct(VideoTopicDB.topic_id))
+                    == literal(len(topic_ids))
+                )
             )
             return [row[0] for row in result]
         else:
@@ -336,7 +364,9 @@ class VideoTopicRepository(
             return {}
 
         result = await session.execute(
-            select(VideoTopicDB.topic_id, func.count(func.distinct(VideoTopicDB.video_id)))
+            select(
+                VideoTopicDB.topic_id, func.count(func.distinct(VideoTopicDB.video_id))
+            )
             .where(VideoTopicDB.topic_id.in_(topic_ids))
             .group_by(VideoTopicDB.topic_id)
         )

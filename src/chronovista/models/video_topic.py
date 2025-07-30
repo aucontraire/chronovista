@@ -21,8 +21,7 @@ class VideoTopicBase(BaseModel):
     video_id: VideoId = Field(..., description="YouTube video ID (validated)")
     topic_id: TopicId = Field(..., description="Topic identifier (validated)")
     relevance_type: str = Field(
-        default="primary",
-        description="Relevance type: primary, relevant, suggested"
+        default="primary", description="Relevance type: primary, relevant, suggested"
     )
 
     # Note: video_id and topic_id validation is now handled by respective types
@@ -36,9 +35,11 @@ class VideoTopicBase(BaseModel):
 
         relevance_type = v.strip().lower()
         allowed_types = {"primary", "relevant", "suggested"}
-        
+
         if relevance_type not in allowed_types:
-            raise ValueError(f"Relevance type must be one of: {', '.join(allowed_types)}")
+            raise ValueError(
+                f"Relevance type must be one of: {', '.join(allowed_types)}"
+            )
 
         return relevance_type
 
@@ -66,15 +67,17 @@ class VideoTopicUpdate(BaseModel):
         """Validate relevance type."""
         if v is None:
             return v
-            
+
         if not v or not v.strip():
             raise ValueError("Relevance type cannot be empty")
 
         relevance_type = v.strip().lower()
         allowed_types = {"primary", "relevant", "suggested"}
-        
+
         if relevance_type not in allowed_types:
-            raise ValueError(f"Relevance type must be one of: {', '.join(allowed_types)}")
+            raise ValueError(
+                f"Relevance type must be one of: {', '.join(allowed_types)}"
+            )
 
         return relevance_type
 
@@ -121,7 +124,9 @@ class VideoTopicSearchFilters(BaseModel):
 class VideoTopicStatistics(BaseModel):
     """Video topic statistics."""
 
-    total_video_topics: int = Field(..., description="Total number of video-topic relationships")
+    total_video_topics: int = Field(
+        ..., description="Total number of video-topic relationships"
+    )
     unique_topics: int = Field(..., description="Number of unique topics")
     unique_videos: int = Field(..., description="Number of unique videos with topics")
     avg_topics_per_video: float = Field(..., description="Average topics per video")

@@ -17,7 +17,6 @@ from datetime import datetime
 import pytest
 from sqlalchemy import delete
 
-from chronovista.repositories.base import BaseSQLAlchemyRepository
 from chronovista.db.models import Channel as DBChannel
 from chronovista.db.models import ChannelKeyword as DBChannelKeyword
 from chronovista.db.models import Playlist as DBPlaylist
@@ -30,6 +29,7 @@ from chronovista.models.channel import ChannelCreate
 from chronovista.models.enums import LanguageCode, LanguagePreferenceType
 from chronovista.models.topic_category import TopicCategoryCreate
 from chronovista.models.user_language_preference import UserLanguagePreferenceCreate
+from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
 @pytest.mark.integration

@@ -5,16 +5,17 @@ Tests for VideoTopic, VideoTopicCreate, VideoTopicUpdate models
 including validation, field validation, and edge cases.
 """
 
-import pytest
 from datetime import datetime, timezone
+
+import pytest
 from pydantic import ValidationError
 
 from chronovista.models.video_topic import (
     VideoTopic,
     VideoTopicCreate,
-    VideoTopicUpdate,
     VideoTopicSearchFilters,
     VideoTopicStatistics,
+    VideoTopicUpdate,
 )
 from tests.factories.id_factory import TestIds
 
@@ -27,9 +28,9 @@ class TestVideoTopicCreate:
         video_topic = VideoTopicCreate(
             video_id=TestIds.TEST_VIDEO_1,
             topic_id=TestIds.MUSIC_TOPIC,
-            relevance_type="primary"
+            relevance_type="primary",
         )
-        
+
         assert video_topic.video_id == TestIds.TEST_VIDEO_1
         assert video_topic.topic_id == TestIds.MUSIC_TOPIC
         assert video_topic.relevance_type == "primary"
@@ -41,7 +42,7 @@ class TestVideoTopicCreate:
             video_topic = VideoTopicCreate(
                 video_id=TestIds.TEST_VIDEO_1,
                 topic_id=TestIds.MUSIC_TOPIC,
-                relevance_type=valid_type
+                relevance_type=valid_type,
             )
             assert video_topic.relevance_type == valid_type
 
@@ -50,7 +51,7 @@ class TestVideoTopicCreate:
         video_topic = VideoTopicCreate(
             video_id=TestIds.TEST_VIDEO_1,
             topic_id=TestIds.MUSIC_TOPIC,
-            relevance_type="  PRIMARY  "  # Mixed case with whitespace
+            relevance_type="  PRIMARY  ",  # Mixed case with whitespace
         )
         assert video_topic.relevance_type == "primary"
 
@@ -60,9 +61,9 @@ class TestVideoTopicCreate:
             VideoTopicCreate(
                 video_id=TestIds.TEST_VIDEO_1,
                 topic_id=TestIds.MUSIC_TOPIC,
-                relevance_type="invalid_type"
+                relevance_type="invalid_type",
             )
-        
+
         error = exc_info.value.errors()[0]
         assert "Relevance type must be one of:" in str(error)
 
@@ -72,9 +73,9 @@ class TestVideoTopicCreate:
             VideoTopicCreate(
                 video_id=TestIds.TEST_VIDEO_1,
                 topic_id=TestIds.MUSIC_TOPIC,
-                relevance_type=""
+                relevance_type="",
             )
-        
+
         error = exc_info.value.errors()[0]
         assert "Relevance type cannot be empty" in str(error)
 
@@ -84,9 +85,9 @@ class TestVideoTopicCreate:
             VideoTopicCreate(
                 video_id=TestIds.TEST_VIDEO_1,
                 topic_id=TestIds.MUSIC_TOPIC,
-                relevance_type="   "
+                relevance_type="   ",
             )
-        
+
         error = exc_info.value.errors()[0]
         assert "Relevance type cannot be empty" in str(error)
 
@@ -115,7 +116,7 @@ class TestVideoTopicUpdate:
         """Test VideoTopicUpdate with invalid relevance_type."""
         with pytest.raises(ValidationError) as exc_info:
             VideoTopicUpdate(relevance_type="invalid_type")
-        
+
         error = exc_info.value.errors()[0]
         assert "Relevance type must be one of:" in str(error)
 
@@ -123,7 +124,7 @@ class TestVideoTopicUpdate:
         """Test VideoTopicUpdate with empty relevance_type."""
         with pytest.raises(ValidationError) as exc_info:
             VideoTopicUpdate(relevance_type="")
-        
+
         error = exc_info.value.errors()[0]
         assert "Relevance type cannot be empty" in str(error)
 
@@ -134,7 +135,7 @@ class TestVideoTopicSearchFilters:
     def test_video_topic_search_filters_empty(self):
         """Test VideoTopicSearchFilters with no filters."""
         filters = VideoTopicSearchFilters()
-        
+
         assert filters.video_ids is None
         assert filters.topic_ids is None
         assert filters.relevance_types is None
@@ -149,9 +150,9 @@ class TestVideoTopicSearchFilters:
             topic_ids=[TestIds.MUSIC_TOPIC, TestIds.GAMING_TOPIC],
             relevance_types=["primary", "relevant"],
             created_after=now,
-            created_before=now
+            created_before=now,
         )
-        
+
         assert filters.video_ids == [TestIds.TEST_VIDEO_1, TestIds.TEST_VIDEO_2]
         assert filters.topic_ids == [TestIds.MUSIC_TOPIC, TestIds.GAMING_TOPIC]
         assert filters.relevance_types == ["primary", "relevant"]
@@ -169,16 +170,10 @@ class TestVideoTopicStatistics:
             unique_topics=25,
             unique_videos=50,
             avg_topics_per_video=2.5,
-            most_common_topics=[
-                (TestIds.MUSIC_TOPIC, 30),
-                (TestIds.GAMING_TOPIC, 20)
-            ],
-            relevance_type_distribution={
-                "primary": 60,
-                "relevant": 40
-            }
+            most_common_topics=[(TestIds.MUSIC_TOPIC, 30), (TestIds.GAMING_TOPIC, 20)],
+            relevance_type_distribution={"primary": 60, "relevant": 40},
         )
-        
+
         assert stats.total_video_topics == 100
         assert stats.unique_topics == 25
         assert stats.unique_videos == 50
@@ -195,9 +190,9 @@ class TestVideoTopicStatistics:
             unique_videos=0,
             avg_topics_per_video=0.0,
             most_common_topics=[],
-            relevance_type_distribution={}
+            relevance_type_distribution={},
         )
-        
+
         assert stats.total_video_topics == 0
         assert stats.unique_topics == 0
         assert stats.unique_videos == 0
@@ -216,11 +211,11 @@ class TestVideoTopic:
             "video_id": TestIds.TEST_VIDEO_1,
             "topic_id": TestIds.MUSIC_TOPIC,
             "relevance_type": "primary",
-            "created_at": now
+            "created_at": now,
         }
-        
+
         video_topic = VideoTopic(**data)
-        
+
         assert video_topic.video_id == TestIds.TEST_VIDEO_1
         assert video_topic.topic_id == TestIds.MUSIC_TOPIC
         assert video_topic.relevance_type == "primary"
@@ -233,9 +228,9 @@ class TestVideoTopic:
             video_id=TestIds.TEST_VIDEO_1,
             topic_id=TestIds.MUSIC_TOPIC,
             relevance_type="primary",
-            created_at=datetime.now(timezone.utc)
+            created_at=datetime.now(timezone.utc),
         )
-        
+
         # Should validate when assigning new values
         with pytest.raises(ValidationError):
             video_topic.relevance_type = "invalid_type"

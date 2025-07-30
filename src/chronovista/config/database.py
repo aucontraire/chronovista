@@ -5,6 +5,7 @@ Database configuration and connection management.
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from typing import Optional
 
 from sqlalchemy import Engine, MetaData, create_engine
 from sqlalchemy.ext.asyncio import (
@@ -66,7 +67,9 @@ class DatabaseManager:
             )
         return self._session_factory
 
-    async def get_session(self, echo: bool = None) -> AsyncGenerator[AsyncSession, None]:
+    async def get_session(
+        self, echo: Optional[bool] = None
+    ) -> AsyncGenerator[AsyncSession, None]:
         """Get async database session."""
         if echo is not None:
             # Create a temporary session factory with custom echo setting
@@ -80,19 +83,21 @@ class DatabaseManager:
                 "pool_recycle": 3600,
             }
             if settings.is_development_database:
-                engine_kwargs.update({
-                    "pool_size": 5,
-                    "max_overflow": 0,
-                    "pool_timeout": 10,
-                })
-            
+                engine_kwargs.update(
+                    {
+                        "pool_size": 5,
+                        "max_overflow": 0,
+                        "pool_timeout": 10,
+                    }
+                )
+
             temp_engine = create_async_engine(database_url, **engine_kwargs)
             temp_session_factory = async_sessionmaker(
                 bind=temp_engine,
                 class_=AsyncSession,
                 expire_on_commit=False,
             )
-            
+
             async with temp_session_factory() as session:
                 try:
                     yield session

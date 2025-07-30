@@ -444,14 +444,14 @@ class ChannelRepository(
     ) -> List[ChannelDB]:
         """
         Get channels that the user is subscribed to.
-        
+
         Parameters
         ----------
         session : AsyncSession
             Database session
         limit : int
             Maximum number of channels to return
-            
+
         Returns
         -------
         List[ChannelDB]
@@ -470,14 +470,14 @@ class ChannelRepository(
     ) -> List[ChannelDB]:
         """
         Get channels that the user has watched but is not subscribed to.
-        
+
         Parameters
         ----------
         session : AsyncSession
             Database session
         limit : int
             Maximum number of channels to return
-            
+
         Returns
         -------
         List[ChannelDB]
@@ -491,15 +491,17 @@ class ChannelRepository(
         )
         return list(result.scalars().all())
 
-    async def get_subscription_statistics(self, session: AsyncSession) -> Dict[str, Any]:
+    async def get_subscription_statistics(
+        self, session: AsyncSession
+    ) -> Dict[str, Any]:
         """
         Get subscription vs watch-only statistics.
-        
+
         Parameters
         ----------
         session : AsyncSession
             Database session
-            
+
         Returns
         -------
         Dict[str, Any]
@@ -509,11 +511,15 @@ class ChannelRepository(
         result = await session.execute(
             select(
                 func.count().label("total_channels"),
-                func.count().filter(ChannelDB.is_subscribed == True).label("subscribed_channels"),
-                func.count().filter(ChannelDB.is_subscribed == False).label("watched_only_channels"),
+                func.count()
+                .filter(ChannelDB.is_subscribed == True)
+                .label("subscribed_channels"),
+                func.count()
+                .filter(ChannelDB.is_subscribed == False)
+                .label("watched_only_channels"),
             )
         )
-        
+
         stats = result.first()
         if stats is None:
             return {
@@ -527,7 +533,7 @@ class ChannelRepository(
         total = int(stats.total_channels or 0)
         subscribed = int(stats.subscribed_channels or 0)
         watched_only = int(stats.watched_only_channels or 0)
-        
+
         return {
             "total_channels": total,
             "subscribed_channels": subscribed,

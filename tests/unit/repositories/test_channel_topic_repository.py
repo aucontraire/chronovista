@@ -5,26 +5,26 @@ Tests the ChannelTopicRepository class for managing channel-topic relationships
 with comprehensive coverage of CRUD operations, search, and analytics.
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.repositories.channel_topic_repository import ChannelTopicRepository
+from chronovista.db.models import ChannelTopic as ChannelTopicDB
 from chronovista.models.channel_topic import (
     ChannelTopicCreate,
-    ChannelTopicUpdate, 
     ChannelTopicSearchFilters,
+    ChannelTopicUpdate,
 )
-from chronovista.db.models import ChannelTopic as ChannelTopicDB
+from chronovista.repositories.channel_topic_repository import ChannelTopicRepository
 from tests.factories import (
-    create_channel_topic_create,
-    create_channel_topic_update,
-    create_channel_topic_filters,
     ChannelTopicTestData,
     TestIds,
+    create_channel_topic_create,
+    create_channel_topic_filters,
+    create_channel_topic_update,
 )
-
 
 # Mark all tests as async for this module
 pytestmark = pytest.mark.asyncio
@@ -47,8 +47,7 @@ class TestChannelTopicRepository:
     def sample_channel_topic_create(self):
         """Create sample ChannelTopicCreate data."""
         return create_channel_topic_create(
-            channel_id=TestIds.TEST_CHANNEL_1,
-            topic_id=TestIds.MUSIC_TOPIC
+            channel_id=TestIds.TEST_CHANNEL_1, topic_id=TestIds.MUSIC_TOPIC
         )
 
     @pytest.fixture
@@ -57,7 +56,7 @@ class TestChannelTopicRepository:
         return ChannelTopicDB(
             channel_id=TestIds.TEST_CHANNEL_1,
             topic_id=TestIds.MUSIC_TOPIC,
-            created_at=datetime.now(timezone.utc)
+            created_at=datetime.now(timezone.utc),
         )
 
     @pytest.mark.asyncio
@@ -67,7 +66,9 @@ class TestChannelTopicRepository:
         assert isinstance(repository, ChannelTopicRepository)
 
     @pytest.mark.asyncio
-    async def test_get_by_composite_key_success(self, repository, mock_session, sample_channel_topic_db):
+    async def test_get_by_composite_key_success(
+        self, repository, mock_session, sample_channel_topic_db
+    ):
         """Test get_by_composite_key returns channel topic when found."""
         # Mock the query result
         mock_result = MagicMock()
@@ -127,27 +128,35 @@ class TestChannelTopicRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_get_topics_by_channel_id(self, repository, mock_session, sample_channel_topic_db):
+    async def test_get_topics_by_channel_id(
+        self, repository, mock_session, sample_channel_topic_db
+    ):
         """Test get_topics_by_channel_id returns all topics for a channel."""
         # Mock result with multiple topics
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = [sample_channel_topic_db]
         mock_session.execute.return_value = mock_result
 
-        result = await repository.get_topics_by_channel_id(mock_session, TestIds.TEST_CHANNEL_1)
+        result = await repository.get_topics_by_channel_id(
+            mock_session, TestIds.TEST_CHANNEL_1
+        )
 
         assert result == [sample_channel_topic_db]
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_get_channels_by_topic_id(self, repository, mock_session, sample_channel_topic_db):
+    async def test_get_channels_by_topic_id(
+        self, repository, mock_session, sample_channel_topic_db
+    ):
         """Test get_channels_by_topic_id returns all channels for a topic."""
         # Mock result with multiple channels
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = [sample_channel_topic_db]
         mock_session.execute.return_value = mock_result
 
-        result = await repository.get_channels_by_topic_id(mock_session, TestIds.MUSIC_TOPIC)
+        result = await repository.get_channels_by_topic_id(
+            mock_session, TestIds.MUSIC_TOPIC
+        )
 
         assert result == [sample_channel_topic_db]
         mock_session.execute.assert_called_once()
@@ -158,11 +167,13 @@ class TestChannelTopicRepository:
         # Mock get_by_composite_key to return None (not exists)
         repository.get_by_composite_key = AsyncMock(return_value=None)
         # Mock create method
-        repository.create = AsyncMock(side_effect=lambda session, obj_in: ChannelTopicDB(
-            channel_id=obj_in.channel_id,
-            topic_id=obj_in.topic_id,
-            created_at=datetime.now(timezone.utc)
-        ))
+        repository.create = AsyncMock(
+            side_effect=lambda session, obj_in: ChannelTopicDB(
+                channel_id=obj_in.channel_id,
+                topic_id=obj_in.topic_id,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
 
         topic_ids = [TestIds.MUSIC_TOPIC, TestIds.GAMING_TOPIC]
 
@@ -182,7 +193,9 @@ class TestChannelTopicRepository:
         mock_count_result.scalar.return_value = 3
         mock_session.execute.return_value = mock_count_result
 
-        result = await repository.delete_by_channel_id(mock_session, TestIds.TEST_CHANNEL_1)
+        result = await repository.delete_by_channel_id(
+            mock_session, TestIds.TEST_CHANNEL_1
+        )
 
         assert result == 3
         assert mock_session.execute.call_count == 2  # Count + Delete
@@ -207,8 +220,7 @@ class TestChannelTopicRepository:
         """Test search_channel_topics applies filters correctly."""
         # Create search filters
         filters = create_channel_topic_filters(
-            channel_ids=[TestIds.TEST_CHANNEL_1],
-            topic_ids=[TestIds.MUSIC_TOPIC]
+            channel_ids=[TestIds.TEST_CHANNEL_1], topic_ids=[TestIds.MUSIC_TOPIC]
         )
 
         # Mock result
@@ -249,7 +261,9 @@ class TestChannelTopicRepository:
         ]
         mock_session.execute.return_value = mock_result
 
-        result = await repository.get_related_topics(mock_session, TestIds.MUSIC_TOPIC, limit=20)
+        result = await repository.get_related_topics(
+            mock_session, TestIds.MUSIC_TOPIC, limit=20
+        )
 
         expected = [(TestIds.GAMING_TOPIC, 8), (TestIds.ENTERTAINMENT_TOPIC, 5)]
         assert result == expected
@@ -267,7 +281,9 @@ class TestChannelTopicRepository:
         mock_session.execute.return_value = mock_result
 
         topic_ids = [TestIds.MUSIC_TOPIC, TestIds.GAMING_TOPIC]
-        result = await repository.find_channels_by_topics(mock_session, topic_ids, match_all=False)
+        result = await repository.find_channels_by_topics(
+            mock_session, topic_ids, match_all=False
+        )
 
         expected = [TestIds.TEST_CHANNEL_1, TestIds.TEST_CHANNEL_2]
         assert result == expected
@@ -284,7 +300,9 @@ class TestChannelTopicRepository:
         mock_session.execute.return_value = mock_result
 
         topic_ids = [TestIds.MUSIC_TOPIC, TestIds.GAMING_TOPIC]
-        result = await repository.find_channels_by_topics(mock_session, topic_ids, match_all=True)
+        result = await repository.find_channels_by_topics(
+            mock_session, topic_ids, match_all=True
+        )
 
         expected = [TestIds.TEST_CHANNEL_1]
         assert result == expected
@@ -298,7 +316,9 @@ class TestChannelTopicRepository:
         mock_result.scalar.return_value = 15
         mock_session.execute.return_value = mock_result
 
-        result = await repository.get_topic_channel_count(mock_session, TestIds.MUSIC_TOPIC)
+        result = await repository.get_topic_channel_count(
+            mock_session, TestIds.MUSIC_TOPIC
+        )
 
         assert result == 15
         mock_session.execute.assert_called_once()
@@ -341,11 +361,17 @@ class TestChannelTopicRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_get_with_valid_tuple(self, repository, mock_session, sample_channel_topic_db):
+    async def test_get_with_valid_tuple(
+        self, repository, mock_session, sample_channel_topic_db
+    ):
         """Test get method with valid composite key tuple."""
-        repository.get_by_composite_key = AsyncMock(return_value=sample_channel_topic_db)
+        repository.get_by_composite_key = AsyncMock(
+            return_value=sample_channel_topic_db
+        )
 
-        result = await repository.get(mock_session, (TestIds.TEST_CHANNEL_1, TestIds.MUSIC_TOPIC))
+        result = await repository.get(
+            mock_session, (TestIds.TEST_CHANNEL_1, TestIds.MUSIC_TOPIC)
+        )
 
         assert result == sample_channel_topic_db
         repository.get_by_composite_key.assert_called_once_with(
@@ -366,7 +392,9 @@ class TestChannelTopicRepository:
         """Test exists method with valid composite key tuple."""
         repository.exists_by_composite_key = AsyncMock(return_value=True)
 
-        result = await repository.exists(mock_session, (TestIds.TEST_CHANNEL_1, TestIds.MUSIC_TOPIC))
+        result = await repository.exists(
+            mock_session, (TestIds.TEST_CHANNEL_1, TestIds.MUSIC_TOPIC)
+        )
 
         assert result is True
         repository.exists_by_composite_key.assert_called_once_with(
@@ -390,7 +418,7 @@ class TestChannelTopicRepository:
             ChannelTopicDB(
                 channel_id=TestIds.TEST_CHANNEL_1,
                 topic_id=TestIds.MUSIC_TOPIC,
-                created_at=datetime.now(timezone.utc)
+                created_at=datetime.now(timezone.utc),
             )
         ]
         repository.bulk_create_channel_topics = AsyncMock(return_value=created_topics)
@@ -408,13 +436,16 @@ class TestChannelTopicRepository:
         )
 
     @pytest.mark.asyncio
-    async def test_create_or_update_existing(self, repository, mock_session, sample_channel_topic_db):
+    async def test_create_or_update_existing(
+        self, repository, mock_session, sample_channel_topic_db
+    ):
         """Test create_or_update returns existing when topic already exists."""
-        repository.get_by_composite_key = AsyncMock(return_value=sample_channel_topic_db)
+        repository.get_by_composite_key = AsyncMock(
+            return_value=sample_channel_topic_db
+        )
 
         topic_create = create_channel_topic_create(
-            channel_id=TestIds.TEST_CHANNEL_1,
-            topic_id=TestIds.MUSIC_TOPIC
+            channel_id=TestIds.TEST_CHANNEL_1, topic_id=TestIds.MUSIC_TOPIC
         )
 
         result = await repository.create_or_update(mock_session, topic_create)
@@ -426,17 +457,16 @@ class TestChannelTopicRepository:
     async def test_create_or_update_new(self, repository, mock_session):
         """Test create_or_update creates new when topic doesn't exist."""
         repository.get_by_composite_key = AsyncMock(return_value=None)
-        
+
         new_topic = ChannelTopicDB(
             channel_id=TestIds.TEST_CHANNEL_1,
             topic_id=TestIds.MUSIC_TOPIC,
-            created_at=datetime.now(timezone.utc)
+            created_at=datetime.now(timezone.utc),
         )
         repository.create = AsyncMock(return_value=new_topic)
 
         topic_create = create_channel_topic_create(
-            channel_id=TestIds.TEST_CHANNEL_1,
-            topic_id=TestIds.MUSIC_TOPIC
+            channel_id=TestIds.TEST_CHANNEL_1, topic_id=TestIds.MUSIC_TOPIC
         )
 
         result = await repository.create_or_update(mock_session, topic_create)

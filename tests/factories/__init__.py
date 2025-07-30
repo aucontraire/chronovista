@@ -37,6 +37,15 @@ from .channel_topic_factory import (
     create_channel_topic_statistics,
     create_channel_topic_update,
 )
+from .id_factory import (
+    TestIds,
+    YouTubeIdFactory,
+    channel_id,
+    playlist_id,
+    topic_id,
+    user_id,
+    video_id,
+)
 from .playlist_factory import (
     PlaylistBaseFactory,
     PlaylistCreateFactory,
@@ -110,15 +119,6 @@ from .video_topic_factory import (
     create_video_topic_filters,
     create_video_topic_statistics,
     create_video_topic_update,
-)
-from .id_factory import (
-    YouTubeIdFactory,
-    TestIds,
-    channel_id,
-    video_id,
-    playlist_id,
-    user_id,
-    topic_id,
 )
 
 __all__ = [
@@ -223,7 +223,7 @@ __all__ = [
     "YouTubeIdFactory",
     "TestIds",
     "channel_id",
-    "video_id", 
+    "video_id",
     "playlist_id",
     "user_id",
     "topic_id",

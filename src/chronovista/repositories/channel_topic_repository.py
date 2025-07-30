@@ -51,7 +51,10 @@ class ChannelTopicRepository(
         """Get channel topic by composite key (channel_id, topic_id)."""
         result = await session.execute(
             select(ChannelTopicDB).where(
-                and_(ChannelTopicDB.channel_id == channel_id, ChannelTopicDB.topic_id == topic_id)
+                and_(
+                    ChannelTopicDB.channel_id == channel_id,
+                    ChannelTopicDB.topic_id == topic_id,
+                )
             )
         )
         return result.scalar_one_or_none()
@@ -62,7 +65,10 @@ class ChannelTopicRepository(
         """Check if channel topic exists by composite key."""
         result = await session.execute(
             select(ChannelTopicDB.channel_id).where(
-                and_(ChannelTopicDB.channel_id == channel_id, ChannelTopicDB.topic_id == topic_id)
+                and_(
+                    ChannelTopicDB.channel_id == channel_id,
+                    ChannelTopicDB.topic_id == topic_id,
+                )
             )
         )
         return result.first() is not None
@@ -135,7 +141,9 @@ class ChannelTopicRepository(
     ) -> List[ChannelTopicDB]:
         """Replace all topics for a channel with new ones."""
         # Delete existing topics for this channel
-        await session.execute(delete(ChannelTopicDB).where(ChannelTopicDB.channel_id == channel_id))
+        await session.execute(
+            delete(ChannelTopicDB).where(ChannelTopicDB.channel_id == channel_id)
+        )
 
         # Create new topics
         return await self.bulk_create_channel_topics(session, channel_id, topic_ids)
@@ -149,7 +157,9 @@ class ChannelTopicRepository(
         )
         count = result.scalar() or 0
 
-        await session.execute(delete(ChannelTopicDB).where(ChannelTopicDB.channel_id == channel_id))
+        await session.execute(
+            delete(ChannelTopicDB).where(ChannelTopicDB.channel_id == channel_id)
+        )
         await session.flush()
 
         return count
@@ -161,7 +171,9 @@ class ChannelTopicRepository(
         )
         count = result.scalar() or 0
 
-        await session.execute(delete(ChannelTopicDB).where(ChannelTopicDB.topic_id == topic_id))
+        await session.execute(
+            delete(ChannelTopicDB).where(ChannelTopicDB.topic_id == topic_id)
+        )
         await session.flush()
 
         return count
@@ -190,9 +202,7 @@ class ChannelTopicRepository(
         if conditions:
             query = query.where(and_(*conditions))
 
-        query = query.order_by(
-            ChannelTopicDB.channel_id, ChannelTopicDB.topic_id
-        )
+        query = query.order_by(ChannelTopicDB.channel_id, ChannelTopicDB.topic_id)
 
         result = await session.execute(query)
         return list(result.scalars().all())
@@ -202,7 +212,10 @@ class ChannelTopicRepository(
     ) -> List[Tuple[str, int]]:
         """Get most popular topics by channel count."""
         result = await session.execute(
-            select(ChannelTopicDB.topic_id, func.count(ChannelTopicDB.channel_id).label("channel_count"))
+            select(
+                ChannelTopicDB.topic_id,
+                func.count(ChannelTopicDB.channel_id).label("channel_count"),
+            )
             .group_by(ChannelTopicDB.topic_id)
             .order_by(desc("channel_count"))
             .limit(limit)
@@ -214,15 +227,21 @@ class ChannelTopicRepository(
     ) -> List[Tuple[str, int]]:
         """Get topics that frequently appear with the given topic."""
         # Find channels that have the specified topic
-        channels_with_topic = select(ChannelTopicDB.channel_id).where(ChannelTopicDB.topic_id == topic_id)
+        channels_with_topic = select(ChannelTopicDB.channel_id).where(
+            ChannelTopicDB.topic_id == topic_id
+        )
 
         # Find other topics in those channels
         result = await session.execute(
             select(
-                ChannelTopicDB.topic_id, func.count(ChannelTopicDB.channel_id).label("co_occurrence")
+                ChannelTopicDB.topic_id,
+                func.count(ChannelTopicDB.channel_id).label("co_occurrence"),
             )
             .where(
-                and_(ChannelTopicDB.channel_id.in_(channels_with_topic), ChannelTopicDB.topic_id != topic_id)
+                and_(
+                    ChannelTopicDB.channel_id.in_(channels_with_topic),
+                    ChannelTopicDB.topic_id != topic_id,
+                )
             )
             .group_by(ChannelTopicDB.topic_id)
             .order_by(desc("co_occurrence"))
@@ -254,7 +273,9 @@ class ChannelTopicRepository(
 
         # Average topics per channel
         avg_result = await session.execute(
-            select(func.avg(func.count(ChannelTopicDB.topic_id))).group_by(ChannelTopicDB.channel_id)
+            select(func.avg(func.count(ChannelTopicDB.topic_id))).group_by(
+                ChannelTopicDB.channel_id
+            )
         )
         avg_topics_per_channel = float(avg_result.scalar() or 0.0)
 
@@ -292,7 +313,10 @@ class ChannelTopicRepository(
                 select(ChannelTopicDB.channel_id)
                 .where(ChannelTopicDB.topic_id.in_(topic_ids))
                 .group_by(ChannelTopicDB.channel_id)
-                .having(func.count(func.distinct(ChannelTopicDB.topic_id)) == literal(len(topic_ids)))
+                .having(
+                    func.count(func.distinct(ChannelTopicDB.topic_id))
+                    == literal(len(topic_ids))
+                )
             )
             return [row[0] for row in result]
         else:
@@ -304,7 +328,9 @@ class ChannelTopicRepository(
             )
             return [row[0] for row in result]
 
-    async def get_topic_channel_count(self, session: AsyncSession, topic_id: str) -> int:
+    async def get_topic_channel_count(
+        self, session: AsyncSession, topic_id: str
+    ) -> int:
         """Get the number of channels that have a specific topic."""
         result = await session.execute(
             select(func.count(func.distinct(ChannelTopicDB.channel_id))).where(
@@ -321,7 +347,10 @@ class ChannelTopicRepository(
             return {}
 
         result = await session.execute(
-            select(ChannelTopicDB.topic_id, func.count(func.distinct(ChannelTopicDB.channel_id)))
+            select(
+                ChannelTopicDB.topic_id,
+                func.count(func.distinct(ChannelTopicDB.channel_id)),
+            )
             .where(ChannelTopicDB.topic_id.in_(topic_ids))
             .group_by(ChannelTopicDB.topic_id)
         )
@@ -332,8 +361,12 @@ class ChannelTopicRepository(
         self, session: AsyncSession, channel_id_1: str, channel_id_2: str
     ) -> List[str]:
         """Get common topics between two channels."""
-        topics_1 = select(ChannelTopicDB.topic_id).where(ChannelTopicDB.channel_id == channel_id_1)
-        topics_2 = select(ChannelTopicDB.topic_id).where(ChannelTopicDB.channel_id == channel_id_2)
+        topics_1 = select(ChannelTopicDB.topic_id).where(
+            ChannelTopicDB.channel_id == channel_id_1
+        )
+        topics_2 = select(ChannelTopicDB.topic_id).where(
+            ChannelTopicDB.channel_id == channel_id_2
+        )
 
         result = await session.execute(
             select(ChannelTopicDB.topic_id)

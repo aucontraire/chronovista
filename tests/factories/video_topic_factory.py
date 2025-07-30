@@ -30,7 +30,9 @@ class VideoTopicBaseFactory(factory.Factory):
 
     video_id = Faker("lexify", text="???????????")  # 11-char YouTube ID pattern
     topic_id = Faker("lexify", text="topic_????????????????")  # Valid topic ID pattern
-    relevance_type = Faker("random_element", elements=["primary", "relevant", "suggested"])
+    relevance_type = Faker(
+        "random_element", elements=["primary", "relevant", "suggested"]
+    )
 
 
 class VideoTopicCreateFactory(VideoTopicBaseFactory):
@@ -46,7 +48,9 @@ class VideoTopicUpdateFactory(factory.Factory):
     class Meta:
         model = VideoTopicUpdate
 
-    relevance_type = Faker("random_element", elements=["primary", "relevant", "suggested"])
+    relevance_type = Faker(
+        "random_element", elements=["primary", "relevant", "suggested"]
+    )
 
 
 class VideoTopicFactory(VideoTopicBaseFactory):
@@ -65,7 +69,9 @@ class VideoTopicSearchFiltersFactory(factory.Factory):
         model = VideoTopicSearchFilters
 
     video_ids = factory.LazyFunction(lambda: ["dQw4w9WgXcQ", "9bZkp7q19f0"])
-    topic_ids = factory.LazyFunction(lambda: ["topic_music", "topic_gaming", "topic_education"])
+    topic_ids = factory.LazyFunction(
+        lambda: ["topic_music", "topic_gaming", "topic_education"]
+    )
     relevance_types = factory.LazyFunction(lambda: ["primary", "relevant"])
     created_after = Faker("date_time", tzinfo=timezone.utc)
     created_before = Faker("date_time", tzinfo=timezone.utc)
@@ -78,9 +84,15 @@ class VideoTopicStatisticsFactory(factory.Factory):
         model = VideoTopicStatistics
 
     total_video_topics = Faker("random_int", min=100, max=10000)
-    unique_topics = LazyAttribute(lambda obj: int(obj.total_video_topics * 0.6))  # 60% unique
-    unique_videos = LazyAttribute(lambda obj: int(obj.total_video_topics * 0.8))  # 80% unique
-    avg_topics_per_video = Faker("pyfloat", min_value=1.0, max_value=4.0, right_digits=2)
+    unique_topics = LazyAttribute(
+        lambda obj: int(obj.total_video_topics * 0.6)
+    )  # 60% unique
+    unique_videos = LazyAttribute(
+        lambda obj: int(obj.total_video_topics * 0.8)
+    )  # 80% unique
+    avg_topics_per_video = Faker(
+        "pyfloat", min_value=1.0, max_value=4.0, right_digits=2
+    )
     most_common_topics = factory.LazyFunction(
         lambda: [
             ("topic_music", 145),
@@ -129,7 +141,7 @@ class VideoTopicTestData:
 
     VALID_TOPIC_IDS = [
         "topic_music",
-        "topic_gaming", 
+        "topic_gaming",
         "topic_education",
         "topic_entertainment",
         "topic_technology",
@@ -174,10 +186,7 @@ class VideoTopicTestData:
     @classmethod
     def minimal_video_topic_data(cls) -> dict:
         """Get minimal valid video topic data."""
-        return {
-            "video_id": cls.VALID_VIDEO_IDS[1], 
-            "topic_id": cls.VALID_TOPIC_IDS[1]
-        }
+        return {"video_id": cls.VALID_VIDEO_IDS[1], "topic_id": cls.VALID_TOPIC_IDS[1]}
 
     @classmethod
     def comprehensive_search_filters_data(cls) -> dict:

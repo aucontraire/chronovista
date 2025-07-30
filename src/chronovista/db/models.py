@@ -50,6 +50,9 @@ class Channel(Base):
     country: Mapped[Optional[str]] = mapped_column(String(2))
     thumbnail_url: Mapped[Optional[str]] = mapped_column(String(500))
 
+    # Subscription status
+    is_subscribed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     # Timestamps
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -62,6 +65,9 @@ class Channel(Base):
     videos: Mapped[list["Video"]] = relationship("Video", back_populates="channel")
     keywords: Mapped[list["ChannelKeyword"]] = relationship(
         "ChannelKeyword", back_populates="channel"
+    )
+    channel_topics: Mapped[list["ChannelTopic"]] = relationship(
+        "ChannelTopic", back_populates="channel"
     )
 
 
@@ -134,6 +140,12 @@ class Video(Base):
     )
     user_videos: Mapped[list["UserVideo"]] = relationship(
         "UserVideo", back_populates="video"
+    )
+    video_topics: Mapped[list["VideoTopic"]] = relationship(
+        "VideoTopic", back_populates="video"
+    )
+    playlist_memberships: Mapped[list["PlaylistMembership"]] = relationship(
+        "PlaylistMembership", back_populates="video"
     )
 
 
@@ -312,6 +324,71 @@ class TopicCategory(Base):
         "TopicCategory", back_populates="children", remote_side="TopicCategory.topic_id"
     )
 
+    # Junction table relationships
+    video_topics: Mapped[list["VideoTopic"]] = relationship(
+        "VideoTopic", back_populates="topic_category"
+    )
+    channel_topics: Mapped[list["ChannelTopic"]] = relationship(
+        "ChannelTopic", back_populates="topic_category"
+    )
+
+
+class VideoTopic(Base):
+    """Video-topic relationships for content classification."""
+
+    __tablename__ = "video_topics"
+
+    # Composite primary key
+    video_id: Mapped[str] = mapped_column(
+        String(20), ForeignKey("videos.video_id"), primary_key=True
+    )
+    topic_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("topic_categories.topic_id"), primary_key=True
+    )
+
+    # Relationship metadata
+    relevance_type: Mapped[str] = mapped_column(
+        String(20), default="primary"
+    )  # primary, relevant, suggested
+
+    # Timestamps
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    # Relationships
+    video: Mapped["Video"] = relationship("Video", back_populates="video_topics")
+    topic_category: Mapped["TopicCategory"] = relationship(
+        "TopicCategory", back_populates="video_topics"
+    )
+
+
+class ChannelTopic(Base):
+    """Channel-topic relationships for channel classification."""
+
+    __tablename__ = "channel_topics"
+
+    # Composite primary key
+    channel_id: Mapped[str] = mapped_column(
+        String(24), ForeignKey("channels.channel_id"), primary_key=True
+    )
+    topic_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("topic_categories.topic_id"), primary_key=True
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    # Relationships
+    channel: Mapped["Channel"] = relationship(
+        "Channel", back_populates="channel_topics"
+    )
+    topic_category: Mapped["TopicCategory"] = relationship(
+        "TopicCategory", back_populates="channel_topics"
+    )
+
 
 class UserVideo(Base):
     """User interaction tracking with videos."""
@@ -387,6 +464,46 @@ class Playlist(Base):
 
     # Relationships
     channel: Mapped["Channel"] = relationship("Channel")
+    memberships: Mapped[list["PlaylistMembership"]] = relationship(
+        "PlaylistMembership",
+        back_populates="playlist",
+        order_by="PlaylistMembership.position",
+    )
+
+
+class PlaylistMembership(Base):
+    """Playlist-video relationships with position tracking."""
+
+    __tablename__ = "playlist_memberships"
+
+    # Composite primary key
+    playlist_id: Mapped[str] = mapped_column(
+        String(34), ForeignKey("playlists.playlist_id"), primary_key=True
+    )
+    video_id: Mapped[str] = mapped_column(
+        String(20), ForeignKey("videos.video_id"), primary_key=True
+    )
+
+    # Position in playlist (critical for playlist ordering)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Metadata from takeout
+    added_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    # Relationships
+    playlist: Mapped["Playlist"] = relationship(
+        "Playlist", back_populates="memberships"
+    )
+    video: Mapped["Video"] = relationship(
+        "Video", back_populates="playlist_memberships"
+    )
 
 
 # Export all models
@@ -400,6 +517,9 @@ __all__ = [
     "VideoLocalization",
     "ChannelKeyword",
     "TopicCategory",
+    "VideoTopic",
+    "ChannelTopic",
     "UserVideo",
     "Playlist",
+    "PlaylistMembership",
 ]

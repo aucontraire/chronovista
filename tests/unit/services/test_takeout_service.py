@@ -333,8 +333,8 @@ class TestParsePlaylists:
         assert len(result) == 2
         assert all(isinstance(playlist, TakeoutPlaylist) for playlist in result)
 
-        # Check Music playlist
-        music_playlist = next(p for p in result if p.name == "Music-videos")
+        # Check Music playlist (suffix "-videos" removed by service)
+        music_playlist = next(p for p in result if p.name == "Music")
         assert len(music_playlist.videos) == 2
         assert music_playlist.video_count == 2
 
@@ -647,13 +647,13 @@ class TestAnalysisMethodsWithRealData:
         analysis = await service.analyze_playlist_relationships(takeout_data)
 
         assert isinstance(analysis, PlaylistAnalysis)
-        assert "Music-videos" in analysis.playlist_overlap_matrix
-        assert "Tech-videos" in analysis.playlist_overlap_matrix
+        assert "Music" in analysis.playlist_overlap_matrix
+        assert "Tech" in analysis.playlist_overlap_matrix
         # Should find overlap between Music and Tech playlists (music1 video)
-        assert analysis.playlist_overlap_matrix["Music-videos"]["Tech-videos"] == 1
+        assert analysis.playlist_overlap_matrix["Music"]["Tech"] == 1
         assert len(analysis.orphaned_videos) >= 0
-        assert "Music-videos" in analysis.playlist_sizes
-        assert "Tech-videos" in analysis.playlist_sizes
+        assert "Music" in analysis.playlist_sizes
+        assert "Tech" in analysis.playlist_sizes
 
     async def test_find_content_gaps(self, populated_takeout_data):
         """Test content gap analysis."""
@@ -696,10 +696,10 @@ class TestAnalysisMethodsWithRealData:
         overlap = await service.analyze_playlist_overlap()
 
         assert isinstance(overlap, dict)
-        assert "Music-videos" in overlap
-        assert "Tech-videos" in overlap
+        assert "Music" in overlap
+        assert "Tech" in overlap
         # Should find overlap
-        assert overlap["Music-videos"]["Tech-videos"] == 1
+        assert overlap["Music"]["Tech"] == 1
 
     async def test_analyze_channel_clusters(self, populated_takeout_data):
         """Test channel clustering analysis."""

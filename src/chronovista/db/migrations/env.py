@@ -26,7 +26,8 @@ database_url = context.get_x_argument(as_dictionary=True).get("database_url")
 if database_url:
     config.set_main_option("sqlalchemy.url", database_url)
 else:
-    config.set_main_option("sqlalchemy.url", settings.database_url)
+    # Use sync URL for migrations
+    config.set_main_option("sqlalchemy.url", settings.get_sync_database_url())
 
 # Add your model's MetaData object here for 'autogenerate' support
 target_metadata = Base.metadata
@@ -61,7 +62,7 @@ def do_run_migrations(connection: Any) -> None:
         context.run_migrations()
 
 
-async def run_migrations_online() -> None:
+def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
     from sqlalchemy import create_engine
     
@@ -79,5 +80,5 @@ async def run_migrations_online() -> None:
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    asyncio.run(run_migrations_online())
+    run_migrations_online()
 

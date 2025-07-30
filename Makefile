@@ -231,6 +231,8 @@ dev-db-reset:
 		echo "Database is resetting..."; \
 		sleep 2; \
 	done
+	@echo "🗄️ Running database migrations..."
+	alembic upgrade head
 	@echo "✅ Development database reset complete!"
 
 dev-db-logs:

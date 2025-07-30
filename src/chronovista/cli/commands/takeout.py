@@ -14,19 +14,29 @@ Commands:
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from ...models.takeout.takeout_data import TakeoutData
-# SeedingResult removed - using dict of SeedResult from modular system
-
 import typer
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn, MofNCompleteColumn
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 from rich.table import Table
 
-from ...services.takeout_service import TakeoutParsingError, TakeoutService
-from ...services.takeout_seeding_service import TakeoutSeedingService
-from ...services.seeding import ProgressCallback
 from ...config.database import db_manager
+from ...models.takeout.takeout_data import TakeoutData
+from ...services.seeding import ProgressCallback
+from ...services.takeout_seeding_service import TakeoutSeedingService
+from ...services.takeout_service import TakeoutParsingError, TakeoutService
+
+# SeedingResult removed - using dict of SeedResult from modular system
+
+
 # Repository imports removed - handled by TakeoutSeedingService
 
 console = Console()
@@ -2029,16 +2039,25 @@ def seed_database(
         False, "--incremental", "-i", help="Incremental seeding (safe to re-run)"
     ),
     dry_run: bool = typer.Option(
-        False, "--dry-run", "-d", help="Show what would be seeded without making changes"
+        False,
+        "--dry-run",
+        "-d",
+        help="Show what would be seeded without making changes",
     ),
     progress: bool = typer.Option(
-        True, "--progress/--no-progress", help="Show progress tracking (default: enabled)"
+        True,
+        "--progress/--no-progress",
+        help="Show progress tracking (default: enabled)",
     ),
     only: Optional[str] = typer.Option(
-        None, "--only", help="Seed only specific data types (comma-separated): channels,videos,playlists,user_videos"
+        None,
+        "--only",
+        help="Seed only specific data types (comma-separated): channels,videos,playlists,user_videos,playlist_memberships",
     ),
     skip: Optional[str] = typer.Option(
-        None, "--skip", help="Skip specific data types (comma-separated): channels,videos,playlists,user_videos"
+        None,
+        "--skip",
+        help="Skip specific data types (comma-separated): channels,videos,playlists,user_videos,playlist_memberships",
     ),
     user_id: str = typer.Option(
         "takeout_user", "--user-id", "-u", help="User ID for seeding user-specific data"
@@ -2049,10 +2068,10 @@ def seed_database(
 ) -> None:
     """
     🌱 Seed database with Google Takeout data.
-    
+
     Transform and load your Takeout data into the chronovista database.
     Handles foreign key dependencies and provides safe incremental updates.
-    
+
     Examples:
         chronovista takeout seed                                    # uses ./takeout
         chronovista takeout seed ~/Downloads/takeout-20240101       # specific path
@@ -2062,7 +2081,7 @@ def seed_database(
         chronovista takeout seed --skip playlists                   # exclude playlists
     """
     import asyncio
-    
+
     async def run_seeding() -> None:
         try:
             # Validate takeout path
@@ -2070,54 +2089,61 @@ def seed_database(
                 console.print(f"❌ Takeout path not found: {takeout_path}")
                 console.print("💡 Make sure you've extracted the Takeout archive")
                 raise typer.Exit(1)
-            
+
             # Parse data type filters
             only_types = set()
             skip_types = set()
-            valid_types = {"channels", "videos", "playlists", "user_videos"}
-            
+
+            # Get valid types dynamically from the seeding service
+            temp_seeding_service = TakeoutSeedingService(user_id=user_id)
+            valid_types = temp_seeding_service.get_available_types()
+
             if only:
                 only_types = set(t.strip() for t in only.split(","))
                 invalid = only_types - valid_types
                 if invalid:
                     console.print(f"❌ Invalid data types in --only: {invalid}")
-                    console.print(f"Valid types: {', '.join(valid_types)}")
+                    console.print(f"Valid types: {', '.join(sorted(valid_types))}")
                     raise typer.Exit(1)
-            
+
             if skip:
                 skip_types = set(t.strip() for t in skip.split(","))
                 invalid = skip_types - valid_types
                 if invalid:
                     console.print(f"❌ Invalid data types in --skip: {invalid}")
-                    console.print(f"Valid types: {', '.join(valid_types)}")
+                    console.print(f"Valid types: {', '.join(sorted(valid_types))}")
                     raise typer.Exit(1)
-            
+
             # Check for conflicting filters
             if only_types and skip_types:
                 conflicts = only_types & skip_types
                 if conflicts:
                     console.print(f"❌ Cannot both include and skip: {conflicts}")
                     raise typer.Exit(1)
-            
+
             # Initialize services first to get progress totals
             takeout_service = TakeoutService(takeout_path)
             console.print("📊 Loading Takeout data...")
             takeout_data = await takeout_service.parse_all()
-            
+
             if dry_run:
                 with Progress(
                     SpinnerColumn(),
                     TextColumn("[progress.description]{task.description}"),
                     console=console,
                 ) as progress_tracker:
-                    task = progress_tracker.add_task("📋 Preparing preview...", total=None)
-                    await _show_seeding_preview(takeout_data, only_types, skip_types, progress_tracker, task)
+                    task = progress_tracker.add_task(
+                        "📋 Preparing preview...", total=None
+                    )
+                    await _show_seeding_preview(
+                        takeout_data, only_types, skip_types, progress_tracker, task
+                    )
                 return
-            
+
             # Initialize modular seeding service
             seeding_service = TakeoutSeedingService(user_id=user_id)
-            
-            # Determine which data types to process  
+
+            # Determine which data types to process
             available_types = seeding_service.get_available_types()
             if only_types:
                 types_to_process = only_types & available_types
@@ -2131,10 +2157,14 @@ def seed_database(
             if "channels" in types_to_process:
                 # Total unique channels from subscriptions + watch history
                 subscription_channels = len(takeout_data.subscriptions)
-                watch_channels = len(set(entry.channel_id or entry.channel_name or "unknown" 
-                                       for entry in takeout_data.watch_history))
+                watch_channels = len(
+                    set(
+                        entry.channel_id or entry.channel_name or "unknown"
+                        for entry in takeout_data.watch_history
+                    )
+                )
                 progress_totals["channels"] = subscription_channels + watch_channels
-                
+
             if "videos" in types_to_process:
                 # Unique videos from watch history
                 unique_videos = set()
@@ -2142,13 +2172,22 @@ def seed_database(
                     video_id = entry.video_id or entry.title_url or "unknown"
                     unique_videos.add(video_id)
                 progress_totals["videos"] = len(unique_videos)
-                
+
             if "user_videos" in types_to_process:
                 # All watch entries with timestamps
-                progress_totals["user_videos"] = len([e for e in takeout_data.watch_history if e.watched_at])
-                
+                progress_totals["user_videos"] = len(
+                    [e for e in takeout_data.watch_history if e.watched_at]
+                )
+
             if "playlists" in types_to_process:
                 progress_totals["playlists"] = len(takeout_data.playlists)
+
+            if "playlist_memberships" in types_to_process:
+                # Total playlist membership entries across all playlists
+                total_memberships = sum(
+                    len(playlist.videos) for playlist in takeout_data.playlists
+                )
+                progress_totals["playlist_memberships"] = total_memberships
 
             # Create visual-only progress bars with proper totals
             with Progress(
@@ -2162,40 +2201,62 @@ def seed_database(
                 task_mapping = {}
                 task_counters = {}
                 for data_type in types_to_process:
-                    total = progress_totals.get(data_type, 1)  # Fallback to 1 if unknown
+                    total = progress_totals.get(
+                        data_type, 1
+                    )  # Fallback to 1 if unknown
                     if data_type == "channels":
-                        task_mapping[data_type] = progress_tracker.add_task("📺 Channels", total=total)
+                        task_mapping[data_type] = progress_tracker.add_task(
+                            "📺 Channels", total=total
+                        )
                     elif data_type == "videos":
-                        task_mapping[data_type] = progress_tracker.add_task("🎥 Videos", total=total)
+                        task_mapping[data_type] = progress_tracker.add_task(
+                            "🎥 Videos", total=total
+                        )
                     elif data_type == "user_videos":
-                        task_mapping[data_type] = progress_tracker.add_task("👤 User Videos", total=total)
+                        task_mapping[data_type] = progress_tracker.add_task(
+                            "👤 User Videos", total=total
+                        )
                     elif data_type == "playlists":
-                        task_mapping[data_type] = progress_tracker.add_task("📁 Playlists", total=total)
+                        task_mapping[data_type] = progress_tracker.add_task(
+                            "📁 Playlists", total=total
+                        )
+                    elif data_type == "playlist_memberships":
+                        task_mapping[data_type] = progress_tracker.add_task(
+                            "🔗 Playlist Memberships", total=total
+                        )
                     task_counters[data_type] = 0
-                
+
                 # Progress callback to update Rich progress bars smoothly
-                def update_progress(data_type: str):
+                def update_progress(data_type: str) -> None:
                     if data_type in task_mapping:
                         task_counters[data_type] += 1
                         # Update every item for smooth progress
-                        progress_tracker.update(task_mapping[data_type], completed=task_counters[data_type])
-                
+                        progress_tracker.update(
+                            task_mapping[data_type], completed=task_counters[data_type]
+                        )
+
                 # Perform seeding with database session (disable SQL logging for clean progress)
                 async for session in db_manager.get_session(echo=False):
                     if incremental:
                         result = await seeding_service.seed_incrementally(
-                            session, takeout_data, data_types=types_to_process, skip_types=skip_types,
-                            progress_callback=ProgressCallback(update_progress)
+                            session,
+                            takeout_data,
+                            data_types=types_to_process,
+                            skip_types=skip_types,
+                            progress_callback=ProgressCallback(update_progress),
                         )
                     else:
                         result = await seeding_service.seed_database(
-                            session, takeout_data, data_types=types_to_process, skip_types=skip_types,
-                            progress_callback=ProgressCallback(update_progress)
+                            session,
+                            takeout_data,
+                            data_types=types_to_process,
+                            skip_types=skip_types,
+                            progress_callback=ProgressCallback(update_progress),
                         )
-            
+
             # Display results outside the progress tracker
             _display_seeding_results(result)
-            
+
             # Show filtering info if applied
             if only_types or skip_types:
                 console.print(f"\n🔍 Filtering Applied:")
@@ -2203,9 +2264,9 @@ def seed_database(
                     console.print(f"   • Only processed: {', '.join(only_types)}")
                 if skip_types:
                     console.print(f"   • Skipped: {', '.join(skip_types)}")
-            
+
             console.print(f"\n✅ Database seeding completed successfully!")
-                
+
         except TakeoutParsingError as e:
             console.print(f"❌ Error parsing Takeout data: {e}")
             console.print("\n💡 Make sure:")
@@ -2216,39 +2277,53 @@ def seed_database(
         except Exception as e:
             console.print(f"❌ Seeding failed: {e}")
             raise typer.Exit(1)
-    
+
     asyncio.run(run_seeding())
 
 
 async def _show_seeding_preview(
-    takeout_data: TakeoutData, only_types: set[str], skip_types: set[str], progress_tracker: Progress, task_id: Any
+    takeout_data: TakeoutData,
+    only_types: set[str],
+    skip_types: set[str],
+    progress_tracker: Progress,
+    task_id: Any,
 ) -> None:
     """Show what would be seeded in dry-run mode."""
     progress_tracker.update(task_id, description="📋 Preparing seeding preview...")
-    
+
     # Calculate what would be processed
     unique_channels = set()
-    
+
     # From subscriptions
     for sub in takeout_data.subscriptions:
         if sub.channel_id:
             unique_channels.add(sub.channel_id)
-    
+
     # From watch history
     for entry in takeout_data.watch_history:
         if entry.channel_id:
             unique_channels.add(entry.channel_id)
-    
+
     unique_videos = len(takeout_data.get_unique_video_ids())
-    user_videos = len([entry for entry in takeout_data.watch_history if entry.watched_at])
+    user_videos = len(
+        [entry for entry in takeout_data.watch_history if entry.watched_at]
+    )
     playlists = len(takeout_data.playlists)
-    
+
     # Apply filters
-    process_channels = ("channels" not in skip_types) and (not only_types or "channels" in only_types)
-    process_videos = ("videos" not in skip_types) and (not only_types or "videos" in only_types)
-    process_user_videos = ("user_videos" not in skip_types) and (not only_types or "user_videos" in only_types)
-    process_playlists = ("playlists" not in skip_types) and (not only_types or "playlists" in only_types)
-    
+    process_channels = ("channels" not in skip_types) and (
+        not only_types or "channels" in only_types
+    )
+    process_videos = ("videos" not in skip_types) and (
+        not only_types or "videos" in only_types
+    )
+    process_user_videos = ("user_videos" not in skip_types) and (
+        not only_types or "user_videos" in only_types
+    )
+    process_playlists = ("playlists" not in skip_types) and (
+        not only_types or "playlists" in only_types
+    )
+
     # Create preview table
     table = Table(
         title="🌱 Seeding Preview (Dry Run)",
@@ -2259,38 +2334,38 @@ async def _show_seeding_preview(
     table.add_column("Count", style="green", justify="right", width=10)
     table.add_column("Status", style="yellow", width=15)
     table.add_column("Dependencies", style="blue", width=30)
-    
+
     # Add rows based on processing order
     table.add_row(
         "Channels",
         str(len(unique_channels)),
         "✅ Process" if process_channels else "⏭️ Skip",
-        "None (foundation data)"
+        "None (foundation data)",
     )
-    
+
     table.add_row(
         "Videos",
         str(unique_videos),
         "✅ Process" if process_videos else "⏭️ Skip",
-        "Requires: Channels"
+        "Requires: Channels",
     )
-    
+
     table.add_row(
         "User Videos",
         str(user_videos),
         "✅ Process" if process_user_videos else "⏭️ Skip",
-        "Requires: Videos"
+        "Requires: Videos",
     )
-    
+
     table.add_row(
         "Playlists",
         str(playlists),
         "✅ Process" if process_playlists else "⏭️ Skip",
-        "Requires: Channels"
+        "Requires: Channels",
     )
-    
+
     console.print(table)
-    
+
     # Show filtering info
     if only_types or skip_types:
         console.print(f"\n🔍 Filtering Applied:")
@@ -2298,7 +2373,7 @@ async def _show_seeding_preview(
             console.print(f"   • Only processing: {', '.join(only_types)}")
         if skip_types:
             console.print(f"   • Skipping: {', '.join(skip_types)}")
-    
+
     console.print(f"\n💡 This is a dry run - no data will be written to the database")
     console.print(f"💡 Remove --dry-run to perform actual seeding")
 
@@ -2310,11 +2385,15 @@ def _display_seeding_results(results: dict) -> None:
     total_updated = sum(r.updated for r in results.values())
     total_failed = sum(r.failed for r in results.values())
     total_duration = sum(r.duration_seconds for r in results.values())
-    
+
     # Calculate overall success rate
     total_operations = total_created + total_updated + total_failed
-    success_rate = ((total_created + total_updated) / total_operations * 100) if total_operations > 0 else 0.0
-    
+    success_rate = (
+        ((total_created + total_updated) / total_operations * 100)
+        if total_operations > 0
+        else 0.0
+    )
+
     # Build summary text
     summary_lines = ["📊 Results Summary:"]
     for data_type, result in sorted(results.items()):
@@ -2328,9 +2407,11 @@ def _display_seeding_results(results: dict) -> None:
             emoji = "📁"
         else:
             emoji = "📄"
-            
-        summary_lines.append(f"   {emoji} {data_type.title()}: {result.created} created, {result.updated} updated, {result.failed} failed ({result.success_rate:.1f}%)")
-    
+
+        summary_lines.append(
+            f"   {emoji} {data_type.title()}: {result.created} created, {result.updated} updated, {result.failed} failed ({result.success_rate:.1f}%)"
+        )
+
     console.print(
         Panel(
             f"""
@@ -2343,16 +2424,18 @@ def _display_seeding_results(results: dict) -> None:
 🎯 Operations: {total_created:,} created, {total_updated:,} updated, {total_failed:,} failed
             """.strip(),
             title="🌱 Database Seeding Results",
-            border_style="green"
+            border_style="green",
         )
     )
-    
+
     # Show detailed errors if any failed
     total_errors = sum(len(r.errors) for r in results.values() if r.errors)
     if total_errors > 0:
         console.print(f"\n⚠️  Found {total_errors} errors across all data types")
         for data_type, result in results.items():
             if result.errors:
-                console.print(f"   • {data_type}: {len(result.errors)} errors (showing first 3):")
+                console.print(
+                    f"   • {data_type}: {len(result.errors)} errors (showing first 3):"
+                )
                 for error in result.errors[:3]:
                     console.print(f"     - {error}")

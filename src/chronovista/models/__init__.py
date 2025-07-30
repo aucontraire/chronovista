@@ -93,14 +93,6 @@ from .video_tag import (
     VideoTagStatistics,
     VideoTagUpdate,
 )
-from .video_transcript import (
-    TranscriptSearchFilters,
-    VideoTranscript,
-    VideoTranscriptBase,
-    VideoTranscriptCreate,
-    VideoTranscriptUpdate,
-    VideoTranscriptWithQuality,
-)
 from .video_topic import (
     VideoTopic,
     VideoTopicAnalytics,
@@ -109,6 +101,14 @@ from .video_topic import (
     VideoTopicSearchFilters,
     VideoTopicStatistics,
     VideoTopicUpdate,
+)
+from .video_transcript import (
+    TranscriptSearchFilters,
+    VideoTranscript,
+    VideoTranscriptBase,
+    VideoTranscriptCreate,
+    VideoTranscriptUpdate,
+    VideoTranscriptWithQuality,
 )
 
 __all__ = [

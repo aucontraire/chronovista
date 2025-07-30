@@ -49,7 +49,7 @@ class Channel(Base):
     )  # LanguageCode enum value
     country: Mapped[Optional[str]] = mapped_column(String(2))
     thumbnail_url: Mapped[Optional[str]] = mapped_column(String(500))
-    
+
     # Subscription status
     is_subscribed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
@@ -143,6 +143,9 @@ class Video(Base):
     )
     video_topics: Mapped[list["VideoTopic"]] = relationship(
         "VideoTopic", back_populates="video"
+    )
+    playlist_memberships: Mapped[list["PlaylistMembership"]] = relationship(
+        "PlaylistMembership", back_populates="video"
     )
 
 
@@ -379,7 +382,9 @@ class ChannelTopic(Base):
     )
 
     # Relationships
-    channel: Mapped["Channel"] = relationship("Channel", back_populates="channel_topics")
+    channel: Mapped["Channel"] = relationship(
+        "Channel", back_populates="channel_topics"
+    )
     topic_category: Mapped["TopicCategory"] = relationship(
         "TopicCategory", back_populates="channel_topics"
     )
@@ -459,6 +464,46 @@ class Playlist(Base):
 
     # Relationships
     channel: Mapped["Channel"] = relationship("Channel")
+    memberships: Mapped[list["PlaylistMembership"]] = relationship(
+        "PlaylistMembership",
+        back_populates="playlist",
+        order_by="PlaylistMembership.position",
+    )
+
+
+class PlaylistMembership(Base):
+    """Playlist-video relationships with position tracking."""
+
+    __tablename__ = "playlist_memberships"
+
+    # Composite primary key
+    playlist_id: Mapped[str] = mapped_column(
+        String(34), ForeignKey("playlists.playlist_id"), primary_key=True
+    )
+    video_id: Mapped[str] = mapped_column(
+        String(20), ForeignKey("videos.video_id"), primary_key=True
+    )
+
+    # Position in playlist (critical for playlist ordering)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Metadata from takeout
+    added_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    # Relationships
+    playlist: Mapped["Playlist"] = relationship(
+        "Playlist", back_populates="memberships"
+    )
+    video: Mapped["Video"] = relationship(
+        "Video", back_populates="playlist_memberships"
+    )
 
 
 # Export all models
@@ -476,4 +521,5 @@ __all__ = [
     "ChannelTopic",
     "UserVideo",
     "Playlist",
+    "PlaylistMembership",
 ]

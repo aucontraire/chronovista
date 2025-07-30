@@ -138,15 +138,15 @@ chronovista sync transcripts
 chronovista sync all
 ```
 
-### Google Takeout Analysis
+### Google Takeout Integration
 
-One of chronovista's most powerful features is the ability to analyze your complete Google Takeout data - giving you insights into your entire YouTube history that goes far beyond what the API provides.
+chronovista provides comprehensive Google Takeout integration, enabling you to both **analyze** and **import** your complete YouTube history into a local database for advanced analytics and insights.
 
 #### **What is Google Takeout?**
 
 Google Takeout is Google's data export service that lets you download a complete archive of your YouTube data, including:
 - **Complete watch history** (including deleted videos with titles preserved)
-- **All playlists** (including private ones)
+- **All playlists** (including private ones) with full video relationships
 - **Search history** with timestamps
 - **Comments and live chat messages**
 - **Channel subscriptions** with dates
@@ -158,9 +158,43 @@ Google Takeout is Google's data export service that lets you download a complete
 2. Select **YouTube and YouTube Music**
 3. Choose your preferred format (JSON recommended)
 4. Download and extract the archive
-5. Point chronovista to your takeout directory
+5. Use chronovista to analyze or import your data
 
-#### **Takeout CLI Commands**
+#### **Database Seeding from Takeout**
+
+Transform your Takeout data into a structured, queryable database with complete foreign key integrity and relationship management:
+
+```bash
+# Seed database with complete takeout data
+chronovista takeout seed /path/to/your/takeout
+
+# Incremental seeding (safe to re-run)
+chronovista takeout seed /path/to/your/takeout --incremental
+
+# Preview what will be imported (no database changes)
+chronovista takeout seed /path/to/your/takeout --dry-run
+
+# Seed specific data types only
+chronovista takeout seed /path/to/your/takeout --only channels,videos
+chronovista takeout seed /path/to/your/takeout --only playlists,playlist_memberships
+
+# Skip certain data types
+chronovista takeout seed /path/to/your/takeout --skip user_videos
+
+# Monitor progress with detailed progress bars
+chronovista takeout seed /path/to/your/takeout --progress
+```
+
+**What gets imported:**
+- ✅ **Channels** - All channels from subscriptions, watch history, and playlists
+- ✅ **Videos** - Complete video metadata with historical data preservation
+- ✅ **User Videos** - Your personal watch history with timestamps
+- ✅ **Playlists** - Playlist metadata and structure
+- ✅ **Playlist Memberships** - Complete playlist-video relationships with position tracking
+- ✅ **Data Quality** - Automatic cleanup of malformed data (925+ video IDs sanitized)
+- ✅ **Foreign Key Integrity** - Proper dependency resolution and referential integrity
+
+#### **Takeout Analysis Commands**
 
 ```bash
 # Explore your takeout data structure
@@ -233,17 +267,30 @@ $ chronovista takeout analyze ./takeout --type viewing-patterns
 chronovista can **combine** your Takeout data with live YouTube API data for the most complete picture:
 
 ```bash
-# Sync API data first
-chronovista sync all
+# Option 1: Seed Takeout data first, then sync API data
+chronovista takeout seed /path/to/takeout
+chronovista sync all  # Enriches seeded data with current API information
 
-# Then enhance with takeout analysis
+# Option 2: Sync API data first, then import Takeout data
+chronovista sync all
+chronovista takeout seed /path/to/takeout --incremental  # Adds historical data
+
+# Option 3: Combined analysis without database import
 chronovista takeout integrate /path/to/takeout --merge-with-api
 
 # This gives you:
 # ✅ Current data from API (up-to-date metrics, current video status)
-# ✅ Historical data from Takeout (deleted videos, old metadata)
-# ✅ Complete timeline reconstruction
+# ✅ Historical data from Takeout (deleted videos, old metadata, complete playlists)
+# ✅ Complete timeline reconstruction with relationship integrity
+# ✅ Queryable database for advanced analytics and insights
 ```
+
+**Benefits of Database Seeding:**
+- 🏗️ **Structured Storage** - Query your data with SQL for complex analytics
+- 🔗 **Relationship Mapping** - Complete playlist-video relationships with position tracking  
+- 📊 **Advanced Analytics** - Join watch history with playlist memberships and channel data
+- 🔍 **Historical Preservation** - Deleted videos and historical metadata preserved permanently
+- ⚡ **Performance** - Fast queries on indexed, structured data vs. parsing files repeatedly
 
 ### Application Status
 

@@ -24,6 +24,15 @@ from .channel_keyword import (
     ChannelKeywordStatistics,
     ChannelKeywordUpdate,
 )
+from .channel_topic import (
+    ChannelTopic,
+    ChannelTopicAnalytics,
+    ChannelTopicBase,
+    ChannelTopicCreate,
+    ChannelTopicSearchFilters,
+    ChannelTopicStatistics,
+    ChannelTopicUpdate,
+)
 from .enums import DownloadReason, LanguagePreferenceType, TrackKind, TranscriptType
 from .playlist import (
     Playlist,
@@ -84,6 +93,15 @@ from .video_tag import (
     VideoTagStatistics,
     VideoTagUpdate,
 )
+from .video_topic import (
+    VideoTopic,
+    VideoTopicAnalytics,
+    VideoTopicBase,
+    VideoTopicCreate,
+    VideoTopicSearchFilters,
+    VideoTopicStatistics,
+    VideoTopicUpdate,
+)
 from .video_transcript import (
     TranscriptSearchFilters,
     VideoTranscript,
@@ -141,6 +159,14 @@ __all__ = [
     "VideoTagBase",
     "VideoTagSearchFilters",
     "VideoTagStatistics",
+    # Video Topics
+    "VideoTopic",
+    "VideoTopicCreate",
+    "VideoTopicUpdate",
+    "VideoTopicBase",
+    "VideoTopicSearchFilters",
+    "VideoTopicStatistics",
+    "VideoTopicAnalytics",
     # Video Localizations
     "VideoLocalization",
     "VideoLocalizationCreate",
@@ -156,6 +182,14 @@ __all__ = [
     "ChannelKeywordSearchFilters",
     "ChannelKeywordStatistics",
     "ChannelKeywordAnalytics",
+    # Channel Topics
+    "ChannelTopic",
+    "ChannelTopicCreate",
+    "ChannelTopicUpdate",
+    "ChannelTopicBase",
+    "ChannelTopicSearchFilters",
+    "ChannelTopicStatistics",
+    "ChannelTopicAnalytics",
     # Topic Categories
     "TopicCategory",
     "TopicCategoryCreate",

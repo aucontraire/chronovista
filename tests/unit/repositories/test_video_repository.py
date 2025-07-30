@@ -938,7 +938,7 @@ class TestVideoRepositoryAdditionalMethods:
 
 class TestVideoRepositoryAdvancedCoverage:
     """Test advanced video repository methods for complete coverage."""
-    
+
     @pytest.fixture
     def repository(self) -> VideoRepository:
         """Create repository instance for testing."""
@@ -977,7 +977,7 @@ class TestVideoRepositoryAdvancedCoverage:
         # Since the get_video_statistics method is complex and requires extensive SQLAlchemy mocking,
         # we'll test it by verifying the method exists and handles basic scenarios
         from chronovista.models.video import VideoStatistics
-        
+
         # Mock the method to return realistic stats - this tests the interface without complex DB mocking
         expected_stats = VideoStatistics(
             total_videos=100,
@@ -993,14 +993,14 @@ class TestVideoRepositoryAdvancedCoverage:
             top_languages=[("en", 60), ("es", 30), ("fr", 10)],
             upload_trend={"2023-01": 20, "2023-02": 25},
         )
-        
+
         # Test that the method can be called and returns VideoStatistics
-        assert hasattr(repository, 'get_video_statistics')
-        
+        assert hasattr(repository, "get_video_statistics")
+
         # Mock to avoid complex SQLAlchemy queries
         repository.get_video_statistics = AsyncMock(return_value=expected_stats)
         result = await repository.get_video_statistics(mock_session)
-        
+
         assert isinstance(result, VideoStatistics)
         assert result.total_videos == 100
 
@@ -1012,7 +1012,7 @@ class TestVideoRepositoryAdvancedCoverage:
         result = await repository.get_videos_with_preferred_localizations(
             mock_session, [], ["en", "es"]
         )
-        
+
         assert result == {}
         mock_session.execute.assert_not_called()
 
@@ -1027,11 +1027,11 @@ class TestVideoRepositoryAdvancedCoverage:
         videos_scalars.all.return_value = []
         videos_result.scalars.return_value = videos_scalars
         mock_session.execute.return_value = videos_result
-        
+
         result = await repository.get_videos_with_preferred_localizations(
             mock_session, ["video1", "video2"], ["en", "es"]
         )
-        
+
         assert result == {}
         mock_session.execute.assert_called_once()
 
@@ -1041,32 +1041,36 @@ class TestVideoRepositoryAdvancedCoverage:
     ):
         """Test get_videos_with_preferred_localizations full implementation."""
         from unittest.mock import patch
-        
+
         # Create mock video
         sample_video_db.video_id = "video1"
-        
+
         # Mock videos query
         videos_result = MagicMock()
         videos_scalars = MagicMock()
         videos_scalars.all.return_value = [sample_video_db]
         videos_result.scalars.return_value = videos_scalars
         mock_session.execute.return_value = videos_result
-        
+
         # Mock VideoLocalizationRepository
         mock_localization = MagicMock()
         mock_localization.localized_title = "Localized Title"
         mock_localization.localized_description = "Localized Description"
         mock_localization.language_code = "es"
-        
-        with patch('chronovista.repositories.video_localization_repository.VideoLocalizationRepository') as mock_repo_class:
+
+        with patch(
+            "chronovista.repositories.video_localization_repository.VideoLocalizationRepository"
+        ) as mock_repo_class:
             mock_repo = AsyncMock()
-            mock_repo.get_preferred_localizations.return_value = {"video1": mock_localization}
+            mock_repo.get_preferred_localizations.return_value = {
+                "video1": mock_localization
+            }
             mock_repo_class.return_value = mock_repo
-            
+
             result = await repository.get_videos_with_preferred_localizations(
                 mock_session, ["video1"], ["en", "es"]
             )
-            
+
             assert "video1" in result
             video_data = result["video1"]
             assert video_data["video"] == sample_video_db
@@ -1074,7 +1078,7 @@ class TestVideoRepositoryAdvancedCoverage:
             assert video_data["localized_title"] == "Localized Title"
             assert video_data["localized_description"] == "Localized Description"
             assert video_data["localization_language"] == "es"
-            
+
             mock_repo.get_preferred_localizations.assert_called_once_with(
                 mock_session, ["video1"], ["en", "es"]
             )
@@ -1085,33 +1089,37 @@ class TestVideoRepositoryAdvancedCoverage:
     ):
         """Test get_videos_with_preferred_localizations when no localization found."""
         from unittest.mock import patch
-        
+
         sample_video_db.video_id = "video1"
-        
+
         # Mock videos query
         videos_result = MagicMock()
         videos_scalars = MagicMock()
         videos_scalars.all.return_value = [sample_video_db]
         videos_result.scalars.return_value = videos_scalars
         mock_session.execute.return_value = videos_result
-        
+
         # Mock VideoLocalizationRepository returning no localizations
-        with patch('chronovista.repositories.video_localization_repository.VideoLocalizationRepository') as mock_repo_class:
+        with patch(
+            "chronovista.repositories.video_localization_repository.VideoLocalizationRepository"
+        ) as mock_repo_class:
             mock_repo = AsyncMock()
             mock_repo.get_preferred_localizations.return_value = {}
             mock_repo_class.return_value = mock_repo
-            
+
             result = await repository.get_videos_with_preferred_localizations(
                 mock_session, ["video1"], ["en", "es"]
             )
-            
+
             assert "video1" in result
             video_data = result["video1"]
             assert video_data["video"] == sample_video_db
             assert video_data["preferred_localization"] is None
             assert video_data["localized_title"] == sample_video_db.title
             assert video_data["localized_description"] == sample_video_db.description
-            assert video_data["localization_language"] == sample_video_db.default_language
+            assert (
+                video_data["localization_language"] == sample_video_db.default_language
+            )
 
     @pytest.mark.asyncio
     async def test_get_videos_with_localization_support_with_languages(
@@ -1119,21 +1127,23 @@ class TestVideoRepositoryAdvancedCoverage:
     ):
         """Test get_videos_with_localization_support with specific languages."""
         from unittest.mock import patch
-        
+
         sample_video_db.video_id = "video1"
-        
+
         # Mock videos query
         videos_result = MagicMock()
         videos_scalars = MagicMock()
         videos_scalars.all.return_value = [sample_video_db]
         videos_result.scalars.return_value = videos_scalars
         mock_session.execute.return_value = videos_result
-        
+
         # Mock VideoLocalizationRepository
         mock_localization = MagicMock()
         mock_localization.language_code = "es"
-        
-        with patch('chronovista.repositories.video_localization_repository.VideoLocalizationRepository') as mock_repo_class:
+
+        with patch(
+            "chronovista.repositories.video_localization_repository.VideoLocalizationRepository"
+        ) as mock_repo_class:
             mock_repo = AsyncMock()
             # Mock get_videos_by_language to return video IDs for each language
             mock_repo.get_videos_by_language.side_effect = [
@@ -1142,18 +1152,18 @@ class TestVideoRepositoryAdvancedCoverage:
             ]
             mock_repo.get_by_video_id.return_value = [mock_localization]
             mock_repo_class.return_value = mock_repo
-            
+
             result = await repository.get_videos_with_localization_support(
                 mock_session, language_codes=["en", "es"], min_localizations=2
             )
-            
+
             assert len(result) == 1
             video_data = result[0]
             assert video_data["video"] == sample_video_db
             assert video_data["localization_count"] == 1
             assert video_data["supported_languages"] == ["es"]
             assert video_data["localizations"] == [mock_localization]
-            
+
             # Verify both languages were queried
             assert mock_repo.get_videos_by_language.call_count == 2
 
@@ -1163,36 +1173,38 @@ class TestVideoRepositoryAdvancedCoverage:
     ):
         """Test get_videos_with_localization_support without specific languages."""
         from unittest.mock import patch
-        
+
         sample_video_db.video_id = "video1"
-        
+
         # Mock videos query
         videos_result = MagicMock()
         videos_scalars = MagicMock()
         videos_scalars.all.return_value = [sample_video_db]
         videos_result.scalars.return_value = videos_scalars
         mock_session.execute.return_value = videos_result
-        
+
         # Mock VideoLocalizationRepository
         mock_localization = MagicMock()
         mock_localization.language_code = "es"
-        
-        with patch('chronovista.repositories.video_localization_repository.VideoLocalizationRepository') as mock_repo_class:
+
+        with patch(
+            "chronovista.repositories.video_localization_repository.VideoLocalizationRepository"
+        ) as mock_repo_class:
             mock_repo = AsyncMock()
             mock_repo.get_multilingual_videos.return_value = [("video1", 2)]
             mock_repo.get_by_video_id.return_value = [mock_localization]
             mock_repo_class.return_value = mock_repo
-            
+
             result = await repository.get_videos_with_localization_support(
                 mock_session, language_codes=None, min_localizations=1
             )
-            
+
             assert len(result) == 1
             video_data = result[0]
             assert video_data["video"] == sample_video_db
             assert video_data["localization_count"] == 1
             assert video_data["supported_languages"] == ["es"]
-            
+
             mock_repo.get_multilingual_videos.assert_called_once_with(
                 mock_session, min_languages=1
             )
@@ -1203,16 +1215,18 @@ class TestVideoRepositoryAdvancedCoverage:
     ):
         """Test get_videos_with_localization_support when no videos qualify."""
         from unittest.mock import patch
-        
-        with patch('chronovista.repositories.video_localization_repository.VideoLocalizationRepository') as mock_repo_class:
+
+        with patch(
+            "chronovista.repositories.video_localization_repository.VideoLocalizationRepository"
+        ) as mock_repo_class:
             mock_repo = AsyncMock()
             mock_repo.get_videos_by_language.return_value = []
             mock_repo_class.return_value = mock_repo
-            
+
             result = await repository.get_videos_with_localization_support(
                 mock_session, language_codes=["en"], min_localizations=1
             )
-            
+
             assert result == []
             mock_session.execute.assert_not_called()
 
@@ -1222,32 +1236,32 @@ class TestVideoRepositoryAdvancedCoverage:
     ):
         """Test get_videos_missing_localizations full implementation."""
         from unittest.mock import patch
-        
+
         sample_video_db.video_id = "video1"
-        
+
         # Mock videos query
         videos_result = MagicMock()
         videos_scalars = MagicMock()
         videos_scalars.all.return_value = [sample_video_db]
         videos_result.scalars.return_value = videos_scalars
         mock_session.execute.return_value = videos_result
-        
+
         # Mock existing localization
         mock_localization = MagicMock()
         mock_localization.language_code = "en"
-        
-        with patch('chronovista.repositories.video_localization_repository.VideoLocalizationRepository') as mock_repo_class:
+
+        with patch(
+            "chronovista.repositories.video_localization_repository.VideoLocalizationRepository"
+        ) as mock_repo_class:
             mock_repo = AsyncMock()
-            mock_repo.find_missing_localizations.return_value = {
-                "video1": ["es", "fr"]
-            }
+            mock_repo.find_missing_localizations.return_value = {"video1": ["es", "fr"]}
             mock_repo.get_by_video_id.return_value = [mock_localization]
             mock_repo_class.return_value = mock_repo
-            
+
             result = await repository.get_videos_missing_localizations(
                 mock_session, ["en", "es", "fr"], ["video1"]
             )
-            
+
             assert "video1" in result
             video_data = result["video1"]
             assert video_data["video"] == sample_video_db
@@ -1255,7 +1269,7 @@ class TestVideoRepositoryAdvancedCoverage:
             assert video_data["existing_languages"] == ["en"]
             assert video_data["existing_localizations"] == [mock_localization]
             assert video_data["completion_percentage"] == 33.33333333333333  # 1/3 * 100
-            
+
             mock_repo.find_missing_localizations.assert_called_once_with(
                 mock_session, ["en", "es", "fr"], ["video1"]
             )
@@ -1266,16 +1280,18 @@ class TestVideoRepositoryAdvancedCoverage:
     ):
         """Test get_videos_missing_localizations when no videos have missing localizations."""
         from unittest.mock import patch
-        
-        with patch('chronovista.repositories.video_localization_repository.VideoLocalizationRepository') as mock_repo_class:
+
+        with patch(
+            "chronovista.repositories.video_localization_repository.VideoLocalizationRepository"
+        ) as mock_repo_class:
             mock_repo = AsyncMock()
             mock_repo.find_missing_localizations.return_value = {}
             mock_repo_class.return_value = mock_repo
-            
+
             result = await repository.get_videos_missing_localizations(
                 mock_session, ["en", "es"], ["video1"]
             )
-            
+
             assert result == {}
             mock_session.execute.assert_not_called()
 
@@ -1286,9 +1302,11 @@ class TestVideoRepositoryAdvancedCoverage:
         """Test get_video_localization_summary when video not found."""
         # Mock get_by_video_id to return None
         repository.get_by_video_id = AsyncMock(return_value=None)
-        
-        result = await repository.get_video_localization_summary(mock_session, "nonexistent")
-        
+
+        result = await repository.get_video_localization_summary(
+            mock_session, "nonexistent"
+        )
+
         assert result is None
         repository.get_by_video_id.assert_called_once_with(mock_session, "nonexistent")
 
@@ -1298,27 +1316,35 @@ class TestVideoRepositoryAdvancedCoverage:
     ):
         """Test get_video_localization_summary full implementation."""
         from unittest.mock import patch
-        
+
         sample_video_db.video_id = "video1"
-        
+
         # Mock get_by_video_id to return video
         repository.get_by_video_id = AsyncMock(return_value=sample_video_db)
-        
+
         # Mock localization data
         mock_localization = MagicMock()
         mock_localization.language_code = "es"
         mock_localization.localized_title = "Título en Español"
         mock_localization.localized_description = "Descripción en español"
         mock_localization.created_at = datetime(2023, 1, 1)
-        
-        with patch('chronovista.repositories.video_localization_repository.VideoLocalizationRepository') as mock_repo_class:
+
+        with patch(
+            "chronovista.repositories.video_localization_repository.VideoLocalizationRepository"
+        ) as mock_repo_class:
             mock_repo = AsyncMock()
             mock_repo.get_by_video_id.return_value = [mock_localization]
-            mock_repo.get_language_coverage.return_value = {"en": 100, "es": 50, "fr": 25}
+            mock_repo.get_language_coverage.return_value = {
+                "en": 100,
+                "es": 50,
+                "fr": 25,
+            }
             mock_repo_class.return_value = mock_repo
-            
-            result = await repository.get_video_localization_summary(mock_session, "video1")
-            
+
+            result = await repository.get_video_localization_summary(
+                mock_session, "video1"
+            )
+
             assert result is not None
             assert result["video"] == sample_video_db
             assert result["localization_count"] == 1
@@ -1327,14 +1353,14 @@ class TestVideoRepositoryAdvancedCoverage:
             assert result["has_localizations"] is True
             assert result["most_common_language"] == "en"  # Most coverage
             assert result["is_multilingual"] is False  # Only 1 localization
-            
+
             # Check localization summary structure
             assert "es" in result["localization_summary"]
             es_summary = result["localization_summary"]["es"]
             assert es_summary["title"] == "Título en Español"
             assert es_summary["has_description"] is True
             assert es_summary["created_at"] == datetime(2023, 1, 1)
-            
+
             mock_repo.get_by_video_id.assert_called_once_with(mock_session, "video1")
             mock_repo.get_language_coverage.assert_called_once_with(mock_session)
 
@@ -1344,20 +1370,24 @@ class TestVideoRepositoryAdvancedCoverage:
     ):
         """Test get_video_localization_summary when no language coverage exists."""
         from unittest.mock import patch
-        
+
         sample_video_db.video_id = "video1"
-        
+
         # Mock get_by_video_id to return video
         repository.get_by_video_id = AsyncMock(return_value=sample_video_db)
-        
-        with patch('chronovista.repositories.video_localization_repository.VideoLocalizationRepository') as mock_repo_class:
+
+        with patch(
+            "chronovista.repositories.video_localization_repository.VideoLocalizationRepository"
+        ) as mock_repo_class:
             mock_repo = AsyncMock()
             mock_repo.get_by_video_id.return_value = []
             mock_repo.get_language_coverage.return_value = {}  # No coverage data
             mock_repo_class.return_value = mock_repo
-            
-            result = await repository.get_video_localization_summary(mock_session, "video1")
-            
+
+            result = await repository.get_video_localization_summary(
+                mock_session, "video1"
+            )
+
             assert result is not None
             assert result["video"] == sample_video_db
             assert result["localization_count"] == 0

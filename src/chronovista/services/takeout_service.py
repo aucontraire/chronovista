@@ -14,7 +14,7 @@ No API calls required - pure local analysis for cost-effective data discovery.
 import csv
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from urllib.parse import parse_qs, urlparse
@@ -192,8 +192,10 @@ class TakeoutService:
 
         for playlist_file in playlist_files:
             try:
-                # Extract playlist name from filename
+                # Extract playlist name from filename and remove "-videos" suffix
                 playlist_name = playlist_file.stem
+                if playlist_name.endswith("-videos"):
+                    playlist_name = playlist_name[:-7]  # Remove "-videos" suffix
 
                 # Parse CSV file
                 videos: List[TakeoutPlaylistItem] = []
@@ -566,7 +568,9 @@ class TakeoutService:
             # Higher priority for recent videos
             if entry.watched_at:
                 # Make datetime timezone-aware for comparison
-                now_utc = datetime.utcnow().replace(tzinfo=entry.watched_at.tzinfo)
+                now_utc = datetime.now(timezone.utc).replace(
+                    tzinfo=entry.watched_at.tzinfo
+                )
                 days_since = (now_utc - entry.watched_at).days
                 recency_score = max(0, 1 - (days_since / 365))  # Decay over a year
                 priority_score += recency_score * 0.4

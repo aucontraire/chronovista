@@ -15,6 +15,7 @@ from rich.table import Table
 
 from chronovista.auth import youtube_oauth
 from chronovista.config.database import db_manager
+from chronovista.db.models import Video as VideoDB
 from chronovista.models.channel import ChannelCreate
 from chronovista.models.channel_topic import ChannelTopicCreate
 from chronovista.models.topic_category import TopicCategoryCreate
@@ -696,7 +697,13 @@ def all(
 
 
 @sync_app.command()
-def channel() -> None:
+def channel(
+    topic: str = typer.Option(
+        None,
+        "--topic",
+        help="Only sync if channel matches topic ID (e.g., 25 for News & Politics)",
+    )
+) -> None:
     """Fetch and save your channel information to database."""
 
     async def sync_channel_data() -> None:
@@ -720,6 +727,47 @@ def channel() -> None:
 
             # Fetch channel data from YouTube API
             channel_data = await youtube_service.get_my_channel()
+
+            # Apply topic filtering if requested
+            if topic:
+                console.print(
+                    f"[blue]🔍 Checking if channel matches topic ID: {topic}[/blue]"
+                )
+
+                # Validate topic exists
+                async for session in db_manager.get_session():
+                    if not await topic_category_repository.exists(session, topic):
+                        console.print(
+                            Panel(
+                                f"[red]❌ Invalid topic ID: {topic}[/red]\n"
+                                f"Use [bold]chronovista topics list[/bold] to see available topics.",
+                                title="Topic Filter Error",
+                                border_style="red",
+                            )
+                        )
+                        return
+
+                # Check if channel has matching topics
+                topic_details = channel_data.get("topicDetails", {})
+                topic_ids = topic_details.get("topicIds", [])
+
+                # For channels, we also need to check if any of the channel's videos match the topic
+                # Since we don't have video category info in channel response, we'll check topicDetails
+                has_matching_topic = topic in topic_ids
+
+                if not has_matching_topic:
+                    console.print(
+                        Panel(
+                            f"[yellow]ℹ️ Channel does not match topic ID: {topic}[/yellow]\n"
+                            f"Channel topics: {topic_ids[:3] if topic_ids else 'None'}\n"
+                            f"Use [bold]chronovista sync channel[/bold] without --topic to sync anyway.",
+                            title="Topic Filter: No Match",
+                            border_style="yellow",
+                        )
+                    )
+                    return
+
+                console.print(f"[green]✅ Channel matches topic {topic}[/green]")
 
             console.print("[blue]💾 Saving channel data to database...[/blue]")
 
@@ -771,17 +819,22 @@ def channel() -> None:
                         valid_associations = 0
                         for topic_id in topic_ids:
                             # Check if topic exists in our database (only video categories are synced)
-                            if await topic_category_repository.exists(session, topic_id):
+                            if await topic_category_repository.exists(
+                                session, topic_id
+                            ):
                                 # Create channel-topic association
                                 channel_topic_create = ChannelTopicCreate(
-                                    channel_id=saved_channel.channel_id, topic_id=topic_id
+                                    channel_id=saved_channel.channel_id,
+                                    topic_id=topic_id,
                                 )
                                 await channel_topic_repository.create_or_update(
                                     session, channel_topic_create
                                 )
                                 valid_associations += 1
                             else:
-                                console.print(f"[dim]⚠️  Skipping unknown topic ID: {topic_id}[/dim]")
+                                console.print(
+                                    f"[dim]⚠️  Skipping unknown topic ID: {topic_id}[/dim]"
+                                )
 
                         if valid_associations > 0:
                             console.print(
@@ -877,7 +930,11 @@ def channel() -> None:
 
 
 @sync_app.command()
-def liked() -> None:
+def liked(
+    topic: str = typer.Option(
+        None, "--topic", help="Filter videos by topic ID (e.g., 25 for News & Politics)"
+    )
+) -> None:
     """Fetch and save your liked videos to database."""
 
     async def sync_liked_videos() -> None:
@@ -932,11 +989,52 @@ def liked() -> None:
                 )
                 return
 
+            # Apply topic filtering if requested
+            if topic:
+                console.print(f"[blue]🔍 Filtering videos by topic ID: {topic}[/blue]")
+
+                # Validate topic exists
+                async for session in db_manager.get_session():
+                    if not await topic_category_repository.exists(session, topic):
+                        console.print(
+                            Panel(
+                                f"[red]❌ Invalid topic ID: {topic}[/red]\n"
+                                f"Use [bold]chronovista topics list[/bold] to see available topics.",
+                                title="Topic Filter Error",
+                                border_style="red",
+                            )
+                        )
+                        return
+
+                # Filter videos by categoryId
+                filtered_videos = []
+                for video in liked_videos:
+                    snippet = video.get("snippet", {})
+                    category_id = snippet.get("categoryId")
+                    if category_id == topic:
+                        filtered_videos.append(video)
+
+                console.print(
+                    f"[blue]📊 Topic filter: {len(filtered_videos)} of {len(liked_videos)} videos match topic {topic}[/blue]"
+                )
+                liked_videos = filtered_videos
+
+                if not liked_videos:
+                    console.print(
+                        Panel(
+                            f"[yellow]ℹ️ No videos found with topic ID: {topic}[/yellow]\n"
+                            f"Try a different topic or remove the --topic filter.",
+                            title="No Matching Videos",
+                            border_style="yellow",
+                        )
+                    )
+                    return
+
             console.print(
                 f"[blue]💾 Saving {len(liked_videos)} liked videos to database...[/blue]"
             )
 
-            saved_videos = []
+            saved_videos: List[VideoDB] = []
 
             # Process each video
             for video_data in liked_videos:
@@ -1081,7 +1179,9 @@ def liked() -> None:
                                     valid_associations = 0
                                     for topic_id in topic_ids:
                                         # Check if topic exists in our database (only video categories are synced)
-                                        if await topic_category_repository.exists(session, topic_id):
+                                        if await topic_category_repository.exists(
+                                            session, topic_id
+                                        ):
                                             # Create channel-topic association
                                             channel_topic_create = ChannelTopicCreate(
                                                 channel_id=saved_channel.channel_id,
@@ -1092,9 +1192,11 @@ def liked() -> None:
                                             )
                                             valid_associations += 1
                                         # Silently skip unknown topics during bulk video processing
-                                    
+
                                     if valid_associations > 0:
-                                        console.print(f"[dim]✅ Created {valid_associations} channel-topic associations for {saved_channel.channel_id[:8]}...[/dim]")
+                                        console.print(
+                                            f"[dim]✅ Created {valid_associations} channel-topic associations for {saved_channel.channel_id[:8]}...[/dim]"
+                                        )
                                 except Exception as e:
                                     console.print(
                                         f"[yellow]⚠️  Could not create topic associations for channel {saved_channel.channel_id}: {e}[/yellow]"
@@ -1146,18 +1248,32 @@ def liked() -> None:
             table.add_column("Views", style="magenta")
             table.add_column("Likes", style="red")
 
-            for video in saved_videos[:5]:  # Show first 5
-                duration_formatted = f"{video.duration // 60}:{video.duration % 60:02d}"
+            for saved_video in saved_videos[:5]:  # Show first 5
+                duration_formatted = (
+                    f"{saved_video.duration // 60}:{saved_video.duration % 60:02d}"
+                )
                 table.add_row(
-                    video.title[:47] + "..." if len(video.title) > 50 else video.title,
                     (
-                        video.channel_id[:27] + "..."
-                        if len(video.channel_id) > 30
-                        else video.channel_id
+                        saved_video.title[:47] + "..."
+                        if len(saved_video.title) > 50
+                        else saved_video.title
+                    ),
+                    (
+                        saved_video.channel_id[:27] + "..."
+                        if len(saved_video.channel_id) > 30
+                        else saved_video.channel_id
                     ),
                     duration_formatted,
-                    str(video.view_count) if video.view_count else "Unknown",
-                    str(video.like_count) if video.like_count else "Unknown",
+                    (
+                        str(saved_video.view_count)
+                        if saved_video.view_count
+                        else "Unknown"
+                    ),
+                    (
+                        str(saved_video.like_count)
+                        if saved_video.like_count
+                        else "Unknown"
+                    ),
                 )
 
             if len(saved_videos) > 5:

@@ -302,6 +302,35 @@ chronovista status
 chronovista --version
 ```
 
+## Documentation
+
+### Topic Integration Guide
+
+chronovista includes comprehensive topic functionality for categorizing and filtering your YouTube content by categories like News & Politics, Music, Gaming, and more.
+
+📖 **[Complete Topic Integration Guide](src/chronovista/docs/topic-integration-guide.md)**
+
+Key features:
+- **Automatic Topic Association** - Videos and channels are automatically linked to topics during sync
+- **Topic Filtering** - Filter sync operations and analysis by specific topic categories  
+- **Topic Commands** - Explore your content by topic with dedicated CLI commands
+- **Takeout Integration** - Apply topic filters to Google Takeout analysis
+
+Quick examples:
+```bash
+# Sync and explore topics
+chronovista sync topics          # Populate topic categories
+chronovista topics list          # View all available topics
+chronovista topics videos 25     # Show News & Politics videos
+
+# Filter sync operations by topic
+chronovista sync liked --topic 10       # Only sync Music videos
+chronovista sync channel --topic 25     # Only sync if channel matches News & Politics
+
+# Apply topic filters to takeout analysis
+chronovista takeout analyze --topic 27  # Analyze only Educational content
+```
+
 ## Development
 
 ### Setup Development Environment

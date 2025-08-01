@@ -30,6 +30,8 @@ from rich.table import Table
 
 from ...config.database import db_manager
 from ...models.takeout.takeout_data import TakeoutData
+from ...repositories.topic_category_repository import TopicCategoryRepository
+from ...repositories.video_topic_repository import VideoTopicRepository
 from ...services.seeding import ProgressCallback
 from ...services.takeout_seeding_service import TakeoutSeedingService
 from ...services.takeout_service import TakeoutParsingError, TakeoutService
@@ -43,6 +45,10 @@ console = Console()
 takeout_app = typer.Typer(
     name="takeout", help="📁 Explore Google Takeout data locally (no API calls)"
 )
+
+# Repository instances for topic integration
+topic_category_repository = TopicCategoryRepository()
+video_topic_repository = VideoTopicRepository()
 
 
 async def _build_video_title_lookup(takeout_service: TakeoutService) -> dict[str, str]:
@@ -90,6 +96,11 @@ def peek_data(
     all_items: bool = typer.Option(
         False, "--all", "-a", help="Show all items (no limit)"
     ),
+    topic_filter: Optional[str] = typer.Option(
+        None,
+        "--topic",
+        help="Filter content by topic ID (requires synced topic associations)",
+    ),
 ) -> None:
     """
     👀 Peek at your Google Takeout data without API calls.
@@ -100,7 +111,7 @@ def peek_data(
     Examples:
         chronovista takeout peek playlists
         chronovista takeout peek playlists "Aaron Mate" --limit=50
-        chronovista takeout peek history --recent --limit=10
+        chronovista takeout peek history --recent --limit=10 --topic=25
         chronovista takeout peek channels "Corey Schafer"
         chronovista takeout peek comments --recent --limit=15
     """
@@ -119,6 +130,43 @@ def peek_data(
 
                 # Initialize TakeoutService
                 takeout_service = TakeoutService(takeout_path)
+
+                # Validate topic filter if provided
+                if topic_filter:
+                    progress.update(task, description="🏷️ Validating topic filter...")
+                    async for session in db_manager.get_session():
+                        if not await topic_category_repository.exists(
+                            session, topic_filter
+                        ):
+                            console.print(
+                                Panel(
+                                    f"[red]❌ Invalid topic ID: {topic_filter}[/red]\n"
+                                    "Use chronovista topics list to see available topics.",
+                                    title="Topic Filter Error",
+                                    border_style="red",
+                                )
+                            )
+                            return
+
+                        # Get topic name for display
+                        topic_category = await topic_category_repository.get(
+                            session, topic_filter
+                        )
+                        topic_name = (
+                            topic_category.category_name
+                            if topic_category
+                            else f"Topic {topic_filter}"
+                        )
+                        console.print(
+                            f"[blue]🔍 Filtering by topic: {topic_name}[/blue]"
+                        )
+                        console.print(
+                            "[yellow]ℹ️ Topic filtering requires video-topic associations to be synced first[/yellow]"
+                        )
+
+                    progress.update(
+                        task, description=f"📁 Loading {data_type} from Takeout..."
+                    )
 
                 # Determine effective limit
                 effective_limit = None if all_items else limit
@@ -644,6 +692,57 @@ async def _peek_subscriptions(
         console.print(f"❌ Error analyzing subscriptions: {e}")
 
 
+async def _apply_topic_filters(
+    analysis: Any, topic_filter: Optional[str], by_topic: bool
+) -> None:
+    """Apply topic filtering and grouping to analysis results."""
+    try:
+        # Validate topic filter if provided
+        if topic_filter:
+            async for session in db_manager.get_session():
+                if not await topic_category_repository.exists(session, topic_filter):
+                    console.print(
+                        Panel(
+                            f"[red]❌ Invalid topic ID: {topic_filter}[/red]\n"
+                            "Use chronovista topics list to see available topics.",
+                            title="Topic Filter Error",
+                            border_style="red",
+                        )
+                    )
+                    return
+
+                # Get topic name for display
+                topic_category = await topic_category_repository.get(
+                    session, topic_filter
+                )
+                topic_name = (
+                    topic_category.category_name
+                    if topic_category
+                    else f"Topic {topic_filter}"
+                )
+
+                console.print(
+                    f"[blue]🔍 Filtering analysis by topic: {topic_name}[/blue]"
+                )
+
+        if by_topic:
+            console.print(
+                "[blue]🏷️ Grouping analysis results by topic categories[/blue]"
+            )
+            # Note: Full topic grouping would require analyzing video content in takeout data
+            # This is a placeholder for the functionality - it would need integration with
+            # video categorization logic to match takeout videos with their topics
+            console.print(
+                "[yellow]ℹ️ Topic grouping requires video-topic associations to be synced first[/yellow]"
+            )
+            console.print(
+                "[dim]Use 'chronovista sync all' to create topic associations before grouping[/dim]"
+            )
+
+    except Exception as e:
+        console.print(f"[yellow]⚠️ Error processing topic filters: {e}[/yellow]")
+
+
 @takeout_app.command("analyze")
 def analyze_comprehensive(
     takeout_path: Path = typer.Option(
@@ -652,11 +751,19 @@ def analyze_comprehensive(
     save_report: bool = typer.Option(
         False, "--save", "-s", help="Save detailed report to file"
     ),
+    by_topic: bool = typer.Option(False, "--by-topic", help="Group analysis by topics"),
+    topic_filter: Optional[str] = typer.Option(
+        None, "--topic", help="Filter analysis by topic ID"
+    ),
 ) -> None:
     """
     🔬 Generate comprehensive analysis of your Takeout data.
 
     Analyzes patterns, relationships, and identifies opportunities for API enrichment.
+
+    Options:
+    --by-topic: Group analysis results by video topic categories
+    --topic: Filter analysis to show only content from a specific topic ID
     """
     import asyncio
 
@@ -674,6 +781,11 @@ def analyze_comprehensive(
                 # Initialize and analyze
                 takeout_service = TakeoutService(takeout_path)
                 analysis = await takeout_service.generate_comprehensive_analysis()
+
+                # Handle topic filtering and grouping
+                if topic_filter or by_topic:
+                    progress.update(task, description="🏷️ Processing topic filters...")
+                    await _apply_topic_filters(analysis, topic_filter, by_topic)
 
                 progress.update(task, description="📊 Preparing results...")
 

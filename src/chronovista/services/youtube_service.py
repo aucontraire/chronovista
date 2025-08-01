@@ -428,6 +428,55 @@ class YouTubeService:
 
         return list(response.get("items", []))
 
+    async def get_video_categories(
+        self, region_code: str = "US"
+    ) -> List[Dict[str, Any]]:
+        """
+        Get YouTube video categories for a specific region.
+
+        Parameters
+        ----------
+        region_code : str
+            Two-character ISO 3166-1 country code (default "US").
+            Examples: "US", "GB", "DE", "JP", "FR", "CA", "AU"
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of video category information including id, title, and channel ID.
+            Each category contains:
+            - id: Category ID (e.g., "1", "10", "15")
+            - snippet.title: Category name (e.g., "Film & Animation", "Music", "Pets & Animals")
+            - snippet.channelId: Channel ID that owns the category
+            - snippet.assignable: Whether the category can be assigned to videos
+
+        Raises
+        ------
+        ValueError
+            If region_code is not a valid 2-character country code or API request fails
+        """
+        if len(region_code) != 2:
+            raise ValueError(
+                f"Invalid region code: {region_code}. Must be 2 characters (e.g., 'US', 'GB')"
+            )
+
+        try:
+            request = self.service.videoCategories().list(
+                part="id,snippet", regionCode=region_code.upper()
+            )
+            response = request.execute()
+
+            categories = response.get("items", [])
+            if not categories:
+                raise ValueError(f"No video categories found for region: {region_code}")
+
+            return list(categories)
+
+        except Exception as e:
+            raise ValueError(
+                f"Failed to fetch video categories for region {region_code}: {str(e)}"
+            )
+
     def close(self) -> None:
         """Clean up resources."""
         self._service = None

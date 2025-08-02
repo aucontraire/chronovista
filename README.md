@@ -20,6 +20,7 @@ chronovista is a CLI application that enables users to access, store, and explor
 - **🔐 OAuth 2.0 Authentication** - Secure login with progressive scope management for read/write operations
 - **📊 Enhanced Watch History** - Complete watch history with channel filtering, language tracking, and rewatch analytics
 - **📝 Smart Transcript Processing** - Intelligent multi-language transcript downloading based on user preferences
+- **🏷️ Topic Analytics & Intelligence** - Advanced topic classification with 17 CLI commands for content discovery, trend analysis, and engagement scoring
 - **🏷️ Content Intelligence** - Handle "made for kids" restrictions, region limitations, and content ratings automatically
 - **💾 Local Storage** - All data including language preferences stored locally in PostgreSQL/MySQL
 - **🚀 Write Operations** - Create playlists, like videos, subscribe to channels, and manage content (Phase 3)
@@ -133,6 +134,9 @@ chronovista sync playlists
 
 # Sync transcripts
 chronovista sync transcripts
+
+# Topic analytics
+chronovista sync topics
 
 # Full synchronization
 chronovista sync all
@@ -292,6 +296,21 @@ chronovista takeout integrate /path/to/takeout --merge-with-api
 - 🔍 **Historical Preservation** - Deleted videos and historical metadata preserved permanently
 - ⚡ **Performance** - Fast queries on indexed, structured data vs. parsing files repeatedly
 
+### Topic Analytics
+
+```bash
+# Explore topics
+chronovista topics list              # View all available topics
+chronovista topics popular           # Most popular topics by content
+chronovista topics videos 10         # Videos in Music category
+chronovista topics related 25        # Topics related to News & Politics
+
+# Advanced analytics
+chronovista topics chart             # Visual topic popularity chart
+chronovista topics explore           # Interactive topic exploration
+chronovista topics trends            # Topic popularity over time 
+```
+
 ### Application Status
 
 ```bash
@@ -300,6 +319,91 @@ chronovista status
 
 # Show version
 chronovista --version
+```
+
+## Documentation
+
+### Topic Analytics & Intelligence
+
+chronovista features a comprehensive **Topic Analytics System** with 17 specialized CLI commands for content discovery, trend analysis, and intelligent insights. Built with advanced mathematical algorithms including cosine similarity and Jaccard analysis.
+
+📖 **[Complete Topic Integration Guide](src/chronovista/docs/topic-integration-guide.md)**
+
+#### **🔍 Core Topic Commands**
+```bash
+# Basic topic exploration
+chronovista topics list                    # List all topic categories with content counts
+chronovista topics show <topic_id>         # Show detailed topic information
+chronovista topics channels <topic_id>     # Show channels associated with a topic
+chronovista topics videos <topic_id>       # Show videos associated with a topic
+
+# Advanced analytics
+chronovista topics popular --metric videos # Most popular topics by video count
+chronovista topics related <topic_id>      # Find related topics through shared content
+chronovista topics overlap <id1> <id2>     # Content overlap analysis between topics
+chronovista topics similar <topic_id>      # Find similar topics using content patterns
+```
+
+#### **📊 Advanced Analytics & Visualizations**
+```bash
+# Visual analytics
+chronovista topics chart --metric combined # ASCII bar charts of topic popularity
+chronovista topics tree <topic_id>         # Hierarchical relationship trees
+chronovista topics explore                 # Interactive topic exploration interface
+
+# Trend analysis
+chronovista topics trends --period monthly # Topic popularity trends over time
+chronovista topics discovery               # How users discover topics
+chronovista topics insights --user-id me   # Personalized topic recommendations
+
+# Engagement metrics
+chronovista topics engagement              # Topic engagement scoring
+chronovista topics channel-engagement 25   # Channel performance by topic
+```
+
+#### **🕸️ Graph Visualization & Export**
+```bash
+# Export for visualization tools
+chronovista topics graph --format dot      # Export DOT format for Graphviz
+chronovista topics graph --format json     # Export JSON for D3.js/network tools
+chronovista topics heatmap --period monthly # Generate temporal activity heatmaps
+chronovista topics export --format csv     # Export topic data and associations
+```
+
+#### **🎯 Smart Filtering & Integration**
+```bash
+# Topic-aware sync operations
+chronovista sync topics                     # Populate topic categories (32 categories)
+chronovista sync liked --topic 10          # Only sync Music-related videos
+chronovista sync channel --topic 25        # Only sync News & Politics channels
+
+# Takeout integration with topics
+chronovista takeout analyze --topic 27     # Analyze only Educational content
+chronovista takeout peek --by-topic        # Group takeout analysis by topics
+```
+
+#### **🏆 Key Technical Features**
+- **Mathematical Algorithms**: Cosine similarity for content patterns, Jaccard analysis for overlap
+- **Interactive Components**: Multi-phase exploration workflows with Rich terminal UI
+- **Graph Visualization**: Export to DOT (Graphviz) and JSON (D3.js) formats
+- **Engagement Scoring**: Advanced metrics with tier classifications (High/Medium/Low)
+- **Temporal Analysis**: Time-series trends with growth rate calculations
+- **Performance Optimization**: Query caching, async processing, efficient indexing
+
+#### **📈 Real-World Analytics Examples**
+```bash
+# Discover your content evolution
+chronovista topics trends --direction growing  # Find your growing interests
+chronovista topics insights --user-id your_id # Get personalized recommendations
+chronovista topics similar 10                 # Find topics similar to Music
+
+# Analyze relationships
+chronovista topics overlap 25 22              # Compare News & Politics vs People & Blogs
+chronovista topics tree 10 --max-depth 3      # Explore Music topic relationships
+
+# Export for external analysis
+chronovista topics graph --format json --min-confidence 0.2 --output my_graph.json
+chronovista topics heatmap --period weekly --months-back 24 --output heatmap.json
 ```
 
 ## Development
@@ -594,9 +698,11 @@ GNU Affero General Public License v3.0 - see [LICENSE](LICENSE) for details.
 
 ## Roadmap
 
+- [x] **Topic Analytics & Intelligence** - 17 CLI commands with advanced analytics ✅
+- [x] **Graph Visualization** - DOT/JSON export for external visualization tools ✅
+- [x] **Interactive CLI Components** - Rich terminal UI with progress bars and workflows ✅
 - [ ] Web dashboard interface
-- [ ] Advanced analytics and visualizations
-- [ ] Machine learning insights
+- [ ] Machine learning insights expansion
 - [ ] Multi-user support
 - [ ] Cloud deployment options
 - [ ] API integrations with other platforms

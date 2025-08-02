@@ -92,6 +92,7 @@ class TestPeekDataCommand:
             recent=False,
             oldest=False,
             all_items=False,
+            topic_filter=None,
         )
 
         # Verify TakeoutService was created correctly
@@ -124,6 +125,7 @@ class TestPeekDataCommand:
             recent=True,
             oldest=False,
             all_items=False,
+            topic_filter=None,
         )
 
         # Verify TakeoutService was created correctly
@@ -156,6 +158,7 @@ class TestPeekDataCommand:
             recent=False,
             oldest=False,
             all_items=True,
+            topic_filter=None,
         )
 
         # Verify TakeoutService was created correctly
@@ -186,6 +189,7 @@ class TestPeekDataCommand:
                 recent=False,
                 oldest=False,
                 all_items=False,
+                topic_filter=None,
             )
 
         # Verify exit code
@@ -216,6 +220,7 @@ class TestPeekDataCommand:
                 recent=True,
                 oldest=True,
                 all_items=False,
+                topic_filter=None,
             )
 
         # Verify exit code
@@ -282,6 +287,7 @@ class TestPeekDataCommand:
             recent=False,
             oldest=False,
             all_items=False,
+            topic_filter=None,
         )
 
         # Verify TakeoutService was created correctly
@@ -311,6 +317,7 @@ class TestPeekDataCommand:
             recent=False,
             oldest=False,
             all_items=False,
+            topic_filter=None,
         )
 
         # Verify TakeoutService was created correctly
@@ -368,7 +375,12 @@ class TestAnalyzeComprehensiveCommand:
         mock_takeout_service_class.return_value = mock_service
 
         # Call function
-        analyze_comprehensive(takeout_path=Path("test/takeout"), save_report=False)
+        analyze_comprehensive(
+            takeout_path=Path("test/takeout"),
+            save_report=False,
+            by_topic=False,
+            topic_filter=None,
+        )
 
         # Verify TakeoutService was created correctly
         mock_takeout_service_class.assert_called_once_with(Path("test/takeout"))
@@ -398,7 +410,12 @@ class TestAnalyzeComprehensiveCommand:
         mock_takeout_service_class.return_value = mock_service
 
         # Call function
-        analyze_comprehensive(takeout_path=Path("test/takeout"), save_report=True)
+        analyze_comprehensive(
+            takeout_path=Path("test/takeout"),
+            save_report=True,
+            by_topic=False,
+            topic_filter=None,
+        )
 
         # Verify TakeoutService was created correctly
         mock_takeout_service_class.assert_called_once_with(Path("test/takeout"))
@@ -428,7 +445,12 @@ class TestAnalyzeComprehensiveCommand:
 
         # Call function - should exit with error
         with pytest.raises(typer.Exit) as exc_info:
-            analyze_comprehensive(takeout_path=Path("test/takeout"), save_report=False)
+            analyze_comprehensive(
+                takeout_path=Path("test/takeout"),
+                save_report=False,
+                by_topic=False,
+                topic_filter=None,
+            )
 
         # Verify exit code
         assert exc_info.value.exit_code == 1
@@ -449,7 +471,12 @@ class TestAnalyzeComprehensiveCommand:
 
         # Call function - should exit with error
         with pytest.raises(typer.Exit) as exc_info:
-            analyze_comprehensive(takeout_path=Path("test/takeout"), save_report=False)
+            analyze_comprehensive(
+                takeout_path=Path("test/takeout"),
+                save_report=False,
+                by_topic=False,
+                topic_filter=None,
+            )
 
         # Verify exit code
         assert exc_info.value.exit_code == 1

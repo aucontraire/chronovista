@@ -1493,7 +1493,10 @@ class TestTopicEngagementCommand:
         """Test engagement command help."""
         result = runner.invoke(topic_app, ["engagement", "--help"])
         assert result.exit_code == 0
-        assert "Analyze topic engagement metrics based on likes, views, and comments" in result.stdout
+        assert (
+            "Analyze topic engagement metrics based on likes, views, and comments"
+            in result.stdout
+        )
         assert "--topic-id" in result.stdout
         assert "--limit" in result.stdout
         assert "--sort-by" in result.stdout
@@ -1523,7 +1526,13 @@ class TestTopicEngagementCommand:
     def test_engagement_sort_validation(self, runner: CliRunner) -> None:
         """Test engagement command sort parameter validation."""
         # Valid sort options should work
-        valid_sorts = ["engagement_score", "engagement_rate", "avg_likes", "avg_views", "avg_comments"]
+        valid_sorts = [
+            "engagement_score",
+            "engagement_rate",
+            "avg_likes",
+            "avg_views",
+            "avg_comments",
+        ]
         for sort_by in valid_sorts:
             result = runner.invoke(topic_app, ["engagement", "--sort-by", sort_by])
             assert result.exit_code == 0, f"Sort by {sort_by} should be valid"
@@ -1573,7 +1582,10 @@ class TestTopicEngagementCommand:
 
         result = runner.invoke(topic_app, ["engagement"])
         # CLI should handle exceptions gracefully
-        assert result.exit_code in [0, 1], "Command should handle async exception gracefully"
+        assert result.exit_code in [
+            0,
+            1,
+        ], "Command should handle async exception gracefully"
         mock_asyncio.assert_called_once()
 
 
@@ -1589,7 +1601,9 @@ class TestChannelEngagementCommand:
         """Test channel engagement command help."""
         result = runner.invoke(topic_app, ["channel-engagement", "--help"])
         assert result.exit_code == 0
-        assert "Analyze channel engagement metrics for a specific topic" in result.stdout
+        assert (
+            "Analyze channel engagement metrics for a specific topic" in result.stdout
+        )
         assert "topic_id" in result.stdout
         assert "--limit" in result.stdout
 
@@ -1641,7 +1655,10 @@ class TestChannelEngagementCommand:
 
         result = runner.invoke(topic_app, ["channel-engagement", "/m/04rlf"])
         # CLI should handle exceptions gracefully
-        assert result.exit_code in [0, 1], "Command should handle async exception gracefully"
+        assert result.exit_code in [
+            0,
+            1,
+        ], "Command should handle async exception gracefully"
         mock_asyncio.assert_called_once()
 
     def test_channel_engagement_missing_topic_id(self, runner: CliRunner) -> None:

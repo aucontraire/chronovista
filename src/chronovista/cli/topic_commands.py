@@ -1083,9 +1083,14 @@ def export_topics(
 
 @topic_app.command("graph")
 def topic_graph_export(
-    format: str = typer.Option("dot", "--format", "-f", help="Export format: dot, json"),
+    format: str = typer.Option(
+        "dot", "--format", "-f", help="Export format: dot, json"
+    ),
     output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path (defaults to timestamped filename)"
+        None,
+        "--output",
+        "-o",
+        help="Output file path (defaults to timestamped filename)",
     ),
     min_confidence: float = typer.Option(
         0.1,
@@ -3051,18 +3056,26 @@ def topic_engagement_analysis(
         20, "--limit", "-l", help="Maximum number of topics to show"
     ),
     sort_by: str = typer.Option(
-        "engagement_score", "--sort-by", "-s", 
-        help="Sort by: engagement_score, engagement_rate, avg_likes, avg_views"
+        "engagement_score",
+        "--sort-by",
+        "-s",
+        help="Sort by: engagement_score, engagement_rate, avg_likes, avg_views",
     ),
 ) -> None:
     """Analyze topic engagement metrics based on likes, views, and comments."""
-    
+
     async def run_engagement() -> None:
         try:
             analytics_service = TopicAnalyticsService()
-            
+
             # Validate sort_by parameter
-            valid_sorts = ["engagement_score", "engagement_rate", "avg_likes", "avg_views", "avg_comments"]
+            valid_sorts = [
+                "engagement_score",
+                "engagement_rate",
+                "avg_likes",
+                "avg_views",
+                "avg_comments",
+            ]
             if sort_by not in valid_sorts:
                 console.print(
                     Panel(
@@ -3081,10 +3094,14 @@ def topic_engagement_analysis(
                 console=console,
             ) as progress:
                 if topic_id:
-                    progress.add_task(f"Analyzing engagement for topic {topic_id}...", total=None)
+                    progress.add_task(
+                        f"Analyzing engagement for topic {topic_id}...", total=None
+                    )
                 else:
-                    progress.add_task("Analyzing engagement across all topics...", total=None)
-                
+                    progress.add_task(
+                        "Analyzing engagement across all topics...", total=None
+                    )
+
                 # Get engagement scores
                 engagement_data = await analytics_service.get_topic_engagement_scores(
                     topic_id=topic_id, limit=limit
@@ -3107,7 +3124,9 @@ def topic_engagement_analysis(
             # Sort data if needed (data comes pre-sorted by engagement_rate by default)
             if sort_by != "engagement_rate":
                 reverse_sort = True  # Most metrics should be descending
-                engagement_data.sort(key=lambda x: x.get(sort_by, 0), reverse=reverse_sort)
+                engagement_data.sort(
+                    key=lambda x: x.get(sort_by, 0), reverse=reverse_sort
+                )
 
             # Display results
             if topic_id:
@@ -3139,8 +3158,12 @@ def topic_engagement_analysis(
             table.add_column("Avg Likes", style="yellow", justify="right", width=10)
             table.add_column("Avg Views", style="cyan", justify="right", width=12)
             table.add_column("Avg Comments", style="magenta", justify="right", width=12)
-            table.add_column("Engagement Rate", style="bright_green", justify="right", width=15)
-            table.add_column("Score", style="bold bright_blue", justify="right", width=8)
+            table.add_column(
+                "Engagement Rate", style="bright_green", justify="right", width=15
+            )
+            table.add_column(
+                "Score", style="bold bright_blue", justify="right", width=8
+            )
             table.add_column("Tier", style="bold", width=8)
 
             for idx, topic in enumerate(engagement_data, 1):
@@ -3149,7 +3172,7 @@ def topic_engagement_analysis(
                 if tier == "High":
                     tier_style = "[bold green]High[/bold green]"
                 elif tier == "Medium":
-                    tier_style = "[yellow]Medium[/yellow]" 
+                    tier_style = "[yellow]Medium[/yellow]"
                 else:
                     tier_style = "[dim]Low[/dim]"
 
@@ -3162,7 +3185,11 @@ def topic_engagement_analysis(
 
                 table.add_row(
                     str(idx),
-                    topic["category_name"][:24] + "..." if len(topic["category_name"]) > 24 else topic["category_name"],
+                    (
+                        topic["category_name"][:24] + "..."
+                        if len(topic["category_name"]) > 24
+                        else topic["category_name"]
+                    ),
                     str(topic["video_count"]),
                     avg_likes,
                     avg_views,
@@ -3176,18 +3203,24 @@ def topic_engagement_analysis(
 
             # Show engagement insights
             if len(engagement_data) >= 3:
-                high_engagement = [t for t in engagement_data if t["engagement_tier"] == "High"]
-                low_engagement = [t for t in engagement_data if t["engagement_tier"] == "Low"]
-                
+                high_engagement = [
+                    t for t in engagement_data if t["engagement_tier"] == "High"
+                ]
+                low_engagement = [
+                    t for t in engagement_data if t["engagement_tier"] == "Low"
+                ]
+
                 insights = []
                 if high_engagement:
                     insights.append(f"🔥 {len(high_engagement)} high-engagement topics")
                 if low_engagement:
                     insights.append(f"📉 {len(low_engagement)} low-engagement topics")
-                
-                avg_score = sum(t["engagement_score"] for t in engagement_data) / len(engagement_data)
+
+                avg_score = sum(t["engagement_score"] for t in engagement_data) / len(
+                    engagement_data
+                )
                 insights.append(f"📊 Average engagement score: {avg_score:.1f}")
-                
+
                 if insights:
                     console.print(
                         Panel(
@@ -3211,13 +3244,15 @@ def topic_engagement_analysis(
 
 @topic_app.command("channel-engagement")
 def channel_engagement_analysis(
-    topic_id: str = typer.Argument(..., help="Topic ID to analyze channel engagement for"),
+    topic_id: str = typer.Argument(
+        ..., help="Topic ID to analyze channel engagement for"
+    ),
     limit: int = typer.Option(
         10, "--limit", "-l", help="Maximum number of channels to show"
     ),
 ) -> None:
     """Analyze channel engagement metrics for a specific topic."""
-    
+
     async def run_channel_engagement() -> None:
         try:
             analytics_service = TopicAnalyticsService()
@@ -3227,8 +3262,10 @@ def channel_engagement_analysis(
                 TextColumn("[progress.description]{task.description}"),
                 console=console,
             ) as progress:
-                progress.add_task(f"Analyzing channel engagement for topic {topic_id}...", total=None)
-                
+                progress.add_task(
+                    f"Analyzing channel engagement for topic {topic_id}...", total=None
+                )
+
                 # Get channel engagement data
                 channel_data = await analytics_service.get_channel_engagement_by_topic(
                     topic_id=topic_id, limit=limit
@@ -3273,8 +3310,12 @@ def channel_engagement_analysis(
             table.add_column("Avg Likes", style="yellow", justify="right", width=10)
             table.add_column("Avg Views", style="cyan", justify="right", width=12)
             table.add_column("Avg Comments", style="magenta", justify="right", width=12)
-            table.add_column("Total Views", style="bright_blue", justify="right", width=12)
-            table.add_column("Engagement Rate", style="bright_green", justify="right", width=15)
+            table.add_column(
+                "Total Views", style="bright_blue", justify="right", width=12
+            )
+            table.add_column(
+                "Engagement Rate", style="bright_green", justify="right", width=15
+            )
 
             for idx, channel in enumerate(channel_data, 1):
                 # Format numbers for display
@@ -3286,7 +3327,11 @@ def channel_engagement_analysis(
 
                 table.add_row(
                     str(idx),
-                    channel["channel_name"][:24] + "..." if len(channel["channel_name"]) > 24 else channel["channel_name"],
+                    (
+                        channel["channel_name"][:24] + "..."
+                        if len(channel["channel_name"]) > 24
+                        else channel["channel_name"]
+                    ),
                     str(channel["video_count"]),
                     avg_likes,
                     avg_views,
@@ -3301,8 +3346,10 @@ def channel_engagement_analysis(
             if len(channel_data) >= 3:
                 top_channel = channel_data[0]
                 total_videos = sum(c["video_count"] for c in channel_data)
-                avg_engagement = sum(c["engagement_rate"] for c in channel_data) / len(channel_data)
-                
+                avg_engagement = sum(c["engagement_rate"] for c in channel_data) / len(
+                    channel_data
+                )
+
                 console.print(
                     Panel(
                         f"🏆 Top performer: {top_channel['channel_name']} ({top_channel['engagement_rate']:.2f}% engagement)\n"

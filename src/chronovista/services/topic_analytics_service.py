@@ -1925,14 +1925,14 @@ class TopicAnalyticsService:
     ) -> List[Dict[str, Any]]:
         """
         Calculate engagement scores for topics based on likes, views, and comments.
-        
+
         Parameters
         ----------
         topic_id : Optional[TopicId]
             Specific topic to analyze, or None for all topics
         limit : int
             Maximum number of results to return
-            
+
         Returns
         -------
         List[Dict[str, Any]]
@@ -1958,8 +1958,11 @@ class TopicAnalyticsService:
                     func.sum(Video.comment_count).label("total_comments"),
                     # Calculate engagement rate: (likes + comments) / views
                     func.avg(
-                        (func.coalesce(Video.like_count, 0) + func.coalesce(Video.comment_count, 0)) /
-                        func.nullif(Video.view_count, 0)
+                        (
+                            func.coalesce(Video.like_count, 0)
+                            + func.coalesce(Video.comment_count, 0)
+                        )
+                        / func.nullif(Video.view_count, 0)
                     ).label("engagement_rate"),
                 )
                 .select_from(TopicCategory)
@@ -1991,35 +1994,41 @@ class TopicAnalyticsService:
                 # Calculate normalized engagement score (0-100)
                 engagement_rate = float(row.engagement_rate or 0)
                 avg_likes = float(row.avg_likes or 0)
-                avg_views = float(row.avg_views or 0) 
+                avg_views = float(row.avg_views or 0)
                 avg_comments = float(row.avg_comments or 0)
-                
+
                 # Weighted engagement score considering multiple factors
                 # Views get lower weight as they're easier to get than likes/comments
                 view_score = min(avg_views / 10000, 100) * 0.3  # Cap at 100, weight 0.3
-                like_score = min(avg_likes / 100, 100) * 0.4     # Cap at 100, weight 0.4
-                comment_score = min(avg_comments / 10, 100) * 0.3 # Cap at 100, weight 0.3
-                
+                like_score = min(avg_likes / 100, 100) * 0.4  # Cap at 100, weight 0.4
+                comment_score = (
+                    min(avg_comments / 10, 100) * 0.3
+                )  # Cap at 100, weight 0.3
+
                 normalized_score = min(view_score + like_score + comment_score, 100)
 
-                engagement_scores.append({
-                    "topic_id": row.topic_id,
-                    "category_name": row.category_name,
-                    "video_count": row.video_count,
-                    "avg_likes": round(avg_likes, 1),
-                    "avg_views": round(avg_views, 1),
-                    "avg_comments": round(avg_comments, 1),
-                    "total_likes": int(row.total_likes or 0),
-                    "total_views": int(row.total_views or 0),
-                    "total_comments": int(row.total_comments or 0),
-                    "engagement_rate": round(engagement_rate * 100, 3),  # Convert to percentage
-                    "engagement_score": round(normalized_score, 1),
-                    "engagement_tier": (
-                        "High" if normalized_score >= 70 else
-                        "Medium" if normalized_score >= 40 else
-                        "Low"
-                    ),
-                })
+                engagement_scores.append(
+                    {
+                        "topic_id": row.topic_id,
+                        "category_name": row.category_name,
+                        "video_count": row.video_count,
+                        "avg_likes": round(avg_likes, 1),
+                        "avg_views": round(avg_views, 1),
+                        "avg_comments": round(avg_comments, 1),
+                        "total_likes": int(row.total_likes or 0),
+                        "total_views": int(row.total_views or 0),
+                        "total_comments": int(row.total_comments or 0),
+                        "engagement_rate": round(
+                            engagement_rate * 100, 3
+                        ),  # Convert to percentage
+                        "engagement_score": round(normalized_score, 1),
+                        "engagement_tier": (
+                            "High"
+                            if normalized_score >= 70
+                            else "Medium" if normalized_score >= 40 else "Low"
+                        ),
+                    }
+                )
 
             # Cache and return results
             self._cache_result(cache_key, engagement_scores)
@@ -2032,14 +2041,14 @@ class TopicAnalyticsService:
     ) -> List[Dict[str, Any]]:
         """
         Get channel engagement metrics for a specific topic.
-        
+
         Parameters
         ----------
         topic_id : TopicId
             Topic to analyze channel engagement for
         limit : int
             Maximum number of channels to return
-            
+
         Returns
         -------
         List[Dict[str, Any]]
@@ -2088,22 +2097,26 @@ class TopicAnalyticsService:
                 avg_likes = float(row.avg_likes or 0)
                 avg_views = float(row.avg_views or 0)
                 avg_comments = float(row.avg_comments or 0)
-                
-                # Calculate engagement rate for this channel
-                engagement_rate = (avg_likes + avg_comments) / avg_views if avg_views > 0 else 0
 
-                channel_engagement.append({
-                    "channel_id": row.channel_id,
-                    "channel_name": row.channel_name,
-                    "video_count": row.video_count,
-                    "avg_likes": round(avg_likes, 1),
-                    "avg_views": round(avg_views, 1),
-                    "avg_comments": round(avg_comments, 1),
-                    "total_likes": int(row.total_likes or 0),
-                    "total_views": int(row.total_views or 0),
-                    "total_comments": int(row.total_comments or 0),
-                    "engagement_rate": round(engagement_rate * 100, 3),
-                })
+                # Calculate engagement rate for this channel
+                engagement_rate = (
+                    (avg_likes + avg_comments) / avg_views if avg_views > 0 else 0
+                )
+
+                channel_engagement.append(
+                    {
+                        "channel_id": row.channel_id,
+                        "channel_name": row.channel_name,
+                        "video_count": row.video_count,
+                        "avg_likes": round(avg_likes, 1),
+                        "avg_views": round(avg_views, 1),
+                        "avg_comments": round(avg_comments, 1),
+                        "total_likes": int(row.total_likes or 0),
+                        "total_views": int(row.total_views or 0),
+                        "total_comments": int(row.total_comments or 0),
+                        "engagement_rate": round(engagement_rate * 100, 3),
+                    }
+                )
 
             # Cache and return results
             self._cache_result(cache_key, channel_engagement)

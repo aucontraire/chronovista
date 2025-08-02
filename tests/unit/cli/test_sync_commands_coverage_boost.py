@@ -306,12 +306,12 @@ class TestSyncCommandsCoverageBoost:
         assert result.exit_code == 0
         assert "not yet implemented" in result.output.lower()
 
-    def test_all_command_not_implemented(self, runner):
-        """Test all command shows not implemented message."""
+    def test_all_command_shows_full_sync(self, runner):
+        """Test all command shows full sync interface."""
         result = runner.invoke(sync_app, ["all"])
 
         assert result.exit_code == 0
-        assert "not yet implemented" in result.output.lower()
+        assert "full sync" in result.output.lower()
 
     @patch("chronovista.parsers.takeout_parser.TakeoutParser")
     @patch("chronovista.cli.sync_commands.youtube_service")

@@ -184,9 +184,23 @@ class YouTubeOAuthService:
 
         try:
             credentials = self._load_token()
-            # Consider authenticated if token is valid OR if we have a refresh token
-            # that can be used to get a new access token
-            return credentials.valid or (credentials.refresh_token is not None)
+
+            # If token is currently valid, we're authenticated
+            if credentials.valid:
+                return True
+
+            # If token is expired but we have a refresh token, try to refresh it
+            if credentials.refresh_token is not None:
+                try:
+                    credentials.refresh(Request())
+                    self._save_token(credentials)
+                    return bool(credentials.valid)
+                except RefreshError:
+                    # Refresh token is invalid, delete the token file
+                    self.token_file.unlink()
+                    return False
+
+            return False
         except Exception:
             return False
 

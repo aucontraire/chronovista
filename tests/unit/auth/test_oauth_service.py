@@ -208,7 +208,10 @@ class TestYouTubeOAuthService:
 
         assert not oauth_service.is_authenticated()
 
-    def test_is_authenticated_invalid_token_with_refresh(self, oauth_service):
+    @patch("google.auth.transport.requests.Request")
+    def test_is_authenticated_invalid_token_with_refresh(
+        self, mock_request, oauth_service
+    ):
         """Test is_authenticated with invalid token but refresh token available."""
         mock_credentials = MagicMock()
         mock_credentials.valid = False
@@ -216,10 +219,20 @@ class TestYouTubeOAuthService:
         oauth_service.token_file = MagicMock()
         oauth_service.token_file.exists.return_value = True
         oauth_service._load_token = MagicMock(return_value=mock_credentials)
+        oauth_service._save_token = MagicMock()
+
+        # Mock successful refresh - after refresh, token becomes valid
+        def mock_refresh(request):
+            mock_credentials.valid = True
+
+        mock_credentials.refresh = mock_refresh
 
         # With new logic: Having expired token + refresh token should return True
         # because we can use the refresh token to get a new access token
         assert oauth_service.is_authenticated()
+
+        # Verify that the token was saved after successful refresh
+        oauth_service._save_token.assert_called_once_with(mock_credentials)
 
     @patch("google.auth.transport.requests.Request")
     def test_is_authenticated_token_refresh_error(self, mock_request, oauth_service):

@@ -912,3 +912,137 @@ class TestYouTubeServiceMissingCoverage:
 
         # Should reset service to None
         assert youtube_service._service is None
+
+    @pytest.mark.asyncio
+    async def test_get_video_categories_success(
+        self, youtube_service, mock_service_client
+    ):
+        """Test successful video categories retrieval."""
+        # Mock response data
+        mock_categories = [
+            {
+                "id": "1",
+                "snippet": {
+                    "title": "Film & Animation",
+                    "channelId": "UCBR8-60-B28hp2BmDPdntcQ",
+                    "assignable": True,
+                },
+            },
+            {
+                "id": "10",
+                "snippet": {
+                    "title": "Music",
+                    "channelId": "UCBR8-60-B28hp2BmDPdntcQ",
+                    "assignable": True,
+                },
+            },
+        ]
+
+        mock_response = {"items": mock_categories}
+        mock_request = MagicMock()
+        mock_request.execute.return_value = mock_response
+        mock_service_client.videoCategories.return_value.list.return_value = (
+            mock_request
+        )
+
+        # Set mock service
+        youtube_service._service = mock_service_client
+
+        # Call method
+        result = await youtube_service.get_video_categories("US")
+
+        # Verify API call
+        mock_service_client.videoCategories.assert_called_once()
+        mock_service_client.videoCategories.return_value.list.assert_called_once_with(
+            part="id,snippet", regionCode="US"
+        )
+
+        # Verify result
+        assert result == mock_categories
+        assert len(result) == 2
+        assert result[0]["snippet"]["title"] == "Film & Animation"
+        assert result[1]["snippet"]["title"] == "Music"
+
+    @pytest.mark.asyncio
+    async def test_get_video_categories_invalid_region_code(self, youtube_service):
+        """Test video categories with invalid region code."""
+        with pytest.raises(
+            ValueError, match="Invalid region code: ABC. Must be 2 characters"
+        ):
+            await youtube_service.get_video_categories("ABC")
+
+        with pytest.raises(
+            ValueError, match="Invalid region code: A. Must be 2 characters"
+        ):
+            await youtube_service.get_video_categories("A")
+
+    @pytest.mark.asyncio
+    async def test_get_video_categories_no_items(
+        self, youtube_service, mock_service_client
+    ):
+        """Test video categories when no categories found."""
+        # Mock empty response
+        mock_response = {"items": []}
+        mock_request = MagicMock()
+        mock_request.execute.return_value = mock_response
+        mock_service_client.videoCategories.return_value.list.return_value = (
+            mock_request
+        )
+
+        # Set mock service
+        youtube_service._service = mock_service_client
+
+        # Should raise ValueError
+        with pytest.raises(
+            ValueError, match="No video categories found for region: US"
+        ):
+            await youtube_service.get_video_categories("US")
+
+    @pytest.mark.asyncio
+    async def test_get_video_categories_api_error(
+        self, youtube_service, mock_service_client
+    ):
+        """Test video categories with API error."""
+        # Mock API exception
+        mock_request = MagicMock()
+        mock_request.execute.side_effect = Exception("API quota exceeded")
+        mock_service_client.videoCategories.return_value.list.return_value = (
+            mock_request
+        )
+
+        # Set mock service
+        youtube_service._service = mock_service_client
+
+        # Should raise ValueError with wrapped error
+        with pytest.raises(
+            ValueError,
+            match="Failed to fetch video categories for region US: API quota exceeded",
+        ):
+            await youtube_service.get_video_categories("US")
+
+    @pytest.mark.asyncio
+    async def test_get_video_categories_case_insensitive(
+        self, youtube_service, mock_service_client
+    ):
+        """Test video categories with lowercase region code."""
+        # Mock response
+        mock_categories = [{"id": "1", "snippet": {"title": "Film & Animation"}}]
+        mock_response = {"items": mock_categories}
+        mock_request = MagicMock()
+        mock_request.execute.return_value = mock_response
+        mock_service_client.videoCategories.return_value.list.return_value = (
+            mock_request
+        )
+
+        # Set mock service
+        youtube_service._service = mock_service_client
+
+        # Call with lowercase - should convert to uppercase
+        result = await youtube_service.get_video_categories("gb")
+
+        # Verify uppercase was used in API call
+        mock_service_client.videoCategories.return_value.list.assert_called_once_with(
+            part="id,snippet", regionCode="GB"
+        )
+
+        assert result == mock_categories

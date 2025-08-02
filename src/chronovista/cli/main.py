@@ -12,6 +12,7 @@ from chronovista import __version__
 from chronovista.cli.auth_commands import auth_app
 from chronovista.cli.commands.takeout import takeout_app
 from chronovista.cli.sync_commands import sync_app
+from chronovista.cli.topic_commands import topic_app
 
 console = Console()
 
@@ -28,6 +29,7 @@ app.add_typer(sync_app, name="sync", help="Data synchronization commands")
 app.add_typer(
     takeout_app, name="takeout", help="📁 Explore Google Takeout data locally"
 )
+app.add_typer(topic_app, name="topics", help="🏷️ Topic exploration and analytics")
 
 
 @app.command()

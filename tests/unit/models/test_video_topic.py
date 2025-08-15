@@ -207,14 +207,13 @@ class TestVideoTopic:
     def test_video_topic_from_dict(self):
         """Test VideoTopic creation from dictionary (as from database)."""
         now = datetime.now(timezone.utc)
-        data = {
-            "video_id": TestIds.TEST_VIDEO_1,
-            "topic_id": TestIds.MUSIC_TOPIC,
-            "relevance_type": "primary",
-            "created_at": now,
-        }
-
-        video_topic = VideoTopic(**data)
+        
+        video_topic = VideoTopic(
+            video_id=TestIds.TEST_VIDEO_1,
+            topic_id=TestIds.MUSIC_TOPIC,
+            relevance_type="primary",
+            created_at=now,
+        )
 
         assert video_topic.video_id == TestIds.TEST_VIDEO_1
         assert video_topic.topic_id == TestIds.MUSIC_TOPIC

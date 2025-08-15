@@ -8,7 +8,7 @@ quality indicators, and validation.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -157,19 +157,19 @@ class VideoTranscriptWithQuality(VideoTranscript):
 class TranscriptSearchFilters(BaseModel):
     """Filters for searching transcripts."""
 
-    video_ids: Optional[list[VideoId]] = Field(
+    video_ids: Optional[List[VideoId]] = Field(
         default=None, description="Filter by video IDs"
     )
-    language_codes: Optional[list[str]] = Field(
+    language_codes: Optional[List[str]] = Field(
         default=None, description="Filter by language codes"
     )
-    transcript_types: Optional[list[TranscriptType]] = Field(
+    transcript_types: Optional[List[TranscriptType]] = Field(
         default=None, description="Filter by transcript types"
     )
-    download_reasons: Optional[list[DownloadReason]] = Field(
+    download_reasons: Optional[List[DownloadReason]] = Field(
         default=None, description="Filter by download reasons"
     )
-    track_kinds: Optional[list[TrackKind]] = Field(
+    track_kinds: Optional[List[TrackKind]] = Field(
         default=None, description="Filter by track kinds"
     )
     min_confidence: Optional[float] = Field(
@@ -196,10 +196,10 @@ class EnhancedVideoTranscriptBase(VideoTranscriptBase):
 
     # New fields for hybrid approach
     source: TranscriptSource = Field(..., description="Source of transcript data")
-    source_metadata: Optional[dict] = Field(
+    source_metadata: Optional[Dict[str, Any]] = Field(
         default=None, description="Additional source-specific metadata"
     )
-    raw_transcript_data: Optional[dict] = Field(
+    raw_transcript_data: Optional[Dict[str, Any]] = Field(
         default=None, description="Original raw data from source API"
     )
     plain_text_only: str = Field(
@@ -230,30 +230,62 @@ class EnhancedVideoTranscriptBase(VideoTranscriptBase):
             TranscriptSource.UNKNOWN: TranscriptType.AUTO,
         }
 
-        return cls(
-            video_id=raw_data.video_id,
-            language_code=raw_data.language_code,
-            transcript_text=raw_data.plain_text,  # Use plain text version
-            plain_text_only=raw_data.plain_text,  # Store plain text separately
-            transcript_type=transcript_type_mapping.get(
+        # Define valid field names for this model (from both base classes)
+        valid_fields = {
+            # From VideoTranscriptBase
+            "video_id", "language_code", "transcript_text", "transcript_type", 
+            "download_reason", "confidence_score", "is_cc", "is_auto_synced", 
+            "track_kind", "caption_name",
+            # From EnhancedVideoTranscriptBase
+            "source", "source_metadata", "raw_transcript_data", "plain_text_only",
+            "has_timestamps", "snippet_count", "total_duration"
+        }
+        
+        # Fields that we're setting explicitly in the constructor
+        explicitly_set_fields = {
+            "video_id", "language_code", "transcript_text", "plain_text_only",
+            "transcript_type", "download_reason", "confidence_score", "is_cc",
+            "is_auto_synced", "track_kind", "caption_name", "source",
+            "source_metadata", "raw_transcript_data", "has_timestamps",
+            "snippet_count", "total_duration"
+        }
+        
+        # Filter additional_fields to only include valid field names
+        # and exclude fields we're already setting explicitly
+        filtered_additional_fields = {
+            k: v for k, v in additional_fields.items() 
+            if k in valid_fields and k not in explicitly_set_fields
+        }
+        
+        # Build the constructor arguments
+        constructor_args = {
+            "video_id": raw_data.video_id,
+            "language_code": raw_data.language_code,
+            "transcript_text": raw_data.plain_text,  # Use plain text version
+            "plain_text_only": raw_data.plain_text,  # Store plain text separately
+            "transcript_type": transcript_type_mapping.get(
                 raw_data.source, TranscriptType.AUTO
             ),
-            download_reason=additional_fields.get(
+            "download_reason": additional_fields.get(
                 "download_reason", DownloadReason.USER_REQUEST
             ),
-            confidence_score=0.95 if not raw_data.is_generated else 0.80,
-            is_cc=not raw_data.is_generated,
-            is_auto_synced=raw_data.is_generated,
-            track_kind=TrackKind.STANDARD,
-            caption_name=f"Transcript from {raw_data.source.value}",
-            source=raw_data.source,
-            source_metadata=raw_data.source_metadata,
-            raw_transcript_data=raw_data.model_dump(),
-            has_timestamps=len(raw_data.snippets) > 0,
-            snippet_count=raw_data.snippet_count,
-            total_duration=raw_data.total_duration,
-            **{k: v for k, v in additional_fields.items() if k != "download_reason"},
-        )
+            "confidence_score": 0.95 if not raw_data.is_generated else 0.80,
+            "is_cc": not raw_data.is_generated,
+            "is_auto_synced": raw_data.is_generated,
+            "track_kind": TrackKind.STANDARD,
+            "caption_name": f"Transcript from {raw_data.source.value}",
+            "source": raw_data.source,
+            "source_metadata": raw_data.source_metadata,
+            "raw_transcript_data": raw_data.model_dump(),
+            "has_timestamps": len(raw_data.snippets) > 0,
+            "snippet_count": raw_data.snippet_count,
+            "total_duration": raw_data.total_duration,
+        }
+        
+        # Add any additional fields that aren't already set
+        constructor_args.update(filtered_additional_fields)
+        
+        return cls(**constructor_args)
 
 
 class EnhancedVideoTranscriptCreate(EnhancedVideoTranscriptBase):
@@ -297,7 +329,7 @@ class TranscriptSourceComparison(BaseModel):
     length_difference_ratio: Optional[float] = Field(
         None, description="Ratio of length difference"
     )
-    timing_precision_comparison: Optional[dict] = Field(
+    timing_precision_comparison: Optional[Dict[str, Union[float, int, str]]] = Field(
         None, description="Comparison of timing precision"
     )
     quality_difference_score: Optional[float] = Field(

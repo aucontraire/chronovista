@@ -8,6 +8,7 @@ with sensible defaults and easy customization.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import cast
 
 import factory
 from factory import Faker, LazyAttribute
@@ -114,27 +115,29 @@ class ChannelTopicStatisticsFactory(factory.Factory):
 # Convenience factory methods
 def create_channel_topic(**kwargs) -> ChannelTopic:
     """Create a ChannelTopic with keyword arguments."""
-    return ChannelTopicFactory(**kwargs)
+    return cast(ChannelTopic, ChannelTopicFactory.build(**kwargs))
 
 
 def create_channel_topic_create(**kwargs) -> ChannelTopicCreate:
     """Create a ChannelTopicCreate with keyword arguments."""
-    return ChannelTopicCreateFactory(**kwargs)
+    return cast(ChannelTopicCreate, ChannelTopicCreateFactory.build(**kwargs))
 
 
 def create_channel_topic_update(**kwargs) -> ChannelTopicUpdate:
     """Create a ChannelTopicUpdate with keyword arguments."""
-    return ChannelTopicUpdateFactory(**kwargs)
+    return cast(ChannelTopicUpdate, ChannelTopicUpdateFactory.build(**kwargs))
 
 
 def create_channel_topic_filters(**kwargs) -> ChannelTopicSearchFilters:
     """Create ChannelTopicSearchFilters with keyword arguments."""
-    return ChannelTopicSearchFiltersFactory(**kwargs)
+    return cast(
+        ChannelTopicSearchFilters, ChannelTopicSearchFiltersFactory.build(**kwargs)
+    )
 
 
 def create_channel_topic_statistics(**kwargs) -> ChannelTopicStatistics:
     """Create ChannelTopicStatistics with keyword arguments."""
-    return ChannelTopicStatisticsFactory(**kwargs)
+    return cast(ChannelTopicStatistics, ChannelTopicStatisticsFactory.build(**kwargs))
 
 
 # Common test data patterns

@@ -8,6 +8,7 @@ with sensible defaults and easy customization.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import cast
 
 import factory
 from factory import Faker, LazyAttribute
@@ -110,27 +111,27 @@ class VideoTopicStatisticsFactory(factory.Factory):
 # Convenience factory methods
 def create_video_topic(**kwargs) -> VideoTopic:
     """Create a VideoTopic with keyword arguments."""
-    return VideoTopicFactory(**kwargs)
+    return cast(VideoTopic, VideoTopicFactory.build(**kwargs))
 
 
 def create_video_topic_create(**kwargs) -> VideoTopicCreate:
     """Create a VideoTopicCreate with keyword arguments."""
-    return VideoTopicCreateFactory(**kwargs)
+    return cast(VideoTopicCreate, VideoTopicCreateFactory.build(**kwargs))
 
 
 def create_video_topic_update(**kwargs) -> VideoTopicUpdate:
     """Create a VideoTopicUpdate with keyword arguments."""
-    return VideoTopicUpdateFactory(**kwargs)
+    return cast(VideoTopicUpdate, VideoTopicUpdateFactory.build(**kwargs))
 
 
 def create_video_topic_filters(**kwargs) -> VideoTopicSearchFilters:
     """Create VideoTopicSearchFilters with keyword arguments."""
-    return VideoTopicSearchFiltersFactory(**kwargs)
+    return cast(VideoTopicSearchFilters, VideoTopicSearchFiltersFactory.build(**kwargs))
 
 
 def create_video_topic_statistics(**kwargs) -> VideoTopicStatistics:
     """Create VideoTopicStatistics with keyword arguments."""
-    return VideoTopicStatisticsFactory(**kwargs)
+    return cast(VideoTopicStatistics, VideoTopicStatisticsFactory.build(**kwargs))
 
 
 # Common test data patterns

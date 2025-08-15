@@ -11,9 +11,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.chronovista.db.models import PlaylistMembership as DBPlaylistMembership
-from src.chronovista.models.playlist_membership import PlaylistMembershipCreate
-from src.chronovista.repositories.playlist_membership_repository import (
+from chronovista.db.models import PlaylistMembership as DBPlaylistMembership
+from chronovista.models.playlist_membership import PlaylistMembershipCreate
+from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
 )
 from tests.factories.id_factory import TestIds, YouTubeIdFactory
@@ -408,7 +408,7 @@ class TestPlaylistMembershipRepository:
 
     def test_inheritance(self, repository):
         """Test that repository inherits from BaseSQLAlchemyRepository."""
-        from src.chronovista.repositories.base import BaseSQLAlchemyRepository
+        from chronovista.repositories.base import BaseSQLAlchemyRepository
 
         assert isinstance(repository, BaseSQLAlchemyRepository)
 

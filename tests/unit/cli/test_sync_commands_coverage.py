@@ -245,10 +245,7 @@ class TestSyncCommandsEdgeCases:
     @pytest.mark.asyncio
     async def test_none_batch(self):
         """Test batch processing with None batch."""
-        # This should handle gracefully without crashing
-        try:
-            result = await process_watch_history_batch(None, "test_user")
-            assert isinstance(result, dict)
-        except (TypeError, AttributeError):
-            # It's acceptable for this to fail with a type error
-            pass
+        # The function expects a List[Any], so passing None should raise TypeError
+        # This test verifies that the function properly fails with the expected error
+        with pytest.raises(TypeError):
+            await process_watch_history_batch(None, "test_user")  # type: ignore[arg-type]

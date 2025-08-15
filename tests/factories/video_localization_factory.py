@@ -8,10 +8,12 @@ with sensible defaults and easy customization.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import cast
 
 import factory
 from factory import Faker, LazyAttribute
 
+from chronovista.models.enums import LanguageCode
 from chronovista.models.video_localization import (
     VideoLocalization,
     VideoLocalizationBase,
@@ -30,7 +32,17 @@ class VideoLocalizationBaseFactory(factory.Factory):
 
     video_id = Faker("lexify", text="???????????")  # 11-char YouTube ID pattern
     language_code = Faker(
-        "random_element", elements=["en", "es", "fr", "de", "ja", "ko", "zh-CN", "pt"]
+        "random_element", 
+        elements=[
+            LanguageCode.ENGLISH,
+            LanguageCode.SPANISH, 
+            LanguageCode.FRENCH,
+            LanguageCode.GERMAN,
+            LanguageCode.JAPANESE,
+            LanguageCode.KOREAN,
+            LanguageCode.CHINESE_SIMPLIFIED,
+            LanguageCode.PORTUGUESE
+        ]
     )
     localized_title = Faker("sentence", nb_words=6)
     localized_description = Faker("text", max_nb_chars=500)
@@ -69,7 +81,7 @@ class VideoLocalizationSearchFiltersFactory(factory.Factory):
         model = VideoLocalizationSearchFilters
 
     video_ids = factory.LazyFunction(lambda: ["dQw4w9WgXcQ", "9bZkp7q19f0"])
-    language_codes = factory.LazyFunction(lambda: ["en", "es"])
+    language_codes = factory.LazyFunction(lambda: [LanguageCode.ENGLISH, LanguageCode.SPANISH])
     title_query = Faker("word")
     description_query = Faker("word")
     has_description = Faker("boolean")
@@ -105,27 +117,32 @@ class VideoLocalizationStatisticsFactory(factory.Factory):
 # Convenience factory methods
 def create_video_localization(**kwargs) -> VideoLocalization:
     """Create a VideoLocalization with keyword arguments."""
-    return VideoLocalizationFactory(**kwargs)
+    return cast(VideoLocalization, VideoLocalizationFactory.build(**kwargs))
 
 
 def create_video_localization_create(**kwargs) -> VideoLocalizationCreate:
     """Create a VideoLocalizationCreate with keyword arguments."""
-    return VideoLocalizationCreateFactory(**kwargs)
+    return cast(VideoLocalizationCreate, VideoLocalizationCreateFactory.build(**kwargs))
 
 
 def create_video_localization_update(**kwargs) -> VideoLocalizationUpdate:
     """Create a VideoLocalizationUpdate with keyword arguments."""
-    return VideoLocalizationUpdateFactory(**kwargs)
+    return cast(VideoLocalizationUpdate, VideoLocalizationUpdateFactory.build(**kwargs))
 
 
 def create_video_localization_filters(**kwargs) -> VideoLocalizationSearchFilters:
     """Create VideoLocalizationSearchFilters with keyword arguments."""
-    return VideoLocalizationSearchFiltersFactory(**kwargs)
+    return cast(
+        VideoLocalizationSearchFilters,
+        VideoLocalizationSearchFiltersFactory.build(**kwargs),
+    )
 
 
 def create_video_localization_statistics(**kwargs) -> VideoLocalizationStatistics:
     """Create VideoLocalizationStatistics with keyword arguments."""
-    return VideoLocalizationStatisticsFactory(**kwargs)
+    return cast(
+        VideoLocalizationStatistics, VideoLocalizationStatisticsFactory.build(**kwargs)
+    )
 
 
 # Common test data patterns
@@ -135,6 +152,21 @@ class VideoLocalizationTestData:
     VALID_VIDEO_IDS = ["dQw4w9WgXcQ", "9bZkp7q19f0", "jNQXAC9IVRw", "astISOttCQ0"]
 
     VALID_LANGUAGE_CODES = [
+        LanguageCode.ENGLISH,
+        LanguageCode.SPANISH,
+        LanguageCode.FRENCH,
+        LanguageCode.GERMAN,
+        LanguageCode.JAPANESE,
+        LanguageCode.KOREAN,
+        LanguageCode.CHINESE_SIMPLIFIED,
+        LanguageCode.PORTUGUESE,
+        LanguageCode.ENGLISH,  # English (default)
+        LanguageCode.ENGLISH,  # English (UK) - using base enum
+        LanguageCode.PORTUGUESE,  # Portuguese (Brazil) - using base enum
+    ]
+
+    # String language codes for statistics and raw API data
+    VALID_LANGUAGE_CODE_STRINGS = [
         "en",  # English
         "es",  # Spanish
         "fr",  # French

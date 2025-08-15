@@ -281,6 +281,18 @@ class TakeoutService:
         """
         logger.info("📊 Analyzing viewing patterns...")
 
+        # Handle truly empty data
+        if not takeout_data.watch_history:
+            return ViewingPatterns(
+                peak_viewing_hours=[],
+                peak_viewing_days=[],
+                viewing_frequency=0.0,
+                top_channels=[],
+                channel_diversity=0.0,
+                playlist_usage=0.0,
+                subscription_engagement=0.0,
+            )
+
         # Analyze temporal patterns
         watched_dates = [
             entry.watched_at for entry in takeout_data.watch_history if entry.watched_at
@@ -524,6 +536,11 @@ class TakeoutService:
             Content gaps ordered by priority
         """
         logger.info("🔍 Identifying content gaps...")
+
+        # Handle empty data
+        if not takeout_data.watch_history:
+            logger.info("✅ No content gaps - no watch history data")
+            return []
 
         content_gaps: List[ContentGap] = []
         video_playlist_counts: Dict[str, int] = {}

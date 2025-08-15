@@ -16,14 +16,18 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy import delete
+from typing import Any, Awaitable, Dict, List
+from sqlalchemy import delete, select
 
 from chronovista.models.video import (
     Video,
     VideoCreate,
-    VideoSearchFilters,
+    VideoUpdate,
     VideoStatistics,
 )
+
+from chronovista.db.models import Video as DBVideo
+from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
 @pytest.mark.integration
@@ -36,7 +40,7 @@ class TestVideoFromYouTubeAPI:
         self,
         authenticated_youtube_service,
         integration_db_session,
-        established_channel,
+        established_channel: Awaitable[Dict[str, Any] | None],
         sample_youtube_video_ids,
     ):
         """Test creating videos from real YouTube API data."""
@@ -52,8 +56,6 @@ class TestVideoFromYouTubeAPI:
         async with integration_db_session() as session:
             try:
                 # Clean up any existing test data first
-                from chronovista.db.models import Video as DBVideo
-
                 await session.execute(
                     delete(DBVideo).where(DBVideo.video_id == video_id)
                 )
@@ -107,12 +109,10 @@ class TestVideoFromYouTubeAPI:
                 assert video_create.video_id == video_id
                 assert len(video_create.title) > 0
                 assert video_create.duration > 0
-                assert video_create.view_count >= 0
+                assert video_create.view_count is None or video_create.view_count >= 0
 
                 # Use repository pattern for database operations
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
-                video_repo = BaseSQLAlchemyRepository(DBVideo)
+                video_repo: BaseSQLAlchemyRepository[DBVideo, VideoCreate, VideoUpdate] = BaseSQLAlchemyRepository(DBVideo)
 
                 # Persist to database
                 db_video = await video_repo.create(session, obj_in=video_create)
@@ -126,8 +126,6 @@ class TestVideoFromYouTubeAPI:
                 assert db_video.updated_at is not None
 
                 # Verify data integrity
-                from sqlalchemy import select
-
                 result = await session.execute(
                     select(DBVideo).where(DBVideo.video_id == video_id)
                 )
@@ -278,7 +276,7 @@ class TestVideoFromYouTubeAPI:
         self,
         authenticated_youtube_service,
         integration_db_session,
-        established_videos,
+        established_videos: Awaitable[List[Dict[str, Any]] | None],
     ):
         """Test updating video with fresh data from API."""
         # Await the fixture since it's async
@@ -305,9 +303,9 @@ class TestVideoFromYouTubeAPI:
                     pytest.skip(f"Video {video_id} not found for update test")
 
                 # Create update model with fresh statistics
-                from chronovista.models.video import VideoUpdate
+                from tests.factories.video_factory import create_video_update
 
-                video_update = VideoUpdate(
+                video_update = create_video_update(
                     view_count=int(
                         fresh_api_data.get("statistics", {}).get("viewCount", 0)
                     ),
@@ -320,14 +318,9 @@ class TestVideoFromYouTubeAPI:
                 )
 
                 # Use repository pattern
-                from chronovista.db.models import Video as DBVideo
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
-                video_repo = BaseSQLAlchemyRepository(DBVideo)
-
+                video_repo: BaseSQLAlchemyRepository[DBVideo, VideoCreate, VideoUpdate] = BaseSQLAlchemyRepository(
+                    DBVideo)
                 # First get the existing video
-                from sqlalchemy import select
-
                 result = await session.execute(
                     select(DBVideo).where(DBVideo.video_id == video_id)
                 )
@@ -346,8 +339,8 @@ class TestVideoFromYouTubeAPI:
                 assert updated_video.updated_at >= existing_video.created_at
 
                 # Statistics should be updated (they may change over time)
-                assert updated_video.view_count >= 0
-                assert updated_video.like_count >= 0
+                assert updated_video.view_count is None or updated_video.view_count >= 0
+                assert updated_video.like_count is None or updated_video.like_count >= 0
             except Exception:
                 await session.rollback()
                 raise
@@ -396,7 +389,7 @@ class TestVideoSearchAndFiltering:
     async def test_video_search_filters_with_real_data(
         self,
         integration_db_session,
-        established_videos,
+        established_videos: Awaitable[List[Dict[str, Any]] | None],
     ):
         """Test video search filters with established video data."""
         # Await the fixture since it's async
@@ -411,20 +404,17 @@ class TestVideoSearchAndFiltering:
         async with integration_db_session() as session:
             try:
                 # Use repository pattern
-                from chronovista.db.models import Video as DBVideo
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
-                video_repo = BaseSQLAlchemyRepository(DBVideo)
-
+                video_repo: BaseSQLAlchemyRepository[DBVideo, VideoCreate, VideoUpdate] = BaseSQLAlchemyRepository(
+                    DBVideo)
                 # Test channel-based filtering
-                channel_filter = VideoSearchFilters(
+                from tests.factories.video_factory import create_video_search_filters
+
+                channel_filter = create_video_search_filters(
                     channel_ids=[channel_id],
                     exclude_deleted=True,
                 )
 
                 # For now, use a simple query since search_videos method may not exist
-                from sqlalchemy import select
-
                 result = await session.execute(
                     select(DBVideo).where(
                         DBVideo.channel_id == channel_id, DBVideo.deleted_flag == False
@@ -463,7 +453,7 @@ class TestVideoSearchAndFiltering:
     async def test_video_date_range_filtering(
         self,
         integration_db_session,
-        established_videos,
+        established_videos: Awaitable[List[Dict[str, Any]] | None],
     ):
         """Test video filtering by upload date ranges."""
         # Await the fixture since it's async
@@ -475,17 +465,12 @@ class TestVideoSearchAndFiltering:
         async with integration_db_session() as session:
             try:
                 # Use repository pattern
-                from chronovista.db.models import Video as DBVideo
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
-                video_repo = BaseSQLAlchemyRepository(DBVideo)
-
+                video_repo: BaseSQLAlchemyRepository[DBVideo, VideoCreate, VideoUpdate] = BaseSQLAlchemyRepository(
+                    DBVideo)
                 # Test recent videos (last year)
                 recent_date = datetime.now(timezone.utc).replace(
                     year=datetime.now().year - 1
                 )
-
-                from sqlalchemy import select
 
                 recent_result = await session.execute(
                     select(DBVideo).where(DBVideo.upload_date >= recent_date)
@@ -517,7 +502,7 @@ class TestVideoStatisticsAggregation:
     async def test_channel_video_statistics(
         self,
         integration_db_session,
-        established_videos,
+        established_videos: Awaitable[List[Dict[str, Any]] | None],
     ):
         """Test aggregating video statistics for a channel."""
         # Await the fixture since it's async
@@ -532,14 +517,9 @@ class TestVideoStatisticsAggregation:
         async with integration_db_session() as session:
             try:
                 # Use repository pattern to get channel videos
-                from chronovista.db.models import Video as DBVideo
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
-                video_repo = BaseSQLAlchemyRepository(DBVideo)
-
+                video_repo: BaseSQLAlchemyRepository[DBVideo, VideoCreate, VideoUpdate] = BaseSQLAlchemyRepository(
+                    DBVideo)
                 # Get all videos for the channel
-                from sqlalchemy import select
-
                 result = await session.execute(
                     select(DBVideo).where(DBVideo.channel_id == channel_id)
                 )
@@ -595,7 +575,7 @@ class TestVideoStatisticsAggregation:
 
     def _extract_top_languages(self, videos: list[Video]) -> list[tuple[str, int]]:
         """Extract top languages from video collection."""
-        language_counts = {}
+        language_counts: Dict[str, int] = {}
 
         for video in videos:
             lang = video.default_language or "unknown"
@@ -609,7 +589,7 @@ class TestVideoStatisticsAggregation:
 
     def _calculate_upload_trend(self, videos: list[Video]) -> dict[str, int]:
         """Calculate upload trend by month."""
-        trend = {}
+        trend: Dict[str, int] = {}
 
         for video in videos:
             month_key = video.upload_date.strftime("%Y-%m")

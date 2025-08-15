@@ -9,15 +9,18 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from youtube_transcript_api import FetchedTranscript, YouTubeTranscriptApi
 
 try:
-    from youtube_transcript_api import (  # type: ignore[import-untyped]
-        YouTubeTranscriptApi,
-    )
+    from youtube_transcript_api import FetchedTranscript, YouTubeTranscriptApi
 
     TRANSCRIPT_API_AVAILABLE = True
 except ImportError:
+    YouTubeTranscriptApi = None  # type: ignore
+    FetchedTranscript = None  # type: ignore
     TRANSCRIPT_API_AVAILABLE = False
 
 from ..models.enums import DownloadReason, LanguageCode
@@ -162,67 +165,137 @@ class TranscriptService:
     async def _get_transcript_from_third_party_api(
         self, video_id: VideoId, language_codes: List[str]
     ) -> RawTranscriptData:
-        """Get transcript using youtube-transcript-api."""
+        """Get transcript using youtube-transcript-api (v1.2.2+ API)."""
 
-        # Try to get transcript in preferred languages
-        transcript_data = None
-        transcript_metadata = None
-        used_language = None
+        if YouTubeTranscriptApi is None:
+            raise TranscriptServiceUnavailableError(
+                "youtube-transcript-api not available"
+            )
 
-        # First, list available transcripts
+        api = YouTubeTranscriptApi()
+
+        # Try to get transcript directly with preferred languages
         try:
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            if FetchedTranscript is None:
+                raise TranscriptServiceUnavailableError(
+                    "FetchedTranscript type not available"
+                )
 
-            # Find the best matching transcript
-            for preferred_lang in language_codes:
-                for transcript in transcript_list:
-                    if (
-                        hasattr(transcript, "language_code")
-                        and transcript.language_code == preferred_lang
-                    ):
-                        transcript_metadata = transcript
-                        used_language = preferred_lang
-                        break
-                if transcript_metadata:
-                    break
+            fetched_transcript_result = api.fetch(video_id, languages=language_codes)
 
-            # If no exact match, try to find English transcript
-            if not transcript_metadata:
-                for transcript in transcript_list:
-                    if hasattr(
-                        transcript, "language_code"
-                    ) and transcript.language_code.startswith("en"):
-                        transcript_metadata = transcript
-                        used_language = transcript.language_code
-                        break
+            if fetched_transcript_result is None:
+                raise Exception("No transcript data returned")
 
-            # If still no match, use the first available transcript
-            if not transcript_metadata:
-                for transcript in transcript_list:
-                    transcript_metadata = transcript
-                    used_language = transcript.language_code
-                    break
+            # Extract transcript data from the fetched transcript
+            transcript_data = []
+            for snippet in fetched_transcript_result:
+                transcript_data.append(
+                    {
+                        "text": str(snippet.text),
+                        "start": float(snippet.start),
+                        "duration": float(snippet.duration),
+                    }
+                )
+
+            # Get metadata
+            used_language = fetched_transcript_result.language_code
+            is_generated = fetched_transcript_result.is_generated
+            is_translatable = (
+                True  # FetchedTranscript doesn't have is_translatable, default to True
+            )
+            language_name = (
+                fetched_transcript_result.language
+            )  # Use 'language' instead of 'language_name'
 
         except Exception as e:
-            logger.warning(f"Could not list transcripts for {video_id}: {e}")
+            logger.warning(f"Direct fetch failed for {video_id}: {e}")
 
-        # Get the transcript data
-        if used_language:
-            transcript_data = YouTubeTranscriptApi.get_transcript(
-                video_id, languages=[used_language]
-            )
-        else:
-            # Fallback: try to get any available transcript
-            transcript_data = YouTubeTranscriptApi.get_transcript(video_id)
-            used_language = language_codes[0]  # Default
+            # Fallback: list available transcripts and pick the best one
+            try:
+                transcript_list = api.list(video_id)
+
+                # Try to find transcript in preferred languages
+                transcript = None
+                for lang in language_codes:
+                    try:
+                        transcript = transcript_list.find_transcript([lang])
+                        break
+                    except Exception:
+                        continue
+
+                # If no preferred language found, try any English variant
+                if not transcript:
+                    try:
+                        transcript = transcript_list.find_transcript(["en"])
+                    except Exception:
+                        pass
+
+                # If still no transcript, get any available generated transcript
+                if not transcript:
+                    try:
+                        transcript = transcript_list.find_generated_transcript(
+                            language_codes
+                        )
+                    except Exception:
+                        pass
+
+                # Last resort: get any available transcript
+                if not transcript:
+                    # Get first available transcript
+                    for t in transcript_list:
+                        transcript = t
+                        break
+
+                if not transcript:
+                    raise Exception("No transcripts available")
+
+                # Fetch the transcript content
+                fetched_transcript_content = transcript.fetch()
+
+                if fetched_transcript_content is None:
+                    raise Exception("No transcript content returned")
+
+                # Extract data
+                transcript_data = []
+                for snippet in fetched_transcript_content:
+                    transcript_data.append(
+                        {
+                            "text": str(snippet.text),
+                            "start": float(snippet.start),
+                            "duration": float(snippet.duration),
+                        }
+                    )
+
+                used_language = transcript.language_code
+                is_generated = transcript.is_generated
+                is_translatable = transcript.is_translatable
+                language_name = transcript.language
+
+            except Exception as fallback_error:
+                logger.error(
+                    f"All transcript approaches failed for {video_id}: {fallback_error}"
+                )
+                raise
 
         # Convert to our format
-        snippets = [
-            TranscriptSnippet(
-                text=item["text"], start=item["start"], duration=item["duration"]
+        snippets = []
+        for item in transcript_data:
+            # Ensure proper types with validation
+            text = str(item["text"]) if item["text"] is not None else ""
+            start = (
+                float(item["start"])
+                if isinstance(item["start"], (int, float, str))
+                else 0.0
             )
-            for item in transcript_data
-        ]
+            duration = (
+                float(item["duration"])
+                if isinstance(item["duration"], (int, float, str))
+                else 0.0
+            )
+
+            snippets.append(
+                TranscriptSnippet(text=text, start=start, duration=duration)
+            )
 
         # Determine language code enum
         try:
@@ -233,31 +306,18 @@ class TranscriptService:
         raw_data = RawTranscriptData(
             video_id=video_id,
             language_code=lang_code,
-            language_name=(
-                transcript_metadata.language if transcript_metadata else "Unknown"
-            ),
+            language_name=language_name,
             snippets=snippets,
-            is_generated=(
-                transcript_metadata.is_generated if transcript_metadata else True
-            ),
-            is_translatable=getattr(transcript_metadata, "is_translatable", None),
+            is_generated=is_generated,
+            is_translatable=is_translatable,
             source=TranscriptSource.YOUTUBE_TRANSCRIPT_API,
-            source_metadata=(
-                {
-                    "original_language": (
-                        transcript_metadata.language if transcript_metadata else None
-                    ),
-                    "original_language_code": used_language,
-                    "is_generated": (
-                        transcript_metadata.is_generated
-                        if transcript_metadata
-                        else True
-                    ),
-                    "transcript_count": len(transcript_data),
-                }
-                if transcript_metadata
-                else None
-            ),
+            source_metadata={
+                "original_language": language_name,
+                "original_language_code": used_language,
+                "is_generated": is_generated,
+                "transcript_count": len(transcript_data),
+                "api_version": "1.2.2+",
+            },
         )
 
         return raw_data
@@ -271,18 +331,174 @@ class TranscriptService:
         """
         Get transcript using official YouTube Data API v3.
 
-        This is a placeholder implementation - will be implemented later.
+        Note: This only works for videos owned by the authenticated user
+        or videos that have explicitly enabled third-party caption access.
         """
-        logger.info(
-            f"📋 Official YouTube Data API v3 fallback not yet implemented for {video_id}"
-        )
-        logger.info(
-            f"🔄 Would attempt to download captions from official API for languages: {language_codes}"
-        )
-        logger.info(f"📝 Download reason: {download_reason.value}")
+        try:
+            from ..services.youtube_service import youtube_service
 
-        # Placeholder return - will implement actual API call later
-        return None
+            logger.info(f"📋 Attempting official YouTube Data API v3 for {video_id}")
+
+            # Get available captions
+            captions = await youtube_service.get_video_captions(video_id)
+            if not captions:
+                logger.info(f"No captions found via official API for {video_id}")
+                return None
+
+            # Find best matching caption
+            best_caption = None
+            for language_code in language_codes:
+                for caption in captions:
+                    snippet = caption.get("snippet", {})
+                    caption_lang = snippet.get("language", "").lower()
+                    if caption_lang == language_code.lower():
+                        best_caption = caption
+                        break
+                if best_caption:
+                    break
+
+            # If no exact match, try the first available caption
+            if not best_caption and captions:
+                best_caption = captions[0]
+
+            if not best_caption:
+                logger.info(f"No suitable caption found for {video_id}")
+                return None
+
+            # Try to download caption content
+            caption_id = best_caption.get("id")
+            snippet = best_caption.get("snippet", {})
+
+            if caption_id is None:
+                logger.warning(f"No caption ID found for {video_id}")
+                return None
+
+            caption_content = await youtube_service.download_caption(caption_id)
+
+            if not caption_content:
+                logger.warning(
+                    f"Could not download caption content for {video_id} (likely permission issue)"
+                )
+                return None
+
+            # Parse SRT content into our format
+            snippets = self._parse_srt_content(caption_content)
+
+            # Determine language code enum
+            caption_lang = snippet.get("language", "en").lower()
+            try:
+                lang_code = LanguageCode(caption_lang)
+            except ValueError:
+                lang_code = LanguageCode.ENGLISH
+
+            # Create RawTranscriptData
+            raw_data = RawTranscriptData(
+                video_id=video_id,
+                language_code=lang_code,
+                language_name=snippet.get("name", f"Language ({caption_lang})"),
+                snippets=snippets,
+                is_generated=snippet.get("trackKind") == "asr",
+                is_translatable=True,  # Official API captions are usually translatable
+                source=TranscriptSource.YOUTUBE_DATA_API_V3,
+                source_metadata={
+                    "caption_id": caption_id,
+                    "track_kind": snippet.get("trackKind"),
+                    "last_updated": snippet.get("lastUpdated"),
+                    "download_format": "srt",
+                },
+            )
+
+            # Convert to our enhanced model
+            transcript = EnhancedVideoTranscriptBase.from_raw_transcript_data(
+                raw_data, download_reason=download_reason
+            )
+
+            logger.info(
+                f"✅ Successfully downloaded transcript for {video_id} from official API"
+            )
+            return transcript
+
+        except Exception as e:
+            logger.warning(f"Official API failed for {video_id}: {e}")
+            return None
+
+    def _parse_srt_content(self, srt_content: str) -> List[TranscriptSnippet]:
+        """
+        Parse SRT format content into TranscriptSnippet objects.
+
+        Args:
+            srt_content: SRT format caption content
+
+        Returns:
+            List of TranscriptSnippet objects
+        """
+        snippets = []
+        lines = srt_content.strip().split("\n")
+
+        i = 0
+        while i < len(lines):
+            # Skip empty lines
+            if not lines[i].strip():
+                i += 1
+                continue
+
+            # Skip sequence number line
+            if lines[i].strip().isdigit():
+                i += 1
+                if i >= len(lines):
+                    break
+
+            # Parse timestamp line (format: 00:00:00,000 --> 00:00:03,000)
+            if i < len(lines) and "-->" in lines[i]:
+                timestamp_line = lines[i].strip()
+                try:
+                    start_str, end_str = timestamp_line.split(" --> ")
+                    start_time = self._parse_srt_timestamp(start_str)
+                    end_time = self._parse_srt_timestamp(end_str)
+                    duration = end_time - start_time
+
+                    i += 1
+
+                    # Collect text lines until next empty line or end
+                    text_lines = []
+                    while i < len(lines) and lines[i].strip():
+                        text_lines.append(lines[i].strip())
+                        i += 1
+
+                    if text_lines:
+                        text = " ".join(text_lines)
+                        snippet = TranscriptSnippet(
+                            text=text, start=start_time, duration=duration
+                        )
+                        snippets.append(snippet)
+
+                except (ValueError, IndexError) as e:
+                    logger.warning(
+                        f"Could not parse SRT timestamp: {timestamp_line} - {e}"
+                    )
+                    i += 1
+            else:
+                i += 1
+
+        return snippets
+
+    def _parse_srt_timestamp(self, timestamp_str: str) -> float:
+        """
+        Parse SRT timestamp format (HH:MM:SS,mmm) to seconds.
+
+        Args:
+            timestamp_str: Timestamp in SRT format
+
+        Returns:
+            Timestamp in seconds as float
+        """
+        # Format: 00:00:12,345
+        time_part, ms_part = timestamp_str.split(",")
+        hours, minutes, seconds = map(int, time_part.split(":"))
+        milliseconds = int(ms_part)
+
+        total_seconds = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000.0
+        return total_seconds
 
     def _create_mock_transcript(
         self, video_id: VideoId, language_code: str, download_reason: DownloadReason
@@ -337,14 +553,15 @@ class TranscriptService:
         Returns:
             List of available language information
         """
-        if not self._api_available:
+        if not self._api_available or YouTubeTranscriptApi is None:
             logger.warning(
                 f"Cannot check available languages for {video_id} - API not available"
             )
             return []
 
         try:
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            api = YouTubeTranscriptApi()
+            transcript_list = api.list(video_id)
             languages = []
 
             for transcript in transcript_list:

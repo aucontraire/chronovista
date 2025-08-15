@@ -5,8 +5,7 @@ Tests for VideoTagRepository functionality.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import List
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,13 +14,11 @@ from chronovista.db.models import VideoTag as VideoTagDB
 from chronovista.models.video_tag import (
     VideoTagCreate,
     VideoTagSearchFilters,
-    VideoTagStatistics,
-    VideoTagUpdate,
+    VideoTagStatistics
 )
 from chronovista.repositories.video_tag_repository import VideoTagRepository
 from tests.factories.video_tag_factory import (
     VideoTagTestData,
-    create_video_tag,
     create_video_tag_create,
 )
 
@@ -35,9 +32,9 @@ class TestVideoTagRepository:
         return VideoTagRepository()
 
     @pytest.fixture
-    def mock_session(self) -> AsyncSession:
+    def mock_session(self) -> MagicMock:
         """Create mock async session."""
-        return AsyncMock(spec=AsyncSession)
+        return MagicMock(spec=AsyncSession)
 
     @pytest.fixture
     def sample_video_tag_db(self) -> VideoTagDB:
@@ -66,7 +63,7 @@ class TestVideoTagRepository:
     async def test_get_existing_tag(
         self,
         repository: VideoTagRepository,
-        mock_session: AsyncSession,
+        mock_session: MagicMock,
         sample_video_tag_db: VideoTagDB,
     ):
         """Test getting video tag by composite key when it exists."""
@@ -83,7 +80,7 @@ class TestVideoTagRepository:
 
     @pytest.mark.asyncio
     async def test_get_nonexistent_tag(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test getting video tag when it doesn't exist."""
         mock_result = MagicMock()
@@ -99,7 +96,7 @@ class TestVideoTagRepository:
 
     @pytest.mark.asyncio
     async def test_exists_true(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test exists returns True when tag exists."""
         mock_result = MagicMock()
@@ -115,7 +112,7 @@ class TestVideoTagRepository:
 
     @pytest.mark.asyncio
     async def test_exists_false(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test exists returns False when tag doesn't exist."""
         mock_result = MagicMock()
@@ -131,7 +128,7 @@ class TestVideoTagRepository:
 
     @pytest.mark.asyncio
     async def test_get_by_video_id(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test getting all tags for a specific video."""
         mock_tags = [MagicMock(), MagicMock()]
@@ -148,7 +145,7 @@ class TestVideoTagRepository:
 
     @pytest.mark.asyncio
     async def test_get_by_tag(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test getting all videos with a specific tag."""
         mock_video_tags = [MagicMock(), MagicMock()]
@@ -167,95 +164,93 @@ class TestVideoTagRepository:
     async def test_create_or_update_new_tag(
         self,
         repository: VideoTagRepository,
-        mock_session: AsyncSession,
+        mock_session: MagicMock,
         sample_video_tag_create: VideoTagCreate,
         sample_video_tag_db: VideoTagDB,
     ):
         """Test create_or_update with new tag."""
-        repository.get_by_composite_key = AsyncMock(return_value=None)
-        repository.create = AsyncMock(return_value=sample_video_tag_db)
+        with patch.object(repository, 'get_by_composite_key', AsyncMock(return_value=None)) as mock_get, \
+             patch.object(repository, 'create', AsyncMock(return_value=sample_video_tag_db)) as mock_create:
 
-        result = await repository.create_or_update(
-            mock_session, sample_video_tag_create
-        )
+            result = await repository.create_or_update(
+                mock_session, sample_video_tag_create
+            )
 
-        assert result == sample_video_tag_db
-        repository.get_by_composite_key.assert_called_once_with(
-            mock_session, sample_video_tag_create.video_id, sample_video_tag_create.tag
-        )
-        repository.create.assert_called_once_with(
-            mock_session, obj_in=sample_video_tag_create
-        )
+            assert result == sample_video_tag_db
+            mock_get.assert_called_once_with(
+                mock_session, sample_video_tag_create.video_id, sample_video_tag_create.tag
+            )
+            mock_create.assert_called_once_with(
+                mock_session, obj_in=sample_video_tag_create
+            )
 
     @pytest.mark.asyncio
     async def test_create_or_update_existing_tag(
         self,
         repository: VideoTagRepository,
-        mock_session: AsyncSession,
+        mock_session: MagicMock,
         sample_video_tag_create: VideoTagCreate,
         sample_video_tag_db: VideoTagDB,
     ):
         """Test create_or_update with existing tag."""
-        repository.get_by_composite_key = AsyncMock(return_value=sample_video_tag_db)
-        repository.update = AsyncMock(return_value=sample_video_tag_db)
+        with patch.object(repository, 'get_by_composite_key', AsyncMock(return_value=sample_video_tag_db)) as mock_get, \
+             patch.object(repository, 'update', AsyncMock(return_value=sample_video_tag_db)) as mock_update:
 
-        result = await repository.create_or_update(
-            mock_session, sample_video_tag_create
-        )
+            result = await repository.create_or_update(
+                mock_session, sample_video_tag_create
+            )
 
-        assert result == sample_video_tag_db
-        repository.get_by_composite_key.assert_called_once_with(
-            mock_session, sample_video_tag_create.video_id, sample_video_tag_create.tag
-        )
-        repository.update.assert_called_once()
+            assert result == sample_video_tag_db
+            mock_get.assert_called_once_with(
+                mock_session, sample_video_tag_create.video_id, sample_video_tag_create.tag
+            )
+            mock_update.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_bulk_create_video_tags_new(
         self,
         repository: VideoTagRepository,
-        mock_session: AsyncSession,
+        mock_session: MagicMock,
         sample_video_tag_db: VideoTagDB,
     ):
         """Test bulk creating new video tags."""
-        repository.get_by_composite_key = AsyncMock(return_value=None)
-        repository.create = AsyncMock(return_value=sample_video_tag_db)
+        with patch.object(repository, 'get_by_composite_key', AsyncMock(return_value=None)) as mock_get, \
+             patch.object(repository, 'create', AsyncMock(return_value=sample_video_tag_db)) as mock_create:
 
-        tags = ["music", "entertainment", "dance"]
-        tag_orders = [1, 2, 3]
-        result = await repository.bulk_create_video_tags(
-            mock_session, "dQw4w9WgXcQ", tags, tag_orders
-        )
+            tags = ["music", "entertainment", "dance"]
+            tag_orders = [1, 2, 3]
+            result = await repository.bulk_create_video_tags(
+                mock_session, "dQw4w9WgXcQ", tags, tag_orders
+            )
 
-        assert len(result) == 3
-        assert repository.get_by_composite_key.call_count == 3
-        assert repository.create.call_count == 3
+            assert len(result) == 3
+            assert mock_get.call_count == 3
+            assert mock_create.call_count == 3
 
     @pytest.mark.asyncio
     async def test_bulk_create_video_tags_mixed(
         self,
         repository: VideoTagRepository,
-        mock_session: AsyncSession,
+        mock_session: MagicMock,
         sample_video_tag_db: VideoTagDB,
     ):
         """Test bulk creating with mix of new and existing tags."""
         # First tag exists, second doesn't
-        repository.get_by_composite_key = AsyncMock(
-            side_effect=[sample_video_tag_db, None]
-        )
-        repository.create = AsyncMock(return_value=sample_video_tag_db)
+        with patch.object(repository, 'get_by_composite_key', AsyncMock(side_effect=[sample_video_tag_db, None])) as mock_get, \
+             patch.object(repository, 'create', AsyncMock(return_value=sample_video_tag_db)) as mock_create:
 
-        tags = ["music", "entertainment"]
-        result = await repository.bulk_create_video_tags(
-            mock_session, "dQw4w9WgXcQ", tags
-        )
+            tags = ["music", "entertainment"]
+            result = await repository.bulk_create_video_tags(
+                mock_session, "dQw4w9WgXcQ", tags
+            )
 
-        assert len(result) == 2
-        assert repository.get_by_composite_key.call_count == 2
-        assert repository.create.call_count == 1  # Only one new tag created
+            assert len(result) == 2
+            assert mock_get.call_count == 2
+            assert mock_create.call_count == 1  # Only one new tag created
 
     @pytest.mark.asyncio
     async def test_delete_by_video_id(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test deleting all tags for a video."""
         mock_count_result = MagicMock()
@@ -270,7 +265,7 @@ class TestVideoTagRepository:
 
     @pytest.mark.asyncio
     async def test_delete_by_tag(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test deleting all instances of a specific tag."""
         mock_count_result = MagicMock()
@@ -285,7 +280,7 @@ class TestVideoTagRepository:
 
     @pytest.mark.asyncio
     async def test_search_tags_with_filters(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test searching tags with comprehensive filters."""
         filters = VideoTagSearchFilters(
@@ -312,7 +307,7 @@ class TestVideoTagRepository:
 
     @pytest.mark.asyncio
     async def test_search_tags_empty_filters(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test searching tags with empty filters."""
         filters = VideoTagSearchFilters()
@@ -331,7 +326,7 @@ class TestVideoTagRepository:
 
     @pytest.mark.asyncio
     async def test_get_popular_tags(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test getting popular tags."""
         expected_tags = [("music", 100), ("gaming", 85), ("tech", 70)]
@@ -344,7 +339,7 @@ class TestVideoTagRepository:
 
     @pytest.mark.asyncio
     async def test_get_related_tags(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test getting related tags."""
         expected_related = [("dance", 25), ("pop", 20), ("cover", 15)]
@@ -357,7 +352,7 @@ class TestVideoTagRepository:
 
     @pytest.mark.asyncio
     async def test_get_video_tag_statistics(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test getting comprehensive tag statistics."""
         # Mock different execute calls for different queries
@@ -379,7 +374,7 @@ class TestVideoTagRepository:
 
     @pytest.mark.asyncio
     async def test_find_videos_by_tags_any(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test finding videos that have ANY of the specified tags."""
         expected_videos = ["dQw4w9WgXcQ", "9bZkp7q19f0"]
@@ -394,7 +389,7 @@ class TestVideoTagRepository:
 
     @pytest.mark.asyncio
     async def test_find_videos_by_tags_all(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test finding videos that have ALL of the specified tags."""
         expected_videos = ["dQw4w9WgXcQ"]
@@ -410,7 +405,7 @@ class TestVideoTagRepository:
 
     @pytest.mark.asyncio
     async def test_find_videos_by_tags_empty_list(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test finding videos with empty tag list."""
         result = await repository.find_videos_by_tags(mock_session, [])
@@ -420,7 +415,7 @@ class TestVideoTagRepository:
 
     @pytest.mark.asyncio
     async def test_get_tag_video_count(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test getting video count for a specific tag."""
         mock_result = MagicMock()
@@ -434,7 +429,7 @@ class TestVideoTagRepository:
 
     @pytest.mark.asyncio
     async def test_get_video_count_by_tags(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test getting video counts for multiple tags."""
         expected_counts = [("music", 100), ("gaming", 85), ("tech", 70)]
@@ -450,7 +445,7 @@ class TestVideoTagRepository:
 
     @pytest.mark.asyncio
     async def test_get_video_count_by_tags_empty(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test getting video counts with empty tag list."""
         result = await repository.get_video_count_by_tags(mock_session, [])
@@ -460,7 +455,7 @@ class TestVideoTagRepository:
 
     @pytest.mark.asyncio
     async def test_cleanup_orphaned_tags(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test cleanup of orphaned tags."""
         # Currently returns 0 as placeholder
@@ -478,13 +473,13 @@ class TestVideoTagRepositoryIntegration:
         return VideoTagRepository()
 
     @pytest.fixture
-    def mock_session(self) -> AsyncSession:
+    def mock_session(self) -> MagicMock:
         """Create mock session."""
-        return AsyncMock(spec=AsyncSession)
+        return MagicMock(spec=AsyncSession)
 
     @pytest.mark.asyncio
     async def test_tag_lifecycle_with_factory_data(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test complete tag lifecycle using factory data."""
         # Create tag using factory
@@ -499,18 +494,18 @@ class TestVideoTagRepositoryIntegration:
         mock_tag_db.tag_order = tag_create.tag_order
 
         # Mock repository operations
-        repository.get_by_composite_key = AsyncMock(return_value=None)  # New tag
-        repository.create = AsyncMock(return_value=mock_tag_db)
+        with patch.object(repository, 'get_by_composite_key', AsyncMock(return_value=None)) as mock_get, \
+             patch.object(repository, 'create', AsyncMock(return_value=mock_tag_db)) as mock_create:
 
-        # Create tag
-        result = await repository.create_or_update(mock_session, tag_create)
+            # Create tag
+            result = await repository.create_or_update(mock_session, tag_create)
 
-        assert result == mock_tag_db
-        repository.create.assert_called_once_with(mock_session, obj_in=tag_create)
+            assert result == mock_tag_db
+            mock_create.assert_called_once_with(mock_session, obj_in=tag_create)
 
     @pytest.mark.asyncio
     async def test_search_with_test_data_patterns(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test search functionality with common test data patterns."""
         # Use test data patterns
@@ -555,21 +550,21 @@ class TestVideoTagRepositoryIntegration:
 
     @pytest.mark.asyncio
     async def test_base_get_with_composite_key(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test base get method with composite key tuple."""
-        repository.get_by_composite_key = AsyncMock(return_value=MagicMock())
+        with patch.object(repository, 'get_by_composite_key', AsyncMock(return_value=MagicMock())) as mock_get:
 
-        result = await repository.get(mock_session, ("dQw4w9WgXcQ", "music"))
+            result = await repository.get(mock_session, ("dQw4w9WgXcQ", "music"))
 
-        assert result is not None
-        repository.get_by_composite_key.assert_called_once_with(
-            mock_session, "dQw4w9WgXcQ", "music"
-        )
+            assert result is not None
+            mock_get.assert_called_once_with(
+                mock_session, "dQw4w9WgXcQ", "music"
+            )
 
     @pytest.mark.asyncio
     async def test_base_get_with_invalid_key(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test base get method with invalid key format."""
         result = await repository.get(mock_session, "invalid_key")
@@ -578,14 +573,14 @@ class TestVideoTagRepositoryIntegration:
 
     @pytest.mark.asyncio
     async def test_base_exists_with_composite_key(
-        self, repository: VideoTagRepository, mock_session: AsyncSession
+        self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test base exists method with composite key tuple."""
-        repository.exists_by_composite_key = AsyncMock(return_value=True)
+        with patch.object(repository, 'exists_by_composite_key', AsyncMock(return_value=True)) as mock_exists:
 
-        result = await repository.exists(mock_session, ("dQw4w9WgXcQ", "music"))
+            result = await repository.exists(mock_session, ("dQw4w9WgXcQ", "music"))
 
-        assert result is True
-        repository.exists_by_composite_key.assert_called_once_with(
-            mock_session, "dQw4w9WgXcQ", "music"
-        )
+            assert result is True
+            mock_exists.assert_called_once_with(
+                mock_session, "dQw4w9WgXcQ", "music"
+            )

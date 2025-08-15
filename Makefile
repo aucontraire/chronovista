@@ -163,7 +163,7 @@ format-check:
 	$(POETRY_RUN) isort --check-only $(SRC_DIR) $(TEST_DIR)
 
 type-check:
-	$(POETRY_RUN) mypy $(SRC_DIR)
+	$(POETRY_RUN) mypy $(SRC_DIR)/ $(TEST_DIR)/
 
 quality: format-check lint type-check
 	@echo "✅ All quality checks passed!"

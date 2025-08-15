@@ -8,7 +8,7 @@ with realistic and consistent test data.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, cast
 
 import factory
 from factory import LazyFunction
@@ -351,37 +351,37 @@ class VideoTestData:
 # Convenience factory functions
 def create_video_base(**kwargs) -> VideoBase:
     """Create a VideoBase with optional overrides."""
-    return VideoBaseFactory(**kwargs)
+    return cast(VideoBase, VideoBaseFactory.build(**kwargs))
 
 
 def create_video_create(**kwargs) -> VideoCreate:
     """Create a VideoCreate with optional overrides."""
-    return VideoCreateFactory(**kwargs)
+    return cast(VideoCreate, VideoCreateFactory.build(**kwargs))
 
 
 def create_video_update(**kwargs) -> VideoUpdate:
     """Create a VideoUpdate with optional overrides."""
-    return VideoUpdateFactory(**kwargs)
+    return cast(VideoUpdate, VideoUpdateFactory.build(**kwargs))
 
 
 def create_video(**kwargs) -> Video:
     """Create a Video with optional overrides."""
-    return VideoFactory(**kwargs)
+    return cast(Video, VideoFactory.build(**kwargs))
 
 
 def create_video_search_filters(**kwargs) -> VideoSearchFilters:
     """Create a VideoSearchFilters with optional overrides."""
-    return VideoSearchFiltersFactory(**kwargs)
+    return cast(VideoSearchFilters, VideoSearchFiltersFactory.build(**kwargs))
 
 
 def create_video_statistics(**kwargs) -> VideoStatistics:
     """Create a VideoStatistics with optional overrides."""
-    return VideoStatisticsFactory(**kwargs)
+    return cast(VideoStatistics, VideoStatisticsFactory.build(**kwargs))
 
 
 def create_video_with_channel(**kwargs) -> VideoWithChannel:
     """Create a VideoWithChannel with optional overrides."""
-    return VideoWithChannelFactory(**kwargs)
+    return cast(VideoWithChannel, VideoWithChannelFactory.build(**kwargs))
 
 
 def create_batch_videos(count: int = 5) -> List[Video]:
@@ -414,7 +414,7 @@ def create_batch_videos(count: int = 5) -> List[Video]:
         channel_id = base_channel_ids[i % len(base_channel_ids)]
         title = base_titles[i % len(base_titles)]
 
-        video = VideoFactory(
+        video = VideoFactory.build(
             video_id=video_id,
             channel_id=channel_id,
             title=title,

@@ -31,14 +31,30 @@ def test_settings_defaults():
 
 
 def test_settings_path_validation():
-    """Test path validation in settings."""
+    """Test path validation with Path input."""
     settings = Settings(
         youtube_api_key="test_key",
         youtube_client_id="test_id",
         youtube_client_secret="test_secret",
         secret_key="test_secret",
-        data_dir="./test_data",
+        data_dir=Path("./test_data"),
     )
+
+    assert isinstance(settings.data_dir, Path)
+    assert settings.data_dir == Path("./test_data")
+
+
+def test_settings_path_string_conversion():
+    """Test path validation from string input."""
+    # Test string parsing using model_validate to bypass direct constructor
+    data = {
+        "youtube_api_key": "test_key",
+        "youtube_client_id": "test_id",
+        "youtube_client_secret": "test_secret", 
+        "secret_key": "test_secret",
+        "data_dir": "./test_data",
+    }
+    settings = Settings.model_validate(data)
 
     assert isinstance(settings.data_dir, Path)
     assert settings.data_dir == Path("./test_data")
@@ -70,13 +86,28 @@ def test_settings_database_detection():
 
 
 def test_settings_oauth_scopes_parsing():
-    """Test OAuth scopes parsing."""
+    """Test OAuth scopes parsing from comma-separated string."""
+    # Test string parsing using model_validate to bypass direct constructor
+    data = {
+        "youtube_api_key": "test_key",
+        "youtube_client_id": "test_id", 
+        "youtube_client_secret": "test_secret",
+        "secret_key": "test_secret",
+        "oauth_scopes": "scope1,scope2,scope3",
+    }
+    settings = Settings.model_validate(data)
+
+    assert settings.oauth_scopes == ["scope1", "scope2", "scope3"]
+
+
+def test_settings_oauth_scopes_list():
+    """Test OAuth scopes with list input."""
     settings = Settings(
         youtube_api_key="test_key",
         youtube_client_id="test_id",
         youtube_client_secret="test_secret",
         secret_key="test_secret",
-        oauth_scopes="scope1,scope2,scope3",
+        oauth_scopes=["scope1", "scope2", "scope3"],
     )
 
     assert settings.oauth_scopes == ["scope1", "scope2", "scope3"]

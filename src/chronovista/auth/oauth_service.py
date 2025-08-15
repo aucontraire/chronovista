@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, urlparse
 from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import Flow  # type: ignore
-from googleapiclient.discovery import build  # type: ignore
+from googleapiclient.discovery import build
 
 from chronovista.config.settings import settings
 

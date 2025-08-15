@@ -97,9 +97,13 @@ class TestDatabaseManager:
 
         await manager.close()
 
+        # Verify the close method was effective
         mock_engine.dispose.assert_called_once()
-        assert manager._engine is None
-        assert manager._session_factory is None
+
+        # Verify that manager attributes were properly reset after close()
+        engine_is_none = manager._engine is None
+        session_factory_is_none = manager._session_factory is None
+        assert engine_is_none and session_factory_is_none
 
     @pytest.mark.asyncio
     async def test_close_no_engine(self):

@@ -1100,11 +1100,11 @@ def topic_graph_export(
         min=0.0,
         max=1.0,
     ),
-    max_topics: int = typer.Option(
-        50, "--max-topics", "-t", help="Maximum number of topics to include in graph"
+    limit: int = typer.Option(
+        50, "--limit", "-l", help="Maximum number of topics to include in graph"
     ),
 ) -> None:
-    """Export topic relationship graph in DOT or JSON format for visualization tools."""
+    """Export topic relationship graph for visualization tools."""
 
     async def run_graph_export() -> None:
         try:
@@ -1125,7 +1125,7 @@ def topic_graph_export(
             console.print(
                 Panel(
                     "[bold cyan]🕸️ Topic Relationship Graph Export[/bold cyan]\n\n"
-                    f"Generating {format.upper()} graph with {max_topics} topics.\n"
+                    f"Generating {format.upper()} graph with {limit} topics.\n"
                     f"Including relationships with ≥{min_confidence:.1f} confidence.",
                     title="Graph Export",
                     border_style="cyan",
@@ -1146,7 +1146,7 @@ def topic_graph_export(
                 if format == "dot":
                     progress.add_task("Generating DOT graph...", total=None)
                     graph_content = await analytics_service.generate_topic_graph_dot(
-                        min_confidence=min_confidence, max_topics=max_topics
+                        min_confidence=min_confidence, max_topics=limit
                     )
 
                     # Determine output filename
@@ -1162,7 +1162,7 @@ def topic_graph_export(
                         Panel(
                             f"[bold green]✅ DOT Graph Export Complete![/bold green]\n\n"
                             f"📄 File: {output_path}\n"
-                            f"🕸️ Topics: {max_topics}\n"
+                            f"🕸️ Topics: {limit}\n"
                             f"🔗 Min Confidence: {min_confidence:.1f}\n"
                             f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
                             f"[bold yellow]💡 Visualization Tips:[/bold yellow]\n"
@@ -1177,7 +1177,7 @@ def topic_graph_export(
                 elif format == "json":
                     progress.add_task("Generating JSON graph...", total=None)
                     graph_data = await analytics_service.generate_topic_graph_json(
-                        min_confidence=min_confidence, max_topics=max_topics
+                        min_confidence=min_confidence, max_topics=limit
                     )
 
                     # Determine output filename

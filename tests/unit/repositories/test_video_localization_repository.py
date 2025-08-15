@@ -8,8 +8,7 @@ including CRUD, composite key handling, multi-language analytics, and search.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Dict, List
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,25 +16,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from chronovista.db.models import VideoLocalization as VideoLocalizationDB
 from chronovista.models.enums import LanguageCode
 from chronovista.models.video_localization import (
-    VideoLocalization,
     VideoLocalizationCreate,
     VideoLocalizationSearchFilters,
     VideoLocalizationStatistics,
-    VideoLocalizationUpdate,
 )
 from chronovista.repositories.video_localization_repository import (
     VideoLocalizationRepository,
 )
 from tests.factories import (
-    VideoLocalizationCreateFactory,
-    VideoLocalizationFactory,
     VideoLocalizationSearchFiltersFactory,
     VideoLocalizationStatisticsFactory,
     VideoLocalizationTestData,
-    VideoLocalizationUpdateFactory,
-    create_video_localization,
     create_video_localization_create,
-    create_video_localization_update,
 )
 
 
@@ -48,16 +40,21 @@ class TestVideoLocalizationRepository:
         return VideoLocalizationRepository()
 
     @pytest.fixture
-    def mock_session(self) -> AsyncSession:
+    def mock_session(self) -> AsyncMock:
         """Create mock async session."""
-        return AsyncMock(spec=AsyncSession)
+        session = AsyncMock(spec=AsyncSession)
+        # Configure execute to return a mock result by default
+        session.execute = AsyncMock()
+        session.delete = AsyncMock()
+        session.flush = AsyncMock()
+        return session
 
     @pytest.fixture
     def sample_localization_db(self) -> VideoLocalizationDB:
         """Create sample database video localization object."""
         return VideoLocalizationDB(
             video_id="dQw4w9WgXcQ",
-            language_code="en",
+            language_code=LanguageCode.ENGLISH.value,
             localized_title="Never Gonna Give You Up",
             localized_description="Official music video description",
             created_at=datetime.now(timezone.utc),
@@ -77,13 +74,13 @@ class TestVideoLocalizationRepository:
 
     @pytest.mark.asyncio
     async def test_get_by_composite_key_success(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test successful retrieval by composite key."""
         # Arrange
         expected_localization = VideoLocalizationDB(
             video_id="dQw4w9WgXcQ",
-            language_code="en",
+            language_code=LanguageCode.ENGLISH.value,
             localized_title="Test Title",
             localized_description="Test Description",
             created_at=datetime.now(timezone.utc),
@@ -95,7 +92,7 @@ class TestVideoLocalizationRepository:
 
         # Act
         result = await repository.get_by_composite_key(
-            mock_session, "dQw4w9WgXcQ", "en"
+            mock_session, "dQw4w9WgXcQ", LanguageCode.ENGLISH.value
         )
 
         # Assert
@@ -104,7 +101,7 @@ class TestVideoLocalizationRepository:
 
     @pytest.mark.asyncio
     async def test_get_by_composite_key_not_found(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test retrieval when localization doesn't exist."""
         # Arrange
@@ -114,7 +111,7 @@ class TestVideoLocalizationRepository:
 
         # Act
         result = await repository.get_by_composite_key(
-            mock_session, "nonexistent", "en"
+            mock_session, "nonexistent", LanguageCode.ENGLISH.value
         )
 
         # Assert
@@ -122,13 +119,13 @@ class TestVideoLocalizationRepository:
 
     @pytest.mark.asyncio
     async def test_get_with_tuple_id(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test get method with tuple ID (composite key)."""
         # Arrange
         expected_localization = VideoLocalizationDB(
             video_id="dQw4w9WgXcQ",
-            language_code="en",
+            language_code=LanguageCode.ENGLISH.value,
             localized_title="Test Title",
             localized_description="Test Description",
             created_at=datetime.now(timezone.utc),
@@ -139,14 +136,14 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result
 
         # Act
-        result = await repository.get(mock_session, ("dQw4w9WgXcQ", "en"))
+        result = await repository.get(mock_session, ("dQw4w9WgXcQ", LanguageCode.ENGLISH.value))
 
         # Assert
         assert result == expected_localization
 
     @pytest.mark.asyncio
     async def test_get_with_invalid_id(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test get method with invalid ID format."""
         # Act
@@ -157,7 +154,7 @@ class TestVideoLocalizationRepository:
 
     @pytest.mark.asyncio
     async def test_exists_by_composite_key_true(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test exists method returns True when localization exists."""
         # Arrange
@@ -167,7 +164,7 @@ class TestVideoLocalizationRepository:
 
         # Act
         result = await repository.exists_by_composite_key(
-            mock_session, "dQw4w9WgXcQ", "en"
+            mock_session, "dQw4w9WgXcQ", LanguageCode.ENGLISH.value
         )
 
         # Assert
@@ -175,7 +172,7 @@ class TestVideoLocalizationRepository:
 
     @pytest.mark.asyncio
     async def test_exists_by_composite_key_false(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test exists method returns False when localization doesn't exist."""
         # Arrange
@@ -185,7 +182,7 @@ class TestVideoLocalizationRepository:
 
         # Act
         result = await repository.exists_by_composite_key(
-            mock_session, "nonexistent", "en"
+            mock_session, "nonexistent", LanguageCode.ENGLISH.value
         )
 
         # Assert
@@ -193,7 +190,7 @@ class TestVideoLocalizationRepository:
 
     @pytest.mark.asyncio
     async def test_exists_with_tuple_id(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test exists method with tuple ID."""
         # Arrange
@@ -202,7 +199,7 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result
 
         # Act
-        result = await repository.exists(mock_session, ("dQw4w9WgXcQ", "en"))
+        result = await repository.exists(mock_session, ("dQw4w9WgXcQ", LanguageCode.ENGLISH.value))
 
         # Assert
         assert result is True
@@ -211,21 +208,21 @@ class TestVideoLocalizationRepository:
 
     @pytest.mark.asyncio
     async def test_get_by_video_id(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test getting all localizations for a video."""
         # Arrange
         localizations = [
             VideoLocalizationDB(
                 video_id="dQw4w9WgXcQ",
-                language_code="en",
+                language_code=LanguageCode.ENGLISH.value,
                 localized_title="English Title",
                 localized_description="English Description",
                 created_at=datetime.now(timezone.utc),
             ),
             VideoLocalizationDB(
                 video_id="dQw4w9WgXcQ",
-                language_code="es",
+                language_code=LanguageCode.SPANISH.value,
                 localized_title="Título en Español",
                 localized_description="Descripción en español",
                 created_at=datetime.now(timezone.utc),
@@ -241,26 +238,26 @@ class TestVideoLocalizationRepository:
 
         # Assert
         assert len(result) == 2
-        assert result[0].language_code == "en"
-        assert result[1].language_code == "es"
+        assert result[0].language_code == LanguageCode.ENGLISH.value
+        assert result[1].language_code == LanguageCode.SPANISH.value
 
     @pytest.mark.asyncio
     async def test_get_by_language_code(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test getting localizations by language code."""
         # Arrange
         localizations = [
             VideoLocalizationDB(
                 video_id="dQw4w9WgXcQ",
-                language_code="en",
+                language_code=LanguageCode.ENGLISH.value,
                 localized_title="English Title 1",
                 localized_description="English Description 1",
                 created_at=datetime.now(timezone.utc),
             ),
             VideoLocalizationDB(
                 video_id="9bZkp7q19f0",
-                language_code="en",
+                language_code=LanguageCode.ENGLISH.value,
                 localized_title="English Title 2",
                 localized_description="English Description 2",
                 created_at=datetime.now(timezone.utc),
@@ -272,21 +269,21 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result
 
         # Act
-        result = await repository.get_by_language_code(mock_session, "en")
+        result = await repository.get_by_language_code(mock_session, LanguageCode.ENGLISH.value)
 
         # Assert
         assert len(result) == 2
-        assert all(loc.language_code == "en" for loc in result)
+        assert all(loc.language_code == LanguageCode.ENGLISH.value for loc in result)
 
     @pytest.mark.asyncio
     async def test_get_with_video(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test getting localization with video relationship loaded."""
         # Arrange
         localization_with_video = VideoLocalizationDB(
             video_id="dQw4w9WgXcQ",
-            language_code="en",
+            language_code=LanguageCode.ENGLISH.value,
             localized_title="Test Title",
             localized_description="Test Description",
             created_at=datetime.now(timezone.utc),
@@ -297,7 +294,7 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result
 
         # Act
-        result = await repository.get_with_video(mock_session, "dQw4w9WgXcQ", "en")
+        result = await repository.get_with_video(mock_session, "dQw4w9WgXcQ", LanguageCode.ENGLISH.value)
 
         # Assert
         assert result == localization_with_video
@@ -310,14 +307,14 @@ class TestVideoLocalizationRepository:
     async def test_create_or_update_new_localization(
         self,
         repository: VideoLocalizationRepository,
-        mock_session: AsyncSession,
+        mock_session: AsyncMock,
         sample_localization_create: VideoLocalizationCreate,
     ):
         """Test creating new localization when it doesn't exist."""
         # Arrange
         new_localization = VideoLocalizationDB(
             video_id=sample_localization_create.video_id,
-            language_code=sample_localization_create.language_code,
+            language_code=sample_localization_create.language_code.value,
             localized_title=sample_localization_create.localized_title,
             localized_description=sample_localization_create.localized_description,
             created_at=datetime.now(timezone.utc),
@@ -329,31 +326,30 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result_exists
 
         # Mock create operation
-        repository.create = AsyncMock(return_value=new_localization)
+        with patch.object(repository, 'create', new=AsyncMock(return_value=new_localization)) as mock_create:
+            # Act
+            result = await repository.create_or_update(
+                mock_session, sample_localization_create
+            )
 
-        # Act
-        result = await repository.create_or_update(
-            mock_session, sample_localization_create
-        )
-
-        # Assert
-        assert result == new_localization
-        repository.create.assert_called_once_with(
-            mock_session, obj_in=sample_localization_create
-        )
+            # Assert
+            assert result == new_localization
+            mock_create.assert_called_once_with(
+                mock_session, obj_in=sample_localization_create
+            )
 
     @pytest.mark.asyncio
     async def test_create_or_update_existing_localization(
         self,
         repository: VideoLocalizationRepository,
-        mock_session: AsyncSession,
+        mock_session: AsyncMock,
         sample_localization_create: VideoLocalizationCreate,
     ):
         """Test updating existing localization."""
         # Arrange
         existing_localization = VideoLocalizationDB(
             video_id=sample_localization_create.video_id,
-            language_code=sample_localization_create.language_code,
+            language_code=sample_localization_create.language_code.value,
             localized_title="Old Title",
             localized_description="Old Description",
             created_at=datetime.now(timezone.utc),
@@ -361,7 +357,7 @@ class TestVideoLocalizationRepository:
 
         updated_localization = VideoLocalizationDB(
             video_id=sample_localization_create.video_id,
-            language_code=sample_localization_create.language_code,
+            language_code=sample_localization_create.language_code.value,
             localized_title=sample_localization_create.localized_title,
             localized_description=sample_localization_create.localized_description,
             created_at=datetime.now(timezone.utc),
@@ -373,28 +369,27 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result_exists
 
         # Mock update operation
-        repository.update = AsyncMock(return_value=updated_localization)
+        with patch.object(repository, 'update', new=AsyncMock(return_value=updated_localization)) as mock_update:
+            # Act
+            result = await repository.create_or_update(
+                mock_session, sample_localization_create
+            )
 
-        # Act
-        result = await repository.create_or_update(
-            mock_session, sample_localization_create
-        )
-
-        # Assert
-        assert result == updated_localization
-        repository.update.assert_called_once()
+            # Assert
+            assert result == updated_localization
+            mock_update.assert_called_once()
 
     # Search Operations
 
     @pytest.mark.asyncio
     async def test_search_localizations_with_filters(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test searching localizations with various filters."""
         # Arrange
         filters = VideoLocalizationSearchFilters(
             video_ids=["dQw4w9WgXcQ"],
-            language_codes=["en", "es"],
+            language_codes=[LanguageCode.ENGLISH.value, LanguageCode.SPANISH.value],
             title_query="tutorial",
             has_description=True,
         )
@@ -402,7 +397,7 @@ class TestVideoLocalizationRepository:
         expected_localizations = [
             VideoLocalizationDB(
                 video_id="dQw4w9WgXcQ",
-                language_code="en",
+                language_code=LanguageCode.ENGLISH.value,
                 localized_title="Tutorial Video",
                 localized_description="Learning tutorial",
                 created_at=datetime.now(timezone.utc),
@@ -422,7 +417,7 @@ class TestVideoLocalizationRepository:
 
     @pytest.mark.asyncio
     async def test_search_localizations_empty_filters(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test searching with empty filters."""
         # Arrange
@@ -430,14 +425,14 @@ class TestVideoLocalizationRepository:
         all_localizations = [
             VideoLocalizationDB(
                 video_id="dQw4w9WgXcQ",
-                language_code="en",
+                language_code=LanguageCode.ENGLISH.value,
                 localized_title="Title 1",
                 localized_description="Description 1",
                 created_at=datetime.now(timezone.utc),
             ),
             VideoLocalizationDB(
                 video_id="9bZkp7q19f0",
-                language_code="es",
+                language_code=LanguageCode.SPANISH.value,
                 localized_title="Título 2",
                 localized_description="Descripción 2",
                 created_at=datetime.now(timezone.utc),
@@ -458,23 +453,23 @@ class TestVideoLocalizationRepository:
 
     @pytest.mark.asyncio
     async def test_get_supported_languages(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test getting supported languages for a video."""
         # Arrange
         mock_result = MagicMock()
-        mock_result.__iter__.return_value = iter([("en",), ("es",), ("fr",)])
+        mock_result.__iter__.return_value = iter([(LanguageCode.ENGLISH.value,), (LanguageCode.SPANISH.value,), (LanguageCode.FRENCH.value,)])
         mock_session.execute.return_value = mock_result
 
         # Act
         result = await repository.get_supported_languages(mock_session, "dQw4w9WgXcQ")
 
         # Assert
-        assert result == ["en", "es", "fr"]
+        assert result == [LanguageCode.ENGLISH.value, LanguageCode.SPANISH.value, LanguageCode.FRENCH.value]
 
     @pytest.mark.asyncio
     async def test_get_videos_by_language(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test getting videos that have localizations in a specific language."""
         # Arrange
@@ -483,14 +478,14 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result
 
         # Act
-        result = await repository.get_videos_by_language(mock_session, "en")
+        result = await repository.get_videos_by_language(mock_session, LanguageCode.ENGLISH.value)
 
         # Assert
         assert result == ["dQw4w9WgXcQ", "9bZkp7q19f0"]
 
     @pytest.mark.asyncio
     async def test_get_multilingual_videos(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test getting videos with multiple language localizations."""
         # Arrange
@@ -508,35 +503,35 @@ class TestVideoLocalizationRepository:
 
     @pytest.mark.asyncio
     async def test_get_language_coverage(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test getting language coverage statistics."""
         # Arrange
         mock_result = MagicMock()
-        mock_result.__iter__.return_value = iter([("en", 150), ("es", 100), ("fr", 50)])
+        mock_result.__iter__.return_value = iter([(LanguageCode.ENGLISH.value, 150), (LanguageCode.SPANISH.value, 100), (LanguageCode.FRENCH.value, 50)])
         mock_session.execute.return_value = mock_result
 
         # Act
         result = await repository.get_language_coverage(mock_session)
 
         # Assert
-        assert result == {"en": 150, "es": 100, "fr": 50}
+        assert result == {LanguageCode.ENGLISH.value: 150, LanguageCode.SPANISH.value: 100, LanguageCode.FRENCH.value: 50}
 
     @pytest.mark.asyncio
     async def test_find_missing_localizations(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test finding missing localizations for target languages."""
         # Arrange
-        target_languages = ["en", "es", "fr"]
+        target_languages = [LanguageCode.ENGLISH.value, LanguageCode.SPANISH.value, LanguageCode.FRENCH.value]
         mock_result = MagicMock()
         # Video 1 has EN and ES, missing FR
         # Video 2 has only EN, missing ES and FR
         mock_result.__iter__.return_value = iter(
             [
-                ("dQw4w9WgXcQ", "en"),
-                ("dQw4w9WgXcQ", "es"),
-                ("9bZkp7q19f0", "en"),
+                ("dQw4w9WgXcQ", LanguageCode.ENGLISH.value),
+                ("dQw4w9WgXcQ", LanguageCode.SPANISH.value),
+                ("9bZkp7q19f0", LanguageCode.ENGLISH.value),
             ]
         )
         mock_session.execute.return_value = mock_result
@@ -548,15 +543,15 @@ class TestVideoLocalizationRepository:
 
         # Assert
         assert "dQw4w9WgXcQ" in result
-        assert result["dQw4w9WgXcQ"] == ["fr"]
+        assert result["dQw4w9WgXcQ"] == [LanguageCode.FRENCH.value]
         assert "9bZkp7q19f0" in result
-        assert result["9bZkp7q19f0"] == ["es", "fr"]
+        assert result["9bZkp7q19f0"] == [LanguageCode.SPANISH.value, LanguageCode.FRENCH.value]
 
     # Statistics
 
     @pytest.mark.asyncio
     async def test_get_localization_statistics(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test getting comprehensive localization statistics."""
         # Arrange
@@ -574,10 +569,10 @@ class TestVideoLocalizationRepository:
         mock_result_avg.scalar.return_value = 2.5
 
         mock_result_languages = MagicMock()
-        mock_result_languages.__iter__.return_value = iter([("en", 150), ("es", 100)])
+        mock_result_languages.__iter__.return_value = iter([(LanguageCode.ENGLISH.value, 150), (LanguageCode.SPANISH.value, 100)])
 
         mock_result_coverage = MagicMock()
-        mock_result_coverage.__iter__.return_value = iter([("en", 150), ("es", 100)])
+        mock_result_coverage.__iter__.return_value = iter([(LanguageCode.ENGLISH.value, 150), (LanguageCode.SPANISH.value, 100)])
 
         # Configure mock to return different results for different queries
         mock_session.execute.side_effect = [
@@ -600,7 +595,7 @@ class TestVideoLocalizationRepository:
 
     @pytest.mark.asyncio
     async def test_get_localization_statistics_empty_database(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test getting statistics when database is empty."""
         # Arrange
@@ -620,7 +615,7 @@ class TestVideoLocalizationRepository:
 
     @pytest.mark.asyncio
     async def test_bulk_create_localizations(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test bulk creating localizations."""
         # Arrange
@@ -642,14 +637,14 @@ class TestVideoLocalizationRepository:
         created_localizations = [
             VideoLocalizationDB(
                 video_id="dQw4w9WgXcQ",
-                language_code="en",
+                language_code=LanguageCode.ENGLISH.value,
                 localized_title="Title 1",
                 localized_description="Description 1",
                 created_at=datetime.now(timezone.utc),
             ),
             VideoLocalizationDB(
                 video_id="9bZkp7q19f0",
-                language_code="es",
+                language_code=LanguageCode.SPANISH.value,
                 localized_title="Título 2",
                 localized_description="Descripción 2",
                 created_at=datetime.now(timezone.utc),
@@ -662,27 +657,26 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result_exists
 
         # Mock create operations
-        repository.create = AsyncMock(side_effect=created_localizations)
+        with patch.object(repository, 'create', new=AsyncMock(side_effect=created_localizations)) as mock_create:
+            # Act
+            result = await repository.bulk_create_localizations(
+                mock_session, localizations_to_create
+            )
 
-        # Act
-        result = await repository.bulk_create_localizations(
-            mock_session, localizations_to_create
-        )
-
-        # Assert
-        assert len(result) == 2
-        assert repository.create.call_count == 2
+            # Assert
+            assert len(result) == 2
+            assert mock_create.call_count == 2
 
     @pytest.mark.asyncio
     async def test_bulk_create_video_localizations(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test bulk creating localizations for a single video."""
         # Arrange
         video_id = "dQw4w9WgXcQ"
         localizations_data = {
-            "en": {"title": "English Title", "description": "English Description"},
-            "es": {
+            LanguageCode.ENGLISH.value: {"title": "English Title", "description": "English Description"},
+            LanguageCode.SPANISH.value: {
                 "title": "Título en Español",
                 "description": "Descripción en español",
             },
@@ -691,14 +685,14 @@ class TestVideoLocalizationRepository:
         created_localizations = [
             VideoLocalizationDB(
                 video_id=video_id,
-                language_code="en",
+                language_code=LanguageCode.ENGLISH.value,
                 localized_title="English Title",
                 localized_description="English Description",
                 created_at=datetime.now(timezone.utc),
             ),
             VideoLocalizationDB(
                 video_id=video_id,
-                language_code="es",
+                language_code=LanguageCode.SPANISH.value,
                 localized_title="Título en Español",
                 localized_description="Descripción en español",
                 created_at=datetime.now(timezone.utc),
@@ -711,36 +705,35 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result_exists
 
         # Mock create operations
-        repository.create = AsyncMock(side_effect=created_localizations)
+        with patch.object(repository, 'create', new=AsyncMock(side_effect=created_localizations)) as mock_create:
+            # Act
+            result = await repository.bulk_create_video_localizations(
+                mock_session, video_id, localizations_data
+            )
 
-        # Act
-        result = await repository.bulk_create_video_localizations(
-            mock_session, video_id, localizations_data
-        )
-
-        # Assert
-        assert len(result) == 2
-        assert repository.create.call_count == 2
+            # Assert
+            assert len(result) == 2
+            assert mock_create.call_count == 2
 
     # Delete Operations
 
     @pytest.mark.asyncio
     async def test_delete_by_video_id(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test deleting all localizations for a video."""
         # Arrange
         localizations_to_delete = [
             VideoLocalizationDB(
                 video_id="dQw4w9WgXcQ",
-                language_code="en",
+                language_code=LanguageCode.ENGLISH.value,
                 localized_title="English Title",
                 localized_description="English Description",
                 created_at=datetime.now(timezone.utc),
             ),
             VideoLocalizationDB(
                 video_id="dQw4w9WgXcQ",
-                language_code="es",
+                language_code=LanguageCode.SPANISH.value,
                 localized_title="Título en Español",
                 localized_description="Descripción en español",
                 created_at=datetime.now(timezone.utc),
@@ -766,25 +759,25 @@ class TestVideoLocalizationRepository:
         # Assert
         assert result == 2
         assert mock_session.delete.call_count == 2
-        mock_session.flush.assert_called_once()
+        mock_session.flush.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_delete_by_language_code(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test deleting all localizations for a language."""
         # Arrange
         localizations_to_delete = [
             VideoLocalizationDB(
                 video_id="dQw4w9WgXcQ",
-                language_code="en",
+                language_code=LanguageCode.ENGLISH.value,
                 localized_title="Title 1",
                 localized_description="Description 1",
                 created_at=datetime.now(timezone.utc),
             ),
             VideoLocalizationDB(
                 video_id="9bZkp7q19f0",
-                language_code="en",
+                language_code=LanguageCode.ENGLISH.value,
                 localized_title="Title 2",
                 localized_description="Description 2",
                 created_at=datetime.now(timezone.utc),
@@ -805,7 +798,7 @@ class TestVideoLocalizationRepository:
         ]
 
         # Act
-        result = await repository.delete_by_language_code(mock_session, "en")
+        result = await repository.delete_by_language_code(mock_session, LanguageCode.ENGLISH.value)
 
         # Assert
         assert result == 2
@@ -813,13 +806,13 @@ class TestVideoLocalizationRepository:
 
     @pytest.mark.asyncio
     async def test_delete_by_composite_key(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test deleting by composite key."""
         # Arrange
         localization_to_delete = VideoLocalizationDB(
             video_id="dQw4w9WgXcQ",
-            language_code="en",
+            language_code=LanguageCode.ENGLISH.value,
             localized_title="Title to Delete",
             localized_description="Description to delete",
             created_at=datetime.now(timezone.utc),
@@ -831,43 +824,43 @@ class TestVideoLocalizationRepository:
 
         # Act
         result = await repository.delete_by_composite_key(
-            mock_session, "dQw4w9WgXcQ", "en"
+            mock_session, "dQw4w9WgXcQ", LanguageCode.ENGLISH.value
         )
 
         # Assert
         assert result == localization_to_delete
         mock_session.delete.assert_called_once_with(localization_to_delete)
-        mock_session.flush.assert_called_once()
+        mock_session.flush.assert_awaited_once()
 
     # Advanced Analytics
 
     @pytest.mark.asyncio
     async def test_get_preferred_localizations(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test getting preferred localizations based on language preferences."""
         # Arrange
         video_ids = ["dQw4w9WgXcQ", "9bZkp7q19f0"]
-        preferred_languages = ["es", "en"]  # Spanish preferred, English fallback
+        preferred_languages = [LanguageCode.SPANISH.value, LanguageCode.ENGLISH.value]  # Spanish preferred, English fallback
 
         localizations = [
             VideoLocalizationDB(
                 video_id="dQw4w9WgXcQ",
-                language_code="en",
+                language_code=LanguageCode.ENGLISH.value,
                 localized_title="Video 1 English",
                 localized_description="English description",
                 created_at=datetime.now(timezone.utc),
             ),
             VideoLocalizationDB(
                 video_id="dQw4w9WgXcQ",
-                language_code="es",
+                language_code=LanguageCode.SPANISH.value,
                 localized_title="Video 1 Español",
                 localized_description="Descripción en español",
                 created_at=datetime.now(timezone.utc),
             ),
             VideoLocalizationDB(
                 video_id="9bZkp7q19f0",
-                language_code="en",
+                language_code=LanguageCode.ENGLISH.value,
                 localized_title="Video 2 English",
                 localized_description="English description",
                 created_at=datetime.now(timezone.utc),
@@ -886,19 +879,23 @@ class TestVideoLocalizationRepository:
         # Assert
         assert len(result) == 2
         # Video1 should have Spanish (preferred)
-        assert result["dQw4w9WgXcQ"].language_code == "es"
+        video1_localization = result["dQw4w9WgXcQ"]
+        assert video1_localization is not None
+        assert video1_localization.language_code == LanguageCode.SPANISH.value
         # Video2 should have English (fallback)
-        assert result["9bZkp7q19f0"].language_code == "en"
+        video2_localization = result["9bZkp7q19f0"]
+        assert video2_localization is not None
+        assert video2_localization.language_code == LanguageCode.ENGLISH.value
 
     @pytest.mark.asyncio
     async def test_find_similar_content(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test finding similar content based on title similarity."""
         # Arrange
         target_localization = VideoLocalizationDB(
             video_id="target_video",
-            language_code="en",
+            language_code=LanguageCode.ENGLISH.value,
             localized_title="Python Programming Tutorial",
             localized_description="Learn Python programming",
             created_at=datetime.now(timezone.utc),
@@ -907,14 +904,14 @@ class TestVideoLocalizationRepository:
         similar_localizations = [
             VideoLocalizationDB(
                 video_id="similar_video1",
-                language_code="en",
+                language_code=LanguageCode.ENGLISH.value,
                 localized_title="Advanced Python Programming",
                 localized_description="Advanced Python concepts",
                 created_at=datetime.now(timezone.utc),
             ),
             VideoLocalizationDB(
                 video_id="similar_video2",
-                language_code="en",
+                language_code=LanguageCode.ENGLISH.value,
                 localized_title="JavaScript Tutorial",
                 localized_description="Learn JavaScript",
                 created_at=datetime.now(timezone.utc),
@@ -931,7 +928,7 @@ class TestVideoLocalizationRepository:
 
         # Act
         result = await repository.find_similar_content(
-            mock_session, "target_video", "en"
+            mock_session, "target_video", LanguageCode.ENGLISH.value
         )
 
         # Assert
@@ -942,7 +939,7 @@ class TestVideoLocalizationRepository:
 
     @pytest.mark.asyncio
     async def test_get_localization_quality_metrics(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test getting localization quality metrics."""
         # Arrange
@@ -980,9 +977,14 @@ class TestVideoLocalizationRepositoryWithFactories:
         return VideoLocalizationRepository()
 
     @pytest.fixture
-    def mock_session(self) -> AsyncSession:
+    def mock_session(self) -> AsyncMock:
         """Create mock async session."""
-        return AsyncMock(spec=AsyncSession)
+        session = AsyncMock(spec=AsyncSession)
+        # Configure execute to return a mock result by default
+        session.execute = AsyncMock()
+        session.delete = AsyncMock()
+        session.flush = AsyncMock()
+        return session
 
     def test_create_localization_with_factory(self):
         """Test creating localization using factory."""
@@ -1001,21 +1003,22 @@ class TestVideoLocalizationRepositoryWithFactories:
     def test_create_search_filters_with_factory(self):
         """Test creating search filters using factory."""
         # Act
-        filters = VideoLocalizationSearchFiltersFactory(
+        filters = VideoLocalizationSearchFiltersFactory.build(
             video_ids=VideoLocalizationTestData.VALID_VIDEO_IDS[:2],
-            language_codes=["en", "es"],
+            language_codes=[LanguageCode.ENGLISH.value, LanguageCode.SPANISH.value],
             title_query="tutorial",
         )
 
         # Assert
+        assert filters.video_ids is not None
         assert len(filters.video_ids) == 2
-        assert filters.language_codes == ["en", "es"]
+        assert filters.language_codes == [LanguageCode.ENGLISH.value, LanguageCode.SPANISH.value]
         assert filters.title_query == "tutorial"
 
     def test_create_statistics_with_factory(self):
         """Test creating statistics using factory."""
         # Act
-        stats = VideoLocalizationStatisticsFactory(
+        stats = VideoLocalizationStatisticsFactory.build(
             total_localizations=1000, unique_videos=400
         )
 
@@ -1059,25 +1062,30 @@ class TestVideoLocalizationRepositoryErrorHandling:
         return VideoLocalizationRepository()
 
     @pytest.fixture
-    def mock_session(self) -> AsyncSession:
+    def mock_session(self) -> AsyncMock:
         """Create mock async session."""
-        return AsyncMock(spec=AsyncSession)
+        session = AsyncMock(spec=AsyncSession)
+        # Configure execute to return a mock result by default
+        session.execute = AsyncMock()
+        session.delete = AsyncMock()
+        session.flush = AsyncMock()
+        return session
 
     @pytest.mark.asyncio
     async def test_get_by_composite_key_with_none_values(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test handling None values in composite key operations."""
         # Act & Assert
-        result = await repository.get_by_composite_key(mock_session, None, "en")
+        result = await repository.get_by_composite_key(mock_session, None, LanguageCode.ENGLISH.value)  # type: ignore
         # Should handle gracefully without crashing
 
-        result = await repository.get_by_composite_key(mock_session, "video_id", None)
+        result = await repository.get_by_composite_key(mock_session, "video_id", None)  # type: ignore
         # Should handle gracefully without crashing
 
     @pytest.mark.asyncio
     async def test_search_with_empty_filters(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test search with empty filters."""
         # Arrange
@@ -1094,7 +1102,7 @@ class TestVideoLocalizationRepositoryErrorHandling:
 
     @pytest.mark.asyncio
     async def test_bulk_operations_with_empty_lists(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test bulk operations with empty input lists."""
         # Act
@@ -1105,16 +1113,20 @@ class TestVideoLocalizationRepositoryErrorHandling:
 
     @pytest.mark.asyncio
     async def test_analytics_operations_with_empty_parameters(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncSession
+        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
     ):
         """Test analytics operations with empty parameters."""
         # Act
-        result = await repository.get_preferred_localizations(mock_session, [], [])
+        preferred_result = await repository.get_preferred_localizations(
+            mock_session, [], []
+        )
 
         # Assert
-        assert result == {}
+        assert preferred_result == {}
 
-        result = await repository.find_missing_localizations(mock_session, [], [])
+        missing_result = await repository.find_missing_localizations(
+            mock_session, [], []
+        )
 
         # Assert
-        assert result == {}
+        assert missing_result == {}

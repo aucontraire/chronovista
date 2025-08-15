@@ -8,7 +8,7 @@ with realistic and consistent test data.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import List
+from typing import List, cast
 
 import factory
 from factory import LazyFunction
@@ -256,32 +256,34 @@ class VideoTranscriptTestData:
 # Convenience factory functions
 def create_video_transcript_base(**kwargs) -> VideoTranscriptBase:
     """Create a VideoTranscriptBase with optional overrides."""
-    return VideoTranscriptBaseFactory(**kwargs)
+    return cast(VideoTranscriptBase, VideoTranscriptBaseFactory.build(**kwargs))
 
 
 def create_video_transcript_create(**kwargs) -> VideoTranscriptCreate:
     """Create a VideoTranscriptCreate with optional overrides."""
-    return VideoTranscriptCreateFactory(**kwargs)
+    return cast(VideoTranscriptCreate, VideoTranscriptCreateFactory.build(**kwargs))
 
 
 def create_video_transcript_update(**kwargs) -> VideoTranscriptUpdate:
     """Create a VideoTranscriptUpdate with optional overrides."""
-    return VideoTranscriptUpdateFactory(**kwargs)
+    return cast(VideoTranscriptUpdate, VideoTranscriptUpdateFactory.build(**kwargs))
 
 
 def create_video_transcript(**kwargs) -> VideoTranscript:
     """Create a VideoTranscript with optional overrides."""
-    return VideoTranscriptFactory(**kwargs)
+    return cast(VideoTranscript, VideoTranscriptFactory.build(**kwargs))
 
 
 def create_video_transcript_with_quality(**kwargs) -> VideoTranscriptWithQuality:
     """Create a VideoTranscriptWithQuality with optional overrides."""
-    return VideoTranscriptWithQualityFactory(**kwargs)
+    return cast(
+        VideoTranscriptWithQuality, VideoTranscriptWithQualityFactory.build(**kwargs)
+    )
 
 
 def create_transcript_search_filters(**kwargs) -> TranscriptSearchFilters:
     """Create a TranscriptSearchFilters with optional overrides."""
-    return TranscriptSearchFiltersFactory(**kwargs)
+    return cast(TranscriptSearchFilters, TranscriptSearchFiltersFactory.build(**kwargs))
 
 
 def create_batch_video_transcripts(count: int = 5) -> List[VideoTranscript]:
@@ -324,7 +326,7 @@ def create_batch_video_transcripts(count: int = 5) -> List[VideoTranscript]:
         download_reason = base_reasons[i % len(base_reasons)]
         transcript_text = base_texts[i % len(base_texts)]
 
-        transcript = VideoTranscriptFactory(
+        transcript = VideoTranscriptFactory.build(
             video_id=video_id,
             language_code=language_code,
             transcript_type=transcript_type,

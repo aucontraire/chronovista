@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -67,7 +67,7 @@ class RawTranscriptData(BaseModel):
         None, description="Whether can be translated"
     )
     source: TranscriptSource = Field(..., description="Source of transcript data")
-    source_metadata: Optional[dict] = Field(
+    source_metadata: Optional[Dict[str, Any]] = Field(
         None, description="Additional source-specific data"
     )
     retrieved_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -110,7 +110,7 @@ class YouTubeTranscriptApiResponse(BaseModel):
     language_code: str  # Will be converted to LanguageCode enum
     is_generated: bool
     snippets: List[
-        dict
+        Dict[str, Any]
     ]  # Raw format: [{'text': str, 'start': float, 'duration': float}]
 
     def to_raw_transcript_data(self) -> RawTranscriptData:
@@ -216,7 +216,7 @@ class TranscriptComparison(BaseModel):
     language_code: LanguageCode
     primary_transcript: RawTranscriptData
     secondary_transcript: RawTranscriptData
-    comparison_metrics: dict = Field(default_factory=dict)
+    comparison_metrics: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property

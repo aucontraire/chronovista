@@ -29,7 +29,6 @@ from tests.factories.takeout_playlist_item_factory import create_takeout_playlis
 # pytestmark = pytest.mark.asyncio  # Apply individually to avoid warnings for sync tests
 
 
-
 class TestPlaylistSeederUtilityFunctions:
     """Tests for utility functions."""
 

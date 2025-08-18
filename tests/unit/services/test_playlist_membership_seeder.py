@@ -28,7 +28,6 @@ from tests.factories.takeout_playlist_item_factory import create_takeout_playlis
 # Note: async tests are marked individually to avoid warnings
 
 
-
 class TestPlaylistMembershipSeederInitialization:
     """Tests for PlaylistMembershipSeeder initialization."""
 

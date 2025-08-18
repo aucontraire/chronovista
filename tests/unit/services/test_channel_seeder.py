@@ -2,22 +2,23 @@
 Tests for ChannelSeeder - channel seeding from subscriptions and watch history.
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from src.chronovista.models.channel import ChannelCreate
-from src.chronovista.models.takeout.takeout_data import (
-    TakeoutData,
-    TakeoutSubscription,
-    TakeoutWatchEntry,
-)
-from src.chronovista.repositories.channel_repository import ChannelRepository
-from src.chronovista.services.seeding.base_seeder import ProgressCallback
-from src.chronovista.services.seeding.channel_seeder import ChannelSeeder
+from chronovista.models.channel import ChannelCreate
+from chronovista.models.takeout.takeout_data import TakeoutData
+from chronovista.repositories.channel_repository import ChannelRepository
+from chronovista.services.seeding.base_seeder import ProgressCallback
+from chronovista.services.seeding.channel_seeder import ChannelSeeder
 from tests.factories.id_factory import TestIds, YouTubeIdFactory
+from tests.factories.takeout_data_factory import create_takeout_data
+from tests.factories.takeout_subscription_factory import create_takeout_subscription
+from tests.factories.takeout_watch_entry_factory import create_takeout_watch_entry
 
 # CRITICAL: This line ensures async tests work with coverage
 pytestmark = pytest.mark.asyncio
@@ -27,7 +28,7 @@ class TestChannelSeeder:
     """Test the ChannelSeeder implementation."""
 
     @pytest.fixture
-    def mock_channel_repo(self):
+    def mock_channel_repo(self) -> Mock:
         """Create a mock channel repository."""
         repo = Mock(spec=ChannelRepository)
         repo.get_by_channel_id = AsyncMock()
@@ -35,36 +36,36 @@ class TestChannelSeeder:
         return repo
 
     @pytest.fixture
-    def channel_seeder(self, mock_channel_repo):
+    def channel_seeder(self, mock_channel_repo: Mock) -> ChannelSeeder:
         """Create a ChannelSeeder for testing."""
         return ChannelSeeder(mock_channel_repo)
 
     @pytest.fixture
-    def mock_session(self):
+    def mock_session(self) -> AsyncMock:
         """Create a mock database session."""
         session = AsyncMock()
         session.commit = AsyncMock()
         return session
 
     @pytest.fixture
-    def takeout_data_with_subscriptions(self):
+    def takeout_data_with_subscriptions(self) -> TakeoutData:
         """Create takeout data with subscriptions."""
-        return TakeoutData(
+        return create_takeout_data(
             takeout_path=Path("/test/takeout"),
             subscriptions=[
-                TakeoutSubscription(
+                create_takeout_subscription(
                     channel_id=TestIds.TEST_CHANNEL_1,
                     channel_title="Tech Channel",
                     channel_url=f"https://youtube.com/channel/{TestIds.TEST_CHANNEL_1}",
                 ),
-                TakeoutSubscription(
+                create_takeout_subscription(
                     channel_id=TestIds.TEST_CHANNEL_2,
                     channel_title="Music Channel",
                     channel_url=f"https://youtube.com/channel/{TestIds.TEST_CHANNEL_2}",
                 ),
             ],
             watch_history=[
-                TakeoutWatchEntry(
+                create_takeout_watch_entry(
                     title="Video 1",
                     title_url="https://youtube.com/watch?v=abc",
                     channel_name="Watch Channel",
@@ -84,7 +85,7 @@ class TestChannelSeeder:
 
     async def test_seed_empty_data(self, channel_seeder, mock_session):
         """Test seeding with empty takeout data."""
-        empty_data = TakeoutData(
+        empty_data = create_takeout_data(
             takeout_path=Path("/test/takeout"),
             subscriptions=[],
             watch_history=[],
@@ -190,7 +191,7 @@ class TestChannelSeeder:
 
     def test_transform_subscription_to_channel(self, channel_seeder):
         """Test transforming subscription to ChannelCreate model."""
-        subscription = TakeoutSubscription(
+        subscription = create_takeout_subscription(
             channel_id=TestIds.TEST_CHANNEL_1,
             channel_title="Test Channel",
             channel_url=f"https://youtube.com/channel/{TestIds.TEST_CHANNEL_1}",
@@ -205,7 +206,7 @@ class TestChannelSeeder:
 
     def test_transform_watch_entry_to_channel(self, channel_seeder):
         """Test transforming watch entry to ChannelCreate model."""
-        watch_entry = TakeoutWatchEntry(
+        watch_entry = create_takeout_watch_entry(
             title="Test Video",
             title_url="https://youtube.com/watch?v=abc",
             channel_name="Watch Channel",
@@ -223,13 +224,12 @@ class TestChannelSeeder:
 
     async def test_handle_missing_channel_id_in_watch_entry(self, channel_seeder):
         """Test handling watch entry with missing channel ID."""
-        watch_entry = TakeoutWatchEntry(
+        watch_entry = create_takeout_watch_entry(
             title="Test Video",
             title_url="https://youtube.com/watch?v=abc",
             channel_name="Unknown Channel",
             watched_at=datetime.now(),
             video_id="abc",
-            channel_id=None,  # Missing channel ID
         )
 
         channel_create = channel_seeder._transform_watch_entry_to_channel(watch_entry)
@@ -244,17 +244,17 @@ class TestChannelSeeder:
     ):
         """Test that channels are deduplicated across subscriptions and watch history."""
         # Create data where subscription and watch history have same channel
-        data = TakeoutData(
+        data = create_takeout_data(
             takeout_path=Path("/test/takeout"),
             subscriptions=[
-                TakeoutSubscription(
+                create_takeout_subscription(
                     channel_id=TestIds.TEST_CHANNEL_1,
                     channel_title="Common Channel",
                     channel_url=f"https://youtube.com/channel/{TestIds.TEST_CHANNEL_1}",
                 )
             ],
             watch_history=[
-                TakeoutWatchEntry(
+                create_takeout_watch_entry(
                     title="Video from Common Channel",
                     title_url="https://youtube.com/watch?v=abc",
                     channel_name="Common Channel",
@@ -284,7 +284,7 @@ class TestChannelSeeder:
         """Test that seeding commits in batches for performance."""
         # Create data with many subscriptions to trigger batch commits
         subscriptions = [
-            TakeoutSubscription(
+            create_takeout_subscription(
                 channel_id=YouTubeIdFactory.create_channel_id(f"channel_{i}"),
                 channel_title=f"Channel {i}",
                 channel_url=f"https://youtube.com/channel/{YouTubeIdFactory.create_channel_id(f'channel_{i}')}",
@@ -292,7 +292,7 @@ class TestChannelSeeder:
             for i in range(150)  # More than batch size of 100
         ]
 
-        data = TakeoutData(
+        data = create_takeout_data(
             takeout_path=Path("/test/takeout"),
             subscriptions=subscriptions,
             watch_history=[],
@@ -309,7 +309,7 @@ class TestChannelSeeder:
         """Test that channel ID generation is consistent for same input."""
         channel_name = "Test Channel"
 
-        from src.chronovista.services.seeding.channel_seeder import (
+        from chronovista.services.seeding.channel_seeder import (
             generate_valid_channel_id,
         )
 
@@ -323,13 +323,12 @@ class TestChannelSeeder:
 
     async def test_missing_channel_name_handling(self, channel_seeder):
         """Test handling of entries with missing channel names."""
-        watch_entry = TakeoutWatchEntry(
+        watch_entry = create_takeout_watch_entry(
             title="Test Video",
             title_url="https://youtube.com/watch?v=abc",
             channel_name=None,  # Missing channel name
             watched_at=datetime.now(),
             video_id="abc",
-            channel_id=None,
         )
 
         channel_create = channel_seeder._transform_watch_entry_to_channel(watch_entry)

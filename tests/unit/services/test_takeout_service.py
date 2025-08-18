@@ -11,8 +11,7 @@ import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -25,12 +24,12 @@ from chronovista.models.takeout import (
     TakeoutAnalysis,
     TakeoutData,
     TakeoutPlaylist,
-    TakeoutPlaylistItem,
     TakeoutSubscription,
     TakeoutWatchEntry,
     ViewingPatterns,
 )
 from chronovista.services.takeout_service import TakeoutParsingError, TakeoutService
+from tests.factories.takeout_data_factory import create_takeout_data
 
 
 @pytest.fixture
@@ -147,7 +146,7 @@ class TestTakeoutServiceInitialization:
 
     def test_init_converts_string_path(self, temp_takeout_dir):
         """Test initialization with string path gets converted to Path."""
-        service = TakeoutService(str(temp_takeout_dir))
+        service = TakeoutService(Path(str(temp_takeout_dir)))
 
         assert isinstance(service.takeout_path, Path)
         assert service.takeout_path == temp_takeout_dir
@@ -760,7 +759,12 @@ class TestAnalysisMethodsWithEmptyData:
     async def test_analyze_viewing_patterns_empty_data(self, temp_takeout_dir):
         """Test viewing patterns analysis with empty data."""
         service = TakeoutService(temp_takeout_dir)
-        empty_data = TakeoutData(takeout_path=temp_takeout_dir)
+        empty_data = create_takeout_data(
+            takeout_path=temp_takeout_dir,
+            watch_history=[],
+            playlists=[],
+            subscriptions=[],
+        )
 
         patterns = await service.analyze_viewing_patterns(empty_data)
 
@@ -774,7 +778,12 @@ class TestAnalysisMethodsWithEmptyData:
     async def test_analyze_playlist_relationships_empty_data(self, temp_takeout_dir):
         """Test playlist analysis with empty data."""
         service = TakeoutService(temp_takeout_dir)
-        empty_data = TakeoutData(takeout_path=temp_takeout_dir)
+        empty_data = create_takeout_data(
+            takeout_path=temp_takeout_dir,
+            watch_history=[],
+            playlists=[],
+            subscriptions=[],
+        )
 
         analysis = await service.analyze_playlist_relationships(empty_data)
 
@@ -785,7 +794,12 @@ class TestAnalysisMethodsWithEmptyData:
     async def test_find_content_gaps_empty_data(self, temp_takeout_dir):
         """Test content gap analysis with empty data."""
         service = TakeoutService(temp_takeout_dir)
-        empty_data = TakeoutData(takeout_path=temp_takeout_dir)
+        empty_data = create_takeout_data(
+            takeout_path=temp_takeout_dir,
+            watch_history=[],
+            playlists=[],
+            subscriptions=[],
+        )
 
         gaps = await service.find_content_gaps(empty_data)
 
@@ -897,7 +911,10 @@ class TestAsyncBehavior:
 
         # All should complete successfully
         assert len(results) == 3
-        assert len(results[0]) == 2  # watch history
+        # Type assertion to help mypy understand the result types
+        watch_history_result = results[0]
+        assert isinstance(watch_history_result, list)
+        assert len(watch_history_result) == 2  # watch history
         assert results[1] == []  # playlists (empty)
         assert results[2] == []  # subscriptions (empty)
 
@@ -987,6 +1004,9 @@ class TestDataIntegrity:
         takeout_data = await service.parse_all()
 
         # Both should parse to timezone-aware datetimes
+        assert takeout_data.watch_history[0].watched_at is not None
         assert takeout_data.watch_history[0].watched_at.tzinfo is not None
+        assert takeout_data.watch_history[1].watched_at is not None
         assert takeout_data.watch_history[1].watched_at.tzinfo is not None
+        assert takeout_data.playlists[0].videos[0].creation_timestamp is not None
         assert takeout_data.playlists[0].videos[0].creation_timestamp.tzinfo is not None

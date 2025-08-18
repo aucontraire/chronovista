@@ -16,8 +16,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
-from urllib.parse import parse_qs, urlparse
+from typing import Any, Dict, List, Optional, Set
 
 from ..models.takeout import (
     ChannelSummary,
@@ -85,11 +84,15 @@ class TakeoutService:
         subscriptions = await self.parse_subscriptions()
 
         # Create consolidated data structure
-        takeout_data = TakeoutData(  # type: ignore[call-arg]
+        takeout_data = TakeoutData(
             takeout_path=self.takeout_path,
             watch_history=watch_history,
             playlists=playlists,
             subscriptions=subscriptions,
+            total_videos_watched=0,  # Will be calculated by model validator
+            total_playlists=0,  # Will be calculated by model validator
+            total_subscriptions=0,  # Will be calculated by model validator
+            date_range=None,  # Will be calculated by model validator
         )
 
         logger.info(
@@ -150,11 +153,14 @@ class TakeoutService:
                     title = title[8:]  # Remove "Watched " prefix
 
                 # Create watch entry
-                watch_entry = TakeoutWatchEntry(  # type: ignore[call-arg]
+                watch_entry = TakeoutWatchEntry(
                     title=title,
                     title_url=entry["titleUrl"],
+                    video_id=None,  # Will be extracted by model validator
                     channel_name=channel_name,
                     channel_url=channel_url,
+                    channel_id=None,  # Will be extracted by model validator
+                    watched_at=None,  # Will be parsed by model validator
                     raw_time=entry.get("time"),
                 )
 
@@ -205,16 +211,18 @@ class TakeoutService:
                     for row in reader:
                         # Actual CSV columns: "Video ID", "Playlist Video Creation Timestamp"
                         raw_ts = row.get("Playlist Video Creation Timestamp", "")
-                        video_item = TakeoutPlaylistItem(  # type: ignore[call-arg]
+                        video_item = TakeoutPlaylistItem(
                             video_id=row.get("Video ID", ""),
+                            creation_timestamp=None,  # Will be parsed by model validator
                             raw_timestamp=raw_ts,
                         )
                         videos.append(video_item)
 
-                playlist = TakeoutPlaylist(  # type: ignore[call-arg]
+                playlist = TakeoutPlaylist(
                     name=playlist_name,
                     file_path=playlist_file,
                     videos=videos,
+                    video_count=0,  # Will be calculated by model validator
                 )
 
                 playlists.append(playlist)
@@ -280,6 +288,18 @@ class TakeoutService:
             Analysis of user viewing behavior
         """
         logger.info("📊 Analyzing viewing patterns...")
+
+        # Handle truly empty data
+        if not takeout_data.watch_history:
+            return ViewingPatterns(
+                peak_viewing_hours=[],
+                peak_viewing_days=[],
+                viewing_frequency=0.0,
+                top_channels=[],
+                channel_diversity=0.0,
+                playlist_usage=0.0,
+                subscription_engagement=0.0,
+            )
 
         # Analyze temporal patterns
         watched_dates = [
@@ -525,6 +545,11 @@ class TakeoutService:
         """
         logger.info("🔍 Identifying content gaps...")
 
+        # Handle empty data
+        if not takeout_data.watch_history:
+            logger.info("✅ No content gaps - no watch history data")
+            return []
+
         content_gaps: List[ContentGap] = []
         video_playlist_counts: Dict[str, int] = {}
 
@@ -572,7 +597,9 @@ class TakeoutService:
                     tzinfo=entry.watched_at.tzinfo
                 )
                 days_since = (now_utc - entry.watched_at).days
-                recency_score = max(0, 1 - (days_since / 365))  # Decay over a year
+                recency_score = max(
+                    0.0, 1.0 - (float(days_since) / 365.0)
+                )  # Decay over a year
                 priority_score += recency_score * 0.4
 
             content_gap = ContentGap(

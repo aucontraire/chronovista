@@ -8,7 +8,7 @@ from Google Takeout data with validation and serialization support.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -104,7 +104,9 @@ class GoogleTakeoutWatchHistoryItem(BaseModel):
     header: str = Field(..., description="Source header (usually 'YouTube')")
     title: str = Field(..., description="Full title from Takeout including action")
     titleUrl: str = Field(..., description="YouTube URL for the video")
-    subtitles: List[dict] = Field(default_factory=list, description="Channel info")
+    subtitles: List[Dict[str, str]] = Field(
+        default_factory=list, description="Channel info"
+    )
     time: str = Field(..., description="ISO timestamp string from Takeout")
     products: List[str] = Field(default_factory=list, description="Google products")
     activityControls: List[str] = Field(
@@ -162,7 +164,7 @@ class GoogleTakeoutWatchHistoryItem(BaseModel):
         except Exception:
             return None
 
-    def extract_channel_info(self) -> Optional[dict]:
+    def extract_channel_info(self) -> Optional[Dict[str, Optional[str]]]:
         """
         Extract channel information from subtitles.
 
@@ -194,7 +196,10 @@ class GoogleTakeoutWatchHistoryItem(BaseModel):
             return None
 
         try:
-            parsed_url = urlparse(channel_info["url"])
+            url = channel_info["url"]
+            if url is None:
+                return None
+            parsed_url = urlparse(url)
             if "youtube.com" in parsed_url.netloc and parsed_url.path.startswith(
                 "/channel/"
             ):

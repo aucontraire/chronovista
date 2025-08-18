@@ -11,8 +11,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.db.models import Channel as ChannelDB
 from chronovista.models.channel import ChannelSearchFilters
+from chronovista.models.enums import LanguageCode
 from chronovista.repositories.channel_repository import ChannelRepository
 
 
@@ -49,7 +49,13 @@ class TestChannelRepositorySearchCoverage:
     @pytest.mark.asyncio
     async def test_search_channels_language_codes(self, repository, mock_session):
         """Test search_channels with language_codes filter (lines 244-248)."""
-        filters = ChannelSearchFilters(language_codes=["en", "es", "fr"])
+        filters = ChannelSearchFilters(
+            language_codes=[
+                LanguageCode.ENGLISH,
+                LanguageCode.SPANISH,
+                LanguageCode.FRENCH,
+            ]
+        )
 
         # Mock the query result
         mock_result = MagicMock()
@@ -190,7 +196,7 @@ class TestChannelRepositorySearchCoverage:
         filters = ChannelSearchFilters(
             title_query="tech",
             description_query="tutorials",
-            language_codes=["en"],
+            language_codes=[LanguageCode.ENGLISH],
             countries=["US"],
             min_subscriber_count=1000,
             max_subscriber_count=50000,

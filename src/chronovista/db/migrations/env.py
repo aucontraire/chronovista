@@ -4,14 +4,13 @@ Alembic environment configuration.
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 from logging.config import fileConfig
 from typing import Any
 
 from alembic import context
 
-from chronovista.config.database import Base, db_manager
+from chronovista.config.database import Base
 from chronovista.config.settings import settings
 
 # Alembic Config object

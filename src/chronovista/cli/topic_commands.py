@@ -27,6 +27,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from chronovista.config.database import db_manager
+from chronovista.config.settings import settings
 from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.repositories.channel_topic_repository import ChannelTopicRepository
 from chronovista.repositories.topic_category_repository import TopicCategoryRepository
@@ -905,7 +906,11 @@ def export_topics(
             # Generate output filename if not provided
             if output is None:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                output_path = Path(f"chronovista_topics_{timestamp}.{format}")
+                # Ensure export directory exists
+                settings.create_directories()
+                output_path = (
+                    settings.export_dir / f"chronovista_topics_{timestamp}.{format}"
+                )
             else:
                 output_path = Path(output)
 
@@ -1100,11 +1105,11 @@ def topic_graph_export(
         min=0.0,
         max=1.0,
     ),
-    max_topics: int = typer.Option(
-        50, "--max-topics", "-t", help="Maximum number of topics to include in graph"
+    limit: int = typer.Option(
+        50, "--limit", "-l", help="Maximum number of topics to include in graph"
     ),
 ) -> None:
-    """Export topic relationship graph in DOT or JSON format for visualization tools."""
+    """Export topic relationship graph for visualization tools."""
 
     async def run_graph_export() -> None:
         try:
@@ -1125,7 +1130,7 @@ def topic_graph_export(
             console.print(
                 Panel(
                     "[bold cyan]🕸️ Topic Relationship Graph Export[/bold cyan]\n\n"
-                    f"Generating {format.upper()} graph with {max_topics} topics.\n"
+                    f"Generating {format.upper()} graph with {limit} topics.\n"
                     f"Including relationships with ≥{min_confidence:.1f} confidence.",
                     title="Graph Export",
                     border_style="cyan",
@@ -1146,14 +1151,18 @@ def topic_graph_export(
                 if format == "dot":
                     progress.add_task("Generating DOT graph...", total=None)
                     graph_content = await analytics_service.generate_topic_graph_dot(
-                        min_confidence=min_confidence, max_topics=max_topics
+                        min_confidence=min_confidence, max_topics=limit
                     )
 
                     # Determine output filename
                     if output:
                         output_path = Path(output)
                     else:
-                        output_path = Path(f"topic_graph_{timestamp}.dot")
+                        # Ensure export directory exists
+                        settings.create_directories()
+                        output_path = (
+                            settings.export_dir / f"topic_graph_{timestamp}.dot"
+                        )
 
                     # Write DOT file
                     output_path.write_text(graph_content, encoding="utf-8")
@@ -1162,7 +1171,7 @@ def topic_graph_export(
                         Panel(
                             f"[bold green]✅ DOT Graph Export Complete![/bold green]\n\n"
                             f"📄 File: {output_path}\n"
-                            f"🕸️ Topics: {max_topics}\n"
+                            f"🕸️ Topics: {limit}\n"
                             f"🔗 Min Confidence: {min_confidence:.1f}\n"
                             f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
                             f"[bold yellow]💡 Visualization Tips:[/bold yellow]\n"
@@ -1177,14 +1186,18 @@ def topic_graph_export(
                 elif format == "json":
                     progress.add_task("Generating JSON graph...", total=None)
                     graph_data = await analytics_service.generate_topic_graph_json(
-                        min_confidence=min_confidence, max_topics=max_topics
+                        min_confidence=min_confidence, max_topics=limit
                     )
 
                     # Determine output filename
                     if output:
                         output_path = Path(output)
                     else:
-                        output_path = Path(f"topic_graph_{timestamp}.json")
+                        # Ensure export directory exists
+                        settings.create_directories()
+                        output_path = (
+                            settings.export_dir / f"topic_graph_{timestamp}.json"
+                        )
 
                     # Write JSON file
                     with open(output_path, "w", encoding="utf-8") as f:
@@ -1357,7 +1370,11 @@ def topic_heatmap_export(
                 if output:
                     output_path = Path(output)
                 else:
-                    output_path = Path(f"topic_heatmap_{period}_{timestamp}.json")
+                    # Ensure export directory exists
+                    settings.create_directories()
+                    output_path = (
+                        settings.export_dir / f"topic_heatmap_{period}_{timestamp}.json"
+                    )
 
                 # Write heatmap file
                 with open(output_path, "w", encoding="utf-8") as f:

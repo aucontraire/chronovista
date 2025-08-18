@@ -8,6 +8,7 @@ with sensible defaults and easy customization.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import cast
 
 import factory
 from factory import Faker, LazyAttribute
@@ -49,16 +50,18 @@ class PlaylistCreateFactory(PlaylistBaseFactory):
 
 
 class PlaylistUpdateFactory(factory.Factory):
-    """Factory for PlaylistUpdate models."""
+    """Factory for PlaylistUpdate models.
+
+    Note: This factory respects the model's default values (None for all fields).
+    For Update models, the default behavior should be an empty update (all None),
+    with values only generated when explicitly requested.
+    """
 
     class Meta:
         model = PlaylistUpdate
 
-    title = Faker("sentence", nb_words=3)
-    description = Faker("text", max_nb_chars=150)
-    default_language = Faker("random_element", elements=["en", "es", "fr"])
-    privacy_status = Faker("random_element", elements=["private", "public", "unlisted"])
-    video_count = Faker("random_int", min=0, max=50)
+    # No default values - respects model defaults (None for all fields)
+    # Values will only be generated when explicitly passed to build()
 
 
 class PlaylistFactory(PlaylistBaseFactory):
@@ -144,27 +147,27 @@ class PlaylistStatisticsFactory(factory.Factory):
 # Convenience factory methods
 def create_playlist(**kwargs) -> Playlist:
     """Create a Playlist with keyword arguments."""
-    return PlaylistFactory(**kwargs)
+    return cast(Playlist, PlaylistFactory.build(**kwargs))
 
 
 def create_playlist_create(**kwargs) -> PlaylistCreate:
     """Create a PlaylistCreate with keyword arguments."""
-    return PlaylistCreateFactory(**kwargs)
+    return cast(PlaylistCreate, PlaylistCreateFactory.build(**kwargs))
 
 
 def create_playlist_update(**kwargs) -> PlaylistUpdate:
     """Create a PlaylistUpdate with keyword arguments."""
-    return PlaylistUpdateFactory(**kwargs)
+    return cast(PlaylistUpdate, PlaylistUpdateFactory.build(**kwargs))
 
 
 def create_playlist_filters(**kwargs) -> PlaylistSearchFilters:
     """Create PlaylistSearchFilters with keyword arguments."""
-    return PlaylistSearchFiltersFactory(**kwargs)
+    return cast(PlaylistSearchFilters, PlaylistSearchFiltersFactory.build(**kwargs))
 
 
 def create_playlist_statistics(**kwargs) -> PlaylistStatistics:
     """Create PlaylistStatistics with keyword arguments."""
-    return PlaylistStatisticsFactory(**kwargs)
+    return cast(PlaylistStatistics, PlaylistStatisticsFactory.build(**kwargs))
 
 
 # Common test data patterns

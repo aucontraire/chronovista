@@ -8,6 +8,7 @@ with sensible defaults and easy customization.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import cast
 
 import factory
 from factory import Faker, LazyAttribute
@@ -44,12 +45,18 @@ class ChannelKeywordCreateFactory(ChannelKeywordBaseFactory):
 
 
 class ChannelKeywordUpdateFactory(factory.Factory):
-    """Factory for ChannelKeywordUpdate models."""
+    """Factory for ChannelKeywordUpdate models.
+
+    Note: This factory respects the model's default values (None for all fields).
+    For Update models, the default behavior should be an empty update (all None),
+    with values only generated when explicitly requested.
+    """
 
     class Meta:
         model = ChannelKeywordUpdate
 
-    keyword_order = Faker("random_int", min=0, max=50)
+    # No default values - respects model defaults (None for all fields)
+    # Values will only be generated when explicitly passed to build()
 
 
 class ChannelKeywordFactory(ChannelKeywordBaseFactory):
@@ -168,32 +175,36 @@ class ChannelKeywordAnalyticsFactory(factory.Factory):
 # Convenience factory methods
 def create_channel_keyword(**kwargs) -> ChannelKeyword:
     """Create a ChannelKeyword with keyword arguments."""
-    return ChannelKeywordFactory(**kwargs)
+    return cast(ChannelKeyword, ChannelKeywordFactory.build(**kwargs))
 
 
 def create_channel_keyword_create(**kwargs) -> ChannelKeywordCreate:
     """Create a ChannelKeywordCreate with keyword arguments."""
-    return ChannelKeywordCreateFactory(**kwargs)
+    return cast(ChannelKeywordCreate, ChannelKeywordCreateFactory.build(**kwargs))
 
 
 def create_channel_keyword_update(**kwargs) -> ChannelKeywordUpdate:
     """Create a ChannelKeywordUpdate with keyword arguments."""
-    return ChannelKeywordUpdateFactory(**kwargs)
+    return cast(ChannelKeywordUpdate, ChannelKeywordUpdateFactory.build(**kwargs))
 
 
 def create_channel_keyword_filters(**kwargs) -> ChannelKeywordSearchFilters:
     """Create ChannelKeywordSearchFilters with keyword arguments."""
-    return ChannelKeywordSearchFiltersFactory(**kwargs)
+    return cast(
+        ChannelKeywordSearchFilters, ChannelKeywordSearchFiltersFactory.build(**kwargs)
+    )
 
 
 def create_channel_keyword_statistics(**kwargs) -> ChannelKeywordStatistics:
     """Create ChannelKeywordStatistics with keyword arguments."""
-    return ChannelKeywordStatisticsFactory(**kwargs)
+    return cast(
+        ChannelKeywordStatistics, ChannelKeywordStatisticsFactory.build(**kwargs)
+    )
 
 
 def create_channel_keyword_analytics(**kwargs) -> ChannelKeywordAnalytics:
     """Create ChannelKeywordAnalytics with keyword arguments."""
-    return ChannelKeywordAnalyticsFactory(**kwargs)
+    return cast(ChannelKeywordAnalytics, ChannelKeywordAnalyticsFactory.build(**kwargs))
 
 
 # Common test data patterns

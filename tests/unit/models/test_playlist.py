@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
+from chronovista.models.enums import LanguageCode
 from chronovista.models.playlist import (
     Playlist,
     PlaylistBase,
@@ -37,7 +38,7 @@ class TestPlaylistBase:
 
     def test_create_valid_playlist_base(self):
         """Test creating valid PlaylistBase with keyword arguments."""
-        playlist = PlaylistBaseFactory(
+        playlist = PlaylistBaseFactory.build(
             playlist_id="PLrAXtmRdnEQy3roZQD5TZuDCU5x-X4V8f",
             title="Learn Python Programming",
             description="Complete Python course",
@@ -57,7 +58,7 @@ class TestPlaylistBase:
 
     def test_create_playlist_base_minimal(self):
         """Test creating PlaylistBase with minimal required fields."""
-        playlist = PlaylistBaseFactory(
+        playlist = PlaylistBaseFactory.build(
             playlist_id="PLs9ACwy3uKTOT2q9gLKUvyqPOjLXUlAWg",
             title="My Playlist",
             description=None,
@@ -77,7 +78,7 @@ class TestPlaylistBase:
 
     def test_factory_generates_valid_defaults(self):
         """Test that factory generates valid models with defaults."""
-        playlist = PlaylistBaseFactory()
+        playlist = PlaylistBaseFactory.build()
 
         assert isinstance(playlist, PlaylistBase)
         assert len(playlist.playlist_id) >= 30
@@ -95,24 +96,24 @@ class TestPlaylistBase:
     def test_playlist_id_validation_invalid(self, invalid_playlist_id):
         """Test playlist_id validation with various invalid inputs."""
         with pytest.raises(ValidationError):
-            PlaylistBaseFactory(playlist_id=invalid_playlist_id)
+            PlaylistBaseFactory.build(playlist_id=invalid_playlist_id)
 
     @pytest.mark.parametrize("valid_playlist_id", PlaylistTestData.VALID_PLAYLIST_IDS)
     def test_playlist_id_validation_valid(self, valid_playlist_id):
         """Test playlist_id validation with various valid inputs."""
-        playlist = PlaylistBaseFactory(playlist_id=valid_playlist_id)
+        playlist = PlaylistBaseFactory.build(playlist_id=valid_playlist_id)
         assert playlist.playlist_id == valid_playlist_id
 
     @pytest.mark.parametrize("invalid_title", PlaylistTestData.INVALID_TITLES)
     def test_title_validation_invalid(self, invalid_title):
         """Test title validation with various invalid inputs."""
         with pytest.raises(ValidationError):
-            PlaylistBaseFactory(title=invalid_title)
+            PlaylistBaseFactory.build(title=invalid_title)
 
     @pytest.mark.parametrize("valid_title", PlaylistTestData.VALID_TITLES)
     def test_title_validation_valid(self, valid_title):
         """Test title validation with various valid inputs."""
-        playlist = PlaylistBaseFactory(title=valid_title)
+        playlist = PlaylistBaseFactory.build(title=valid_title)
         assert playlist.title == valid_title
 
     @pytest.mark.parametrize(
@@ -121,24 +122,24 @@ class TestPlaylistBase:
     def test_description_validation_invalid(self, invalid_description):
         """Test description validation with invalid inputs."""
         with pytest.raises(ValidationError):
-            PlaylistBaseFactory(description=invalid_description)
+            PlaylistBaseFactory.build(description=invalid_description)
 
     def test_description_empty_becomes_none(self):
         """Test that empty description becomes None."""
         # With type-safe validation, pass None directly for empty description
-        playlist = PlaylistBaseFactory(description=None)
+        playlist = PlaylistBaseFactory.build(description=None)
         assert playlist.description is None
 
     @pytest.mark.parametrize("invalid_channel_id", PlaylistTestData.INVALID_CHANNEL_IDS)
     def test_channel_id_validation_invalid(self, invalid_channel_id):
         """Test channel_id validation with various invalid inputs."""
         with pytest.raises(ValidationError):
-            PlaylistBaseFactory(channel_id=invalid_channel_id)
+            PlaylistBaseFactory.build(channel_id=invalid_channel_id)
 
     @pytest.mark.parametrize("valid_channel_id", PlaylistTestData.VALID_CHANNEL_IDS)
     def test_channel_id_validation_valid(self, valid_channel_id):
         """Test channel_id validation with various valid inputs."""
-        playlist = PlaylistBaseFactory(channel_id=valid_channel_id)
+        playlist = PlaylistBaseFactory.build(channel_id=valid_channel_id)
         assert playlist.channel_id == valid_channel_id
 
     @pytest.mark.parametrize(
@@ -147,47 +148,47 @@ class TestPlaylistBase:
     def test_default_language_validation_invalid(self, invalid_language_code):
         """Test default_language validation with various invalid inputs."""
         with pytest.raises(ValidationError):
-            PlaylistBaseFactory(default_language=invalid_language_code)
+            PlaylistBaseFactory.build(default_language=invalid_language_code)
 
     @pytest.mark.parametrize(
         "valid_language_code", PlaylistTestData.VALID_LANGUAGE_CODES
     )
     def test_default_language_validation_valid(self, valid_language_code):
         """Test default_language validation with various valid inputs."""
-        playlist = PlaylistBaseFactory(default_language=valid_language_code)
+        playlist = PlaylistBaseFactory.build(default_language=valid_language_code)
         assert playlist.default_language.value == valid_language_code
 
     def test_default_language_none_allowed(self):
         """Test that default_language can be None."""
-        playlist = PlaylistBaseFactory(default_language=None)
+        playlist = PlaylistBaseFactory.build(default_language=None)
         assert playlist.default_language is None
 
     def test_privacy_status_validation(self):
         """Test privacy_status validation."""
         for status in PlaylistTestData.PRIVACY_STATUSES:
-            playlist = PlaylistBaseFactory(privacy_status=status)
+            playlist = PlaylistBaseFactory.build(privacy_status=status)
             assert playlist.privacy_status == status
 
         # Invalid status
         with pytest.raises(ValidationError):
-            PlaylistBaseFactory(privacy_status="invalid_status")
+            PlaylistBaseFactory.build(privacy_status="invalid_status")
 
     def test_video_count_validation(self):
         """Test video_count validation."""
         # Valid counts
-        playlist = PlaylistBaseFactory(video_count=0)
+        playlist = PlaylistBaseFactory.build(video_count=0)
         assert playlist.video_count == 0
 
-        playlist = PlaylistBaseFactory(video_count=100)
+        playlist = PlaylistBaseFactory.build(video_count=100)
         assert playlist.video_count == 100
 
         # Invalid count
         with pytest.raises(ValidationError):
-            PlaylistBaseFactory(video_count=-1)
+            PlaylistBaseFactory.build(video_count=-1)
 
     def test_model_dump_functionality(self):
         """Test model_dump() method for serialization."""
-        playlist = PlaylistBaseFactory(
+        playlist = PlaylistBaseFactory.build(
             playlist_id="PLrAXtmRdnEQy3roZQD5TZuDCU5x-X4V8f",
             title="Test Playlist",
             description="Test description",
@@ -230,7 +231,7 @@ class TestPlaylistCreate:
 
     def test_create_valid_playlist_create(self):
         """Test creating valid PlaylistCreate with keyword arguments."""
-        playlist = PlaylistCreateFactory(
+        playlist = PlaylistCreateFactory.build(
             playlist_id="PL8dPuuaLjXtNlUrzyH5r6jN9ulIgZBpdo",
             title="Music Collection",
             description="My favorite music tracks",
@@ -251,11 +252,11 @@ class TestPlaylistCreate:
     def test_inherits_base_validation(self):
         """Test that PlaylistCreate inherits base validation."""
         with pytest.raises(ValidationError):
-            PlaylistCreateFactory(playlist_id="   ")
+            PlaylistCreateFactory.build(playlist_id="   ")
 
     def test_factory_generates_valid_model(self):
         """Test factory generates valid PlaylistCreate models."""
-        playlist = PlaylistCreateFactory()
+        playlist = PlaylistCreateFactory.build()
 
         assert isinstance(playlist, PlaylistCreate)
         assert isinstance(playlist, PlaylistBase)  # Inheritance check
@@ -266,7 +267,7 @@ class TestPlaylistUpdate:
 
     def test_create_valid_playlist_update(self):
         """Test creating valid PlaylistUpdate with keyword arguments."""
-        update = PlaylistUpdateFactory(
+        update = PlaylistUpdateFactory.build(
             title="Updated Title",
             description="Updated description",
             default_language="es",
@@ -282,7 +283,7 @@ class TestPlaylistUpdate:
 
     def test_create_empty_playlist_update(self):
         """Test creating empty PlaylistUpdate."""
-        update = PlaylistUpdate()
+        update = PlaylistUpdateFactory.build()
 
         assert update.title is None
         assert update.description is None
@@ -293,33 +294,42 @@ class TestPlaylistUpdate:
     def test_title_validation_in_update(self):
         """Test title validation in update model."""
         with pytest.raises(ValidationError):
-            PlaylistUpdateFactory(title="")
+            PlaylistUpdateFactory.build(title="")
 
     def test_description_empty_becomes_none(self):
         """Test that empty description becomes None in update."""
         # With type-safe validation, pass None directly for empty description
-        update = PlaylistUpdateFactory(description=None)
+        update = PlaylistUpdateFactory.build(description=None)
         assert update.description is None
 
     def test_video_count_validation_in_update(self):
         """Test video_count validation in update model."""
         with pytest.raises(ValidationError):
-            PlaylistUpdateFactory(video_count=-5)
+            PlaylistUpdateFactory.build(video_count=-5)
 
     def test_model_dump_excludes_none(self):
         """Test model_dump() excludes None values."""
-        update = PlaylistUpdate()
+        update = PlaylistUpdateFactory.build(
+            title=None,
+            description=None,
+            default_language=None,
+            privacy_status=None,
+            video_count=None,
+        )
 
         data = update.model_dump(exclude_none=True)
 
         assert data == {}
 
     def test_factory_generates_valid_updates(self):
-        """Test factory generates valid update models."""
-        update = PlaylistUpdateFactory()
+        """Test factory generates valid update models with explicit values."""
+        update = PlaylistUpdateFactory.build(
+            title="Updated Playlist Title", video_count=25
+        )
 
         assert isinstance(update, PlaylistUpdate)
-        assert update.title is not None
+        assert update.title == "Updated Playlist Title"
+        assert update.video_count == 25
 
 
 class TestPlaylist:
@@ -330,7 +340,7 @@ class TestPlaylist:
         created_at = datetime.now(timezone.utc)
         updated_at = datetime.now(timezone.utc)
 
-        playlist = PlaylistFactory(
+        playlist = PlaylistFactory.build(
             playlist_id="PLMYEtPqzjdeev14J_RpAU_RQKyeaROB8T",
             title="Tech Tutorials",
             description="Collection of technology tutorials",
@@ -382,7 +392,7 @@ class TestPlaylist:
 
     def test_factory_generates_full_model(self):
         """Test factory generates complete Playlist models."""
-        playlist = PlaylistFactory()
+        playlist = PlaylistFactory.build()
 
         assert isinstance(playlist, Playlist)
         assert isinstance(playlist, PlaylistBase)  # Inheritance
@@ -398,7 +408,7 @@ class TestPlaylistSearchFilters:
     def test_create_comprehensive_filters(self):
         """Test creating comprehensive search filters with keyword arguments."""
         data = PlaylistTestData.comprehensive_search_filters_data()
-        filters = PlaylistSearchFiltersFactory(**data)
+        filters = PlaylistSearchFiltersFactory.build(**data)
 
         assert filters.playlist_ids == data["playlist_ids"]
         assert filters.channel_ids == data["channel_ids"]
@@ -434,7 +444,7 @@ class TestPlaylistSearchFilters:
 
     def test_factory_generates_valid_filters(self):
         """Test factory generates valid search filters."""
-        filters = PlaylistSearchFiltersFactory()
+        filters = PlaylistSearchFiltersFactory.build()
 
         assert isinstance(filters, PlaylistSearchFilters)
         assert isinstance(filters.playlist_ids, list)
@@ -447,24 +457,26 @@ class TestPlaylistSearchFilters:
     def test_query_validation_empty_string(self):
         """Test query validation with empty strings."""
         with pytest.raises(ValidationError):
-            PlaylistSearchFiltersFactory(title_query="")
+            PlaylistSearchFiltersFactory.build(title_query="")
 
         with pytest.raises(ValidationError):
-            PlaylistSearchFiltersFactory(description_query="")
+            PlaylistSearchFiltersFactory.build(description_query="")
 
     def test_video_count_range_validation(self):
         """Test video count range validation."""
         # Valid ranges
-        filters = PlaylistSearchFiltersFactory(min_video_count=1, max_video_count=100)
+        filters = PlaylistSearchFiltersFactory.build(
+            min_video_count=1, max_video_count=100
+        )
         assert filters.min_video_count == 1
         assert filters.max_video_count == 100
 
         # Invalid ranges
         with pytest.raises(ValidationError):
-            PlaylistSearchFiltersFactory(min_video_count=-1)
+            PlaylistSearchFiltersFactory.build(min_video_count=-1)
 
         with pytest.raises(ValidationError):
-            PlaylistSearchFiltersFactory(max_video_count=-1)
+            PlaylistSearchFiltersFactory.build(max_video_count=-1)
 
 
 class TestPlaylistStatistics:
@@ -472,7 +484,7 @@ class TestPlaylistStatistics:
 
     def test_create_valid_statistics(self):
         """Test creating valid PlaylistStatistics with keyword arguments."""
-        stats = PlaylistStatisticsFactory(
+        stats = PlaylistStatisticsFactory.build(
             total_playlists=500,
             total_videos=7500,
             avg_videos_per_playlist=15.0,
@@ -536,7 +548,7 @@ class TestPlaylistStatistics:
 
     def test_factory_generates_realistic_statistics(self):
         """Test factory generates realistic statistics."""
-        stats = PlaylistStatisticsFactory()
+        stats = PlaylistStatisticsFactory.build()
 
         assert isinstance(stats, PlaylistStatistics)
         assert stats.total_playlists > 0
@@ -560,7 +572,7 @@ class TestPlaylistModelInteractions:
     def test_create_then_update_workflow(self):
         """Test typical create then update workflow with keyword arguments."""
         # Create
-        playlist_create = PlaylistCreateFactory(
+        playlist_create = PlaylistCreateFactory.build(
             playlist_id="PLrAXtmRdnEQy3roZQD5TZuDCU5x-X4V8f",
             title="Original Title",
             description="Original description",
@@ -574,7 +586,7 @@ class TestPlaylistModelInteractions:
         created_at = datetime.now(timezone.utc)
         updated_at = created_at
 
-        playlist_full = PlaylistFactory(
+        playlist_full = PlaylistFactory.build(
             playlist_id=playlist_create.playlist_id,
             title=playlist_create.title,
             description=playlist_create.description,
@@ -614,20 +626,15 @@ class TestPlaylistModelInteractions:
 
     def test_search_filters_serialization(self):
         """Test search filters serialization for API usage."""
-        filters = PlaylistSearchFiltersFactory(
+        filters = PlaylistSearchFilters(
             playlist_ids=["PLrAXtmRdnEQy3roZQD5TZuDCU5x-X4V8f"],
             channel_ids=["UCuAXFkgsw1L7xaCfnd5JJOw"],
             title_query="python",
-            description_query=None,
-            language_codes=["en", "es"],
+            language_codes=[LanguageCode.ENGLISH, LanguageCode.SPANISH],
             privacy_statuses=["public"],
             min_video_count=5,
             max_video_count=100,
             has_description=True,
-            created_after=None,
-            created_before=None,
-            updated_after=None,
-            updated_before=None,
         )
 
         # Simulate API query parameters
@@ -637,7 +644,7 @@ class TestPlaylistModelInteractions:
             "playlist_ids": ["PLrAXtmRdnEQy3roZQD5TZuDCU5x-X4V8f"],
             "channel_ids": ["UCuAXFkgsw1L7xaCfnd5JJOw"],
             "title_query": "python",
-            "language_codes": ["en", "es"],
+            "language_codes": [LanguageCode.ENGLISH, LanguageCode.SPANISH],
             "privacy_statuses": ["public"],
             "min_video_count": 5,
             "max_video_count": 100,
@@ -708,9 +715,9 @@ class TestPlaylistModelInteractions:
 
     def test_factory_inheritance_consistency(self):
         """Test that factory-created models maintain proper inheritance."""
-        base = PlaylistBaseFactory()
-        create = PlaylistCreateFactory()
-        full = PlaylistFactory()
+        base = PlaylistBaseFactory.build()
+        create = PlaylistCreateFactory.build()
+        full = PlaylistFactory.build()
 
         # All should be instances of PlaylistBase
         assert isinstance(base, PlaylistBase)
@@ -735,7 +742,7 @@ class TestPlaylistModelInteractions:
         ]
 
         for playlist_id in valid_playlist_ids:
-            playlist = PlaylistBaseFactory(playlist_id=playlist_id)
+            playlist = PlaylistBaseFactory.build(playlist_id=playlist_id)
             assert playlist.playlist_id == playlist_id
 
     def test_channel_id_format_validation(self):
@@ -749,7 +756,7 @@ class TestPlaylistModelInteractions:
         ]
 
         for channel_id in valid_channel_ids:
-            playlist = PlaylistBaseFactory(channel_id=channel_id)
+            playlist = PlaylistBaseFactory.build(channel_id=channel_id)
             assert playlist.channel_id == channel_id
 
     def test_multilingual_content_handling(self):
@@ -757,7 +764,7 @@ class TestPlaylistModelInteractions:
         multilingual_playlists = PlaylistTestData.multilingual_playlists_data()
 
         for playlist_data in multilingual_playlists:
-            playlist = PlaylistBaseFactory(**playlist_data)
+            playlist = PlaylistBaseFactory.build(**playlist_data)
 
             assert playlist.playlist_id == playlist_data["playlist_id"]
             assert playlist.title == playlist_data["title"]
@@ -777,15 +784,15 @@ class TestPlaylistModelInteractions:
         ]
 
         for input_code, expected_code in test_cases:
-            playlist = PlaylistBaseFactory(default_language=input_code)
+            playlist = PlaylistBaseFactory.build(default_language=input_code)
             assert playlist.default_language.value == expected_code
 
     def test_privacy_status_business_logic(self):
         """Test business logic around privacy status."""
         # Test different privacy levels
-        public_playlist = PlaylistBaseFactory(privacy_status="public")
-        unlisted_playlist = PlaylistBaseFactory(privacy_status="unlisted")
-        private_playlist = PlaylistBaseFactory(privacy_status="private")
+        public_playlist = PlaylistBaseFactory.build(privacy_status="public")
+        unlisted_playlist = PlaylistBaseFactory.build(privacy_status="unlisted")
+        private_playlist = PlaylistBaseFactory.build(privacy_status="private")
 
         assert public_playlist.privacy_status == "public"
         assert unlisted_playlist.privacy_status == "unlisted"
@@ -799,9 +806,9 @@ class TestPlaylistModelInteractions:
     def test_video_count_business_logic(self):
         """Test business logic around video counts."""
         # Test edge cases
-        empty_playlist = PlaylistBaseFactory(video_count=0)
-        small_playlist = PlaylistBaseFactory(video_count=5)
-        large_playlist = PlaylistBaseFactory(video_count=500)
+        empty_playlist = PlaylistBaseFactory.build(video_count=0)
+        small_playlist = PlaylistBaseFactory.build(video_count=5)
+        large_playlist = PlaylistBaseFactory.build(video_count=500)
 
         assert empty_playlist.video_count == 0
         assert small_playlist.video_count == 5

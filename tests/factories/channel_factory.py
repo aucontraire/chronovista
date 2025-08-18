@@ -8,7 +8,7 @@ with realistic and consistent test data.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import List
+from typing import List, cast
 
 import factory
 from factory import LazyFunction
@@ -109,7 +109,12 @@ class ChannelFactory(factory.Factory):
 
 
 class ChannelSearchFiltersFactory(factory.Factory):
-    """Factory for ChannelSearchFilters models."""
+    """Factory for ChannelSearchFilters models.
+
+    When called with no arguments, generates realistic test data.
+    When called with specific arguments, only those fields are set,
+    leaving others as None (respecting model defaults).
+    """
 
     class Meta:
         model = ChannelSearchFilters
@@ -200,32 +205,32 @@ class ChannelTestData:
 # Convenience factory functions
 def create_channel_base(**kwargs) -> ChannelBase:
     """Create a ChannelBase with optional overrides."""
-    return ChannelBaseFactory(**kwargs)
+    return cast(ChannelBase, ChannelBaseFactory.build(**kwargs))
 
 
 def create_channel_create(**kwargs) -> ChannelCreate:
     """Create a ChannelCreate with optional overrides."""
-    return ChannelCreateFactory(**kwargs)
+    return cast(ChannelCreate, ChannelCreateFactory.build(**kwargs))
 
 
 def create_channel_update(**kwargs) -> ChannelUpdate:
     """Create a ChannelUpdate with optional overrides."""
-    return ChannelUpdateFactory(**kwargs)
+    return cast(ChannelUpdate, ChannelUpdateFactory.build(**kwargs))
 
 
 def create_channel(**kwargs) -> Channel:
     """Create a Channel with optional overrides."""
-    return ChannelFactory(**kwargs)
+    return cast(Channel, ChannelFactory.build(**kwargs))
 
 
 def create_channel_search_filters(**kwargs) -> ChannelSearchFilters:
     """Create a ChannelSearchFilters with optional overrides."""
-    return ChannelSearchFiltersFactory(**kwargs)
+    return cast(ChannelSearchFilters, ChannelSearchFiltersFactory.build(**kwargs))
 
 
 def create_channel_statistics(**kwargs) -> ChannelStatistics:
     """Create a ChannelStatistics with optional overrides."""
-    return ChannelStatisticsFactory(**kwargs)
+    return cast(ChannelStatistics, ChannelStatisticsFactory.build(**kwargs))
 
 
 def create_batch_channels(count: int = 5) -> List[Channel]:
@@ -250,7 +255,7 @@ def create_batch_channels(count: int = 5) -> List[Channel]:
         channel_id = base_channel_ids[i % len(base_channel_ids)]
         title = base_titles[i % len(base_titles)]
 
-        channel = ChannelFactory(
+        channel = ChannelFactory.build(
             channel_id=channel_id,
             title=title,
             subscriber_count=100000 + (i * 50000),

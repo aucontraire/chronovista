@@ -8,6 +8,7 @@ with sensible defaults and easy customization.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import cast
 
 import factory
 from factory import Faker, LazyAttribute
@@ -171,37 +172,39 @@ class TopicCategoryAnalyticsFactory(factory.Factory):
 # Convenience factory methods
 def create_topic_category(**kwargs) -> TopicCategory:
     """Create a TopicCategory with keyword arguments."""
-    return TopicCategoryFactory(**kwargs)
+    return cast(TopicCategory, TopicCategoryFactory.build(**kwargs))
 
 
 def create_topic_category_create(**kwargs) -> TopicCategoryCreate:
     """Create a TopicCategoryCreate with keyword arguments."""
-    return TopicCategoryCreateFactory(**kwargs)
+    return cast(TopicCategoryCreate, TopicCategoryCreateFactory.build(**kwargs))
 
 
 def create_topic_category_update(**kwargs) -> TopicCategoryUpdate:
     """Create a TopicCategoryUpdate with keyword arguments."""
-    return TopicCategoryUpdateFactory(**kwargs)
+    return cast(TopicCategoryUpdate, TopicCategoryUpdateFactory.build(**kwargs))
 
 
 def create_topic_category_filters(**kwargs) -> TopicCategorySearchFilters:
     """Create TopicCategorySearchFilters with keyword arguments."""
-    return TopicCategorySearchFiltersFactory(**kwargs)
+    return cast(
+        TopicCategorySearchFilters, TopicCategorySearchFiltersFactory.build(**kwargs)
+    )
 
 
 def create_topic_category_statistics(**kwargs) -> TopicCategoryStatistics:
     """Create TopicCategoryStatistics with keyword arguments."""
-    return TopicCategoryStatisticsFactory(**kwargs)
+    return cast(TopicCategoryStatistics, TopicCategoryStatisticsFactory.build(**kwargs))
 
 
 def create_topic_category_hierarchy(**kwargs) -> TopicCategoryHierarchy:
     """Create TopicCategoryHierarchy with keyword arguments."""
-    return TopicCategoryHierarchyFactory(**kwargs)
+    return cast(TopicCategoryHierarchy, TopicCategoryHierarchyFactory.build(**kwargs))
 
 
 def create_topic_category_analytics(**kwargs) -> TopicCategoryAnalytics:
     """Create TopicCategoryAnalytics with keyword arguments."""
-    return TopicCategoryAnalyticsFactory(**kwargs)
+    return cast(TopicCategoryAnalytics, TopicCategoryAnalyticsFactory.build(**kwargs))
 
 
 # Common test data patterns

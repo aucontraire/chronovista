@@ -41,10 +41,9 @@ class TestTopicCategoryBase:
 
     def test_create_valid_topic_category_base(self):
         """Test creating valid TopicCategoryBase with keyword arguments."""
-        topic = TopicCategoryBaseFactory(
+        topic = TopicCategoryBaseFactory.build(
             topic_id="gaming",
             category_name="Gaming",
-            parent_topic_id=None,
             topic_type="youtube",
         )
 
@@ -55,7 +54,7 @@ class TestTopicCategoryBase:
 
     def test_create_topic_category_with_parent(self):
         """Test creating TopicCategoryBase with parent relationship."""
-        topic = TopicCategoryBaseFactory(
+        topic = TopicCategoryBaseFactory.build(
             topic_id="esports",
             category_name="Esports",
             parent_topic_id="gaming",
@@ -69,7 +68,7 @@ class TestTopicCategoryBase:
 
     def test_factory_generates_valid_defaults(self):
         """Test that factory generates valid models with defaults."""
-        topic = TopicCategoryBaseFactory()
+        topic = TopicCategoryBaseFactory.build()
 
         assert isinstance(topic, TopicCategoryBase)
         assert len(topic.topic_id) >= 1
@@ -84,12 +83,12 @@ class TestTopicCategoryBase:
     def test_topic_id_validation_invalid(self, invalid_topic_id):
         """Test topic_id validation with various invalid inputs."""
         with pytest.raises(ValidationError):
-            TopicCategoryBaseFactory(topic_id=invalid_topic_id)
+            TopicCategoryBaseFactory.build(topic_id=invalid_topic_id)
 
     @pytest.mark.parametrize("valid_topic_id", TopicCategoryTestData.VALID_TOPIC_IDS)
     def test_topic_id_validation_valid(self, valid_topic_id):
         """Test topic_id validation with various valid inputs."""
-        topic = TopicCategoryBaseFactory(topic_id=valid_topic_id)
+        topic = TopicCategoryBaseFactory.build(topic_id=valid_topic_id)
         assert topic.topic_id == valid_topic_id
 
     @pytest.mark.parametrize(
@@ -98,51 +97,50 @@ class TestTopicCategoryBase:
     def test_category_name_validation_invalid(self, invalid_category_name):
         """Test category_name validation with various invalid inputs."""
         with pytest.raises(ValidationError):
-            TopicCategoryBaseFactory(category_name=invalid_category_name)
+            TopicCategoryBaseFactory.build(category_name=invalid_category_name)
 
     @pytest.mark.parametrize(
         "valid_category_name", TopicCategoryTestData.VALID_CATEGORY_NAMES
     )
     def test_category_name_validation_valid(self, valid_category_name):
         """Test category_name validation with various valid inputs."""
-        topic = TopicCategoryBaseFactory(category_name=valid_category_name)
+        topic = TopicCategoryBaseFactory.build(category_name=valid_category_name)
         assert topic.category_name == valid_category_name
 
     def test_parent_topic_id_validation(self):
         """Test parent_topic_id validation."""
         # Valid parent IDs
-        topic = TopicCategoryBaseFactory(parent_topic_id="entertainment")
+        topic = TopicCategoryBaseFactory.build(parent_topic_id="entertainment")
         assert topic.parent_topic_id == "entertainment"
 
         # None is valid (root topic)
-        topic = TopicCategoryBaseFactory(parent_topic_id=None)
+        topic = TopicCategoryBaseFactory.build(parent_topic_id=None)
         assert topic.parent_topic_id is None
 
         # With type-safe validation, pass None directly for empty parent
-        topic = TopicCategoryBaseFactory(parent_topic_id=None)
+        topic = TopicCategoryBaseFactory.build(parent_topic_id=None)
         assert topic.parent_topic_id is None
 
         # Invalid parent IDs
         with pytest.raises(ValidationError):
-            TopicCategoryBaseFactory(parent_topic_id="invalid topic id")
+            TopicCategoryBaseFactory.build(parent_topic_id="invalid topic id")
 
     def test_topic_type_validation(self):
         """Test topic_type validation."""
         # Valid types
         for topic_type in ["youtube", "custom"]:
-            topic = TopicCategoryBaseFactory(topic_type=topic_type)
+            topic = TopicCategoryBaseFactory.build(topic_type=topic_type)
             assert topic.topic_type == topic_type
 
         # Invalid type
         with pytest.raises(ValidationError):
-            TopicCategoryBaseFactory(topic_type="invalid_type")
+            TopicCategoryBaseFactory.build(topic_type="invalid_type")
 
     def test_model_dump_functionality(self):
         """Test model_dump() method for serialization."""
-        topic = TopicCategoryBaseFactory(
+        topic = TopicCategoryBaseFactory.build(
             topic_id="tech",
             category_name="Technology",
-            parent_topic_id=None,
             topic_type="youtube",
         )
 
@@ -173,7 +171,7 @@ class TestTopicCategoryCreate:
 
     def test_create_valid_topic_category_create(self):
         """Test creating valid TopicCategoryCreate with keyword arguments."""
-        topic = TopicCategoryCreateFactory(
+        topic = TopicCategoryCreateFactory.build(
             topic_id="music",
             category_name="Music & Audio",
             parent_topic_id="entertainment",
@@ -188,16 +186,18 @@ class TestTopicCategoryCreate:
     def test_inherits_base_validation(self):
         """Test that TopicCategoryCreate inherits base validation."""
         with pytest.raises(ValidationError):
-            TopicCategoryCreateFactory(topic_id="   ")
+            TopicCategoryCreateFactory.build(topic_id="   ")
 
     def test_self_reference_validation(self):
         """Test that topics cannot reference themselves as parent."""
         with pytest.raises(ValidationError):
-            TopicCategoryCreateFactory(topic_id="gaming", parent_topic_id="gaming")
+            TopicCategoryCreateFactory.build(
+                topic_id="gaming", parent_topic_id="gaming"
+            )
 
     def test_factory_generates_valid_model(self):
         """Test factory generates valid TopicCategoryCreate models."""
-        topic = TopicCategoryCreateFactory()
+        topic = TopicCategoryCreateFactory.build()
 
         assert isinstance(topic, TopicCategoryCreate)
         assert isinstance(topic, TopicCategoryBase)  # Inheritance check
@@ -208,7 +208,7 @@ class TestTopicCategoryUpdate:
 
     def test_create_valid_topic_category_update(self):
         """Test creating valid TopicCategoryUpdate with keyword arguments."""
-        update = TopicCategoryUpdateFactory(
+        update = TopicCategoryUpdateFactory.build(
             category_name="Updated Gaming",
             parent_topic_id="entertainment",
             topic_type="custom",
@@ -220,7 +220,9 @@ class TestTopicCategoryUpdate:
 
     def test_create_empty_topic_category_update(self):
         """Test creating empty TopicCategoryUpdate."""
-        update = TopicCategoryUpdate()
+        update = TopicCategoryUpdateFactory.build(
+            category_name=None, parent_topic_id=None, topic_type=None
+        )
 
         assert update.category_name is None
         assert update.parent_topic_id is None
@@ -229,17 +231,19 @@ class TestTopicCategoryUpdate:
     def test_category_name_validation_in_update(self):
         """Test category_name validation in update model."""
         with pytest.raises(ValidationError):
-            TopicCategoryUpdateFactory(category_name="")
+            TopicCategoryUpdateFactory.build(category_name="")
 
     def test_parent_topic_id_empty_becomes_none(self):
         """Test that empty parent_topic_id becomes None."""
         # With type-safe validation, pass None directly for empty parent
-        update = TopicCategoryUpdateFactory(parent_topic_id=None)
+        update = TopicCategoryUpdateFactory.build(parent_topic_id=None)
         assert update.parent_topic_id is None
 
     def test_model_dump_excludes_none(self):
         """Test model_dump() excludes None values."""
-        update = TopicCategoryUpdate()
+        update = TopicCategoryUpdateFactory.build(
+            category_name=None, parent_topic_id=None, topic_type=None
+        )
 
         data = update.model_dump(exclude_none=True)
 
@@ -247,7 +251,7 @@ class TestTopicCategoryUpdate:
 
     def test_factory_generates_valid_updates(self):
         """Test factory generates valid update models."""
-        update = TopicCategoryUpdateFactory()
+        update = TopicCategoryUpdateFactory.build()
 
         assert isinstance(update, TopicCategoryUpdate)
         assert update.category_name is not None
@@ -259,10 +263,9 @@ class TestTopicCategory:
     def test_create_valid_topic_category(self):
         """Test creating valid TopicCategory with keyword arguments."""
         now = datetime.now(timezone.utc)
-        topic = TopicCategoryFactory(
+        topic = TopicCategoryFactory.build(
             topic_id="education",
             category_name="Education",
-            parent_topic_id=None,
             topic_type="youtube",
             created_at=now,
         )
@@ -295,7 +298,7 @@ class TestTopicCategory:
 
     def test_factory_generates_full_model(self):
         """Test factory generates complete TopicCategory models."""
-        topic = TopicCategoryFactory()
+        topic = TopicCategoryFactory.build()
 
         assert isinstance(topic, TopicCategory)
         assert isinstance(topic, TopicCategoryBase)  # Inheritance
@@ -309,7 +312,7 @@ class TestTopicCategorySearchFilters:
     def test_create_comprehensive_filters(self):
         """Test creating comprehensive search filters with keyword arguments."""
         data = TopicCategoryTestData.comprehensive_search_filters_data()
-        filters = TopicCategorySearchFiltersFactory(**data)
+        filters = TopicCategorySearchFiltersFactory.build(**data)
 
         assert filters.topic_ids == data["topic_ids"]
         assert filters.category_name_query == data["category_name_query"]
@@ -337,7 +340,7 @@ class TestTopicCategorySearchFilters:
 
     def test_factory_generates_valid_filters(self):
         """Test factory generates valid search filters."""
-        filters = TopicCategorySearchFiltersFactory()
+        filters = TopicCategorySearchFiltersFactory.build()
 
         assert isinstance(filters, TopicCategorySearchFilters)
         assert isinstance(filters.topic_ids, list)
@@ -348,20 +351,20 @@ class TestTopicCategorySearchFilters:
     def test_query_validation_empty_string(self):
         """Test query validation with empty strings."""
         with pytest.raises(ValidationError):
-            TopicCategorySearchFiltersFactory(category_name_query="")
+            TopicCategorySearchFiltersFactory.build(category_name_query="")
 
     def test_max_depth_validation(self):
         """Test max_depth validation."""
         # Valid depths
-        filters = TopicCategorySearchFiltersFactory(max_depth=0)
+        filters = TopicCategorySearchFiltersFactory.build(max_depth=0)
         assert filters.max_depth == 0
 
-        filters = TopicCategorySearchFiltersFactory(max_depth=5)
+        filters = TopicCategorySearchFiltersFactory.build(max_depth=5)
         assert filters.max_depth == 5
 
         # Invalid depth
         with pytest.raises(ValidationError):
-            TopicCategorySearchFiltersFactory(max_depth=-1)
+            TopicCategorySearchFiltersFactory.build(max_depth=-1)
 
 
 class TestTopicCategoryStatistics:
@@ -369,7 +372,7 @@ class TestTopicCategoryStatistics:
 
     def test_create_valid_statistics(self):
         """Test creating valid TopicCategoryStatistics with keyword arguments."""
-        stats = TopicCategoryStatisticsFactory(
+        stats = TopicCategoryStatisticsFactory.build(
             total_topics=100,
             root_topics=20,
             max_hierarchy_depth=4,
@@ -410,7 +413,7 @@ class TestTopicCategoryStatistics:
 
     def test_factory_generates_realistic_statistics(self):
         """Test factory generates realistic statistics."""
-        stats = TopicCategoryStatisticsFactory()
+        stats = TopicCategoryStatisticsFactory.build()
 
         assert isinstance(stats, TopicCategoryStatistics)
         assert stats.total_topics > 0
@@ -427,7 +430,7 @@ class TestTopicCategoryHierarchy:
 
     def test_create_valid_hierarchy(self):
         """Test creating valid TopicCategoryHierarchy with keyword arguments."""
-        hierarchy = TopicCategoryHierarchyFactory(
+        hierarchy = TopicCategoryHierarchyFactory.build(
             topic_id="gaming",
             category_name="Gaming",
             topic_type="youtube",
@@ -459,7 +462,7 @@ class TestTopicCategoryHierarchy:
 
     def test_factory_generates_valid_hierarchy(self):
         """Test factory generates valid hierarchy models."""
-        hierarchy = TopicCategoryHierarchyFactory()
+        hierarchy = TopicCategoryHierarchyFactory.build()
 
         assert isinstance(hierarchy, TopicCategoryHierarchy)
         assert hierarchy.level >= 0
@@ -497,7 +500,7 @@ class TestTopicCategoryAnalytics:
 
     def test_create_valid_analytics(self):
         """Test creating valid TopicCategoryAnalytics with keyword arguments."""
-        analytics = TopicCategoryAnalyticsFactory(
+        analytics = TopicCategoryAnalyticsFactory.build(
             topic_trends={"gaming": [10, 12, 15], "music": [8, 9, 11]},
             topic_relationships={
                 "gaming": ["esports", "streaming"],
@@ -533,7 +536,7 @@ class TestTopicCategoryAnalytics:
 
     def test_factory_generates_realistic_analytics(self):
         """Test factory generates realistic analytics."""
-        analytics = TopicCategoryAnalyticsFactory()
+        analytics = TopicCategoryAnalyticsFactory.build()
 
         assert isinstance(analytics, TopicCategoryAnalytics)
         assert isinstance(analytics.topic_trends, dict)
@@ -548,16 +551,15 @@ class TestTopicCategoryModelInteractions:
     def test_create_then_update_workflow(self):
         """Test typical create then update workflow with keyword arguments."""
         # Create
-        topic_create = TopicCategoryCreateFactory(
+        topic_create = TopicCategoryCreateFactory.build(
             topic_id="gaming",
             category_name="Gaming",
-            parent_topic_id=None,
             topic_type="youtube",
         )
 
         # Simulate creation
         now = datetime.now(timezone.utc)
-        topic_full = TopicCategoryFactory(
+        topic_full = TopicCategoryFactory.build(
             topic_id=topic_create.topic_id,
             category_name=topic_create.category_name,
             parent_topic_id=topic_create.parent_topic_id,
@@ -586,7 +588,7 @@ class TestTopicCategoryModelInteractions:
 
     def test_search_filters_serialization(self):
         """Test search filters serialization for API usage."""
-        filters = TopicCategorySearchFiltersFactory(
+        filters = TopicCategorySearchFiltersFactory.build(
             topic_ids=["gaming", "music"],
             category_name_query="entertainment",
             parent_topic_ids=["entertainment"],
@@ -709,9 +711,9 @@ class TestTopicCategoryModelInteractions:
 
     def test_factory_inheritance_consistency(self):
         """Test that factory-created models maintain proper inheritance."""
-        base = TopicCategoryBaseFactory()
-        create = TopicCategoryCreateFactory()
-        full = TopicCategoryFactory()
+        base = TopicCategoryBaseFactory.build()
+        create = TopicCategoryCreateFactory.build()
+        full = TopicCategoryFactory.build()
 
         # All should be instances of TopicCategoryBase
         assert isinstance(base, TopicCategoryBase)
@@ -728,11 +730,10 @@ class TestTopicCategoryModelInteractions:
         youtube_topics = TopicCategoryTestData.YOUTUBE_OFFICIAL_TOPICS
 
         for topic_id, category_name in youtube_topics:
-            topic = TopicCategoryBaseFactory(
+            topic = TopicCategoryBaseFactory.build(
                 topic_id=topic_id,
                 category_name=category_name,
                 topic_type="youtube",
-                parent_topic_id=None,  # Official topics are typically root level
             )
 
             assert topic.topic_id == topic_id
@@ -744,7 +745,7 @@ class TestTopicCategoryModelInteractions:
         """Test custom topic creation with proper validation."""
         custom_data = TopicCategoryTestData.custom_topic_data()
 
-        custom_topic = TopicCategoryCreateFactory(**custom_data)
+        custom_topic = TopicCategoryCreateFactory.build(**custom_data)
 
         assert custom_topic.topic_id == "custom_ai_ml"
         assert custom_topic.category_name == "AI & Machine Learning"
@@ -762,21 +763,25 @@ class TestTopicCategoryModelInteractions:
         ]
 
         for topic_id in valid_formats:
-            topic = TopicCategoryBaseFactory(topic_id=topic_id)
+            topic = TopicCategoryBaseFactory.build(topic_id=topic_id)
             assert topic.topic_id == topic_id
 
     def test_hierarchy_depth_validation(self):
         """Test hierarchy depth business logic."""
         # Create a deep hierarchy to test depth constraints
-        root = TopicCategoryFactory(topic_id="entertainment", parent_topic_id=None)
+        root = TopicCategoryFactory.build(topic_id="entertainment")
 
-        level1 = TopicCategoryFactory(
+        level1 = TopicCategoryFactory.build(
             topic_id="gaming", parent_topic_id="entertainment"
         )
 
-        level2 = TopicCategoryFactory(topic_id="esports", parent_topic_id="gaming")
+        level2 = TopicCategoryFactory.build(
+            topic_id="esports", parent_topic_id="gaming"
+        )
 
-        level3 = TopicCategoryFactory(topic_id="fps_games", parent_topic_id="esports")
+        level3 = TopicCategoryFactory.build(
+            topic_id="fps_games", parent_topic_id="esports"
+        )
 
         # Validate parent-child relationships
         assert root.parent_topic_id is None

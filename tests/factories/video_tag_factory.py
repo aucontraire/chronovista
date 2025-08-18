@@ -8,6 +8,7 @@ with sensible defaults and easy customization.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import cast
 
 import factory
 from factory import Faker, LazyAttribute
@@ -41,12 +42,18 @@ class VideoTagCreateFactory(VideoTagBaseFactory):
 
 
 class VideoTagUpdateFactory(factory.Factory):
-    """Factory for VideoTagUpdate models."""
+    """Factory for VideoTagUpdate models.
+
+    Note: This factory respects the model's default values (None for all fields).
+    For Update models, the default behavior should be an empty update (all None),
+    with values only generated when explicitly requested.
+    """
 
     class Meta:
         model = VideoTagUpdate
 
-    tag_order = Faker("random_int", min=0, max=100)
+    # No default values - respects model defaults (None for all fields)
+    # Values will only be generated when explicitly passed to build()
 
 
 class VideoTagFactory(VideoTagBaseFactory):
@@ -99,27 +106,27 @@ class VideoTagStatisticsFactory(factory.Factory):
 # Convenience factory methods
 def create_video_tag(**kwargs) -> VideoTag:
     """Create a VideoTag with keyword arguments."""
-    return VideoTagFactory(**kwargs)
+    return cast(VideoTag, VideoTagFactory.build(**kwargs))
 
 
 def create_video_tag_create(**kwargs) -> VideoTagCreate:
     """Create a VideoTagCreate with keyword arguments."""
-    return VideoTagCreateFactory(**kwargs)
+    return cast(VideoTagCreate, VideoTagCreateFactory.build(**kwargs))
 
 
 def create_video_tag_update(**kwargs) -> VideoTagUpdate:
     """Create a VideoTagUpdate with keyword arguments."""
-    return VideoTagUpdateFactory(**kwargs)
+    return cast(VideoTagUpdate, VideoTagUpdateFactory.build(**kwargs))
 
 
 def create_video_tag_filters(**kwargs) -> VideoTagSearchFilters:
     """Create VideoTagSearchFilters with keyword arguments."""
-    return VideoTagSearchFiltersFactory(**kwargs)
+    return cast(VideoTagSearchFilters, VideoTagSearchFiltersFactory.build(**kwargs))
 
 
 def create_video_tag_statistics(**kwargs) -> VideoTagStatistics:
     """Create VideoTagStatistics with keyword arguments."""
-    return VideoTagStatisticsFactory(**kwargs)
+    return cast(VideoTagStatistics, VideoTagStatisticsFactory.build(**kwargs))
 
 
 # Common test data patterns

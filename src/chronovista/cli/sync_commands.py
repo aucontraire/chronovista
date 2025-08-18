@@ -9,7 +9,6 @@ from typing import Any, Dict, List
 
 import typer
 from rich.console import Console
-from rich.json import JSON
 from rich.panel import Panel
 from rich.table import Table
 
@@ -19,7 +18,6 @@ from chronovista.db.models import Video as VideoDB
 from chronovista.models.channel import ChannelCreate
 from chronovista.models.channel_topic import ChannelTopicCreate
 from chronovista.models.topic_category import TopicCategoryCreate
-from chronovista.models.user_video import UserVideoCreate
 from chronovista.models.video import VideoCreate
 from chronovista.models.video_topic import VideoTopicCreate
 from chronovista.models.youtube_types import UserId

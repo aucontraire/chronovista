@@ -8,7 +8,7 @@ fixtures for systematic integration testing across model tiers.
 from __future__ import annotations
 
 import os
-from typing import Any, Dict
+from typing import Any, Awaitable, Dict
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -189,10 +189,12 @@ async def established_channel(
 
             # Create channel in database using repository
             from chronovista.db.models import Channel as DBChannel
-            from chronovista.models.channel import ChannelCreate
+            from chronovista.models.channel import ChannelCreate, ChannelUpdate
             from chronovista.repositories.base import BaseSQLAlchemyRepository
 
-            channel_repo = BaseSQLAlchemyRepository(DBChannel)
+            channel_repo: BaseSQLAlchemyRepository[
+                DBChannel, ChannelCreate, ChannelUpdate
+            ] = BaseSQLAlchemyRepository(DBChannel)
 
             # First check if channel already exists
             from sqlalchemy import select
@@ -256,7 +258,7 @@ async def established_channel(
 async def established_videos(
     authenticated_youtube_service,
     integration_db_session,
-    established_channel,
+    established_channel: Awaitable[Dict[str, Any] | None],
     sample_youtube_video_ids,
 ) -> list[Dict[str, Any]] | None:
     """
@@ -290,10 +292,12 @@ async def established_videos(
                 from datetime import datetime
 
                 from chronovista.db.models import Video as DBVideo
-                from chronovista.models.video import VideoCreate
+                from chronovista.models.video import VideoCreate, VideoUpdate
                 from chronovista.repositories.base import BaseSQLAlchemyRepository
 
-                video_repo: BaseSQLAlchemyRepository = BaseSQLAlchemyRepository(DBVideo)
+                video_repo: BaseSQLAlchemyRepository[
+                    DBVideo, VideoCreate, VideoUpdate
+                ] = BaseSQLAlchemyRepository(DBVideo)
 
                 # First check if video already exists
                 from sqlalchemy import select

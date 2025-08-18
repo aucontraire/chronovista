@@ -23,20 +23,29 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
+from typing import Any, Awaitable, Dict, List
 
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
+from chronovista.db.models import UserVideo as DBUserVideo
+from chronovista.db.models import VideoTag as DBVideoTag
+from chronovista.db.models import VideoTranscript as DBVideoTranscript
 from chronovista.models.enums import (
     DownloadReason,
     LanguageCode,
     TrackKind,
     TranscriptType,
 )
-from chronovista.models.user_video import UserVideo, UserVideoCreate
-from chronovista.models.video_tag import VideoTag, VideoTagCreate
-from chronovista.models.video_transcript import VideoTranscript, VideoTranscriptCreate
-from chronovista.models.youtube_types import create_test_video_id
+from chronovista.models.user_video import UserVideoCreate, UserVideoUpdate
+from chronovista.models.video_tag import VideoTagCreate, VideoTagUpdate
+from chronovista.models.video_transcript import (
+    VideoTranscript,
+    VideoTranscriptCreate,
+    VideoTranscriptUpdate,
+)
+from chronovista.repositories.base import BaseSQLAlchemyRepository
+from tests.factories.user_video_factory import create_user_video_update
 
 
 @pytest.mark.integration
@@ -49,7 +58,7 @@ class TestVideoTranscriptFromAPI:
         self,
         authenticated_youtube_service,
         integration_db_session,
-        established_videos,
+        established_videos: Awaitable[List[Dict[str, Any]] | None],
     ):
         """Test creating video transcripts from real YouTube API data."""
         # Await the fixture once - defensive pattern from Tier 3 lessons
@@ -64,8 +73,6 @@ class TestVideoTranscriptFromAPI:
         async with integration_db_session() as session:
             try:
                 # Clean up any existing test data first - defensive pattern
-                from chronovista.db.models import VideoTranscript as DBVideoTranscript
-
                 await session.execute(
                     delete(DBVideoTranscript).where(
                         DBVideoTranscript.video_id == video_id,
@@ -114,13 +121,11 @@ class TestVideoTranscriptFromAPI:
                 )
 
                 # Use repository pattern - consistent with other tiers
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
-                transcript_repo = BaseSQLAlchemyRepository(DBVideoTranscript)
+                transcript_repo: BaseSQLAlchemyRepository[
+                    DBVideoTranscript, VideoTranscriptCreate, VideoTranscriptUpdate
+                ] = BaseSQLAlchemyRepository(DBVideoTranscript)
 
                 # Implement get-or-create pattern - defensive from duplicate key lessons
-                from sqlalchemy import select
-
                 result = await session.execute(
                     select(DBVideoTranscript).where(
                         DBVideoTranscript.video_id == video_id,
@@ -178,7 +183,7 @@ class TestVideoTranscriptFromAPI:
     async def test_video_transcript_multi_language_support(
         self,
         integration_db_session,
-        established_videos,
+        established_videos: Awaitable[List[Dict[str, Any]] | None],
     ):
         """Test video transcript multi-language capabilities."""
         established_videos_data = await established_videos
@@ -199,10 +204,9 @@ class TestVideoTranscriptFromAPI:
                     LanguageCode.FRENCH,
                 ]
 
-                from chronovista.db.models import VideoTranscript as DBVideoTranscript
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
-                transcript_repo = BaseSQLAlchemyRepository(DBVideoTranscript)
+                transcript_repo: BaseSQLAlchemyRepository[
+                    DBVideoTranscript, VideoTranscriptCreate, VideoTranscriptUpdate
+                ] = BaseSQLAlchemyRepository(DBVideoTranscript)
 
                 created_transcripts = []
 
@@ -226,8 +230,6 @@ class TestVideoTranscriptFromAPI:
                     )
 
                     # Get-or-create pattern for each language
-                    from sqlalchemy import select
-
                     result = await session.execute(
                         select(DBVideoTranscript).where(
                             DBVideoTranscript.video_id == video_id,
@@ -289,7 +291,7 @@ class TestVideoTagFromAPI:
         self,
         authenticated_youtube_service,
         integration_db_session,
-        established_videos,
+        established_videos: Awaitable[List[Dict[str, Any]] | None],
     ):
         """Test creating video tags from real YouTube API data."""
         established_videos_data = await established_videos
@@ -303,8 +305,6 @@ class TestVideoTagFromAPI:
         async with integration_db_session() as session:
             try:
                 # Clean up existing test data - defensive pattern
-                from chronovista.db.models import VideoTag as DBVideoTag
-
                 await session.execute(
                     delete(DBVideoTag).where(
                         DBVideoTag.video_id == video_id, DBVideoTag.tag.like("test_%")
@@ -342,9 +342,9 @@ class TestVideoTagFromAPI:
                 unique_suffix = f"test_{int(time.time())}"
                 content_tags.append(f"integration_{unique_suffix}")
 
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
-                tag_repo = BaseSQLAlchemyRepository(DBVideoTag)
+                tag_repo: BaseSQLAlchemyRepository[
+                    DBVideoTag, VideoTagCreate, VideoTagUpdate
+                ] = BaseSQLAlchemyRepository(DBVideoTag)
 
                 created_tags = []
                 for i, tag_name in enumerate(content_tags[:3]):  # Limit to 3 tags
@@ -355,8 +355,6 @@ class TestVideoTagFromAPI:
                     )
 
                     # Get-or-create pattern - defensive from duplicate key lessons
-                    from sqlalchemy import select
-
                     result = await session.execute(
                         select(DBVideoTag).where(
                             DBVideoTag.video_id == video_id,
@@ -404,7 +402,7 @@ class TestVideoTagFromAPI:
     async def test_video_tag_deduplication(
         self,
         integration_db_session,
-        established_videos,
+        established_videos: Awaitable[List[Dict[str, Any]] | None],
     ):
         """Test that duplicate video tags are handled properly."""
         established_videos_data = await established_videos
@@ -420,10 +418,9 @@ class TestVideoTagFromAPI:
                 # Create unique tag name to avoid conflicts with existing data
                 unique_tag = f"unique_test_tag_{int(time.time())}"
 
-                from chronovista.db.models import VideoTag as DBVideoTag
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
-                tag_repo = BaseSQLAlchemyRepository(DBVideoTag)
+                tag_repo: BaseSQLAlchemyRepository[
+                    DBVideoTag, VideoTagCreate, VideoTagUpdate
+                ] = BaseSQLAlchemyRepository(DBVideoTag)
 
                 # Create first tag
                 tag_create = VideoTagCreate(
@@ -484,7 +481,7 @@ class TestUserVideoFromAPI:
     async def test_user_video_interaction_tracking(
         self,
         integration_db_session,
-        established_videos,
+        established_videos: Awaitable[List[Dict[str, Any]] | None],
         test_user_id,
     ):
         """Test tracking user-video interactions."""
@@ -498,10 +495,9 @@ class TestUserVideoFromAPI:
 
         async with integration_db_session() as session:
             try:
-                from chronovista.db.models import UserVideo as DBUserVideo
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
-                user_video_repo = BaseSQLAlchemyRepository(DBUserVideo)
+                user_video_repo: BaseSQLAlchemyRepository[
+                    DBUserVideo, UserVideoCreate, UserVideoUpdate
+                ] = BaseSQLAlchemyRepository(DBUserVideo)
 
                 # Clean up existing test data - defensive pattern
                 await session.execute(
@@ -524,8 +520,6 @@ class TestUserVideoFromAPI:
                 )
 
                 # Get-or-create pattern - defensive from lessons learned
-                from sqlalchemy import select
-
                 result = await session.execute(
                     select(DBUserVideo).where(
                         DBUserVideo.user_id == test_user_id,
@@ -556,9 +550,8 @@ class TestUserVideoFromAPI:
                 assert db_user_video.created_at is not None
 
                 # Test interaction update using correct field names
-                from chronovista.models.user_video import UserVideoUpdate
 
-                interaction_update = UserVideoUpdate(
+                interaction_update = create_user_video_update(
                     watch_duration=360,  # Correct field name: 6 minutes
                     rewatch_count=2,  # Correct field name
                     watched_at=datetime.now(timezone.utc),  # Correct field name
@@ -589,7 +582,7 @@ class TestUserVideoFromAPI:
     async def test_user_video_analytics_aggregation(
         self,
         integration_db_session,
-        established_videos,
+        established_videos: Awaitable[List[Dict[str, Any]] | None],
         test_user_id,
     ):
         """Test aggregating user video analytics."""
@@ -600,10 +593,9 @@ class TestUserVideoFromAPI:
 
         async with integration_db_session() as session:
             try:
-                from chronovista.db.models import UserVideo as DBUserVideo
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
-                user_video_repo = BaseSQLAlchemyRepository(DBUserVideo)
+                user_video_repo: BaseSQLAlchemyRepository[
+                    DBUserVideo, UserVideoCreate, UserVideoUpdate
+                ] = BaseSQLAlchemyRepository(DBUserVideo)
 
                 # Create multiple user-video interactions for analytics
                 test_interactions = []
@@ -633,8 +625,6 @@ class TestUserVideoFromAPI:
                     )
 
                     # Get-or-create pattern
-                    from sqlalchemy import select
-
                     result = await session.execute(
                         select(DBUserVideo).where(
                             DBUserVideo.user_id == test_user_id,

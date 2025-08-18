@@ -8,7 +8,7 @@ YouTube analytics database schema.
 from __future__ import annotations
 
 import datetime
-from typing import Optional
+from typing import Any, Dict, List, Optional, Union
 
 from sqlalchemy import (
     BigInteger,
@@ -105,13 +105,15 @@ class Video(Base):
     default_audio_language: Mapped[Optional[str]] = mapped_column(
         String(10)
     )  # LanguageCode enum value
-    available_languages: Mapped[Optional[dict]] = mapped_column(
+    available_languages: Mapped[Optional[Dict[str, Any]]] = mapped_column(
         JSONB
     )  # JSONB array of BCP-47 codes
 
     # Regional and content restrictions
-    region_restriction: Mapped[Optional[dict]] = mapped_column(JSONB)
-    content_rating: Mapped[Optional[dict]] = mapped_column(JSONB)
+    region_restriction: Mapped[Optional[Dict[str, Union[List[str], str]]]] = (
+        mapped_column(JSONB)
+    )
+    content_rating: Mapped[Optional[Dict[str, str]]] = mapped_column(JSONB)
 
     # Engagement metrics
     like_count: Mapped[Optional[int]] = mapped_column(Integer)

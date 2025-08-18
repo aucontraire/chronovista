@@ -38,7 +38,7 @@ class TestUserLanguagePreferenceBaseFactory:
 
     def test_user_language_preference_base_creation(self):
         """Test basic UserLanguagePreferenceBase creation from factory."""
-        preference = UserLanguagePreferenceBaseFactory()
+        preference = UserLanguagePreferenceBaseFactory.build()
 
         assert isinstance(preference, UserLanguagePreferenceBase)
         assert preference.user_id == "user_12345"
@@ -53,7 +53,7 @@ class TestUserLanguagePreferenceBaseFactory:
 
     def test_user_language_preference_base_custom_values(self):
         """Test UserLanguagePreferenceBase with custom values."""
-        custom_preference = UserLanguagePreferenceBaseFactory(
+        custom_preference = UserLanguagePreferenceBaseFactory.build(
             user_id="custom_user_123",
             language_code="es-MX",
             preference_type=LanguagePreferenceType.LEARNING,
@@ -74,7 +74,7 @@ class TestUserLanguagePreferenceBaseFactory:
     )
     def test_user_language_preference_base_valid_user_ids(self, valid_user_id):
         """Test UserLanguagePreferenceBase with valid user IDs."""
-        preference = UserLanguagePreferenceBaseFactory(user_id=valid_user_id)
+        preference = UserLanguagePreferenceBaseFactory.build(user_id=valid_user_id)
         assert preference.user_id == valid_user_id.strip()
 
     @pytest.mark.parametrize(
@@ -83,7 +83,7 @@ class TestUserLanguagePreferenceBaseFactory:
     def test_user_language_preference_base_invalid_user_ids(self, invalid_user_id):
         """Test UserLanguagePreferenceBase validation with invalid user IDs."""
         with pytest.raises(ValidationError):
-            UserLanguagePreferenceBaseFactory(user_id=invalid_user_id)
+            UserLanguagePreferenceBaseFactory.build(user_id=invalid_user_id)
 
     @pytest.mark.parametrize(
         "valid_language_code", UserLanguagePreferenceTestData.VALID_LANGUAGE_CODES
@@ -92,7 +92,7 @@ class TestUserLanguagePreferenceBaseFactory:
         self, valid_language_code
     ):
         """Test UserLanguagePreferenceBase with valid language codes."""
-        preference = UserLanguagePreferenceBaseFactory(
+        preference = UserLanguagePreferenceBaseFactory.build(
             language_code=valid_language_code
         )
         assert preference.language_code == valid_language_code
@@ -105,7 +105,7 @@ class TestUserLanguagePreferenceBaseFactory:
     ):
         """Test UserLanguagePreferenceBase validation with invalid language codes."""
         with pytest.raises(ValidationError):
-            UserLanguagePreferenceBaseFactory(language_code=invalid_language_code)
+            UserLanguagePreferenceBaseFactory.build(language_code=invalid_language_code)
 
     @pytest.mark.parametrize(
         "valid_preference_type", UserLanguagePreferenceTestData.VALID_PREFERENCE_TYPES
@@ -114,7 +114,7 @@ class TestUserLanguagePreferenceBaseFactory:
         self, valid_preference_type
     ):
         """Test UserLanguagePreferenceBase with valid preference types."""
-        preference = UserLanguagePreferenceBaseFactory(
+        preference = UserLanguagePreferenceBaseFactory.build(
             preference_type=valid_preference_type
         )
         assert preference.preference_type == valid_preference_type
@@ -124,7 +124,7 @@ class TestUserLanguagePreferenceBaseFactory:
     )
     def test_user_language_preference_base_valid_priorities(self, valid_priority):
         """Test UserLanguagePreferenceBase with valid priorities."""
-        preference = UserLanguagePreferenceBaseFactory(priority=valid_priority)
+        preference = UserLanguagePreferenceBaseFactory.build(priority=valid_priority)
         assert preference.priority == valid_priority
 
     @pytest.mark.parametrize(
@@ -133,7 +133,7 @@ class TestUserLanguagePreferenceBaseFactory:
     def test_user_language_preference_base_invalid_priorities(self, invalid_priority):
         """Test UserLanguagePreferenceBase validation with invalid priorities."""
         with pytest.raises(ValidationError):
-            UserLanguagePreferenceBaseFactory(priority=invalid_priority)
+            UserLanguagePreferenceBaseFactory.build(priority=invalid_priority)
 
     @pytest.mark.parametrize(
         "valid_learning_goal", UserLanguagePreferenceTestData.VALID_LEARNING_GOALS
@@ -142,14 +142,14 @@ class TestUserLanguagePreferenceBaseFactory:
         self, valid_learning_goal
     ):
         """Test UserLanguagePreferenceBase with valid learning goals."""
-        preference = UserLanguagePreferenceBaseFactory(
+        preference = UserLanguagePreferenceBaseFactory.build(
             learning_goal=valid_learning_goal
         )
         assert preference.learning_goal == valid_learning_goal
 
     def test_user_language_preference_base_model_dump(self):
         """Test UserLanguagePreferenceBase model_dump functionality."""
-        preference = UserLanguagePreferenceBaseFactory()
+        preference = UserLanguagePreferenceBaseFactory.build()
         data = preference.model_dump()
 
         assert isinstance(data, dict)
@@ -191,7 +191,7 @@ class TestUserLanguagePreferenceCreateFactory:
 
     def test_user_language_preference_create_creation(self):
         """Test basic UserLanguagePreferenceCreate creation from factory."""
-        preference = UserLanguagePreferenceCreateFactory()
+        preference = UserLanguagePreferenceCreateFactory.build()
 
         assert isinstance(preference, UserLanguagePreferenceCreate)
         assert preference.user_id == "user_create_67890"
@@ -217,17 +217,18 @@ class TestUserLanguagePreferenceUpdateFactory:
 
     def test_user_language_preference_update_creation(self):
         """Test basic UserLanguagePreferenceUpdate creation from factory."""
-        update = UserLanguagePreferenceUpdateFactory()
+        update = UserLanguagePreferenceUpdateFactory.build()
 
         assert isinstance(update, UserLanguagePreferenceUpdate)
         assert update.preference_type == LanguagePreferenceType.CURIOUS
         assert update.priority == 3
         assert update.auto_download_transcripts is False
-        assert "Updated:" in update.learning_goal
+        assert update.learning_goal is not None
+        assert update.learning_goal and "Updated:" in update.learning_goal
 
     def test_user_language_preference_update_partial_data(self):
         """Test UserLanguagePreferenceUpdate with partial data."""
-        update = UserLanguagePreferenceUpdateFactory(
+        update = UserLanguagePreferenceUpdateFactory.build(
             preference_type=LanguagePreferenceType.EXCLUDE,
             priority=None,  # Only update some fields
             auto_download_transcripts=None,
@@ -268,7 +269,7 @@ class TestUserLanguagePreferenceFactory:
 
     def test_user_language_preference_creation(self):
         """Test basic UserLanguagePreference creation from factory."""
-        preference = UserLanguagePreferenceFactory()
+        preference = UserLanguagePreferenceFactory.build()
 
         assert isinstance(preference, UserLanguagePreference)
         assert preference.user_id == "user_full_11111"
@@ -280,7 +281,7 @@ class TestUserLanguagePreferenceFactory:
         """Test UserLanguagePreference with custom timestamps."""
         created_time = datetime(2023, 1, 1, tzinfo=timezone.utc)
 
-        preference = UserLanguagePreferenceFactory(created_at=created_time)
+        preference = UserLanguagePreferenceFactory.build(created_at=created_time)
 
         assert preference.created_at == created_time
 
@@ -336,7 +337,7 @@ class TestBatchOperations:
 
     def test_model_serialization_round_trip(self):
         """Test model serialization and deserialization."""
-        original = UserLanguagePreferenceFactory(
+        original = UserLanguagePreferenceFactory.build(
             user_id="serialize_test_user",
             language_code="zh-CN",
             preference_type=LanguagePreferenceType.LEARNING,
@@ -357,9 +358,9 @@ class TestBatchOperations:
 
     def test_factory_inheritance_behavior(self):
         """Test that factories properly handle model inheritance."""
-        base_preference = UserLanguagePreferenceBaseFactory()
-        create_preference = UserLanguagePreferenceCreateFactory()
-        full_preference = UserLanguagePreferenceFactory()
+        base_preference = UserLanguagePreferenceBaseFactory.build()
+        create_preference = UserLanguagePreferenceCreateFactory.build()
+        full_preference = UserLanguagePreferenceFactory.build()
 
         # All should have the core attributes
         for pref in [base_preference, create_preference, full_preference]:
@@ -379,14 +380,14 @@ class TestValidationEdgeCases:
 
     def test_none_values_handling(self):
         """Test handling of None values in optional fields."""
-        preference = UserLanguagePreferenceBaseFactory(learning_goal=None)
+        preference = UserLanguagePreferenceBaseFactory.build(learning_goal=None)
 
         assert preference.learning_goal is None
 
     def test_boundary_values(self):
         """Test boundary values for validation."""
         # Test minimum valid values
-        min_preference = UserLanguagePreferenceBaseFactory(
+        min_preference = UserLanguagePreferenceBaseFactory.build(
             user_id="u",  # Min length (1 char)
             language_code="en",  # Min valid language code
             priority=1,  # Min priority
@@ -396,7 +397,7 @@ class TestValidationEdgeCases:
         assert min_preference.priority == 1
 
         # Test maximum valid values
-        max_preference = UserLanguagePreferenceBaseFactory(
+        max_preference = UserLanguagePreferenceBaseFactory.build(
             user_id="a" * 100,  # Long user ID
             language_code="zh-CN",  # Valid complex language code
             priority=100,  # High priority
@@ -407,7 +408,7 @@ class TestValidationEdgeCases:
 
     def test_model_config_validation(self):
         """Test model configuration validation behaviors."""
-        preference = UserLanguagePreferenceFactory()
+        preference = UserLanguagePreferenceFactory.build()
 
         # Test validate_assignment works
         preference.priority = 5
@@ -420,30 +421,32 @@ class TestValidationEdgeCases:
     def test_field_validator_edge_cases(self):
         """Test field validator edge cases."""
         # Test user_id validator with whitespace
-        preference1 = UserLanguagePreferenceBaseFactory(user_id="  test_user  ")
+        preference1 = UserLanguagePreferenceBaseFactory.build(user_id="  test_user  ")
         assert preference1.user_id == "test_user"  # Should be trimmed
 
         # Test language_code validator case normalization
-        preference2 = UserLanguagePreferenceBaseFactory(language_code="en-US")
+        preference2 = UserLanguagePreferenceBaseFactory.build(language_code="en-US")
         assert preference2.language_code == "en-US"
 
     def test_enum_validation(self):
         """Test enum validation for preference types."""
         # Test with string values
-        preference1 = UserLanguagePreferenceBaseFactory(preference_type="fluent")
+        preference1 = UserLanguagePreferenceBaseFactory.build(preference_type="fluent")
         assert preference1.preference_type == LanguagePreferenceType.FLUENT
 
-        preference2 = UserLanguagePreferenceBaseFactory(preference_type="learning")
+        preference2 = UserLanguagePreferenceBaseFactory.build(
+            preference_type="learning"
+        )
         assert preference2.preference_type == LanguagePreferenceType.LEARNING
 
-        preference3 = UserLanguagePreferenceBaseFactory(preference_type="curious")
+        preference3 = UserLanguagePreferenceBaseFactory.build(preference_type="curious")
         assert preference3.preference_type == LanguagePreferenceType.CURIOUS
 
-        preference4 = UserLanguagePreferenceBaseFactory(preference_type="exclude")
+        preference4 = UserLanguagePreferenceBaseFactory.build(preference_type="exclude")
         assert preference4.preference_type == LanguagePreferenceType.EXCLUDE
 
         # Test with enum values
-        preference5 = UserLanguagePreferenceBaseFactory(
+        preference5 = UserLanguagePreferenceBaseFactory.build(
             preference_type=LanguagePreferenceType.FLUENT
         )
         assert preference5.preference_type == LanguagePreferenceType.FLUENT
@@ -459,13 +462,15 @@ class TestValidationEdgeCases:
         ]
 
         for input_code, expected_code in test_cases:
-            preference = UserLanguagePreferenceBaseFactory(language_code=input_code)
+            preference = UserLanguagePreferenceBaseFactory.build(
+                language_code=input_code
+            )
             assert preference.language_code == expected_code
 
     def test_learning_scenarios(self):
         """Test different learning scenarios and use cases."""
         # Fluent speaker - native language
-        fluent_pref = UserLanguagePreferenceBaseFactory(
+        fluent_pref = UserLanguagePreferenceBaseFactory.build(
             language_code="en-US",
             preference_type=LanguagePreferenceType.FLUENT,
             priority=1,
@@ -476,7 +481,7 @@ class TestValidationEdgeCases:
         assert fluent_pref.priority == 1
 
         # Learning language - high priority
-        learning_pref = UserLanguagePreferenceBaseFactory(
+        learning_pref = UserLanguagePreferenceBaseFactory.build(
             language_code="es",
             preference_type=LanguagePreferenceType.LEARNING,
             priority=2,
@@ -487,7 +492,7 @@ class TestValidationEdgeCases:
         assert learning_pref.auto_download_transcripts is True
 
         # Curious about language - lower priority
-        curious_pref = UserLanguagePreferenceBaseFactory(
+        curious_pref = UserLanguagePreferenceBaseFactory.build(
             language_code="ja",
             preference_type=LanguagePreferenceType.CURIOUS,
             priority=5,
@@ -498,7 +503,7 @@ class TestValidationEdgeCases:
         assert curious_pref.priority == 5
 
         # Exclude language - no transcripts
-        exclude_pref = UserLanguagePreferenceBaseFactory(
+        exclude_pref = UserLanguagePreferenceBaseFactory.build(
             language_code="ar",  # Arabic language code
             preference_type=LanguagePreferenceType.EXCLUDE,
             priority=999,
@@ -512,9 +517,9 @@ class TestValidationEdgeCases:
         """Test priority-based ordering scenarios."""
         # Create preferences with different priorities
         prefs = [
-            UserLanguagePreferenceBaseFactory(priority=3, language_code="fr"),
-            UserLanguagePreferenceBaseFactory(priority=1, language_code="en"),
-            UserLanguagePreferenceBaseFactory(priority=2, language_code="es"),
+            UserLanguagePreferenceBaseFactory.build(priority=3, language_code="fr"),
+            UserLanguagePreferenceBaseFactory.build(priority=1, language_code="en"),
+            UserLanguagePreferenceBaseFactory.build(priority=2, language_code="es"),
         ]
 
         # Sort by priority (ascending = higher priority first)

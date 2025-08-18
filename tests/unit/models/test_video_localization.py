@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
+from chronovista.models.enums import LanguageCode
 from chronovista.models.video_localization import (
     VideoLocalization,
     VideoLocalizationBase,
@@ -37,41 +38,41 @@ class TestVideoLocalizationBase:
 
     def test_create_valid_video_localization_base(self):
         """Test creating valid VideoLocalizationBase with keyword arguments."""
-        localization = VideoLocalizationBaseFactory(
+        localization = VideoLocalizationBaseFactory.build(
             video_id="dQw4w9WgXcQ",
-            language_code="en",
+            language_code=LanguageCode.ENGLISH,
             localized_title="Test Video Title",
             localized_description="Test description",
         )
 
         assert localization.video_id == "dQw4w9WgXcQ"
-        assert localization.language_code == "en"
+        assert localization.language_code == LanguageCode.ENGLISH
         assert localization.localized_title == "Test Video Title"
         assert localization.localized_description == "Test description"
 
     def test_create_video_localization_base_minimal(self):
         """Test creating VideoLocalizationBase with minimal required fields."""
-        localization = VideoLocalizationBaseFactory(
+        localization = VideoLocalizationBaseFactory.build(
             video_id="dQw4w9WgXcQ",
-            language_code="es",
+            language_code=LanguageCode.SPANISH,
             localized_title="Título de prueba",
             localized_description=None,
         )
 
         assert localization.video_id == "dQw4w9WgXcQ"
-        assert localization.language_code == "es"
+        assert localization.language_code == LanguageCode.SPANISH
         assert localization.localized_title == "Título de prueba"
         assert localization.localized_description is None
 
     def test_factory_generates_valid_defaults(self):
         """Test that factory generates valid models with defaults."""
-        localization = VideoLocalizationBaseFactory()
+        localization = VideoLocalizationBaseFactory.build()
 
         assert isinstance(localization, VideoLocalizationBase)
         assert len(localization.video_id) >= 8
         assert len(localization.video_id) <= 20
-        assert len(localization.language_code) >= 2
-        assert len(localization.language_code) <= 10
+        assert len(localization.language_code.value) >= 2
+        assert len(localization.language_code.value) <= 10
         assert len(localization.localized_title) >= 1
 
     @pytest.mark.parametrize(
@@ -80,14 +81,14 @@ class TestVideoLocalizationBase:
     def test_video_id_validation_invalid(self, invalid_video_id):
         """Test video_id validation with various invalid inputs."""
         with pytest.raises(ValidationError):
-            VideoLocalizationBaseFactory(video_id=invalid_video_id)
+            VideoLocalizationBaseFactory.build(video_id=invalid_video_id)
 
     @pytest.mark.parametrize(
         "valid_video_id", VideoLocalizationTestData.VALID_VIDEO_IDS
     )
     def test_video_id_validation_valid(self, valid_video_id):
         """Test video_id validation with various valid inputs."""
-        localization = VideoLocalizationBaseFactory(video_id=valid_video_id)
+        localization = VideoLocalizationBaseFactory.build(video_id=valid_video_id)
         assert localization.video_id == valid_video_id
 
     @pytest.mark.parametrize(
@@ -96,21 +97,23 @@ class TestVideoLocalizationBase:
     def test_language_code_validation_invalid(self, invalid_language_code):
         """Test language_code validation with various invalid inputs."""
         with pytest.raises(ValidationError):
-            VideoLocalizationBaseFactory(language_code=invalid_language_code)
+            VideoLocalizationBaseFactory.build(language_code=invalid_language_code)
 
     @pytest.mark.parametrize(
         "valid_language_code", VideoLocalizationTestData.VALID_LANGUAGE_CODES
     )
     def test_language_code_validation_valid(self, valid_language_code):
         """Test language_code validation with various valid inputs."""
-        localization = VideoLocalizationBaseFactory(language_code=valid_language_code)
-        assert localization.language_code.value == valid_language_code
+        localization = VideoLocalizationBaseFactory.build(
+            language_code=valid_language_code
+        )
+        assert localization.language_code == valid_language_code
 
     @pytest.mark.parametrize("invalid_title", VideoLocalizationTestData.INVALID_TITLES)
     def test_localized_title_validation_invalid(self, invalid_title):
         """Test localized_title validation with various invalid inputs."""
         with pytest.raises(ValidationError):
-            VideoLocalizationBaseFactory(localized_title=invalid_title)
+            VideoLocalizationBaseFactory.build(localized_title=invalid_title)
 
     @pytest.mark.parametrize(
         "invalid_description", VideoLocalizationTestData.INVALID_DESCRIPTIONS
@@ -118,18 +121,20 @@ class TestVideoLocalizationBase:
     def test_localized_description_validation_invalid(self, invalid_description):
         """Test localized_description validation with invalid inputs."""
         with pytest.raises(ValidationError):
-            VideoLocalizationBaseFactory(localized_description=invalid_description)
+            VideoLocalizationBaseFactory.build(
+                localized_description=invalid_description
+            )
 
     def test_localized_description_empty_becomes_none(self):
         """Test that empty description becomes None."""
-        localization = VideoLocalizationBaseFactory(localized_description="   ")
+        localization = VideoLocalizationBaseFactory.build(localized_description="   ")
         assert localization.localized_description is None
 
     def test_model_dump_functionality(self):
         """Test model_dump() method for serialization."""
-        localization = VideoLocalizationBaseFactory(
+        localization = VideoLocalizationBaseFactory.build(
             video_id="dQw4w9WgXcQ",
-            language_code="en",
+            language_code=LanguageCode.ENGLISH,
             localized_title="Test Title",
             localized_description="Test description",
         )
@@ -161,26 +166,26 @@ class TestVideoLocalizationCreate:
 
     def test_create_valid_video_localization_create(self):
         """Test creating valid VideoLocalizationCreate with keyword arguments."""
-        localization = VideoLocalizationCreateFactory(
+        localization = VideoLocalizationCreateFactory.build(
             video_id="dQw4w9WgXcQ",
-            language_code="fr",
+            language_code=LanguageCode.FRENCH,
             localized_title="Titre de test",
             localized_description="Description de test",
         )
 
         assert localization.video_id == "dQw4w9WgXcQ"
-        assert localization.language_code == "fr"
+        assert localization.language_code == LanguageCode.FRENCH
         assert localization.localized_title == "Titre de test"
         assert localization.localized_description == "Description de test"
 
     def test_inherits_base_validation(self):
         """Test that VideoLocalizationCreate inherits base validation."""
         with pytest.raises(ValidationError):
-            VideoLocalizationCreateFactory(video_id="   ")
+            VideoLocalizationCreateFactory.build(video_id="   ")
 
     def test_factory_generates_valid_model(self):
         """Test factory generates valid VideoLocalizationCreate models."""
-        localization = VideoLocalizationCreateFactory()
+        localization = VideoLocalizationCreateFactory.build()
 
         assert isinstance(localization, VideoLocalizationCreate)
         assert isinstance(localization, VideoLocalizationBase)  # Inheritance check
@@ -191,7 +196,7 @@ class TestVideoLocalizationUpdate:
 
     def test_create_valid_video_localization_update(self):
         """Test creating valid VideoLocalizationUpdate with keyword arguments."""
-        update = VideoLocalizationUpdateFactory(
+        update = VideoLocalizationUpdateFactory.build(
             localized_title="Updated Title", localized_description="Updated description"
         )
 
@@ -208,11 +213,11 @@ class TestVideoLocalizationUpdate:
     def test_title_validation_in_update(self):
         """Test title validation in update model."""
         with pytest.raises(ValidationError):
-            VideoLocalizationUpdateFactory(localized_title="")
+            VideoLocalizationUpdateFactory.build(localized_title="")
 
     def test_description_empty_becomes_none(self):
         """Test that empty description becomes None in update."""
-        update = VideoLocalizationUpdateFactory(localized_description="   ")
+        update = VideoLocalizationUpdateFactory.build(localized_description="   ")
         assert update.localized_description is None
 
     def test_model_dump_excludes_none(self):
@@ -225,7 +230,7 @@ class TestVideoLocalizationUpdate:
 
     def test_factory_generates_valid_updates(self):
         """Test factory generates valid update models."""
-        update = VideoLocalizationUpdateFactory()
+        update = VideoLocalizationUpdateFactory.build()
 
         assert isinstance(update, VideoLocalizationUpdate)
         assert update.localized_title is not None
@@ -237,16 +242,16 @@ class TestVideoLocalization:
     def test_create_valid_video_localization(self):
         """Test creating valid VideoLocalization with keyword arguments."""
         now = datetime.now(timezone.utc)
-        localization = VideoLocalizationFactory(
+        localization = VideoLocalizationFactory.build(
             video_id="dQw4w9WgXcQ",
-            language_code="ja",
+            language_code=LanguageCode.JAPANESE,
             localized_title="テストビデオ",
             localized_description="テストの説明",
             created_at=now,
         )
 
         assert localization.video_id == "dQw4w9WgXcQ"
-        assert localization.language_code == "ja"
+        assert localization.language_code == LanguageCode.JAPANESE
         assert localization.localized_title == "テストビデオ"
         assert localization.localized_description == "テストの説明"
         assert localization.created_at == now
@@ -257,7 +262,7 @@ class TestVideoLocalization:
         # Simulate SQLAlchemy model attributes
         class MockVideoLocalizationDB:
             video_id = "dQw4w9WgXcQ"
-            language_code = "de"
+            language_code = LanguageCode.GERMAN
             localized_title = "Test Video"
             localized_description = "Beschreibung"
             created_at = datetime.now(timezone.utc)
@@ -266,14 +271,14 @@ class TestVideoLocalization:
         localization = VideoLocalization.model_validate(mock_db, from_attributes=True)
 
         assert localization.video_id == "dQw4w9WgXcQ"
-        assert localization.language_code == "de"
+        assert localization.language_code == LanguageCode.GERMAN
         assert localization.localized_title == "Test Video"
         assert localization.localized_description == "Beschreibung"
         assert isinstance(localization.created_at, datetime)
 
     def test_factory_generates_full_model(self):
         """Test factory generates complete VideoLocalization models."""
-        localization = VideoLocalizationFactory()
+        localization = VideoLocalizationFactory.build()
 
         assert isinstance(localization, VideoLocalization)
         assert isinstance(localization, VideoLocalizationBase)  # Inheritance
@@ -287,7 +292,7 @@ class TestVideoLocalizationSearchFilters:
     def test_create_comprehensive_filters(self):
         """Test creating comprehensive search filters with keyword arguments."""
         data = VideoLocalizationTestData.comprehensive_search_filters_data()
-        filters = VideoLocalizationSearchFiltersFactory(**data)
+        filters = VideoLocalizationSearchFiltersFactory.build(**data)
 
         assert filters.video_ids == data["video_ids"]
         assert filters.language_codes == data["language_codes"]
@@ -311,7 +316,7 @@ class TestVideoLocalizationSearchFilters:
 
     def test_factory_generates_valid_filters(self):
         """Test factory generates valid search filters."""
-        filters = VideoLocalizationSearchFiltersFactory()
+        filters = VideoLocalizationSearchFiltersFactory.build()
 
         assert isinstance(filters, VideoLocalizationSearchFilters)
         assert isinstance(filters.video_ids, list)
@@ -322,10 +327,10 @@ class TestVideoLocalizationSearchFilters:
     def test_query_validation_empty_string(self):
         """Test query validation with empty strings."""
         with pytest.raises(ValidationError):
-            VideoLocalizationSearchFiltersFactory(title_query="")
+            VideoLocalizationSearchFiltersFactory.build(title_query="")
 
         with pytest.raises(ValidationError):
-            VideoLocalizationSearchFiltersFactory(description_query="")
+            VideoLocalizationSearchFiltersFactory.build(description_query="")
 
 
 class TestVideoLocalizationStatistics:
@@ -333,7 +338,7 @@ class TestVideoLocalizationStatistics:
 
     def test_create_valid_statistics(self):
         """Test creating valid VideoLocalizationStatistics with keyword arguments."""
-        stats = VideoLocalizationStatisticsFactory(
+        stats = VideoLocalizationStatisticsFactory.build(
             total_localizations=1000,
             unique_videos=600,
             unique_languages=15,
@@ -370,7 +375,7 @@ class TestVideoLocalizationStatistics:
 
     def test_factory_generates_realistic_statistics(self):
         """Test factory generates realistic statistics."""
-        stats = VideoLocalizationStatisticsFactory()
+        stats = VideoLocalizationStatisticsFactory.build()
 
         assert isinstance(stats, VideoLocalizationStatistics)
         assert stats.total_localizations > 0
@@ -388,16 +393,16 @@ class TestVideoLocalizationModelInteractions:
     def test_create_then_update_workflow(self):
         """Test typical create then update workflow with keyword arguments."""
         # Create
-        localization_create = VideoLocalizationCreateFactory(
+        localization_create = VideoLocalizationCreateFactory.build(
             video_id="dQw4w9WgXcQ",
-            language_code="en",
+            language_code=LanguageCode.ENGLISH,
             localized_title="Original Title",
             localized_description="Original description",
         )
 
         # Simulate creation
         now = datetime.now(timezone.utc)
-        localization_full = VideoLocalizationFactory(
+        localization_full = VideoLocalizationFactory.build(
             video_id=localization_create.video_id,
             language_code=localization_create.language_code,
             localized_title=localization_create.localized_title,
@@ -406,7 +411,7 @@ class TestVideoLocalizationModelInteractions:
         )
 
         # Update
-        localization_update = VideoLocalizationUpdateFactory(
+        localization_update = VideoLocalizationUpdateFactory.build(
             localized_title="Updated Title", localized_description=None
         )
 
@@ -418,20 +423,17 @@ class TestVideoLocalizationModelInteractions:
         localization_updated = VideoLocalization.model_validate(updated_data)
 
         assert localization_updated.video_id == "dQw4w9WgXcQ"
-        assert localization_updated.language_code == "en"
+        assert localization_updated.language_code == LanguageCode.ENGLISH
         assert localization_updated.localized_title == "Updated Title"
         assert localization_updated.localized_description is None
 
     def test_search_filters_serialization(self):
         """Test search filters serialization for API usage."""
-        filters = VideoLocalizationSearchFiltersFactory(
+        filters = VideoLocalizationSearchFilters(
             video_ids=["dQw4w9WgXcQ"],
-            language_codes=["en", "es"],
+            language_codes=[LanguageCode.ENGLISH, LanguageCode.SPANISH],
             title_query="tutorial",
-            description_query=None,
             has_description=True,
-            created_after=None,
-            created_before=None,
         )
 
         # Simulate API query parameters
@@ -479,21 +481,21 @@ class TestVideoLocalizationModelInteractions:
         # Test convenience function
         localization = create_video_localization(
             video_id="dQw4w9WgXcQ",
-            language_code="es",
+            language_code=LanguageCode.SPANISH,
             localized_title="Título de prueba",
         )
 
         assert isinstance(localization, VideoLocalization)
         assert localization.video_id == "dQw4w9WgXcQ"
-        assert localization.language_code == "es"
+        assert localization.language_code == LanguageCode.SPANISH
         assert localization.localized_title == "Título de prueba"
         assert isinstance(localization.created_at, datetime)
 
     def test_factory_inheritance_consistency(self):
         """Test that factory-created models maintain proper inheritance."""
-        base = VideoLocalizationBaseFactory()
-        create = VideoLocalizationCreateFactory()
-        full = VideoLocalizationFactory()
+        base = VideoLocalizationBaseFactory.build()
+        create = VideoLocalizationCreateFactory.build()
+        full = VideoLocalizationFactory.build()
 
         # All should be instances of VideoLocalizationBase
         assert isinstance(base, VideoLocalizationBase)
@@ -517,27 +519,27 @@ class TestVideoLocalizationModelInteractions:
         ]
 
         for input_enum, expected_value in test_cases:
-            localization = VideoLocalizationBaseFactory(language_code=input_enum)
-            assert localization.language_code == expected_value
+            localization = VideoLocalizationBaseFactory.build(language_code=input_enum)
+            assert localization.language_code.value == expected_value
 
     def test_multilingual_content_handling(self):
         """Test handling of various multilingual content."""
         multilingual_test_cases = [
-            ("en", "English Title", "English description"),
-            ("es", "Título en Español", "Descripción en español"),
-            ("fr", "Titre en Français", "Description en français"),
-            ("ja", "日本語のタイトル", "日本語の説明"),
-            ("ko", "한국어 제목", "한국어 설명"),
-            ("zh-CN", "中文标题", "中文描述"),
+            (LanguageCode.ENGLISH, "English Title", "English description"),
+            (LanguageCode.SPANISH, "Título en Español", "Descripción en español"),
+            (LanguageCode.FRENCH, "Titre en Français", "Description en français"),
+            (LanguageCode.JAPANESE, "日本語のタイトル", "日本語の説明"),
+            (LanguageCode.KOREAN, "한국어 제목", "한국어 설명"),
+            (LanguageCode.CHINESE_SIMPLIFIED, "中文标题", "中文描述"),
         ]
 
-        for lang_code, title, description in multilingual_test_cases:
-            localization = VideoLocalizationBaseFactory(
-                language_code=lang_code,
+        for lang_code_enum, title, description in multilingual_test_cases:
+            localization = VideoLocalizationBaseFactory.build(
+                language_code=lang_code_enum,
                 localized_title=title,
                 localized_description=description,
             )
 
-            assert localization.language_code == lang_code
+            assert localization.language_code == lang_code_enum
             assert localization.localized_title == title
             assert localization.localized_description == description

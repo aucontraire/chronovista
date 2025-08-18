@@ -2,19 +2,20 @@
 Tests for SeedingOrchestrator - dependency resolution and execution coordination.
 """
 
-from datetime import datetime
+from __future__ import annotations
+
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 import pytest
 
-from src.chronovista.models.takeout.takeout_data import TakeoutData
-from src.chronovista.services.seeding.base_seeder import (
+from chronovista.services.seeding.base_seeder import (
     BaseSeeder,
     ProgressCallback,
     SeedResult,
 )
-from src.chronovista.services.seeding.orchestrator import SeedingOrchestrator
+from chronovista.services.seeding.orchestrator import SeedingOrchestrator
+from tests.factories.takeout_data_factory import create_takeout_data
 
 # CRITICAL: This line ensures async tests work with coverage
 pytestmark = pytest.mark.asyncio
@@ -23,7 +24,7 @@ pytestmark = pytest.mark.asyncio
 class MockSeeder(BaseSeeder):
     """Mock seeder for testing."""
 
-    def __init__(self, data_type: str, dependencies: set = None):
+    def __init__(self, data_type: str, dependencies: set[str] | None = None):
         super().__init__(dependencies)
         self.data_type = data_type
         self.seed_called = False
@@ -45,19 +46,19 @@ class TestSeedingOrchestrator:
     """Test the SeedingOrchestrator dependency resolution and execution."""
 
     @pytest.fixture
-    def orchestrator(self):
+    def orchestrator(self) -> SeedingOrchestrator:
         """Create a SeedingOrchestrator for testing."""
         return SeedingOrchestrator()
 
     @pytest.fixture
-    def mock_session(self):
+    def mock_session(self) -> AsyncMock:
         """Create a mock database session."""
         return AsyncMock()
 
     @pytest.fixture
     def mock_takeout_data(self):
         """Create mock takeout data."""
-        return TakeoutData(
+        return create_takeout_data(
             takeout_path=Path("/test/takeout"),
             subscriptions=[],
             watch_history=[],
@@ -178,7 +179,7 @@ class TestSeedingOrchestrator:
         execution_log = []
 
         class TrackingSeeder(MockSeeder):
-            def __init__(self, data_type: str, dependencies: set = None):
+            def __init__(self, data_type: str, dependencies: set[str] | None = None):
                 super().__init__(data_type, dependencies)
 
             async def seed(self, session, takeout_data, progress=None):

@@ -7,10 +7,9 @@ Google Takeout integration, analytics, and specialized queries.
 
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List
-from unittest.mock import AsyncMock, MagicMock
+from typing import List, cast
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +20,6 @@ from chronovista.models.user_video import (
     UserVideoCreate,
     UserVideoSearchFilters,
     UserVideoStatistics,
-    UserVideoUpdate,
 )
 from chronovista.repositories.user_video_repository import UserVideoRepository
 
@@ -37,8 +35,8 @@ class TestUserVideoRepository:
     @pytest.fixture
     def mock_session(self) -> AsyncSession:
         """Create mock async session."""
-        session = AsyncMock(spec=AsyncSession)
-        return session
+        session = AsyncMock()
+        return cast(AsyncSession, session)
 
     @pytest.fixture
     def sample_user_video_db(self) -> UserVideoDB:
@@ -134,14 +132,14 @@ class TestUserVideoRepository:
         # Mock execute to return scalar_one_or_none result
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = sample_user_video_db
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository.get_by_composite_key(
             mock_session, "test_user", "dQw4w9WgXcQ"
         )
 
         assert result == sample_user_video_db
-        mock_session.execute.assert_called_once()
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_get_nonexistent_user_video(
@@ -151,14 +149,14 @@ class TestUserVideoRepository:
         # Mock execute to return None
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository.get_by_composite_key(
             mock_session, "test_user", "non_existent"
         )
 
         assert result is None
-        mock_session.execute.assert_called_once()
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_exists_true(
@@ -168,14 +166,14 @@ class TestUserVideoRepository:
         # Mock execute to return a result
         mock_result = MagicMock()
         mock_result.first.return_value = ("test_user",)
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository.exists_by_composite_key(
             mock_session, "test_user", "dQw4w9WgXcQ"
         )
 
         assert result is True
-        mock_session.execute.assert_called_once()
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_exists_false(
@@ -185,14 +183,14 @@ class TestUserVideoRepository:
         # Mock execute to return None
         mock_result = MagicMock()
         mock_result.first.return_value = None
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository.exists_by_composite_key(
             mock_session, "test_user", "non_existent"
         )
 
         assert result is False
-        mock_session.execute.assert_called_once()
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_get_user_watch_history(
@@ -207,14 +205,14 @@ class TestUserVideoRepository:
         mock_scalars = MagicMock()
         mock_scalars.all.return_value = sample_user_videos_list
         mock_result.scalars.return_value = mock_scalars
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository.get_user_watch_history(
             mock_session, "test_user", limit=10, offset=0
         )
 
         assert result == sample_user_videos_list
-        mock_session.execute.assert_called_once()
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_get_user_liked_videos(
@@ -231,14 +229,14 @@ class TestUserVideoRepository:
         mock_scalars = MagicMock()
         mock_scalars.all.return_value = liked_videos
         mock_result.scalars.return_value = mock_scalars
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository.get_user_liked_videos(
             mock_session, "test_user", limit=10
         )
 
         assert result == liked_videos
-        mock_session.execute.assert_called_once()
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_get_most_watched_videos(
@@ -257,14 +255,14 @@ class TestUserVideoRepository:
         mock_scalars = MagicMock()
         mock_scalars.all.return_value = most_watched
         mock_result.scalars.return_value = mock_scalars
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository.get_most_watched_videos(
             mock_session, "test_user", limit=5
         )
 
         assert result == most_watched
-        mock_session.execute.assert_called_once()
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_search_user_videos_no_filters(
@@ -280,12 +278,12 @@ class TestUserVideoRepository:
         mock_scalars = MagicMock()
         mock_scalars.all.return_value = sample_user_videos_list
         mock_result.scalars.return_value = mock_scalars
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository.search_user_videos(mock_session, filters)
 
         assert result == sample_user_videos_list
-        mock_session.execute.assert_called_once()
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_search_user_videos_with_filters(
@@ -303,19 +301,21 @@ class TestUserVideoRepository:
         filtered_videos = [
             v
             for v in sample_user_videos_list
-            if v.liked and v.completion_percentage >= 80.0
+            if v.liked
+            and v.completion_percentage is not None
+            and v.completion_percentage >= 80.0
         ]
 
         mock_result = MagicMock()
         mock_scalars = MagicMock()
         mock_scalars.all.return_value = filtered_videos
         mock_result.scalars.return_value = mock_scalars
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository.search_user_videos(mock_session, filters)
 
         assert result == filtered_videos
-        mock_session.execute.assert_called_once()
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_get_user_statistics(
@@ -337,21 +337,23 @@ class TestUserVideoRepository:
         )
 
         # Mock the entire method to avoid SQLAlchemy query construction issues
-        repository.get_user_statistics = AsyncMock(return_value=expected_stats)
+        with patch.object(
+            repository, "get_user_statistics", return_value=expected_stats
+        ) as mock_get_stats:
+            result = await repository.get_user_statistics(mock_session, "test_user")
 
-        result = await repository.get_user_statistics(mock_session, "test_user")
-
-        assert isinstance(result, UserVideoStatistics)
-        assert result.total_videos == 10
-        assert result.total_watch_time == 36000
-        assert result.average_completion == 75.5
-        assert result.liked_count == 5
-        assert result.disliked_count == 1
-        assert result.playlist_saved_count == 3
-        assert result.rewatch_count == 2
-        assert result.unique_videos == 8
-        assert result.watch_streak_days == 7
-        assert result.most_watched_date.date() == datetime.now(timezone.utc).date()
+            assert isinstance(result, UserVideoStatistics)
+            assert result.total_videos == 10
+            assert result.total_watch_time == 36000
+            assert result.average_completion == 75.5
+            assert result.liked_count == 5
+            assert result.disliked_count == 1
+            assert result.playlist_saved_count == 3
+            assert result.rewatch_count == 2
+            assert result.unique_videos == 8
+            assert result.watch_streak_days == 7
+            assert result.most_watched_date is not None
+            assert result.most_watched_date.date() == datetime.now(timezone.utc).date()
 
     @pytest.mark.asyncio
     async def test_get_user_statistics_no_data(
@@ -373,21 +375,22 @@ class TestUserVideoRepository:
         )
 
         # Mock the entire method
-        repository.get_user_statistics = AsyncMock(return_value=expected_stats)
+        with patch.object(
+            repository, "get_user_statistics", return_value=expected_stats
+        ) as mock_get_stats:
+            result = await repository.get_user_statistics(mock_session, "test_user")
 
-        result = await repository.get_user_statistics(mock_session, "test_user")
-
-        assert isinstance(result, UserVideoStatistics)
-        assert result.total_videos == 0
-        assert result.total_watch_time == 0
-        assert result.average_completion == 0.0
-        assert result.liked_count == 0
-        assert result.disliked_count == 0
-        assert result.playlist_saved_count == 0
-        assert result.rewatch_count == 0
-        assert result.unique_videos == 0
-        assert result.most_watched_date is None
-        assert result.watch_streak_days == 0
+            assert isinstance(result, UserVideoStatistics)
+            assert result.total_videos == 0
+            assert result.total_watch_time == 0
+            assert result.average_completion == 0.0
+            assert result.liked_count == 0
+            assert result.disliked_count == 0
+            assert result.playlist_saved_count == 0
+            assert result.rewatch_count == 0
+            assert result.unique_videos == 0
+            assert result.most_watched_date is None
+            assert result.watch_streak_days == 0
 
     @pytest.mark.asyncio
     async def test_calculate_watch_streak_no_data(
@@ -397,12 +400,12 @@ class TestUserVideoRepository:
         # Mock empty result
         mock_result = MagicMock()
         mock_result.__iter__ = lambda self: iter([])
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository._calculate_watch_streak(mock_session, "test_user")
 
         assert result == 0
-        mock_session.execute.assert_called_once()
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_calculate_watch_streak_consecutive_days(
@@ -421,12 +424,12 @@ class TestUserVideoRepository:
             MagicMock(watch_date=day_before),
         ]
         mock_result.__iter__ = lambda self: iter(mock_rows)
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository._calculate_watch_streak(mock_session, "test_user")
 
         assert result == 3
-        mock_session.execute.assert_called_once()
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_calculate_watch_streak_broken_sequence(
@@ -445,12 +448,12 @@ class TestUserVideoRepository:
             MagicMock(watch_date=three_days_ago),
         ]
         mock_result.__iter__ = lambda self: iter(mock_rows)
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository._calculate_watch_streak(mock_session, "test_user")
 
         assert result == 2  # Only today and yesterday are consecutive
-        mock_session.execute.assert_called_once()
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_import_from_takeout_batch_new_videos(
@@ -463,19 +466,23 @@ class TestUserVideoRepository:
         takeout_items = [sample_takeout_item]
 
         # Mock get_by_composite_key to return None (new video)
-        repository.get_by_composite_key = AsyncMock(return_value=None)
-        repository.create = AsyncMock(return_value=MagicMock())
+        with (
+            patch.object(
+                repository, "get_by_composite_key", return_value=None
+            ) as mock_get,
+            patch.object(repository, "create", return_value=MagicMock()) as mock_create,
+        ):
 
-        result = await repository.import_from_takeout_batch(
-            mock_session, "test_user", takeout_items
-        )
+            result = await repository.import_from_takeout_batch(
+                mock_session, "test_user", takeout_items
+            )
 
-        assert result["created"] == 1
-        assert result["updated"] == 0
-        assert result["skipped"] == 0
-        assert result["errors"] == 0
-        repository.get_by_composite_key.assert_called_once()
-        repository.create.assert_called_once()
+            assert result["created"] == 1
+            assert result["updated"] == 0
+            assert result["skipped"] == 0
+            assert result["errors"] == 0
+            mock_get.assert_called_once()
+            mock_create.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_import_from_takeout_batch_existing_videos(
@@ -489,18 +496,19 @@ class TestUserVideoRepository:
         takeout_items = [sample_takeout_item]
 
         # Mock get_by_composite_key to return existing video
-        repository.get_by_composite_key = AsyncMock(return_value=sample_user_video_db)
+        with patch.object(
+            repository, "get_by_composite_key", return_value=sample_user_video_db
+        ) as mock_get:
+            result = await repository.import_from_takeout_batch(
+                mock_session, "test_user", takeout_items
+            )
 
-        result = await repository.import_from_takeout_batch(
-            mock_session, "test_user", takeout_items
-        )
-
-        assert result["created"] == 0
-        assert result["updated"] == 1
-        assert result["skipped"] == 0
-        assert result["errors"] == 0
-        repository.get_by_composite_key.assert_called_once()
-        mock_session.add.assert_called_once_with(sample_user_video_db)
+            assert result["created"] == 0
+            assert result["updated"] == 1
+            assert result["skipped"] == 0
+            assert result["errors"] == 0
+            mock_get.assert_called_once()
+            mock_session.add.assert_called_once_with(sample_user_video_db)  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_import_from_takeout_batch_rewatch_count(
@@ -523,20 +531,26 @@ class TestUserVideoRepository:
         takeout_items = [takeout_item, takeout_item]  # Same video watched twice
 
         # Mock get_by_composite_key to return None first time, then existing video
-        repository.get_by_composite_key = AsyncMock(
-            side_effect=[None, sample_user_video_db]
-        )
-        repository.create = AsyncMock(return_value=sample_user_video_db)
+        with (
+            patch.object(
+                repository,
+                "get_by_composite_key",
+                side_effect=[None, sample_user_video_db],
+            ) as mock_get,
+            patch.object(
+                repository, "create", return_value=sample_user_video_db
+            ) as mock_create,
+        ):
 
-        result = await repository.import_from_takeout_batch(
-            mock_session, "test_user", takeout_items
-        )
+            result = await repository.import_from_takeout_batch(
+                mock_session, "test_user", takeout_items
+            )
 
-        assert result["created"] == 1
-        assert result["updated"] == 1
-        assert (
-            sample_user_video_db.rewatch_count == 1
-        )  # Second occurrence sets rewatch_count to 1
+            assert result["created"] == 1
+            assert result["updated"] == 1
+            assert (
+                sample_user_video_db.rewatch_count == 1
+            )  # Second occurrence sets rewatch_count to 1
 
     @pytest.mark.asyncio
     async def test_import_from_takeout_batch_invalid_url(
@@ -574,21 +588,29 @@ class TestUserVideoRepository:
         watch_time = datetime.now(timezone.utc)
 
         # Mock get_by_composite_key to return None (new interaction)
-        repository.get_by_composite_key = AsyncMock(return_value=None)
-        repository.create = AsyncMock(return_value=sample_user_video_create)
+        with (
+            patch.object(
+                repository, "get_by_composite_key", return_value=None
+            ) as mock_get,
+            patch.object(
+                repository, "create", return_value=sample_user_video_create
+            ) as mock_create,
+        ):
 
-        result = await repository.record_watch(
-            mock_session,
-            "test_user",
-            "dQw4w9WgXcQ",
-            watched_at=watch_time,
-            watch_duration=3600,
-            completion_percentage=85.5,
-        )
+            result = await repository.record_watch(
+                mock_session,
+                "test_user",
+                "dQw4w9WgXcQ",
+                watched_at=watch_time,
+                watch_duration=3600,
+                completion_percentage=85.5,
+            )
 
-        assert result == sample_user_video_create
-        repository.get_by_composite_key.assert_called_once()
-        repository.create.assert_called_once()
+            assert result is not None
+            assert result.user_id == sample_user_video_create.user_id
+            assert result.video_id == sample_user_video_create.video_id
+            mock_get.assert_called_once()
+            mock_create.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_record_watch_existing_interaction(
@@ -602,25 +624,26 @@ class TestUserVideoRepository:
         original_rewatch_count = sample_user_video_db.rewatch_count
 
         # Mock get_by_composite_key to return existing interaction
-        repository.get_by_composite_key = AsyncMock(return_value=sample_user_video_db)
+        with patch.object(
+            repository, "get_by_composite_key", return_value=sample_user_video_db
+        ) as mock_get:
+            result = await repository.record_watch(
+                mock_session,
+                "test_user",
+                "dQw4w9WgXcQ",
+                watched_at=watch_time,
+                watch_duration=7200,
+                completion_percentage=100.0,
+            )
 
-        result = await repository.record_watch(
-            mock_session,
-            "test_user",
-            "dQw4w9WgXcQ",
-            watched_at=watch_time,
-            watch_duration=7200,
-            completion_percentage=100.0,
-        )
-
-        assert result == sample_user_video_db
-        assert sample_user_video_db.watched_at == watch_time
-        assert sample_user_video_db.watch_duration == 7200
-        assert sample_user_video_db.completion_percentage == 100.0
-        assert sample_user_video_db.rewatch_count == original_rewatch_count + 1
-        mock_session.add.assert_called_once_with(sample_user_video_db)
-        mock_session.flush.assert_called_once()
-        mock_session.refresh.assert_called_once_with(sample_user_video_db)
+            assert result == sample_user_video_db
+            assert sample_user_video_db.watched_at == watch_time
+            assert sample_user_video_db.watch_duration == 7200
+            assert sample_user_video_db.completion_percentage == 100.0
+            assert sample_user_video_db.rewatch_count == original_rewatch_count + 1
+            mock_session.add.assert_called_once_with(sample_user_video_db)  # type: ignore[attr-defined]
+            mock_session.flush.assert_called_once()  # type: ignore[attr-defined]
+            mock_session.refresh.assert_called_once_with(sample_user_video_db)  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_delete_user_interactions(
@@ -629,12 +652,12 @@ class TestUserVideoRepository:
         """Test deleting all interactions for a user."""
         mock_result = MagicMock()
         mock_result.rowcount = 5
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository.delete_user_interactions(mock_session, "test_user")
 
         assert result == 5
-        mock_session.execute.assert_called_once()
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_get_watch_time_by_date_range(
@@ -651,7 +674,7 @@ class TestUserVideoRepository:
             MagicMock(watch_date=datetime(2025, 1, 16).date(), total_time=7200),
         ]
         mock_result.__iter__ = lambda self: iter(mock_rows)
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository.get_watch_time_by_date_range(
             mock_session, "test_user", start_date, end_date
@@ -662,7 +685,7 @@ class TestUserVideoRepository:
             "2025-01-16": 7200,
         }
         assert result == expected
-        mock_session.execute.assert_called_once()
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_get_with_composite_key_tuple(
@@ -675,12 +698,12 @@ class TestUserVideoRepository:
         # Mock execute to return scalar_one_or_none result
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = sample_user_video_db
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository.get(mock_session, ("test_user", "dQw4w9WgXcQ"))
 
         assert result == sample_user_video_db
-        mock_session.execute.assert_called_once()
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_exists_with_composite_key_tuple(
@@ -690,12 +713,12 @@ class TestUserVideoRepository:
         # Mock execute to return a result
         mock_result = MagicMock()
         mock_result.first.return_value = ("test_user",)
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository.exists(mock_session, ("test_user", "dQw4w9WgXcQ"))
 
         assert result is True
-        mock_session.execute.assert_called_once()
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_repository_inherits_base_methods(
@@ -724,7 +747,7 @@ class TestUserVideoRepositoryEdgeCases:
     @pytest.fixture
     def mock_session(self) -> AsyncSession:
         """Create mock async session."""
-        return AsyncMock(spec=AsyncSession)
+        return cast(AsyncSession, AsyncMock())
 
     @pytest.mark.asyncio
     async def test_empty_user_id_handling(
@@ -733,12 +756,12 @@ class TestUserVideoRepositoryEdgeCases:
         """Test repository behavior with empty user ID."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository.get_by_composite_key(mock_session, "", "dQw4w9WgXcQ")
 
         assert result is None
-        mock_session.execute.assert_called_once()
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_empty_video_id_handling(
@@ -747,12 +770,12 @@ class TestUserVideoRepositoryEdgeCases:
         """Test repository behavior with empty video ID."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository.get_by_composite_key(mock_session, "test_user", "")
 
         assert result is None
-        mock_session.execute.assert_called_once()
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_import_from_takeout_batch_empty_list(
@@ -785,18 +808,17 @@ class TestUserVideoRepositoryEdgeCases:
         )
 
         # Mock get_by_composite_key to raise an exception
-        repository.get_by_composite_key = AsyncMock(
-            side_effect=Exception("Database error")
-        )
+        with patch.object(
+            repository, "get_by_composite_key", side_effect=Exception("Database error")
+        ) as mock_get:
+            result = await repository.import_from_takeout_batch(
+                mock_session, "test_user", [invalid_item]
+            )
 
-        result = await repository.import_from_takeout_batch(
-            mock_session, "test_user", [invalid_item]
-        )
-
-        assert result["created"] == 0
-        assert result["updated"] == 0
-        assert result["skipped"] == 0
-        assert result["errors"] == 1
+            assert result["created"] == 0
+            assert result["updated"] == 0
+            assert result["skipped"] == 0
+            assert result["errors"] == 1
 
     @pytest.mark.asyncio
     async def test_get_user_watch_history_no_results(
@@ -807,7 +829,7 @@ class TestUserVideoRepositoryEdgeCases:
         mock_scalars = MagicMock()
         mock_scalars.all.return_value = []
         mock_result.scalars.return_value = mock_scalars
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository.get_user_watch_history(mock_session, "test_user")
 
@@ -823,7 +845,7 @@ class TestUserVideoRepositoryEdgeCases:
 
         mock_result = MagicMock()
         mock_result.__iter__ = lambda self: iter([])
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
         result = await repository.get_watch_time_by_date_range(
             mock_session, "test_user", start_date, end_date
@@ -843,7 +865,7 @@ class TestGoogleTakeoutIntegration:
     @pytest.fixture
     def mock_session(self) -> AsyncSession:
         """Create mock async session."""
-        return AsyncMock(spec=AsyncSession)
+        return cast(AsyncSession, AsyncMock())
 
     def test_takeout_item_video_id_extraction(self):
         """Test video ID extraction from various YouTube URL formats."""
@@ -977,17 +999,21 @@ class TestGoogleTakeoutIntegration:
             existing_video,  # jNQXAC9IVRw - found first time
             existing_video,  # jNQXAC9IVRw - found second time
         ]
-        repository.get_by_composite_key = AsyncMock(side_effect=get_calls)
-        repository.create = AsyncMock(return_value=MagicMock())
+        with (
+            patch.object(
+                repository, "get_by_composite_key", side_effect=get_calls
+            ) as mock_get,
+            patch.object(repository, "create", return_value=MagicMock()) as mock_create,
+        ):
 
-        result = await repository.import_from_takeout_batch(
-            mock_session, "test_user", takeout_items
-        )
+            result = await repository.import_from_takeout_batch(
+                mock_session, "test_user", takeout_items
+            )
 
-        assert result["created"] == 1  # 9bZkp7q19f0
-        assert result["updated"] == 2  # jNQXAC9IVRw updated twice
-        assert result["skipped"] == 1  # invalid URL (playlist)
-        assert result["errors"] == 0
+            assert result["created"] == 1  # 9bZkp7q19f0
+            assert result["updated"] == 2  # jNQXAC9IVRw updated twice
+            assert result["skipped"] == 1  # invalid URL (playlist)
+            assert result["errors"] == 0
 
-        # Verify the existing video's rewatch count was updated correctly
-        assert existing_video.rewatch_count == 1  # Second occurrence of same video
+            # Verify the existing video's rewatch count was updated correctly
+            assert existing_video.rewatch_count == 1  # Second occurrence of same video

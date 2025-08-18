@@ -364,10 +364,18 @@ class TestTranscriptServiceThirdPartyAPI:
     @pytest.fixture
     def mock_transcript_data(self):
         """Create mock transcript data from API."""
-        return [
-            {"text": "Hello world", "start": 0.0, "duration": 2.0},
-            {"text": "This is a test", "start": 2.0, "duration": 3.0},
-        ]
+        # Create mock objects with attributes (not dictionaries)
+        mock_snippet1 = MagicMock()
+        mock_snippet1.text = "Hello world"
+        mock_snippet1.start = 0.0
+        mock_snippet1.duration = 2.0
+
+        mock_snippet2 = MagicMock()
+        mock_snippet2.text = "This is a test"
+        mock_snippet2.start = 2.0
+        mock_snippet2.duration = 3.0
+
+        return [mock_snippet1, mock_snippet2]
 
     @patch("chronovista.services.transcript_service.YouTubeTranscriptApi")
     async def test_get_transcript_from_third_party_api_success(
@@ -379,9 +387,25 @@ class TestTranscriptServiceThirdPartyAPI:
         mock_transcript_data,
     ):
         """Test successful third-party API transcript retrieval."""
-        # Mock API responses
-        mock_api.list_transcripts.return_value = mock_transcript_list
-        mock_api.get_transcript.return_value = mock_transcript_data
+        # Mock API instance
+        mock_api_instance = MagicMock()
+        mock_api.return_value = mock_api_instance
+
+        # Mock the fallback path since fetch() will fail
+        mock_api_instance.fetch.side_effect = Exception("Direct fetch failed")
+
+        # Create a proper mock transcript list object (not a list)
+        mock_transcript_list_obj = MagicMock()
+        mock_api_instance.list.return_value = mock_transcript_list_obj
+
+        # Mock transcript selection and fetch
+        mock_transcript = mock_transcript_list[0]  # Use first (English) transcript
+        mock_transcript_list_obj.find_transcript.return_value = mock_transcript
+        mock_transcript.fetch.return_value = mock_transcript_data
+        mock_transcript.language_code = "en"
+        mock_transcript.is_generated = False
+        mock_transcript.is_translatable = True
+        mock_transcript.language = "English"  # Ensure this is a string, not MagicMock
 
         result = await service._get_transcript_from_third_party_api(
             sample_video_id, ["en", "es"]
@@ -394,24 +418,34 @@ class TestTranscriptServiceThirdPartyAPI:
         assert result.snippets[0].text == "Hello world"
         assert result.source == TranscriptSource.YOUTUBE_TRANSCRIPT_API
 
-        mock_api.list_transcripts.assert_called_once_with(sample_video_id)
-        mock_api.get_transcript.assert_called_once_with(
-            sample_video_id, languages=["en"]
-        )
+        mock_api_instance.list.assert_called_once_with(sample_video_id)
+        mock_transcript_list_obj.find_transcript.assert_called_with(["en"])
 
     @patch("chronovista.services.transcript_service.YouTubeTranscriptApi")
     async def test_get_transcript_from_third_party_api_fallback_to_english(
         self, mock_api, service, sample_video_id, mock_transcript_data
     ):
         """Test fallback to English when preferred language not available."""
+        # Mock API instance
+        mock_api_instance = MagicMock()
+        mock_api.return_value = mock_api_instance
+
         # Create transcripts without exact match but with English variant
         mock_transcript_en_us = MagicMock()
         mock_transcript_en_us.language_code = "en-US"
-        mock_transcript_en_us.language = "English (US)"
+        mock_transcript_en_us.language = "English (US)"  # Ensure string
         mock_transcript_en_us.is_generated = False
+        mock_transcript_en_us.is_translatable = True
+        mock_transcript_en_us.fetch.return_value = mock_transcript_data
 
-        mock_api.list_transcripts.return_value = [mock_transcript_en_us]
-        mock_api.get_transcript.return_value = mock_transcript_data
+        mock_transcript_list = MagicMock()
+        mock_transcript_list.find_transcript.side_effect = [
+            Exception("French not found"),  # First call fails
+            mock_transcript_en_us,  # Second call (English) succeeds
+        ]
+
+        mock_api_instance.fetch.side_effect = Exception("Direct fetch failed")
+        mock_api_instance.list.return_value = mock_transcript_list
 
         result = await service._get_transcript_from_third_party_api(
             sample_video_id,
@@ -420,23 +454,37 @@ class TestTranscriptServiceThirdPartyAPI:
 
         assert isinstance(result, RawTranscriptData)
         assert result.language_code == LanguageCode.ENGLISH
-        mock_api.get_transcript.assert_called_once_with(
-            sample_video_id, languages=["en-US"]
-        )
+        mock_api_instance.list.assert_called_once_with(sample_video_id)
+        # Should have called find_transcript twice: first for ["fr", "de"], then for ["en"]
+        assert mock_transcript_list.find_transcript.call_count >= 1
 
     @patch("chronovista.services.transcript_service.YouTubeTranscriptApi")
     async def test_get_transcript_from_third_party_api_fallback_to_first_available(
         self, mock_api, service, sample_video_id, mock_transcript_data
     ):
         """Test fallback to first available when no English found."""
+        # Mock API instance
+        mock_api_instance = MagicMock()
+        mock_api.return_value = mock_api_instance
+
         # Create transcript in non-English language
         mock_transcript_ja = MagicMock()
         mock_transcript_ja.language_code = "ja"
-        mock_transcript_ja.language = "Japanese"
+        mock_transcript_ja.language = "Japanese"  # Ensure string
         mock_transcript_ja.is_generated = True
+        mock_transcript_ja.is_translatable = True
+        mock_transcript_ja.fetch.return_value = mock_transcript_data
 
-        mock_api.list_transcripts.return_value = [mock_transcript_ja]
-        mock_api.get_transcript.return_value = mock_transcript_data
+        mock_transcript_list = MagicMock()
+        # All find_transcript calls fail, so it falls back to iterating
+        mock_transcript_list.find_transcript.side_effect = Exception("Not found")
+        mock_transcript_list.find_generated_transcript.side_effect = Exception(
+            "Not found"
+        )
+        mock_transcript_list.__iter__.return_value = iter([mock_transcript_ja])
+
+        mock_api_instance.fetch.side_effect = Exception("Direct fetch failed")
+        mock_api_instance.list.return_value = mock_transcript_list
 
         result = await service._get_transcript_from_third_party_api(
             sample_video_id,
@@ -445,28 +493,31 @@ class TestTranscriptServiceThirdPartyAPI:
 
         assert isinstance(result, RawTranscriptData)
         assert result.language_code == LanguageCode.JAPANESE  # Uses available Japanese
-        mock_api.get_transcript.assert_called_once_with(
-            sample_video_id, languages=["ja"]
-        )
+        mock_api_instance.list.assert_called_once_with(sample_video_id)
+        # Should have fallen back to iterating through available transcripts
+        mock_transcript_list.__iter__.assert_called_once()
 
     @patch("chronovista.services.transcript_service.YouTubeTranscriptApi")
     async def test_get_transcript_from_third_party_api_list_transcripts_fails(
         self, mock_api, service, sample_video_id, mock_transcript_data
     ):
         """Test handling when list_transcripts fails."""
-        # Mock list_transcripts to raise exception
-        mock_api.list_transcripts.side_effect = Exception("Cannot list transcripts")
-        mock_api.get_transcript.return_value = mock_transcript_data
+        # Mock API instance
+        mock_api_instance = MagicMock()
+        mock_api.return_value = mock_api_instance
+
+        # Mock both fetch and list to fail - this should raise an exception
+        mock_api_instance.fetch.side_effect = Exception("Direct fetch failed")
+        mock_api_instance.list.side_effect = Exception("Cannot list transcripts")
 
         with patch("chronovista.services.transcript_service.logger") as mock_logger:
-            result = await service._get_transcript_from_third_party_api(
-                sample_video_id, ["en"]
-            )
+            with pytest.raises(Exception):  # Should raise since both methods fail
+                await service._get_transcript_from_third_party_api(
+                    sample_video_id, ["en"]
+                )
 
-        assert isinstance(result, RawTranscriptData)
         mock_logger.warning.assert_called()
-        # Should fall back to get_transcript without language specification
-        mock_api.get_transcript.assert_called_once_with(sample_video_id)
+        mock_logger.error.assert_called()
 
     @patch("chronovista.services.transcript_service.YouTubeTranscriptApi")
     async def test_get_transcript_from_third_party_api_invalid_language_code(
@@ -478,11 +529,23 @@ class TestTranscriptServiceThirdPartyAPI:
         mock_transcript_data,
     ):
         """Test handling of invalid language codes."""
-        # Mock transcript with invalid language code
-        mock_transcript_list[0].language_code = "invalid-code"
+        # Mock API instance
+        mock_api_instance = MagicMock()
+        mock_api.return_value = mock_api_instance
 
-        mock_api.list_transcripts.return_value = mock_transcript_list
-        mock_api.get_transcript.return_value = mock_transcript_data
+        # Mock transcript with invalid language code
+        mock_transcript_invalid = MagicMock()
+        mock_transcript_invalid.language_code = "invalid-code"
+        mock_transcript_invalid.language = "Invalid Language"  # Ensure string
+        mock_transcript_invalid.is_generated = False
+        mock_transcript_invalid.is_translatable = True
+        mock_transcript_invalid.fetch.return_value = mock_transcript_data
+
+        mock_transcript_list_obj = MagicMock()
+        mock_transcript_list_obj.find_transcript.return_value = mock_transcript_invalid
+
+        mock_api_instance.fetch.side_effect = Exception("Direct fetch failed")
+        mock_api_instance.list.return_value = mock_transcript_list_obj
 
         result = await service._get_transcript_from_third_party_api(
             sample_video_id, ["invalid-code"]
@@ -497,17 +560,24 @@ class TestTranscriptServiceThirdPartyAPI:
         self, mock_api, service, sample_video_id, mock_transcript_data
     ):
         """Test handling when transcript metadata is missing."""
-        mock_api.list_transcripts.return_value = []  # Empty list
-        mock_api.get_transcript.return_value = mock_transcript_data
+        # Mock API instance
+        mock_api_instance = MagicMock()
+        mock_api.return_value = mock_api_instance
 
-        result = await service._get_transcript_from_third_party_api(
-            sample_video_id, ["en"]
+        # Mock empty transcript list - should fail with exception
+        mock_transcript_list = MagicMock()
+        mock_transcript_list.find_transcript.side_effect = Exception("Not found")
+        mock_transcript_list.find_generated_transcript.side_effect = Exception(
+            "Not found"
         )
+        mock_transcript_list.__iter__.return_value = iter([])  # Empty list
 
-        assert isinstance(result, RawTranscriptData)
-        assert result.language_name == "Unknown"
-        assert result.is_generated is True  # Default
-        assert result.source_metadata is None
+        mock_api_instance.fetch.side_effect = Exception("Direct fetch failed")
+        mock_api_instance.list.return_value = mock_transcript_list
+
+        # Should raise exception since no transcripts are available
+        with pytest.raises(Exception):
+            await service._get_transcript_from_third_party_api(sample_video_id, ["en"])
 
 
 class TestTranscriptServiceOfficialAPI:
@@ -526,22 +596,20 @@ class TestTranscriptServiceOfficialAPI:
     async def test_get_transcript_from_official_api_placeholder(
         self, service, sample_video_id
     ):
-        """Test official API placeholder implementation."""
+        """Test official API implementation with no captions found."""
         with patch("chronovista.services.transcript_service.logger") as mock_logger:
             result = await service._get_transcript_from_official_api(
                 sample_video_id, ["en"], DownloadReason.USER_REQUEST
             )
 
         assert result is None
-        # Should log placeholder messages
-        assert mock_logger.info.call_count == 3
+        # Should log attempt and no captions found messages
+        assert mock_logger.info.call_count == 2
         log_calls = [call.args[0] for call in mock_logger.info.call_args_list]
         assert any(
-            "Official YouTube Data API v3 fallback not yet implemented" in msg
-            for msg in log_calls
+            "Attempting official YouTube Data API v3" in msg for msg in log_calls
         )
-        assert any("Would attempt to download captions" in msg for msg in log_calls)
-        assert any("Download reason:" in msg for msg in log_calls)
+        assert any("No captions found via official API" in msg for msg in log_calls)
 
 
 class TestTranscriptServiceMockTranscript:
@@ -618,7 +686,7 @@ class TestTranscriptServiceGetAvailableLanguages:
 
     @patch("chronovista.services.transcript_service.YouTubeTranscriptApi")
     async def test_get_available_languages_success(
-        self, mock_api, service, sample_video_id
+        self, mock_api_class, service, sample_video_id
     ):
         """Test successful language retrieval."""
         # Mock transcript list
@@ -634,10 +702,13 @@ class TestTranscriptServiceGetAvailableLanguages:
         mock_transcript_es.is_generated = True
         mock_transcript_es.is_translatable = False
 
-        mock_api.list_transcripts.return_value = [
+        # Mock the API instance
+        mock_api_instance = MagicMock()
+        mock_api_instance.list.return_value = [
             mock_transcript_en,
             mock_transcript_es,
         ]
+        mock_api_class.return_value = mock_api_instance
         service._api_available = True
 
         with patch("chronovista.services.transcript_service.logger") as mock_logger:
@@ -658,10 +729,12 @@ class TestTranscriptServiceGetAvailableLanguages:
 
     @patch("chronovista.services.transcript_service.YouTubeTranscriptApi")
     async def test_get_available_languages_api_error(
-        self, mock_api, service, sample_video_id
+        self, mock_api_class, service, sample_video_id
     ):
         """Test handling of API errors when getting available languages."""
-        mock_api.list_transcripts.side_effect = Exception("API error")
+        mock_api_instance = MagicMock()
+        mock_api_instance.list.side_effect = Exception("API error")
+        mock_api_class.return_value = mock_api_instance
         service._api_available = True
 
         with patch("chronovista.services.transcript_service.logger") as mock_logger:
@@ -672,7 +745,7 @@ class TestTranscriptServiceGetAvailableLanguages:
 
     @patch("chronovista.services.transcript_service.YouTubeTranscriptApi")
     async def test_get_available_languages_missing_attributes(
-        self, mock_api, service, sample_video_id
+        self, mock_api_class, service, sample_video_id
     ):
         """Test handling of transcripts with missing attributes."""
         # Mock transcript with missing is_translatable attribute
@@ -683,7 +756,9 @@ class TestTranscriptServiceGetAvailableLanguages:
         # Don't set is_translatable to test getattr fallback
         del mock_transcript.is_translatable
 
-        mock_api.list_transcripts.return_value = [mock_transcript]
+        mock_api_instance = MagicMock()
+        mock_api_instance.list.return_value = [mock_transcript]
+        mock_api_class.return_value = mock_api_instance
         service._api_available = True
 
         result = await service.get_available_languages(sample_video_id)

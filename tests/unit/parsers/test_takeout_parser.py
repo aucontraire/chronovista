@@ -8,7 +8,7 @@ import json
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import pytest
 
@@ -87,7 +87,6 @@ class TestTakeoutParserVideoId:
         """Test video ID extraction with invalid URLs."""
         invalid_urls = [
             "",
-            None,
             "https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw",
             "https://www.youtube.com/post/Ugkx1234567890",
             "https://www.youtube.com/c/RickAstleyVEVO",
@@ -101,6 +100,10 @@ class TestTakeoutParserVideoId:
         for url in invalid_urls:
             result = TakeoutParser.extract_video_id(url)
             assert result is None, f"Should return None for URL: {url}"
+
+        # Test None separately since method signature expects str
+        result = TakeoutParser.extract_video_id(None)  # type: ignore[arg-type]
+        assert result is None, "Should return None for None"
 
     def test_extract_video_id_community_posts(self):
         """Test that community posts return None."""
@@ -150,7 +153,6 @@ class TestTakeoutParserChannelId:
         """Test channel ID extraction with invalid URLs."""
         invalid_urls = [
             "",
-            None,
             "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
             "https://www.google.com/",
             "not-a-url",
@@ -159,6 +161,10 @@ class TestTakeoutParserChannelId:
         for url in invalid_urls:
             result = TakeoutParser.extract_channel_id(url)
             assert result is None, f"Should return None for URL: {url}"
+
+        # Test None separately since method signature expects str
+        result = TakeoutParser.extract_channel_id(None)  # type: ignore[arg-type]
+        assert result is None, "Should return None for None"
 
 
 class TestTakeoutParserAction:
@@ -213,7 +219,7 @@ class TestTakeoutParserAction:
 class TestTakeoutParserFileProcessing:
     """Test file parsing functionality."""
 
-    def create_test_file(self, data: List[Dict]) -> Path:
+    def create_test_file(self, data: List[Dict[str, Any]]) -> Path:
         """Create a temporary JSON file with test data."""
         temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
         json.dump(data, temp_file)
@@ -222,7 +228,7 @@ class TestTakeoutParserFileProcessing:
 
     def test_parse_watch_history_file_valid_data(self):
         """Test parsing a valid watch history file."""
-        test_data = [
+        test_data: List[Dict[str, Any]] = [
             {
                 "header": "YouTube",
                 "title": "Watched Never Gonna Give You Up",
@@ -267,7 +273,7 @@ class TestTakeoutParserFileProcessing:
 
     def test_parse_watch_history_file_empty_data(self):
         """Test parsing an empty file."""
-        test_data = []
+        test_data: List[Dict[str, Any]] = []
         file_path = self.create_test_file(test_data)
 
         try:
@@ -278,7 +284,7 @@ class TestTakeoutParserFileProcessing:
 
     def test_parse_watch_history_file_non_youtube_entries(self):
         """Test parsing file with non-YouTube entries."""
-        test_data = [
+        test_data: List[Dict[str, Any]] = [
             {
                 "header": "Google Search",
                 "title": "Searched for cats",
@@ -303,7 +309,7 @@ class TestTakeoutParserFileProcessing:
 
     def test_parse_watch_history_file_invalid_entries(self):
         """Test parsing file with invalid entries."""
-        test_data = [
+        test_data: List[Dict[str, Any]] = [
             {
                 "header": "YouTube",
                 "title": "",  # Empty title
@@ -340,7 +346,7 @@ class TestTakeoutParserFileProcessing:
 
     def test_parse_watch_history_file_no_subtitles(self):
         """Test parsing entries without subtitle information."""
-        test_data = [
+        test_data: List[Dict[str, Any]] = [
             {
                 "header": "YouTube",
                 "title": "Watched Video Without Channel Info",
@@ -385,8 +391,11 @@ class TestTakeoutParserFileProcessing:
 
     def test_parse_watch_history_file_not_array(self):
         """Test parsing JSON that's not an array."""
-        test_data = {"not": "an array"}
-        file_path = self.create_test_file(test_data)
+        # Create a non-array JSON structure by writing directly to file
+        temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+        json.dump({"not": "an array"}, temp_file)
+        temp_file.flush()
+        file_path = Path(temp_file.name)
 
         try:
             with pytest.raises(ValueError, match="Expected JSON array at root level"):
@@ -398,7 +407,7 @@ class TestTakeoutParserFileProcessing:
 class TestTakeoutParserCounting:
     """Test entry counting functionality."""
 
-    def create_test_file(self, data: List[Dict]) -> Path:
+    def create_test_file(self, data: List[Dict[str, Any]]) -> Path:
         """Create a temporary JSON file with test data."""
         temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
         json.dump(data, temp_file)
@@ -456,7 +465,7 @@ class TestTakeoutParserCounting:
 
     def test_count_entries_empty_file(self):
         """Test counting entries in empty file."""
-        test_data = []
+        test_data: List[Dict[str, Any]] = []
         file_path = self.create_test_file(test_data)
 
         try:
@@ -479,8 +488,11 @@ class TestTakeoutParserCounting:
 
     def test_count_entries_invalid_json(self):
         """Test counting entries with invalid JSON structure."""
-        test_data = {"not": "an array"}
-        file_path = self.create_test_file(test_data)
+        # Create a non-array JSON structure by writing directly to file
+        temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+        json.dump({"not": "an array"}, temp_file)
+        temp_file.flush()
+        file_path = Path(temp_file.name)
 
         try:
             counts = TakeoutParser.count_entries(file_path)
@@ -495,7 +507,7 @@ class TestTakeoutParserCounting:
 class TestTakeoutParserEdgeCases:
     """Test edge cases and error handling."""
 
-    def create_test_file(self, data: List[Dict]) -> Path:
+    def create_test_file(self, data: List[Dict[str, Any]]) -> Path:
         """Create a temporary JSON file with test data."""
         temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
         json.dump(data, temp_file)
@@ -594,7 +606,7 @@ class TestTakeoutParserEdgeCases:
 
     def test_parse_watch_history_file_with_malformed_entry(self):
         """Test parsing file with one malformed entry that causes exception."""
-        test_data = [
+        test_data: List[Dict[str, Any]] = [
             {
                 "header": "YouTube",
                 "title": "Watched Good Video",

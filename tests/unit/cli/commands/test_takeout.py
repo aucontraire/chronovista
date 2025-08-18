@@ -55,6 +55,11 @@ from chronovista.models.takeout import (
     ViewingPatterns,
 )
 from chronovista.services.takeout_service import TakeoutService
+from tests.factories.takeout_data_factory import create_takeout_data
+from tests.factories.takeout_playlist_factory import create_takeout_playlist
+from tests.factories.takeout_playlist_item_factory import create_takeout_playlist_item
+from tests.factories.takeout_subscription_factory import create_takeout_subscription
+from tests.factories.takeout_watch_entry_factory import create_takeout_watch_entry
 
 
 @pytest.fixture
@@ -89,45 +94,44 @@ def mock_progress():
 @pytest.fixture
 def sample_takeout_data():
     """Create sample takeout data for testing."""
-    return TakeoutData(
+    watch_entry_1 = create_takeout_watch_entry(
+        video_id="test_video_1",
+        title="Test Video 1",
+        title_url="https://www.youtube.com/watch?v=test_video_1",
+        channel_name="Test Channel",
+        watched_at=datetime(2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc),
+    )
+
+    watch_entry_2 = create_takeout_watch_entry(
+        video_id="test_video_2",
+        title="Test Video 2",
+        title_url="https://www.youtube.com/watch?v=test_video_2",
+        channel_name="Another Channel",
+        watched_at=datetime(2023, 1, 16, 15, 45, 0, tzinfo=timezone.utc),
+    )
+
+    playlist_item = create_takeout_playlist_item(
+        video_id="test_video_1",
+        creation_timestamp=datetime(2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc),
+    )
+
+    playlist = create_takeout_playlist(
+        name="Test Playlist",
+        file_path=Path("/test/playlist.csv"),
+        videos=[playlist_item],
+    )
+
+    subscription = create_takeout_subscription(
+        channel_id="UC123",
+        channel_title="Test Channel",
+        channel_url="https://www.youtube.com/channel/UC123",
+    )
+
+    return create_takeout_data(
         takeout_path=Path("/test/path"),
-        watch_history=[
-            TakeoutWatchEntry(
-                video_id="test_video_1",
-                title="Test Video 1",
-                title_url="https://www.youtube.com/watch?v=test_video_1",
-                channel_name="Test Channel",
-                watched_at=datetime(2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc),
-            ),
-            TakeoutWatchEntry(
-                video_id="test_video_2",
-                title="Test Video 2",
-                title_url="https://www.youtube.com/watch?v=test_video_2",
-                channel_name="Another Channel",
-                watched_at=datetime(2023, 1, 16, 15, 45, 0, tzinfo=timezone.utc),
-            ),
-        ],
-        playlists=[
-            TakeoutPlaylist(
-                name="Test Playlist",
-                file_path=Path("/test/playlist.csv"),
-                videos=[
-                    TakeoutPlaylistItem(
-                        video_id="test_video_1",
-                        creation_timestamp=datetime(
-                            2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc
-                        ),
-                    )
-                ],
-            )
-        ],
-        subscriptions=[
-            TakeoutSubscription(
-                channel_id="UC123",
-                channel_title="Test Channel",
-                channel_url="https://www.youtube.com/channel/UC123",
-            )
-        ],
+        watch_history=[watch_entry_1, watch_entry_2],
+        playlists=[playlist],
+        subscriptions=[subscription],
     )
 
 
@@ -161,17 +165,17 @@ class TestBuildVideoTitleLookup:
     async def test_build_video_title_lookup_success(self, mock_takeout_service):
         """Test successful video title lookup building."""
         watch_history = [
-            TakeoutWatchEntry(
+            create_takeout_watch_entry(
                 video_id="video1",
                 title="Video Title 1",
                 title_url="https://www.youtube.com/watch?v=video1",
             ),
-            TakeoutWatchEntry(
+            create_takeout_watch_entry(
                 video_id="video2",
                 title="Video Title 2",
                 title_url="https://www.youtube.com/watch?v=video2",
             ),
-            TakeoutWatchEntry(
+            create_takeout_watch_entry(
                 video_id=None,  # Should be skipped
                 title="No Video ID",
                 title_url="https://example.com/not-youtube",
@@ -207,18 +211,18 @@ class TestPeekPlaylists:
     async def test_peek_playlists_success(self, mock_takeout_service, mock_progress):
         """Test successful playlist peeking."""
         playlists = [
-            TakeoutPlaylist(
+            create_takeout_playlist(
                 name="Test Playlist 1",
                 file_path=Path("/test/playlist1.csv"),
                 videos=[
-                    TakeoutPlaylistItem(video_id="video1"),
-                    TakeoutPlaylistItem(video_id="video2"),
+                    create_takeout_playlist_item(video_id="video1"),
+                    create_takeout_playlist_item(video_id="video2"),
                 ],
             ),
-            TakeoutPlaylist(
+            create_takeout_playlist(
                 name="Test Playlist 2",
                 file_path=Path("/test/playlist2.csv"),
-                videos=[TakeoutPlaylistItem(video_id="video3")],
+                videos=[create_takeout_playlist_item(video_id="video3")],
             ),
         ]
         mock_takeout_service.parse_playlists.return_value = playlists
@@ -240,15 +244,15 @@ class TestPeekPlaylists:
     ):
         """Test playlist peeking with name filter."""
         playlists = [
-            TakeoutPlaylist(
+            create_takeout_playlist(
                 name="Music Playlist",
                 file_path=Path("/test/music.csv"),
-                videos=[TakeoutPlaylistItem(video_id="music1")],
+                videos=[create_takeout_playlist_item(video_id="music1")],
             ),
-            TakeoutPlaylist(
+            create_takeout_playlist(
                 name="Tech Playlist",
                 file_path=Path("/test/tech.csv"),
-                videos=[TakeoutPlaylistItem(video_id="tech1")],
+                videos=[create_takeout_playlist_item(video_id="tech1")],
             ),
         ]
         mock_takeout_service.parse_playlists.return_value = playlists
@@ -285,15 +289,17 @@ class TestPeekPlaylists:
     ):
         """Test playlist peeking with size sorting."""
         playlists = [
-            TakeoutPlaylist(
+            create_takeout_playlist(
                 name="Small",
                 file_path=Path("/test/small.csv"),
-                videos=[TakeoutPlaylistItem(video_id="v1")],
+                videos=[create_takeout_playlist_item(video_id="v1")],
             ),
-            TakeoutPlaylist(
+            create_takeout_playlist(
                 name="Large",
                 file_path=Path("/test/large.csv"),
-                videos=[TakeoutPlaylistItem(video_id=f"v{i}") for i in range(5)],
+                videos=[
+                    create_takeout_playlist_item(video_id=f"v{i}") for i in range(5)
+                ],
             ),
         ]
         mock_takeout_service.parse_playlists.return_value = playlists
@@ -318,14 +324,14 @@ class TestPeekWatchHistory:
     ):
         """Test successful watch history peeking."""
         history = [
-            TakeoutWatchEntry(
+            create_takeout_watch_entry(
                 video_id="video1",
                 title="Video 1",
                 title_url="https://www.youtube.com/watch?v=video1",
                 channel_name="Channel 1",
                 watched_at=datetime(2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc),
             ),
-            TakeoutWatchEntry(
+            create_takeout_watch_entry(
                 video_id="video2",
                 title="Video 2",
                 title_url="https://www.youtube.com/watch?v=video2",
@@ -352,14 +358,14 @@ class TestPeekWatchHistory:
     ):
         """Test watch history peeking with channel filter."""
         history = [
-            TakeoutWatchEntry(
+            create_takeout_watch_entry(
                 video_id="video1",
                 title="Video 1",
                 title_url="https://www.youtube.com/watch?v=video1",
                 channel_name="Target Channel",
                 watched_at=datetime(2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc),
             ),
-            TakeoutWatchEntry(
+            create_takeout_watch_entry(
                 video_id="video2",
                 title="Video 2",
                 title_url="https://www.youtube.com/watch?v=video2",
@@ -386,13 +392,13 @@ class TestPeekWatchHistory:
     ):
         """Test watch history peeking with recent sorting."""
         history = [
-            TakeoutWatchEntry(
+            create_takeout_watch_entry(
                 video_id="old_video",
                 title="Old Video",
                 title_url="https://www.youtube.com/watch?v=old_video",
                 watched_at=datetime(2023, 1, 1, 10, 0, 0, tzinfo=timezone.utc),
             ),
-            TakeoutWatchEntry(
+            create_takeout_watch_entry(
                 video_id="new_video",
                 title="New Video",
                 title_url="https://www.youtube.com/watch?v=new_video",
@@ -436,12 +442,12 @@ class TestPeekSubscriptions:
     ):
         """Test successful subscriptions peeking."""
         subscriptions = [
-            TakeoutSubscription(
+            create_takeout_subscription(
                 channel_id="UC123",
                 channel_title="Test Channel 1",
                 channel_url="https://www.youtube.com/channel/UC123",
             ),
-            TakeoutSubscription(
+            create_takeout_subscription(
                 channel_id="UC456",
                 channel_title="Test Channel 2",
                 channel_url="https://www.youtube.com/channel/UC456",
@@ -465,12 +471,12 @@ class TestPeekSubscriptions:
     ):
         """Test subscriptions peeking with channel filter."""
         subscriptions = [
-            TakeoutSubscription(
+            create_takeout_subscription(
                 channel_id="UC123",
                 channel_title="Target Channel",
                 channel_url="https://www.youtube.com/channel/UC123",
             ),
-            TakeoutSubscription(
+            create_takeout_subscription(
                 channel_id="UC456",
                 channel_title="Other Channel",
                 channel_url="https://www.youtube.com/channel/UC456",
@@ -509,17 +515,17 @@ class TestShowDetailedPlaylist:
 
     async def test_show_detailed_playlist_success(self):
         """Test detailed playlist display."""
-        playlist = TakeoutPlaylist(
+        playlist = create_takeout_playlist(
             name="Test Playlist",
             file_path=Path("/test/playlist.csv"),
             videos=[
-                TakeoutPlaylistItem(
+                create_takeout_playlist_item(
                     video_id="video1",
                     creation_timestamp=datetime(
                         2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc
                     ),
                 ),
-                TakeoutPlaylistItem(
+                create_takeout_playlist_item(
                     video_id="video2",
                     creation_timestamp=datetime(
                         2023, 1, 16, 15, 45, 0, tzinfo=timezone.utc
@@ -535,23 +541,23 @@ class TestShowDetailedPlaylist:
 
     async def test_show_detailed_playlist_with_video_titles(self, mock_takeout_service):
         """Test detailed playlist display with video title lookup."""
-        playlist = TakeoutPlaylist(
+        playlist = create_takeout_playlist(
             name="Test Playlist",
             file_path=Path("/test/playlist.csv"),
             videos=[
-                TakeoutPlaylistItem(video_id="video1"),
-                TakeoutPlaylistItem(video_id="video2"),
+                create_takeout_playlist_item(video_id="video1"),
+                create_takeout_playlist_item(video_id="video2"),
             ],
         )
 
         # Mock video title lookup
         mock_takeout_service.parse_watch_history.return_value = [
-            TakeoutWatchEntry(
+            create_takeout_watch_entry(
                 video_id="video1",
                 title="Video Title 1",
                 title_url="https://www.youtube.com/watch?v=video1",
             ),
-            TakeoutWatchEntry(
+            create_takeout_watch_entry(
                 video_id="video2",
                 title="Video Title 2",
                 title_url="https://www.youtube.com/watch?v=video2",
@@ -567,7 +573,7 @@ class TestShowDetailedPlaylist:
 
     async def test_show_detailed_playlist_empty(self):
         """Test detailed playlist display with empty playlist."""
-        playlist = TakeoutPlaylist(
+        playlist = create_takeout_playlist(
             name="Empty Playlist", file_path=Path("/test/empty.csv"), videos=[]
         )
 

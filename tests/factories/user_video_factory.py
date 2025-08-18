@@ -8,7 +8,7 @@ with realistic and consistent test data.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import List
+from typing import List, cast
 
 import factory
 from factory import LazyFunction
@@ -63,20 +63,18 @@ class UserVideoCreateFactory(factory.Factory):
 
 
 class UserVideoUpdateFactory(factory.Factory):
-    """Factory for UserVideoUpdate models."""
+    """Factory for UserVideoUpdate models.
+
+    Note: This factory respects the model's default values (None for all fields).
+    For Update models, the default behavior should be an empty update (all None),
+    with values only generated when explicitly requested.
+    """
 
     class Meta:
         model = UserVideoUpdate
 
-    watched_at = factory.LazyFunction(
-        lambda: datetime(2023, 12, 10, 16, 45, 0, tzinfo=timezone.utc)
-    )
-    watch_duration = factory.LazyFunction(lambda: 300)  # 5 minutes
-    completion_percentage = factory.LazyFunction(lambda: 90.0)
-    rewatch_count = factory.LazyFunction(lambda: 2)
-    liked = factory.LazyFunction(lambda: True)
-    disliked = factory.LazyFunction(lambda: False)
-    saved_to_playlist = factory.LazyFunction(lambda: True)
+    # No default values - respects model defaults (None for all fields)
+    # Values will only be generated when explicitly passed to build()
 
 
 class UserVideoFactory(factory.Factory):
@@ -233,37 +231,40 @@ class UserVideoTestData:
 # Convenience factory functions
 def create_user_video_base(**kwargs) -> UserVideoBase:
     """Create a UserVideoBase with optional overrides."""
-    return UserVideoBaseFactory(**kwargs)
+    return cast(UserVideoBase, UserVideoBaseFactory.build(**kwargs))
 
 
 def create_user_video_create(**kwargs) -> UserVideoCreate:
     """Create a UserVideoCreate with optional overrides."""
-    return UserVideoCreateFactory(**kwargs)
+    return cast(UserVideoCreate, UserVideoCreateFactory.build(**kwargs))
 
 
 def create_user_video_update(**kwargs) -> UserVideoUpdate:
     """Create a UserVideoUpdate with optional overrides."""
-    return UserVideoUpdateFactory(**kwargs)
+    return cast(UserVideoUpdate, UserVideoUpdateFactory.build(**kwargs))
 
 
 def create_user_video(**kwargs) -> UserVideo:
     """Create a UserVideo with optional overrides."""
-    return UserVideoFactory(**kwargs)
+    return cast(UserVideo, UserVideoFactory.build(**kwargs))
 
 
 def create_google_takeout_item(**kwargs) -> GoogleTakeoutWatchHistoryItem:
     """Create a GoogleTakeoutWatchHistoryItem with optional overrides."""
-    return GoogleTakeoutWatchHistoryItemFactory(**kwargs)
+    return cast(
+        GoogleTakeoutWatchHistoryItem,
+        GoogleTakeoutWatchHistoryItemFactory.build(**kwargs),
+    )
 
 
 def create_user_video_search_filters(**kwargs) -> UserVideoSearchFilters:
     """Create a UserVideoSearchFilters with optional overrides."""
-    return UserVideoSearchFiltersFactory(**kwargs)
+    return cast(UserVideoSearchFilters, UserVideoSearchFiltersFactory.build(**kwargs))
 
 
 def create_user_video_statistics(**kwargs) -> UserVideoStatistics:
     """Create a UserVideoStatistics with optional overrides."""
-    return UserVideoStatisticsFactory(**kwargs)
+    return cast(UserVideoStatistics, UserVideoStatisticsFactory.build(**kwargs))
 
 
 def create_batch_user_videos(count: int = 5) -> List[UserVideo]:
@@ -282,7 +283,7 @@ def create_batch_user_videos(count: int = 5) -> List[UserVideo]:
         user_id = base_user_ids[i % len(base_user_ids)]
         video_id = base_video_ids[i % len(base_video_ids)]
 
-        video = UserVideoFactory(
+        video = UserVideoFactory.build(
             user_id=user_id,
             video_id=video_id,
             completion_percentage=50.0 + (i * 10),

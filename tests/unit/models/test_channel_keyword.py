@@ -39,7 +39,7 @@ class TestChannelKeywordBase:
 
     def test_create_valid_channel_keyword_base(self):
         """Test creating valid ChannelKeywordBase with keyword arguments."""
-        keyword = ChannelKeywordBaseFactory(
+        keyword = ChannelKeywordBaseFactory.build(
             channel_id="UCuAXFkgsw1L7xaCfnd5JJOw", keyword="gaming", keyword_order=1
         )
 
@@ -49,7 +49,7 @@ class TestChannelKeywordBase:
 
     def test_create_channel_keyword_base_minimal(self):
         """Test creating ChannelKeywordBase with minimal required fields."""
-        keyword = ChannelKeywordBaseFactory(
+        keyword = ChannelKeywordBaseFactory.build(
             channel_id="UC-lHJZR3Gqxm24_Vd_AJ5Yw",
             keyword="technology",
             keyword_order=None,
@@ -61,7 +61,7 @@ class TestChannelKeywordBase:
 
     def test_factory_generates_valid_defaults(self):
         """Test that factory generates valid models with defaults."""
-        keyword = ChannelKeywordBaseFactory()
+        keyword = ChannelKeywordBaseFactory.build()
 
         assert isinstance(keyword, ChannelKeywordBase)
         assert len(keyword.channel_id) >= 20
@@ -77,47 +77,47 @@ class TestChannelKeywordBase:
     def test_channel_id_validation_invalid(self, invalid_channel_id):
         """Test channel_id validation with various invalid inputs."""
         with pytest.raises(ValidationError):
-            ChannelKeywordBaseFactory(channel_id=invalid_channel_id)
+            ChannelKeywordBaseFactory.build(channel_id=invalid_channel_id)
 
     @pytest.mark.parametrize(
         "valid_channel_id", ChannelKeywordTestData.VALID_CHANNEL_IDS
     )
     def test_channel_id_validation_valid(self, valid_channel_id):
         """Test channel_id validation with various valid inputs."""
-        keyword = ChannelKeywordBaseFactory(channel_id=valid_channel_id)
+        keyword = ChannelKeywordBaseFactory.build(channel_id=valid_channel_id)
         assert keyword.channel_id == valid_channel_id
 
     @pytest.mark.parametrize("invalid_keyword", ChannelKeywordTestData.INVALID_KEYWORDS)
     def test_keyword_validation_invalid(self, invalid_keyword):
         """Test keyword validation with various invalid inputs."""
         with pytest.raises(ValidationError):
-            ChannelKeywordBaseFactory(keyword=invalid_keyword)
+            ChannelKeywordBaseFactory.build(keyword=invalid_keyword)
 
     @pytest.mark.parametrize("valid_keyword", ChannelKeywordTestData.VALID_KEYWORDS)
     def test_keyword_validation_valid(self, valid_keyword):
         """Test keyword validation with various valid inputs."""
-        keyword = ChannelKeywordBaseFactory(keyword=valid_keyword)
+        keyword = ChannelKeywordBaseFactory.build(keyword=valid_keyword)
         assert keyword.keyword == valid_keyword
 
     def test_keyword_order_validation(self):
         """Test keyword_order validation."""
         # Valid values
-        keyword = ChannelKeywordBaseFactory(keyword_order=0)
+        keyword = ChannelKeywordBaseFactory.build(keyword_order=0)
         assert keyword.keyword_order == 0
 
-        keyword = ChannelKeywordBaseFactory(keyword_order=50)
+        keyword = ChannelKeywordBaseFactory.build(keyword_order=50)
         assert keyword.keyword_order == 50
 
-        keyword = ChannelKeywordBaseFactory(keyword_order=None)
+        keyword = ChannelKeywordBaseFactory.build(keyword_order=None)
         assert keyword.keyword_order is None
 
         # Invalid values
         with pytest.raises(ValidationError):
-            ChannelKeywordBaseFactory(keyword_order=-1)
+            ChannelKeywordBaseFactory.build(keyword_order=-1)
 
     def test_model_dump_functionality(self):
         """Test model_dump() method for serialization."""
-        keyword = ChannelKeywordBaseFactory(
+        keyword = ChannelKeywordBaseFactory.build(
             channel_id="UCuAXFkgsw1L7xaCfnd5JJOw", keyword="tutorial", keyword_order=5
         )
 
@@ -146,7 +146,7 @@ class TestChannelKeywordCreate:
 
     def test_create_valid_channel_keyword_create(self):
         """Test creating valid ChannelKeywordCreate with keyword arguments."""
-        keyword = ChannelKeywordCreateFactory(
+        keyword = ChannelKeywordCreateFactory.build(
             channel_id="UCBJycsmduvYEL83R_U4JriQ", keyword="review", keyword_order=3
         )
 
@@ -157,11 +157,11 @@ class TestChannelKeywordCreate:
     def test_inherits_base_validation(self):
         """Test that ChannelKeywordCreate inherits base validation."""
         with pytest.raises(ValidationError):
-            ChannelKeywordCreateFactory(channel_id="   ")
+            ChannelKeywordCreateFactory.build(channel_id="   ")
 
     def test_factory_generates_valid_model(self):
         """Test factory generates valid ChannelKeywordCreate models."""
-        keyword = ChannelKeywordCreateFactory()
+        keyword = ChannelKeywordCreateFactory.build()
 
         assert isinstance(keyword, ChannelKeywordCreate)
         assert isinstance(keyword, ChannelKeywordBase)  # Inheritance check
@@ -172,35 +172,35 @@ class TestChannelKeywordUpdate:
 
     def test_create_valid_channel_keyword_update(self):
         """Test creating valid ChannelKeywordUpdate with keyword arguments."""
-        update = ChannelKeywordUpdateFactory(keyword_order=10)
+        update = ChannelKeywordUpdateFactory.build(keyword_order=10)
 
         assert update.keyword_order == 10
 
     def test_create_empty_channel_keyword_update(self):
         """Test creating empty ChannelKeywordUpdate."""
-        update = ChannelKeywordUpdate()
+        update = ChannelKeywordUpdateFactory.build()
 
         assert update.keyword_order is None
 
     def test_keyword_order_validation_in_update(self):
         """Test keyword_order validation in update model."""
         with pytest.raises(ValidationError):
-            ChannelKeywordUpdateFactory(keyword_order=-5)
+            ChannelKeywordUpdateFactory.build(keyword_order=-5)
 
     def test_model_dump_excludes_none(self):
         """Test model_dump() excludes None values."""
-        update = ChannelKeywordUpdate()
+        update = ChannelKeywordUpdateFactory.build()
 
         data = update.model_dump(exclude_none=True)
 
         assert data == {}
 
     def test_factory_generates_valid_updates(self):
-        """Test factory generates valid update models."""
-        update = ChannelKeywordUpdateFactory()
+        """Test factory generates valid update models with explicit values."""
+        update = ChannelKeywordUpdateFactory.build(keyword_order=25)
 
         assert isinstance(update, ChannelKeywordUpdate)
-        assert update.keyword_order is not None
+        assert update.keyword_order == 25
 
 
 class TestChannelKeyword:
@@ -209,7 +209,7 @@ class TestChannelKeyword:
     def test_create_valid_channel_keyword(self):
         """Test creating valid ChannelKeyword with keyword arguments."""
         now = datetime.now(timezone.utc)
-        keyword = ChannelKeywordFactory(
+        keyword = ChannelKeywordFactory.build(
             channel_id="UCsXVk37bltHxD1rDPwtNM8Q",
             keyword="programming",
             keyword_order=2,
@@ -241,7 +241,7 @@ class TestChannelKeyword:
 
     def test_factory_generates_full_model(self):
         """Test factory generates complete ChannelKeyword models."""
-        keyword = ChannelKeywordFactory()
+        keyword = ChannelKeywordFactory.build()
 
         assert isinstance(keyword, ChannelKeyword)
         assert isinstance(keyword, ChannelKeywordBase)  # Inheritance
@@ -255,7 +255,7 @@ class TestChannelKeywordSearchFilters:
     def test_create_comprehensive_filters(self):
         """Test creating comprehensive search filters with keyword arguments."""
         data = ChannelKeywordTestData.comprehensive_search_filters_data()
-        filters = ChannelKeywordSearchFiltersFactory(**data)
+        filters = ChannelKeywordSearchFiltersFactory.build(**data)
 
         assert filters.channel_ids == data["channel_ids"]
         assert filters.keywords == data["keywords"]
@@ -281,7 +281,7 @@ class TestChannelKeywordSearchFilters:
 
     def test_factory_generates_valid_filters(self):
         """Test factory generates valid search filters."""
-        filters = ChannelKeywordSearchFiltersFactory()
+        filters = ChannelKeywordSearchFiltersFactory.build()
 
         assert isinstance(filters, ChannelKeywordSearchFilters)
         assert isinstance(filters.channel_ids, list)
@@ -292,12 +292,12 @@ class TestChannelKeywordSearchFilters:
     def test_query_validation_empty_string(self):
         """Test query validation with empty strings."""
         with pytest.raises(ValidationError):
-            ChannelKeywordSearchFiltersFactory(keyword_pattern="")
+            ChannelKeywordSearchFiltersFactory.build(keyword_pattern="")
 
     def test_keyword_order_range_validation(self):
         """Test keyword order range validation."""
         # Valid ranges
-        filters = ChannelKeywordSearchFiltersFactory(
+        filters = ChannelKeywordSearchFiltersFactory.build(
             min_keyword_order=1, max_keyword_order=10
         )
         assert filters.min_keyword_order == 1
@@ -305,10 +305,10 @@ class TestChannelKeywordSearchFilters:
 
         # Invalid ranges
         with pytest.raises(ValidationError):
-            ChannelKeywordSearchFiltersFactory(min_keyword_order=-1)
+            ChannelKeywordSearchFiltersFactory.build(min_keyword_order=-1)
 
         with pytest.raises(ValidationError):
-            ChannelKeywordSearchFiltersFactory(max_keyword_order=-1)
+            ChannelKeywordSearchFiltersFactory.build(max_keyword_order=-1)
 
 
 class TestChannelKeywordStatistics:
@@ -316,7 +316,7 @@ class TestChannelKeywordStatistics:
 
     def test_create_valid_statistics(self):
         """Test creating valid ChannelKeywordStatistics with keyword arguments."""
-        stats = ChannelKeywordStatisticsFactory(
+        stats = ChannelKeywordStatisticsFactory.build(
             total_keywords=2000,
             unique_keywords=1600,
             unique_channels=200,
@@ -361,7 +361,7 @@ class TestChannelKeywordStatistics:
 
     def test_factory_generates_realistic_statistics(self):
         """Test factory generates realistic statistics."""
-        stats = ChannelKeywordStatisticsFactory()
+        stats = ChannelKeywordStatisticsFactory.build()
 
         assert isinstance(stats, ChannelKeywordStatistics)
         assert stats.total_keywords > 0
@@ -378,7 +378,7 @@ class TestChannelKeywordAnalytics:
 
     def test_create_valid_analytics(self):
         """Test creating valid ChannelKeywordAnalytics with keyword arguments."""
-        analytics = ChannelKeywordAnalyticsFactory(
+        analytics = ChannelKeywordAnalyticsFactory.build(
             keyword_trends={"gaming": [10, 12, 15, 18], "tech": [8, 9, 11, 13]},
             semantic_clusters=[
                 {"cluster_id": 0, "keywords": ["gaming", "esports"], "similarity": 0.9}
@@ -416,7 +416,7 @@ class TestChannelKeywordAnalytics:
 
     def test_factory_generates_realistic_analytics(self):
         """Test factory generates realistic analytics."""
-        analytics = ChannelKeywordAnalyticsFactory()
+        analytics = ChannelKeywordAnalyticsFactory.build()
 
         assert isinstance(analytics, ChannelKeywordAnalytics)
         assert isinstance(analytics.keyword_trends, dict)
@@ -440,13 +440,13 @@ class TestChannelKeywordModelInteractions:
     def test_create_then_update_workflow(self):
         """Test typical create then update workflow with keyword arguments."""
         # Create
-        keyword_create = ChannelKeywordCreateFactory(
+        keyword_create = ChannelKeywordCreateFactory.build(
             channel_id="UCuAXFkgsw1L7xaCfnd5JJOw", keyword="gaming", keyword_order=1
         )
 
         # Simulate creation
         now = datetime.now(timezone.utc)
-        keyword_full = ChannelKeywordFactory(
+        keyword_full = ChannelKeywordFactory.build(
             channel_id=keyword_create.channel_id,
             keyword=keyword_create.keyword,
             keyword_order=keyword_create.keyword_order,
@@ -454,7 +454,7 @@ class TestChannelKeywordModelInteractions:
         )
 
         # Update
-        keyword_update = ChannelKeywordUpdateFactory(keyword_order=5)
+        keyword_update = ChannelKeywordUpdateFactory.build(keyword_order=5)
 
         # Apply update (simulated)
         updated_data = keyword_full.model_dump()
@@ -469,15 +469,13 @@ class TestChannelKeywordModelInteractions:
 
     def test_search_filters_serialization(self):
         """Test search filters serialization for API usage."""
-        filters = ChannelKeywordSearchFiltersFactory(
+        filters = ChannelKeywordSearchFilters(
             channel_ids=["UCuAXFkgsw1L7xaCfnd5JJOw"],
             keywords=["gaming", "tech"],
             keyword_pattern="game",
             min_keyword_order=1,
             max_keyword_order=10,
             has_order=True,
-            created_after=None,
-            created_before=None,
         )
 
         # Simulate API query parameters
@@ -577,9 +575,9 @@ class TestChannelKeywordModelInteractions:
 
     def test_factory_inheritance_consistency(self):
         """Test that factory-created models maintain proper inheritance."""
-        base = ChannelKeywordBaseFactory()
-        create = ChannelKeywordCreateFactory()
-        full = ChannelKeywordFactory()
+        base = ChannelKeywordBaseFactory.build()
+        create = ChannelKeywordCreateFactory.build()
+        full = ChannelKeywordFactory.build()
 
         # All should be instances of ChannelKeywordBase
         assert isinstance(base, ChannelKeywordBase)
@@ -601,7 +599,7 @@ class TestChannelKeywordModelInteractions:
         ]
 
         for channel_id in valid_channel_ids:
-            keyword = ChannelKeywordBaseFactory(channel_id=channel_id)
+            keyword = ChannelKeywordBaseFactory.build(channel_id=channel_id)
             assert keyword.channel_id == channel_id
 
     def test_keyword_content_validation(self):
@@ -616,16 +614,16 @@ class TestChannelKeywordModelInteractions:
         ]
 
         for input_keyword, expected_keyword in test_cases:
-            keyword = ChannelKeywordBaseFactory(keyword=input_keyword)
+            keyword = ChannelKeywordBaseFactory.build(keyword=input_keyword)
             assert keyword.keyword == expected_keyword
 
     def test_keyword_order_business_logic(self):
         """Test business logic around keyword ordering."""
         # Test that keyword order represents priority/importance
-        high_priority = ChannelKeywordBaseFactory(keyword_order=1)
-        medium_priority = ChannelKeywordBaseFactory(keyword_order=5)
-        low_priority = ChannelKeywordBaseFactory(keyword_order=10)
-        no_priority = ChannelKeywordBaseFactory(keyword_order=None)
+        high_priority = ChannelKeywordBaseFactory.build(keyword_order=1)
+        medium_priority = ChannelKeywordBaseFactory.build(keyword_order=5)
+        low_priority = ChannelKeywordBaseFactory.build(keyword_order=10)
+        no_priority = ChannelKeywordBaseFactory.build(keyword_order=None)
 
         # Higher priority should have lower numbers
         assert high_priority.keyword_order < medium_priority.keyword_order

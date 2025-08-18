@@ -12,7 +12,7 @@ Commands:
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional
 
 import typer
 from rich.console import Console
@@ -2490,7 +2490,7 @@ async def _show_seeding_preview(
     console.print(f"💡 Remove --dry-run to perform actual seeding")
 
 
-def _display_seeding_results(results: dict) -> None:
+def _display_seeding_results(results: Dict[str, Any]) -> None:
     """Display seeding results in a formatted table."""
     # Calculate totals across all data types
     total_created = sum(r.created for r in results.values())

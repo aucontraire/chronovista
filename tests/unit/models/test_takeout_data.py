@@ -6,16 +6,23 @@ Comprehensive test coverage for Google Takeout data parsing models.
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List
 
-import pytest
-
-from chronovista.models.takeout.takeout_data import (
-    TakeoutData,
-    TakeoutPlaylist,
-    TakeoutPlaylistItem,
-    TakeoutSubscription,
-    TakeoutWatchEntry,
+from tests.factories.takeout_data_factory import (
+    create_minimal_takeout_data,
+    create_takeout_data,
+)
+from tests.factories.takeout_playlist_factory import (
+    create_minimal_takeout_playlist,
+    create_takeout_playlist,
+)
+from tests.factories.takeout_playlist_item_factory import (
+    create_minimal_takeout_playlist_item,
+    create_takeout_playlist_item,
+)
+from tests.factories.takeout_subscription_factory import create_takeout_subscription
+from tests.factories.takeout_watch_entry_factory import (
+    create_minimal_takeout_watch_entry,
+    create_takeout_watch_entry,
 )
 
 
@@ -24,7 +31,7 @@ class TestTakeoutWatchEntry:
 
     def test_basic_creation(self):
         """Test basic watch entry creation."""
-        entry = TakeoutWatchEntry(
+        entry = create_minimal_takeout_watch_entry(
             title="Test Video",
             title_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
             channel_name="Test Channel",
@@ -36,7 +43,7 @@ class TestTakeoutWatchEntry:
 
     def test_video_id_extraction_simple_url(self):
         """Test video ID extraction from simple YouTube URL."""
-        entry = TakeoutWatchEntry(
+        entry = create_minimal_takeout_watch_entry(
             title="Test Video",
             title_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
         )
@@ -44,7 +51,7 @@ class TestTakeoutWatchEntry:
 
     def test_video_id_extraction_url_with_params(self):
         """Test video ID extraction from URL with additional parameters."""
-        entry = TakeoutWatchEntry(
+        entry = create_minimal_takeout_watch_entry(
             title="Test Video",
             title_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=123s&list=PLtest",
         )
@@ -52,7 +59,7 @@ class TestTakeoutWatchEntry:
 
     def test_video_id_extraction_unicode_escaped_url(self):
         """Test video ID extraction from Unicode-escaped URL."""
-        entry = TakeoutWatchEntry(
+        entry = create_minimal_takeout_watch_entry(
             title="Test Video",
             title_url="https://www.youtube.com/watch?v\\u003ddQw4w9WgXcQ\\u0026t\\u003d123s",
         )
@@ -60,7 +67,7 @@ class TestTakeoutWatchEntry:
 
     def test_video_id_extraction_fallback_parsing(self):
         """Test video ID extraction using URL parsing fallback."""
-        entry = TakeoutWatchEntry(
+        entry = create_minimal_takeout_watch_entry(
             title="Test Video",
             title_url="https://www.youtube.com/embed/dQw4w9WgXcQ?start=123",
         )
@@ -69,7 +76,7 @@ class TestTakeoutWatchEntry:
 
     def test_video_id_extraction_regex_fallback(self):
         """Test video ID extraction using regex fallback."""
-        entry = TakeoutWatchEntry(
+        entry = create_minimal_takeout_watch_entry(
             title="Test Video",
             title_url="https://example.com/redirect?v=dQw4w9WgXcQ&other=param",
         )
@@ -77,7 +84,7 @@ class TestTakeoutWatchEntry:
 
     def test_video_id_extraction_invalid_url(self):
         """Test video ID extraction from invalid URL."""
-        entry = TakeoutWatchEntry(
+        entry = create_minimal_takeout_watch_entry(
             title="Test Video",
             title_url="not-a-valid-url",
         )
@@ -85,7 +92,7 @@ class TestTakeoutWatchEntry:
 
     def test_video_id_extraction_no_video_id_in_url(self):
         """Test video ID extraction when URL has no video ID."""
-        entry = TakeoutWatchEntry(
+        entry = create_minimal_takeout_watch_entry(
             title="Test Video",
             title_url="https://www.youtube.com/channel/UCtest",
         )
@@ -93,7 +100,7 @@ class TestTakeoutWatchEntry:
 
     def test_video_id_provided_explicitly(self):
         """Test that explicitly provided video ID is preserved."""
-        entry = TakeoutWatchEntry(
+        entry = create_minimal_takeout_watch_entry(
             title="Test Video",
             title_url="https://www.youtube.com/watch?v=different",
             video_id="explicit_id",
@@ -103,17 +110,16 @@ class TestTakeoutWatchEntry:
     def test_channel_id_extraction_from_url(self):
         """Test channel ID extraction from channel URL."""
         # Note: The validator only runs when channel_id is not explicitly provided
-        entry = TakeoutWatchEntry(
+        entry = create_minimal_takeout_watch_entry(
             title="Test Video",
             title_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
             channel_url="https://www.youtube.com/channel/UCtest123",
-            # Don't provide channel_id so validator can extract it
         )
         assert entry.channel_id == "UCtest123"
 
     def test_channel_id_extraction_invalid_url(self):
         """Test channel ID extraction from invalid channel URL."""
-        entry = TakeoutWatchEntry(
+        entry = create_minimal_takeout_watch_entry(
             title="Test Video",
             title_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
             channel_url="https://www.youtube.com/user/testuser",
@@ -122,7 +128,7 @@ class TestTakeoutWatchEntry:
 
     def test_channel_id_provided_explicitly(self):
         """Test that explicitly provided channel ID is preserved."""
-        entry = TakeoutWatchEntry(
+        entry = create_minimal_takeout_watch_entry(
             title="Test Video",
             title_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
             channel_url="https://www.youtube.com/channel/UCdifferent",
@@ -132,7 +138,7 @@ class TestTakeoutWatchEntry:
 
     def test_watched_at_parsing_iso_format(self):
         """Test watched_at parsing from ISO format."""
-        entry = TakeoutWatchEntry(
+        entry = create_minimal_takeout_watch_entry(
             title="Test Video",
             title_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
             raw_time="2023-01-15T14:30:00Z",
@@ -142,7 +148,7 @@ class TestTakeoutWatchEntry:
 
     def test_watched_at_parsing_iso_format_with_timezone(self):
         """Test watched_at parsing from ISO format with timezone."""
-        entry = TakeoutWatchEntry(
+        entry = create_minimal_takeout_watch_entry(
             title="Test Video",
             title_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
             raw_time="2023-01-15T14:30:00+05:00",
@@ -155,7 +161,7 @@ class TestTakeoutWatchEntry:
 
     def test_watched_at_parsing_invalid_format(self):
         """Test watched_at parsing with invalid time format."""
-        entry = TakeoutWatchEntry(
+        entry = create_minimal_takeout_watch_entry(
             title="Test Video",
             title_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
             raw_time="invalid-time-format",
@@ -165,18 +171,18 @@ class TestTakeoutWatchEntry:
     def test_watched_at_provided_explicitly(self):
         """Test that explicitly provided watched_at is preserved."""
         explicit_time = datetime(2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc)
-        entry = TakeoutWatchEntry(
+        entry = create_minimal_takeout_watch_entry(
             title="Test Video",
             title_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            raw_time="2023-06-15T14:30:00Z",
             watched_at=explicit_time,
+            raw_time="2023-06-15T14:30:00Z",
         )
         assert entry.watched_at == explicit_time
 
     def test_all_fields_present(self):
         """Test creation with all fields present."""
         watched_time = datetime(2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc)
-        entry = TakeoutWatchEntry(
+        entry = create_takeout_watch_entry(
             video_id="dQw4w9WgXcQ",
             title="Test Video",
             title_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -201,7 +207,7 @@ class TestTakeoutPlaylistItem:
 
     def test_basic_creation(self):
         """Test basic playlist item creation."""
-        item = TakeoutPlaylistItem(
+        item = create_takeout_playlist_item(
             video_id="dQw4w9WgXcQ",
             raw_timestamp="2023-01-15T14:30:00+00:00",
         )
@@ -212,33 +218,36 @@ class TestTakeoutPlaylistItem:
 
     def test_timestamp_parsing_from_raw(self):
         """Test creation_timestamp parsing from raw_timestamp."""
-        item = TakeoutPlaylistItem(
+        item = create_takeout_playlist_item(
             video_id="dQw4w9WgXcQ",
             raw_timestamp="2023-01-15T14:30:00+00:00",
+            creation_timestamp=None,  # Explicitly set to None to trigger parsing
         )
         expected_time = datetime.fromisoformat("2023-01-15T14:30:00+00:00")
         assert item.creation_timestamp == expected_time
 
     def test_timestamp_parsing_invalid_format(self):
         """Test creation_timestamp parsing with invalid raw_timestamp."""
-        item = TakeoutPlaylistItem(
+        item = create_takeout_playlist_item(
             video_id="dQw4w9WgXcQ",
             raw_timestamp="invalid-timestamp",
+            creation_timestamp=None,  # Explicitly set to None to trigger parsing
         )
         assert item.creation_timestamp is None
 
     def test_timestamp_parsing_empty_raw(self):
         """Test creation_timestamp parsing with empty raw_timestamp."""
-        item = TakeoutPlaylistItem(
+        item = create_takeout_playlist_item(
             video_id="dQw4w9WgXcQ",
             raw_timestamp="",
+            creation_timestamp=None,  # Explicitly set to None to trigger parsing
         )
         assert item.creation_timestamp is None
 
     def test_explicit_creation_timestamp_preserved(self):
         """Test that explicitly provided creation_timestamp is preserved."""
         explicit_time = datetime(2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc)
-        item = TakeoutPlaylistItem(
+        item = create_takeout_playlist_item(
             video_id="dQw4w9WgXcQ",
             raw_timestamp="2023-06-15T14:30:00+00:00",
             creation_timestamp=explicit_time,
@@ -247,7 +256,7 @@ class TestTakeoutPlaylistItem:
 
     def test_no_raw_timestamp(self):
         """Test creation without raw_timestamp."""
-        item = TakeoutPlaylistItem(video_id="dQw4w9WgXcQ")
+        item = create_minimal_takeout_playlist_item(video_id="dQw4w9WgXcQ")
         assert item.video_id == "dQw4w9WgXcQ"
         assert item.raw_timestamp is None
         assert item.creation_timestamp is None
@@ -258,7 +267,7 @@ class TestTakeoutPlaylist:
 
     def test_basic_creation(self):
         """Test basic playlist creation."""
-        playlist = TakeoutPlaylist(
+        playlist = create_minimal_takeout_playlist(
             name="My Playlist",
             file_path=Path("/path/to/playlist.csv"),
         )
@@ -270,11 +279,11 @@ class TestTakeoutPlaylist:
     def test_playlist_with_videos(self):
         """Test playlist creation with videos."""
         videos = [
-            TakeoutPlaylistItem(video_id="video1"),
-            TakeoutPlaylistItem(video_id="video2"),
-            TakeoutPlaylistItem(video_id="video3"),
+            create_minimal_takeout_playlist_item(video_id="video1"),
+            create_minimal_takeout_playlist_item(video_id="video2"),
+            create_minimal_takeout_playlist_item(video_id="video3"),
         ]
-        playlist = TakeoutPlaylist(
+        playlist = create_minimal_takeout_playlist(
             name="My Playlist",
             file_path=Path("/path/to/playlist.csv"),
             videos=videos,
@@ -287,10 +296,10 @@ class TestTakeoutPlaylist:
     def test_video_count_validation(self):
         """Test that video_count is automatically calculated when not provided."""
         videos = [
-            TakeoutPlaylistItem(video_id="video1"),
-            TakeoutPlaylistItem(video_id="video2"),
+            create_minimal_takeout_playlist_item(video_id="video1"),
+            create_minimal_takeout_playlist_item(video_id="video2"),
         ]
-        playlist = TakeoutPlaylist(
+        playlist = create_minimal_takeout_playlist(
             name="My Playlist",
             file_path=Path("/path/to/playlist.csv"),
             videos=videos,
@@ -301,10 +310,10 @@ class TestTakeoutPlaylist:
     def test_explicit_video_count_preserved(self):
         """Test that explicitly provided video_count is preserved."""
         videos = [
-            TakeoutPlaylistItem(video_id="video1"),
-            TakeoutPlaylistItem(video_id="video2"),
+            create_minimal_takeout_playlist_item(video_id="video1"),
+            create_minimal_takeout_playlist_item(video_id="video2"),
         ]
-        playlist = TakeoutPlaylist(
+        playlist = create_minimal_takeout_playlist(
             name="My Playlist",
             file_path=Path("/path/to/playlist.csv"),
             videos=videos,
@@ -318,9 +327,10 @@ class TestTakeoutSubscription:
 
     def test_basic_creation(self):
         """Test basic subscription creation."""
-        subscription = TakeoutSubscription(
+        subscription = create_takeout_subscription(
             channel_title="Test Channel",
             channel_url="https://www.youtube.com/channel/UCtest123",
+            channel_id=None,  # Explicitly set to None to trigger extraction
         )
         assert subscription.channel_title == "Test Channel"
         assert subscription.channel_url == "https://www.youtube.com/channel/UCtest123"
@@ -328,23 +338,25 @@ class TestTakeoutSubscription:
 
     def test_channel_id_extraction_from_url(self):
         """Test channel ID extraction from channel URL."""
-        subscription = TakeoutSubscription(
+        subscription = create_takeout_subscription(
             channel_title="Test Channel",
             channel_url="https://www.youtube.com/channel/UCtest123",
+            channel_id=None,  # Explicitly set to None to trigger extraction
         )
         assert subscription.channel_id == "UCtest123"
 
     def test_channel_id_extraction_custom_url(self):
         """Test channel ID extraction from custom URL (should return None)."""
-        subscription = TakeoutSubscription(
+        subscription = create_takeout_subscription(
             channel_title="Test Channel",
             channel_url="https://www.youtube.com/c/testchannel",
+            channel_id=None,  # Explicitly set to None to trigger extraction
         )
         assert subscription.channel_id is None
 
     def test_channel_id_provided_explicitly(self):
         """Test that explicitly provided channel ID is preserved."""
-        subscription = TakeoutSubscription(
+        subscription = create_takeout_subscription(
             channel_title="Test Channel",
             channel_url="https://www.youtube.com/channel/UCdifferent",
             channel_id="explicit_id",
@@ -353,9 +365,10 @@ class TestTakeoutSubscription:
 
     def test_channel_id_extraction_invalid_url(self):
         """Test channel ID extraction from invalid URL."""
-        subscription = TakeoutSubscription(
+        subscription = create_takeout_subscription(
             channel_title="Test Channel",
             channel_url="https://example.com/invalid",
+            channel_id=None,  # Explicitly set to None to trigger extraction
         )
         assert subscription.channel_id is None
 
@@ -365,7 +378,7 @@ class TestTakeoutData:
 
     def test_basic_creation(self):
         """Test basic takeout data creation."""
-        data = TakeoutData(takeout_path=Path("/path/to/takeout"))
+        data = create_minimal_takeout_data(takeout_path=Path("/path/to/takeout"))
         assert data.takeout_path == Path("/path/to/takeout")
         assert data.watch_history == []
         assert data.playlists == []
@@ -378,17 +391,17 @@ class TestTakeoutData:
     def test_creation_with_data(self):
         """Test takeout data creation with actual data."""
         watch_entries = [
-            TakeoutWatchEntry(
+            create_minimal_takeout_watch_entry(
                 title="Video 1",
                 title_url="https://www.youtube.com/watch?v=video1",
                 video_id="video1",
             ),
-            TakeoutWatchEntry(
+            create_minimal_takeout_watch_entry(
                 title="Video 2",
                 title_url="https://www.youtube.com/watch?v=video2",
                 video_id="video2",
             ),
-            TakeoutWatchEntry(
+            create_minimal_takeout_watch_entry(
                 title="Video 1 Again",  # Duplicate video
                 title_url="https://www.youtube.com/watch?v=video1",
                 video_id="video1",
@@ -396,12 +409,12 @@ class TestTakeoutData:
         ]
 
         playlists = [
-            TakeoutPlaylist(
+            create_minimal_takeout_playlist(
                 name="Playlist 1",
                 file_path=Path("/path/to/playlist1.csv"),
-                videos=[TakeoutPlaylistItem(video_id="video1")],
+                videos=[create_minimal_takeout_playlist_item(video_id="video1")],
             ),
-            TakeoutPlaylist(
+            create_minimal_takeout_playlist(
                 name="Playlist 2",
                 file_path=Path("/path/to/playlist2.csv"),
                 videos=[],
@@ -409,21 +422,21 @@ class TestTakeoutData:
         ]
 
         subscriptions = [
-            TakeoutSubscription(
+            create_takeout_subscription(
                 channel_title="Channel 1",
                 channel_url="https://www.youtube.com/channel/UC1",
             ),
-            TakeoutSubscription(
+            create_takeout_subscription(
                 channel_title="Channel 2",
                 channel_url="https://www.youtube.com/channel/UC2",
             ),
-            TakeoutSubscription(
+            create_takeout_subscription(
                 channel_title="Channel 3",
                 channel_url="https://www.youtube.com/channel/UC3",
             ),
         ]
 
-        data = TakeoutData(
+        data = create_minimal_takeout_data(
             takeout_path=Path("/path/to/takeout"),
             watch_history=watch_entries,
             playlists=playlists,
@@ -437,29 +450,28 @@ class TestTakeoutData:
     def test_unique_video_count_calculation(self):
         """Test that unique video count is calculated correctly."""
         watch_entries = [
-            TakeoutWatchEntry(
+            create_minimal_takeout_watch_entry(
                 title="Video 1",
                 title_url="https://www.youtube.com/watch?v=video1",
                 video_id="video1",
             ),
-            TakeoutWatchEntry(
+            create_minimal_takeout_watch_entry(
                 title="Video 2",
                 title_url="https://www.youtube.com/watch?v=video2",
                 video_id="video2",
             ),
-            TakeoutWatchEntry(
+            create_minimal_takeout_watch_entry(
                 title="Video 1 Repeat",
                 title_url="https://www.youtube.com/watch?v=video1",
                 video_id="video1",
             ),
-            TakeoutWatchEntry(
+            create_minimal_takeout_watch_entry(
                 title="Video without ID",
                 title_url="https://invalid-url",
-                video_id=None,
             ),
         ]
 
-        data = TakeoutData(
+        data = create_minimal_takeout_data(
             takeout_path=Path("/path/to/takeout"),
             watch_history=watch_entries,
         )
@@ -473,31 +485,33 @@ class TestTakeoutData:
         time3 = datetime(2023, 3, 15, tzinfo=timezone.utc)
 
         watch_entries = [
-            TakeoutWatchEntry(
+            create_takeout_watch_entry(
                 title="Video 1",
                 title_url="https://www.youtube.com/watch?v=video1",
                 watched_at=time1,
             ),
-            TakeoutWatchEntry(
+            create_takeout_watch_entry(
                 title="Video 2",
                 title_url="https://www.youtube.com/watch?v=video2",
                 watched_at=time2,
             ),
-            TakeoutWatchEntry(
+            create_takeout_watch_entry(
                 title="Video 3",
                 title_url="https://www.youtube.com/watch?v=video3",
                 watched_at=time3,
             ),
-            TakeoutWatchEntry(
+            create_minimal_takeout_watch_entry(
                 title="Video 4",
                 title_url="https://www.youtube.com/watch?v=video4",
-                watched_at=None,  # Should be ignored
+                # watched_at is None by default in minimal factory
             ),
         ]
 
-        data = TakeoutData(
+        data = create_takeout_data(
             takeout_path=Path("/path/to/takeout"),
             watch_history=watch_entries,
+            playlists=[],  # Empty to avoid factory defaults
+            subscriptions=[],  # Empty to avoid factory defaults
         )
 
         assert data.date_range is not None
@@ -507,16 +521,18 @@ class TestTakeoutData:
     def test_date_range_no_timestamps(self):
         """Test date range when no timestamps are available."""
         watch_entries = [
-            TakeoutWatchEntry(
+            create_minimal_takeout_watch_entry(
                 title="Video 1",
                 title_url="https://www.youtube.com/watch?v=video1",
-                watched_at=None,
+                # watched_at is None by default in minimal factory
             ),
         ]
 
-        data = TakeoutData(
+        data = create_takeout_data(
             takeout_path=Path("/path/to/takeout"),
             watch_history=watch_entries,
+            playlists=[],  # Empty to avoid factory defaults
+            subscriptions=[],  # Empty to avoid factory defaults
         )
 
         assert data.date_range is None
@@ -527,7 +543,7 @@ class TestTakeoutData:
         time2 = datetime(2023, 6, 15, tzinfo=timezone.utc)
         explicit_range = (time1, time2)
 
-        data = TakeoutData(
+        data = create_takeout_data(
             takeout_path=Path("/path/to/takeout"),
             date_range=explicit_range,
         )
@@ -537,12 +553,12 @@ class TestTakeoutData:
     def test_get_unique_video_ids(self):
         """Test getting unique video IDs from all sources."""
         watch_entries = [
-            TakeoutWatchEntry(
+            create_takeout_watch_entry(
                 title="Video 1",
                 title_url="https://www.youtube.com/watch?v=video1",
                 video_id="video1",
             ),
-            TakeoutWatchEntry(
+            create_takeout_watch_entry(
                 title="Video 2",
                 title_url="https://www.youtube.com/watch?v=video2",
                 video_id="video2",
@@ -550,18 +566,20 @@ class TestTakeoutData:
         ]
 
         playlists = [
-            TakeoutPlaylist(
+            create_takeout_playlist(
                 name="Playlist 1",
                 file_path=Path("/path/to/playlist1.csv"),
                 videos=[
-                    TakeoutPlaylistItem(video_id="video2"),  # Duplicate
-                    TakeoutPlaylistItem(video_id="video3"),  # New
-                    TakeoutPlaylistItem(video_id=""),  # Empty, should be ignored
+                    create_takeout_playlist_item(video_id="video2"),  # Duplicate
+                    create_takeout_playlist_item(video_id="video3"),  # New
+                    create_takeout_playlist_item(
+                        video_id=""
+                    ),  # Empty, should be ignored
                 ],
             ),
         ]
 
-        data = TakeoutData(
+        data = create_takeout_data(
             takeout_path=Path("/path/to/takeout"),
             watch_history=watch_entries,
             playlists=playlists,
@@ -573,12 +591,12 @@ class TestTakeoutData:
     def test_get_unique_channel_ids(self):
         """Test getting unique channel IDs from all sources."""
         watch_entries = [
-            TakeoutWatchEntry(
+            create_takeout_watch_entry(
                 title="Video 1",
                 title_url="https://www.youtube.com/watch?v=video1",
                 channel_id="UC1",
             ),
-            TakeoutWatchEntry(
+            create_takeout_watch_entry(
                 title="Video 2",
                 title_url="https://www.youtube.com/watch?v=video2",
                 channel_id="UC2",
@@ -586,26 +604,27 @@ class TestTakeoutData:
         ]
 
         subscriptions = [
-            TakeoutSubscription(
+            create_takeout_subscription(
                 channel_title="Channel 2",
                 channel_url="https://www.youtube.com/channel/UC2",  # Duplicate
                 channel_id="UC2",
             ),
-            TakeoutSubscription(
+            create_takeout_subscription(
                 channel_title="Channel 3",
                 channel_url="https://www.youtube.com/channel/UC3",  # New
                 channel_id="UC3",
             ),
-            TakeoutSubscription(
+            create_takeout_subscription(
                 channel_title="Channel 4",
                 channel_url="https://www.youtube.com/c/custom",  # No ID
-                channel_id=None,
+                channel_id=None,  # Explicitly set to None
             ),
         ]
 
-        data = TakeoutData(
+        data = create_takeout_data(
             takeout_path=Path("/path/to/takeout"),
             watch_history=watch_entries,
+            playlists=[],  # Empty to avoid factory defaults
             subscriptions=subscriptions,
         )
 
@@ -614,6 +633,6 @@ class TestTakeoutData:
 
     def test_parsed_at_default(self):
         """Test that parsed_at gets a default value."""
-        data = TakeoutData(takeout_path=Path("/path/to/takeout"))
+        data = create_takeout_data(takeout_path=Path("/path/to/takeout"))
         assert data.parsed_at is not None
         assert isinstance(data.parsed_at, datetime)

@@ -8,10 +8,9 @@ with realistic and consistent test data.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import List
+from typing import List, cast
 
 import factory
-from factory import LazyFunction
 
 from chronovista.models.enums import LanguageCode, LanguagePreferenceType
 from chronovista.models.user_language_preference import (
@@ -150,22 +149,30 @@ class UserLanguagePreferenceTestData:
 # Convenience factory functions
 def create_user_language_preference_base(**kwargs) -> UserLanguagePreferenceBase:
     """Create a UserLanguagePreferenceBase with optional overrides."""
-    return UserLanguagePreferenceBaseFactory(**kwargs)
+    return cast(
+        UserLanguagePreferenceBase, UserLanguagePreferenceBaseFactory.build(**kwargs)
+    )
 
 
 def create_user_language_preference_create(**kwargs) -> UserLanguagePreferenceCreate:
     """Create a UserLanguagePreferenceCreate with optional overrides."""
-    return UserLanguagePreferenceCreateFactory(**kwargs)
+    return cast(
+        UserLanguagePreferenceCreate,
+        UserLanguagePreferenceCreateFactory.build(**kwargs),
+    )
 
 
 def create_user_language_preference_update(**kwargs) -> UserLanguagePreferenceUpdate:
     """Create a UserLanguagePreferenceUpdate with optional overrides."""
-    return UserLanguagePreferenceUpdateFactory(**kwargs)
+    return cast(
+        UserLanguagePreferenceUpdate,
+        UserLanguagePreferenceUpdateFactory.build(**kwargs),
+    )
 
 
 def create_user_language_preference(**kwargs) -> UserLanguagePreference:
     """Create a UserLanguagePreference with optional overrides."""
-    return UserLanguagePreferenceFactory(**kwargs)
+    return cast(UserLanguagePreference, UserLanguagePreferenceFactory.build(**kwargs))
 
 
 def create_batch_user_language_preferences(
@@ -202,7 +209,7 @@ def create_batch_user_language_preferences(
         preference_type = base_types[i % len(base_types)]
         learning_goal = base_goals[i % len(base_goals)]
 
-        preference = UserLanguagePreferenceFactory(
+        preference = UserLanguagePreferenceFactory.build(
             user_id=user_id,
             language_code=language_code,
             preference_type=preference_type,

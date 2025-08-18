@@ -46,7 +46,7 @@ class TestVideoBaseFactory:
 
     def test_video_base_creation(self):
         """Test basic VideoBase creation from factory."""
-        video = VideoBaseFactory()
+        video = VideoBaseFactory.build()
 
         assert isinstance(video, VideoBase)
         assert video.video_id == "dQw4w9WgXcQ"
@@ -59,7 +59,7 @@ class TestVideoBaseFactory:
 
     def test_video_base_custom_values(self):
         """Test VideoBase with custom values."""
-        custom_video = VideoBaseFactory(
+        custom_video = VideoBaseFactory.build(
             video_id="9bZkp7q19f0",  # Valid 11-char video ID
             title="Custom Test Video",
             duration=600,
@@ -76,78 +76,78 @@ class TestVideoBaseFactory:
     @pytest.mark.parametrize("valid_video_id", VideoTestData.VALID_VIDEO_IDS)
     def test_video_base_valid_video_ids(self, valid_video_id):
         """Test VideoBase with valid video IDs."""
-        video = VideoBaseFactory(video_id=valid_video_id)
+        video = VideoBaseFactory.build(video_id=valid_video_id)
         assert video.video_id == valid_video_id.strip()
 
     @pytest.mark.parametrize("invalid_video_id", VideoTestData.INVALID_VIDEO_IDS)
     def test_video_base_invalid_video_ids(self, invalid_video_id):
         """Test VideoBase validation with invalid video IDs."""
         with pytest.raises(ValidationError):
-            VideoBaseFactory(video_id=invalid_video_id)
+            VideoBaseFactory.build(video_id=invalid_video_id)
 
     @pytest.mark.parametrize("valid_channel_id", VideoTestData.VALID_CHANNEL_IDS)
     def test_video_base_valid_channel_ids(self, valid_channel_id):
         """Test VideoBase with valid channel IDs."""
-        video = VideoBaseFactory(channel_id=valid_channel_id)
+        video = VideoBaseFactory.build(channel_id=valid_channel_id)
         assert video.channel_id == valid_channel_id.strip()
 
     @pytest.mark.parametrize("invalid_channel_id", VideoTestData.INVALID_CHANNEL_IDS)
     def test_video_base_invalid_channel_ids(self, invalid_channel_id):
         """Test VideoBase validation with invalid channel IDs."""
         with pytest.raises(ValidationError):
-            VideoBaseFactory(channel_id=invalid_channel_id)
+            VideoBaseFactory.build(channel_id=invalid_channel_id)
 
     @pytest.mark.parametrize("valid_title", VideoTestData.VALID_TITLES)
     def test_video_base_valid_titles(self, valid_title):
         """Test VideoBase with valid titles."""
-        video = VideoBaseFactory(title=valid_title)
+        video = VideoBaseFactory.build(title=valid_title)
         assert video.title == valid_title.strip()
 
     @pytest.mark.parametrize("invalid_title", VideoTestData.INVALID_TITLES)
     def test_video_base_invalid_titles(self, invalid_title):
         """Test VideoBase validation with invalid titles."""
         with pytest.raises(ValidationError):
-            VideoBaseFactory(title=invalid_title)
+            VideoBaseFactory.build(title=invalid_title)
 
     @pytest.mark.parametrize("valid_language", VideoTestData.VALID_LANGUAGES)
     def test_video_base_valid_languages(self, valid_language):
         """Test VideoBase with valid language codes."""
-        video = VideoBaseFactory(default_language=valid_language)
+        video = VideoBaseFactory.build(default_language=valid_language)
         assert video.default_language.value == valid_language.value
 
     @pytest.mark.parametrize("invalid_language", VideoTestData.INVALID_LANGUAGES)
     def test_video_base_invalid_languages(self, invalid_language):
         """Test VideoBase validation with invalid language codes."""
         with pytest.raises(ValidationError):
-            VideoBaseFactory(default_language=invalid_language)
+            VideoBaseFactory.build(default_language=invalid_language)
 
     @pytest.mark.parametrize("valid_duration", VideoTestData.VALID_DURATIONS)
     def test_video_base_valid_durations(self, valid_duration):
         """Test VideoBase with valid durations."""
-        video = VideoBaseFactory(duration=valid_duration)
+        video = VideoBaseFactory.build(duration=valid_duration)
         assert video.duration == valid_duration
 
     @pytest.mark.parametrize("invalid_duration", VideoTestData.INVALID_DURATIONS)
     def test_video_base_invalid_durations(self, invalid_duration):
         """Test VideoBase validation with invalid durations."""
         with pytest.raises(ValidationError):
-            VideoBaseFactory(duration=invalid_duration)
+            VideoBaseFactory.build(duration=invalid_duration)
 
     @pytest.mark.parametrize("valid_count", VideoTestData.VALID_COUNTS)
     def test_video_base_valid_view_counts(self, valid_count):
         """Test VideoBase with valid view counts."""
-        video = VideoBaseFactory(view_count=valid_count)
+        video = VideoBaseFactory.build(view_count=valid_count)
         assert video.view_count == valid_count
 
     @pytest.mark.parametrize("invalid_count", VideoTestData.INVALID_COUNTS)
     def test_video_base_invalid_view_counts(self, invalid_count):
         """Test VideoBase validation with invalid view counts."""
         with pytest.raises(ValidationError):
-            VideoBaseFactory(view_count=invalid_count)
+            VideoBaseFactory.build(view_count=invalid_count)
 
     def test_video_base_model_dump(self):
         """Test VideoBase model_dump functionality."""
-        video = VideoBaseFactory()
+        video = VideoBaseFactory.build()
         data = video.model_dump()
 
         assert isinstance(data, dict)
@@ -194,7 +194,7 @@ class TestVideoCreateFactory:
 
     def test_video_create_creation(self):
         """Test basic VideoCreate creation from factory."""
-        video = VideoCreateFactory()
+        video = VideoCreateFactory.build()
 
         assert isinstance(video, VideoCreate)
         assert video.video_id == "9bZkp7q19f0"
@@ -215,16 +215,17 @@ class TestVideoUpdateFactory:
 
     def test_video_update_creation(self):
         """Test basic VideoUpdate creation from factory."""
-        update = VideoUpdateFactory()
+        update = VideoUpdateFactory.build()
 
         assert isinstance(update, VideoUpdate)
+        assert update.title is not None
         assert "Updated:" in update.title
         assert update.duration == 1800
         assert update.made_for_kids is False
 
     def test_video_update_partial_data(self):
         """Test VideoUpdate with partial data."""
-        update = VideoUpdateFactory(
+        update = VideoUpdateFactory.build(
             title="Only Title Update",
             description=None,  # Only update some fields
             duration=None,
@@ -236,7 +237,7 @@ class TestVideoUpdateFactory:
 
     def test_video_update_none_values(self):
         """Test VideoUpdate with all None values."""
-        update = VideoUpdate(
+        update = VideoUpdateFactory.build(
             title=None,
             description=None,
             duration=None,
@@ -264,7 +265,7 @@ class TestVideoFactory:
 
     def test_video_creation(self):
         """Test basic Video creation from factory."""
-        video = VideoFactory()
+        video = VideoFactory.build()
 
         assert isinstance(video, Video)
         assert video.video_id == "3tmd-ClpJxA"
@@ -278,7 +279,7 @@ class TestVideoFactory:
         created_time = datetime(2023, 1, 1, tzinfo=timezone.utc)
         updated_time = datetime(2023, 12, 1, tzinfo=timezone.utc)
 
-        video = VideoFactory(created_at=created_time, updated_at=updated_time)
+        video = VideoFactory.build(created_at=created_time, updated_at=updated_time)
 
         assert video.created_at == created_time
         assert video.updated_at == updated_time
@@ -322,9 +323,10 @@ class TestVideoSearchFiltersFactory:
 
     def test_video_search_filters_creation(self):
         """Test basic VideoSearchFilters creation from factory."""
-        filters = VideoSearchFiltersFactory()
+        filters = VideoSearchFiltersFactory.build()
 
         assert isinstance(filters, VideoSearchFilters)
+        assert filters.channel_ids is not None
         assert len(filters.channel_ids) == 2
         assert filters.title_query == "python tutorial"
         assert filters.description_query == "programming"
@@ -333,11 +335,8 @@ class TestVideoSearchFiltersFactory:
 
     def test_video_search_filters_partial(self):
         """Test VideoSearchFilters with partial data."""
-        filters = VideoSearchFiltersFactory(
+        filters = VideoSearchFilters(
             title_query="machine learning",
-            description_query=None,
-            min_duration=None,
-            kids_friendly_only=None,
         )
 
         assert filters.title_query == "machine learning"
@@ -350,7 +349,7 @@ class TestVideoSearchFiltersFactory:
         upload_after = datetime(2023, 1, 1, tzinfo=timezone.utc)
         upload_before = datetime(2023, 12, 31, tzinfo=timezone.utc)
 
-        filters = VideoSearchFiltersFactory(
+        filters = VideoSearchFiltersFactory.build(
             channel_ids=[
                 "UCuAXFkgsw1L7xaCfnd5JJOw",
                 "UC_x5XG1OV2P6uZZ5FSM9Ttw",
@@ -393,7 +392,7 @@ class TestVideoStatisticsFactory:
 
     def test_video_statistics_creation(self):
         """Test basic VideoStatistics creation from factory."""
-        stats = VideoStatisticsFactory()
+        stats = VideoStatisticsFactory.build()
 
         assert isinstance(stats, VideoStatistics)
         assert stats.total_videos == 1250
@@ -408,7 +407,7 @@ class TestVideoStatisticsFactory:
         custom_languages = [("en", 500), ("ja", 200), ("ko", 150)]
         custom_trend = {"2023-06": 120, "2023-07": 135, "2023-08": 110}
 
-        stats = VideoStatisticsFactory(
+        stats = VideoStatisticsFactory.build(
             total_videos=800,
             total_views=25000000,
             avg_views_per_video=31250.0,
@@ -424,7 +423,7 @@ class TestVideoStatisticsFactory:
 
     def test_video_statistics_comprehensive(self):
         """Test VideoStatistics with comprehensive data."""
-        stats = VideoStatisticsFactory(
+        stats = VideoStatisticsFactory.build(
             total_videos=2000,
             total_duration=3600000,  # 1000 hours total
             avg_duration=1800.0,  # 30 minutes average
@@ -456,7 +455,7 @@ class TestVideoWithChannelFactory:
 
     def test_video_with_channel_creation(self):
         """Test basic VideoWithChannel creation from factory."""
-        video = VideoWithChannelFactory()
+        video = VideoWithChannelFactory.build()
 
         assert isinstance(video, VideoWithChannel)
         assert video.video_id == "jNQXAC9IVRw"
@@ -467,7 +466,7 @@ class TestVideoWithChannelFactory:
 
     def test_video_with_channel_custom_values(self):
         """Test VideoWithChannel with custom values."""
-        video = VideoWithChannelFactory(
+        video = VideoWithChannelFactory.build(
             channel_title="Custom Tech Channel",
             channel_subscriber_count=5000000,
             view_count=2000000,
@@ -506,7 +505,7 @@ class TestBatchOperations:
 
     def test_model_serialization_round_trip(self):
         """Test model serialization and deserialization."""
-        original = VideoFactory(
+        original = VideoFactory.build(
             video_id="dQw4w9WgXcQ",
             title="Serialization Test Video",
             duration=720,
@@ -526,10 +525,10 @@ class TestBatchOperations:
 
     def test_factory_inheritance_behavior(self):
         """Test that factories properly handle model inheritance."""
-        base_video = VideoBaseFactory()
-        create_video = VideoCreateFactory()
-        full_video = VideoFactory()
-        video_with_channel = VideoWithChannelFactory()
+        base_video = VideoBaseFactory.build()
+        create_video = VideoCreateFactory.build()
+        full_video = VideoFactory.build()
+        video_with_channel = VideoWithChannelFactory.build()
 
         # All should have the core attributes
         for video in [base_video, create_video, full_video, video_with_channel]:
@@ -557,7 +556,7 @@ class TestValidationEdgeCases:
 
     def test_none_values_handling(self):
         """Test handling of None values in optional fields."""
-        video = VideoBaseFactory(
+        video = VideoBaseFactory.build(
             description=None,
             default_language=None,
             default_audio_language=None,
@@ -577,7 +576,7 @@ class TestValidationEdgeCases:
     def test_boundary_values(self):
         """Test boundary values for validation."""
         # Test minimum valid values with proper YouTube ID formats
-        min_video = VideoBaseFactory(
+        min_video = VideoBaseFactory.build(
             video_id="dQw4w9WgXcQ",  # Valid 11-char video ID
             channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",  # Valid 24-char channel ID
             title="C",  # Min length (1 char)
@@ -592,7 +591,7 @@ class TestValidationEdgeCases:
         assert min_video.like_count == 0
 
         # Test maximum valid values with proper formats
-        max_video = VideoBaseFactory(
+        max_video = VideoBaseFactory.build(
             video_id="abcdefghijk",  # Valid 11-char video ID
             channel_id="UC123456789012345678901z",  # Valid 24-char channel ID
             duration=86400,  # 24 hours in seconds
@@ -604,7 +603,7 @@ class TestValidationEdgeCases:
 
     def test_model_config_validation(self):
         """Test model configuration validation behaviors."""
-        video = VideoFactory()
+        video = VideoFactory.build()
 
         # Test validate_assignment works
         video.view_count = 500000
@@ -617,19 +616,19 @@ class TestValidationEdgeCases:
     def test_field_validator_edge_cases(self):
         """Test field validator edge cases."""
         # Test video_id validator - VideoId type enforces exact format, no trimming
-        video1 = VideoBaseFactory(video_id="dQw4w9WgXcQ")
+        video1 = VideoBaseFactory.build(video_id="dQw4w9WgXcQ")
         assert video1.video_id == "dQw4w9WgXcQ"  # VideoId type validates exact format
 
         # Test title validator with whitespace
-        video2 = VideoBaseFactory(title="  Test Video Title  ")
+        video2 = VideoBaseFactory.build(title="  Test Video Title  ")
         assert video2.title == "Test Video Title"  # Should be trimmed
 
         # Test language validator - enum requires exact case
-        video3 = VideoBaseFactory(default_language="en-US")
+        video3 = VideoBaseFactory.build(default_language="en-US")
         assert video3.default_language == "en-US"  # LanguageCode enum preserves case
 
         # Test audio language validator
-        video4 = VideoBaseFactory(default_audio_language="es-MX")
+        video4 = VideoBaseFactory.build(default_audio_language="es-MX")
         assert (
             video4.default_audio_language == "es-MX"
         )  # LanguageCode enum preserves case
@@ -637,7 +636,7 @@ class TestValidationEdgeCases:
     @pytest.mark.parametrize("valid_languages", VideoTestData.VALID_AVAILABLE_LANGUAGES)
     def test_valid_available_languages(self, valid_languages):
         """Test VideoBase with valid available languages."""
-        video = VideoBaseFactory(available_languages=valid_languages)
+        video = VideoBaseFactory.build(available_languages=valid_languages)
         assert video.available_languages == valid_languages
 
     @pytest.mark.parametrize(
@@ -645,13 +644,13 @@ class TestValidationEdgeCases:
     )
     def test_valid_region_restrictions(self, valid_restriction):
         """Test VideoBase with valid region restrictions."""
-        video = VideoBaseFactory(region_restriction=valid_restriction)
+        video = VideoBaseFactory.build(region_restriction=valid_restriction)
         assert video.region_restriction == valid_restriction
 
     @pytest.mark.parametrize("valid_rating", VideoTestData.VALID_CONTENT_RATINGS)
     def test_valid_content_ratings(self, valid_rating):
         """Test VideoBase with valid content ratings."""
-        video = VideoBaseFactory(content_rating=valid_rating)
+        video = VideoBaseFactory.build(content_rating=valid_rating)
         assert video.content_rating == valid_rating
 
     def test_complex_data_structures(self):
@@ -679,7 +678,7 @@ class TestValidationEdgeCases:
             "bbfcRating": "12A",
         }
 
-        video = VideoBaseFactory(
+        video = VideoBaseFactory.build(
             available_languages=languages,
             region_restriction=restrictions,
             content_rating=rating,
@@ -693,7 +692,7 @@ class TestValidationEdgeCases:
     def test_kids_content_validation(self):
         """Test kids content related validation."""
         # Test kids-friendly video
-        kids_video = VideoBaseFactory(
+        kids_video = VideoBaseFactory.build(
             made_for_kids=True,
             self_declared_made_for_kids=True,
             content_rating={"ytRating": "ytAgeAppropriate"},
@@ -703,7 +702,7 @@ class TestValidationEdgeCases:
         assert kids_video.self_declared_made_for_kids is True
 
         # Test age-restricted video
-        adult_video = VideoBaseFactory(
+        adult_video = VideoBaseFactory.build(
             made_for_kids=False,
             self_declared_made_for_kids=False,
             content_rating={"ytRating": "ytAgeRestricted"},

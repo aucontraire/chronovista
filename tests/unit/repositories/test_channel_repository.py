@@ -5,7 +5,7 @@ Tests for ChannelRepository functionality.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,8 +15,8 @@ from chronovista.models.channel import (
     ChannelCreate,
     ChannelSearchFilters,
     ChannelStatistics,
-    ChannelUpdate,
 )
+from chronovista.models.enums import LanguageCode
 from chronovista.repositories.channel_repository import ChannelRepository
 
 
@@ -58,7 +58,7 @@ class TestChannelRepository:
             description="Test channel description",
             subscriber_count=10000,
             video_count=50,
-            default_language="en",
+            default_language=LanguageCode.ENGLISH,
             country="US",
             thumbnail_url="https://yt3.ggpht.com/test.jpg",
         )
@@ -71,7 +71,7 @@ class TestChannelRepository:
     async def test_get_by_channel_id_existing(
         self,
         repository: ChannelRepository,
-        mock_session: AsyncSession,
+        mock_session: AsyncMock,
         sample_channel_db: ChannelDB,
     ):
         """Test getting channel by channel ID when it exists."""
@@ -88,7 +88,7 @@ class TestChannelRepository:
 
     @pytest.mark.asyncio
     async def test_get_by_channel_id_not_found(
-        self, repository: ChannelRepository, mock_session: AsyncSession
+        self, repository: ChannelRepository, mock_session: AsyncMock
     ):
         """Test getting channel by channel ID when not found."""
         mock_result = MagicMock()
@@ -102,7 +102,7 @@ class TestChannelRepository:
 
     @pytest.mark.asyncio
     async def test_exists_by_channel_id_true(
-        self, repository: ChannelRepository, mock_session: AsyncSession
+        self, repository: ChannelRepository, mock_session: AsyncMock
     ):
         """Test exists by channel ID returns True when channel exists."""
         mock_result = MagicMock()
@@ -118,7 +118,7 @@ class TestChannelRepository:
 
     @pytest.mark.asyncio
     async def test_exists_by_channel_id_false(
-        self, repository: ChannelRepository, mock_session: AsyncSession
+        self, repository: ChannelRepository, mock_session: AsyncMock
     ):
         """Test exists by channel ID returns False when channel doesn't exist."""
         mock_result = MagicMock()
@@ -134,47 +134,65 @@ class TestChannelRepository:
     async def test_create_or_update_new_channel(
         self,
         repository: ChannelRepository,
-        mock_session: AsyncSession,
+        mock_session: AsyncMock,
         sample_channel_create: ChannelCreate,
         sample_channel_db: ChannelDB,
     ):
         """Test creating a new channel."""
-        repository.get_by_channel_id = AsyncMock(return_value=None)
-        repository.create = AsyncMock(return_value=sample_channel_db)
+        with (
+            patch.object(
+                repository, "get_by_channel_id", new=AsyncMock(return_value=None)
+            ) as mock_get,
+            patch.object(
+                repository, "create", new=AsyncMock(return_value=sample_channel_db)
+            ) as mock_create,
+        ):
 
-        result = await repository.create_or_update(mock_session, sample_channel_create)
+            result = await repository.create_or_update(
+                mock_session, sample_channel_create
+            )
 
-        assert result == sample_channel_db
-        repository.get_by_channel_id.assert_called_once_with(
-            mock_session, sample_channel_create.channel_id
-        )
-        repository.create.assert_called_once_with(
-            mock_session, obj_in=sample_channel_create
-        )
+            assert result == sample_channel_db
+            mock_get.assert_called_once_with(
+                mock_session, sample_channel_create.channel_id
+            )
+            mock_create.assert_called_once_with(
+                mock_session, obj_in=sample_channel_create
+            )
 
     @pytest.mark.asyncio
     async def test_create_or_update_existing_channel(
         self,
         repository: ChannelRepository,
-        mock_session: AsyncSession,
+        mock_session: AsyncMock,
         sample_channel_create: ChannelCreate,
         sample_channel_db: ChannelDB,
     ):
         """Test updating an existing channel."""
-        repository.get_by_channel_id = AsyncMock(return_value=sample_channel_db)
-        repository.update = AsyncMock(return_value=sample_channel_db)
+        with (
+            patch.object(
+                repository,
+                "get_by_channel_id",
+                new=AsyncMock(return_value=sample_channel_db),
+            ) as mock_get,
+            patch.object(
+                repository, "update", new=AsyncMock(return_value=sample_channel_db)
+            ) as mock_update,
+        ):
 
-        result = await repository.create_or_update(mock_session, sample_channel_create)
+            result = await repository.create_or_update(
+                mock_session, sample_channel_create
+            )
 
-        assert result == sample_channel_db
-        repository.get_by_channel_id.assert_called_once_with(
-            mock_session, sample_channel_create.channel_id
-        )
-        repository.update.assert_called_once()
+            assert result == sample_channel_db
+            mock_get.assert_called_once_with(
+                mock_session, sample_channel_create.channel_id
+            )
+            mock_update.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_find_by_title(
-        self, repository: ChannelRepository, mock_session: AsyncSession
+        self, repository: ChannelRepository, mock_session: AsyncMock
     ):
         """Test finding channels by title."""
         mock_channels = [MagicMock(), MagicMock()]
@@ -191,7 +209,7 @@ class TestChannelRepository:
 
     @pytest.mark.asyncio
     async def test_get_multi_with_pagination(
-        self, repository: ChannelRepository, mock_session: AsyncSession
+        self, repository: ChannelRepository, mock_session: AsyncMock
     ):
         """Test getting multiple channels with pagination."""
         mock_channels = [MagicMock(), MagicMock()]
@@ -208,7 +226,7 @@ class TestChannelRepository:
 
     @pytest.mark.asyncio
     async def test_find_by_country(
-        self, repository: ChannelRepository, mock_session: AsyncSession
+        self, repository: ChannelRepository, mock_session: AsyncMock
     ):
         """Test finding channels by country."""
         mock_channels = [MagicMock()]
@@ -227,7 +245,7 @@ class TestChannelRepository:
     async def test_get_with_keywords(
         self,
         repository: ChannelRepository,
-        mock_session: AsyncSession,
+        mock_session: AsyncMock,
         sample_channel_db: ChannelDB,
     ):
         """Test getting channel with keywords loaded."""
@@ -244,7 +262,7 @@ class TestChannelRepository:
 
     @pytest.mark.asyncio
     async def test_search_channels(
-        self, repository: ChannelRepository, mock_session: AsyncSession
+        self, repository: ChannelRepository, mock_session: AsyncMock
     ):
         """Test searching channels with filters."""
         filters = ChannelSearchFilters(title_query="test")
@@ -262,7 +280,7 @@ class TestChannelRepository:
 
     @pytest.mark.asyncio
     async def test_get_channel_statistics_no_data(
-        self, repository: ChannelRepository, mock_session: AsyncSession
+        self, repository: ChannelRepository, mock_session: AsyncMock
     ):
         """Test getting channel statistics with no data."""
         expected_stats = ChannelStatistics(
@@ -274,19 +292,23 @@ class TestChannelRepository:
             top_countries=[],
             top_languages=[],
         )
-        repository.get_channel_statistics = AsyncMock(return_value=expected_stats)
+        with patch.object(
+            repository,
+            "get_channel_statistics",
+            new=AsyncMock(return_value=expected_stats),
+        ) as mock_get_stats:
 
-        result = await repository.get_channel_statistics(mock_session)
+            result = await repository.get_channel_statistics(mock_session)
 
-        assert isinstance(result, ChannelStatistics)
-        assert result.total_channels == 0
-        assert result.total_subscribers == 0
-        assert result.total_videos == 0
-        assert result.total_videos == 0
-        assert result.avg_subscribers_per_channel == 0.0
-        assert result.avg_videos_per_channel == 0.0
-        assert result.top_countries == []
-        assert result.top_languages == []
+            assert isinstance(result, ChannelStatistics)
+            assert result.total_channels == 0
+            assert result.total_subscribers == 0
+            assert result.total_videos == 0
+            assert result.total_videos == 0
+            assert result.avg_subscribers_per_channel == 0.0
+            assert result.avg_videos_per_channel == 0.0
+            assert result.top_countries == []
+            assert result.top_languages == []
 
     def test_repository_inherits_base_methods(self, repository: ChannelRepository):
         """Test that repository inherits base methods."""
@@ -323,24 +345,28 @@ class TestChannelRepositoryAdditionalMethods:
     ):
         """Test get method delegates to get_by_channel_id."""
         mock_channel = MagicMock()
-        repository.get_by_channel_id = AsyncMock(return_value=mock_channel)
+        with patch.object(
+            repository, "get_by_channel_id", new=AsyncMock(return_value=mock_channel)
+        ) as mock_get:
 
-        result = await repository.get(mock_session, "UC123")
+            result = await repository.get(mock_session, "UC123")
 
-        assert result == mock_channel
-        repository.get_by_channel_id.assert_called_once_with(mock_session, "UC123")
+            assert result == mock_channel
+            mock_get.assert_called_once_with(mock_session, "UC123")
 
     @pytest.mark.asyncio
     async def test_exists_method_delegation(
         self, repository: ChannelRepository, mock_session
     ):
         """Test exists method delegates to exists_by_channel_id."""
-        repository.exists_by_channel_id = AsyncMock(return_value=True)
+        with patch.object(
+            repository, "exists_by_channel_id", new=AsyncMock(return_value=True)
+        ) as mock_exists:
 
-        result = await repository.exists(mock_session, "UC123")
+            result = await repository.exists(mock_session, "UC123")
 
-        assert result is True
-        repository.exists_by_channel_id.assert_called_once_with(mock_session, "UC123")
+            assert result is True
+            mock_exists.assert_called_once_with(mock_session, "UC123")
 
     @pytest.mark.asyncio
     async def test_find_by_keyword_method_exists(

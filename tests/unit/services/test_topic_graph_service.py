@@ -351,11 +351,13 @@ class TestTopicGraphService:
         # Verify hierarchy relationships
         music_node = graph.get_node("/m/music")
         assert music_node is not None
+        assert music_node.children is not None
         assert len(music_node.children) == 2  # rock and pop
 
         rock_node = graph.get_node("/m/rock")
         assert rock_node is not None
         assert rock_node.parent_topic_id == "/m/music"
+        assert rock_node.children is not None
         assert len(rock_node.children) == 1  # metal
 
     async def test_build_topic_hierarchy_graph_empty_data(

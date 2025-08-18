@@ -321,6 +321,112 @@ chronovista status
 chronovista --version
 ```
 
+## 🚦 Transcript Download Rate Limiting
+
+### Understanding the Fallback Strategy
+
+The transcript service uses a three-tier fallback approach to maximize success rates:
+
+1. **youtube-transcript-api (Primary)** - Web scraping approach
+   - ✅ Works for most public videos
+   - ✅ No quota limits
+   - ⚠️ Subject to IP-based rate limiting
+   
+2. **YouTube Data API v3 (Secondary)** - Official Google API  
+   - ✅ Reliable and quota-based
+   - ✅ No IP-based restrictions
+   - ❌ Only works for videos you own or with explicit third-party permissions
+   
+3. **Mock Transcript (Fallback)** - For testing/development
+   - ✅ Prevents script failures
+   - ⚠️ Not real content
+
+### Rate Limiting Guidelines
+
+**youtube-transcript-api Limits:**
+```python
+# Recommended limits to avoid IP bans
+MAX_REQUESTS_PER_HOUR = 50-100
+MIN_DELAY_BETWEEN_REQUESTS = 5  # seconds
+DAILY_LIMIT = 300-500  # requests per IP
+```
+
+**Signs you're hitting limits:**
+- `RequestBlocked` exceptions
+- `IpBlocked` exceptions  
+- Videos that should have transcripts returning "not found"
+
+**Mitigation strategies:**
+```bash
+# Add delays between requests
+time.sleep(5)  # Add to your scripts
+
+# Use residential proxies for high-volume usage
+# See proxy configuration section below
+
+# Monitor error rates and back off automatically
+# Implement exponential backoff in your code
+```
+
+**Official API Limits:**
+- **Daily quota**: 10,000 units (captions.list = 50 units, captions.download = 200 units)
+- **No IP-based restrictions** - only quota-based
+- **Request quota increases** via Google Cloud Console if needed
+
+### Proxy Configuration (For High-Volume Usage)
+
+If you're processing many videos and hitting IP blocks, consider using proxy services:
+
+**Recommended Proxy Services:**
+- **Webshare** (Most reliable, official integration): $40-80/mo
+- **Residential Proxy Services**: $50-100/mo  
+- **Premium VPN with rotation**: $15-30/mo
+
+**Integration Example:**
+```python
+from youtube_transcript_api.proxies import WebshareProxyConfig
+
+# Configure proxy for high-volume usage
+proxy_config = WebshareProxyConfig(
+    proxy_username="your-username",
+    proxy_password="your-password",
+    filter_ip_locations=["us", "ca"]  # Reduce latency
+)
+
+# Apply to transcript service
+transcript_service = TranscriptService(proxy_config=proxy_config)
+```
+
+**Budget Alternatives:**
+- Start with request delays (free)
+- Use VPN with manual server rotation ($15/mo)
+- Self-hosted proxy infrastructure (advanced users)
+
+### Production Usage Best Practices
+
+For production environments processing many videos:
+
+1. **Implement request delays**: Always add 5+ second delays between transcript requests
+2. **Monitor error rates**: Track `RequestBlocked`/`IpBlocked` exceptions
+3. **Use exponential backoff**: Automatically slow down when hitting limits
+4. **Set up quota monitoring**: Track official API quota usage
+5. **Consider proxy services**: For sustained high-volume usage (>100 requests/hour)
+
+**Example rate-limited usage:**
+```python
+import time
+import random
+
+for video_id in video_ids:
+    try:
+        transcript = await transcript_service.get_transcript(video_id)
+        # Random delay between 5-10 seconds
+        await asyncio.sleep(random.uniform(5, 10))
+    except (RequestBlocked, IpBlocked):
+        # Exponential backoff on rate limit
+        await asyncio.sleep(60)  # Wait 1 minute before retrying
+```
+
 ## Documentation
 
 ### Topic Analytics & Intelligence

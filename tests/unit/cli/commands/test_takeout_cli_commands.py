@@ -22,13 +22,13 @@ from chronovista.models.takeout import (
     DateRange,
     PlaylistAnalysis,
     TakeoutAnalysis,
-    TakeoutData,
-    TakeoutPlaylist,
-    TakeoutPlaylistItem,
     TakeoutSubscription,
-    TakeoutWatchEntry,
     ViewingPatterns,
 )
+from tests.factories.takeout_data_factory import create_takeout_data
+from tests.factories.takeout_playlist_factory import create_takeout_playlist
+from tests.factories.takeout_playlist_item_factory import create_takeout_playlist_item
+from tests.factories.takeout_watch_entry_factory import create_takeout_watch_entry
 
 # Note: Most tests are sync since they test CLI command entry points directly
 
@@ -39,10 +39,10 @@ class TestPeekDataCommand:
     @pytest.fixture
     def sample_takeout_data(self):
         """Create sample takeout data for testing."""
-        return TakeoutData(
+        return create_takeout_data(
             takeout_path=Path("test/takeout"),
             watch_history=[
-                TakeoutWatchEntry(
+                create_takeout_watch_entry(
                     title="Test Video",
                     title_url="https://youtube.com/watch?v=test123",
                     channel_name="Test Channel",
@@ -51,11 +51,11 @@ class TestPeekDataCommand:
                 )
             ],
             playlists=[
-                TakeoutPlaylist(
+                create_takeout_playlist(
                     name="Test Playlist",
                     file_path=Path("test.csv"),
                     videos=[
-                        TakeoutPlaylistItem(
+                        create_takeout_playlist_item(
                             video_id="test123", raw_timestamp="2023-01-01T10:00:00Z"
                         )
                     ],
@@ -491,17 +491,17 @@ class TestAnalyzeRelationshipsCommand:
     @pytest.fixture
     def sample_takeout_data_with_relationships(self):
         """Create sample takeout data with relationships for testing."""
-        return TakeoutData(
+        return create_takeout_data(
             takeout_path=Path("test/takeout"),
             watch_history=[
-                TakeoutWatchEntry(
+                create_takeout_watch_entry(
                     title="Video 1",
                     title_url="https://youtube.com/watch?v=test123",
                     channel_name="Channel A",
                     channel_url="https://youtube.com/channel/UCA",
                     raw_time="2023-01-01T10:00:00Z",
                 ),
-                TakeoutWatchEntry(
+                create_takeout_watch_entry(
                     title="Video 2",
                     title_url="https://youtube.com/watch?v=test456",
                     channel_name="Channel B",
@@ -510,23 +510,23 @@ class TestAnalyzeRelationshipsCommand:
                 ),
             ],
             playlists=[
-                TakeoutPlaylist(
+                create_takeout_playlist(
                     name="Playlist A",
                     file_path=Path("playlist_a.csv"),
                     videos=[
-                        TakeoutPlaylistItem(
+                        create_takeout_playlist_item(
                             video_id="test123", raw_timestamp="2023-01-01T10:00:00Z"
                         ),
-                        TakeoutPlaylistItem(
+                        create_takeout_playlist_item(
                             video_id="test456", raw_timestamp="2023-01-02T11:00:00Z"
                         ),
                     ],
                 ),
-                TakeoutPlaylist(
+                create_takeout_playlist(
                     name="Playlist B",
                     file_path=Path("playlist_b.csv"),
                     videos=[
-                        TakeoutPlaylistItem(
+                        create_takeout_playlist_item(
                             video_id="test123", raw_timestamp="2023-01-01T10:00:00Z"
                         )
                     ],

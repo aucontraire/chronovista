@@ -72,7 +72,7 @@ class VideoLocalizationCreate(VideoLocalizationBase):
 class VideoLocalizationUpdate(BaseModel):
     """Model for updating video localizations."""
 
-    localized_title: Optional[str] = Field(None, min_length=1)
+    localized_title: Optional[str] = Field(default=None)
     localized_description: Optional[str] = None
 
     @field_validator("localized_title")

@@ -4,20 +4,17 @@ Tests for VideoRepository functionality.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import Video as VideoDB
-from chronovista.models.video import (
-    VideoCreate,
-    VideoSearchFilters,
-    VideoStatistics,
-    VideoUpdate,
-)
+from chronovista.models.enums import LanguageCode
+from chronovista.models.video import VideoCreate, VideoStatistics
 from chronovista.repositories.video_repository import VideoRepository
+from tests.factories.video_factory import create_video_search_filters
 
 
 class TestVideoRepository:
@@ -65,7 +62,7 @@ class TestVideoRepository:
             duration=300,
             made_for_kids=False,
             self_declared_made_for_kids=False,
-            default_language="en",
+            default_language=LanguageCode.ENGLISH,
         )
 
     def test_repository_initialization(self, repository: VideoRepository):
@@ -82,19 +79,24 @@ class TestVideoRepository:
     ):
         """Test creating a new video."""
         # Mock get_by_video_id to return None (video doesn't exist)
-        repository.get_by_video_id = AsyncMock(return_value=None)
-        # Mock create to return the video
-        repository.create = AsyncMock(return_value=sample_video_db)
+        with (
+            patch.object(
+                repository, "get_by_video_id", new=AsyncMock(return_value=None)
+            ) as mock_get,
+            patch.object(
+                repository, "create", new=AsyncMock(return_value=sample_video_db)
+            ) as mock_create,
+        ):
 
-        result = await repository.create_or_update(mock_session, sample_video_create)
+            result = await repository.create_or_update(
+                mock_session, sample_video_create
+            )
 
-        assert result == sample_video_db
-        repository.get_by_video_id.assert_called_once_with(
-            mock_session, sample_video_create.video_id
-        )
-        repository.create.assert_called_once_with(
-            mock_session, obj_in=sample_video_create
-        )
+            assert result == sample_video_db
+            mock_get.assert_called_once_with(mock_session, sample_video_create.video_id)
+            mock_create.assert_called_once_with(
+                mock_session, obj_in=sample_video_create
+            )
 
     @pytest.mark.asyncio
     async def test_create_or_update_existing_video(
@@ -106,17 +108,24 @@ class TestVideoRepository:
     ):
         """Test updating an existing video."""
         # Mock get_by_video_id to return existing video
-        repository.get_by_video_id = AsyncMock(return_value=sample_video_db)
-        # Mock update to return the updated video
-        repository.update = AsyncMock(return_value=sample_video_db)
+        with (
+            patch.object(
+                repository,
+                "get_by_video_id",
+                new=AsyncMock(return_value=sample_video_db),
+            ) as mock_get,
+            patch.object(
+                repository, "update", new=AsyncMock(return_value=sample_video_db)
+            ) as mock_update,
+        ):
 
-        result = await repository.create_or_update(mock_session, sample_video_create)
+            result = await repository.create_or_update(
+                mock_session, sample_video_create
+            )
 
-        assert result == sample_video_db
-        repository.get_by_video_id.assert_called_once_with(
-            mock_session, sample_video_create.video_id
-        )
-        repository.update.assert_called_once()
+            assert result == sample_video_db
+            mock_get.assert_called_once_with(mock_session, sample_video_create.video_id)
+            mock_update.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_get_video_statistics_no_data(
@@ -138,29 +147,33 @@ class TestVideoRepository:
             top_languages=[],
             upload_trend={},
         )
-        repository.get_video_statistics = AsyncMock(return_value=expected_stats)
+        with patch.object(
+            repository,
+            "get_video_statistics",
+            new=AsyncMock(return_value=expected_stats),
+        ) as mock_stats:
 
-        result = await repository.get_video_statistics(mock_session)
+            result = await repository.get_video_statistics(mock_session)
 
-        assert isinstance(result, VideoStatistics)
-        assert result.total_videos == 0
-        assert result.total_duration == 0
-        assert result.avg_duration == 0.0
-        assert result.total_views == 0
-        assert result.total_likes == 0
-        assert result.total_comments == 0
-        assert result.avg_views_per_video == 0.0
-        assert result.avg_likes_per_video == 0.0
-        assert result.deleted_video_count == 0
-        assert result.kids_friendly_count == 0
-        assert result.top_languages == []
-        assert result.upload_trend == {}
+            assert isinstance(result, VideoStatistics)
+            assert result.total_videos == 0
+            assert result.total_duration == 0
+            assert result.avg_duration == 0.0
+            assert result.total_views == 0
+            assert result.total_likes == 0
+            assert result.total_comments == 0
+            assert result.avg_views_per_video == 0.0
+            assert result.avg_likes_per_video == 0.0
+            assert result.deleted_video_count == 0
+            assert result.kids_friendly_count == 0
+            assert result.top_languages == []
+            assert result.upload_trend == {}
 
     @pytest.mark.asyncio
     async def test_get_by_video_id_existing(
         self,
         repository: VideoRepository,
-        mock_session: AsyncSession,
+        mock_session: AsyncMock,
         sample_video_db: VideoDB,
     ):
         """Test getting video by video ID when it exists."""
@@ -175,7 +188,7 @@ class TestVideoRepository:
 
     @pytest.mark.asyncio
     async def test_get_by_video_id_not_found(
-        self, repository: VideoRepository, mock_session: AsyncSession
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test getting video by video ID when not found."""
         mock_result = MagicMock()
@@ -189,7 +202,7 @@ class TestVideoRepository:
 
     @pytest.mark.asyncio
     async def test_exists_by_video_id_true(
-        self, repository: VideoRepository, mock_session: AsyncSession
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test exists by video ID returns True when video exists."""
         mock_result = MagicMock()
@@ -203,7 +216,7 @@ class TestVideoRepository:
 
     @pytest.mark.asyncio
     async def test_exists_by_video_id_false(
-        self, repository: VideoRepository, mock_session: AsyncSession
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test exists by video ID returns False when video doesn't exist."""
         mock_result = MagicMock()
@@ -217,7 +230,7 @@ class TestVideoRepository:
 
     @pytest.mark.asyncio
     async def test_get_multi_with_pagination(
-        self, repository: VideoRepository, mock_session: AsyncSession
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test getting multiple videos with pagination."""
         mock_videos = [MagicMock(), MagicMock()]
@@ -234,7 +247,7 @@ class TestVideoRepository:
 
     @pytest.mark.asyncio
     async def test_find_by_channel(
-        self, repository: VideoRepository, mock_session: AsyncSession
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test finding videos by channel."""
         mock_videos = [MagicMock(), MagicMock()]
@@ -251,7 +264,7 @@ class TestVideoRepository:
 
     @pytest.mark.asyncio
     async def test_find_by_language(
-        self, repository: VideoRepository, mock_session: AsyncSession
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test finding videos by language."""
         mock_videos = [MagicMock()]
@@ -268,7 +281,7 @@ class TestVideoRepository:
 
     @pytest.mark.asyncio
     async def test_find_made_for_kids(
-        self, repository: VideoRepository, mock_session: AsyncSession
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test finding videos by kids-friendly status."""
         mock_videos = [MagicMock()]
@@ -285,7 +298,7 @@ class TestVideoRepository:
 
     @pytest.mark.asyncio
     async def test_get_popular_videos(
-        self, repository: VideoRepository, mock_session: AsyncSession
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test getting popular videos."""
         mock_videos = [MagicMock()]
@@ -302,7 +315,7 @@ class TestVideoRepository:
 
     @pytest.mark.asyncio
     async def test_find_deleted_videos(
-        self, repository: VideoRepository, mock_session: AsyncSession
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test finding deleted videos."""
         mock_videos = [MagicMock()]
@@ -340,28 +353,34 @@ class TestVideoRepository:
     ):
         """Test get method delegates to get_by_video_id."""
         mock_video = MagicMock()
-        repository.get_by_video_id = AsyncMock(return_value=mock_video)
+        with patch.object(
+            repository, "get_by_video_id", new=AsyncMock(return_value=mock_video)
+        ) as mock_get:
 
-        result = await repository.get(mock_session, "video1")
+            result = await repository.get(mock_session, "video1")
 
-        assert result == mock_video
-        repository.get_by_video_id.assert_called_once_with(mock_session, "video1")
+            assert result == mock_video
+            mock_get.assert_called_once_with(mock_session, "video1")
 
     @pytest.mark.asyncio
     async def test_exists_method_delegation(
         self, repository: VideoRepository, mock_session
     ):
         """Test exists method delegates to exists_by_video_id."""
-        repository.exists_by_video_id = AsyncMock(return_value=True)
+        with patch.object(
+            repository, "exists_by_video_id", new=AsyncMock(return_value=True)
+        ) as mock_exists:
 
-        result = await repository.exists(mock_session, "video1")
+            result = await repository.exists(mock_session, "video1")
 
-        assert result is True
-        repository.exists_by_video_id.assert_called_once_with(mock_session, "video1")
+            assert result is True
+            mock_exists.assert_called_once_with(mock_session, "video1")
 
     @pytest.mark.asyncio
-    async def test_find_by_language(self, repository: VideoRepository, mock_session):
-        """Test finding videos by language."""
+    async def test_find_by_language_duplicate_test(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
+        """Test finding videos by language (duplicate test removed)."""
         mock_videos = [MagicMock(), MagicMock()]
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = mock_videos
@@ -373,7 +392,9 @@ class TestVideoRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_find_by_date_range(self, repository: VideoRepository, mock_session):
+    async def test_find_by_date_range(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
         """Test finding videos by date range."""
         from datetime import datetime, timezone
 
@@ -392,7 +413,7 @@ class TestVideoRepository:
 
     @pytest.mark.asyncio
     async def test_get_with_transcripts(
-        self, repository: VideoRepository, mock_session
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test getting video with transcripts."""
         mock_video = MagicMock()
@@ -407,7 +428,7 @@ class TestVideoRepository:
 
     @pytest.mark.asyncio
     async def test_get_with_transcripts_not_found(
-        self, repository: VideoRepository, mock_session
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test getting video with transcripts when not found."""
         mock_result = MagicMock()
@@ -420,7 +441,9 @@ class TestVideoRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_get_with_channel(self, repository: VideoRepository, mock_session):
+    async def test_get_with_channel(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
         """Test getting video with channel details."""
         mock_video = MagicMock()
         mock_result = MagicMock()
@@ -433,16 +456,17 @@ class TestVideoRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_search_videos(self, repository: VideoRepository, mock_session):
+    async def test_search_videos(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
         """Test searching videos."""
-        from chronovista.models.video import VideoSearchFilters
 
         mock_videos = [MagicMock(), MagicMock()]
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = mock_videos
         mock_session.execute.return_value = mock_result
 
-        filters = VideoSearchFilters(title="test query")
+        filters = create_video_search_filters(title_query="test query")
         result = await repository.search_videos(mock_session, filters)
 
         assert result == mock_videos
@@ -450,7 +474,7 @@ class TestVideoRepository:
 
     @pytest.mark.asyncio
     async def test_find_available_in_language(
-        self, repository: VideoRepository, mock_session
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test finding available videos in a language."""
         mock_videos = [MagicMock(), MagicMock()]
@@ -484,16 +508,15 @@ class TestVideoRepositorySearchFilters:
 
     @pytest.mark.asyncio
     async def test_search_videos_with_channel_ids(
-        self, repository: VideoRepository, mock_session, mock_videos
+        self, repository: VideoRepository, mock_session: AsyncMock, mock_videos
     ):
         """Test search videos with channel IDs filter."""
-        from chronovista.models.video import VideoSearchFilters
 
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = mock_videos
         mock_session.execute.return_value = mock_result
 
-        filters = VideoSearchFilters(
+        filters = create_video_search_filters(
             channel_ids=["UCuAXFkgsw1L7xaCfnd5JJOw", "UC_x5XG1OV2P6uZZ5FSM9Ttw"]
         )
         result = await repository.search_videos(mock_session, filters)
@@ -503,16 +526,15 @@ class TestVideoRepositorySearchFilters:
 
     @pytest.mark.asyncio
     async def test_search_videos_with_description_query(
-        self, repository: VideoRepository, mock_session, mock_videos
+        self, repository: VideoRepository, mock_session: AsyncMock, mock_videos
     ):
         """Test search videos with description query filter."""
-        from chronovista.models.video import VideoSearchFilters
 
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = mock_videos
         mock_session.execute.return_value = mock_result
 
-        filters = VideoSearchFilters(description_query="test description")
+        filters = create_video_search_filters(description_query="test description")
         result = await repository.search_videos(mock_session, filters)
 
         assert result == mock_videos
@@ -520,16 +542,15 @@ class TestVideoRepositorySearchFilters:
 
     @pytest.mark.asyncio
     async def test_search_videos_with_language_codes(
-        self, repository: VideoRepository, mock_session, mock_videos
+        self, repository: VideoRepository, mock_session: AsyncMock, mock_videos
     ):
         """Test search videos with language codes filter."""
-        from chronovista.models.video import VideoSearchFilters
 
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = mock_videos
         mock_session.execute.return_value = mock_result
 
-        filters = VideoSearchFilters(language_codes=["en", "es"])
+        filters = create_video_search_filters(language_codes=["en", "es"])
         result = await repository.search_videos(mock_session, filters)
 
         assert result == mock_videos
@@ -537,12 +558,10 @@ class TestVideoRepositorySearchFilters:
 
     @pytest.mark.asyncio
     async def test_search_videos_with_upload_date_filters(
-        self, repository: VideoRepository, mock_session, mock_videos
+        self, repository: VideoRepository, mock_session: AsyncMock, mock_videos
     ):
         """Test search videos with upload date filters."""
         from datetime import datetime, timezone
-
-        from chronovista.models.video import VideoSearchFilters
 
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = mock_videos
@@ -551,7 +570,7 @@ class TestVideoRepositorySearchFilters:
         upload_after = datetime(2023, 1, 1, tzinfo=timezone.utc)
         upload_before = datetime(2023, 12, 31, tzinfo=timezone.utc)
 
-        filters = VideoSearchFilters(
+        filters = create_video_search_filters(
             upload_after=upload_after, upload_before=upload_before
         )
         result = await repository.search_videos(mock_session, filters)
@@ -561,16 +580,15 @@ class TestVideoRepositorySearchFilters:
 
     @pytest.mark.asyncio
     async def test_search_videos_with_duration_filters(
-        self, repository: VideoRepository, mock_session, mock_videos
+        self, repository: VideoRepository, mock_session: AsyncMock, mock_videos
     ):
         """Test search videos with duration filters."""
-        from chronovista.models.video import VideoSearchFilters
 
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = mock_videos
         mock_session.execute.return_value = mock_result
 
-        filters = VideoSearchFilters(min_duration=60, max_duration=3600)
+        filters = create_video_search_filters(min_duration=60, max_duration=3600)
         result = await repository.search_videos(mock_session, filters)
 
         assert result == mock_videos
@@ -578,16 +596,17 @@ class TestVideoRepositorySearchFilters:
 
     @pytest.mark.asyncio
     async def test_search_videos_with_view_count_filters(
-        self, repository: VideoRepository, mock_session, mock_videos
+        self, repository: VideoRepository, mock_session: AsyncMock, mock_videos
     ):
         """Test search videos with view count filters."""
-        from chronovista.models.video import VideoSearchFilters
 
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = mock_videos
         mock_session.execute.return_value = mock_result
 
-        filters = VideoSearchFilters(min_view_count=1000, max_view_count=100000)
+        filters = create_video_search_filters(
+            min_view_count=1000, max_view_count=100000
+        )
         result = await repository.search_videos(mock_session, filters)
 
         assert result == mock_videos
@@ -595,16 +614,15 @@ class TestVideoRepositorySearchFilters:
 
     @pytest.mark.asyncio
     async def test_search_videos_with_like_count_filter(
-        self, repository: VideoRepository, mock_session, mock_videos
+        self, repository: VideoRepository, mock_session: AsyncMock, mock_videos
     ):
         """Test search videos with like count filter."""
-        from chronovista.models.video import VideoSearchFilters
 
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = mock_videos
         mock_session.execute.return_value = mock_result
 
-        filters = VideoSearchFilters(min_like_count=100)
+        filters = create_video_search_filters(min_like_count=100)
         result = await repository.search_videos(mock_session, filters)
 
         assert result == mock_videos
@@ -612,16 +630,15 @@ class TestVideoRepositorySearchFilters:
 
     @pytest.mark.asyncio
     async def test_search_videos_kids_friendly_true(
-        self, repository: VideoRepository, mock_session, mock_videos
+        self, repository: VideoRepository, mock_session: AsyncMock, mock_videos
     ):
         """Test search videos with kids friendly filter set to True."""
-        from chronovista.models.video import VideoSearchFilters
 
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = mock_videos
         mock_session.execute.return_value = mock_result
 
-        filters = VideoSearchFilters(kids_friendly_only=True)
+        filters = create_video_search_filters(kids_friendly_only=True)
         result = await repository.search_videos(mock_session, filters)
 
         assert result == mock_videos
@@ -629,16 +646,15 @@ class TestVideoRepositorySearchFilters:
 
     @pytest.mark.asyncio
     async def test_search_videos_kids_friendly_false(
-        self, repository: VideoRepository, mock_session, mock_videos
+        self, repository: VideoRepository, mock_session: AsyncMock, mock_videos
     ):
         """Test search videos with kids friendly filter set to False."""
-        from chronovista.models.video import VideoSearchFilters
 
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = mock_videos
         mock_session.execute.return_value = mock_result
 
-        filters = VideoSearchFilters(kids_friendly_only=False)
+        filters = create_video_search_filters(kids_friendly_only=False)
         result = await repository.search_videos(mock_session, filters)
 
         assert result == mock_videos
@@ -646,16 +662,15 @@ class TestVideoRepositorySearchFilters:
 
     @pytest.mark.asyncio
     async def test_search_videos_has_transcripts_true(
-        self, repository: VideoRepository, mock_session, mock_videos
+        self, repository: VideoRepository, mock_session: AsyncMock, mock_videos
     ):
         """Test search videos with has_transcripts filter set to True."""
-        from chronovista.models.video import VideoSearchFilters
 
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = mock_videos
         mock_session.execute.return_value = mock_result
 
-        filters = VideoSearchFilters(has_transcripts=True)
+        filters = create_video_search_filters(has_transcripts=True)
         result = await repository.search_videos(mock_session, filters)
 
         assert result == mock_videos
@@ -663,16 +678,15 @@ class TestVideoRepositorySearchFilters:
 
     @pytest.mark.asyncio
     async def test_search_videos_has_transcripts_false(
-        self, repository: VideoRepository, mock_session, mock_videos
+        self, repository: VideoRepository, mock_session: AsyncMock, mock_videos
     ):
         """Test search videos with has_transcripts filter set to False."""
-        from chronovista.models.video import VideoSearchFilters
 
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = mock_videos
         mock_session.execute.return_value = mock_result
 
-        filters = VideoSearchFilters(has_transcripts=False)
+        filters = create_video_search_filters(has_transcripts=False)
         result = await repository.search_videos(mock_session, filters)
 
         assert result == mock_videos
@@ -680,16 +694,15 @@ class TestVideoRepositorySearchFilters:
 
     @pytest.mark.asyncio
     async def test_search_videos_exclude_deleted_false(
-        self, repository: VideoRepository, mock_session, mock_videos
+        self, repository: VideoRepository, mock_session: AsyncMock, mock_videos
     ):
         """Test search videos with exclude_deleted set to False."""
-        from chronovista.models.video import VideoSearchFilters
 
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = mock_videos
         mock_session.execute.return_value = mock_result
 
-        filters = VideoSearchFilters(exclude_deleted=False)
+        filters = create_video_search_filters(exclude_deleted=False)
         result = await repository.search_videos(mock_session, filters)
 
         assert result == mock_videos
@@ -732,22 +745,26 @@ class TestVideoRepositoryStatistics:
         )
 
         # Mock the method to avoid SQLAlchemy query execution issues
-        repository.get_video_statistics = AsyncMock(return_value=expected_stats)
+        with patch.object(
+            repository,
+            "get_video_statistics",
+            new=AsyncMock(return_value=expected_stats),
+        ) as mock_stats:
 
-        result = await repository.get_video_statistics(mock_session)
+            result = await repository.get_video_statistics(mock_session)
 
-        assert result.total_videos == 100
-        assert result.total_duration == 36000
-        assert result.avg_duration == 360.0
-        assert result.total_views == 1000000
-        assert result.total_likes == 50000
-        assert result.total_comments == 10000
-        assert result.avg_views_per_video == 10000.0
-        assert result.avg_likes_per_video == 500.0
-        assert result.deleted_video_count == 5
-        assert result.kids_friendly_count == 10
-        assert result.top_languages == [("en", 60), ("es", 30), ("fr", 10)]
-        assert result.upload_trend == {"2023-01": 20, "2023-02": 25, "2023-03": 30}
+            assert result.total_videos == 100
+            assert result.total_duration == 36000
+            assert result.avg_duration == 360.0
+            assert result.total_views == 1000000
+            assert result.total_likes == 50000
+            assert result.total_comments == 10000
+            assert result.avg_views_per_video == 10000.0
+            assert result.avg_likes_per_video == 500.0
+            assert result.deleted_video_count == 5
+            assert result.kids_friendly_count == 10
+            assert result.top_languages == [("en", 60), ("es", 30), ("fr", 10)]
+            assert result.upload_trend == {"2023-01": 20, "2023-02": 25, "2023-03": 30}
 
     @pytest.mark.asyncio
     async def test_get_video_statistics_no_stats_row(
@@ -772,22 +789,26 @@ class TestVideoRepositoryStatistics:
         )
 
         # Mock the method to avoid SQLAlchemy query execution issues
-        repository.get_video_statistics = AsyncMock(return_value=expected_stats)
+        with patch.object(
+            repository,
+            "get_video_statistics",
+            new=AsyncMock(return_value=expected_stats),
+        ) as mock_stats:
 
-        result = await repository.get_video_statistics(mock_session)
+            result = await repository.get_video_statistics(mock_session)
 
-        assert result.total_videos == 0
-        assert result.total_duration == 0
-        assert result.avg_duration == 0.0
-        assert result.total_views == 0
-        assert result.total_likes == 0
-        assert result.total_comments == 0
-        assert result.avg_views_per_video == 0.0
-        assert result.avg_likes_per_video == 0.0
-        assert result.deleted_video_count == 0
-        assert result.kids_friendly_count == 0
-        assert result.top_languages == []
-        assert result.upload_trend == {}
+            assert result.total_videos == 0
+            assert result.total_duration == 0
+            assert result.avg_duration == 0.0
+            assert result.total_views == 0
+            assert result.total_likes == 0
+            assert result.total_comments == 0
+            assert result.avg_views_per_video == 0.0
+            assert result.avg_likes_per_video == 0.0
+            assert result.deleted_video_count == 0
+            assert result.kids_friendly_count == 0
+            assert result.top_languages == []
+            assert result.upload_trend == {}
 
 
 class TestVideoRepositoryAdditionalMethods:
@@ -805,7 +826,7 @@ class TestVideoRepositoryAdditionalMethods:
 
     @pytest.mark.asyncio
     async def test_get_popular_videos_with_custom_params(
-        self, repository: VideoRepository, mock_session
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test get_popular_videos with custom limit and days_back parameters."""
         mock_videos = [MagicMock(), MagicMock()]
@@ -822,7 +843,7 @@ class TestVideoRepositoryAdditionalMethods:
 
     @pytest.mark.asyncio
     async def test_find_by_language_case_normalization(
-        self, repository: VideoRepository, mock_session
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test find_by_language with case normalization."""
         mock_videos = [MagicMock()]
@@ -838,7 +859,7 @@ class TestVideoRepositoryAdditionalMethods:
 
     @pytest.mark.asyncio
     async def test_find_available_in_language_case_normalization(
-        self, repository: VideoRepository, mock_session
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test find_available_in_language with case normalization."""
         mock_videos = [MagicMock()]
@@ -854,7 +875,7 @@ class TestVideoRepositoryAdditionalMethods:
 
     @pytest.mark.asyncio
     async def test_search_videos_with_title_query(
-        self, repository: VideoRepository, mock_session
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test search_videos with title_query filter."""
         mock_videos = [MagicMock()]
@@ -862,7 +883,7 @@ class TestVideoRepositoryAdditionalMethods:
         mock_result.scalars.return_value.all.return_value = mock_videos
         mock_session.execute.return_value = mock_result
 
-        filters = VideoSearchFilters(title_query="test video")
+        filters = create_video_search_filters(title_query="test video")
         result = await repository.search_videos(mock_session, filters)
 
         assert result == mock_videos
@@ -873,7 +894,7 @@ class TestVideoRepositoryAdditionalMethods:
 
     @pytest.mark.asyncio
     async def test_get_videos_with_preferred_localizations(
-        self, repository: VideoRepository, mock_session
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test get_videos_with_preferred_localizations method."""
         mock_result = MagicMock()
@@ -889,7 +910,7 @@ class TestVideoRepositoryAdditionalMethods:
 
     @pytest.mark.asyncio
     async def test_get_videos_with_localization_support(
-        self, repository: VideoRepository, mock_session
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test get_videos_with_localization_support method."""
         mock_result = MagicMock()
@@ -905,7 +926,7 @@ class TestVideoRepositoryAdditionalMethods:
 
     @pytest.mark.asyncio
     async def test_get_videos_missing_localizations(
-        self, repository: VideoRepository, mock_session
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test get_videos_missing_localizations method."""
         mock_result = MagicMock()
@@ -921,7 +942,7 @@ class TestVideoRepositoryAdditionalMethods:
 
     @pytest.mark.asyncio
     async def test_get_video_localization_summary(
-        self, repository: VideoRepository, mock_session
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test get_video_localization_summary method."""
         mock_summary = {"total_videos": 100, "localized_videos": 75}
@@ -998,15 +1019,19 @@ class TestVideoRepositoryAdvancedCoverage:
         assert hasattr(repository, "get_video_statistics")
 
         # Mock to avoid complex SQLAlchemy queries
-        repository.get_video_statistics = AsyncMock(return_value=expected_stats)
-        result = await repository.get_video_statistics(mock_session)
+        with patch.object(
+            repository,
+            "get_video_statistics",
+            new=AsyncMock(return_value=expected_stats),
+        ):
+            result = await repository.get_video_statistics(mock_session)
 
-        assert isinstance(result, VideoStatistics)
-        assert result.total_videos == 100
+            assert isinstance(result, VideoStatistics)
+            assert result.total_videos == 100
 
     @pytest.mark.asyncio
     async def test_get_videos_with_preferred_localizations_empty_videos(
-        self, repository: VideoRepository, mock_session
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test get_videos_with_preferred_localizations with empty video_ids."""
         result = await repository.get_videos_with_preferred_localizations(
@@ -1018,7 +1043,7 @@ class TestVideoRepositoryAdvancedCoverage:
 
     @pytest.mark.asyncio
     async def test_get_videos_with_preferred_localizations_no_videos_found(
-        self, repository: VideoRepository, mock_session
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test get_videos_with_preferred_localizations when no videos found in DB."""
         # Mock videos query returning empty results
@@ -1211,7 +1236,7 @@ class TestVideoRepositoryAdvancedCoverage:
 
     @pytest.mark.asyncio
     async def test_get_videos_with_localization_support_no_qualified_videos(
-        self, repository: VideoRepository, mock_session
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test get_videos_with_localization_support when no videos qualify."""
         from unittest.mock import patch
@@ -1276,7 +1301,7 @@ class TestVideoRepositoryAdvancedCoverage:
 
     @pytest.mark.asyncio
     async def test_get_videos_missing_localizations_no_missing(
-        self, repository: VideoRepository, mock_session
+        self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test get_videos_missing_localizations when no videos have missing localizations."""
         from unittest.mock import patch
@@ -1301,14 +1326,16 @@ class TestVideoRepositoryAdvancedCoverage:
     ):
         """Test get_video_localization_summary when video not found."""
         # Mock get_by_video_id to return None
-        repository.get_by_video_id = AsyncMock(return_value=None)
+        with patch.object(
+            repository, "get_by_video_id", new=AsyncMock(return_value=None)
+        ) as mock_get:
 
-        result = await repository.get_video_localization_summary(
-            mock_session, "nonexistent"
-        )
+            result = await repository.get_video_localization_summary(
+                mock_session, "nonexistent"
+            )
 
-        assert result is None
-        repository.get_by_video_id.assert_called_once_with(mock_session, "nonexistent")
+            assert result is None
+            mock_get.assert_called_once_with(mock_session, "nonexistent")
 
     @pytest.mark.asyncio
     async def test_get_video_localization_summary_full_implementation(
@@ -1320,49 +1347,53 @@ class TestVideoRepositoryAdvancedCoverage:
         sample_video_db.video_id = "video1"
 
         # Mock get_by_video_id to return video
-        repository.get_by_video_id = AsyncMock(return_value=sample_video_db)
+        with patch.object(
+            repository, "get_by_video_id", new=AsyncMock(return_value=sample_video_db)
+        ) as mock_get:
 
-        # Mock localization data
-        mock_localization = MagicMock()
-        mock_localization.language_code = "es"
-        mock_localization.localized_title = "Título en Español"
-        mock_localization.localized_description = "Descripción en español"
-        mock_localization.created_at = datetime(2023, 1, 1)
+            # Mock localization data
+            mock_localization = MagicMock()
+            mock_localization.language_code = "es"
+            mock_localization.localized_title = "Título en Español"
+            mock_localization.localized_description = "Descripción en español"
+            mock_localization.created_at = datetime(2023, 1, 1)
 
-        with patch(
-            "chronovista.repositories.video_localization_repository.VideoLocalizationRepository"
-        ) as mock_repo_class:
-            mock_repo = AsyncMock()
-            mock_repo.get_by_video_id.return_value = [mock_localization]
-            mock_repo.get_language_coverage.return_value = {
-                "en": 100,
-                "es": 50,
-                "fr": 25,
-            }
-            mock_repo_class.return_value = mock_repo
+            with patch(
+                "chronovista.repositories.video_localization_repository.VideoLocalizationRepository"
+            ) as mock_repo_class:
+                mock_repo = AsyncMock()
+                mock_repo.get_by_video_id.return_value = [mock_localization]
+                mock_repo.get_language_coverage.return_value = {
+                    "en": 100,
+                    "es": 50,
+                    "fr": 25,
+                }
+                mock_repo_class.return_value = mock_repo
 
-            result = await repository.get_video_localization_summary(
-                mock_session, "video1"
-            )
+                result = await repository.get_video_localization_summary(
+                    mock_session, "video1"
+                )
 
-            assert result is not None
-            assert result["video"] == sample_video_db
-            assert result["localization_count"] == 1
-            assert result["supported_languages"] == ["es"]
-            assert result["localizations"] == [mock_localization]
-            assert result["has_localizations"] is True
-            assert result["most_common_language"] == "en"  # Most coverage
-            assert result["is_multilingual"] is False  # Only 1 localization
+                assert result is not None
+                assert result["video"] == sample_video_db
+                assert result["localization_count"] == 1
+                assert result["supported_languages"] == ["es"]
+                assert result["localizations"] == [mock_localization]
+                assert result["has_localizations"] is True
+                assert result["most_common_language"] == "en"  # Most coverage
+                assert result["is_multilingual"] is False  # Only 1 localization
 
-            # Check localization summary structure
-            assert "es" in result["localization_summary"]
-            es_summary = result["localization_summary"]["es"]
-            assert es_summary["title"] == "Título en Español"
-            assert es_summary["has_description"] is True
-            assert es_summary["created_at"] == datetime(2023, 1, 1)
+                # Check localization summary structure
+                assert "es" in result["localization_summary"]
+                es_summary = result["localization_summary"]["es"]
+                assert es_summary["title"] == "Título en Español"
+                assert es_summary["has_description"] is True
+                assert es_summary["created_at"] == datetime(2023, 1, 1)
 
-            mock_repo.get_by_video_id.assert_called_once_with(mock_session, "video1")
-            mock_repo.get_language_coverage.assert_called_once_with(mock_session)
+                mock_repo.get_by_video_id.assert_called_once_with(
+                    mock_session, "video1"
+                )
+                mock_repo.get_language_coverage.assert_called_once_with(mock_session)
 
     @pytest.mark.asyncio
     async def test_get_video_localization_summary_no_language_coverage(
@@ -1374,26 +1405,28 @@ class TestVideoRepositoryAdvancedCoverage:
         sample_video_db.video_id = "video1"
 
         # Mock get_by_video_id to return video
-        repository.get_by_video_id = AsyncMock(return_value=sample_video_db)
+        with patch.object(
+            repository, "get_by_video_id", new=AsyncMock(return_value=sample_video_db)
+        ) as mock_get:
 
-        with patch(
-            "chronovista.repositories.video_localization_repository.VideoLocalizationRepository"
-        ) as mock_repo_class:
-            mock_repo = AsyncMock()
-            mock_repo.get_by_video_id.return_value = []
-            mock_repo.get_language_coverage.return_value = {}  # No coverage data
-            mock_repo_class.return_value = mock_repo
+            with patch(
+                "chronovista.repositories.video_localization_repository.VideoLocalizationRepository"
+            ) as mock_repo_class:
+                mock_repo = AsyncMock()
+                mock_repo.get_by_video_id.return_value = []
+                mock_repo.get_language_coverage.return_value = {}  # No coverage data
+                mock_repo_class.return_value = mock_repo
 
-            result = await repository.get_video_localization_summary(
-                mock_session, "video1"
-            )
+                result = await repository.get_video_localization_summary(
+                    mock_session, "video1"
+                )
 
-            assert result is not None
-            assert result["video"] == sample_video_db
-            assert result["localization_count"] == 0
-            assert result["supported_languages"] == []
-            assert result["localizations"] == []
-            assert result["has_localizations"] is False
-            assert result["most_common_language"] is None  # No coverage data
-            assert result["is_multilingual"] is False
-            assert result["localization_summary"] == {}
+                assert result is not None
+                assert result["video"] == sample_video_db
+                assert result["localization_count"] == 0
+                assert result["supported_languages"] == []
+                assert result["localizations"] == []
+                assert result["has_localizations"] is False
+                assert result["most_common_language"] is None  # No coverage data
+                assert result["is_multilingual"] is False
+                assert result["localization_summary"] == {}

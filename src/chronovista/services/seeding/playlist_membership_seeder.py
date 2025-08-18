@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -223,7 +223,7 @@ class PlaylistMembershipSeeder(BaseSeeder):
                 channel_id=channel_id,
                 title=f"[Placeholder] Video {video_id}",
                 description="Placeholder video created during playlist import - original may be deleted or private",
-                upload_date=datetime.utcnow(),
+                upload_date=datetime.now(timezone.utc),
                 duration=0,
                 made_for_kids=False,
                 deleted_flag=True,  # Mark as potentially deleted/unavailable

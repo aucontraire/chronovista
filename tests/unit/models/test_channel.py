@@ -43,7 +43,7 @@ class TestChannelBaseFactory:
 
     def test_channel_base_creation(self):
         """Test basic ChannelBase creation from factory."""
-        channel = ChannelBaseFactory()
+        channel = ChannelBaseFactory.build()
 
         assert isinstance(channel, ChannelBase)
         assert channel.channel_id == "UCuAXFkgsw1L7xaCfnd5JJOw"
@@ -55,7 +55,7 @@ class TestChannelBaseFactory:
 
     def test_channel_base_custom_values(self):
         """Test ChannelBase with custom values."""
-        custom_channel = ChannelBaseFactory(
+        custom_channel = ChannelBaseFactory.build(
             channel_id="UCCustomChannel123456789",
             title="Custom Channel",
             subscriber_count=1000000,
@@ -70,43 +70,43 @@ class TestChannelBaseFactory:
     @pytest.mark.parametrize("valid_channel_id", ChannelTestData.VALID_CHANNEL_IDS)
     def test_channel_base_valid_channel_ids(self, valid_channel_id):
         """Test ChannelBase with valid channel IDs."""
-        channel = ChannelBaseFactory(channel_id=valid_channel_id)
+        channel = ChannelBaseFactory.build(channel_id=valid_channel_id)
         assert channel.channel_id == valid_channel_id.strip()
 
     @pytest.mark.parametrize("invalid_channel_id", ChannelTestData.INVALID_CHANNEL_IDS)
     def test_channel_base_invalid_channel_ids(self, invalid_channel_id):
         """Test ChannelBase validation with invalid channel IDs."""
         with pytest.raises(ValidationError):
-            ChannelBaseFactory(channel_id=invalid_channel_id)
+            ChannelBaseFactory.build(channel_id=invalid_channel_id)
 
     @pytest.mark.parametrize("valid_title", ChannelTestData.VALID_TITLES)
     def test_channel_base_valid_titles(self, valid_title):
         """Test ChannelBase with valid titles."""
-        channel = ChannelBaseFactory(title=valid_title)
+        channel = ChannelBaseFactory.build(title=valid_title)
         assert channel.title == valid_title.strip()
 
     @pytest.mark.parametrize("invalid_title", ChannelTestData.INVALID_TITLES)
     def test_channel_base_invalid_titles(self, invalid_title):
         """Test ChannelBase validation with invalid titles."""
         with pytest.raises(ValidationError):
-            ChannelBaseFactory(title=invalid_title)
+            ChannelBaseFactory.build(title=invalid_title)
 
     @pytest.mark.parametrize("valid_country", ChannelTestData.VALID_COUNTRIES)
     def test_channel_base_valid_countries(self, valid_country):
         """Test ChannelBase with valid country codes."""
-        channel = ChannelBaseFactory(country=valid_country)
+        channel = ChannelBaseFactory.build(country=valid_country)
         assert channel.country == valid_country.upper()
 
     @pytest.mark.parametrize("invalid_country", ChannelTestData.INVALID_COUNTRIES)
     def test_channel_base_invalid_countries(self, invalid_country):
         """Test ChannelBase validation with invalid country codes."""
         with pytest.raises(ValidationError):
-            ChannelBaseFactory(country=invalid_country)
+            ChannelBaseFactory.build(country=invalid_country)
 
     @pytest.mark.parametrize("valid_language", ChannelTestData.VALID_LANGUAGES)
     def test_channel_base_valid_languages(self, valid_language):
         """Test ChannelBase with valid language codes."""
-        channel = ChannelBaseFactory(default_language=valid_language)
+        channel = ChannelBaseFactory.build(default_language=valid_language)
         # Language codes are now LanguageCode enums, so compare the value
         assert channel.default_language.value == valid_language
 
@@ -114,35 +114,35 @@ class TestChannelBaseFactory:
     def test_channel_base_invalid_languages(self, invalid_language):
         """Test ChannelBase validation with invalid language codes."""
         with pytest.raises(ValidationError):
-            ChannelBaseFactory(default_language=invalid_language)
+            ChannelBaseFactory.build(default_language=invalid_language)
 
     @pytest.mark.parametrize("valid_count", ChannelTestData.VALID_SUBSCRIBER_COUNTS)
     def test_channel_base_valid_subscriber_counts(self, valid_count):
         """Test ChannelBase with valid subscriber counts."""
-        channel = ChannelBaseFactory(subscriber_count=valid_count)
+        channel = ChannelBaseFactory.build(subscriber_count=valid_count)
         assert channel.subscriber_count == valid_count
 
     @pytest.mark.parametrize("invalid_count", ChannelTestData.INVALID_SUBSCRIBER_COUNTS)
     def test_channel_base_invalid_subscriber_counts(self, invalid_count):
         """Test ChannelBase validation with invalid subscriber counts."""
         with pytest.raises(ValidationError):
-            ChannelBaseFactory(subscriber_count=invalid_count)
+            ChannelBaseFactory.build(subscriber_count=invalid_count)
 
     @pytest.mark.parametrize("valid_count", ChannelTestData.VALID_VIDEO_COUNTS)
     def test_channel_base_valid_video_counts(self, valid_count):
         """Test ChannelBase with valid video counts."""
-        channel = ChannelBaseFactory(video_count=valid_count)
+        channel = ChannelBaseFactory.build(video_count=valid_count)
         assert channel.video_count == valid_count
 
     @pytest.mark.parametrize("invalid_count", ChannelTestData.INVALID_VIDEO_COUNTS)
     def test_channel_base_invalid_video_counts(self, invalid_count):
         """Test ChannelBase validation with invalid video counts."""
         with pytest.raises(ValidationError):
-            ChannelBaseFactory(video_count=invalid_count)
+            ChannelBaseFactory.build(video_count=invalid_count)
 
     def test_channel_base_model_dump(self):
         """Test ChannelBase model_dump functionality."""
-        channel = ChannelBaseFactory()
+        channel = ChannelBaseFactory.build()
         data = channel.model_dump()
 
         assert isinstance(data, dict)
@@ -168,6 +168,7 @@ class TestChannelBaseFactory:
         assert channel.title == "Validation Test Channel"
         assert channel.subscriber_count == 500000
         assert channel.country == "US"  # Should be uppercase
+        assert channel.default_language is not None
         assert channel.default_language.value == "en-US"  # LanguageCode enum value
 
     def test_channel_base_convenience_function(self):
@@ -183,7 +184,7 @@ class TestChannelCreateFactory:
 
     def test_channel_create_creation(self):
         """Test basic ChannelCreate creation from factory."""
-        channel = ChannelCreateFactory()
+        channel = ChannelCreateFactory.build()
 
         assert isinstance(channel, ChannelCreate)
         assert channel.channel_id == "UC_x5XG1OV2P6uZZ5FSM9Ttw"
@@ -205,7 +206,7 @@ class TestChannelUpdateFactory:
 
     def test_channel_update_creation(self):
         """Test basic ChannelUpdate creation from factory."""
-        update = ChannelUpdateFactory()
+        update = ChannelUpdateFactory.build()
 
         assert isinstance(update, ChannelUpdate)
         assert update.title == "Updated Channel Title"
@@ -214,7 +215,7 @@ class TestChannelUpdateFactory:
 
     def test_channel_update_partial_data(self):
         """Test ChannelUpdate with partial data."""
-        update = ChannelUpdateFactory(
+        update = ChannelUpdateFactory.build(
             title="Only Title Update",
             description=None,  # Only update some fields
             subscriber_count=None,
@@ -255,7 +256,7 @@ class TestChannelFactory:
 
     def test_channel_creation(self):
         """Test basic Channel creation from factory."""
-        channel = ChannelFactory()
+        channel = ChannelFactory.build()
 
         assert isinstance(channel, Channel)
         assert channel.channel_id == "UCMtFAi84ehTSYSE9XoHefig"
@@ -268,7 +269,7 @@ class TestChannelFactory:
         created_time = datetime(2023, 1, 1, tzinfo=timezone.utc)
         updated_time = datetime(2023, 12, 1, tzinfo=timezone.utc)
 
-        channel = ChannelFactory(created_at=created_time, updated_at=updated_time)
+        channel = ChannelFactory.build(created_at=created_time, updated_at=updated_time)
 
         assert channel.created_at == created_time
         assert channel.updated_at == updated_time
@@ -308,7 +309,7 @@ class TestChannelSearchFiltersFactory:
 
     def test_channel_search_filters_creation(self):
         """Test basic ChannelSearchFilters creation from factory."""
-        filters = ChannelSearchFiltersFactory()
+        filters = ChannelSearchFiltersFactory.build()
 
         assert isinstance(filters, ChannelSearchFilters)
         assert filters.title_query == "programming"
@@ -320,9 +321,7 @@ class TestChannelSearchFiltersFactory:
 
     def test_channel_search_filters_partial(self):
         """Test ChannelSearchFilters with partial data."""
-        filters = ChannelSearchFiltersFactory(
-            title_query="python", description_query=None, min_subscriber_count=None
-        )
+        filters = ChannelSearchFilters(title_query="python")
 
         assert filters.title_query == "python"
         assert filters.description_query is None
@@ -330,7 +329,7 @@ class TestChannelSearchFiltersFactory:
 
     def test_channel_search_filters_comprehensive(self):
         """Test ChannelSearchFilters with all fields."""
-        filters = ChannelSearchFiltersFactory(
+        filters = ChannelSearchFiltersFactory.build(
             title_query="machine learning",
             description_query="artificial intelligence",
             language_codes=["en", "es", "fr"],
@@ -365,7 +364,7 @@ class TestChannelStatisticsFactory:
 
     def test_channel_statistics_creation(self):
         """Test basic ChannelStatistics creation from factory."""
-        stats = ChannelStatisticsFactory()
+        stats = ChannelStatisticsFactory.build()
 
         assert isinstance(stats, ChannelStatistics)
         assert stats.total_channels == 150
@@ -376,7 +375,7 @@ class TestChannelStatisticsFactory:
 
     def test_channel_statistics_custom_values(self):
         """Test ChannelStatistics with custom values."""
-        stats = ChannelStatisticsFactory(
+        stats = ChannelStatisticsFactory.build(
             total_channels=500, total_subscribers=50000000, avg_videos_per_channel=120.5
         )
 
@@ -389,7 +388,7 @@ class TestChannelStatisticsFactory:
         custom_countries = [("US", 150), ("GB", 75), ("CA", 50)]
         custom_languages = [("en", 200), ("es", 50), ("fr", 25)]
 
-        stats = ChannelStatisticsFactory(
+        stats = ChannelStatisticsFactory.build(
             total_channels=275,
             total_subscribers=75000000,
             total_videos=22000,
@@ -434,7 +433,7 @@ class TestBatchOperations:
 
     def test_model_serialization_round_trip(self):
         """Test model serialization and deserialization."""
-        original = ChannelFactory(
+        original = ChannelFactory.build(
             channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",
             title="Serialization Test Channel",
             subscriber_count=2500000,
@@ -454,9 +453,9 @@ class TestBatchOperations:
 
     def test_factory_inheritance_behavior(self):
         """Test that factories properly handle model inheritance."""
-        base_channel = ChannelBaseFactory()
-        create_channel = ChannelCreateFactory()
-        full_channel = ChannelFactory()
+        base_channel = ChannelBaseFactory.build()
+        create_channel = ChannelCreateFactory.build()
+        full_channel = ChannelFactory.build()
 
         # All should have the core attributes
         for channel in [base_channel, create_channel, full_channel]:
@@ -476,7 +475,7 @@ class TestValidationEdgeCases:
 
     def test_none_values_handling(self):
         """Test handling of None values in optional fields."""
-        channel = ChannelBaseFactory(
+        channel = ChannelBaseFactory.build(
             description=None,
             subscriber_count=None,
             video_count=None,
@@ -495,7 +494,7 @@ class TestValidationEdgeCases:
     def test_boundary_values(self):
         """Test boundary values for validation."""
         # Test minimum valid values (must match YouTube format requirements)
-        min_channel = ChannelBaseFactory(
+        min_channel = ChannelBaseFactory.build(
             channel_id="UC12345678901234567890AB",  # Min valid UC format (24 chars)
             title="B",  # Min length (1 char)
             subscriber_count=0,
@@ -507,7 +506,7 @@ class TestValidationEdgeCases:
         assert min_channel.video_count == 0
 
         # Test maximum valid values
-        max_channel = ChannelBaseFactory(
+        max_channel = ChannelBaseFactory.build(
             channel_id="UC123456789012345678901Z",  # Valid UC format (exactly 24 chars)
             title="B" * 255,  # Max length (255 chars)
             thumbnail_url="https://yt3.ggpht.com/"
@@ -519,7 +518,7 @@ class TestValidationEdgeCases:
 
     def test_model_config_validation(self):
         """Test model configuration validation behaviors."""
-        channel = ChannelFactory()
+        channel = ChannelFactory.build()
 
         # Test validate_assignment works
         channel.subscriber_count = 7500000
@@ -532,27 +531,27 @@ class TestValidationEdgeCases:
     def test_field_validator_edge_cases(self):
         """Test field validator edge cases."""
         # Test title validator with whitespace
-        channel2 = ChannelBaseFactory(title="  Test Title  ")
+        channel2 = ChannelBaseFactory.build(title="  Test Title  ")
         assert channel2.title == "Test Title"  # Should be trimmed
 
         # Test country validator case normalization
-        channel3 = ChannelBaseFactory(country="us")
+        channel3 = ChannelBaseFactory.build(country="us")
         assert channel3.country == "US"  # Should be uppercase
 
         # Test language validator - LanguageCode enum handles validation
         from chronovista.models.enums import LanguageCode
 
-        channel4 = ChannelBaseFactory(default_language=LanguageCode.ENGLISH_US)
+        channel4 = ChannelBaseFactory.build(default_language=LanguageCode.ENGLISH_US)
         assert channel4.default_language == LanguageCode.ENGLISH_US
 
     @pytest.mark.parametrize("valid_url", ChannelTestData.VALID_THUMBNAIL_URLS)
     def test_valid_thumbnail_urls(self, valid_url):
         """Test ChannelBase with valid thumbnail URLs."""
-        channel = ChannelBaseFactory(thumbnail_url=valid_url)
+        channel = ChannelBaseFactory.build(thumbnail_url=valid_url)
         assert channel.thumbnail_url == valid_url
 
     @pytest.mark.parametrize("invalid_url", ChannelTestData.INVALID_THUMBNAIL_URLS)
     def test_invalid_thumbnail_urls(self, invalid_url):
         """Test ChannelBase validation with invalid thumbnail URLs."""
         with pytest.raises(ValidationError):
-            ChannelBaseFactory(thumbnail_url=invalid_url)
+            ChannelBaseFactory.build(thumbnail_url=invalid_url)

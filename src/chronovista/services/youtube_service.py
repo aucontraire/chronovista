@@ -242,6 +242,41 @@ class YouTubeService:
             print(f"Could not fetch captions for video {video_id}: {e}")
             return []
 
+    async def download_caption(
+        self, caption_id: str, fmt: str = "srt"
+    ) -> Optional[str]:
+        """
+        Download caption content using YouTube Data API v3.
+
+        Parameters
+        ----------
+        caption_id : str
+            The caption track ID to download
+        fmt : str
+            Format to download (srt, vtt, etc.). Default is 'srt'
+
+        Returns
+        -------
+        Optional[str]
+            Caption content as string, or None if download failed
+        """
+        try:
+            request = self.service.captions().download(id=caption_id, tfmt=fmt)
+            caption_content = request.execute()
+
+            # The response should be the caption content as bytes
+            if isinstance(caption_content, bytes):
+                return caption_content.decode("utf-8")
+            elif isinstance(caption_content, str):
+                return caption_content
+            else:
+                print(f"Unexpected caption content type: {type(caption_content)}")
+                return None
+
+        except Exception as e:
+            print(f"Could not download caption {caption_id}: {e}")
+            return None
+
     async def get_my_watch_later_videos(
         self, max_results: int = 50
     ) -> List[Dict[str, Any]]:

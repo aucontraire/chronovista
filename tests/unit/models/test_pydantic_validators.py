@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from chronovista.models.channel import ChannelCreate, ChannelUpdate
 from chronovista.models.enums import (
     DownloadReason,
+    LanguageCode,
     LanguagePreferenceType,
     TranscriptType,
 )
@@ -397,7 +398,7 @@ class TestUserLanguagePreferenceValidators:
         ):
             UserLanguagePreferenceCreate(
                 user_id="",
-                language_code="en",
+                language_code=LanguageCode.ENGLISH,
                 preference_type=LanguagePreferenceType.FLUENT,
                 priority=1,
             )
@@ -407,7 +408,7 @@ class TestUserLanguagePreferenceValidators:
         with pytest.raises(ValidationError, match="Input should be 'en', 'en-US'"):
             UserLanguagePreferenceCreate(
                 user_id="test_user",
-                language_code="",
+                language_code="",  # type: ignore[arg-type] # Testing validation error
                 preference_type=LanguagePreferenceType.FLUENT,
                 priority=1,
             )
@@ -419,8 +420,8 @@ class TestUserLanguagePreferenceValidators:
         ):
             UserLanguagePreferenceCreate(
                 user_id="test_user",
-                language_code="en",
-                preference_type="fluent",
+                language_code=LanguageCode.ENGLISH,
+                preference_type=LanguagePreferenceType.FLUENT,
                 priority=-1,
             )
 
@@ -435,7 +436,7 @@ class TestVideoTranscriptValidators:
         ):
             VideoTranscriptCreate(
                 video_id="",
-                language_code="en",
+                language_code=LanguageCode.ENGLISH,
                 transcript_text="Test transcript",
                 transcript_type=TranscriptType.AUTO,
                 download_reason=DownloadReason.USER_REQUEST,
@@ -446,7 +447,7 @@ class TestVideoTranscriptValidators:
         with pytest.raises(ValidationError, match="Input should be 'en', 'en-US'"):
             VideoTranscriptCreate(
                 video_id="dQw4w9WgXcQ",
-                language_code="",
+                language_code="",  # type: ignore[arg-type] # Testing validation error
                 transcript_text="Test transcript",
                 transcript_type=TranscriptType.AUTO,
                 download_reason=DownloadReason.USER_REQUEST,
@@ -459,10 +460,10 @@ class TestVideoTranscriptValidators:
         ):
             VideoTranscriptCreate(
                 video_id="dQw4w9WgXcQ",
-                language_code="en",
+                language_code=LanguageCode.ENGLISH,
                 transcript_text="",
-                transcript_type="auto",
-                download_reason="user_request",
+                transcript_type=TranscriptType.AUTO,
+                download_reason=DownloadReason.USER_REQUEST,
             )
 
     def test_confidence_score_validation_negative(self):
@@ -472,10 +473,10 @@ class TestVideoTranscriptValidators:
         ):
             VideoTranscriptCreate(
                 video_id="dQw4w9WgXcQ",
-                language_code="en",
+                language_code=LanguageCode.ENGLISH,
                 transcript_text="Test transcript",
-                transcript_type="auto",
-                download_reason="user_request",
+                transcript_type=TranscriptType.AUTO,
+                download_reason=DownloadReason.USER_REQUEST,
                 confidence_score=-0.1,
             )
 
@@ -486,10 +487,10 @@ class TestVideoTranscriptValidators:
         ):
             VideoTranscriptCreate(
                 video_id="dQw4w9WgXcQ",
-                language_code="en",
+                language_code=LanguageCode.ENGLISH,
                 transcript_text="Test transcript",
-                transcript_type="auto",
-                download_reason="user_request",
+                transcript_type=TranscriptType.AUTO,
+                download_reason=DownloadReason.USER_REQUEST,
                 confidence_score=1.1,
             )
 
@@ -497,10 +498,10 @@ class TestVideoTranscriptValidators:
         """Test confidence score validation with valid values."""
         transcript = VideoTranscriptCreate(
             video_id="dQw4w9WgXcQ",
-            language_code="en",
+            language_code=LanguageCode.ENGLISH,
             transcript_text="Test transcript",
-            transcript_type="auto",
-            download_reason="user_request",
+            transcript_type=TranscriptType.AUTO,
+            download_reason=DownloadReason.USER_REQUEST,
             confidence_score=0.95,
         )
         assert transcript.confidence_score == 0.95

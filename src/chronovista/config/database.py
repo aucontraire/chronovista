@@ -27,7 +27,7 @@ class DatabaseManager:
 
     def __init__(self) -> None:
         self._engine: AsyncEngine | None = None
-        self._session_factory: async_sessionmaker | None = None
+        self._session_factory: async_sessionmaker[AsyncSession] | None = None
 
     def get_engine(self) -> AsyncEngine:
         """Get or create async database engine."""
@@ -56,7 +56,7 @@ class DatabaseManager:
             self._engine = create_async_engine(database_url, **engine_kwargs)
         return self._engine
 
-    def get_session_factory(self) -> async_sessionmaker:
+    def get_session_factory(self) -> async_sessionmaker[AsyncSession]:
         """Get or create session factory."""
         if self._session_factory is None:
             engine = self.get_engine()
@@ -153,3 +153,7 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """Dependency for getting database session."""
     async for session in db_manager.get_session():
         yield session
+
+
+# Export for migrations
+__all__ = ["Base", "db_manager", "get_db_session", "metadata"]

@@ -11,11 +11,19 @@ and verify the channel → dependent model data flow.
 
 from __future__ import annotations
 
+from typing import Any, Awaitable, Dict
+
 import pytest
 from sqlalchemy import delete
 
-from chronovista.models.channel_keyword import ChannelKeyword, ChannelKeywordCreate
-from chronovista.models.playlist import Playlist, PlaylistCreate
+from chronovista.db.models import ChannelKeyword as DBChannelKeyword
+from chronovista.db.models import Playlist as DBPlaylist
+from chronovista.models.channel_keyword import (
+    ChannelKeywordCreate,
+    ChannelKeywordUpdate,
+)
+from chronovista.models.playlist import PlaylistCreate, PlaylistUpdate
+from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
 @pytest.mark.integration
@@ -27,7 +35,7 @@ class TestChannelKeywordFromAPI:
     async def test_channel_keyword_extraction(
         self,
         authenticated_youtube_service,
-        established_channel,
+        established_channel: Awaitable[Dict[str, Any] | None],
         integration_db_session,
     ):
         """Test extracting and storing channel keywords from real channel data."""
@@ -46,8 +54,6 @@ class TestChannelKeywordFromAPI:
 
                 test_suffix = f"keyword_test_{int(time.time())}"
 
-                from chronovista.db.models import ChannelKeyword as DBChannelKeyword
-
                 await session.execute(
                     delete(DBChannelKeyword).where(
                         DBChannelKeyword.keyword.like("%_test_%")
@@ -57,9 +63,9 @@ class TestChannelKeywordFromAPI:
 
                 # Simulate keyword extraction from channel description and metadata
                 # In real implementation, this would use NLP/ML to extract keywords
-                channel_description = established_channel_data["api_data"][
-                    "snippet"
-                ].get("description", "")
+                # channel_description = established_channel_data["api_data"][
+                #     "snippet"
+                # ].get("description", "")
 
                 # Simple keyword extraction for demo (real implementation would be more sophisticated)
                 sample_keywords = [
@@ -70,9 +76,9 @@ class TestChannelKeywordFromAPI:
                     f"artist_{test_suffix}",
                 ]
 
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
-                keyword_repo = BaseSQLAlchemyRepository(DBChannelKeyword)
+                keyword_repo: BaseSQLAlchemyRepository[
+                    DBChannelKeyword, ChannelKeywordCreate, ChannelKeywordUpdate
+                ] = BaseSQLAlchemyRepository(DBChannelKeyword)
 
                 created_keywords = []
                 for i, keyword in enumerate(sample_keywords):
@@ -99,11 +105,11 @@ class TestChannelKeywordFromAPI:
                     assert db_keyword.created_at is not None
 
                 # Clean up test data
-                for keyword in created_keywords:
+                for db_keyword in created_keywords:
                     await session.execute(
                         delete(DBChannelKeyword).where(
-                            DBChannelKeyword.channel_id == keyword.channel_id,
-                            DBChannelKeyword.keyword == keyword.keyword,
+                            DBChannelKeyword.channel_id == db_keyword.channel_id,
+                            DBChannelKeyword.keyword == db_keyword.keyword,
                         )
                     )
                 await session.commit()
@@ -113,7 +119,7 @@ class TestChannelKeywordFromAPI:
 
     async def test_channel_keyword_uniqueness(
         self,
-        established_channel,
+        established_channel: Awaitable[Dict[str, Any] | None],
         integration_db_session,
     ):
         """Test that duplicate keywords for same channel are handled properly."""
@@ -130,10 +136,9 @@ class TestChannelKeywordFromAPI:
 
                 unique_keyword = f"unique_test_keyword_{int(time.time())}"
 
-                from chronovista.db.models import ChannelKeyword as DBChannelKeyword
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
-                keyword_repo = BaseSQLAlchemyRepository(DBChannelKeyword)
+                keyword_repo: BaseSQLAlchemyRepository[
+                    DBChannelKeyword, ChannelKeywordCreate, ChannelKeywordUpdate
+                ] = BaseSQLAlchemyRepository(DBChannelKeyword)
 
                 # Create first keyword
                 keyword_create = ChannelKeywordCreate(
@@ -149,7 +154,6 @@ class TestChannelKeywordFromAPI:
                 assert first_keyword.keyword == unique_keyword
 
                 # Attempt to create duplicate - this should fail due to composite primary key constraint
-                duplicate_created = False
                 try:
                     duplicate_keyword = ChannelKeywordCreate(
                         channel_id=channel_id,
@@ -164,7 +168,6 @@ class TestChannelKeywordFromAPI:
                     await session.commit()
 
                     # If we get here, the duplicate was somehow allowed
-                    duplicate_created = True
                     assert second_keyword.channel_id == channel_id
                     assert second_keyword.keyword == unique_keyword
 
@@ -196,7 +199,7 @@ class TestPlaylistFromAPI:
     async def test_playlist_creation_from_api(
         self,
         authenticated_youtube_service,
-        established_channel,
+        established_channel: Awaitable[Dict[str, Any] | None],
         integration_db_session,
     ):
         """Test creating playlists from YouTube API data."""
@@ -212,8 +215,6 @@ class TestPlaylistFromAPI:
                 # Clean up any existing test playlists first
                 from sqlalchemy import delete
 
-                from chronovista.db.models import Playlist as DBPlaylist
-
                 await session.execute(
                     delete(DBPlaylist).where(DBPlaylist.playlist_id.like("PLtest_%"))
                 )
@@ -227,10 +228,9 @@ class TestPlaylistFromAPI:
                 if not playlists_data or len(playlists_data) == 0:
                     pytest.skip("No playlists found for authenticated user")
 
-                from chronovista.db.models import Playlist as DBPlaylist
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
-                playlist_repo = BaseSQLAlchemyRepository(DBPlaylist)
+                playlist_repo: BaseSQLAlchemyRepository[
+                    DBPlaylist, PlaylistCreate, PlaylistUpdate
+                ] = BaseSQLAlchemyRepository(DBPlaylist)
 
                 created_playlists = []
 
@@ -298,7 +298,7 @@ class TestPlaylistFromAPI:
     async def test_playlist_statistics_update(
         self,
         authenticated_youtube_service,
-        established_channel,
+        established_channel: Awaitable[Dict[str, Any] | None],
         integration_db_session,
     ):
         """Test updating playlist statistics from API."""
@@ -312,10 +312,9 @@ class TestPlaylistFromAPI:
         async with integration_db_session() as session:
             try:
                 # Create a sample playlist first
-                from chronovista.db.models import Playlist as DBPlaylist
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
-                playlist_repo = BaseSQLAlchemyRepository(DBPlaylist)
+                playlist_repo: BaseSQLAlchemyRepository[
+                    DBPlaylist, PlaylistCreate, PlaylistUpdate
+                ] = BaseSQLAlchemyRepository(DBPlaylist)
 
                 # Create unique playlist ID using factory function
                 from chronovista.models.youtube_types import create_test_playlist_id
@@ -338,7 +337,6 @@ class TestPlaylistFromAPI:
                 await session.commit()
 
                 # Simulate statistics update
-                from chronovista.models.playlist import PlaylistUpdate
 
                 stats_update = PlaylistUpdate(
                     video_count=15,  # Updated count
@@ -365,7 +363,7 @@ class TestPlaylistFromAPI:
                 await session.refresh(updated_playlist)
 
                 assert updated_playlist.video_count == 15
-                assert "Updated description" in updated_playlist.description
+                assert "Updated description" in (updated_playlist.description or "")
                 # Use the original timestamp for comparison
                 assert updated_playlist.updated_at >= original_updated_at
 
@@ -382,7 +380,7 @@ class TestPlaylistFromAPI:
 
     async def test_playlist_video_relationship_preparation(
         self,
-        established_channel,
+        established_channel: Awaitable[Dict[str, Any] | None],
         integration_db_session,
     ):
         """Test playlist creation in preparation for video relationships (Tier 3)."""
@@ -395,16 +393,15 @@ class TestPlaylistFromAPI:
 
         async with integration_db_session() as session:
             try:
-                from chronovista.db.models import Playlist as DBPlaylist
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
-                playlist_repo = BaseSQLAlchemyRepository(DBPlaylist)
+                playlist_repo: BaseSQLAlchemyRepository[
+                    DBPlaylist, PlaylistCreate, PlaylistUpdate
+                ] = BaseSQLAlchemyRepository(DBPlaylist)
 
                 import time
 
-                test_suffix = f"prep_test_{int(time.time())}"
-
+                # test_suffix = f"prep_test_{int(time.time())}"
                 # Create multiple playlists that will be used in Tier 3 video tests
+                # Note: test_suffix was removed as it's not currently used in this test
                 from chronovista.models.youtube_types import create_test_playlist_id
 
                 test_playlists = [

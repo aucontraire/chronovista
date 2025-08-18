@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import ChannelTopic as ChannelTopicDB
 from chronovista.models.channel_topic import (
-    ChannelTopic,
     ChannelTopicCreate,
     ChannelTopicSearchFilters,
     ChannelTopicStatistics,
@@ -314,8 +313,9 @@ class ChannelTopicRepository(
                 .where(ChannelTopicDB.topic_id.in_(topic_ids))
                 .group_by(ChannelTopicDB.channel_id)
                 .having(
-                    func.count(func.distinct(ChannelTopicDB.topic_id))
-                    == literal(len(topic_ids))
+                    func.count(func.distinct(ChannelTopicDB.topic_id)).__eq__(
+                        literal(len(topic_ids))
+                    )
                 )
             )
             return [row[0] for row in result]

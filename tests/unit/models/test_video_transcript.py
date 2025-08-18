@@ -44,7 +44,7 @@ class TestVideoTranscriptBaseFactory:
 
     def test_video_transcript_base_creation(self):
         """Test basic VideoTranscriptBase creation from factory."""
-        transcript = VideoTranscriptBaseFactory()
+        transcript = VideoTranscriptBaseFactory.build()
 
         assert isinstance(transcript, VideoTranscriptBase)
         assert transcript.video_id == "dQw4w9WgXcQ"
@@ -59,7 +59,7 @@ class TestVideoTranscriptBaseFactory:
 
     def test_video_transcript_base_custom_values(self):
         """Test VideoTranscriptBase with custom values."""
-        custom_transcript = VideoTranscriptBaseFactory(
+        custom_transcript = VideoTranscriptBaseFactory.build(
             video_id="dQw4w9WgXcQ",
             language_code="es-MX",
             transcript_text="Hola mundo, este es un texto personalizado.",
@@ -83,7 +83,7 @@ class TestVideoTranscriptBaseFactory:
     @pytest.mark.parametrize("valid_video_id", VideoTranscriptTestData.VALID_VIDEO_IDS)
     def test_video_transcript_base_valid_video_ids(self, valid_video_id):
         """Test VideoTranscriptBase with valid video IDs."""
-        transcript = VideoTranscriptBaseFactory(video_id=valid_video_id)
+        transcript = VideoTranscriptBaseFactory.build(video_id=valid_video_id)
         assert transcript.video_id == valid_video_id.strip()
 
     @pytest.mark.parametrize(
@@ -92,14 +92,14 @@ class TestVideoTranscriptBaseFactory:
     def test_video_transcript_base_invalid_video_ids(self, invalid_video_id):
         """Test VideoTranscriptBase validation with invalid video IDs."""
         with pytest.raises(ValidationError):
-            VideoTranscriptBaseFactory(video_id=invalid_video_id)
+            VideoTranscriptBaseFactory.build(video_id=invalid_video_id)
 
     @pytest.mark.parametrize(
         "valid_language_code", VideoTranscriptTestData.VALID_LANGUAGE_CODES
     )
     def test_video_transcript_base_valid_language_codes(self, valid_language_code):
         """Test VideoTranscriptBase with valid language codes."""
-        transcript = VideoTranscriptBaseFactory(language_code=valid_language_code)
+        transcript = VideoTranscriptBaseFactory.build(language_code=valid_language_code)
         assert transcript.language_code == valid_language_code.lower()
 
     @pytest.mark.parametrize(
@@ -108,14 +108,16 @@ class TestVideoTranscriptBaseFactory:
     def test_video_transcript_base_invalid_language_codes(self, invalid_language_code):
         """Test VideoTranscriptBase validation with invalid language codes."""
         with pytest.raises(ValidationError):
-            VideoTranscriptBaseFactory(language_code=invalid_language_code)
+            VideoTranscriptBaseFactory.build(language_code=invalid_language_code)
 
     @pytest.mark.parametrize(
         "valid_transcript_type", VideoTranscriptTestData.VALID_TRANSCRIPT_TYPES
     )
     def test_video_transcript_base_valid_transcript_types(self, valid_transcript_type):
         """Test VideoTranscriptBase with valid transcript types."""
-        transcript = VideoTranscriptBaseFactory(transcript_type=valid_transcript_type)
+        transcript = VideoTranscriptBaseFactory.build(
+            transcript_type=valid_transcript_type
+        )
         assert transcript.transcript_type == valid_transcript_type
 
     @pytest.mark.parametrize(
@@ -123,7 +125,9 @@ class TestVideoTranscriptBaseFactory:
     )
     def test_video_transcript_base_valid_download_reasons(self, valid_download_reason):
         """Test VideoTranscriptBase with valid download reasons."""
-        transcript = VideoTranscriptBaseFactory(download_reason=valid_download_reason)
+        transcript = VideoTranscriptBaseFactory.build(
+            download_reason=valid_download_reason
+        )
         assert transcript.download_reason == valid_download_reason
 
     @pytest.mark.parametrize(
@@ -131,7 +135,7 @@ class TestVideoTranscriptBaseFactory:
     )
     def test_video_transcript_base_valid_track_kinds(self, valid_track_kind):
         """Test VideoTranscriptBase with valid track kinds."""
-        transcript = VideoTranscriptBaseFactory(track_kind=valid_track_kind)
+        transcript = VideoTranscriptBaseFactory.build(track_kind=valid_track_kind)
         assert transcript.track_kind == valid_track_kind
 
     @pytest.mark.parametrize(
@@ -141,7 +145,9 @@ class TestVideoTranscriptBaseFactory:
         self, valid_confidence_score
     ):
         """Test VideoTranscriptBase with valid confidence scores."""
-        transcript = VideoTranscriptBaseFactory(confidence_score=valid_confidence_score)
+        transcript = VideoTranscriptBaseFactory.build(
+            confidence_score=valid_confidence_score
+        )
         assert transcript.confidence_score == valid_confidence_score
 
     @pytest.mark.parametrize(
@@ -152,14 +158,16 @@ class TestVideoTranscriptBaseFactory:
     ):
         """Test VideoTranscriptBase validation with invalid confidence scores."""
         with pytest.raises(ValidationError):
-            VideoTranscriptBaseFactory(confidence_score=invalid_confidence_score)
+            VideoTranscriptBaseFactory.build(confidence_score=invalid_confidence_score)
 
     @pytest.mark.parametrize(
         "valid_transcript_text", VideoTranscriptTestData.VALID_TRANSCRIPT_TEXTS
     )
     def test_video_transcript_base_valid_transcript_texts(self, valid_transcript_text):
         """Test VideoTranscriptBase with valid transcript texts."""
-        transcript = VideoTranscriptBaseFactory(transcript_text=valid_transcript_text)
+        transcript = VideoTranscriptBaseFactory.build(
+            transcript_text=valid_transcript_text
+        )
         assert transcript.transcript_text == valid_transcript_text.strip()
 
     @pytest.mark.parametrize(
@@ -170,14 +178,14 @@ class TestVideoTranscriptBaseFactory:
     ):
         """Test VideoTranscriptBase validation with invalid transcript texts."""
         with pytest.raises(ValidationError):
-            VideoTranscriptBaseFactory(transcript_text=invalid_transcript_text)
+            VideoTranscriptBaseFactory.build(transcript_text=invalid_transcript_text)
 
     @pytest.mark.parametrize(
         "valid_caption_name", VideoTranscriptTestData.VALID_CAPTION_NAMES
     )
     def test_video_transcript_base_valid_caption_names(self, valid_caption_name):
         """Test VideoTranscriptBase with valid caption names."""
-        transcript = VideoTranscriptBaseFactory(caption_name=valid_caption_name)
+        transcript = VideoTranscriptBaseFactory.build(caption_name=valid_caption_name)
         assert transcript.caption_name == valid_caption_name
 
     @pytest.mark.parametrize(
@@ -186,11 +194,11 @@ class TestVideoTranscriptBaseFactory:
     def test_video_transcript_base_invalid_caption_names(self, invalid_caption_name):
         """Test VideoTranscriptBase validation with invalid caption names."""
         with pytest.raises(ValidationError):
-            VideoTranscriptBaseFactory(caption_name=invalid_caption_name)
+            VideoTranscriptBaseFactory.build(caption_name=invalid_caption_name)
 
     def test_video_transcript_base_model_dump(self):
         """Test VideoTranscriptBase model_dump functionality."""
-        transcript = VideoTranscriptBaseFactory()
+        transcript = VideoTranscriptBaseFactory.build()
         data = transcript.model_dump()
 
         assert isinstance(data, dict)
@@ -238,7 +246,7 @@ class TestVideoTranscriptCreateFactory:
 
     def test_video_transcript_create_creation(self):
         """Test basic VideoTranscriptCreate creation from factory."""
-        transcript = VideoTranscriptCreateFactory()
+        transcript = VideoTranscriptCreateFactory.build()
 
         assert isinstance(transcript, VideoTranscriptCreate)
         assert transcript.video_id == "9bZkp7q19f0"
@@ -262,16 +270,17 @@ class TestVideoTranscriptUpdateFactory:
 
     def test_video_transcript_update_creation(self):
         """Test basic VideoTranscriptUpdate creation from factory."""
-        update = VideoTranscriptUpdateFactory()
+        update = VideoTranscriptUpdateFactory.build()
 
         assert isinstance(update, VideoTranscriptUpdate)
+        assert update.transcript_text is not None
         assert "Updated transcript text" in update.transcript_text
         assert update.transcript_type == TranscriptType.TRANSLATED
         assert update.confidence_score == 0.92
 
     def test_video_transcript_update_partial_data(self):
         """Test VideoTranscriptUpdate with partial data."""
-        update = VideoTranscriptUpdateFactory(
+        update = VideoTranscriptUpdateFactory.build(
             transcript_text="Only transcript text update",
             transcript_type=None,  # Only update some fields
             confidence_score=None,
@@ -313,7 +322,7 @@ class TestVideoTranscriptFactory:
 
     def test_video_transcript_creation(self):
         """Test basic VideoTranscript creation from factory."""
-        transcript = VideoTranscriptFactory()
+        transcript = VideoTranscriptFactory.build()
 
         assert isinstance(transcript, VideoTranscript)
         assert transcript.video_id == "3tmd-ClpJxA"
@@ -325,7 +334,7 @@ class TestVideoTranscriptFactory:
         """Test VideoTranscript with custom timestamps."""
         downloaded_time = datetime(2023, 1, 1, tzinfo=timezone.utc)
 
-        transcript = VideoTranscriptFactory(downloaded_at=downloaded_time)
+        transcript = VideoTranscriptFactory.build(downloaded_at=downloaded_time)
 
         assert transcript.downloaded_at == downloaded_time
 
@@ -369,7 +378,7 @@ class TestVideoTranscriptWithQualityFactory:
 
     def test_video_transcript_with_quality_creation(self):
         """Test basic VideoTranscriptWithQuality creation from factory."""
-        transcript = VideoTranscriptWithQualityFactory()
+        transcript = VideoTranscriptWithQualityFactory.build()
 
         assert isinstance(transcript, VideoTranscriptWithQuality)
         assert transcript.video_id == "jNQXAC9IVRw"
@@ -380,7 +389,7 @@ class TestVideoTranscriptWithQualityFactory:
 
     def test_video_transcript_with_quality_custom_values(self):
         """Test VideoTranscriptWithQuality with custom values."""
-        transcript = VideoTranscriptWithQualityFactory(
+        transcript = VideoTranscriptWithQualityFactory.build(
             quality_score=0.75, is_high_quality=False, language_match_user_prefs=False
         )
 
@@ -391,16 +400,16 @@ class TestVideoTranscriptWithQualityFactory:
     def test_video_transcript_with_quality_validation(self):
         """Test VideoTranscriptWithQuality quality score validation."""
         # Valid quality score
-        transcript = VideoTranscriptWithQualityFactory(quality_score=0.85)
+        transcript = VideoTranscriptWithQualityFactory.build(quality_score=0.85)
         assert transcript.quality_score == 0.85
 
         # Invalid quality score - too high
         with pytest.raises(ValidationError):
-            VideoTranscriptWithQualityFactory(quality_score=1.5)
+            VideoTranscriptWithQualityFactory.build(quality_score=1.5)
 
         # Invalid quality score - too low
         with pytest.raises(ValidationError):
-            VideoTranscriptWithQualityFactory(quality_score=-0.1)
+            VideoTranscriptWithQualityFactory.build(quality_score=-0.1)
 
     def test_video_transcript_with_quality_convenience_function(self):
         """Test convenience function for VideoTranscriptWithQuality."""
@@ -417,18 +426,21 @@ class TestTranscriptSearchFiltersFactory:
 
     def test_transcript_search_filters_creation(self):
         """Test basic TranscriptSearchFilters creation from factory."""
-        filters = TranscriptSearchFiltersFactory()
+        filters = TranscriptSearchFiltersFactory.build()
 
         assert isinstance(filters, TranscriptSearchFilters)
+        assert filters.video_ids is not None
         assert len(filters.video_ids) == 3
+        assert filters.language_codes is not None
         assert len(filters.language_codes) == 3
+        assert filters.transcript_types is not None
         assert len(filters.transcript_types) == 2
         assert filters.min_confidence == 0.7
         assert filters.is_cc_only is True
 
     def test_transcript_search_filters_partial(self):
         """Test TranscriptSearchFilters with partial data."""
-        filters = TranscriptSearchFiltersFactory(
+        filters = TranscriptSearchFiltersFactory.build(
             video_ids=["dQw4w9WgXcQ"], language_codes=None, min_confidence=None
         )
 
@@ -441,7 +453,7 @@ class TestTranscriptSearchFiltersFactory:
         download_after = datetime(2023, 1, 1, tzinfo=timezone.utc)
         download_before = datetime(2023, 12, 31, tzinfo=timezone.utc)
 
-        filters = TranscriptSearchFiltersFactory(
+        filters = TranscriptSearchFiltersFactory.build(
             video_ids=["dQw4w9WgXcQ", "9bZkp7q19f0", "3tmd-ClpJxA"],
             language_codes=["en", "es", "fr", "de"],
             transcript_types=[TranscriptType.MANUAL],
@@ -495,7 +507,7 @@ class TestBatchOperations:
 
     def test_model_serialization_round_trip(self):
         """Test model serialization and deserialization."""
-        original = VideoTranscriptFactory(
+        original = VideoTranscriptFactory.build(
             video_id="dQw4w9WgXcQ",
             transcript_text="Serialization test content",
             confidence_score=0.92,
@@ -514,10 +526,10 @@ class TestBatchOperations:
 
     def test_factory_inheritance_behavior(self):
         """Test that factories properly handle model inheritance."""
-        base_transcript = VideoTranscriptBaseFactory()
-        create_transcript = VideoTranscriptCreateFactory()
-        full_transcript = VideoTranscriptFactory()
-        quality_transcript = VideoTranscriptWithQualityFactory()
+        base_transcript = VideoTranscriptBaseFactory.build()
+        create_transcript = VideoTranscriptCreateFactory.build()
+        full_transcript = VideoTranscriptFactory.build()
+        quality_transcript = VideoTranscriptWithQualityFactory.build()
 
         # All should have the core attributes
         for transcript in [
@@ -548,7 +560,7 @@ class TestValidationEdgeCases:
 
     def test_none_values_handling(self):
         """Test handling of None values in optional fields."""
-        transcript = VideoTranscriptBaseFactory(
+        transcript = VideoTranscriptBaseFactory.build(
             confidence_score=None, caption_name=None
         )
 
@@ -558,7 +570,7 @@ class TestValidationEdgeCases:
     def test_boundary_values(self):
         """Test boundary values for validation."""
         # Test minimum valid values with proper YouTube ID formats
-        min_transcript = VideoTranscriptBaseFactory(
+        min_transcript = VideoTranscriptBaseFactory.build(
             video_id="dQw4w9WgXcQ",  # Valid 11-char video ID
             language_code="en",  # Min valid language code
             transcript_text="Hi!",  # Short but valid text
@@ -569,7 +581,7 @@ class TestValidationEdgeCases:
         assert min_transcript.confidence_score == 0.0
 
         # Test maximum valid values
-        max_transcript = VideoTranscriptBaseFactory(
+        max_transcript = VideoTranscriptBaseFactory.build(
             video_id="abcdefghijk",  # Valid 11-char length
             language_code="zh-CN",  # Valid complex language code
             transcript_text="A" * 1000,  # Long transcript
@@ -582,7 +594,7 @@ class TestValidationEdgeCases:
 
     def test_model_config_validation(self):
         """Test model configuration validation behaviors."""
-        transcript = VideoTranscriptFactory()
+        transcript = VideoTranscriptFactory.build()
 
         # Test validate_assignment works
         transcript.confidence_score = 0.75
@@ -595,17 +607,19 @@ class TestValidationEdgeCases:
     def test_field_validator_edge_cases(self):
         """Test field validator edge cases."""
         # Test video_id validator - VideoId type enforces exact format, no trimming
-        transcript1 = VideoTranscriptBaseFactory(video_id="dQw4w9WgXcQ")
+        transcript1 = VideoTranscriptBaseFactory.build(video_id="dQw4w9WgXcQ")
         assert (
             transcript1.video_id == "dQw4w9WgXcQ"
         )  # VideoId type validates exact format
 
         # Test transcript_text validator with whitespace
-        transcript2 = VideoTranscriptBaseFactory(transcript_text="  Test content  ")
+        transcript2 = VideoTranscriptBaseFactory.build(
+            transcript_text="  Test content  "
+        )
         assert transcript2.transcript_text == "Test content"  # Should be trimmed
 
         # Test language_code validator - enum requires exact case
-        transcript3 = VideoTranscriptBaseFactory(language_code="en-US")
+        transcript3 = VideoTranscriptBaseFactory.build(language_code="en-US")
         assert (
             transcript3.language_code == "en-us"
         )  # Language code normalized to lowercase
@@ -613,23 +627,25 @@ class TestValidationEdgeCases:
     def test_enum_validation(self):
         """Test enum validation for transcript types, download reasons, and track kinds."""
         # Test with string values
-        transcript1 = VideoTranscriptBaseFactory(transcript_type="auto")
+        transcript1 = VideoTranscriptBaseFactory.build(transcript_type="auto")
         assert transcript1.transcript_type == TranscriptType.AUTO
 
-        transcript2 = VideoTranscriptBaseFactory(download_reason="user_request")
+        transcript2 = VideoTranscriptBaseFactory.build(download_reason="user_request")
         assert transcript2.download_reason == DownloadReason.USER_REQUEST
 
-        transcript3 = VideoTranscriptBaseFactory(track_kind="asr")
+        transcript3 = VideoTranscriptBaseFactory.build(track_kind="asr")
         assert transcript3.track_kind == TrackKind.ASR
 
         # Test with enum values
-        transcript4 = VideoTranscriptBaseFactory(transcript_type=TranscriptType.MANUAL)
+        transcript4 = VideoTranscriptBaseFactory.build(
+            transcript_type=TranscriptType.MANUAL
+        )
         assert transcript4.transcript_type == TranscriptType.MANUAL
 
     def test_transcript_quality_scenarios(self):
         """Test different transcript quality scenarios."""
         # High quality manual transcript
-        high_quality = VideoTranscriptBaseFactory(
+        high_quality = VideoTranscriptBaseFactory.build(
             transcript_type=TranscriptType.MANUAL,
             is_cc=True,
             is_auto_synced=False,
@@ -641,7 +657,7 @@ class TestValidationEdgeCases:
         assert high_quality.confidence_score == 0.95
 
         # Auto-generated transcript
-        auto_quality = VideoTranscriptBaseFactory(
+        auto_quality = VideoTranscriptBaseFactory.build(
             transcript_type=TranscriptType.AUTO,
             is_cc=False,
             is_auto_synced=True,
@@ -653,7 +669,7 @@ class TestValidationEdgeCases:
         assert auto_quality.track_kind == TrackKind.ASR
 
         # Translated transcript
-        translated = VideoTranscriptBaseFactory(
+        translated = VideoTranscriptBaseFactory.build(
             transcript_type=TranscriptType.TRANSLATED,
             language_code="es",
             download_reason=DownloadReason.LEARNING_LANGUAGE,
@@ -665,28 +681,28 @@ class TestValidationEdgeCases:
     def test_multilingual_content(self):
         """Test multilingual transcript content scenarios."""
         # English transcript
-        english = VideoTranscriptBaseFactory(
+        english = VideoTranscriptBaseFactory.build(
             language_code="en-US",
             transcript_text="Hello everyone, welcome to our English tutorial!",
         )
         assert english.language_code == "en-us"
 
         # Spanish transcript
-        spanish = VideoTranscriptBaseFactory(
+        spanish = VideoTranscriptBaseFactory.build(
             language_code="es-MX",
             transcript_text="¡Hola a todos, bienvenidos a nuestro tutorial en español!",
         )
         assert spanish.language_code == "es-mx"
 
         # Japanese transcript
-        japanese = VideoTranscriptBaseFactory(
+        japanese = VideoTranscriptBaseFactory.build(
             language_code="ja",
             transcript_text="こんにちは皆さん、日本語のチュートリアルへようこそ！",
         )
         assert japanese.language_code == "ja"
 
         # Mixed content transcript
-        mixed = VideoTranscriptBaseFactory(
+        mixed = VideoTranscriptBaseFactory.build(
             language_code="en",
             transcript_text="Hello! Hola! Bonjour! This video has multilingual content.",
         )
@@ -708,7 +724,7 @@ class TestValidationEdgeCases:
         ]
 
         for reason, context in reasons_and_contexts:
-            transcript = VideoTranscriptBaseFactory(
+            transcript = VideoTranscriptBaseFactory.build(
                 download_reason=reason, transcript_text=context
             )
             assert transcript.download_reason == reason

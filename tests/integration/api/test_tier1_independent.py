@@ -20,14 +20,15 @@ from sqlalchemy import delete
 from chronovista.db.models import Channel as DBChannel
 from chronovista.db.models import ChannelKeyword as DBChannelKeyword
 from chronovista.db.models import Playlist as DBPlaylist
+from chronovista.db.models import TopicCategory as DBTopicCategory
 from chronovista.db.models import UserVideo as DBUserVideo
 from chronovista.db.models import Video as DBVideo
 from chronovista.db.models import VideoLocalization as DBVideoLocalization
 from chronovista.db.models import VideoTag as DBVideoTag
 from chronovista.db.models import VideoTranscript as DBVideoTranscript
-from chronovista.models.channel import ChannelCreate
+from chronovista.models.channel import ChannelCreate, ChannelUpdate
 from chronovista.models.enums import LanguageCode, LanguagePreferenceType
-from chronovista.models.topic_category import TopicCategoryCreate
+from chronovista.models.topic_category import TopicCategoryCreate, TopicCategoryUpdate
 from chronovista.models.user_language_preference import UserLanguagePreferenceCreate
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 
@@ -115,7 +116,9 @@ class TestChannelFromYouTubeAPI:
                 assert len(channel_create.title) > 0
                 assert channel_create.default_language is not None
 
-                channel_repo = BaseSQLAlchemyRepository(DBChannel)
+                channel_repo: BaseSQLAlchemyRepository[
+                    DBChannel, ChannelCreate, ChannelUpdate
+                ] = BaseSQLAlchemyRepository(DBChannel)
 
                 # Check if channel already exists
                 from sqlalchemy import select as sql_select
@@ -127,7 +130,6 @@ class TestChannelFromYouTubeAPI:
 
                 if db_channel:
                     # Update existing channel
-                    from chronovista.models.channel import ChannelUpdate
 
                     channel_update = ChannelUpdate(
                         title=channel_create.title,
@@ -233,7 +235,9 @@ class TestChannelFromYouTubeAPI:
 
         async with integration_db_session() as session:
             try:
-                channel_repo = BaseSQLAlchemyRepository(DBChannel)
+                channel_repo: BaseSQLAlchemyRepository[
+                    DBChannel, ChannelCreate, ChannelUpdate
+                ] = BaseSQLAlchemyRepository(DBChannel)
 
                 # Create initial channel
                 initial_api_data = (
@@ -280,7 +284,6 @@ class TestChannelFromYouTubeAPI:
                 )
 
                 # Create update model
-                from chronovista.models.channel import ChannelUpdate
 
                 # Handle language code properly with enum
                 fresh_default_lang = fresh_api_data["snippet"].get("defaultLanguage")
@@ -359,7 +362,9 @@ class TestChannelFromYouTubeAPI:
 
         async with integration_db_session() as session:
             try:
-                channel_repo = BaseSQLAlchemyRepository(DBChannel)
+                channel_repo: BaseSQLAlchemyRepository[
+                    DBChannel, ChannelCreate, ChannelUpdate
+                ] = BaseSQLAlchemyRepository(DBChannel)
                 created_channels = []
 
                 for i, channel_id in enumerate(
@@ -698,7 +703,7 @@ class TestUserLanguagePreferenceIndependent:
                     with pytest.raises(Exception):  # Any validation error
                         UserLanguagePreferenceCreate(
                             user_id=unique_user_id,
-                            language_code=invalid_code,
+                            language_code=invalid_code,  # type: ignore[arg-type] # Intentionally testing invalid input
                             preference_type=LanguagePreferenceType.CURIOUS,
                             priority=1,
                         )
@@ -738,8 +743,6 @@ class TestTopicCategoryHierarchy:
                 test_suffix = f"hierarchy_test_{int(time.time())}"
 
                 # Clean up any existing test data first
-                from chronovista.db.models import TopicCategory as DBTopicCategory
-
                 await session.execute(
                     delete(DBTopicCategory).where(
                         DBTopicCategory.topic_id.like("%hierarchy_test%")
@@ -755,10 +758,9 @@ class TestTopicCategoryHierarchy:
                 )
 
                 # Use repository pattern
-                from chronovista.db.models import TopicCategory as DBTopicCategory
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
-                topic_repo = BaseSQLAlchemyRepository(DBTopicCategory)
+                topic_repo: BaseSQLAlchemyRepository[
+                    DBTopicCategory, TopicCategoryCreate, TopicCategoryUpdate
+                ] = BaseSQLAlchemyRepository(DBTopicCategory)
 
                 # Create root in database
                 db_root = await topic_repo.create(session, obj_in=root_category)
@@ -837,8 +839,6 @@ class TestTopicCategoryHierarchy:
                 test_suffix = f"youtube_test_{int(time.time())}"
 
                 # Clean up any existing test data first
-                from chronovista.db.models import TopicCategory as DBTopicCategory
-
                 await session.execute(
                     delete(DBTopicCategory).where(
                         DBTopicCategory.topic_id.like("%youtube_test%")
@@ -878,10 +878,9 @@ class TestTopicCategoryHierarchy:
                     },
                 ]
 
-                from chronovista.db.models import TopicCategory as DBTopicCategory
-                from chronovista.repositories.base import BaseSQLAlchemyRepository
-
-                topic_repo = BaseSQLAlchemyRepository(DBTopicCategory)
+                topic_repo: BaseSQLAlchemyRepository[
+                    DBTopicCategory, TopicCategoryCreate, TopicCategoryUpdate
+                ] = BaseSQLAlchemyRepository(DBTopicCategory)
 
                 created_topics = []
                 for topic_data in youtube_topics:

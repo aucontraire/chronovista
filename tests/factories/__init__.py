@@ -60,6 +60,18 @@ from .playlist_factory import (
     create_playlist_statistics,
     create_playlist_update,
 )
+from .takeout_watch_entry_factory import (
+    TakeoutWatchEntryFactory,
+    TakeoutWatchEntryMinimalFactory,
+    TakeoutWatchEntryTechFactory,
+    TakeoutWatchEntryTestData,
+    TakeoutWatchEntryWithTimeFactory,
+    create_batch_takeout_watch_entries,
+    create_minimal_takeout_watch_entry,
+    create_takeout_watch_entry,
+    create_takeout_watch_entry_with_time,
+    create_tech_takeout_watch_entry,
+)
 from .topic_category_factory import (
     TopicCategoryAnalyticsFactory,
     TopicCategoryBaseFactory,
@@ -227,4 +239,15 @@ __all__ = [
     "playlist_id",
     "user_id",
     "topic_id",
+    # TakeoutWatchEntry factories
+    "TakeoutWatchEntryFactory",
+    "TakeoutWatchEntryMinimalFactory",
+    "TakeoutWatchEntryWithTimeFactory",
+    "TakeoutWatchEntryTechFactory",
+    "TakeoutWatchEntryTestData",
+    "create_takeout_watch_entry",
+    "create_minimal_takeout_watch_entry",
+    "create_takeout_watch_entry_with_time",
+    "create_tech_takeout_watch_entry",
+    "create_batch_takeout_watch_entries",
 ]

@@ -27,6 +27,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from chronovista.config.database import db_manager
+from chronovista.config.settings import settings
 from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.repositories.channel_topic_repository import ChannelTopicRepository
 from chronovista.repositories.topic_category_repository import TopicCategoryRepository
@@ -905,7 +906,9 @@ def export_topics(
             # Generate output filename if not provided
             if output is None:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                output_path = Path(f"chronovista_topics_{timestamp}.{format}")
+                # Ensure export directory exists
+                settings.create_directories()
+                output_path = settings.export_dir / f"chronovista_topics_{timestamp}.{format}"
             else:
                 output_path = Path(output)
 
@@ -1153,7 +1156,9 @@ def topic_graph_export(
                     if output:
                         output_path = Path(output)
                     else:
-                        output_path = Path(f"topic_graph_{timestamp}.dot")
+                        # Ensure export directory exists
+                        settings.create_directories()
+                        output_path = settings.export_dir / f"topic_graph_{timestamp}.dot"
 
                     # Write DOT file
                     output_path.write_text(graph_content, encoding="utf-8")
@@ -1184,7 +1189,9 @@ def topic_graph_export(
                     if output:
                         output_path = Path(output)
                     else:
-                        output_path = Path(f"topic_graph_{timestamp}.json")
+                        # Ensure export directory exists
+                        settings.create_directories()
+                        output_path = settings.export_dir / f"topic_graph_{timestamp}.json"
 
                     # Write JSON file
                     with open(output_path, "w", encoding="utf-8") as f:
@@ -1357,7 +1364,9 @@ def topic_heatmap_export(
                 if output:
                     output_path = Path(output)
                 else:
-                    output_path = Path(f"topic_heatmap_{period}_{timestamp}.json")
+                    # Ensure export directory exists
+                    settings.create_directories()
+                    output_path = settings.export_dir / f"topic_heatmap_{period}_{timestamp}.json"
 
                 # Write heatmap file
                 with open(output_path, "w", encoding="utf-8") as f:

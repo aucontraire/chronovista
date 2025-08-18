@@ -16,8 +16,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
-from urllib.parse import parse_qs, urlparse
+from typing import Any, Dict, List, Optional, Set
 
 from ..models.takeout import (
     ChannelSummary,

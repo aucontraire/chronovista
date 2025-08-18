@@ -110,7 +110,7 @@ class ChannelFactory(factory.Factory):
 
 class ChannelSearchFiltersFactory(factory.Factory):
     """Factory for ChannelSearchFilters models.
-    
+
     When called with no arguments, generates realistic test data.
     When called with specific arguments, only those fields are set,
     leaving others as None (respecting model defaults).

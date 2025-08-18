@@ -46,7 +46,7 @@ class ChannelKeywordCreateFactory(ChannelKeywordBaseFactory):
 
 class ChannelKeywordUpdateFactory(factory.Factory):
     """Factory for ChannelKeywordUpdate models.
-    
+
     Note: This factory respects the model's default values (None for all fields).
     For Update models, the default behavior should be an empty update (all None),
     with values only generated when explicitly requested.

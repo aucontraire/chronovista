@@ -14,7 +14,7 @@ from chronovista.db.models import TopicCategory as TopicCategoryDB
 from chronovista.models.topic_category import (
     TopicCategoryCreate,
     TopicCategorySearchFilters,
-    TopicCategoryStatistics
+    TopicCategoryStatistics,
 )
 from chronovista.repositories.topic_category_repository import TopicCategoryRepository
 
@@ -136,9 +136,15 @@ class TestTopicCategoryRepository:
         sample_topic_db: TopicCategoryDB,
     ):
         """Test creating a new topic."""
-        with patch.object(repository, "get_by_topic_id", new=AsyncMock(return_value=None)) as mock_get:
-            with patch.object(repository, "create", new=AsyncMock(return_value=sample_topic_db)) as mock_create:
-                result = await repository.create_or_update(mock_session, sample_topic_create)
+        with patch.object(
+            repository, "get_by_topic_id", new=AsyncMock(return_value=None)
+        ) as mock_get:
+            with patch.object(
+                repository, "create", new=AsyncMock(return_value=sample_topic_db)
+            ) as mock_create:
+                result = await repository.create_or_update(
+                    mock_session, sample_topic_create
+                )
 
                 assert result == sample_topic_db
                 mock_get.assert_called_once_with(
@@ -157,9 +163,15 @@ class TestTopicCategoryRepository:
         sample_topic_db: TopicCategoryDB,
     ):
         """Test updating an existing topic."""
-        with patch.object(repository, "get_by_topic_id", new=AsyncMock(return_value=sample_topic_db)) as mock_get:
-            with patch.object(repository, "update", new=AsyncMock(return_value=sample_topic_db)) as mock_update:
-                result = await repository.create_or_update(mock_session, sample_topic_create)
+        with patch.object(
+            repository, "get_by_topic_id", new=AsyncMock(return_value=sample_topic_db)
+        ) as mock_get:
+            with patch.object(
+                repository, "update", new=AsyncMock(return_value=sample_topic_db)
+            ) as mock_update:
+                result = await repository.create_or_update(
+                    mock_session, sample_topic_create
+                )
 
                 assert result == sample_topic_db
                 mock_get.assert_called_once_with(
@@ -291,7 +303,9 @@ class TestTopicCategoryRepository:
         sample_topic_db: TopicCategoryDB,
     ):
         """Test deleting topic by topic ID."""
-        with patch.object(repository, "get_by_topic_id", new=AsyncMock(return_value=sample_topic_db)) as mock_get:
+        with patch.object(
+            repository, "get_by_topic_id", new=AsyncMock(return_value=sample_topic_db)
+        ) as mock_get:
             result = await repository.delete_by_topic_id(mock_session, "/m/019_rr")
 
             assert result == sample_topic_db
@@ -308,9 +322,15 @@ class TestTopicCategoryRepository:
         sample_topic_db: TopicCategoryDB,
     ):
         """Test bulk creating new topics."""
-        with patch.object(repository, "get_by_topic_id", new=AsyncMock(return_value=None)) as mock_get:
-            with patch.object(repository, "create", new=AsyncMock(return_value=sample_topic_db)) as mock_create:
-                result = await repository.bulk_create(mock_session, [sample_topic_create])
+        with patch.object(
+            repository, "get_by_topic_id", new=AsyncMock(return_value=None)
+        ) as mock_get:
+            with patch.object(
+                repository, "create", new=AsyncMock(return_value=sample_topic_db)
+            ) as mock_create:
+                result = await repository.bulk_create(
+                    mock_session, [sample_topic_create]
+                )
 
                 assert result == [sample_topic_db]
                 mock_get.assert_called_once()
@@ -325,7 +345,9 @@ class TestTopicCategoryRepository:
         sample_topic_db: TopicCategoryDB,
     ):
         """Test bulk creating with existing topics."""
-        with patch.object(repository, "get_by_topic_id", new=AsyncMock(return_value=sample_topic_db)) as mock_get:
+        with patch.object(
+            repository, "get_by_topic_id", new=AsyncMock(return_value=sample_topic_db)
+        ) as mock_get:
             result = await repository.bulk_create(mock_session, [sample_topic_create])
 
             assert result == [sample_topic_db]
@@ -339,7 +361,9 @@ class TestTopicCategoryRepository:
         sample_topic_db: TopicCategoryDB,
     ):
         """Test getting topic path for root topic."""
-        with patch.object(repository, "get_by_topic_id", new=AsyncMock(return_value=sample_topic_db)):
+        with patch.object(
+            repository, "get_by_topic_id", new=AsyncMock(return_value=sample_topic_db)
+        ):
             result = await repository.get_topic_path(mock_session, "/m/019_rr")
 
             assert result == [sample_topic_db]
@@ -354,9 +378,11 @@ class TestTopicCategoryRepository:
     ):
         """Test getting topic path for child topic."""
         # Mock returning child topic first, then parent
-        with patch.object(repository, "get_by_topic_id", new=AsyncMock(
-            side_effect=[sample_child_topic_db, sample_topic_db]
-        )):
+        with patch.object(
+            repository,
+            "get_by_topic_id",
+            new=AsyncMock(side_effect=[sample_child_topic_db, sample_topic_db]),
+        ):
             result = await repository.get_topic_path(mock_session, "/m/05qjc")
 
             # Should return path from root to child: [parent, child]
@@ -475,7 +501,9 @@ class TestTopicCategoryRepositoryAdditionalMethods:
     ):
         """Test that get_topic_hierarchy method works."""
         mock_topic = MagicMock()
-        with patch.object(repository, "get_by_topic_id", new=AsyncMock(return_value=mock_topic)) as mock_get:
+        with patch.object(
+            repository, "get_by_topic_id", new=AsyncMock(return_value=mock_topic)
+        ) as mock_get:
             result = await repository.get_topic_hierarchy(mock_session, "/m/019_rr")
 
             assert result == mock_topic
@@ -486,7 +514,9 @@ class TestTopicCategoryRepositoryAdditionalMethods:
         self, repository: TopicCategoryRepository, mock_session
     ):
         """Test getting topic path for nonexistent topic."""
-        with patch.object(repository, "get_by_topic_id", new=AsyncMock(return_value=None)):
+        with patch.object(
+            repository, "get_by_topic_id", new=AsyncMock(return_value=None)
+        ):
             result = await repository.get_topic_path(mock_session, "/m/nonexistent")
 
             assert result == []

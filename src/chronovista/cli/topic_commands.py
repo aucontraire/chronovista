@@ -908,7 +908,9 @@ def export_topics(
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 # Ensure export directory exists
                 settings.create_directories()
-                output_path = settings.export_dir / f"chronovista_topics_{timestamp}.{format}"
+                output_path = (
+                    settings.export_dir / f"chronovista_topics_{timestamp}.{format}"
+                )
             else:
                 output_path = Path(output)
 
@@ -1158,7 +1160,9 @@ def topic_graph_export(
                     else:
                         # Ensure export directory exists
                         settings.create_directories()
-                        output_path = settings.export_dir / f"topic_graph_{timestamp}.dot"
+                        output_path = (
+                            settings.export_dir / f"topic_graph_{timestamp}.dot"
+                        )
 
                     # Write DOT file
                     output_path.write_text(graph_content, encoding="utf-8")
@@ -1191,7 +1195,9 @@ def topic_graph_export(
                     else:
                         # Ensure export directory exists
                         settings.create_directories()
-                        output_path = settings.export_dir / f"topic_graph_{timestamp}.json"
+                        output_path = (
+                            settings.export_dir / f"topic_graph_{timestamp}.json"
+                        )
 
                     # Write JSON file
                     with open(output_path, "w", encoding="utf-8") as f:
@@ -1366,7 +1372,9 @@ def topic_heatmap_export(
                 else:
                     # Ensure export directory exists
                     settings.create_directories()
-                    output_path = settings.export_dir / f"topic_heatmap_{period}_{timestamp}.json"
+                    output_path = (
+                        settings.export_dir / f"topic_heatmap_{period}_{timestamp}.json"
+                    )
 
                 # Write heatmap file
                 with open(output_path, "w", encoding="utf-8") as f:

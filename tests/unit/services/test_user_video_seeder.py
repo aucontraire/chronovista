@@ -136,8 +136,17 @@ class TestUserVideoSeederSeeding:
     ) -> None:
         """Test seeding new user-video relationships."""
         # Mock repository to return None (relationships don't exist)
-        with patch.object(seeder.user_video_repo, 'get_by_composite_key', new_callable=AsyncMock, return_value=None) as mock_get, \
-             patch.object(seeder.user_video_repo, 'create', new_callable=AsyncMock) as mock_create:
+        with (
+            patch.object(
+                seeder.user_video_repo,
+                "get_by_composite_key",
+                new_callable=AsyncMock,
+                return_value=None,
+            ) as mock_get,
+            patch.object(
+                seeder.user_video_repo, "create", new_callable=AsyncMock
+            ) as mock_create,
+        ):
 
             result = await seeder.seed(mock_session, sample_takeout_data)
 
@@ -158,7 +167,12 @@ class TestUserVideoSeederSeeding:
         """Test seeding existing user-video relationships (updates)."""
         # Mock repository to return existing relationship
         mock_user_video = Mock()
-        with patch.object(seeder.user_video_repo, 'get_by_composite_key', new_callable=AsyncMock, return_value=mock_user_video):
+        with patch.object(
+            seeder.user_video_repo,
+            "get_by_composite_key",
+            new_callable=AsyncMock,
+            return_value=mock_user_video,
+        ):
 
             result = await seeder.seed(mock_session, sample_takeout_data)
 
@@ -180,7 +194,12 @@ class TestUserVideoSeederSeeding:
             progress_calls.append(data_type)
 
         progress = ProgressCallback(mock_progress_callback)
-        with patch.object(seeder.user_video_repo, 'get_by_composite_key', new_callable=AsyncMock, return_value=None):
+        with patch.object(
+            seeder.user_video_repo,
+            "get_by_composite_key",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
 
             result = await seeder.seed(mock_session, sample_takeout_data, progress)
 
@@ -194,7 +213,12 @@ class TestUserVideoSeederSeeding:
     ) -> None:
         """Test error handling during seeding."""
         # Mock repository to raise error
-        with patch.object(seeder.user_video_repo, 'get_by_composite_key', new_callable=AsyncMock, side_effect=Exception("Database error")):
+        with patch.object(
+            seeder.user_video_repo,
+            "get_by_composite_key",
+            new_callable=AsyncMock,
+            side_effect=Exception("Database error"),
+        ):
 
             result = await seeder.seed(mock_session, sample_takeout_data)
 
@@ -229,7 +253,7 @@ class TestUserVideoSeederSeeding:
     ) -> None:
         """Test filtering watch entries that have timestamps."""
         from chronovista.models.takeout.takeout_data import TakeoutWatchEntry
-        
+
         # Create entries directly to ensure None is preserved
         entry_with_timestamp_1 = TakeoutWatchEntry(
             title="With Timestamp",
@@ -239,9 +263,9 @@ class TestUserVideoSeederSeeding:
             video_id=TestIds.TEST_VIDEO_1,
             channel_id=TestIds.TEST_CHANNEL_1,
             channel_url=f"https://www.youtube.com/channel/{TestIds.TEST_CHANNEL_1}",
-            raw_time="2024-01-01T10:00:00Z"
+            raw_time="2024-01-01T10:00:00Z",
         )
-        
+
         entry_without_timestamp = TakeoutWatchEntry(
             title="Without Timestamp",
             title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_2}",
@@ -250,9 +274,9 @@ class TestUserVideoSeederSeeding:
             video_id=TestIds.TEST_VIDEO_2,
             channel_id=TestIds.TEST_CHANNEL_2,
             channel_url=f"https://www.youtube.com/channel/{TestIds.TEST_CHANNEL_2}",
-            raw_time=None
+            raw_time=None,
         )
-        
+
         entry_with_timestamp_2 = TakeoutWatchEntry(
             title="With Timestamp 2",
             title_url=f"https://www.youtube.com/watch?v={TestIds.NEVER_GONNA_GIVE_YOU_UP}",
@@ -261,9 +285,9 @@ class TestUserVideoSeederSeeding:
             video_id=TestIds.NEVER_GONNA_GIVE_YOU_UP,
             channel_id=TestIds.RICK_ASTLEY_CHANNEL,
             channel_url=f"https://www.youtube.com/channel/{TestIds.RICK_ASTLEY_CHANNEL}",
-            raw_time="2024-01-01T11:00:00Z"
+            raw_time="2024-01-01T11:00:00Z",
         )
-        
+
         # Create data with some entries missing timestamps
         data_mixed_timestamps = create_takeout_data(
             takeout_path=Path("/test/takeout"),
@@ -276,8 +300,17 @@ class TestUserVideoSeederSeeding:
             playlists=[],
         )
 
-        with patch.object(seeder.user_video_repo, 'get_by_composite_key', new_callable=AsyncMock, return_value=None) as mock_get, \
-             patch.object(seeder.user_video_repo, 'create', new_callable=AsyncMock) as mock_create:
+        with (
+            patch.object(
+                seeder.user_video_repo,
+                "get_by_composite_key",
+                new_callable=AsyncMock,
+                return_value=None,
+            ) as mock_get,
+            patch.object(
+                seeder.user_video_repo, "create", new_callable=AsyncMock
+            ) as mock_create,
+        ):
 
             result = await seeder.seed(mock_session, data_mixed_timestamps)
 
@@ -334,7 +367,12 @@ class TestUserVideoSeederBatchProcessing:
             playlists=[],
         )
 
-        with patch.object(seeder.user_video_repo, 'get_by_composite_key', new_callable=AsyncMock, return_value=None):
+        with patch.object(
+            seeder.user_video_repo,
+            "get_by_composite_key",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
 
             result = await seeder.seed(mock_session, large_data)
 
@@ -441,7 +479,12 @@ class TestUserVideoSeederEdgeCases:
         )
 
         # Mock first call returns None (new), second returns existing
-        with patch.object(seeder.user_video_repo, 'get_by_composite_key', new_callable=AsyncMock, side_effect=[None, Mock()]):
+        with patch.object(
+            seeder.user_video_repo,
+            "get_by_composite_key",
+            new_callable=AsyncMock,
+            side_effect=[None, Mock()],
+        ):
 
             result = await seeder.seed(mock_session, data)
 
@@ -464,7 +507,7 @@ class TestUserVideoSeederEdgeCases:
         # Empty user ID should raise validation error when creating UserVideoCreate
         with pytest.raises(Exception) as exc_info:
             seeder._transform_entry(watch_entry)
-        
+
         # Verify it's a validation error about empty user ID
         assert "UserId cannot be empty" in str(exc_info.value)
 

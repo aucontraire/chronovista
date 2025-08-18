@@ -192,7 +192,9 @@ async def established_channel(
             from chronovista.models.channel import ChannelCreate, ChannelUpdate
             from chronovista.repositories.base import BaseSQLAlchemyRepository
 
-            channel_repo: BaseSQLAlchemyRepository[DBChannel, ChannelCreate, ChannelUpdate] = BaseSQLAlchemyRepository(DBChannel)
+            channel_repo: BaseSQLAlchemyRepository[
+                DBChannel, ChannelCreate, ChannelUpdate
+            ] = BaseSQLAlchemyRepository(DBChannel)
 
             # First check if channel already exists
             from sqlalchemy import select
@@ -293,7 +295,9 @@ async def established_videos(
                 from chronovista.models.video import VideoCreate, VideoUpdate
                 from chronovista.repositories.base import BaseSQLAlchemyRepository
 
-                video_repo: BaseSQLAlchemyRepository[DBVideo, VideoCreate, VideoUpdate] = BaseSQLAlchemyRepository(DBVideo)
+                video_repo: BaseSQLAlchemyRepository[
+                    DBVideo, VideoCreate, VideoUpdate
+                ] = BaseSQLAlchemyRepository(DBVideo)
 
                 # First check if video already exists
                 from sqlalchemy import select

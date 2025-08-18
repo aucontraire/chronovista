@@ -15,10 +15,15 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import VideoTranscript as VideoTranscriptDB
-from chronovista.models.enums import DownloadReason, TrackKind, TranscriptType, LanguageCode
+from chronovista.models.enums import (
+    DownloadReason,
+    LanguageCode,
+    TrackKind,
+    TranscriptType,
+)
 from chronovista.models.video_transcript import (
     TranscriptSearchFilters,
-    VideoTranscriptCreate
+    VideoTranscriptCreate,
 )
 from chronovista.repositories.video_transcript_repository import (
     VideoTranscriptRepository,
@@ -434,7 +439,9 @@ class TestVideoTranscriptRepository:
         sample_transcript_db: VideoTranscriptDB,
     ):
         """Test updating quality indicators for existing transcript."""
-        with patch.object(repository, 'get_by_composite_key', new_callable=AsyncMock) as mock_get:
+        with patch.object(
+            repository, "get_by_composite_key", new_callable=AsyncMock
+        ) as mock_get:
             mock_get.return_value = sample_transcript_db
 
             result = await repository.update_transcript_quality(
@@ -459,7 +466,9 @@ class TestVideoTranscriptRepository:
         self, repository: VideoTranscriptRepository, mock_session: AsyncMock
     ):
         """Test updating quality for non-existent transcript."""
-        with patch.object(repository, 'get_by_composite_key', new_callable=AsyncMock) as mock_get:
+        with patch.object(
+            repository, "get_by_composite_key", new_callable=AsyncMock
+        ) as mock_get:
             mock_get.return_value = None
 
             result = await repository.update_transcript_quality(
@@ -477,7 +486,9 @@ class TestVideoTranscriptRepository:
         sample_transcripts_list: List[VideoTranscriptDB],
     ):
         """Test getting transcripts with computed quality scores."""
-        with patch.object(repository, 'get_video_transcripts', new_callable=AsyncMock) as mock_get:
+        with patch.object(
+            repository, "get_video_transcripts", new_callable=AsyncMock
+        ) as mock_get:
             mock_get.return_value = sample_transcripts_list
 
             result = await repository.get_transcripts_with_quality_scores(

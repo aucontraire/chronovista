@@ -12,8 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from chronovista.db.models import Video as VideoDB
 from chronovista.models.video import VideoCreate, VideoUpdate
 from chronovista.repositories.base import BaseSQLAlchemyRepository
-from tests.factories.video_factory import VideoCreateFactory
-from tests.factories.video_factory import create_video_update
+from tests.factories.video_factory import VideoCreateFactory, create_video_update
 
 
 class TestBaseSQLAlchemyRepository:
@@ -148,9 +147,7 @@ class TestBaseSQLAlchemyRepository:
         mock_session.flush.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_get_multi_default_params(
-        self, repository, mock_session: AsyncMock
-    ):
+    async def test_get_multi_default_params(self, repository, mock_session: AsyncMock):
         """Test get_multi with default parameters."""
         mock_videos = [MagicMock(), MagicMock()]
         mock_result = MagicMock()
@@ -268,9 +265,7 @@ class TestBaseRepositoryEdgeCases:
         return AsyncMock(spec=AsyncSession)
 
     @pytest.mark.asyncio
-    async def test_update_with_none_values(
-        self, repository, mock_session: AsyncMock
-    ):
+    async def test_update_with_none_values(self, repository, mock_session: AsyncMock):
         """Test update with None values."""
         mock_video_db = MagicMock()
         update_data = create_video_update(title=None, description="Updated")
@@ -290,7 +285,7 @@ class TestBaseRepositoryEdgeCases:
         """Test create with minimal required data."""
         mock_video_db = MagicMock()
         repository.model = MagicMock(return_value=mock_video_db)
-        
+
         # Create minimal valid VideoCreate object
         minimal_obj = VideoCreateFactory.build()
 
@@ -309,9 +304,7 @@ class TestBaseRepositoryEdgeCases:
         mock_session.add.assert_called_once_with(mock_video_db)
 
     @pytest.mark.asyncio
-    async def test_session_operations_order(
-        self, repository, mock_session: AsyncMock
-    ):
+    async def test_session_operations_order(self, repository, mock_session: AsyncMock):
         """Test that session operations are called in correct order."""
         from datetime import datetime, timezone
 

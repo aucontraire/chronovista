@@ -369,12 +369,12 @@ class TestTranscriptServiceThirdPartyAPI:
         mock_snippet1.text = "Hello world"
         mock_snippet1.start = 0.0
         mock_snippet1.duration = 2.0
-        
+
         mock_snippet2 = MagicMock()
         mock_snippet2.text = "This is a test"
         mock_snippet2.start = 2.0
         mock_snippet2.duration = 3.0
-        
+
         return [mock_snippet1, mock_snippet2]
 
     @patch("chronovista.services.transcript_service.YouTubeTranscriptApi")
@@ -390,14 +390,14 @@ class TestTranscriptServiceThirdPartyAPI:
         # Mock API instance
         mock_api_instance = MagicMock()
         mock_api.return_value = mock_api_instance
-        
+
         # Mock the fallback path since fetch() will fail
         mock_api_instance.fetch.side_effect = Exception("Direct fetch failed")
-        
+
         # Create a proper mock transcript list object (not a list)
         mock_transcript_list_obj = MagicMock()
         mock_api_instance.list.return_value = mock_transcript_list_obj
-        
+
         # Mock transcript selection and fetch
         mock_transcript = mock_transcript_list[0]  # Use first (English) transcript
         mock_transcript_list_obj.find_transcript.return_value = mock_transcript
@@ -429,7 +429,7 @@ class TestTranscriptServiceThirdPartyAPI:
         # Mock API instance
         mock_api_instance = MagicMock()
         mock_api.return_value = mock_api_instance
-        
+
         # Create transcripts without exact match but with English variant
         mock_transcript_en_us = MagicMock()
         mock_transcript_en_us.language_code = "en-US"
@@ -437,11 +437,11 @@ class TestTranscriptServiceThirdPartyAPI:
         mock_transcript_en_us.is_generated = False
         mock_transcript_en_us.is_translatable = True
         mock_transcript_en_us.fetch.return_value = mock_transcript_data
-        
+
         mock_transcript_list = MagicMock()
         mock_transcript_list.find_transcript.side_effect = [
             Exception("French not found"),  # First call fails
-            mock_transcript_en_us  # Second call (English) succeeds
+            mock_transcript_en_us,  # Second call (English) succeeds
         ]
 
         mock_api_instance.fetch.side_effect = Exception("Direct fetch failed")
@@ -466,7 +466,7 @@ class TestTranscriptServiceThirdPartyAPI:
         # Mock API instance
         mock_api_instance = MagicMock()
         mock_api.return_value = mock_api_instance
-        
+
         # Create transcript in non-English language
         mock_transcript_ja = MagicMock()
         mock_transcript_ja.language_code = "ja"
@@ -474,11 +474,13 @@ class TestTranscriptServiceThirdPartyAPI:
         mock_transcript_ja.is_generated = True
         mock_transcript_ja.is_translatable = True
         mock_transcript_ja.fetch.return_value = mock_transcript_data
-        
+
         mock_transcript_list = MagicMock()
         # All find_transcript calls fail, so it falls back to iterating
         mock_transcript_list.find_transcript.side_effect = Exception("Not found")
-        mock_transcript_list.find_generated_transcript.side_effect = Exception("Not found")
+        mock_transcript_list.find_generated_transcript.side_effect = Exception(
+            "Not found"
+        )
         mock_transcript_list.__iter__.return_value = iter([mock_transcript_ja])
 
         mock_api_instance.fetch.side_effect = Exception("Direct fetch failed")
@@ -503,7 +505,7 @@ class TestTranscriptServiceThirdPartyAPI:
         # Mock API instance
         mock_api_instance = MagicMock()
         mock_api.return_value = mock_api_instance
-        
+
         # Mock both fetch and list to fail - this should raise an exception
         mock_api_instance.fetch.side_effect = Exception("Direct fetch failed")
         mock_api_instance.list.side_effect = Exception("Cannot list transcripts")
@@ -530,7 +532,7 @@ class TestTranscriptServiceThirdPartyAPI:
         # Mock API instance
         mock_api_instance = MagicMock()
         mock_api.return_value = mock_api_instance
-        
+
         # Mock transcript with invalid language code
         mock_transcript_invalid = MagicMock()
         mock_transcript_invalid.language_code = "invalid-code"
@@ -538,7 +540,7 @@ class TestTranscriptServiceThirdPartyAPI:
         mock_transcript_invalid.is_generated = False
         mock_transcript_invalid.is_translatable = True
         mock_transcript_invalid.fetch.return_value = mock_transcript_data
-        
+
         mock_transcript_list_obj = MagicMock()
         mock_transcript_list_obj.find_transcript.return_value = mock_transcript_invalid
 
@@ -561,21 +563,21 @@ class TestTranscriptServiceThirdPartyAPI:
         # Mock API instance
         mock_api_instance = MagicMock()
         mock_api.return_value = mock_api_instance
-        
+
         # Mock empty transcript list - should fail with exception
         mock_transcript_list = MagicMock()
         mock_transcript_list.find_transcript.side_effect = Exception("Not found")
-        mock_transcript_list.find_generated_transcript.side_effect = Exception("Not found")
+        mock_transcript_list.find_generated_transcript.side_effect = Exception(
+            "Not found"
+        )
         mock_transcript_list.__iter__.return_value = iter([])  # Empty list
-        
+
         mock_api_instance.fetch.side_effect = Exception("Direct fetch failed")
         mock_api_instance.list.return_value = mock_transcript_list
 
         # Should raise exception since no transcripts are available
         with pytest.raises(Exception):
-            await service._get_transcript_from_third_party_api(
-                sample_video_id, ["en"]
-            )
+            await service._get_transcript_from_third_party_api(sample_video_id, ["en"])
 
 
 class TestTranscriptServiceOfficialAPI:
@@ -605,8 +607,7 @@ class TestTranscriptServiceOfficialAPI:
         assert mock_logger.info.call_count == 2
         log_calls = [call.args[0] for call in mock_logger.info.call_args_list]
         assert any(
-            "Attempting official YouTube Data API v3" in msg
-            for msg in log_calls
+            "Attempting official YouTube Data API v3" in msg for msg in log_calls
         )
         assert any("No captions found via official API" in msg for msg in log_calls)
 

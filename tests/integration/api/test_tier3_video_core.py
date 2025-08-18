@@ -14,19 +14,13 @@ and form the foundation for video-dependent models in Tier 4.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any, Awaitable, Dict, List
 
 import pytest
-from typing import Any, Awaitable, Dict, List
 from sqlalchemy import delete, select
 
-from chronovista.models.video import (
-    Video,
-    VideoCreate,
-    VideoUpdate,
-    VideoStatistics,
-)
-
 from chronovista.db.models import Video as DBVideo
+from chronovista.models.video import Video, VideoCreate, VideoStatistics, VideoUpdate
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
@@ -112,7 +106,9 @@ class TestVideoFromYouTubeAPI:
                 assert video_create.view_count is None or video_create.view_count >= 0
 
                 # Use repository pattern for database operations
-                video_repo: BaseSQLAlchemyRepository[DBVideo, VideoCreate, VideoUpdate] = BaseSQLAlchemyRepository(DBVideo)
+                video_repo: BaseSQLAlchemyRepository[
+                    DBVideo, VideoCreate, VideoUpdate
+                ] = BaseSQLAlchemyRepository(DBVideo)
 
                 # Persist to database
                 db_video = await video_repo.create(session, obj_in=video_create)
@@ -318,8 +314,9 @@ class TestVideoFromYouTubeAPI:
                 )
 
                 # Use repository pattern
-                video_repo: BaseSQLAlchemyRepository[DBVideo, VideoCreate, VideoUpdate] = BaseSQLAlchemyRepository(
-                    DBVideo)
+                video_repo: BaseSQLAlchemyRepository[
+                    DBVideo, VideoCreate, VideoUpdate
+                ] = BaseSQLAlchemyRepository(DBVideo)
                 # First get the existing video
                 result = await session.execute(
                     select(DBVideo).where(DBVideo.video_id == video_id)
@@ -404,8 +401,9 @@ class TestVideoSearchAndFiltering:
         async with integration_db_session() as session:
             try:
                 # Use repository pattern
-                video_repo: BaseSQLAlchemyRepository[DBVideo, VideoCreate, VideoUpdate] = BaseSQLAlchemyRepository(
-                    DBVideo)
+                video_repo: BaseSQLAlchemyRepository[
+                    DBVideo, VideoCreate, VideoUpdate
+                ] = BaseSQLAlchemyRepository(DBVideo)
                 # Test channel-based filtering
                 from tests.factories.video_factory import create_video_search_filters
 
@@ -465,8 +463,9 @@ class TestVideoSearchAndFiltering:
         async with integration_db_session() as session:
             try:
                 # Use repository pattern
-                video_repo: BaseSQLAlchemyRepository[DBVideo, VideoCreate, VideoUpdate] = BaseSQLAlchemyRepository(
-                    DBVideo)
+                video_repo: BaseSQLAlchemyRepository[
+                    DBVideo, VideoCreate, VideoUpdate
+                ] = BaseSQLAlchemyRepository(DBVideo)
                 # Test recent videos (last year)
                 recent_date = datetime.now(timezone.utc).replace(
                     year=datetime.now().year - 1
@@ -517,8 +516,9 @@ class TestVideoStatisticsAggregation:
         async with integration_db_session() as session:
             try:
                 # Use repository pattern to get channel videos
-                video_repo: BaseSQLAlchemyRepository[DBVideo, VideoCreate, VideoUpdate] = BaseSQLAlchemyRepository(
-                    DBVideo)
+                video_repo: BaseSQLAlchemyRepository[
+                    DBVideo, VideoCreate, VideoUpdate
+                ] = BaseSQLAlchemyRepository(DBVideo)
                 # Get all videos for the channel
                 result = await session.execute(
                     select(DBVideo).where(DBVideo.channel_id == channel_id)

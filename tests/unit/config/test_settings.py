@@ -50,7 +50,7 @@ def test_settings_path_string_conversion():
     data = {
         "youtube_api_key": "test_key",
         "youtube_client_id": "test_id",
-        "youtube_client_secret": "test_secret", 
+        "youtube_client_secret": "test_secret",
         "secret_key": "test_secret",
         "data_dir": "./test_data",
     }
@@ -90,7 +90,7 @@ def test_settings_oauth_scopes_parsing():
     # Test string parsing using model_validate to bypass direct constructor
     data = {
         "youtube_api_key": "test_key",
-        "youtube_client_id": "test_id", 
+        "youtube_client_id": "test_id",
         "youtube_client_secret": "test_secret",
         "secret_key": "test_secret",
         "oauth_scopes": "scope1,scope2,scope3",

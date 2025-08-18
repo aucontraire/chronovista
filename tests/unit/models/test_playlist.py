@@ -323,7 +323,9 @@ class TestPlaylistUpdate:
 
     def test_factory_generates_valid_updates(self):
         """Test factory generates valid update models with explicit values."""
-        update = PlaylistUpdateFactory.build(title="Updated Playlist Title", video_count=25)
+        update = PlaylistUpdateFactory.build(
+            title="Updated Playlist Title", video_count=25
+        )
 
         assert isinstance(update, PlaylistUpdate)
         assert update.title == "Updated Playlist Title"

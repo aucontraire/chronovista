@@ -14,13 +14,10 @@ from chronovista.db.models import VideoTag as VideoTagDB
 from chronovista.models.video_tag import (
     VideoTagCreate,
     VideoTagSearchFilters,
-    VideoTagStatistics
+    VideoTagStatistics,
 )
 from chronovista.repositories.video_tag_repository import VideoTagRepository
-from tests.factories.video_tag_factory import (
-    VideoTagTestData,
-    create_video_tag_create,
-)
+from tests.factories.video_tag_factory import VideoTagTestData, create_video_tag_create
 
 
 class TestVideoTagRepository:
@@ -169,8 +166,14 @@ class TestVideoTagRepository:
         sample_video_tag_db: VideoTagDB,
     ):
         """Test create_or_update with new tag."""
-        with patch.object(repository, 'get_by_composite_key', AsyncMock(return_value=None)) as mock_get, \
-             patch.object(repository, 'create', AsyncMock(return_value=sample_video_tag_db)) as mock_create:
+        with (
+            patch.object(
+                repository, "get_by_composite_key", AsyncMock(return_value=None)
+            ) as mock_get,
+            patch.object(
+                repository, "create", AsyncMock(return_value=sample_video_tag_db)
+            ) as mock_create,
+        ):
 
             result = await repository.create_or_update(
                 mock_session, sample_video_tag_create
@@ -178,7 +181,9 @@ class TestVideoTagRepository:
 
             assert result == sample_video_tag_db
             mock_get.assert_called_once_with(
-                mock_session, sample_video_tag_create.video_id, sample_video_tag_create.tag
+                mock_session,
+                sample_video_tag_create.video_id,
+                sample_video_tag_create.tag,
             )
             mock_create.assert_called_once_with(
                 mock_session, obj_in=sample_video_tag_create
@@ -193,8 +198,16 @@ class TestVideoTagRepository:
         sample_video_tag_db: VideoTagDB,
     ):
         """Test create_or_update with existing tag."""
-        with patch.object(repository, 'get_by_composite_key', AsyncMock(return_value=sample_video_tag_db)) as mock_get, \
-             patch.object(repository, 'update', AsyncMock(return_value=sample_video_tag_db)) as mock_update:
+        with (
+            patch.object(
+                repository,
+                "get_by_composite_key",
+                AsyncMock(return_value=sample_video_tag_db),
+            ) as mock_get,
+            patch.object(
+                repository, "update", AsyncMock(return_value=sample_video_tag_db)
+            ) as mock_update,
+        ):
 
             result = await repository.create_or_update(
                 mock_session, sample_video_tag_create
@@ -202,7 +215,9 @@ class TestVideoTagRepository:
 
             assert result == sample_video_tag_db
             mock_get.assert_called_once_with(
-                mock_session, sample_video_tag_create.video_id, sample_video_tag_create.tag
+                mock_session,
+                sample_video_tag_create.video_id,
+                sample_video_tag_create.tag,
             )
             mock_update.assert_called_once()
 
@@ -214,8 +229,14 @@ class TestVideoTagRepository:
         sample_video_tag_db: VideoTagDB,
     ):
         """Test bulk creating new video tags."""
-        with patch.object(repository, 'get_by_composite_key', AsyncMock(return_value=None)) as mock_get, \
-             patch.object(repository, 'create', AsyncMock(return_value=sample_video_tag_db)) as mock_create:
+        with (
+            patch.object(
+                repository, "get_by_composite_key", AsyncMock(return_value=None)
+            ) as mock_get,
+            patch.object(
+                repository, "create", AsyncMock(return_value=sample_video_tag_db)
+            ) as mock_create,
+        ):
 
             tags = ["music", "entertainment", "dance"]
             tag_orders = [1, 2, 3]
@@ -236,8 +257,16 @@ class TestVideoTagRepository:
     ):
         """Test bulk creating with mix of new and existing tags."""
         # First tag exists, second doesn't
-        with patch.object(repository, 'get_by_composite_key', AsyncMock(side_effect=[sample_video_tag_db, None])) as mock_get, \
-             patch.object(repository, 'create', AsyncMock(return_value=sample_video_tag_db)) as mock_create:
+        with (
+            patch.object(
+                repository,
+                "get_by_composite_key",
+                AsyncMock(side_effect=[sample_video_tag_db, None]),
+            ) as mock_get,
+            patch.object(
+                repository, "create", AsyncMock(return_value=sample_video_tag_db)
+            ) as mock_create,
+        ):
 
             tags = ["music", "entertainment"]
             result = await repository.bulk_create_video_tags(
@@ -494,8 +523,14 @@ class TestVideoTagRepositoryIntegration:
         mock_tag_db.tag_order = tag_create.tag_order
 
         # Mock repository operations
-        with patch.object(repository, 'get_by_composite_key', AsyncMock(return_value=None)) as mock_get, \
-             patch.object(repository, 'create', AsyncMock(return_value=mock_tag_db)) as mock_create:
+        with (
+            patch.object(
+                repository, "get_by_composite_key", AsyncMock(return_value=None)
+            ) as mock_get,
+            patch.object(
+                repository, "create", AsyncMock(return_value=mock_tag_db)
+            ) as mock_create,
+        ):
 
             # Create tag
             result = await repository.create_or_update(mock_session, tag_create)
@@ -553,14 +588,14 @@ class TestVideoTagRepositoryIntegration:
         self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test base get method with composite key tuple."""
-        with patch.object(repository, 'get_by_composite_key', AsyncMock(return_value=MagicMock())) as mock_get:
+        with patch.object(
+            repository, "get_by_composite_key", AsyncMock(return_value=MagicMock())
+        ) as mock_get:
 
             result = await repository.get(mock_session, ("dQw4w9WgXcQ", "music"))
 
             assert result is not None
-            mock_get.assert_called_once_with(
-                mock_session, "dQw4w9WgXcQ", "music"
-            )
+            mock_get.assert_called_once_with(mock_session, "dQw4w9WgXcQ", "music")
 
     @pytest.mark.asyncio
     async def test_base_get_with_invalid_key(
@@ -576,11 +611,11 @@ class TestVideoTagRepositoryIntegration:
         self, repository: VideoTagRepository, mock_session: MagicMock
     ):
         """Test base exists method with composite key tuple."""
-        with patch.object(repository, 'exists_by_composite_key', AsyncMock(return_value=True)) as mock_exists:
+        with patch.object(
+            repository, "exists_by_composite_key", AsyncMock(return_value=True)
+        ) as mock_exists:
 
             result = await repository.exists(mock_session, ("dQw4w9WgXcQ", "music"))
 
             assert result is True
-            mock_exists.assert_called_once_with(
-                mock_session, "dQw4w9WgXcQ", "music"
-            )
+            mock_exists.assert_called_once_with(mock_session, "dQw4w9WgXcQ", "music")

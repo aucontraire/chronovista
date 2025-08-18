@@ -32,17 +32,17 @@ class VideoLocalizationBaseFactory(factory.Factory):
 
     video_id = Faker("lexify", text="???????????")  # 11-char YouTube ID pattern
     language_code = Faker(
-        "random_element", 
+        "random_element",
         elements=[
             LanguageCode.ENGLISH,
-            LanguageCode.SPANISH, 
+            LanguageCode.SPANISH,
             LanguageCode.FRENCH,
             LanguageCode.GERMAN,
             LanguageCode.JAPANESE,
             LanguageCode.KOREAN,
             LanguageCode.CHINESE_SIMPLIFIED,
-            LanguageCode.PORTUGUESE
-        ]
+            LanguageCode.PORTUGUESE,
+        ],
     )
     localized_title = Faker("sentence", nb_words=6)
     localized_description = Faker("text", max_nb_chars=500)
@@ -81,7 +81,9 @@ class VideoLocalizationSearchFiltersFactory(factory.Factory):
         model = VideoLocalizationSearchFilters
 
     video_ids = factory.LazyFunction(lambda: ["dQw4w9WgXcQ", "9bZkp7q19f0"])
-    language_codes = factory.LazyFunction(lambda: [LanguageCode.ENGLISH, LanguageCode.SPANISH])
+    language_codes = factory.LazyFunction(
+        lambda: [LanguageCode.ENGLISH, LanguageCode.SPANISH]
+    )
     title_query = Faker("word")
     description_query = Faker("word")
     has_description = Faker("boolean")

@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
+from chronovista.models.enums import LanguageCode
 from chronovista.models.video_localization import (
     VideoLocalization,
     VideoLocalizationBase,
@@ -20,8 +21,6 @@ from chronovista.models.video_localization import (
     VideoLocalizationStatistics,
     VideoLocalizationUpdate,
 )
-from chronovista.models.enums import LanguageCode
-
 from tests.factories.video_localization_factory import (
     VideoLocalizationBaseFactory,
     VideoLocalizationCreateFactory,
@@ -105,7 +104,9 @@ class TestVideoLocalizationBase:
     )
     def test_language_code_validation_valid(self, valid_language_code):
         """Test language_code validation with various valid inputs."""
-        localization = VideoLocalizationBaseFactory.build(language_code=valid_language_code)
+        localization = VideoLocalizationBaseFactory.build(
+            language_code=valid_language_code
+        )
         assert localization.language_code == valid_language_code
 
     @pytest.mark.parametrize("invalid_title", VideoLocalizationTestData.INVALID_TITLES)
@@ -120,7 +121,9 @@ class TestVideoLocalizationBase:
     def test_localized_description_validation_invalid(self, invalid_description):
         """Test localized_description validation with invalid inputs."""
         with pytest.raises(ValidationError):
-            VideoLocalizationBaseFactory.build(localized_description=invalid_description)
+            VideoLocalizationBaseFactory.build(
+                localized_description=invalid_description
+            )
 
     def test_localized_description_empty_becomes_none(self):
         """Test that empty description becomes None."""

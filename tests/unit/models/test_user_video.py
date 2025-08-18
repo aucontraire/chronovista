@@ -168,9 +168,7 @@ class TestUserVideoUpdateFactory:
     def test_user_video_update_creation(self):
         """Test basic UserVideoUpdate creation from factory with explicit values."""
         user_video_update = UserVideoUpdateFactory.build(
-            completion_percentage=90.0, 
-            rewatch_count=2, 
-            liked=True
+            completion_percentage=90.0, rewatch_count=2, liked=True
         )
 
         assert isinstance(user_video_update, UserVideoUpdate)

@@ -10,13 +10,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.models.enums import LanguageCode
 from chronovista.db.models import Channel as ChannelDB
 from chronovista.models.channel import (
     ChannelCreate,
     ChannelSearchFilters,
-    ChannelStatistics
+    ChannelStatistics,
 )
+from chronovista.models.enums import LanguageCode
 from chronovista.repositories.channel_repository import ChannelRepository
 
 
@@ -139,10 +139,18 @@ class TestChannelRepository:
         sample_channel_db: ChannelDB,
     ):
         """Test creating a new channel."""
-        with patch.object(repository, 'get_by_channel_id', new=AsyncMock(return_value=None)) as mock_get, \
-             patch.object(repository, 'create', new=AsyncMock(return_value=sample_channel_db)) as mock_create:
+        with (
+            patch.object(
+                repository, "get_by_channel_id", new=AsyncMock(return_value=None)
+            ) as mock_get,
+            patch.object(
+                repository, "create", new=AsyncMock(return_value=sample_channel_db)
+            ) as mock_create,
+        ):
 
-            result = await repository.create_or_update(mock_session, sample_channel_create)
+            result = await repository.create_or_update(
+                mock_session, sample_channel_create
+            )
 
             assert result == sample_channel_db
             mock_get.assert_called_once_with(
@@ -161,10 +169,20 @@ class TestChannelRepository:
         sample_channel_db: ChannelDB,
     ):
         """Test updating an existing channel."""
-        with patch.object(repository, 'get_by_channel_id', new=AsyncMock(return_value=sample_channel_db)) as mock_get, \
-             patch.object(repository, 'update', new=AsyncMock(return_value=sample_channel_db)) as mock_update:
+        with (
+            patch.object(
+                repository,
+                "get_by_channel_id",
+                new=AsyncMock(return_value=sample_channel_db),
+            ) as mock_get,
+            patch.object(
+                repository, "update", new=AsyncMock(return_value=sample_channel_db)
+            ) as mock_update,
+        ):
 
-            result = await repository.create_or_update(mock_session, sample_channel_create)
+            result = await repository.create_or_update(
+                mock_session, sample_channel_create
+            )
 
             assert result == sample_channel_db
             mock_get.assert_called_once_with(
@@ -274,7 +292,11 @@ class TestChannelRepository:
             top_countries=[],
             top_languages=[],
         )
-        with patch.object(repository, 'get_channel_statistics', new=AsyncMock(return_value=expected_stats)) as mock_get_stats:
+        with patch.object(
+            repository,
+            "get_channel_statistics",
+            new=AsyncMock(return_value=expected_stats),
+        ) as mock_get_stats:
 
             result = await repository.get_channel_statistics(mock_session)
 
@@ -323,7 +345,9 @@ class TestChannelRepositoryAdditionalMethods:
     ):
         """Test get method delegates to get_by_channel_id."""
         mock_channel = MagicMock()
-        with patch.object(repository, 'get_by_channel_id', new=AsyncMock(return_value=mock_channel)) as mock_get:
+        with patch.object(
+            repository, "get_by_channel_id", new=AsyncMock(return_value=mock_channel)
+        ) as mock_get:
 
             result = await repository.get(mock_session, "UC123")
 
@@ -335,7 +359,9 @@ class TestChannelRepositoryAdditionalMethods:
         self, repository: ChannelRepository, mock_session
     ):
         """Test exists method delegates to exists_by_channel_id."""
-        with patch.object(repository, 'exists_by_channel_id', new=AsyncMock(return_value=True)) as mock_exists:
+        with patch.object(
+            repository, "exists_by_channel_id", new=AsyncMock(return_value=True)
+        ) as mock_exists:
 
             result = await repository.exists(mock_session, "UC123")
 

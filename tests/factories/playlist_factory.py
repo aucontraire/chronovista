@@ -51,7 +51,7 @@ class PlaylistCreateFactory(PlaylistBaseFactory):
 
 class PlaylistUpdateFactory(factory.Factory):
     """Factory for PlaylistUpdate models.
-    
+
     Note: This factory respects the model's default values (None for all fields).
     For Update models, the default behavior should be an empty update (all None),
     with values only generated when explicitly requested.

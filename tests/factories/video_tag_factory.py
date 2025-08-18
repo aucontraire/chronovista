@@ -43,7 +43,7 @@ class VideoTagCreateFactory(VideoTagBaseFactory):
 
 class VideoTagUpdateFactory(factory.Factory):
     """Factory for VideoTagUpdate models.
-    
+
     Note: This factory respects the model's default values (None for all fields).
     For Update models, the default behavior should be an empty update (all None),
     with values only generated when explicitly requested.

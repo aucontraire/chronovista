@@ -233,30 +233,55 @@ class EnhancedVideoTranscriptBase(VideoTranscriptBase):
         # Define valid field names for this model (from both base classes)
         valid_fields = {
             # From VideoTranscriptBase
-            "video_id", "language_code", "transcript_text", "transcript_type", 
-            "download_reason", "confidence_score", "is_cc", "is_auto_synced", 
-            "track_kind", "caption_name",
+            "video_id",
+            "language_code",
+            "transcript_text",
+            "transcript_type",
+            "download_reason",
+            "confidence_score",
+            "is_cc",
+            "is_auto_synced",
+            "track_kind",
+            "caption_name",
             # From EnhancedVideoTranscriptBase
-            "source", "source_metadata", "raw_transcript_data", "plain_text_only",
-            "has_timestamps", "snippet_count", "total_duration"
+            "source",
+            "source_metadata",
+            "raw_transcript_data",
+            "plain_text_only",
+            "has_timestamps",
+            "snippet_count",
+            "total_duration",
         }
-        
+
         # Fields that we're setting explicitly in the constructor
         explicitly_set_fields = {
-            "video_id", "language_code", "transcript_text", "plain_text_only",
-            "transcript_type", "download_reason", "confidence_score", "is_cc",
-            "is_auto_synced", "track_kind", "caption_name", "source",
-            "source_metadata", "raw_transcript_data", "has_timestamps",
-            "snippet_count", "total_duration"
+            "video_id",
+            "language_code",
+            "transcript_text",
+            "plain_text_only",
+            "transcript_type",
+            "download_reason",
+            "confidence_score",
+            "is_cc",
+            "is_auto_synced",
+            "track_kind",
+            "caption_name",
+            "source",
+            "source_metadata",
+            "raw_transcript_data",
+            "has_timestamps",
+            "snippet_count",
+            "total_duration",
         }
-        
+
         # Filter additional_fields to only include valid field names
         # and exclude fields we're already setting explicitly
         filtered_additional_fields = {
-            k: v for k, v in additional_fields.items() 
+            k: v
+            for k, v in additional_fields.items()
             if k in valid_fields and k not in explicitly_set_fields
         }
-        
+
         # Build the constructor arguments
         constructor_args = {
             "video_id": raw_data.video_id,
@@ -281,10 +306,10 @@ class EnhancedVideoTranscriptBase(VideoTranscriptBase):
             "snippet_count": raw_data.snippet_count,
             "total_duration": raw_data.total_duration,
         }
-        
+
         # Add any additional fields that aren't already set
         constructor_args.update(filtered_additional_fields)
-        
+
         return cls(**constructor_args)
 
 

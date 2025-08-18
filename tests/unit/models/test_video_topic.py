@@ -207,7 +207,7 @@ class TestVideoTopic:
     def test_video_topic_from_dict(self):
         """Test VideoTopic creation from dictionary (as from database)."""
         now = datetime.now(timezone.utc)
-        
+
         video_topic = VideoTopic(
             video_id=TestIds.TEST_VIDEO_1,
             topic_id=TestIds.MUSIC_TOPIC,

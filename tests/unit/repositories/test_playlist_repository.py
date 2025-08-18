@@ -10,20 +10,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
-from chronovista.models.enums import LanguageCode
 from chronovista.db.models import Playlist as PlaylistDB
+from chronovista.models.enums import LanguageCode
 from chronovista.models.playlist import (
     PlaylistAnalytics,
     PlaylistCreate,
     PlaylistSearchFilters,
-    PlaylistStatistics
+    PlaylistStatistics,
 )
 from chronovista.repositories.playlist_repository import PlaylistRepository
-from tests.factories.playlist_factory import (
-    PlaylistTestData,
-    create_playlist_create,
-)
+from tests.factories.playlist_factory import PlaylistTestData, create_playlist_create
 
 
 class TestPlaylistRepository:
@@ -160,10 +156,18 @@ class TestPlaylistRepository:
         sample_playlist_db: PlaylistDB,
     ):
         """Test create_or_update with new playlist."""
-        with patch.object(repository, "get_by_playlist_id", new=AsyncMock(return_value=None)) as mock_get, \
-             patch.object(repository, "create", new=AsyncMock(return_value=sample_playlist_db)) as mock_create:
+        with (
+            patch.object(
+                repository, "get_by_playlist_id", new=AsyncMock(return_value=None)
+            ) as mock_get,
+            patch.object(
+                repository, "create", new=AsyncMock(return_value=sample_playlist_db)
+            ) as mock_create,
+        ):
 
-            result = await repository.create_or_update(mock_session, sample_playlist_create)
+            result = await repository.create_or_update(
+                mock_session, sample_playlist_create
+            )
 
             assert result == sample_playlist_db
             mock_get.assert_called_once_with(
@@ -182,10 +186,20 @@ class TestPlaylistRepository:
         sample_playlist_db: PlaylistDB,
     ):
         """Test create_or_update with existing playlist."""
-        with patch.object(repository, "get_by_playlist_id", new=AsyncMock(return_value=sample_playlist_db)) as mock_get, \
-             patch.object(repository, "update", new=AsyncMock(return_value=sample_playlist_db)) as mock_update:
+        with (
+            patch.object(
+                repository,
+                "get_by_playlist_id",
+                new=AsyncMock(return_value=sample_playlist_db),
+            ) as mock_get,
+            patch.object(
+                repository, "update", new=AsyncMock(return_value=sample_playlist_db)
+            ) as mock_update,
+        ):
 
-            result = await repository.create_or_update(mock_session, sample_playlist_create)
+            result = await repository.create_or_update(
+                mock_session, sample_playlist_create
+            )
 
             assert result == sample_playlist_db
             mock_get.assert_called_once_with(
@@ -454,13 +468,25 @@ class TestPlaylistRepository:
         sample_playlist_db: PlaylistDB,
     ):
         """Test bulk creating new playlists."""
-        with patch.object(repository, "get_by_playlist_id", new=AsyncMock(return_value=None)) as mock_get, \
-             patch.object(repository, "create", new=AsyncMock(return_value=sample_playlist_db)) as mock_create:
+        with (
+            patch.object(
+                repository, "get_by_playlist_id", new=AsyncMock(return_value=None)
+            ) as mock_get,
+            patch.object(
+                repository, "create", new=AsyncMock(return_value=sample_playlist_db)
+            ) as mock_create,
+        ):
 
             playlists = [
-                create_playlist_create(playlist_id="PLrAXtmRdnqDpVC2bT0Bz-8Q5RWmF6gBkR"),
-                create_playlist_create(playlist_id="PLfIhOa8drThIfvQR29YZ_k_hYHO-chZuF"),
-                create_playlist_create(playlist_id="PL_tBM_hg5GY7p38IEq3kSKYz9JTnvIR8L"),
+                create_playlist_create(
+                    playlist_id="PLrAXtmRdnqDpVC2bT0Bz-8Q5RWmF6gBkR"
+                ),
+                create_playlist_create(
+                    playlist_id="PLfIhOa8drThIfvQR29YZ_k_hYHO-chZuF"
+                ),
+                create_playlist_create(
+                    playlist_id="PL_tBM_hg5GY7p38IEq3kSKYz9JTnvIR8L"
+                ),
             ]
 
             result = await repository.bulk_create_playlists(mock_session, playlists)
@@ -478,14 +504,24 @@ class TestPlaylistRepository:
     ):
         """Test bulk creating with mix of new and existing playlists."""
         # First playlist exists, second doesn't
-        with patch.object(repository, "get_by_playlist_id", new=AsyncMock(
-            side_effect=[sample_playlist_db, None]
-        )) as mock_get, \
-             patch.object(repository, "create", new=AsyncMock(return_value=sample_playlist_db)) as mock_create:
+        with (
+            patch.object(
+                repository,
+                "get_by_playlist_id",
+                new=AsyncMock(side_effect=[sample_playlist_db, None]),
+            ) as mock_get,
+            patch.object(
+                repository, "create", new=AsyncMock(return_value=sample_playlist_db)
+            ) as mock_create,
+        ):
 
             playlists = [
-                create_playlist_create(playlist_id="PLrAXtmRdnqDpVC2bT0Bz-8Q5RWmF6gBkR"),
-                create_playlist_create(playlist_id="PLfIhOa8drThIfvQR29YZ_k_hYHO-chZuF"),
+                create_playlist_create(
+                    playlist_id="PLrAXtmRdnqDpVC2bT0Bz-8Q5RWmF6gBkR"
+                ),
+                create_playlist_create(
+                    playlist_id="PLfIhOa8drThIfvQR29YZ_k_hYHO-chZuF"
+                ),
             ]
 
             result = await repository.bulk_create_playlists(mock_session, playlists)
@@ -504,8 +540,16 @@ class TestPlaylistRepository:
         """Test bulk updating video counts."""
         # Mock playlist with different video count
         sample_playlist_db.video_count = 5
-        with patch.object(repository, "get_by_playlist_id", new=AsyncMock(return_value=sample_playlist_db)) as mock_get, \
-             patch.object(repository, "update", new=AsyncMock(return_value=sample_playlist_db)) as mock_update:
+        with (
+            patch.object(
+                repository,
+                "get_by_playlist_id",
+                new=AsyncMock(return_value=sample_playlist_db),
+            ) as mock_get,
+            patch.object(
+                repository, "update", new=AsyncMock(return_value=sample_playlist_db)
+            ) as mock_update,
+        ):
 
             playlist_counts = {
                 "PL1": 10,  # Different from current count (5)
@@ -528,7 +572,11 @@ class TestPlaylistRepository:
         sample_playlist_db: PlaylistDB,
     ):
         """Test deleting playlist by ID."""
-        with patch.object(repository, "get_by_playlist_id", new=AsyncMock(return_value=sample_playlist_db)) as mock_get:
+        with patch.object(
+            repository,
+            "get_by_playlist_id",
+            new=AsyncMock(return_value=sample_playlist_db),
+        ) as mock_get:
 
             result = await repository.delete_by_playlist_id(
                 mock_session, "PLrAXtmRdnqDpVC2bT0Bz-8Q5RWmF6gBkR"
@@ -548,7 +596,9 @@ class TestPlaylistRepository:
         mock_session.execute.return_value = mock_count_result
 
         mock_playlists = [MagicMock(), MagicMock(), MagicMock()]
-        with patch.object(repository, "get_by_channel_id", new=AsyncMock(return_value=mock_playlists)) as mock_get_by_channel:
+        with patch.object(
+            repository, "get_by_channel_id", new=AsyncMock(return_value=mock_playlists)
+        ) as mock_get_by_channel:
 
             result = await repository.delete_by_channel_id(mock_session, "UC123")
 
@@ -563,7 +613,11 @@ class TestPlaylistRepository:
         """Test finding similar playlists."""
         target_playlist = MagicMock()
         target_playlist.title = "Music Playlist"
-        with patch.object(repository, "get_by_playlist_id", new=AsyncMock(return_value=target_playlist)) as mock_get:
+        with patch.object(
+            repository,
+            "get_by_playlist_id",
+            new=AsyncMock(return_value=target_playlist),
+        ) as mock_get:
 
             # Mock similar playlists
             similar_playlist = MagicMock()
@@ -574,7 +628,9 @@ class TestPlaylistRepository:
             mock_result.scalars.return_value = mock_scalars
             mock_session.execute.return_value = mock_result
 
-            result = await repository.find_similar_playlists(mock_session, "PL1", limit=5)
+            result = await repository.find_similar_playlists(
+                mock_session, "PL1", limit=5
+            )
 
             assert len(result) > 0
             assert all(
@@ -586,9 +642,13 @@ class TestPlaylistRepository:
         self, repository: PlaylistRepository, mock_session: AsyncMock
     ):
         """Test finding similar playlists when target doesn't exist."""
-        with patch.object(repository, "get_by_playlist_id", new=AsyncMock(return_value=None)) as mock_get:
+        with patch.object(
+            repository, "get_by_playlist_id", new=AsyncMock(return_value=None)
+        ) as mock_get:
 
-            result = await repository.find_similar_playlists(mock_session, "PLnonexistent")
+            result = await repository.find_similar_playlists(
+                mock_session, "PLnonexistent"
+            )
 
             assert result == []
 
@@ -650,8 +710,14 @@ class TestPlaylistRepositoryIntegration:
         mock_playlist_db.channel_id = playlist_create.channel_id
 
         # Mock repository operations
-        with patch.object(repository, "get_by_playlist_id", new=AsyncMock(return_value=None)) as mock_get, \
-             patch.object(repository, "create", new=AsyncMock(return_value=mock_playlist_db)) as mock_create:
+        with (
+            patch.object(
+                repository, "get_by_playlist_id", new=AsyncMock(return_value=None)
+            ) as mock_get,
+            patch.object(
+                repository, "create", new=AsyncMock(return_value=mock_playlist_db)
+            ) as mock_create,
+        ):
 
             # Create playlist
             result = await repository.create_or_update(mock_session, playlist_create)

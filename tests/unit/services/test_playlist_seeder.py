@@ -10,9 +10,6 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-# Module-level imports and configuration
-# pytestmark = pytest.mark.asyncio  # Apply individually to avoid warnings for sync tests
-
 from chronovista.models.playlist import PlaylistCreate
 from chronovista.models.takeout.takeout_data import TakeoutData
 from chronovista.repositories.channel_repository import ChannelRepository
@@ -27,6 +24,10 @@ from tests.factories.id_factory import TestIds, YouTubeIdFactory
 from tests.factories.takeout_data_factory import create_takeout_data
 from tests.factories.takeout_playlist_factory import create_takeout_playlist
 from tests.factories.takeout_playlist_item_factory import create_takeout_playlist_item
+
+# Module-level imports and configuration
+# pytestmark = pytest.mark.asyncio  # Apply individually to avoid warnings for sync tests
+
 
 
 class TestPlaylistSeederUtilityFunctions:
@@ -174,14 +175,16 @@ class TestPlaylistSeederSeeding:
     ) -> None:
         """Test seeding new playlists."""
         # Mock repositories to return None (playlists don't exist)
-        with patch.object(
-            seeder.playlist_repo, "get_by_playlist_id", new_callable=AsyncMock
-        ) as mock_get, \
-             patch.object(
+        with (
+            patch.object(
+                seeder.playlist_repo, "get_by_playlist_id", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
                 seeder.playlist_repo, "create", new_callable=AsyncMock
-             ) as mock_create:
+            ) as mock_create,
+        ):
             mock_get.return_value = None
-            
+
             # Mock user channel creation
             with patch.object(
                 seeder, "_ensure_user_channel_exists", new_callable=AsyncMock
@@ -209,12 +212,12 @@ class TestPlaylistSeederSeeding:
         """Test seeding existing playlists (updates)."""
         # Mock repositories to return existing playlist
         mock_playlist = Mock()
-        
+
         with patch.object(
             seeder.playlist_repo, "get_by_playlist_id", new_callable=AsyncMock
         ) as mock_get:
             mock_get.return_value = mock_playlist
-            
+
             # Mock user channel creation
             with patch.object(
                 seeder, "_ensure_user_channel_exists", new_callable=AsyncMock
@@ -247,7 +250,7 @@ class TestPlaylistSeederSeeding:
             seeder.playlist_repo, "get_by_playlist_id", new_callable=AsyncMock
         ) as mock_get:
             mock_get.return_value = None
-            
+
             with patch.object(
                 seeder, "_ensure_user_channel_exists", new_callable=AsyncMock
             ):
@@ -268,7 +271,7 @@ class TestPlaylistSeederSeeding:
             seeder.playlist_repo, "get_by_playlist_id", new_callable=AsyncMock
         ) as mock_get:
             mock_get.side_effect = Exception("Database error")
-            
+
             with patch.object(
                 seeder, "_ensure_user_channel_exists", new_callable=AsyncMock
             ):
@@ -313,11 +316,14 @@ class TestPlaylistSeederSeeding:
     ) -> None:
         """Test ensuring user channel creation on first call."""
         # Mock channel repository to return None (channel doesn't exist)
-        with patch.object(
-            seeder.channel_repo, "get_by_channel_id", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            seeder.channel_repo, "create", new_callable=AsyncMock
-        ) as mock_create:
+        with (
+            patch.object(
+                seeder.channel_repo, "get_by_channel_id", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
+                seeder.channel_repo, "create", new_callable=AsyncMock
+            ) as mock_create,
+        ):
             mock_get.return_value = None
 
             # Generate the expected channel ID for this user
@@ -339,15 +345,20 @@ class TestPlaylistSeederSeeding:
         # Mock channel repository to return existing channel
         mock_channel = Mock()
         mock_channel.channel_id = TestIds.TEST_CHANNEL_1
-        
-        with patch.object(
-            seeder.channel_repo, "get_by_channel_id", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            seeder.channel_repo, "create", new_callable=AsyncMock
-        ) as mock_create:
+
+        with (
+            patch.object(
+                seeder.channel_repo, "get_by_channel_id", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
+                seeder.channel_repo, "create", new_callable=AsyncMock
+            ) as mock_create,
+        ):
             mock_get.return_value = mock_channel
 
-            await seeder._ensure_user_channel_exists(mock_session, TestIds.TEST_CHANNEL_1)
+            await seeder._ensure_user_channel_exists(
+                mock_session, TestIds.TEST_CHANNEL_1
+            )
 
             mock_create.assert_not_called()
 
@@ -357,11 +368,14 @@ class TestPlaylistSeederSeeding:
     ) -> None:
         """Test that user channel creation is cached via _user_channel_created flag."""
         # First call should create channel
-        with patch.object(
-            seeder.channel_repo, "get_by_channel_id", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            seeder.channel_repo, "create", new_callable=AsyncMock
-        ) as mock_create:
+        with (
+            patch.object(
+                seeder.channel_repo, "get_by_channel_id", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
+                seeder.channel_repo, "create", new_callable=AsyncMock
+            ) as mock_create,
+        ):
             mock_get.return_value = None
 
             # Simulate first seeding call
@@ -466,7 +480,7 @@ class TestPlaylistSeederBatchProcessing:
             seeder.playlist_repo, "get_by_playlist_id", new_callable=AsyncMock
         ) as mock_get:
             mock_get.return_value = None
-            
+
             with patch.object(
                 seeder, "_ensure_user_channel_exists", new_callable=AsyncMock
             ):
@@ -536,7 +550,7 @@ class TestPlaylistSeederEdgeCases:
             seeder.playlist_repo, "get_by_playlist_id", new_callable=AsyncMock
         ) as mock_get:
             mock_get.return_value = None
-            
+
             with patch.object(
                 seeder, "_ensure_user_channel_exists", new_callable=AsyncMock
             ):

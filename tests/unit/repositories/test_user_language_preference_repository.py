@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import UserLanguagePreference as UserLanguagePreferenceDB
-from chronovista.models.enums import LanguagePreferenceType, LanguageCode
+from chronovista.models.enums import LanguageCode, LanguagePreferenceType
 from chronovista.models.user_language_preference import UserLanguagePreferenceCreate
 from chronovista.repositories.user_language_preference_repository import (
     UserLanguagePreferenceRepository,
@@ -227,8 +227,16 @@ class TestUserLanguagePreferenceRepository:
     ):
         """Test saving new preferences."""
         # Mock get_by_composite_key to return None (preference doesn't exist)
-        with patch.object(repository, 'get_by_composite_key', new=AsyncMock(return_value=None)) as mock_get, \
-             patch.object(repository, 'create', new=AsyncMock(return_value=sample_preference_create)) as mock_create:
+        with (
+            patch.object(
+                repository, "get_by_composite_key", new=AsyncMock(return_value=None)
+            ) as mock_get,
+            patch.object(
+                repository,
+                "create",
+                new=AsyncMock(return_value=sample_preference_create),
+            ) as mock_create,
+        ):
 
             result = await repository.save_preferences(
                 mock_session, "test_user", [sample_preference_create]
@@ -248,8 +256,16 @@ class TestUserLanguagePreferenceRepository:
     ):
         """Test saving preferences that already exist (update)."""
         # Mock get_by_composite_key to return existing preference
-        with patch.object(repository, 'get_by_composite_key', new=AsyncMock(return_value=sample_preference_db)) as mock_get, \
-             patch.object(repository, 'update', new=AsyncMock(return_value=sample_preference_db)) as mock_update:
+        with (
+            patch.object(
+                repository,
+                "get_by_composite_key",
+                new=AsyncMock(return_value=sample_preference_db),
+            ) as mock_get,
+            patch.object(
+                repository, "update", new=AsyncMock(return_value=sample_preference_db)
+            ) as mock_update,
+        ):
 
             result = await repository.save_preferences(
                 mock_session, "test_user", [sample_preference_create]
@@ -267,9 +283,15 @@ class TestUserLanguagePreferenceRepository:
         sample_preference_db: UserLanguagePreferenceDB,
     ):
         """Test updating priority of existing preference."""
-        with patch.object(repository, 'get_by_composite_key', new=AsyncMock(return_value=sample_preference_db)) as mock_get:
+        with patch.object(
+            repository,
+            "get_by_composite_key",
+            new=AsyncMock(return_value=sample_preference_db),
+        ) as mock_get:
 
-            result = await repository.update_priority(mock_session, "test_user", "en-US", 5)
+            result = await repository.update_priority(
+                mock_session, "test_user", "en-US", 5
+            )
 
             assert result == sample_preference_db
             assert sample_preference_db.priority == 5
@@ -282,7 +304,9 @@ class TestUserLanguagePreferenceRepository:
         self, repository: UserLanguagePreferenceRepository, mock_session: AsyncMock
     ):
         """Test updating priority of non-existent preference."""
-        with patch.object(repository, 'get_by_composite_key', new=AsyncMock(return_value=None)) as mock_get:
+        with patch.object(
+            repository, "get_by_composite_key", new=AsyncMock(return_value=None)
+        ) as mock_get:
 
             result = await repository.update_priority(
                 mock_session, "test_user", "non-existent", 5
@@ -598,16 +622,16 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
     ):
         """Test video localization when user has no language preferences."""
         # Mock get_user_preferences to return empty list
-        with patch.object(repository, 'get_user_preferences', new=AsyncMock(return_value=[])) as mock_get_prefs:
+        with patch.object(
+            repository, "get_user_preferences", new=AsyncMock(return_value=[])
+        ) as mock_get_prefs:
 
             result = await repository.get_user_videos_with_preferred_localizations(
                 mock_session, "test_user", ["video1", "video2"]
             )
 
             assert result == {}
-            mock_get_prefs.assert_called_once_with(
-                mock_session, "test_user"
-            )
+            mock_get_prefs.assert_called_once_with(mock_session, "test_user")
 
     @pytest.mark.asyncio
     async def test_get_user_videos_with_preferred_localizations_no_eligible_languages(
@@ -627,16 +651,18 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
             )
         ]
 
-        with patch.object(repository, 'get_user_preferences', new=AsyncMock(return_value=exclude_prefs)) as mock_get_prefs:
+        with patch.object(
+            repository,
+            "get_user_preferences",
+            new=AsyncMock(return_value=exclude_prefs),
+        ) as mock_get_prefs:
 
             result = await repository.get_user_videos_with_preferred_localizations(
                 mock_session, "test_user", ["video1", "video2"]
             )
 
             assert result == {}
-            mock_get_prefs.assert_called_once_with(
-                mock_session, "test_user"
-            )
+            mock_get_prefs.assert_called_once_with(mock_session, "test_user")
 
     @pytest.mark.asyncio
     async def test_get_user_videos_with_preferred_localizations_success(
@@ -647,9 +673,11 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
     ):
         """Test successful video localization retrieval."""
         # Mock get_user_preferences
-        with patch.object(repository, 'get_user_preferences', new=AsyncMock(
-            return_value=sample_preferences_with_priorities
-        )) as mock_get_prefs:
+        with patch.object(
+            repository,
+            "get_user_preferences",
+            new=AsyncMock(return_value=sample_preferences_with_priorities),
+        ) as mock_get_prefs:
 
             # Mock VideoRepository and its method
             mock_video_data = {
@@ -671,9 +699,7 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
                 )
 
                 assert result == mock_video_data
-                mock_get_prefs.assert_called_once_with(
-                    mock_session, "test_user"
-                )
+                mock_get_prefs.assert_called_once_with(mock_session, "test_user")
                 mock_video_repo.get_videos_with_preferred_localizations.assert_called_once_with(
                     mock_session, ["video1", "video2"], ["en-us", "es-es", "fr-fr"]
                 )
@@ -696,16 +722,16 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
             )
         ]
 
-        with patch.object(repository, 'get_user_preferences', new=AsyncMock(return_value=fluent_prefs)) as mock_get_prefs:
+        with patch.object(
+            repository, "get_user_preferences", new=AsyncMock(return_value=fluent_prefs)
+        ) as mock_get_prefs:
 
             result = await repository.get_recommended_localization_targets(
                 mock_session, "test_user", limit=20
             )
 
             assert result == {}
-            mock_get_prefs.assert_called_once_with(
-                mock_session, "test_user"
-            )
+            mock_get_prefs.assert_called_once_with(mock_session, "test_user")
 
     @pytest.mark.asyncio
     async def test_get_recommended_localization_targets_success(
@@ -716,9 +742,11 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
     ):
         """Test successful localization targets retrieval."""
         # Mock get_user_preferences
-        with patch.object(repository, 'get_user_preferences', new=AsyncMock(
-            return_value=sample_preferences_with_priorities
-        )) as mock_get_prefs:
+        with patch.object(
+            repository,
+            "get_user_preferences",
+            new=AsyncMock(return_value=sample_preferences_with_priorities),
+        ) as mock_get_prefs:
 
             # Mock VideoRepository and its method
             mock_missing_data = {
@@ -744,9 +772,7 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
                     "video2": ["fr-fr"],
                 }
                 assert result == expected
-                mock_get_prefs.assert_called_once_with(
-                    mock_session, "test_user"
-                )
+                mock_get_prefs.assert_called_once_with(mock_session, "test_user")
                 mock_video_repo.get_videos_missing_localizations.assert_called_once_with(
                     mock_session, ["es-es", "fr-fr"], limit=20
                 )
@@ -756,7 +782,9 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
         self, repository: UserLanguagePreferenceRepository, mock_session: AsyncMock
     ):
         """Test localization coverage when user has no preferences."""
-        with patch.object(repository, 'get_user_preferences', new=AsyncMock(return_value=[])) as mock_get_prefs:
+        with patch.object(
+            repository, "get_user_preferences", new=AsyncMock(return_value=[])
+        ) as mock_get_prefs:
 
             result = await repository.get_user_localization_coverage(
                 mock_session, "test_user"
@@ -770,9 +798,7 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
                 "coverage_percentage": 0.0,
             }
             assert result == expected
-            mock_get_prefs.assert_called_once_with(
-                mock_session, "test_user"
-            )
+            mock_get_prefs.assert_called_once_with(mock_session, "test_user")
 
     @pytest.mark.asyncio
     async def test_get_user_localization_coverage_success(
@@ -783,9 +809,11 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
     ):
         """Test successful localization coverage analysis."""
         # Mock get_user_preferences
-        with patch.object(repository, 'get_user_preferences', new=AsyncMock(
-            return_value=sample_preferences_with_priorities
-        )) as mock_get_prefs:
+        with patch.object(
+            repository,
+            "get_user_preferences",
+            new=AsyncMock(return_value=sample_preferences_with_priorities),
+        ) as mock_get_prefs:
 
             # Mock VideoLocalizationRepository and its method
             mock_language_coverage = {
@@ -849,9 +877,7 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
                 )
                 assert result["language_breakdown"]["en-us"]["video_count"] == 100
 
-                mock_get_prefs.assert_called_once_with(
-                    mock_session, "test_user"
-                )
+                mock_get_prefs.assert_called_once_with(mock_session, "test_user")
                 mock_localization_repo.get_language_coverage.assert_called_once_with(
                     mock_session
                 )
@@ -865,9 +891,11 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
     ):
         """Test localization coverage when there are no videos with localizations."""
         # Mock get_user_preferences
-        with patch.object(repository, 'get_user_preferences', new=AsyncMock(
-            return_value=sample_preferences_with_priorities
-        )) as mock_get_prefs:
+        with patch.object(
+            repository,
+            "get_user_preferences",
+            new=AsyncMock(return_value=sample_preferences_with_priorities),
+        ) as mock_get_prefs:
 
             # Mock empty language coverage
             mock_language_coverage: Dict[str, int] = {}
@@ -908,9 +936,11 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
     ):
         """Test localization coverage when user has no localized videos."""
         # Mock get_user_preferences
-        with patch.object(repository, 'get_user_preferences', new=AsyncMock(
-            return_value=sample_preferences_with_priorities
-        )) as mock_get_prefs:
+        with patch.object(
+            repository,
+            "get_user_preferences",
+            new=AsyncMock(return_value=sample_preferences_with_priorities),
+        ) as mock_get_prefs:
 
             # Mock language coverage with languages not in user's preferences
             mock_language_coverage = {

@@ -23,10 +23,10 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
+from typing import Any, Awaitable, Dict, List
 
 import pytest
 from sqlalchemy import delete, select
-from typing import Any, Awaitable, Dict, List
 
 from chronovista.db.models import UserVideo as DBUserVideo
 from chronovista.db.models import VideoTag as DBVideoTag

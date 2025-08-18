@@ -10,8 +10,6 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-# Note: async tests are marked individually to avoid warnings
-
 from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
@@ -26,6 +24,9 @@ from tests.factories.id_factory import TestIds, YouTubeIdFactory
 from tests.factories.takeout_data_factory import create_takeout_data
 from tests.factories.takeout_playlist_factory import create_takeout_playlist
 from tests.factories.takeout_playlist_item_factory import create_takeout_playlist_item
+
+# Note: async tests are marked individually to avoid warnings
+
 
 
 class TestPlaylistMembershipSeederInitialization:
@@ -146,10 +147,18 @@ class TestPlaylistMembershipSeederSeeding:
         mock_video = Mock()
         mock_video.video_id = TestIds.NEVER_GONNA_GIVE_YOU_UP
 
-        with patch.object(seeder.playlist_repo, 'get_by_playlist_id', return_value=mock_playlist) as mock_get_playlist, \
-             patch.object(seeder.video_repo, 'get_by_video_id', return_value=mock_video) as mock_get_video, \
-             patch.object(seeder.membership_repo, 'membership_exists', return_value=False) as mock_exists, \
-             patch.object(seeder.membership_repo, 'create') as mock_create:
+        with (
+            patch.object(
+                seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
+            ) as mock_get_playlist,
+            patch.object(
+                seeder.video_repo, "get_by_video_id", return_value=mock_video
+            ) as mock_get_video,
+            patch.object(
+                seeder.membership_repo, "membership_exists", return_value=False
+            ) as mock_exists,
+            patch.object(seeder.membership_repo, "create") as mock_create,
+        ):
 
             result = await seeder.seed(mock_session, sample_takeout_data)
 
@@ -174,9 +183,17 @@ class TestPlaylistMembershipSeederSeeding:
         mock_video = Mock()
         mock_membership = Mock()
 
-        with patch.object(seeder.playlist_repo, 'get_by_playlist_id', return_value=mock_playlist) as mock_get_playlist, \
-             patch.object(seeder.video_repo, 'get_by_video_id', return_value=mock_video) as mock_get_video, \
-             patch.object(seeder.membership_repo, 'membership_exists', return_value=True) as mock_exists:
+        with (
+            patch.object(
+                seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
+            ) as mock_get_playlist,
+            patch.object(
+                seeder.video_repo, "get_by_video_id", return_value=mock_video
+            ) as mock_get_video,
+            patch.object(
+                seeder.membership_repo, "membership_exists", return_value=True
+            ) as mock_exists,
+        ):
 
             result = await seeder.seed(mock_session, sample_takeout_data)
 
@@ -196,10 +213,18 @@ class TestPlaylistMembershipSeederSeeding:
         # Mock playlist exists but video doesn't
         mock_playlist = Mock()
 
-        with patch.object(seeder.playlist_repo, 'get_by_playlist_id', return_value=mock_playlist) as mock_get_playlist, \
-             patch.object(seeder.video_repo, 'get_by_video_id', return_value=None) as mock_get_video, \
-             patch.object(seeder.membership_repo, 'membership_exists', return_value=False) as mock_exists, \
-             patch.object(seeder.video_repo, 'create') as mock_video_create:
+        with (
+            patch.object(
+                seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
+            ) as mock_get_playlist,
+            patch.object(
+                seeder.video_repo, "get_by_video_id", return_value=None
+            ) as mock_get_video,
+            patch.object(
+                seeder.membership_repo, "membership_exists", return_value=False
+            ) as mock_exists,
+            patch.object(seeder.video_repo, "create") as mock_video_create,
+        ):
 
             result = await seeder.seed(mock_session, sample_takeout_data)
 
@@ -217,7 +242,9 @@ class TestPlaylistMembershipSeederSeeding:
     ) -> None:
         """Test seeding when playlists are missing."""
         # Mock playlist doesn't exist
-        with patch.object(seeder.playlist_repo, 'get_by_playlist_id', return_value=None) as mock_get_playlist:
+        with patch.object(
+            seeder.playlist_repo, "get_by_playlist_id", return_value=None
+        ) as mock_get_playlist:
             result = await seeder.seed(mock_session, sample_takeout_data)
 
             # Should handle missing playlists gracefully (may skip or create errors)
@@ -241,10 +268,18 @@ class TestPlaylistMembershipSeederSeeding:
         # Mock existing entities
         mock_playlist = Mock()
         mock_video = Mock()
-        
-        with patch.object(seeder.playlist_repo, 'get_by_playlist_id', return_value=mock_playlist) as mock_get_playlist, \
-             patch.object(seeder.video_repo, 'get_by_video_id', return_value=mock_video) as mock_get_video, \
-             patch.object(seeder.membership_repo, 'membership_exists', return_value=False) as mock_exists:
+
+        with (
+            patch.object(
+                seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
+            ) as mock_get_playlist,
+            patch.object(
+                seeder.video_repo, "get_by_video_id", return_value=mock_video
+            ) as mock_get_video,
+            patch.object(
+                seeder.membership_repo, "membership_exists", return_value=False
+            ) as mock_exists,
+        ):
 
             result = await seeder.seed(mock_session, sample_takeout_data, progress)
 
@@ -262,7 +297,11 @@ class TestPlaylistMembershipSeederSeeding:
     ) -> None:
         """Test error handling during seeding."""
         # Mock repository to raise error
-        with patch.object(seeder.playlist_repo, 'get_by_playlist_id', side_effect=Exception("Database error")) as mock_get_playlist:
+        with patch.object(
+            seeder.playlist_repo,
+            "get_by_playlist_id",
+            side_effect=Exception("Database error"),
+        ) as mock_get_playlist:
             result = await seeder.seed(mock_session, sample_takeout_data)
 
             assert result.failed > 0
@@ -300,9 +339,13 @@ class TestPlaylistMembershipSeederTransformations:
         session = AsyncMock()
 
         # Mock the repository methods using patch.object
-        with patch.object(seeder.channel_repo, 'get_by_channel_id', return_value=None) as mock_get_channel, \
-             patch.object(seeder.channel_repo, 'create') as mock_channel_create, \
-             patch.object(seeder.video_repo, 'create') as mock_video_create:
+        with (
+            patch.object(
+                seeder.channel_repo, "get_by_channel_id", return_value=None
+            ) as mock_get_channel,
+            patch.object(seeder.channel_repo, "create") as mock_channel_create,
+            patch.object(seeder.video_repo, "create") as mock_video_create,
+        ):
 
             # This should not raise an error
             await seeder._create_placeholder_video(session, video_id)
@@ -388,11 +431,19 @@ class TestPlaylistMembershipSeederPositioning:
         # Mock existing entities
         mock_playlist = Mock()
         mock_video = Mock()
-        
-        with patch.object(seeder.playlist_repo, 'get_by_playlist_id', return_value=mock_playlist) as mock_get_playlist, \
-             patch.object(seeder.video_repo, 'get_by_video_id', return_value=mock_video) as mock_get_video, \
-             patch.object(seeder.membership_repo, 'membership_exists', return_value=False) as mock_exists, \
-             patch.object(seeder.membership_repo, 'create') as mock_create:
+
+        with (
+            patch.object(
+                seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
+            ) as mock_get_playlist,
+            patch.object(
+                seeder.video_repo, "get_by_video_id", return_value=mock_video
+            ) as mock_get_video,
+            patch.object(
+                seeder.membership_repo, "membership_exists", return_value=False
+            ) as mock_exists,
+            patch.object(seeder.membership_repo, "create") as mock_create,
+        ):
 
             result = await seeder.seed(mock_session, data)
 
@@ -466,10 +517,18 @@ class TestPlaylistMembershipSeederBatchProcessing:
         # Mock existing entities
         mock_playlist = Mock()
         mock_video = Mock()
-        
-        with patch.object(seeder.playlist_repo, 'get_by_playlist_id', return_value=mock_playlist) as mock_get_playlist, \
-             patch.object(seeder.video_repo, 'get_by_video_id', return_value=mock_video) as mock_get_video, \
-             patch.object(seeder.membership_repo, 'membership_exists', return_value=False) as mock_exists:
+
+        with (
+            patch.object(
+                seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
+            ) as mock_get_playlist,
+            patch.object(
+                seeder.video_repo, "get_by_video_id", return_value=mock_video
+            ) as mock_get_video,
+            patch.object(
+                seeder.membership_repo, "membership_exists", return_value=False
+            ) as mock_exists,
+        ):
 
             result = await seeder.seed(mock_session, large_data)
 
@@ -524,8 +583,10 @@ class TestPlaylistMembershipSeederEdgeCases:
         )
 
         mock_playlist = Mock()
-        
-        with patch.object(seeder.playlist_repo, 'get_by_playlist_id', return_value=mock_playlist) as mock_get_playlist:
+
+        with patch.object(
+            seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
+        ) as mock_get_playlist:
             result = await seeder.seed(mock_session, data)
 
             # Should handle empty playlist gracefully
@@ -557,8 +618,10 @@ class TestPlaylistMembershipSeederEdgeCases:
         )
 
         mock_playlist = Mock()
-        
-        with patch.object(seeder.playlist_repo, 'get_by_playlist_id', return_value=mock_playlist) as mock_get_playlist:
+
+        with patch.object(
+            seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
+        ) as mock_get_playlist:
             result = await seeder.seed(mock_session, data)
 
             # Should handle empty video ID gracefully (should fail)
@@ -598,10 +661,20 @@ class TestPlaylistMembershipSeederEdgeCases:
 
         mock_playlist = Mock()
         mock_video = Mock()
-        
-        with patch.object(seeder.playlist_repo, 'get_by_playlist_id', return_value=mock_playlist) as mock_get_playlist, \
-             patch.object(seeder.video_repo, 'get_by_video_id', return_value=mock_video) as mock_get_video, \
-             patch.object(seeder.membership_repo, 'membership_exists', side_effect=[False, True, False]) as mock_exists:
+
+        with (
+            patch.object(
+                seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
+            ) as mock_get_playlist,
+            patch.object(
+                seeder.video_repo, "get_by_video_id", return_value=mock_video
+            ) as mock_get_video,
+            patch.object(
+                seeder.membership_repo,
+                "membership_exists",
+                side_effect=[False, True, False],
+            ) as mock_exists,
+        ):
 
             result = await seeder.seed(mock_session, data)
 
@@ -698,14 +771,22 @@ class TestPlaylistMembershipSeederIntegration:
 
         # Mock playlist exists
         mock_playlist = Mock()
-        
+
         def mock_get_video(session, vid_id):
             return Mock() if vid_id == TestIds.TEST_VIDEO_1 else None
-        
-        with patch.object(seeder.playlist_repo, 'get_by_playlist_id', return_value=mock_playlist) as mock_get_playlist, \
-             patch.object(seeder.video_repo, 'get_by_video_id', side_effect=mock_get_video) as mock_get_video_method, \
-             patch.object(seeder.membership_repo, 'membership_exists', return_value=False) as mock_exists, \
-             patch.object(seeder.video_repo, 'create') as mock_video_create:
+
+        with (
+            patch.object(
+                seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
+            ) as mock_get_playlist,
+            patch.object(
+                seeder.video_repo, "get_by_video_id", side_effect=mock_get_video
+            ) as mock_get_video_method,
+            patch.object(
+                seeder.membership_repo, "membership_exists", return_value=False
+            ) as mock_exists,
+            patch.object(seeder.video_repo, "create") as mock_video_create,
+        ):
 
             result = await seeder.seed(mock_session, data)
 

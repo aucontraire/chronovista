@@ -10,12 +10,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.models.enums import LanguageCode
 from chronovista.db.models import Video as VideoDB
-from chronovista.models.video import (
-    VideoCreate,
-    VideoStatistics
-)
+from chronovista.models.enums import LanguageCode
+from chronovista.models.video import VideoCreate, VideoStatistics
 from chronovista.repositories.video_repository import VideoRepository
 from tests.factories.video_factory import create_video_search_filters
 
@@ -82,15 +79,21 @@ class TestVideoRepository:
     ):
         """Test creating a new video."""
         # Mock get_by_video_id to return None (video doesn't exist)
-        with patch.object(repository, 'get_by_video_id', new=AsyncMock(return_value=None)) as mock_get, \
-             patch.object(repository, 'create', new=AsyncMock(return_value=sample_video_db)) as mock_create:
+        with (
+            patch.object(
+                repository, "get_by_video_id", new=AsyncMock(return_value=None)
+            ) as mock_get,
+            patch.object(
+                repository, "create", new=AsyncMock(return_value=sample_video_db)
+            ) as mock_create,
+        ):
 
-            result = await repository.create_or_update(mock_session, sample_video_create)
+            result = await repository.create_or_update(
+                mock_session, sample_video_create
+            )
 
             assert result == sample_video_db
-            mock_get.assert_called_once_with(
-                mock_session, sample_video_create.video_id
-            )
+            mock_get.assert_called_once_with(mock_session, sample_video_create.video_id)
             mock_create.assert_called_once_with(
                 mock_session, obj_in=sample_video_create
             )
@@ -105,15 +108,23 @@ class TestVideoRepository:
     ):
         """Test updating an existing video."""
         # Mock get_by_video_id to return existing video
-        with patch.object(repository, 'get_by_video_id', new=AsyncMock(return_value=sample_video_db)) as mock_get, \
-             patch.object(repository, 'update', new=AsyncMock(return_value=sample_video_db)) as mock_update:
+        with (
+            patch.object(
+                repository,
+                "get_by_video_id",
+                new=AsyncMock(return_value=sample_video_db),
+            ) as mock_get,
+            patch.object(
+                repository, "update", new=AsyncMock(return_value=sample_video_db)
+            ) as mock_update,
+        ):
 
-            result = await repository.create_or_update(mock_session, sample_video_create)
+            result = await repository.create_or_update(
+                mock_session, sample_video_create
+            )
 
             assert result == sample_video_db
-            mock_get.assert_called_once_with(
-                mock_session, sample_video_create.video_id
-            )
+            mock_get.assert_called_once_with(mock_session, sample_video_create.video_id)
             mock_update.assert_called_once()
 
     @pytest.mark.asyncio
@@ -136,7 +147,11 @@ class TestVideoRepository:
             top_languages=[],
             upload_trend={},
         )
-        with patch.object(repository, 'get_video_statistics', new=AsyncMock(return_value=expected_stats)) as mock_stats:
+        with patch.object(
+            repository,
+            "get_video_statistics",
+            new=AsyncMock(return_value=expected_stats),
+        ) as mock_stats:
 
             result = await repository.get_video_statistics(mock_session)
 
@@ -338,7 +353,9 @@ class TestVideoRepository:
     ):
         """Test get method delegates to get_by_video_id."""
         mock_video = MagicMock()
-        with patch.object(repository, 'get_by_video_id', new=AsyncMock(return_value=mock_video)) as mock_get:
+        with patch.object(
+            repository, "get_by_video_id", new=AsyncMock(return_value=mock_video)
+        ) as mock_get:
 
             result = await repository.get(mock_session, "video1")
 
@@ -350,7 +367,9 @@ class TestVideoRepository:
         self, repository: VideoRepository, mock_session
     ):
         """Test exists method delegates to exists_by_video_id."""
-        with patch.object(repository, 'exists_by_video_id', new=AsyncMock(return_value=True)) as mock_exists:
+        with patch.object(
+            repository, "exists_by_video_id", new=AsyncMock(return_value=True)
+        ) as mock_exists:
 
             result = await repository.exists(mock_session, "video1")
 
@@ -373,7 +392,9 @@ class TestVideoRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_find_by_date_range(self, repository: VideoRepository, mock_session: AsyncMock):
+    async def test_find_by_date_range(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
         """Test finding videos by date range."""
         from datetime import datetime, timezone
 
@@ -420,7 +441,9 @@ class TestVideoRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_get_with_channel(self, repository: VideoRepository, mock_session: AsyncMock):
+    async def test_get_with_channel(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
         """Test getting video with channel details."""
         mock_video = MagicMock()
         mock_result = MagicMock()
@@ -433,7 +456,9 @@ class TestVideoRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_search_videos(self, repository: VideoRepository, mock_session: AsyncMock):
+    async def test_search_videos(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
         """Test searching videos."""
 
         mock_videos = [MagicMock(), MagicMock()]
@@ -537,7 +562,6 @@ class TestVideoRepositorySearchFilters:
     ):
         """Test search videos with upload date filters."""
         from datetime import datetime, timezone
-
 
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = mock_videos
@@ -721,7 +745,11 @@ class TestVideoRepositoryStatistics:
         )
 
         # Mock the method to avoid SQLAlchemy query execution issues
-        with patch.object(repository, 'get_video_statistics', new=AsyncMock(return_value=expected_stats)) as mock_stats:
+        with patch.object(
+            repository,
+            "get_video_statistics",
+            new=AsyncMock(return_value=expected_stats),
+        ) as mock_stats:
 
             result = await repository.get_video_statistics(mock_session)
 
@@ -761,7 +789,11 @@ class TestVideoRepositoryStatistics:
         )
 
         # Mock the method to avoid SQLAlchemy query execution issues
-        with patch.object(repository, 'get_video_statistics', new=AsyncMock(return_value=expected_stats)) as mock_stats:
+        with patch.object(
+            repository,
+            "get_video_statistics",
+            new=AsyncMock(return_value=expected_stats),
+        ) as mock_stats:
 
             result = await repository.get_video_statistics(mock_session)
 
@@ -987,7 +1019,11 @@ class TestVideoRepositoryAdvancedCoverage:
         assert hasattr(repository, "get_video_statistics")
 
         # Mock to avoid complex SQLAlchemy queries
-        with patch.object(repository, 'get_video_statistics', new=AsyncMock(return_value=expected_stats)):
+        with patch.object(
+            repository,
+            "get_video_statistics",
+            new=AsyncMock(return_value=expected_stats),
+        ):
             result = await repository.get_video_statistics(mock_session)
 
             assert isinstance(result, VideoStatistics)
@@ -1290,7 +1326,9 @@ class TestVideoRepositoryAdvancedCoverage:
     ):
         """Test get_video_localization_summary when video not found."""
         # Mock get_by_video_id to return None
-        with patch.object(repository, 'get_by_video_id', new=AsyncMock(return_value=None)) as mock_get:
+        with patch.object(
+            repository, "get_by_video_id", new=AsyncMock(return_value=None)
+        ) as mock_get:
 
             result = await repository.get_video_localization_summary(
                 mock_session, "nonexistent"
@@ -1309,7 +1347,9 @@ class TestVideoRepositoryAdvancedCoverage:
         sample_video_db.video_id = "video1"
 
         # Mock get_by_video_id to return video
-        with patch.object(repository, 'get_by_video_id', new=AsyncMock(return_value=sample_video_db)) as mock_get:
+        with patch.object(
+            repository, "get_by_video_id", new=AsyncMock(return_value=sample_video_db)
+        ) as mock_get:
 
             # Mock localization data
             mock_localization = MagicMock()
@@ -1350,7 +1390,9 @@ class TestVideoRepositoryAdvancedCoverage:
                 assert es_summary["has_description"] is True
                 assert es_summary["created_at"] == datetime(2023, 1, 1)
 
-                mock_repo.get_by_video_id.assert_called_once_with(mock_session, "video1")
+                mock_repo.get_by_video_id.assert_called_once_with(
+                    mock_session, "video1"
+                )
                 mock_repo.get_language_coverage.assert_called_once_with(mock_session)
 
     @pytest.mark.asyncio
@@ -1363,7 +1405,9 @@ class TestVideoRepositoryAdvancedCoverage:
         sample_video_db.video_id = "video1"
 
         # Mock get_by_video_id to return video
-        with patch.object(repository, 'get_by_video_id', new=AsyncMock(return_value=sample_video_db)) as mock_get:
+        with patch.object(
+            repository, "get_by_video_id", new=AsyncMock(return_value=sample_video_db)
+        ) as mock_get:
 
             with patch(
                 "chronovista.repositories.video_localization_repository.VideoLocalizationRepository"

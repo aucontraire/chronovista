@@ -136,7 +136,9 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result
 
         # Act
-        result = await repository.get(mock_session, ("dQw4w9WgXcQ", LanguageCode.ENGLISH.value))
+        result = await repository.get(
+            mock_session, ("dQw4w9WgXcQ", LanguageCode.ENGLISH.value)
+        )
 
         # Assert
         assert result == expected_localization
@@ -199,7 +201,9 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result
 
         # Act
-        result = await repository.exists(mock_session, ("dQw4w9WgXcQ", LanguageCode.ENGLISH.value))
+        result = await repository.exists(
+            mock_session, ("dQw4w9WgXcQ", LanguageCode.ENGLISH.value)
+        )
 
         # Assert
         assert result is True
@@ -269,7 +273,9 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result
 
         # Act
-        result = await repository.get_by_language_code(mock_session, LanguageCode.ENGLISH.value)
+        result = await repository.get_by_language_code(
+            mock_session, LanguageCode.ENGLISH.value
+        )
 
         # Assert
         assert len(result) == 2
@@ -294,7 +300,9 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result
 
         # Act
-        result = await repository.get_with_video(mock_session, "dQw4w9WgXcQ", LanguageCode.ENGLISH.value)
+        result = await repository.get_with_video(
+            mock_session, "dQw4w9WgXcQ", LanguageCode.ENGLISH.value
+        )
 
         # Assert
         assert result == localization_with_video
@@ -326,7 +334,9 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result_exists
 
         # Mock create operation
-        with patch.object(repository, 'create', new=AsyncMock(return_value=new_localization)) as mock_create:
+        with patch.object(
+            repository, "create", new=AsyncMock(return_value=new_localization)
+        ) as mock_create:
             # Act
             result = await repository.create_or_update(
                 mock_session, sample_localization_create
@@ -369,7 +379,9 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result_exists
 
         # Mock update operation
-        with patch.object(repository, 'update', new=AsyncMock(return_value=updated_localization)) as mock_update:
+        with patch.object(
+            repository, "update", new=AsyncMock(return_value=updated_localization)
+        ) as mock_update:
             # Act
             result = await repository.create_or_update(
                 mock_session, sample_localization_create
@@ -458,14 +470,24 @@ class TestVideoLocalizationRepository:
         """Test getting supported languages for a video."""
         # Arrange
         mock_result = MagicMock()
-        mock_result.__iter__.return_value = iter([(LanguageCode.ENGLISH.value,), (LanguageCode.SPANISH.value,), (LanguageCode.FRENCH.value,)])
+        mock_result.__iter__.return_value = iter(
+            [
+                (LanguageCode.ENGLISH.value,),
+                (LanguageCode.SPANISH.value,),
+                (LanguageCode.FRENCH.value,),
+            ]
+        )
         mock_session.execute.return_value = mock_result
 
         # Act
         result = await repository.get_supported_languages(mock_session, "dQw4w9WgXcQ")
 
         # Assert
-        assert result == [LanguageCode.ENGLISH.value, LanguageCode.SPANISH.value, LanguageCode.FRENCH.value]
+        assert result == [
+            LanguageCode.ENGLISH.value,
+            LanguageCode.SPANISH.value,
+            LanguageCode.FRENCH.value,
+        ]
 
     @pytest.mark.asyncio
     async def test_get_videos_by_language(
@@ -478,7 +500,9 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result
 
         # Act
-        result = await repository.get_videos_by_language(mock_session, LanguageCode.ENGLISH.value)
+        result = await repository.get_videos_by_language(
+            mock_session, LanguageCode.ENGLISH.value
+        )
 
         # Assert
         assert result == ["dQw4w9WgXcQ", "9bZkp7q19f0"]
@@ -508,14 +532,24 @@ class TestVideoLocalizationRepository:
         """Test getting language coverage statistics."""
         # Arrange
         mock_result = MagicMock()
-        mock_result.__iter__.return_value = iter([(LanguageCode.ENGLISH.value, 150), (LanguageCode.SPANISH.value, 100), (LanguageCode.FRENCH.value, 50)])
+        mock_result.__iter__.return_value = iter(
+            [
+                (LanguageCode.ENGLISH.value, 150),
+                (LanguageCode.SPANISH.value, 100),
+                (LanguageCode.FRENCH.value, 50),
+            ]
+        )
         mock_session.execute.return_value = mock_result
 
         # Act
         result = await repository.get_language_coverage(mock_session)
 
         # Assert
-        assert result == {LanguageCode.ENGLISH.value: 150, LanguageCode.SPANISH.value: 100, LanguageCode.FRENCH.value: 50}
+        assert result == {
+            LanguageCode.ENGLISH.value: 150,
+            LanguageCode.SPANISH.value: 100,
+            LanguageCode.FRENCH.value: 50,
+        }
 
     @pytest.mark.asyncio
     async def test_find_missing_localizations(
@@ -523,7 +557,11 @@ class TestVideoLocalizationRepository:
     ):
         """Test finding missing localizations for target languages."""
         # Arrange
-        target_languages = [LanguageCode.ENGLISH.value, LanguageCode.SPANISH.value, LanguageCode.FRENCH.value]
+        target_languages = [
+            LanguageCode.ENGLISH.value,
+            LanguageCode.SPANISH.value,
+            LanguageCode.FRENCH.value,
+        ]
         mock_result = MagicMock()
         # Video 1 has EN and ES, missing FR
         # Video 2 has only EN, missing ES and FR
@@ -545,7 +583,10 @@ class TestVideoLocalizationRepository:
         assert "dQw4w9WgXcQ" in result
         assert result["dQw4w9WgXcQ"] == [LanguageCode.FRENCH.value]
         assert "9bZkp7q19f0" in result
-        assert result["9bZkp7q19f0"] == [LanguageCode.SPANISH.value, LanguageCode.FRENCH.value]
+        assert result["9bZkp7q19f0"] == [
+            LanguageCode.SPANISH.value,
+            LanguageCode.FRENCH.value,
+        ]
 
     # Statistics
 
@@ -569,10 +610,14 @@ class TestVideoLocalizationRepository:
         mock_result_avg.scalar.return_value = 2.5
 
         mock_result_languages = MagicMock()
-        mock_result_languages.__iter__.return_value = iter([(LanguageCode.ENGLISH.value, 150), (LanguageCode.SPANISH.value, 100)])
+        mock_result_languages.__iter__.return_value = iter(
+            [(LanguageCode.ENGLISH.value, 150), (LanguageCode.SPANISH.value, 100)]
+        )
 
         mock_result_coverage = MagicMock()
-        mock_result_coverage.__iter__.return_value = iter([(LanguageCode.ENGLISH.value, 150), (LanguageCode.SPANISH.value, 100)])
+        mock_result_coverage.__iter__.return_value = iter(
+            [(LanguageCode.ENGLISH.value, 150), (LanguageCode.SPANISH.value, 100)]
+        )
 
         # Configure mock to return different results for different queries
         mock_session.execute.side_effect = [
@@ -657,7 +702,9 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result_exists
 
         # Mock create operations
-        with patch.object(repository, 'create', new=AsyncMock(side_effect=created_localizations)) as mock_create:
+        with patch.object(
+            repository, "create", new=AsyncMock(side_effect=created_localizations)
+        ) as mock_create:
             # Act
             result = await repository.bulk_create_localizations(
                 mock_session, localizations_to_create
@@ -675,7 +722,10 @@ class TestVideoLocalizationRepository:
         # Arrange
         video_id = "dQw4w9WgXcQ"
         localizations_data = {
-            LanguageCode.ENGLISH.value: {"title": "English Title", "description": "English Description"},
+            LanguageCode.ENGLISH.value: {
+                "title": "English Title",
+                "description": "English Description",
+            },
             LanguageCode.SPANISH.value: {
                 "title": "Título en Español",
                 "description": "Descripción en español",
@@ -705,7 +755,9 @@ class TestVideoLocalizationRepository:
         mock_session.execute.return_value = mock_result_exists
 
         # Mock create operations
-        with patch.object(repository, 'create', new=AsyncMock(side_effect=created_localizations)) as mock_create:
+        with patch.object(
+            repository, "create", new=AsyncMock(side_effect=created_localizations)
+        ) as mock_create:
             # Act
             result = await repository.bulk_create_video_localizations(
                 mock_session, video_id, localizations_data
@@ -798,7 +850,9 @@ class TestVideoLocalizationRepository:
         ]
 
         # Act
-        result = await repository.delete_by_language_code(mock_session, LanguageCode.ENGLISH.value)
+        result = await repository.delete_by_language_code(
+            mock_session, LanguageCode.ENGLISH.value
+        )
 
         # Assert
         assert result == 2
@@ -841,7 +895,10 @@ class TestVideoLocalizationRepository:
         """Test getting preferred localizations based on language preferences."""
         # Arrange
         video_ids = ["dQw4w9WgXcQ", "9bZkp7q19f0"]
-        preferred_languages = [LanguageCode.SPANISH.value, LanguageCode.ENGLISH.value]  # Spanish preferred, English fallback
+        preferred_languages = [
+            LanguageCode.SPANISH.value,
+            LanguageCode.ENGLISH.value,
+        ]  # Spanish preferred, English fallback
 
         localizations = [
             VideoLocalizationDB(
@@ -1012,7 +1069,10 @@ class TestVideoLocalizationRepositoryWithFactories:
         # Assert
         assert filters.video_ids is not None
         assert len(filters.video_ids) == 2
-        assert filters.language_codes == [LanguageCode.ENGLISH.value, LanguageCode.SPANISH.value]
+        assert filters.language_codes == [
+            LanguageCode.ENGLISH.value,
+            LanguageCode.SPANISH.value,
+        ]
         assert filters.title_query == "tutorial"
 
     def test_create_statistics_with_factory(self):

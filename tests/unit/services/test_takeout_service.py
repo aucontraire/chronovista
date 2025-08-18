@@ -763,7 +763,7 @@ class TestAnalysisMethodsWithEmptyData:
             takeout_path=temp_takeout_dir,
             watch_history=[],
             playlists=[],
-            subscriptions=[]
+            subscriptions=[],
         )
 
         patterns = await service.analyze_viewing_patterns(empty_data)
@@ -782,7 +782,7 @@ class TestAnalysisMethodsWithEmptyData:
             takeout_path=temp_takeout_dir,
             watch_history=[],
             playlists=[],
-            subscriptions=[]
+            subscriptions=[],
         )
 
         analysis = await service.analyze_playlist_relationships(empty_data)
@@ -798,7 +798,7 @@ class TestAnalysisMethodsWithEmptyData:
             takeout_path=temp_takeout_dir,
             watch_history=[],
             playlists=[],
-            subscriptions=[]
+            subscriptions=[],
         )
 
         gaps = await service.find_content_gaps(empty_data)

@@ -25,7 +25,6 @@ from chronovista.models.topic_analytics import (
     TopicRelationships,
     TopicTrend,
 )
-
 from chronovista.services.topic_analytics_service import TopicAnalyticsService
 from tests.factories.id_factory import TestIds
 
@@ -127,7 +126,7 @@ class TestTopicAnalyticsServicePopularityAnalysis:
             "chronovista.config.database.db_manager.get_session"
         ) as mock_get_session:
             mock_async_session = AsyncMock()
-            
+
             # Mock the async iterator pattern used by get_session
             mock_get_session.return_value.__aiter__.return_value = [mock_async_session]
 
@@ -156,7 +155,7 @@ class TestTopicAnalyticsServicePopularityAnalysis:
             mock_async_session.execute.side_effect = [
                 mock_total_result,  # total videos
                 mock_total_result,  # total channels
-                mock_main_result,   # main query
+                mock_main_result,  # main query
             ]
 
             result = await service.get_popular_topics(metric="videos", limit=2)
@@ -218,7 +217,12 @@ class TestTopicAnalyticsServiceRelationshipAnalysis:
             # Mock repository get method
             mock_topic = MagicMock()
             mock_topic.category_name = "Music"
-            with patch.object(service.topic_category_repository, 'get', new_callable=AsyncMock, return_value=mock_topic):
+            with patch.object(
+                service.topic_category_repository,
+                "get",
+                new_callable=AsyncMock,
+                return_value=mock_topic,
+            ):
 
                 result = await service.get_topic_relationships(
                     topic_id=TestIds.MUSIC_TOPIC, min_confidence=0.1, limit=10
@@ -244,7 +248,12 @@ class TestTopicAnalyticsServiceRelationshipAnalysis:
             mock_topic2 = MagicMock()
             mock_topic2.category_name = "Gaming"
 
-            with patch.object(service.topic_category_repository, 'get', new_callable=AsyncMock, side_effect=[mock_topic1, mock_topic2]):
+            with patch.object(
+                service.topic_category_repository,
+                "get",
+                new_callable=AsyncMock,
+                side_effect=[mock_topic1, mock_topic2],
+            ):
 
                 result = await service.calculate_topic_overlap(
                     topic1_id=TestIds.MUSIC_TOPIC, topic2_id=TestIds.GAMING_TOPIC
@@ -287,7 +296,11 @@ class TestTopicAnalyticsServiceAnalyticsSummary:
                 )
             ]
 
-            with patch.object(service, 'get_popular_topics', new=AsyncMock(return_value=mock_popular_topics)):
+            with patch.object(
+                service,
+                "get_popular_topics",
+                new=AsyncMock(return_value=mock_popular_topics),
+            ):
                 result = await service.get_analytics_summary()
 
             assert isinstance(result, TopicAnalyticsSummary)
@@ -318,7 +331,12 @@ class TestTopicAnalyticsServiceSimilarTopics:
             # Mock repository get method
             mock_topic = MagicMock()
             mock_topic.category_name = "Music"
-            with patch.object(service.topic_category_repository, 'get', new_callable=AsyncMock, return_value=mock_topic):
+            with patch.object(
+                service.topic_category_repository,
+                "get",
+                new_callable=AsyncMock,
+                return_value=mock_topic,
+            ):
 
                 result = await service.get_similar_topics(
                     topic_id=TestIds.MUSIC_TOPIC, min_similarity=0.5, limit=10
@@ -384,7 +402,11 @@ class TestTopicAnalyticsServiceTrends:
             )
         ]
 
-        with patch.object(service, 'get_popular_topics', new=AsyncMock(return_value=mock_popular_topics)):
+        with patch.object(
+            service,
+            "get_popular_topics",
+            new=AsyncMock(return_value=mock_popular_topics),
+        ):
             with patch(
                 "chronovista.config.database.db_manager.get_session"
             ) as mock_session:
@@ -411,7 +433,9 @@ class TestTopicAnalyticsServiceInsights:
     async def test_get_topic_insights(self, service: TopicAnalyticsService) -> None:
         """Test getting topic insights."""
         # Mock the get_similar_topics method since it's called internally
-        with patch.object(service, 'get_similar_topics', new=AsyncMock(return_value=[])):
+        with patch.object(
+            service, "get_similar_topics", new=AsyncMock(return_value=[])
+        ):
             with patch(
                 "chronovista.config.database.db_manager.get_session"
             ) as mock_session:
@@ -467,8 +491,16 @@ class TestTopicAnalyticsServiceGraphGeneration:
             analysis_date=datetime.now().isoformat(),
         )
 
-        with patch.object(service, 'get_popular_topics', new=AsyncMock(return_value=mock_popular_topics)):
-            with patch.object(service, 'get_topic_relationships', new=AsyncMock(return_value=mock_relationships)):
+        with patch.object(
+            service,
+            "get_popular_topics",
+            new=AsyncMock(return_value=mock_popular_topics),
+        ):
+            with patch.object(
+                service,
+                "get_topic_relationships",
+                new=AsyncMock(return_value=mock_relationships),
+            ):
                 result = await service.generate_topic_graph_dot(
                     min_confidence=0.1, max_topics=50
                 )
@@ -504,8 +536,16 @@ class TestTopicAnalyticsServiceGraphGeneration:
             analysis_date=datetime.now().isoformat(),
         )
 
-        with patch.object(service, 'get_popular_topics', new=AsyncMock(return_value=mock_popular_topics)):
-            with patch.object(service, 'get_topic_relationships', new=AsyncMock(return_value=mock_relationships)):
+        with patch.object(
+            service,
+            "get_popular_topics",
+            new=AsyncMock(return_value=mock_popular_topics),
+        ):
+            with patch.object(
+                service,
+                "get_topic_relationships",
+                new=AsyncMock(return_value=mock_relationships),
+            ):
                 result = await service.generate_topic_graph_json(
                     min_confidence=0.1, max_topics=50
                 )
@@ -579,7 +619,12 @@ class TestTopicAnalyticsServiceEdgeCases:
             mock_session.return_value.__aexit__ = AsyncMock()
 
             # Mock repository to return None (topic doesn't exist)
-            with patch.object(service.topic_category_repository, 'get', new_callable=AsyncMock, return_value=None):
+            with patch.object(
+                service.topic_category_repository,
+                "get",
+                new_callable=AsyncMock,
+                return_value=None,
+            ):
 
                 result = await service.get_topic_relationships(
                     topic_id="nonexistent_topic", min_confidence=0.1, limit=10

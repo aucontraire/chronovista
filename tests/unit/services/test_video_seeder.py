@@ -162,8 +162,17 @@ class TestVideoSeederSeeding:
     ) -> None:
         """Test seeding new videos."""
         # Mock repository to return None (videos don't exist)
-        with patch.object(seeder.video_repo, 'get_by_video_id', new_callable=AsyncMock, return_value=None) as mock_get, \
-             patch.object(seeder.video_repo, 'create', new_callable=AsyncMock) as mock_create:
+        with (
+            patch.object(
+                seeder.video_repo,
+                "get_by_video_id",
+                new_callable=AsyncMock,
+                return_value=None,
+            ) as mock_get,
+            patch.object(
+                seeder.video_repo, "create", new_callable=AsyncMock
+            ) as mock_create,
+        ):
 
             result = await seeder.seed(mock_session, sample_takeout_data)
 
@@ -184,7 +193,12 @@ class TestVideoSeederSeeding:
         """Test seeding existing videos (updates)."""
         # Mock repository to return existing video
         mock_video = Mock()
-        with patch.object(seeder.video_repo, 'get_by_video_id', new_callable=AsyncMock, return_value=mock_video):
+        with patch.object(
+            seeder.video_repo,
+            "get_by_video_id",
+            new_callable=AsyncMock,
+            return_value=mock_video,
+        ):
 
             result = await seeder.seed(mock_session, sample_takeout_data)
 
@@ -206,7 +220,12 @@ class TestVideoSeederSeeding:
             progress_calls.append(data_type)
 
         progress = ProgressCallback(mock_progress_callback)
-        with patch.object(seeder.video_repo, 'get_by_video_id', new_callable=AsyncMock, return_value=None):
+        with patch.object(
+            seeder.video_repo,
+            "get_by_video_id",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
 
             result = await seeder.seed(mock_session, sample_takeout_data, progress)
 
@@ -220,7 +239,12 @@ class TestVideoSeederSeeding:
     ) -> None:
         """Test error handling during seeding."""
         # Mock repository to raise error
-        with patch.object(seeder.video_repo, 'get_by_video_id', new_callable=AsyncMock, side_effect=Exception("Database error")):
+        with patch.object(
+            seeder.video_repo,
+            "get_by_video_id",
+            new_callable=AsyncMock,
+            side_effect=Exception("Database error"),
+        ):
 
             result = await seeder.seed(mock_session, sample_takeout_data)
 
@@ -289,8 +313,12 @@ class TestVideoSeederSeeding:
 
         # Mock first call returns None (new), second call returns existing video
         # Only 2 calls should be made for 2 unique videos
-        with patch.object(seeder.video_repo, 'get_by_video_id', new_callable=AsyncMock, 
-                         side_effect=[None, Mock()]):
+        with patch.object(
+            seeder.video_repo,
+            "get_by_video_id",
+            new_callable=AsyncMock,
+            side_effect=[None, Mock()],
+        ):
 
             result = await seeder.seed(mock_session, data_with_duplicates)
 
@@ -347,7 +375,12 @@ class TestVideoSeederBatchProcessing:
             playlists=[],
         )
 
-        with patch.object(seeder.video_repo, 'get_by_video_id', new_callable=AsyncMock, return_value=None):
+        with patch.object(
+            seeder.video_repo,
+            "get_by_video_id",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
 
             result = await seeder.seed(mock_session, large_data)
 

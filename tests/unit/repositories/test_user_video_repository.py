@@ -19,7 +19,7 @@ from chronovista.models.user_video import (
     GoogleTakeoutWatchHistoryItem,
     UserVideoCreate,
     UserVideoSearchFilters,
-    UserVideoStatistics
+    UserVideoStatistics,
 )
 from chronovista.repositories.user_video_repository import UserVideoRepository
 
@@ -301,7 +301,9 @@ class TestUserVideoRepository:
         filtered_videos = [
             v
             for v in sample_user_videos_list
-            if v.liked and v.completion_percentage is not None and v.completion_percentage >= 80.0
+            if v.liked
+            and v.completion_percentage is not None
+            and v.completion_percentage >= 80.0
         ]
 
         mock_result = MagicMock()
@@ -335,7 +337,9 @@ class TestUserVideoRepository:
         )
 
         # Mock the entire method to avoid SQLAlchemy query construction issues
-        with patch.object(repository, 'get_user_statistics', return_value=expected_stats) as mock_get_stats:
+        with patch.object(
+            repository, "get_user_statistics", return_value=expected_stats
+        ) as mock_get_stats:
             result = await repository.get_user_statistics(mock_session, "test_user")
 
             assert isinstance(result, UserVideoStatistics)
@@ -371,7 +375,9 @@ class TestUserVideoRepository:
         )
 
         # Mock the entire method
-        with patch.object(repository, 'get_user_statistics', return_value=expected_stats) as mock_get_stats:
+        with patch.object(
+            repository, "get_user_statistics", return_value=expected_stats
+        ) as mock_get_stats:
             result = await repository.get_user_statistics(mock_session, "test_user")
 
             assert isinstance(result, UserVideoStatistics)
@@ -460,9 +466,13 @@ class TestUserVideoRepository:
         takeout_items = [sample_takeout_item]
 
         # Mock get_by_composite_key to return None (new video)
-        with patch.object(repository, 'get_by_composite_key', return_value=None) as mock_get, \
-             patch.object(repository, 'create', return_value=MagicMock()) as mock_create:
-            
+        with (
+            patch.object(
+                repository, "get_by_composite_key", return_value=None
+            ) as mock_get,
+            patch.object(repository, "create", return_value=MagicMock()) as mock_create,
+        ):
+
             result = await repository.import_from_takeout_batch(
                 mock_session, "test_user", takeout_items
             )
@@ -486,7 +496,9 @@ class TestUserVideoRepository:
         takeout_items = [sample_takeout_item]
 
         # Mock get_by_composite_key to return existing video
-        with patch.object(repository, 'get_by_composite_key', return_value=sample_user_video_db) as mock_get:
+        with patch.object(
+            repository, "get_by_composite_key", return_value=sample_user_video_db
+        ) as mock_get:
             result = await repository.import_from_takeout_batch(
                 mock_session, "test_user", takeout_items
             )
@@ -519,9 +531,17 @@ class TestUserVideoRepository:
         takeout_items = [takeout_item, takeout_item]  # Same video watched twice
 
         # Mock get_by_composite_key to return None first time, then existing video
-        with patch.object(repository, 'get_by_composite_key', side_effect=[None, sample_user_video_db]) as mock_get, \
-             patch.object(repository, 'create', return_value=sample_user_video_db) as mock_create:
-            
+        with (
+            patch.object(
+                repository,
+                "get_by_composite_key",
+                side_effect=[None, sample_user_video_db],
+            ) as mock_get,
+            patch.object(
+                repository, "create", return_value=sample_user_video_db
+            ) as mock_create,
+        ):
+
             result = await repository.import_from_takeout_batch(
                 mock_session, "test_user", takeout_items
             )
@@ -568,9 +588,15 @@ class TestUserVideoRepository:
         watch_time = datetime.now(timezone.utc)
 
         # Mock get_by_composite_key to return None (new interaction)
-        with patch.object(repository, 'get_by_composite_key', return_value=None) as mock_get, \
-             patch.object(repository, 'create', return_value=sample_user_video_create) as mock_create:
-            
+        with (
+            patch.object(
+                repository, "get_by_composite_key", return_value=None
+            ) as mock_get,
+            patch.object(
+                repository, "create", return_value=sample_user_video_create
+            ) as mock_create,
+        ):
+
             result = await repository.record_watch(
                 mock_session,
                 "test_user",
@@ -598,7 +624,9 @@ class TestUserVideoRepository:
         original_rewatch_count = sample_user_video_db.rewatch_count
 
         # Mock get_by_composite_key to return existing interaction
-        with patch.object(repository, 'get_by_composite_key', return_value=sample_user_video_db) as mock_get:
+        with patch.object(
+            repository, "get_by_composite_key", return_value=sample_user_video_db
+        ) as mock_get:
             result = await repository.record_watch(
                 mock_session,
                 "test_user",
@@ -780,7 +808,9 @@ class TestUserVideoRepositoryEdgeCases:
         )
 
         # Mock get_by_composite_key to raise an exception
-        with patch.object(repository, 'get_by_composite_key', side_effect=Exception("Database error")) as mock_get:
+        with patch.object(
+            repository, "get_by_composite_key", side_effect=Exception("Database error")
+        ) as mock_get:
             result = await repository.import_from_takeout_batch(
                 mock_session, "test_user", [invalid_item]
             )
@@ -969,9 +999,13 @@ class TestGoogleTakeoutIntegration:
             existing_video,  # jNQXAC9IVRw - found first time
             existing_video,  # jNQXAC9IVRw - found second time
         ]
-        with patch.object(repository, 'get_by_composite_key', side_effect=get_calls) as mock_get, \
-             patch.object(repository, 'create', return_value=MagicMock()) as mock_create:
-            
+        with (
+            patch.object(
+                repository, "get_by_composite_key", side_effect=get_calls
+            ) as mock_get,
+            patch.object(repository, "create", return_value=MagicMock()) as mock_create,
+        ):
+
             result = await repository.import_from_takeout_batch(
                 mock_session, "test_user", takeout_items
             )

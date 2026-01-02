@@ -130,6 +130,9 @@ class TakeoutService:
 
             watch_entries: List[TakeoutWatchEntry] = []
 
+            skipped_community_posts = 0
+            skipped_no_video_id = 0
+
             for entry in history_data:
                 # Skip non-YouTube entries
                 if entry.get("header") != "YouTube":
@@ -137,6 +140,23 @@ class TakeoutService:
 
                 # Skip entries without video URLs
                 if "titleUrl" not in entry:
+                    continue
+
+                title = entry.get("title", "")
+
+                # Skip Community Posts - they start with "Viewed" not "Watched"
+                # Community Posts are NOT videos and should not be imported
+                if title.startswith("Viewed "):
+                    skipped_community_posts += 1
+                    continue
+
+                # Skip entries without valid video URLs
+                # This catches any edge cases where titleUrl doesn't contain a video ID
+                title_url = entry.get("titleUrl", "")
+                # Handle Unicode-escaped URLs (e.g., \u003d for =)
+                decoded_url = title_url.replace("\\u003d", "=").replace("\\u0026", "&")
+                if "/watch?v=" not in decoded_url and "youtu.be/" not in decoded_url:
+                    skipped_no_video_id += 1
                     continue
 
                 # Extract channel info from subtitles
@@ -148,14 +168,13 @@ class TakeoutService:
                     channel_url = subtitle.get("url")
 
                 # Clean title (remove "Watched " prefix)
-                title = entry.get("title", "")
                 if title.startswith("Watched "):
                     title = title[8:]  # Remove "Watched " prefix
 
                 # Create watch entry
                 watch_entry = TakeoutWatchEntry(
                     title=title,
-                    title_url=entry["titleUrl"],
+                    title_url=title_url,
                     video_id=None,  # Will be extracted by model validator
                     channel_name=channel_name,
                     channel_url=channel_url,
@@ -165,6 +184,11 @@ class TakeoutService:
                 )
 
                 watch_entries.append(watch_entry)
+
+            if skipped_community_posts > 0:
+                logger.info(f"   ⏭️  Skipped {skipped_community_posts} Community Posts (not videos)")
+            if skipped_no_video_id > 0:
+                logger.info(f"   ⏭️  Skipped {skipped_no_video_id} entries without video IDs")
 
             logger.info(f"✅ Parsed {len(watch_entries)} watch history entries")
             return watch_entries

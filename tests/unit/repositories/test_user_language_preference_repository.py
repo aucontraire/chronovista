@@ -21,6 +21,8 @@ from chronovista.repositories.user_language_preference_repository import (
     UserLanguagePreferenceRepository,
 )
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestUserLanguagePreferenceRepository:
     """Test suite for UserLanguagePreferenceRepository."""

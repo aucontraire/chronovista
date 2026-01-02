@@ -8,14 +8,12 @@ validation and serialization support.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, List, Literal, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .enums import LanguageCode
+from .enums import LanguageCode, PrivacyStatus
 from .youtube_types import ChannelId, PlaylistId
-
-PrivacyStatus = Literal["private", "public", "unlisted"]
 
 
 class PlaylistBase(BaseModel):
@@ -28,7 +26,7 @@ class PlaylistBase(BaseModel):
         default=None, description="BCP-47 language code"
     )
     privacy_status: PrivacyStatus = Field(
-        default="private", description="Playlist privacy setting"
+        default=PrivacyStatus.PRIVATE, description="Playlist privacy setting"
     )
     channel_id: ChannelId = Field(
         ...,

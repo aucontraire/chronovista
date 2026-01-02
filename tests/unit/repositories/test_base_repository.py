@@ -14,6 +14,8 @@ from chronovista.models.video import VideoCreate, VideoUpdate
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 from tests.factories.video_factory import VideoCreateFactory, create_video_update
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestBaseSQLAlchemyRepository:
     """Test BaseSQLAlchemyRepository functionality."""

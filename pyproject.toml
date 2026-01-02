@@ -176,7 +176,8 @@ markers = [
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
     "auth: marks tests that require authentication",
-    "db: marks tests that require database"
+    "db: marks tests that require database",
+    "asyncio: marks tests as async (automatically marked via pytestmark)"
 ]
 asyncio_mode = "auto"
 filterwarnings = [

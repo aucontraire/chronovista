@@ -17,6 +17,8 @@ from typer.testing import CliRunner
 
 from chronovista.cli.sync_commands import sync_app
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestSyncCommandsCoverageBoost:
     """Test sync commands to boost coverage - focus on async implementations."""

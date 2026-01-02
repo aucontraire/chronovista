@@ -234,14 +234,17 @@ class ChannelSeeder(BaseSeeder):
         self, entry: TakeoutWatchEntry
     ) -> Optional[ChannelCreate]:
         """Transform watch entry to ChannelCreate model."""
-        if not entry.channel_name:
+        # Need either channel_id or channel_name to create a channel
+        if not entry.channel_name and not entry.channel_id:
             return None
 
-        channel_id = entry.channel_id or generate_valid_channel_id(entry.channel_name)
+        channel_id = entry.channel_id or generate_valid_channel_id(entry.channel_name or "unknown")
+        # Use channel_name if available, otherwise create placeholder title from channel_id
+        title = entry.channel_name or f"[Unknown Channel] {channel_id}"
 
         return ChannelCreate(
             channel_id=channel_id,
-            title=entry.channel_name,
+            title=title,
             description="",  # Not available in Takeout
             default_language=LanguageCode.ENGLISH,  # Default fallback
             country=None,  # Not available in Takeout

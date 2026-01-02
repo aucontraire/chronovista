@@ -12,7 +12,7 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...models.channel import ChannelCreate
-from ...models.enums import LanguageCode
+from ...models.enums import LanguageCode, PrivacyStatus
 from ...models.playlist import PlaylistCreate
 from ...models.takeout.takeout_data import TakeoutData, TakeoutPlaylist
 from ...repositories.channel_repository import ChannelRepository
@@ -138,7 +138,7 @@ class PlaylistSeeder(BaseSeeder):
             channel_id=user_channel_id,
             video_count=len(takeout_playlist.videos),
             default_language=LanguageCode.ENGLISH,  # Default fallback
-            privacy_status="private",  # Takeout playlists are typically private
+            privacy_status=PrivacyStatus.PRIVATE,  # Takeout playlists are typically private
         )
 
     async def _ensure_user_channel_exists(

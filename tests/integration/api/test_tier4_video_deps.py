@@ -47,6 +47,8 @@ from chronovista.models.video_transcript import (
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 from tests.factories.user_video_factory import create_user_video_update
 
+pytestmark = pytest.mark.asyncio
+
 
 @pytest.mark.integration
 @pytest.mark.api

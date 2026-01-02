@@ -16,6 +16,8 @@ from chronovista.db.models import Channel as ChannelDB
 from chronovista.models.channel import ChannelCreate, ChannelUpdate
 from chronovista.repositories.channel_repository import ChannelRepository
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestChannelRepositoryCoverage:
     """Test channel repository to boost coverage."""

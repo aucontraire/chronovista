@@ -23,6 +23,8 @@ from chronovista.models.user_video import (
 )
 from chronovista.repositories.user_video_repository import UserVideoRepository
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestUserVideoRepository:
     """Test suite for UserVideoRepository."""

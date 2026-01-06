@@ -8,13 +8,12 @@ structure validation and serialization support.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, List, Literal, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .enums import TopicType
 from .youtube_types import TopicId
-
-TopicType = Literal["youtube", "custom"]
 
 
 class TopicCategoryBase(BaseModel):
@@ -29,7 +28,7 @@ class TopicCategoryBase(BaseModel):
         description="Parent topic ID for hierarchical structure (validated)",
     )
     topic_type: TopicType = Field(
-        default="youtube", description="Type of topic: youtube (official) or custom"
+        default=TopicType.YOUTUBE, description="Type of topic: youtube (official) or custom"
     )
 
     # topic_id validation is now handled by TopicId type

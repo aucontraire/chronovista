@@ -55,6 +55,13 @@ class VideoBase(BaseModel):
         default=None, description="Content rating information"
     )
 
+    # Category
+    category_id: Optional[str] = Field(
+        default=None,
+        max_length=10,
+        description="YouTube category ID (numeric string)",
+    )
+
     # Engagement metrics
     like_count: Optional[int] = Field(default=None, ge=0, description="Number of likes")
     view_count: Optional[int] = Field(default=None, ge=0, description="Number of views")
@@ -135,6 +142,7 @@ class VideoUpdate(BaseModel):
     available_languages: Optional[Dict[str, Any]] = None
     region_restriction: Optional[Dict[str, Any]] = None
     content_rating: Optional[Dict[str, Any]] = None
+    category_id: Optional[str] = Field(None, max_length=10)
     like_count: Optional[int] = Field(None, ge=0)
     view_count: Optional[int] = Field(None, ge=0)
     comment_count: Optional[int] = Field(None, ge=0)

@@ -11,9 +11,11 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ...models.channel import ChannelCreate
 from ...models.enums import LanguageCode
 from ...models.takeout.takeout_data import TakeoutData, TakeoutWatchEntry
 from ...models.video import VideoCreate
+from ...repositories.channel_repository import ChannelRepository
 from ...repositories.video_repository import VideoRepository
 from .base_seeder import BaseSeeder, ProgressCallback, SeedResult
 
@@ -34,9 +36,11 @@ def generate_valid_channel_id(seed: str) -> str:
 class VideoSeeder(BaseSeeder):
     """Seeder for videos from watch history."""
 
-    def __init__(self, video_repo: VideoRepository):
+    def __init__(self, video_repo: VideoRepository, channel_repo: Optional[ChannelRepository] = None):
         super().__init__(dependencies={"channels"})  # Depends on channels existing
         self.video_repo = video_repo
+        self.channel_repo = channel_repo or ChannelRepository()
+        self._created_placeholder_channels: set[str] = set()  # Track created placeholders
 
     def get_data_type(self) -> str:
         return "videos"
@@ -52,13 +56,23 @@ class VideoSeeder(BaseSeeder):
         result = SeedResult()
 
         # Get unique videos from watch history
+        # IMPORTANT: Only include entries with real video IDs - never generate fake ones
         unique_videos: dict[str, TakeoutWatchEntry] = {}
+        skipped_no_video_id = 0
         for entry in takeout_data.watch_history:
-            video_id = entry.video_id or generate_valid_video_id(
-                entry.title_url or "unknown"
+            if entry.video_id:
+                # Real video ID from Takeout
+                if entry.video_id not in unique_videos:
+                    unique_videos[entry.video_id] = entry
+            else:
+                # No video ID - skip this entry (don't generate fake ID)
+                skipped_no_video_id += 1
+
+        if skipped_no_video_id > 0:
+            logger.warning(
+                f"⏭️  Skipped {skipped_no_video_id} entries without video IDs "
+                "(will not generate fake IDs)"
             )
-            if video_id not in unique_videos:
-                unique_videos[video_id] = entry
 
         logger.info(
             f"🎥 Seeding {len(unique_videos)} unique videos from watch history..."
@@ -77,6 +91,12 @@ class VideoSeeder(BaseSeeder):
                 else:
                     # Create new video
                     video_create = self._transform_entry_to_video(entry)
+
+                    # Ensure channel exists before creating video (handles orphan videos)
+                    await self._ensure_channel_exists(
+                        session, video_create.channel_id, entry.channel_name
+                    )
+
                     await self.video_repo.create(session, obj_in=video_create)
                     result.created += 1
 
@@ -112,35 +132,42 @@ class VideoSeeder(BaseSeeder):
         return result
 
     def _transform_entry_to_video(self, entry: TakeoutWatchEntry) -> VideoCreate:
-        """Transform watch entry to VideoCreate model."""
-        # Track if video ID was originally missing for deleted_flag logic
-        originally_missing_video_id = not entry.video_id
+        """Transform watch entry to VideoCreate model.
 
-        # Handle missing video ID
-        video_id = entry.video_id or generate_valid_video_id(
-            entry.title_url or "unknown"
-        )
+        IMPORTANT: This method expects entry.video_id to be populated.
+        Entries without video_id should be filtered out before calling this.
 
-        # Handle missing channel ID
+        Note on deleted_flag:
+        - We do NOT auto-mark videos as deleted based on missing channel info
+        - Missing channel info often just means incomplete Takeout data
+        - deleted_flag should only be set True after YouTube API verification
+        - See: docs/takeout-data-quality.md for full explanation
+        """
+        # video_id is guaranteed by seed() method - entries without are skipped
+        assert entry.video_id is not None, "video_id must be present (filtered in seed())"
+        video_id = entry.video_id
+
+        # Handle missing channel ID - generate placeholder if needed
+        # This is OK because we can later update with real channel ID via API
         channel_id = entry.channel_id or generate_valid_channel_id(
             entry.channel_name or "Unknown"
         )
 
-        # Check for indicators of deleted videos
-        is_likely_deleted = (
-            originally_missing_video_id
-            or "deleted" in (entry.title or "").lower()
-            or not entry.video_id
-        )
+        # Use actual title, or placeholder if URL-as-title (indicates Takeout data issue)
+        title = entry.title or ""
+        if title.startswith("http"):
+            # URL-as-title means we only have the watch URL, not the real title
+            # This does NOT mean the video is deleted - just incomplete data
+            title = f"[Placeholder] Video {video_id}"
 
         return VideoCreate(
             video_id=video_id,
             channel_id=channel_id,
-            title=entry.title or f"[Deleted Video] {video_id}",
+            title=title or f"[Placeholder] Video {video_id}",
             description="",  # Not available in Takeout
             upload_date=entry.watched_at or datetime.now(timezone.utc),
             duration=0,  # Will be enriched via API
-            deleted_flag=is_likely_deleted,
+            deleted_flag=False,  # Only set True after API verification - see docs
             made_for_kids=False,  # Will be enriched via API
             self_declared_made_for_kids=False,  # Will be enriched via API
             default_language=LanguageCode.ENGLISH,  # Default fallback
@@ -152,3 +179,41 @@ class VideoSeeder(BaseSeeder):
             view_count=None,  # Will be enriched via API
             comment_count=None,  # Will be enriched via API
         )
+
+    async def _ensure_channel_exists(
+        self,
+        session: AsyncSession,
+        channel_id: str,
+        channel_name: Optional[str],
+    ) -> None:
+        """
+        Ensure a channel exists before creating a video that references it.
+
+        This handles edge cases where watch history entries have no channel info
+        (deleted/private videos). Creates a placeholder channel if needed.
+        """
+        # Skip if we already created this placeholder in this session
+        if channel_id in self._created_placeholder_channels:
+            return
+
+        # Check if channel exists
+        existing = await self.channel_repo.get_by_channel_id(session, channel_id)
+        if existing:
+            return
+
+        # Create placeholder channel
+        title = channel_name or f"[Unknown Channel] {channel_id}"
+        placeholder = ChannelCreate(
+            channel_id=channel_id,
+            title=title,
+            description="",
+            default_language=LanguageCode.ENGLISH,
+            country=None,
+            subscriber_count=None,
+            video_count=None,
+            thumbnail_url=None,
+        )
+
+        await self.channel_repo.create(session, obj_in=placeholder)
+        self._created_placeholder_channels.add(channel_id)
+        logger.debug(f"Created placeholder channel: {channel_id} ({title})")

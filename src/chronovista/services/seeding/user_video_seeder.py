@@ -100,22 +100,23 @@ class UserVideoSeeder(BaseSeeder):
         return result
 
     def _transform_entry(self, entry: Any) -> Optional[UserVideoCreate]:
-        """Transform watch entry into UserVideo create model."""
+        """Transform watch entry into UserVideo create model.
+
+        IMPORTANT: Only process entries with real video IDs.
+        Entries without video_id are skipped in video_seeder, so we must skip
+        them here too to avoid FK violations.
+        """
         if not entry.watched_at:
             return None
 
-        # Generate video ID if missing
-        video_id = entry.video_id
-        if not video_id:
-            import hashlib
-
-            video_id = hashlib.md5((entry.title_url or "unknown").encode()).hexdigest()[
-                :11
-            ]
+        # Skip entries without real video IDs
+        # video_seeder skips these, so there's no video record to reference
+        if not entry.video_id:
+            return None
 
         return UserVideoCreate(
             user_id=self.user_id,
-            video_id=video_id,
+            video_id=entry.video_id,
             watched_at=entry.watched_at,
             watch_duration=None,  # Not available in Takeout
             completion_percentage=None,  # Not available in Takeout

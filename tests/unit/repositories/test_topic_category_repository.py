@@ -18,6 +18,8 @@ from chronovista.models.topic_category import (
 )
 from chronovista.repositories.topic_category_repository import TopicCategoryRepository
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestTopicCategoryRepository:
     """Test TopicCategoryRepository functionality."""

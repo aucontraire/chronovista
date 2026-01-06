@@ -322,7 +322,12 @@ class TestChannelSeeder:
         assert len(id1) == 24
 
     async def test_missing_channel_name_handling(self, channel_seeder):
-        """Test handling of entries with missing channel names."""
+        """Test handling of entries with missing channel names.
+
+        New behavior: When channel_name is missing, we create a placeholder channel
+        with a generated channel_id, rather than skipping the entry entirely.
+        This allows videos to be seeded even when channel info is incomplete.
+        """
         watch_entry = create_takeout_watch_entry(
             title="Test Video",
             title_url="https://youtube.com/watch?v=abc",
@@ -333,5 +338,8 @@ class TestChannelSeeder:
 
         channel_create = channel_seeder._transform_watch_entry_to_channel(watch_entry)
 
-        # Should return None for missing channel name
-        assert channel_create is None
+        # Should create placeholder channel with generated channel_id
+        assert channel_create is not None
+        assert channel_create.channel_id.startswith("UC")
+        assert len(channel_create.channel_id) == 24
+        assert channel_create.title.startswith("[Unknown Channel]")

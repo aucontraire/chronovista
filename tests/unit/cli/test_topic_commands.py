@@ -399,7 +399,7 @@ class TestTopicTreeCommand:
         """Test tree command help."""
         result = runner.invoke(topic_app, ["tree", "--help"])
         assert result.exit_code == 0
-        assert "Display topic relationships as a hierarchical tree" in result.stdout
+        assert "Display topic hierarchy or relationships as a tree" in result.stdout
         assert "--max-depth" in result.stdout
         assert "--min-confidence" in result.stdout
         assert "--show-stats" in result.stdout
@@ -437,19 +437,16 @@ class TestTopicTreeCommand:
         assert result.exit_code == 0
         mock_asyncio.assert_called_once()
 
-    def test_tree_missing_topic_id(self, runner: CliRunner) -> None:
-        """Test tree command without required topic_id argument."""
+    @patch("chronovista.cli.topic_commands.asyncio.run")
+    def test_tree_without_topic_id_shows_hierarchy(
+        self, mock_asyncio: MagicMock, runner: CliRunner
+    ) -> None:
+        """Test tree command without topic_id shows full hierarchy."""
         result = runner.invoke(topic_app, ["tree"])
 
-        # Should fail due to missing required argument or show help
-        assert result.exit_code != 0  # Any non-zero exit code indicates failure
-        # Check that some error is indicated (could be in stdout or stderr)
-        error_output = result.stdout + result.stderr
-        assert (
-            "Missing" in error_output
-            or "Usage:" in error_output
-            or "Error:" in error_output
-        )
+        # Should succeed and call async function to show full hierarchy
+        assert result.exit_code == 0
+        mock_asyncio.assert_called_once()
 
     @patch("chronovista.cli.topic_commands.asyncio.run")
     def test_tree_depth_validation(

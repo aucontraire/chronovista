@@ -207,6 +207,9 @@ class TestPlaylistBase:
             "privacy_status": "public",
             "channel_id": "UCuAXFkgsw1L7xaCfnd5JJOw",
             "video_count": 25,
+            # New fields for playlist enrichment
+            "published_at": None,
+            "deleted_flag": False,
         }
 
         assert data == expected

@@ -19,7 +19,7 @@ from chronovista.services.seeding.base_seeder import (
 )
 from tests.factories.takeout_data_factory import create_takeout_data
 
-# Only mark async tests individually - not all tests in this module are async
+pytestmark = pytest.mark.asyncio
 
 
 class TestSeedResult:

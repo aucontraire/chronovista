@@ -19,6 +19,8 @@ from chronovista.models.video_tag import (
 from chronovista.repositories.video_tag_repository import VideoTagRepository
 from tests.factories.video_tag_factory import VideoTagTestData, create_video_tag_create
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestVideoTagRepository:
     """Test VideoTagRepository functionality."""

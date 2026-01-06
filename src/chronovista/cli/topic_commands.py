@@ -1581,9 +1581,107 @@ def topic_chart(
     asyncio.run(run_chart())
 
 
+async def show_full_hierarchy(
+    topic_repo: TopicCategoryRepository, show_stats: bool
+) -> None:
+    """
+    Display the full YouTube topic hierarchy as a tree.
+
+    Shows the 7 parent categories (Music, Gaming, Sports, etc.) with their
+    child topics nested underneath.
+    """
+    from rich.tree import Tree
+
+    from chronovista.repositories.video_topic_repository import VideoTopicRepository
+
+    async for session in db_manager.get_session(echo=False):
+        # Get root (parent) topics
+        parents = await topic_repo.get_root_topics(session)
+
+        if not parents:
+            console.print(
+                Panel(
+                    "[yellow]No topics found. Run 'chronovista seed topics' first.[/yellow]",
+                    title="No Topics",
+                    border_style="yellow",
+                )
+            )
+            return
+
+        # Get video counts per topic if showing stats
+        topic_video_counts: dict[str, int] = {}
+        video_topic_repo = VideoTopicRepository() if show_stats else None
+
+        # Build the tree
+        tree = Tree(
+            "[bold cyan]🏷️ YouTube Topic Hierarchy[/bold cyan]",
+            guide_style="dim",
+        )
+
+        # Sort parents by name
+        parents.sort(key=lambda t: t.category_name)
+        total_children = 0
+
+        for parent in parents:
+            # Get video count for parent
+            if show_stats and video_topic_repo:
+                parent_count = await video_topic_repo.get_topic_video_count(
+                    session, parent.topic_id
+                )
+                topic_video_counts[parent.topic_id] = parent_count
+
+            # Parent label with stats
+            video_count = topic_video_counts.get(parent.topic_id, 0)
+            parent_label = f"[bold]{parent.category_name}[/bold] [dim]({parent.topic_id})[/dim]"
+            if show_stats and video_count > 0:
+                parent_label += f" [green]📺 {video_count:,}[/green]"
+
+            parent_branch = tree.add(parent_label)
+
+            # Get and add children
+            children = await topic_repo.get_children(session, parent.topic_id)
+            children.sort(key=lambda t: t.category_name)
+            total_children += len(children)
+
+            for child in children:
+                # Get video count for child
+                if show_stats and video_topic_repo:
+                    child_count = await video_topic_repo.get_topic_video_count(
+                        session, child.topic_id
+                    )
+                    topic_video_counts[child.topic_id] = child_count
+
+                video_count = topic_video_counts.get(child.topic_id, 0)
+                child_label = f"{child.category_name} [dim]({child.topic_id})[/dim]"
+                if show_stats and video_count > 0:
+                    child_label += f" [green]📺 {video_count:,}[/green]"
+
+                parent_branch.add(child_label)
+
+        # Display
+        console.print()
+        console.print(
+            Panel(
+                tree,
+                title="🌳 Topic Hierarchy",
+                border_style="green",
+                padding=(1, 2),
+            )
+        )
+
+        # Summary
+        console.print(
+            f"\n[dim]📊 {len(parents)} parent topics, "
+            f"{total_children} child topics, "
+            f"{len(parents) + total_children} total[/dim]"
+        )
+
+
 @topic_app.command("tree")
 def topic_tree(
-    topic_id: str = typer.Argument(..., help="Root topic ID to show relationships for"),
+    topic_id: Optional[str] = typer.Argument(
+        None, help="Root topic ID to show relationships for (omit to show full hierarchy)"
+    ),
     max_depth: int = typer.Option(
         3, "--max-depth", "-d", help="Maximum depth of relationship tree"
     ),
@@ -1599,12 +1697,21 @@ def topic_tree(
         True, "--show-stats/--no-stats", help="Show content statistics for each topic"
     ),
 ) -> None:
-    """Display topic relationships as a hierarchical tree."""
+    """Display topic hierarchy or relationships as a tree.
+
+    When called without arguments, shows the full YouTube topic hierarchy.
+    When a topic_id is provided, shows related topics based on co-occurrence.
+    """
 
     async def run_tree() -> None:
         try:
             analytics_service = TopicAnalyticsService()
             topic_repo = TopicCategoryRepository()
+
+            # If no topic_id provided, show the full hierarchy
+            if topic_id is None:
+                await show_full_hierarchy(topic_repo, show_stats)
+                return
 
             # Validate confidence parameter
             if not 0.0 <= min_confidence <= 1.0:

@@ -11,6 +11,8 @@ from typer.testing import CliRunner
 
 from chronovista.cli.sync_commands import process_watch_history_batch, sync_app
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestSyncCommands:
     """Test sync command functionality."""

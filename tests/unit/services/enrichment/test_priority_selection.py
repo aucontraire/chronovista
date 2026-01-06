@@ -18,6 +18,8 @@ from chronovista.services.enrichment.enrichment_service import (
     is_placeholder_video_title,
 )
 
+pytestmark = pytest.mark.asyncio
+
 
 @pytest.mark.asyncio
 class TestPriorityTierSelectionLogic:

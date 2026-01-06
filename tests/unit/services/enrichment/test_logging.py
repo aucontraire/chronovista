@@ -25,6 +25,8 @@ from chronovista.services.enrichment.enrichment_service import (
     logger as enrichment_logger,
 )
 
+pytestmark = pytest.mark.asyncio
+
 
 def generate_default_log_path(
     base_dir: Path,

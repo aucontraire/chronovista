@@ -19,6 +19,8 @@ from chronovista.services.enrichment.enrichment_service import (
     EnrichmentService,
 )
 
+pytestmark = pytest.mark.asyncio
+
 
 @pytest.mark.asyncio
 class TestDeletedVideoDetection:

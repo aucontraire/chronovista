@@ -20,6 +20,8 @@ from chronovista.services.enrichment.enrichment_service import (
     parse_iso8601_duration,
 )
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestParseISO8601Duration:
     """Tests for parse_iso8601_duration helper function (T035c)."""

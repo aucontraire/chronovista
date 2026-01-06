@@ -19,6 +19,8 @@ from chronovista.services.enrichment.enrichment_service import (
     estimate_quota_cost,
 )
 
+pytestmark = pytest.mark.asyncio
+
 
 @pytest.mark.asyncio
 class TestEnrichmentStatusCounts:

@@ -56,6 +56,8 @@ from chronovista.services.enrichment.seeders import (
     CategorySeedResult,
 )
 
+pytestmark = pytest.mark.asyncio
+
 runner = CliRunner()
 
 

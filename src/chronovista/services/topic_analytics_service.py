@@ -1143,19 +1143,24 @@ class TopicAnalyticsService:
 
         async for session in db_manager.get_session():
             # Define period format and interval based on period parameter
+            # Note: PostgreSQL date_trunc() uses 'month', 'week', 'day' (not 'monthly', etc.)
             if period == "monthly":
                 date_format = "YYYY-MM"
                 interval = "1 month"
+                trunc_period = "month"
             elif period == "weekly":
                 date_format = "YYYY-WW"  # Year-Week
                 interval = "1 week"
+                trunc_period = "week"
             elif period == "daily":
                 date_format = "YYYY-MM-DD"
                 interval = "1 day"
+                trunc_period = "day"
             else:
                 # Default to monthly
                 date_format = "YYYY-MM"
                 interval = "1 month"
+                trunc_period = "month"
 
             # Get popular topics to analyze trends for
             popular_topics = await self.get_popular_topics(
@@ -1171,10 +1176,10 @@ class TopicAnalyticsService:
             trends_query = text(
                 f"""
                 WITH date_series AS (
-                    SELECT 
+                    SELECT
                         generate_series(
-                            date_trunc('{period}', NOW() - INTERVAL '{months_back} months'),
-                            date_trunc('{period}', NOW()),
+                            date_trunc('{trunc_period}', NOW() - INTERVAL '{months_back} months'),
+                            date_trunc('{trunc_period}', NOW()),
                             INTERVAL '{interval}'
                         ) AS period_date
                 ),

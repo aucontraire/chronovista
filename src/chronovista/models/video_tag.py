@@ -19,7 +19,7 @@ class VideoTagBase(BaseModel):
     """Base model for video tags."""
 
     video_id: VideoId = Field(..., description="YouTube video ID (validated)")
-    tag: str = Field(..., min_length=1, max_length=100, description="Tag content")
+    tag: str = Field(..., min_length=1, max_length=500, description="Tag content")
     tag_order: Optional[int] = Field(
         default=None, ge=0, description="Order of tag from YouTube API"
     )
@@ -34,8 +34,8 @@ class VideoTagBase(BaseModel):
             raise ValueError("Tag cannot be empty")
 
         tag = v.strip()
-        if len(tag) > 100:
-            raise ValueError("Tag cannot exceed 100 characters")
+        if len(tag) > 500:
+            raise ValueError("Tag cannot exceed 500 characters")
 
         return tag
 

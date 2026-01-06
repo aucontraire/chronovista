@@ -1,5 +1,5 @@
 # Makefile for chronovista development (Poetry-based)
-.PHONY: help install install-dev clean test test-cov test-unit test-integration test-integration-reset lint format type-check quality pre-commit run build docs serve-docs
+.PHONY: help install install-dev clean test test-cov test-unit test-integration test-integration-reset lint format type-check quality pre-commit run build docs docs-serve docs-build docs-deploy
 
 # Default target
 help:
@@ -32,8 +32,13 @@ help:
 	@echo "Development:"
 	@echo "  run            - Run the CLI application"
 	@echo "  build          - Build the package"
-	@echo "  serve-docs     - Serve documentation locally"
 	@echo "  shell          - Enter Poetry shell"
+	@echo ""
+	@echo "Documentation:"
+	@echo "  docs-serve     - Serve documentation locally (http://localhost:8000)"
+	@echo "  docs-build     - Build static documentation site"
+	@echo "  docs-deploy    - Deploy docs to GitHub Pages (using mike)"
+	@echo "  install-docs   - Install documentation dependencies"
 	@echo ""
 	@echo "Database:"
 	@echo "  db-upgrade     - Run database migrations"
@@ -282,12 +287,23 @@ dev-db-status:
 
 # Development workflow combining database and application
 dev-full-setup: dev-db-up dev-migrate
+	@echo "📦 Setting up integration test database..."
+	@$(POETRY_RUN) alembic -x database_url="postgresql://dev_user:dev_password@localhost:5434/chronovista_integration_test" upgrade head
+	@echo ""
 	@echo "🚀 Full development environment ready!"
-	@echo "🔗 Database: postgresql://dev_user:dev_password@localhost:5434/chronovista_dev"
+	@echo "🔗 Dev database: postgresql://dev_user:dev_password@localhost:5434/chronovista_dev"
+	@echo "🧪 Test database: postgresql://dev_user:dev_password@localhost:5434/chronovista_integration_test"
+	@echo "💡 Run 'make test' to run all tests including integration tests"
 	@echo "💡 Run 'make dev-db-admin' to open pgAdmin"
 
 dev-full-reset: dev-db-reset dev-migrate
+	@echo "📦 Resetting integration test database..."
+	@docker exec chronovista-postgres-dev psql -U dev_user -d postgres -c "DROP DATABASE IF EXISTS chronovista_integration_test;" 2>/dev/null || true
+	@docker exec chronovista-postgres-dev psql -U dev_user -d postgres -c "CREATE DATABASE chronovista_integration_test;" 2>/dev/null || true
+	@$(POETRY_RUN) alembic -x database_url="postgresql://dev_user:dev_password@localhost:5434/chronovista_integration_test" upgrade head
 	@echo "🔄 Full development environment reset complete!"
+	@echo "🔗 Dev database: postgresql://dev_user:dev_password@localhost:5434/chronovista_dev"
+	@echo "🧪 Test database: postgresql://dev_user:dev_password@localhost:5434/chronovista_integration_test"
 
 # Test database models
 test-models:
@@ -315,11 +331,34 @@ validate-schema-takeout:
 	DEVELOPMENT_MODE=true $(POETRY_RUN) python scripts/validate_schema_with_takeout.py
 
 # Documentation targets
-docs:
-	@echo "📚 Documentation targets not yet implemented"
+install-docs:
+	@echo "📚 Installing documentation dependencies..."
+	$(POETRY) install --with docs
+	@echo "✅ Documentation dependencies installed!"
 
-serve-docs:
-	@echo "📚 Documentation server not yet implemented"
+docs-serve:
+	@echo "📚 Starting documentation server..."
+	@echo "🌐 Open http://localhost:8000 in your browser"
+	$(POETRY_RUN) mkdocs serve
+
+docs-build:
+	@echo "📚 Building documentation..."
+	$(POETRY_RUN) mkdocs build --strict
+	@echo "✅ Documentation built in site/ directory"
+
+docs-deploy:
+	@echo "📚 Deploying documentation to GitHub Pages..."
+	$(POETRY_RUN) mike deploy --push --update-aliases $$($(POETRY) version -s) latest
+	@echo "✅ Documentation deployed!"
+
+docs-clean:
+	@echo "🧹 Cleaning documentation build..."
+	rm -rf site/
+	@echo "✅ Documentation build cleaned!"
+
+# Alias for backward compatibility
+docs: docs-serve
+serve-docs: docs-serve
 
 # Development workflow targets
 dev-setup: install-dev

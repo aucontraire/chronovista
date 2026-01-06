@@ -35,6 +35,12 @@ class PlaylistBase(BaseModel):
     video_count: int = Field(
         default=0, ge=0, description="Number of videos in playlist"
     )
+    published_at: Optional[datetime] = Field(
+        default=None, description="When the playlist was created on YouTube"
+    )
+    deleted_flag: bool = Field(
+        default=False, description="Whether the playlist is deleted/private"
+    )
 
     # Playlist ID validation now handled by PlaylistId custom type
 
@@ -90,6 +96,8 @@ class PlaylistUpdate(BaseModel):
     default_language: Optional[LanguageCode] = None
     privacy_status: Optional[PrivacyStatus] = None
     video_count: Optional[int] = Field(None, ge=0)
+    published_at: Optional[datetime] = None
+    deleted_flag: Optional[bool] = None
 
     @field_validator("title")
     @classmethod

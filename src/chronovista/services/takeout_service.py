@@ -14,15 +14,20 @@ No API calls required - pure local analysis for cost-effective data discovery.
 import csv
 import json
 import logging
+import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..models.takeout import (
     ChannelSummary,
     ContentGap,
     DateRange,
+    HistoricalTakeout,
     PlaylistAnalysis,
+    RecoveredChannelMetadata,
+    RecoveredVideoMetadata,
     TakeoutAnalysis,
     TakeoutData,
     TakeoutPlaylist,
@@ -965,4 +970,385 @@ class TakeoutService:
                 "end": max(watch_times).isoformat(),
                 "duration_days": (max(watch_times) - min(watch_times)).days,
             },
+        }
+
+    # ========================================================================
+    # Historical Takeout Recovery Methods
+    # ========================================================================
+
+    @staticmethod
+    def discover_historical_takeouts(
+        base_path: Path, sort_oldest_first: bool = True
+    ) -> List[HistoricalTakeout]:
+        """
+        Discover historical takeout directories in the base path.
+
+        Scans for directories matching the pattern:
+        'YouTube and YouTube Music YYYY-MM-DD'
+
+        Parameters
+        ----------
+        base_path : Path
+            Base directory containing takeout subdirectories
+        sort_oldest_first : bool
+            If True, sort with oldest first (allows newer to overwrite).
+            If False, sort with newest first.
+
+        Returns
+        -------
+        List[HistoricalTakeout]
+            List of discovered historical takeouts, sorted by date
+        """
+        logger.info(f"Scanning for historical takeouts in {base_path}")
+
+        if not base_path.exists():
+            logger.warning(f"Base path does not exist: {base_path}")
+            return []
+
+        # Pattern for historical takeout directories
+        # Matches: "YouTube and YouTube Music YYYY-MM-DD" or just dates in folder names
+        date_pattern = re.compile(r"(\d{4}-\d{2}-\d{2})")
+
+        historical_takeouts: List[HistoricalTakeout] = []
+
+        # Scan all directories in base path
+        try:
+            for item in base_path.iterdir():
+                if not item.is_dir():
+                    continue
+
+                # Try to extract date from directory name
+                match = date_pattern.search(item.name)
+                if match:
+                    date_str = match.group(1)
+                    try:
+                        export_date = datetime.strptime(date_str, "%Y-%m-%d").replace(
+                            tzinfo=timezone.utc
+                        )
+                    except ValueError:
+                        logger.debug(f"Could not parse date from: {item.name}")
+                        continue
+
+                    # Check for YouTube data structure
+                    # The directory could be the takeout root or directly contain YouTube folder
+                    youtube_path = item / "YouTube and YouTube Music"
+                    if not youtube_path.exists():
+                        # Check if this IS the YouTube and YouTube Music folder
+                        if "YouTube and YouTube Music" in item.name:
+                            youtube_path = item
+                        else:
+                            # Check subdirectories for YouTube folder
+                            for subdir in item.iterdir():
+                                if subdir.is_dir() and "YouTube" in subdir.name:
+                                    youtube_path = subdir
+                                    break
+                            else:
+                                continue
+
+                    # Check what data is available
+                    has_watch_history = (
+                        youtube_path / "history" / "watch-history.json"
+                    ).exists()
+                    has_playlists = (youtube_path / "playlists").exists()
+                    has_subscriptions = (
+                        youtube_path / "subscriptions" / "subscriptions.csv"
+                    ).exists()
+
+                    if has_watch_history or has_playlists or has_subscriptions:
+                        takeout = HistoricalTakeout(
+                            path=youtube_path,
+                            export_date=export_date,
+                            has_watch_history=has_watch_history,
+                            has_playlists=has_playlists,
+                            has_subscriptions=has_subscriptions,
+                        )
+                        historical_takeouts.append(takeout)
+                        logger.debug(
+                            f"Found historical takeout: {item.name} ({export_date.date()})"
+                        )
+                else:
+                    # Fallback: try to use filesystem mtime if no date in name
+                    youtube_path = item / "YouTube and YouTube Music"
+                    if not youtube_path.exists():
+                        if "YouTube and YouTube Music" in item.name:
+                            youtube_path = item
+                        else:
+                            continue
+
+                    if (youtube_path / "history" / "watch-history.json").exists():
+                        # Use directory mtime as fallback date
+                        try:
+                            mtime = os.path.getmtime(item)
+                            export_date = datetime.fromtimestamp(
+                                mtime, tz=timezone.utc
+                            )
+
+                            takeout = HistoricalTakeout(
+                                path=youtube_path,
+                                export_date=export_date,
+                                has_watch_history=True,
+                                has_playlists=(youtube_path / "playlists").exists(),
+                                has_subscriptions=(
+                                    youtube_path / "subscriptions" / "subscriptions.csv"
+                                ).exists(),
+                            )
+                            historical_takeouts.append(takeout)
+                            logger.debug(
+                                f"Found historical takeout (mtime): {item.name}"
+                            )
+                        except OSError:
+                            continue
+
+        except PermissionError as e:
+            logger.error(f"Permission denied scanning {base_path}: {e}")
+            raise TakeoutParsingError(f"Cannot read directory: {base_path}")
+
+        # Sort by export date
+        historical_takeouts.sort(
+            key=lambda x: x.export_date, reverse=not sort_oldest_first
+        )
+
+        logger.info(f"Discovered {len(historical_takeouts)} historical takeouts")
+        return historical_takeouts
+
+    async def parse_historical_watch_history(
+        self, takeout: HistoricalTakeout
+    ) -> List[TakeoutWatchEntry]:
+        """
+        Parse watch history from a historical takeout.
+
+        Reuses the existing parse_watch_history logic but on a specific
+        historical takeout directory.
+
+        Parameters
+        ----------
+        takeout : HistoricalTakeout
+            The historical takeout to parse
+
+        Returns
+        -------
+        List[TakeoutWatchEntry]
+            Parsed watch history entries from the historical takeout
+        """
+        if not takeout.has_watch_history:
+            logger.debug(f"No watch history in takeout from {takeout.export_date.date()}")
+            return []
+
+        history_file = takeout.path / "history" / "watch-history.json"
+
+        if not history_file.exists():
+            logger.warning(f"Watch history file not found at {history_file}")
+            return []
+
+        logger.info(
+            f"Parsing historical watch history from {takeout.export_date.date()}"
+        )
+
+        try:
+            with open(history_file, "r", encoding="utf-8") as f:
+                history_data = json.load(f)
+
+            watch_entries: List[TakeoutWatchEntry] = []
+            skipped_community_posts = 0
+            skipped_no_video_id = 0
+
+            for entry in history_data:
+                # Skip non-YouTube entries
+                if entry.get("header") != "YouTube":
+                    continue
+
+                # Skip entries without video URLs
+                if "titleUrl" not in entry:
+                    continue
+
+                title = entry.get("title", "")
+
+                # Skip Community Posts - they start with "Viewed" not "Watched"
+                if title.startswith("Viewed "):
+                    skipped_community_posts += 1
+                    continue
+
+                # Skip entries without valid video URLs
+                title_url = entry.get("titleUrl", "")
+                decoded_url = title_url.replace("\\u003d", "=").replace("\\u0026", "&")
+                if "/watch?v=" not in decoded_url and "youtu.be/" not in decoded_url:
+                    skipped_no_video_id += 1
+                    continue
+
+                # Extract channel info from subtitles
+                channel_name = None
+                channel_url = None
+                if entry.get("subtitles"):
+                    subtitle = entry["subtitles"][0]
+                    channel_name = subtitle.get("name")
+                    channel_url = subtitle.get("url")
+
+                # Clean title (remove "Watched " prefix)
+                if title.startswith("Watched "):
+                    title = title[8:]  # Remove "Watched " prefix
+
+                # Create watch entry
+                watch_entry = TakeoutWatchEntry(
+                    title=title,
+                    title_url=title_url,
+                    video_id=None,  # Will be extracted by model validator
+                    channel_name=channel_name,
+                    channel_url=channel_url,
+                    channel_id=None,  # Will be extracted by model validator
+                    watched_at=None,  # Will be parsed by model validator
+                    raw_time=entry.get("time"),
+                )
+
+                watch_entries.append(watch_entry)
+
+            logger.info(
+                f"Parsed {len(watch_entries)} entries from {takeout.export_date.date()}"
+            )
+            if skipped_community_posts > 0:
+                logger.debug(f"Skipped {skipped_community_posts} Community Posts")
+            if skipped_no_video_id > 0:
+                logger.debug(f"Skipped {skipped_no_video_id} entries without video IDs")
+
+            return watch_entries
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in historical watch history: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Error parsing historical watch history: {e}")
+            return []
+
+    async def build_recovery_metadata_map(
+        self,
+        historical_takeouts: List[HistoricalTakeout],
+        process_oldest_first: bool = True,
+    ) -> Tuple[Dict[str, RecoveredVideoMetadata], Dict[str, RecoveredChannelMetadata]]:
+        """
+        Build maps of video and channel metadata from historical takeouts.
+
+        When processing oldest first, newer metadata will overwrite older,
+        ensuring the most recent metadata is used.
+
+        Parameters
+        ----------
+        historical_takeouts : List[HistoricalTakeout]
+            List of historical takeouts to process
+        process_oldest_first : bool
+            If True, process oldest takeouts first (newer overwrites older)
+
+        Returns
+        -------
+        Tuple[Dict[str, RecoveredVideoMetadata], Dict[str, RecoveredChannelMetadata]]
+            Maps of video_id -> metadata and channel_id -> metadata
+        """
+        video_metadata: Dict[str, RecoveredVideoMetadata] = {}
+        channel_metadata: Dict[str, RecoveredChannelMetadata] = {}
+
+        # Sort takeouts by date
+        sorted_takeouts = sorted(
+            historical_takeouts,
+            key=lambda x: x.export_date,
+            reverse=not process_oldest_first,
+        )
+
+        for takeout in sorted_takeouts:
+            logger.info(f"Processing takeout from {takeout.export_date.date()}")
+
+            watch_entries = await self.parse_historical_watch_history(takeout)
+
+            for entry in watch_entries:
+                if not entry.video_id:
+                    continue
+
+                # Update video metadata (newer overwrites older when processing oldest first)
+                video_metadata[entry.video_id] = RecoveredVideoMetadata(
+                    video_id=entry.video_id,
+                    title=entry.title,
+                    channel_name=entry.channel_name,
+                    channel_id=entry.channel_id,
+                    channel_url=entry.channel_url,
+                    watched_at=entry.watched_at,
+                    source_takeout=takeout.path,
+                    source_date=takeout.export_date,
+                )
+
+                # Update channel metadata
+                if entry.channel_id and entry.channel_name:
+                    if entry.channel_id not in channel_metadata:
+                        channel_metadata[entry.channel_id] = RecoveredChannelMetadata(
+                            channel_id=entry.channel_id,
+                            channel_name=entry.channel_name,
+                            channel_url=entry.channel_url,
+                            source_takeout=takeout.path,
+                            source_date=takeout.export_date,
+                            video_count=1,
+                        )
+                    else:
+                        # Update with newer data, increment count
+                        existing = channel_metadata[entry.channel_id]
+                        channel_metadata[entry.channel_id] = RecoveredChannelMetadata(
+                            channel_id=entry.channel_id,
+                            channel_name=entry.channel_name,  # Use newer name
+                            channel_url=entry.channel_url or existing.channel_url,
+                            source_takeout=takeout.path,
+                            source_date=takeout.export_date,
+                            video_count=existing.video_count + 1,
+                        )
+
+        logger.info(
+            f"Built recovery map: {len(video_metadata)} videos, "
+            f"{len(channel_metadata)} channels from {len(sorted_takeouts)} takeouts"
+        )
+
+        return video_metadata, channel_metadata
+
+    def get_recovery_summary(
+        self, historical_takeouts: List[HistoricalTakeout]
+    ) -> Dict[str, Any]:
+        """
+        Get a summary of available historical takeouts for recovery.
+
+        Parameters
+        ----------
+        historical_takeouts : List[HistoricalTakeout]
+            List of discovered historical takeouts
+
+        Returns
+        -------
+        Dict[str, Any]
+            Summary information about the historical takeouts
+        """
+        if not historical_takeouts:
+            return {
+                "takeout_count": 0,
+                "oldest_date": None,
+                "newest_date": None,
+                "with_watch_history": 0,
+                "with_playlists": 0,
+                "with_subscriptions": 0,
+            }
+
+        dates = [t.export_date for t in historical_takeouts]
+
+        return {
+            "takeout_count": len(historical_takeouts),
+            "oldest_date": min(dates).isoformat(),
+            "newest_date": max(dates).isoformat(),
+            "with_watch_history": sum(
+                1 for t in historical_takeouts if t.has_watch_history
+            ),
+            "with_playlists": sum(1 for t in historical_takeouts if t.has_playlists),
+            "with_subscriptions": sum(
+                1 for t in historical_takeouts if t.has_subscriptions
+            ),
+            "takeouts": [
+                {
+                    "date": t.export_date.isoformat(),
+                    "path": str(t.path),
+                    "has_watch_history": t.has_watch_history,
+                    "has_playlists": t.has_playlists,
+                    "has_subscriptions": t.has_subscriptions,
+                }
+                for t in historical_takeouts
+            ],
         }

@@ -158,7 +158,7 @@ class VideoTagTestData:
     INVALID_TAGS = [
         "",  # Empty
         "   ",  # Whitespace
-        "x" * 101,  # Too long
+        "x" * 501,  # Too long (max is 500)
     ]
 
     @classmethod

@@ -453,8 +453,6 @@ class UserVideo(Base):
     watched_at: Mapped[Optional[datetime.datetime]] = mapped_column(
         DateTime(timezone=True)
     )
-    watch_duration: Mapped[Optional[int]] = mapped_column(Integer)  # Seconds watched
-    completion_percentage: Mapped[Optional[float]] = mapped_column(Float)
     rewatch_count: Mapped[int] = mapped_column(Integer, default=0)
 
     # User actions

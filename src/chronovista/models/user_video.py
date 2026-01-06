@@ -24,15 +24,6 @@ class UserVideoBase(BaseModel):
     watched_at: Optional[datetime] = Field(
         default=None, description="When the video was watched"
     )
-    watch_duration: Optional[int] = Field(
-        default=None, ge=0, description="Duration watched in seconds"
-    )
-    completion_percentage: Optional[float] = Field(
-        default=None,
-        ge=0.0,
-        le=100.0,
-        description="Percentage of video watched (0-100)",
-    )
     rewatch_count: int = Field(default=0, ge=0, description="Number of times rewatched")
     liked: bool = Field(default=False, description="Whether user liked the video")
     disliked: bool = Field(default=False, description="Whether user disliked the video")
@@ -42,14 +33,6 @@ class UserVideoBase(BaseModel):
 
     # Note: user_id validation is now handled by UserId type
     # Note: video_id validation is now handled by VideoId type
-
-    @field_validator("completion_percentage")
-    @classmethod
-    def validate_completion_percentage(cls, v: Optional[float]) -> Optional[float]:
-        """Validate completion percentage is within valid range."""
-        if v is not None and (v < 0.0 or v > 100.0):
-            raise ValueError("Completion percentage must be between 0.0 and 100.0")
-        return v
 
     model_config = ConfigDict(
         validate_assignment=True,
@@ -66,20 +49,10 @@ class UserVideoUpdate(BaseModel):
     """Model for updating user-video interactions."""
 
     watched_at: Optional[datetime] = None
-    watch_duration: Optional[int] = Field(None, ge=0)
-    completion_percentage: Optional[float] = Field(None, ge=0.0, le=100.0)
     rewatch_count: Optional[int] = Field(None, ge=0)
     liked: Optional[bool] = None
     disliked: Optional[bool] = None
     saved_to_playlist: Optional[bool] = None
-
-    @field_validator("completion_percentage")
-    @classmethod
-    def validate_completion_percentage(cls, v: Optional[float]) -> Optional[float]:
-        """Validate completion percentage if provided."""
-        if v is not None and (v < 0.0 or v > 100.0):
-            raise ValueError("Completion percentage must be between 0.0 and 100.0")
-        return v
 
     model_config = ConfigDict(
         validate_assignment=True,
@@ -273,9 +246,6 @@ class GoogleTakeoutWatchHistoryItem(BaseModel):
             user_id=user_id,
             video_id=video_id,
             watched_at=watched_at,
-            # Note: Google Takeout doesn't provide duration/completion data
-            watch_duration=None,
-            completion_percentage=None,
             rewatch_count=0,  # Default, will be incremented if video appears multiple times
         )
 
@@ -298,12 +268,6 @@ class UserVideoSearchFilters(BaseModel):
     )
     watched_before: Optional[datetime] = Field(
         default=None, description="Filter by watch date"
-    )
-    min_watch_duration: Optional[int] = Field(
-        default=None, ge=0, description="Minimum watch duration"
-    )
-    min_completion_percentage: Optional[float] = Field(
-        default=None, ge=0.0, le=100.0, description="Minimum completion"
     )
     liked_only: Optional[bool] = Field(
         default=None, description="Filter for liked videos only"
@@ -333,8 +297,6 @@ class UserVideoStatistics(BaseModel):
     """User video interaction statistics."""
 
     total_videos: int = Field(..., description="Total number of videos watched")
-    total_watch_time: int = Field(..., description="Total watch time in seconds")
-    average_completion: float = Field(..., description="Average completion percentage")
     liked_count: int = Field(..., description="Number of liked videos")
     disliked_count: int = Field(..., description="Number of disliked videos")
     playlist_saved_count: int = Field(

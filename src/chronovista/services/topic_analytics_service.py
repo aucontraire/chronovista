@@ -902,13 +902,12 @@ class TopicAnalyticsService:
             discovery_events_query = text(
                 """
                 WITH first_topic_interactions AS (
-                    SELECT 
+                    SELECT
                         uv.user_id,
                         vt.topic_id,
                         tc.category_name,
                         MIN(uv.watched_at) as first_interaction,
                         COUNT(*) as interaction_count,
-                        AVG(COALESCE(uv.completion_percentage, 0)) as avg_completion,
                         AVG(CASE WHEN uv.liked THEN 1 ELSE 0 END) as like_rate
                     FROM user_videos uv
                     JOIN video_topics vt ON uv.video_id = vt.video_id
@@ -918,29 +917,25 @@ class TopicAnalyticsService:
                     HAVING COUNT(*) >= :min_interactions
                 ),
                 discovery_methods AS (
-                    SELECT 
+                    SELECT
                         topic_id,
                         category_name,
-                        CASE 
+                        CASE
                             WHEN like_rate > 0.5 THEN 'liked_content'
-                            WHEN avg_completion > 0.8 THEN 'watched_complete'
-                            WHEN avg_completion > 0.3 THEN 'watched_partial'
                             ELSE 'browsed'
                         END as discovery_method,
                         COUNT(*) as discovery_count,
-                        AVG(avg_completion * 100) as avg_engagement,
+                        AVG(like_rate * 100) as avg_engagement,
                         -- Calculate retention as users who had multiple interactions
                         COUNT(CASE WHEN interaction_count > :min_interactions THEN 1 END) * 100.0 / COUNT(*) as retention_rate
                     FROM first_topic_interactions
-                    GROUP BY topic_id, category_name, 
-                        CASE 
+                    GROUP BY topic_id, category_name,
+                        CASE
                             WHEN like_rate > 0.5 THEN 'liked_content'
-                            WHEN avg_completion > 0.8 THEN 'watched_complete'
-                            WHEN avg_completion > 0.3 THEN 'watched_partial'
                             ELSE 'browsed'
                         END
                 )
-                SELECT 
+                SELECT
                     discovery_method,
                     topic_id,
                     category_name,
@@ -1321,17 +1316,15 @@ class TopicAnalyticsService:
             return cached_result  # type: ignore
 
         async for session in db_manager.get_session():
-            # Get user's total watch time and topic exploration
+            # Get user's topic exploration stats
             user_stats_query = text(
                 """
                 WITH user_topic_stats AS (
-                    SELECT 
+                    SELECT
                         uv.user_id,
                         vt.topic_id,
                         tc.category_name,
                         COUNT(DISTINCT uv.video_id) as videos_watched,
-                        SUM(COALESCE(uv.watch_duration, 0)) as total_watch_seconds,
-                        AVG(COALESCE(uv.completion_percentage, 0)) as avg_completion,
                         COUNT(CASE WHEN uv.liked THEN 1 END) as likes_given,
                         COUNT(CASE WHEN uv.saved_to_playlist THEN 1 END) as saves_made
                     FROM user_videos uv
@@ -1341,26 +1334,22 @@ class TopicAnalyticsService:
                     GROUP BY uv.user_id, vt.topic_id, tc.category_name
                 ),
                 user_totals AS (
-                    SELECT 
+                    SELECT
                         COUNT(DISTINCT topic_id) as topics_explored,
-                        SUM(total_watch_seconds) as total_watch_seconds,
-                        AVG(avg_completion) as overall_avg_completion
+                        SUM(videos_watched) as total_videos_watched
                     FROM user_topic_stats
                 )
-                SELECT 
+                SELECT
                     uts.topic_id,
                     uts.category_name,
                     uts.videos_watched,
-                    uts.total_watch_seconds,
-                    uts.avg_completion,
                     uts.likes_given,
                     uts.saves_made,
                     ut.topics_explored,
-                    ut.total_watch_seconds as user_total_seconds,
-                    ut.overall_avg_completion
+                    ut.total_videos_watched as user_total_videos
                 FROM user_topic_stats uts
                 CROSS JOIN user_totals ut
-                ORDER BY uts.total_watch_seconds DESC
+                ORDER BY uts.videos_watched DESC
             """
             )
 
@@ -1464,14 +1453,12 @@ class TopicAnalyticsService:
             emerging_interests_query = text(
                 """
                 WITH recent_activity AS (
-                    SELECT 
+                    SELECT
                         vt.topic_id,
                         tc.category_name,
                         COUNT(CASE WHEN uv.watched_at >= NOW() - INTERVAL '30 days' THEN 1 END) as recent_videos,
-                        COUNT(CASE WHEN uv.watched_at >= NOW() - INTERVAL '60 days' 
+                        COUNT(CASE WHEN uv.watched_at >= NOW() - INTERVAL '60 days'
                                      AND uv.watched_at < NOW() - INTERVAL '30 days' THEN 1 END) as prev_videos,
-                        AVG(CASE WHEN uv.watched_at >= NOW() - INTERVAL '30 days' 
-                                 THEN COALESCE(uv.completion_percentage, 0) END) as recent_completion,
                         COUNT(CASE WHEN uv.watched_at >= NOW() - INTERVAL '30 days' AND uv.liked THEN 1 END) as recent_likes
                     FROM user_videos uv
                     JOIN video_topics vt ON uv.video_id = vt.video_id
@@ -1480,14 +1467,13 @@ class TopicAnalyticsService:
                     GROUP BY vt.topic_id, tc.category_name
                     HAVING COUNT(CASE WHEN uv.watched_at >= NOW() - INTERVAL '30 days' THEN 1 END) > 0
                 )
-                SELECT 
+                SELECT
                     topic_id,
                     category_name,
                     recent_videos,
                     prev_videos,
-                    recent_completion,
                     recent_likes,
-                    CASE 
+                    CASE
                         WHEN prev_videos > 0 THEN (recent_videos - prev_videos) * 100.0 / prev_videos
                         WHEN recent_videos > 0 THEN 100.0
                         ELSE 0.0
@@ -1519,10 +1505,15 @@ class TopicAnalyticsService:
 
             emerging_interests = []
             for row in emerging_rows:
-                completion_rate = Decimal(str(row.recent_completion or 0))
                 growth_rate = Decimal(str(row.growth_rate))
+                # Use like rate as engagement proxy since completion_percentage is no longer available
+                like_rate = (
+                    Decimal(str(row.recent_likes)) / Decimal(str(row.recent_videos))
+                    if row.recent_videos > 0
+                    else Decimal("0")
+                )
                 confidence = min(
-                    Decimal("1.0"), (completion_rate / 100) + (growth_rate / 200)
+                    Decimal("1.0"), like_rate + (growth_rate / 200)
                 )
 
                 insight = TopicInsight(
@@ -1530,9 +1521,9 @@ class TopicAnalyticsService:
                     category_name=row.category_name,
                     insight_type="emerging",
                     confidence_score=confidence,
-                    user_engagement=completion_rate / 100,
+                    user_engagement=like_rate,
                     watch_time_hours=Decimal(str(row.recent_videos * 0.5)),  # Estimate
-                    completion_rate=completion_rate,
+                    completion_rate=Decimal("0"),  # No longer available
                     recommendation_reason=f"Growing interest with {growth_rate:.0f}% increase in recent activity",
                     potential_interest_score=confidence,
                     suggested_content_count=row.recent_videos,
@@ -1545,11 +1536,10 @@ class TopicAnalyticsService:
             underexplored_query = text(
                 """
                 WITH user_topic_stats AS (
-                    SELECT 
+                    SELECT
                         vt.topic_id,
                         tc.category_name,
                         COUNT(DISTINCT uv.video_id) as videos_watched,
-                        AVG(COALESCE(uv.completion_percentage, 0)) as avg_completion,
                         COUNT(CASE WHEN uv.liked THEN 1 END) as likes_given
                     FROM user_videos uv
                     JOIN video_topics vt ON uv.video_id = vt.video_id
@@ -1557,10 +1547,9 @@ class TopicAnalyticsService:
                     WHERE uv.user_id = :user_id AND uv.watched_at IS NOT NULL
                     GROUP BY vt.topic_id, tc.category_name
                     HAVING COUNT(DISTINCT uv.video_id) BETWEEN 1 AND 3
-                        AND AVG(COALESCE(uv.completion_percentage, 0)) < 50
                 ),
                 topic_popularity AS (
-                    SELECT 
+                    SELECT
                         vt.topic_id,
                         COUNT(DISTINCT uv.user_id) as total_users,
                         COUNT(DISTINCT vt.video_id) as total_videos
@@ -1568,11 +1557,10 @@ class TopicAnalyticsService:
                     JOIN user_videos uv ON vt.video_id = uv.video_id
                     GROUP BY vt.topic_id
                 )
-                SELECT 
+                SELECT
                     uts.topic_id,
                     uts.category_name,
                     uts.videos_watched,
-                    uts.avg_completion,
                     uts.likes_given,
                     tp.total_users,
                     tp.total_videos
@@ -1592,7 +1580,12 @@ class TopicAnalyticsService:
 
             underexplored_topics = []
             for row in underexplored_rows:
-                completion_rate = Decimal(str(row.avg_completion))
+                # Use like rate as engagement proxy since completion_percentage is no longer available
+                like_rate = (
+                    Decimal(str(row.likes_given)) / Decimal(str(row.videos_watched))
+                    if row.videos_watched > 0
+                    else Decimal("0")
+                )
                 potential_score = min(
                     Decimal("1.0"), Decimal(str(row.total_users / 100))
                 )
@@ -1602,9 +1595,9 @@ class TopicAnalyticsService:
                     category_name=row.category_name,
                     insight_type="underexplored",
                     confidence_score=potential_score,
-                    user_engagement=completion_rate / 100,
+                    user_engagement=like_rate,
                     watch_time_hours=Decimal(str(row.videos_watched * 0.3)),  # Estimate
-                    completion_rate=completion_rate,
+                    completion_rate=Decimal("0"),  # No longer available
                     recommendation_reason=f"Popular topic ({row.total_users} users) that you've barely explored",
                     potential_interest_score=potential_score,
                     suggested_content_count=row.total_videos,

@@ -32,6 +32,8 @@ from chronovista.models.topic_category import TopicCategoryCreate, TopicCategory
 from chronovista.models.user_language_preference import UserLanguagePreferenceCreate
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 
+pytestmark = pytest.mark.asyncio
+
 
 @pytest.mark.integration
 @pytest.mark.api

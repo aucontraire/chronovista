@@ -27,18 +27,40 @@ from chronovista.repositories.video_transcript_repository import (
 from chronovista.services.youtube_service import YouTubeService
 
 
+async def check_database_availability(engine) -> bool:
+    """
+    Check if the integration test database is available.
+
+    Parameters
+    ----------
+    engine : AsyncEngine
+        The database engine to test
+
+    Returns
+    -------
+    bool
+        True if database is available, False otherwise
+    """
+    from sqlalchemy import text
+
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
+
+
 @pytest.fixture(scope="session")
 def settings():
     """Get application settings for integration tests."""
     return get_settings()
 
 
-@pytest.fixture(scope="function")
-def integration_db_engine(settings):
-    """Create database engine for integration tests."""
-    # Use a separate test database for integration tests
-    # First try the environment variable, then fall back to dev database with different db name
-    test_db_url = os.getenv(
+@pytest.fixture(scope="session")
+def integration_test_db_url():
+    """Get integration test database URL."""
+    return os.getenv(
         "DATABASE_INTEGRATION_URL",
         os.getenv(
             "CHRONOVISTA_INTEGRATION_DB_URL",
@@ -46,8 +68,16 @@ def integration_db_engine(settings):
         ),
     )
 
+
+@pytest.fixture(scope="function")
+def integration_db_engine(integration_test_db_url):
+    """
+    Create database engine for integration tests.
+
+    Each test gets its own engine instance to avoid connection issues.
+    """
     engine = create_async_engine(
-        test_db_url,
+        integration_test_db_url,
         echo=False,  # Set to True for SQL debugging
         pool_pre_ping=True,
     )
@@ -57,7 +87,12 @@ def integration_db_engine(settings):
 
 @pytest.fixture(scope="function")
 def integration_session_factory(integration_db_engine):
-    """Create session factory for integration tests."""
+    """
+    Create session factory for integration tests.
+
+    The session factory includes a custom __call__ that checks database
+    availability when first creating a session.
+    """
     return async_sessionmaker(
         integration_db_engine,
         class_=AsyncSession,
@@ -65,10 +100,67 @@ def integration_session_factory(integration_db_engine):
     )
 
 
+class DatabaseAvailabilityChecker:
+    """
+    Wrapper around session factory that checks database availability on first use.
+
+    This allows us to skip tests gracefully when the database is not available,
+    while keeping the fixture synchronous for compatibility with test code.
+    """
+
+    def __init__(self, session_factory, db_engine, db_url):
+        self._session_factory = session_factory
+        self._db_engine = db_engine
+        self._db_url = db_url
+        self._checked = False
+
+    async def _check_availability(self):
+        """Check if database is available, skip test if not."""
+        if not self._checked:
+            self._checked = True
+            is_available = await check_database_availability(self._db_engine)
+            if not is_available:
+                pytest.skip(
+                    f"Integration database not available at {self._db_url}. "
+                    "Set CHRONOVISTA_INTEGRATION_DB_URL to configure or create the database. "
+                    "Example: createdb chronovista_integration_test"
+                )
+
+    def __call__(self, *args, **kwargs):
+        """Create a session, checking availability first."""
+
+        class SessionWithCheck:
+            """Session context manager that checks availability."""
+
+            def __init__(checker_self, factory):
+                checker_self._factory = factory
+                checker_self._session = None
+
+            async def __aenter__(checker_self):
+                # Check availability before creating session
+                await self._check_availability()
+                checker_self._session = checker_self._factory()
+                return await checker_self._session.__aenter__()
+
+            async def __aexit__(checker_self, *exc_info):
+                if checker_self._session:
+                    return await checker_self._session.__aexit__(*exc_info)
+
+        return SessionWithCheck(self._session_factory)
+
+
 @pytest.fixture
-def integration_db_session(integration_session_factory):
-    """Provide database session factory for integration tests."""
-    return integration_session_factory
+def integration_db_session(
+    integration_session_factory, integration_db_engine, integration_test_db_url
+):
+    """
+    Provide database session factory for integration tests.
+
+    Returns a wrapper that checks database availability on first use.
+    """
+    return DatabaseAvailabilityChecker(
+        integration_session_factory, integration_db_engine, integration_test_db_url
+    )
 
 
 @pytest.fixture

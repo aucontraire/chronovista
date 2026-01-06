@@ -30,6 +30,8 @@ from tests.factories import (
     create_video_localization_create,
 )
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestVideoLocalizationRepository:
     """Test VideoLocalizationRepository functionality."""

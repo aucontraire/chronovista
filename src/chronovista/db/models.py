@@ -71,6 +71,43 @@ class Channel(Base):
     )
 
 
+class VideoCategory(Base):
+    """YouTube video category model."""
+
+    __tablename__ = "video_categories"
+
+    # Primary key
+    category_id: Mapped[str] = mapped_column(
+        String(10),
+        primary_key=True,
+        comment="YouTube category ID",
+    )
+
+    # Category metadata
+    name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        comment="Category name",
+    )
+    assignable: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        comment="Whether creators can select this category",
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        comment="Record creation timestamp",
+    )
+
+    # Relationship to videos
+    videos: Mapped[list["Video"]] = relationship("Video", back_populates="category")
+
+
 class Video(Base):
     """Enhanced video model with language support and content restrictions."""
 
@@ -79,9 +116,15 @@ class Video(Base):
     # Primary key
     video_id: Mapped[str] = mapped_column(String(20), primary_key=True)
 
-    # Foreign key
+    # Foreign keys
     channel_id: Mapped[str] = mapped_column(
         String(24), ForeignKey("channels.channel_id")
+    )
+    category_id: Mapped[Optional[str]] = mapped_column(
+        String(10),
+        ForeignKey("video_categories.category_id"),
+        nullable=True,
+        comment="YouTube video category ID",
     )
 
     # Video metadata
@@ -133,6 +176,9 @@ class Video(Base):
 
     # Relationships
     channel: Mapped["Channel"] = relationship("Channel", back_populates="videos")
+    category: Mapped[Optional["VideoCategory"]] = relationship(
+        "VideoCategory", back_populates="videos"
+    )
     transcripts: Mapped[list["VideoTranscript"]] = relationship(
         "VideoTranscript", back_populates="video"
     )
@@ -231,7 +277,7 @@ class VideoTag(Base):
     video_id: Mapped[str] = mapped_column(
         String(20), ForeignKey("videos.video_id"), primary_key=True
     )
-    tag: Mapped[str] = mapped_column(String(100), primary_key=True)
+    tag: Mapped[str] = mapped_column(String(500), primary_key=True)
 
     # Tag metadata
     tag_order: Mapped[Optional[int]] = mapped_column(Integer)  # Order from YouTube API
@@ -456,6 +502,14 @@ class Playlist(Base):
     # Metadata
     video_count: Mapped[int] = mapped_column(Integer, default=0)
 
+    # Playlist creation date from YouTube API
+    published_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Status tracking (similar to Video model)
+    deleted_flag: Mapped[bool] = mapped_column(Boolean, default=False)
+
     # Timestamps
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -512,6 +566,7 @@ class PlaylistMembership(Base):
 __all__ = [
     "Base",
     "Channel",
+    "VideoCategory",
     "Video",
     "UserLanguagePreference",
     "VideoTranscript",

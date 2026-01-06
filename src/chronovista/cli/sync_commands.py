@@ -17,6 +17,7 @@ from chronovista.config.database import db_manager
 from chronovista.db.models import Video as VideoDB
 from chronovista.models.channel import ChannelCreate
 from chronovista.models.channel_topic import ChannelTopicCreate
+from chronovista.models.enums import TopicType
 from chronovista.models.topic_category import TopicCategoryCreate
 from chronovista.models.video import VideoCreate
 from chronovista.models.video_topic import VideoTopicCreate
@@ -375,7 +376,7 @@ def topics(
                             topic_id=category_id,
                             category_name=category_name,
                             parent_topic_id=None,  # YouTube categories don't have hierarchy
-                            topic_type="youtube",
+                            topic_type=TopicType.YOUTUBE,
                         )
 
                         # Check if category already exists and create or update
@@ -517,7 +518,7 @@ def all(
                                 topic_id=category_id,
                                 category_name=category_name,
                                 parent_topic_id=None,
-                                topic_type="youtube",
+                                topic_type=TopicType.YOUTUBE,
                             )
 
                             existing = await topic_category_repository.exists(

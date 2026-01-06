@@ -21,6 +21,8 @@ from chronovista.models.playlist import (
 from chronovista.repositories.playlist_repository import PlaylistRepository
 from tests.factories.playlist_factory import PlaylistTestData, create_playlist_create
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestPlaylistRepository:
     """Test PlaylistRepository functionality."""

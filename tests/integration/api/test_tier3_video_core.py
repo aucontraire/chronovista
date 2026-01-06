@@ -23,6 +23,8 @@ from chronovista.db.models import Video as DBVideo
 from chronovista.models.video import Video, VideoCreate, VideoStatistics, VideoUpdate
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 
+pytestmark = pytest.mark.asyncio
+
 
 @pytest.mark.integration
 @pytest.mark.api

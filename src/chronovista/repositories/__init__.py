@@ -12,6 +12,7 @@ from .playlist_repository import PlaylistRepository
 from .topic_category_repository import TopicCategoryRepository
 from .user_language_preference_repository import UserLanguagePreferenceRepository
 from .user_video_repository import UserVideoRepository
+from .video_category_repository import VideoCategoryRepository
 from .video_localization_repository import VideoLocalizationRepository
 from .video_repository import VideoRepository
 from .video_tag_repository import VideoTagRepository
@@ -27,6 +28,7 @@ __all__ = [
     "TopicCategoryRepository",
     "UserLanguagePreferenceRepository",
     "UserVideoRepository",
+    "VideoCategoryRepository",
     "VideoLocalizationRepository",
     "VideoRepository",
     "VideoTagRepository",

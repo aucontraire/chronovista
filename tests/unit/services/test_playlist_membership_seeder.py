@@ -25,7 +25,7 @@ from tests.factories.takeout_data_factory import create_takeout_data
 from tests.factories.takeout_playlist_factory import create_takeout_playlist
 from tests.factories.takeout_playlist_item_factory import create_takeout_playlist_item
 
-# Note: async tests are marked individually to avoid warnings
+pytestmark = pytest.mark.asyncio
 
 
 class TestPlaylistMembershipSeederInitialization:

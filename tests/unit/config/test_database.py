@@ -8,6 +8,8 @@ import pytest
 
 from chronovista.config.database import DatabaseManager, db_manager, get_db_session
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestDatabaseManager:
     """Test DatabaseManager functionality."""

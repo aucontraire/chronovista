@@ -1,0 +1,171 @@
+site_name: chronovista
+site_description: Personal YouTube data analytics tool for comprehensive access to your YouTube engagement history
+site_author: chronovista Contributors
+site_url: https://docs.chronovista.dev
+
+repo_name: chronovista/chronovista
+repo_url: https://github.com/chronovista/chronovista
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+  logo: assets/logo.svg
+  favicon: assets/favicon.ico
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: numpy
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            show_bases: true
+            show_submodules: false
+            members_order: source
+            show_signature_annotations: true
+            separate_signature: true
+            line_length: 88
+            merge_init_into_class: true
+            docstring_section_style: table
+            inherited_members: true
+            filters:
+              - "!^_"
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+  - tables
+  - def_list
+  - abbr
+  - footnotes
+  - toc:
+      permalink: true
+      toc_depth: 3
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Quick Start: getting-started/quickstart.md
+      - Installation: getting-started/installation.md
+      - Configuration: getting-started/configuration.md
+  - User Guide:
+      - CLI Overview: user-guide/cli-overview.md
+      - Authentication: user-guide/authentication.md
+      - Data Synchronization: user-guide/data-sync.md
+      - Google Takeout: user-guide/google-takeout.md
+      - Topic Analytics: user-guide/topic-analytics.md
+      - Transcripts: user-guide/transcripts.md
+      - Exporting Data: user-guide/exporting.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - System Design: architecture/system-design.md
+      - Data Model: architecture/data-model.md
+      - API Integration: architecture/api-integration.md
+  - API Reference:
+      - Overview: api/index.md
+      - Models:
+          - Channel: api/models/channel.md
+          - Video: api/models/video.md
+          - Transcript: api/models/transcript.md
+          - Topic: api/models/topic.md
+      - Repositories:
+          - Base Repository: api/repositories/base.md
+          - Channel Repository: api/repositories/channel.md
+          - Video Repository: api/repositories/video.md
+      - Services:
+          - YouTube Service: api/services/youtube.md
+          - Takeout Service: api/services/takeout.md
+          - Transcript Service: api/services/transcript.md
+      - CLI:
+          - Commands: api/cli/commands.md
+  - Development:
+      - Overview: development/index.md
+      - Setup: development/setup.md
+      - Testing: development/testing.md
+      - Database: development/database.md
+      - Type Checking: development/type-checking.md
+      - Code Style: development/code-style.md
+      - Documentation: development/documentation.md
+  - Maintaining:
+      - Overview: maintaining/index.md
+      - Release Process: maintaining/release-process.md
+      - Versioning: maintaining/versioning.md
+  - Contributing: contributing.md
+  - Changelog: changelog.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/chronovista/chronovista
+      name: chronovista on GitHub
+  version:
+    provider: mike
+  analytics:
+    provider: google
+    property: G-XXXXXXXXXX  # Replace with actual GA4 property ID
+  generator: false
+
+extra_css:
+  - stylesheets/extra.css
+
+copyright: Copyright &copy; 2024-2025 chronovista Contributors

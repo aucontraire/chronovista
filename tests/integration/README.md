@@ -39,16 +39,24 @@ Tier 1 (Independent) → Tier 2 (Channel-Deps) → Tier 3 (Video Core) → Tier 
 
 ### Prerequisites
 
-1. **Database Setup**: The integration tests will use your existing development database container but with a separate database name. Make sure your development database is running:
+1. **Database Setup**: The easiest way to set up both development and integration test databases:
    ```bash
-   # Start the development database container
-   docker-compose -f docker-compose.dev.yml up postgres-dev -d
+   # One command sets up everything (Docker + dev DB + integration test DB + migrations)
+   make dev-full-setup
    ```
-   
-   The integration tests will automatically use the `DATABASE_INTEGRATION_URL` from your `.env` file, which connects to:
+
+   This creates:
+   - **Dev database**: `chronovista_dev` for your development data
+   - **Integration test database**: `chronovista_integration_test` (separate, for tests)
    - **Port 5434** on your MacBook (avoiding conflicts with port 5432)
-   - **Same Docker container** as your dev database
-   - **Separate database name**: `chronovista_integration_test`
+
+   **Alternative (manual setup)**:
+   ```bash
+   # Start just the database container
+   docker-compose -f docker-compose.dev.yml up postgres-dev -d
+   # Then run the integration DB setup script
+   ./scripts/setup-integration-db.sh
+   ```
 
 2. **YouTube API Credentials**: Set up OAuth credentials for YouTube API access:
    ```bash
@@ -130,8 +138,12 @@ The framework includes provisions for testing real-world scenarios:
 
 ### Test Database
 Integration tests use a separate database to avoid conflicts with development data:
-```python
-CHRONOVISTA_INTEGRATION_DB_URL = "postgresql+asyncpg://postgres:password@localhost:5432/chronovista_integration_test"
+```bash
+# Default URL (created automatically by make dev-full-setup)
+postgresql+asyncpg://dev_user:dev_password@localhost:5434/chronovista_integration_test
+
+# Or override with environment variable
+export CHRONOVISTA_INTEGRATION_DB_URL="postgresql+asyncpg://user:pass@host:port/dbname"
 ```
 
 ### Fixtures

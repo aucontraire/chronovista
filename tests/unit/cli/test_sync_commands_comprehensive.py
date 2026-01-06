@@ -23,6 +23,8 @@ from chronovista.cli.sync_commands import (
     video_repository,
 )
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestSyncAppCommands:
     """Test all sync app CLI commands."""

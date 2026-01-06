@@ -29,6 +29,8 @@ from chronovista.repositories.video_transcript_repository import (
     VideoTranscriptRepository,
 )
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestVideoTranscriptRepository:
     """Test suite for VideoTranscriptRepository."""

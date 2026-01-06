@@ -11,6 +11,8 @@ import pytest
 
 from chronovista.services.youtube_service import YouTubeService
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestYouTubeService:
     """Test YouTubeService functionality."""

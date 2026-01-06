@@ -551,15 +551,12 @@ make type-check        # Run type checking with mypy
 make quality           # Run all quality checks
 
 # Testing
-make test              # Run all tests
+make test              # Run all tests (including integration tests)
 make test-cov          # Run tests with coverage (90% threshold)
 make test-cov-dev      # Run tests with coverage (development-friendly)
 make test-fast         # Quick test run
-
-# Integration Testing (with real YouTube API data)
-./scripts/setup-integration-db.sh    # Setup integration test database
-make test-integration                 # Run integration tests (requires YouTube API auth)
-make test-integration-reset           # Reset integration test database (clean slate)
+make test-integration  # Run integration tests only (requires YouTube API auth)
+make test-integration-reset  # Reset integration test database (clean slate)
 
 # Development
 make run               # Show CLI help
@@ -694,18 +691,20 @@ ChronoVista includes comprehensive integration tests that validate the complete 
 
 #### **Quick Setup**
 ```bash
-# 1. Setup integration test database (reuses dev container, different DB)
-./scripts/setup-integration-db.sh
+# 1. Setup everything (dev DB + integration test DB + migrations)
+make dev-full-setup
 
 # 2. Authenticate with YouTube API (one-time setup)
 poetry run chronovista auth login
 
-# 3. Run integration tests
+# 3. Run all tests including integration tests
+make test
+
+# Or run integration tests only:
 poetry run pytest tests/integration/api/ -v
 
-# If tests are failing due to stale database state, reset first:
-make test-integration-reset
-poetry run pytest tests/integration/api/ -v
+# If tests are failing due to stale database state, reset everything:
+make dev-full-reset
 
 # Or run specific test tiers
 poetry run pytest tests/integration/api/test_tier1_independent.py -v    # Channel, UserLanguagePreference

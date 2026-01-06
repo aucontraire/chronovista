@@ -45,6 +45,21 @@ class TrackKind(str, Enum):
     FORCED = "forced"
 
 
+class PrivacyStatus(str, Enum):
+    """Playlist privacy settings."""
+
+    PRIVATE = "private"
+    PUBLIC = "public"
+    UNLISTED = "unlisted"
+
+
+class TopicType(str, Enum):
+    """Topic classification types."""
+
+    YOUTUBE = "youtube"
+    CUSTOM = "custom"
+
+
 class LanguageCode(str, Enum):
     """BCP-47 language codes for international content.
 

@@ -33,6 +33,11 @@ from .channel_topic import (
     ChannelTopicStatistics,
     ChannelTopicUpdate,
 )
+from .enrichment_report import (
+    EnrichmentDetail,
+    EnrichmentReport,
+    EnrichmentSummary,
+)
 from .enums import DownloadReason, LanguagePreferenceType, TrackKind, TranscriptType
 from .playlist import (
     Playlist,
@@ -52,6 +57,12 @@ from .topic_category import (
     TopicCategorySearchFilters,
     TopicCategoryStatistics,
     TopicCategoryUpdate,
+)
+from .video_category import (
+    VideoCategory,
+    VideoCategoryBase,
+    VideoCategoryCreate,
+    VideoCategoryUpdate,
 )
 from .user_language_preference import (
     UserLanguagePreference,
@@ -207,6 +218,15 @@ __all__ = [
     "PlaylistSearchFilters",
     "PlaylistStatistics",
     "PlaylistAnalytics",
+    # Video Categories
+    "VideoCategory",
+    "VideoCategoryCreate",
+    "VideoCategoryUpdate",
+    "VideoCategoryBase",
+    # Enrichment Reports
+    "EnrichmentReport",
+    "EnrichmentSummary",
+    "EnrichmentDetail",
     # Utility functions
     "get_model_count",
 ]

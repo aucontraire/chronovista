@@ -15,6 +15,8 @@ from chronovista.models.channel import ChannelSearchFilters
 from chronovista.models.enums import LanguageCode
 from chronovista.repositories.channel_repository import ChannelRepository
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestChannelRepositorySearchCoverage:
     """Test channel repository search_channels method comprehensively."""

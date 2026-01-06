@@ -19,6 +19,8 @@ from chronovista.models.channel import (
 from chronovista.models.enums import LanguageCode
 from chronovista.repositories.channel_repository import ChannelRepository
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestChannelRepository:
     """Test ChannelRepository functionality."""

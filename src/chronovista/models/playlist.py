@@ -8,14 +8,12 @@ validation and serialization support.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, List, Literal, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .enums import LanguageCode
+from .enums import LanguageCode, PrivacyStatus
 from .youtube_types import ChannelId, PlaylistId
-
-PrivacyStatus = Literal["private", "public", "unlisted"]
 
 
 class PlaylistBase(BaseModel):
@@ -28,7 +26,7 @@ class PlaylistBase(BaseModel):
         default=None, description="BCP-47 language code"
     )
     privacy_status: PrivacyStatus = Field(
-        default="private", description="Playlist privacy setting"
+        default=PrivacyStatus.PRIVATE, description="Playlist privacy setting"
     )
     channel_id: ChannelId = Field(
         ...,
@@ -36,6 +34,12 @@ class PlaylistBase(BaseModel):
     )
     video_count: int = Field(
         default=0, ge=0, description="Number of videos in playlist"
+    )
+    published_at: Optional[datetime] = Field(
+        default=None, description="When the playlist was created on YouTube"
+    )
+    deleted_flag: bool = Field(
+        default=False, description="Whether the playlist is deleted/private"
     )
 
     # Playlist ID validation now handled by PlaylistId custom type
@@ -92,6 +96,8 @@ class PlaylistUpdate(BaseModel):
     default_language: Optional[LanguageCode] = None
     privacy_status: Optional[PrivacyStatus] = None
     video_count: Optional[int] = Field(None, ge=0)
+    published_at: Optional[datetime] = None
+    deleted_flag: Optional[bool] = None
 
     @field_validator("title")
     @classmethod

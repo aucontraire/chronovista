@@ -25,6 +25,8 @@ from chronovista.models.channel_keyword import (
 from chronovista.models.playlist import PlaylistCreate, PlaylistUpdate
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 
+pytestmark = pytest.mark.asyncio
+
 
 @pytest.mark.integration
 @pytest.mark.api

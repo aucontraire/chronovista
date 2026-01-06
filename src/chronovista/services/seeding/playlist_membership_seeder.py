@@ -218,6 +218,9 @@ class PlaylistMembershipSeeder(BaseSeeder):
             await self._ensure_placeholder_channel_exists(session, channel_id)
 
             # Create placeholder video
+            # NOTE: deleted_flag=False because we can't know if video is deleted
+            # just from playlist membership. Only API verification can determine this.
+            # See docs/takeout-data-quality.md for full explanation.
             video_create = VideoCreate(
                 video_id=video_id,
                 channel_id=channel_id,
@@ -226,7 +229,7 @@ class PlaylistMembershipSeeder(BaseSeeder):
                 upload_date=datetime.now(timezone.utc),
                 duration=0,
                 made_for_kids=False,
-                deleted_flag=True,  # Mark as potentially deleted/unavailable
+                deleted_flag=False,  # Only set True after API verification - see docs
             )
 
             await self.video_repo.create(session, obj_in=video_create)

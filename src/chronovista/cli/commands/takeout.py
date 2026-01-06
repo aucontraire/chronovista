@@ -2551,3 +2551,285 @@ def _display_seeding_results(results: Dict[str, Any]) -> None:
                 )
                 for error in result.errors[:3]:
                     console.print(f"     - {error}")
+
+
+# ============================================================================
+# Historical Takeout Recovery Command
+# ============================================================================
+
+
+@takeout_app.command("recover")
+def recover_metadata(
+    takeout_dir: Path = typer.Option(
+        Path("takeout"),
+        "--takeout-dir",
+        "-t",
+        help="Base directory containing historical takeout subdirectories",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        "-d",
+        help="Show what would be recovered without making changes",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Show detailed progress for each video",
+    ),
+) -> None:
+    """
+    Recover metadata from historical Google Takeout exports.
+
+    Scans for historical takeout directories and recovers video/channel
+    metadata for placeholder entries in the database.
+
+    Historical takeouts are identified by directory naming pattern:
+    'YouTube and YouTube Music YYYY-MM-DD' or directories containing a date.
+
+    The recovery process:
+    1. Discovers all historical takeout directories
+    2. Parses watch-history.json from each to build a metadata map
+    3. Identifies placeholder videos in the database (title: '[Placeholder] Video {id}')
+    4. Updates placeholders with real metadata from historical takeouts
+    5. Creates missing channels found in historical data
+
+    When multiple takeouts have different metadata for the same video,
+    the most recent metadata is used.
+
+    Examples:
+        chronovista takeout recover --takeout-dir ~/takeouts
+        chronovista takeout recover --dry-run
+        chronovista takeout recover --verbose
+    """
+    import asyncio
+
+    from ...models.takeout import RecoveryOptions
+    from ...services.takeout_recovery_service import TakeoutRecoveryService
+    from ...services.takeout_service import TakeoutService
+
+    async def run_recovery() -> None:
+        try:
+            # Validate takeout directory exists
+            if not takeout_dir.exists():
+                console.print(f"[red]Error: Takeout directory not found: {takeout_dir}[/red]")
+                raise typer.Exit(2)
+
+            if not takeout_dir.is_dir():
+                console.print(f"[red]Error: Path is not a directory: {takeout_dir}[/red]")
+                raise typer.Exit(2)
+
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                task = progress.add_task(
+                    "Discovering historical takeouts...", total=None
+                )
+
+                # Discover historical takeouts
+                historical_takeouts = TakeoutService.discover_historical_takeouts(
+                    takeout_dir, sort_oldest_first=True
+                )
+
+                if not historical_takeouts:
+                    console.print(
+                        Panel(
+                            f"[yellow]No historical takeouts found in {takeout_dir}[/yellow]\n\n"
+                            "Expected directory structure:\n"
+                            "  takeout/\n"
+                            "    YouTube and YouTube Music 2023-01-15/\n"
+                            "    YouTube and YouTube Music 2023-06-20/\n"
+                            "    ...\n\n"
+                            "Each subdirectory should contain:\n"
+                            "  history/watch-history.json",
+                            title="No Historical Takeouts Found",
+                            border_style="yellow",
+                        )
+                    )
+                    raise typer.Exit(0)
+
+                # Display discovered takeouts
+                progress.update(task, description="Preparing recovery...")
+
+                dates = [t.export_date for t in historical_takeouts]
+                console.print(
+                    Panel(
+                        f"Found {len(historical_takeouts)} historical takeout(s)\n"
+                        f"Date range: {min(dates).date()} to {max(dates).date()}\n"
+                        f"With watch history: {sum(1 for t in historical_takeouts if t.has_watch_history)}",
+                        title="Historical Takeouts Discovered",
+                        border_style="blue",
+                    )
+                )
+
+                if verbose:
+                    table = Table(
+                        title="Discovered Takeouts",
+                        show_header=True,
+                        header_style="bold cyan",
+                    )
+                    table.add_column("Date", style="cyan")
+                    table.add_column("Watch History", justify="center")
+                    table.add_column("Playlists", justify="center")
+                    table.add_column("Subscriptions", justify="center")
+
+                    for takeout in historical_takeouts:
+                        table.add_row(
+                            str(takeout.export_date.date()),
+                            "[green]Yes[/green]" if takeout.has_watch_history else "[red]No[/red]",
+                            "[green]Yes[/green]" if takeout.has_playlists else "[red]No[/red]",
+                            "[green]Yes[/green]" if takeout.has_subscriptions else "[red]No[/red]",
+                        )
+
+                    console.print(table)
+
+                # Configure recovery options
+                options = RecoveryOptions(
+                    dry_run=dry_run,
+                    verbose=verbose,
+                    process_oldest_first=True,  # Process oldest first so newer overwrites
+                    update_channels=True,
+                    batch_size=100,
+                )
+
+                if dry_run:
+                    console.print("\n[yellow]DRY RUN MODE - No changes will be made[/yellow]\n")
+
+                # Run recovery
+                progress.update(task, description="Running recovery...")
+
+                recovery_service = TakeoutRecoveryService()
+
+                async for session in db_manager.get_session(echo=False):
+                    result = await recovery_service.recover_from_historical_takeouts(
+                        session, takeout_dir, options
+                    )
+
+                # Display results
+                _display_recovery_results(result, verbose)
+
+        except TakeoutParsingError as e:
+            console.print(f"[red]Error parsing Takeout data: {e}[/red]")
+            raise typer.Exit(1)
+        except Exception as e:
+            console.print(f"[red]Recovery failed: {e}[/red]")
+            import traceback
+            if verbose:
+                traceback.print_exc()
+            raise typer.Exit(1)
+
+    asyncio.run(run_recovery())
+
+
+def _display_recovery_results(result: Any, verbose: bool) -> None:
+    """Display recovery operation results."""
+    from ...models.takeout import RecoveryResult
+
+    if not isinstance(result, RecoveryResult):
+        console.print("[red]Invalid result type[/red]")
+        return
+
+    # Calculate duration
+    duration_seconds = 0.0
+    if result.completed_at and result.started_at:
+        duration_seconds = (result.completed_at - result.started_at).total_seconds()
+
+    # Build summary
+    mode_str = "[yellow]DRY RUN[/yellow]" if result.dry_run else "[green]APPLIED[/green]"
+
+    summary_text = f"""
+Mode: {mode_str}
+
+Takeouts Scanned: {result.takeouts_scanned}
+Date Range: {result.oldest_takeout_date.date() if result.oldest_takeout_date else 'N/A'} to {result.newest_takeout_date.date() if result.newest_takeout_date else 'N/A'}
+
+Video Recovery:
+   Recovered: {result.videos_recovered}
+   Still Missing: {result.videos_still_missing}
+
+Channel Recovery:
+   Created: {result.channels_created}
+   Updated: {result.channels_updated}
+
+Duration: {duration_seconds:.1f} seconds
+    """.strip()
+
+    border_style = "yellow" if result.dry_run else "green"
+    title = "Recovery Preview" if result.dry_run else "Recovery Complete"
+
+    console.print(Panel(summary_text, title=title, border_style=border_style))
+
+    # Show detailed actions in verbose mode or dry-run
+    if verbose or result.dry_run:
+        if result.video_actions:
+            console.print("\n[bold]Video Recovery Actions:[/bold]")
+            table = Table(show_header=True, header_style="bold cyan")
+            table.add_column("Video ID", style="cyan", width=15)
+            table.add_column("Old Title", style="red", width=35)
+            table.add_column("New Title", style="green", width=35)
+            table.add_column("Source Date", style="yellow", width=12)
+
+            for action in result.video_actions[:20]:  # Limit to first 20
+                old_title = action.old_title[:32] + "..." if len(action.old_title) > 35 else action.old_title
+                new_title = action.new_title[:32] + "..." if len(action.new_title) > 35 else action.new_title
+                table.add_row(
+                    action.video_id,
+                    old_title,
+                    new_title,
+                    str(action.source_date.date()),
+                )
+
+            console.print(table)
+
+            if len(result.video_actions) > 20:
+                console.print(f"   ... and {len(result.video_actions) - 20} more")
+
+        if result.channel_actions:
+            console.print("\n[bold]Channel Recovery Actions:[/bold]")
+            table = Table(show_header=True, header_style="bold cyan")
+            table.add_column("Channel ID", style="cyan", width=26)
+            table.add_column("Channel Name", style="green", width=35)
+            table.add_column("Action", style="yellow", width=12)
+            table.add_column("Source Date", style="blue", width=12)
+
+            for action in result.channel_actions[:20]:  # Limit to first 20
+                name = action.channel_name[:32] + "..." if len(action.channel_name) > 35 else action.channel_name
+                table.add_row(
+                    action.channel_id,
+                    name,
+                    action.action_type,
+                    str(action.source_date.date()),
+                )
+
+            console.print(table)
+
+            if len(result.channel_actions) > 20:
+                console.print(f"   ... and {len(result.channel_actions) - 20} more")
+
+    # Show videos that couldn't be recovered
+    if result.videos_not_recovered and verbose:
+        console.print(f"\n[yellow]Videos still missing metadata ({len(result.videos_not_recovered)}):[/yellow]")
+        for video_id in result.videos_not_recovered[:10]:
+            console.print(f"   - {video_id}")
+        if len(result.videos_not_recovered) > 10:
+            console.print(f"   ... and {len(result.videos_not_recovered) - 10} more")
+
+    # Show errors if any
+    if result.errors:
+        console.print(f"\n[red]Errors ({len(result.errors)}):[/red]")
+        for error in result.errors[:5]:
+            console.print(f"   - {error}")
+        if len(result.errors) > 5:
+            console.print(f"   ... and {len(result.errors) - 5} more")
+
+    # Provide next steps
+    if result.dry_run:
+        console.print("\n[bold]To apply these changes, run without --dry-run:[/bold]")
+        console.print("   chronovista takeout recover --takeout-dir <path>")
+    elif result.videos_still_missing > 0:
+        console.print(f"\n[yellow]Note: {result.videos_still_missing} videos could not be recovered.[/yellow]")
+        console.print("These videos may not be present in your historical takeouts.")
+        console.print("Consider using the YouTube API to fetch their metadata.")

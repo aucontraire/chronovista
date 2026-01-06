@@ -16,6 +16,8 @@ from chronovista.models.video import VideoCreate, VideoStatistics
 from chronovista.repositories.video_repository import VideoRepository
 from tests.factories.video_factory import create_video_search_filters
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestVideoRepository:
     """Test VideoRepository functionality."""

@@ -5,6 +5,11 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
+-- Create integration test database (separate from dev data)
+-- This ensures new developers can run all tests immediately after setup
+CREATE DATABASE chronovista_integration_test;
+GRANT ALL PRIVILEGES ON DATABASE chronovista_integration_test TO dev_user;
+
 -- Create a test schema for experimentation
 CREATE SCHEMA IF NOT EXISTS test_schema;
 

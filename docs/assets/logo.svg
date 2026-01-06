@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#673ab7;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#9575cd;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Clock circle -->
+  <circle cx="50" cy="50" r="45" fill="url(#grad1)" stroke="#512da8" stroke-width="2"/>
+  <!-- Clock face -->
+  <circle cx="50" cy="50" r="38" fill="white" opacity="0.9"/>
+  <!-- Clock hands -->
+  <line x1="50" y1="50" x2="50" y2="22" stroke="#673ab7" stroke-width="3" stroke-linecap="round"/>
+  <line x1="50" y1="50" x2="70" y2="50" stroke="#673ab7" stroke-width="2" stroke-linecap="round"/>
+  <!-- Center dot -->
+  <circle cx="50" cy="50" r="4" fill="#673ab7"/>
+  <!-- Play button overlay -->
+  <polygon points="42,35 42,65 68,50" fill="#ffc107" opacity="0.9"/>
+</svg>

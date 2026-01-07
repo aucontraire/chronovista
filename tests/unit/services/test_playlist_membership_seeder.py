@@ -15,7 +15,6 @@ from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
 )
 from chronovista.repositories.playlist_repository import PlaylistRepository
-from chronovista.repositories.user_video_repository import UserVideoRepository
 from chronovista.repositories.video_repository import VideoRepository
 from chronovista.services.seeding.base_seeder import ProgressCallback, SeedResult
 from chronovista.services.seeding.playlist_membership_seeder import (
@@ -40,7 +39,6 @@ class TestPlaylistMembershipSeederInitialization:
         assert isinstance(seeder.video_repo, VideoRepository)
         assert isinstance(seeder.playlist_repo, PlaylistRepository)
         assert isinstance(seeder.channel_repo, ChannelRepository)
-        assert isinstance(seeder.user_video_repo, UserVideoRepository)
         assert seeder.get_dependencies() == {"playlists", "videos"}
         assert seeder.get_data_type() == "playlist_memberships"
 
@@ -64,8 +62,6 @@ class TestPlaylistMembershipSeederSeeding:
         seeder.channel_repo = Mock(spec=ChannelRepository)
         seeder.channel_repo.get_by_channel_id = AsyncMock()
         seeder.channel_repo.create = AsyncMock()
-        seeder.user_video_repo = Mock(spec=UserVideoRepository)
-        seeder.user_video_repo.sync_saved_to_playlist_flags = AsyncMock(return_value=0)
         return seeder
 
     @pytest.fixture
@@ -311,41 +307,6 @@ class TestPlaylistMembershipSeederSeeding:
             assert len(result.errors) > 0
             assert "Database error" in str(result.errors[0])
 
-    @pytest.mark.asyncio
-    async def test_seed_syncs_saved_to_playlist_flags(
-        self,
-        seeder: PlaylistMembershipSeeder,
-        mock_session: AsyncMock,
-        sample_takeout_data,
-    ) -> None:
-        """Test that seeding syncs saved_to_playlist flags in user_videos."""
-        # Mock repositories to simulate successful seeding
-        mock_playlist = Mock()
-        mock_video = Mock()
-
-        # Configure sync to return that 3 videos were updated
-        seeder.user_video_repo.sync_saved_to_playlist_flags = AsyncMock(return_value=3)
-
-        with (
-            patch.object(
-                seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
-            ),
-            patch.object(
-                seeder.video_repo, "get_by_video_id", return_value=mock_video
-            ),
-            patch.object(
-                seeder.membership_repo, "membership_exists", return_value=False
-            ),
-        ):
-            result = await seeder.seed(mock_session, sample_takeout_data)
-
-            # Verify sync was called
-            seeder.user_video_repo.sync_saved_to_playlist_flags.assert_called_once_with(
-                mock_session
-            )
-            # Verify seeding completed successfully
-            assert result.created == 4
-
 
 class TestPlaylistMembershipSeederTransformations:
     """Tests for data transformation methods."""
@@ -421,8 +382,6 @@ class TestPlaylistMembershipSeederPositioning:
         seeder.video_repo.get_by_video_id = AsyncMock()
         seeder.playlist_repo = Mock(spec=PlaylistRepository)
         seeder.playlist_repo.get_by_playlist_id = AsyncMock()
-        seeder.user_video_repo = Mock(spec=UserVideoRepository)
-        seeder.user_video_repo.sync_saved_to_playlist_flags = AsyncMock(return_value=0)
         return seeder
 
     @pytest.fixture
@@ -516,8 +475,6 @@ class TestPlaylistMembershipSeederBatchProcessing:
         seeder.video_repo.get_by_video_id = AsyncMock()
         seeder.playlist_repo = Mock(spec=PlaylistRepository)
         seeder.playlist_repo.get_by_playlist_id = AsyncMock()
-        seeder.user_video_repo = Mock(spec=UserVideoRepository)
-        seeder.user_video_repo.sync_saved_to_playlist_flags = AsyncMock(return_value=0)
         return seeder
 
     @pytest.fixture
@@ -598,8 +555,6 @@ class TestPlaylistMembershipSeederEdgeCases:
         seeder.channel_repo = Mock(spec=ChannelRepository)
         seeder.channel_repo.get_by_channel_id = AsyncMock()
         seeder.channel_repo.create = AsyncMock()
-        seeder.user_video_repo = Mock(spec=UserVideoRepository)
-        seeder.user_video_repo.sync_saved_to_playlist_flags = AsyncMock(return_value=0)
         return seeder
 
     @pytest.fixture
@@ -778,8 +733,6 @@ class TestPlaylistMembershipSeederIntegration:
         seeder.channel_repo = Mock(spec=ChannelRepository)
         seeder.channel_repo.get_by_channel_id = AsyncMock()
         seeder.channel_repo.create = AsyncMock()
-        seeder.user_video_repo = Mock(spec=UserVideoRepository)
-        seeder.user_video_repo.sync_saved_to_playlist_flags = AsyncMock(return_value=0)
         return seeder
 
     @pytest.fixture

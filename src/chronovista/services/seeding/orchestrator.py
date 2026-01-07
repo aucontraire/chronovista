@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Set
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...models.takeout.takeout_data import TakeoutData
+from ...repositories.user_video_repository import UserVideoRepository
 from .base_seeder import BaseSeeder, ProgressCallback, SeedResult
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,18 @@ class SeedingOrchestrator:
                 f"{result.updated} updated, {result.failed} failed "
                 f"({result.success_rate:.1f}% success)"
             )
+
+        # Post-seeding: sync saved_to_playlist flags
+        # This must run AFTER both user_videos and playlist_memberships are seeded
+        if "user_videos" in types_to_process and "playlist_memberships" in types_to_process:
+            logger.info("🔄 Syncing saved_to_playlist flags...")
+            user_video_repo = UserVideoRepository()
+            synced_count = await user_video_repo.sync_saved_to_playlist_flags(session)
+            await session.commit()
+            if synced_count > 0:
+                logger.info(
+                    f"✅ Synced saved_to_playlist flag for {synced_count} user videos"
+                )
 
         total_duration = (datetime.now() - start_time).total_seconds()
         logger.info(f"🎉 Seeding completed in {total_duration:.1f}s")

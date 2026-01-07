@@ -314,3 +314,66 @@ class TestSeedingOrchestrator:
         # Verify dependency constraints were met by checking execution was successful
         for result in results.values():
             assert result.created == 1  # Mock seeders create 1 item
+
+    async def test_seed_syncs_saved_to_playlist_flags(
+        self, orchestrator, mock_session, mock_takeout_data
+    ):
+        """Test that orchestrator syncs saved_to_playlist flags after seeding."""
+        from unittest.mock import patch, MagicMock
+
+        # Register seeders for user_videos and playlist_memberships
+        user_videos_seeder = MockSeeder("user_videos", dependencies=set())
+        playlist_memberships_seeder = MockSeeder(
+            "playlist_memberships", dependencies=set()
+        )
+
+        orchestrator.register_seeder(user_videos_seeder)
+        orchestrator.register_seeder(playlist_memberships_seeder)
+
+        # Mock UserVideoRepository.sync_saved_to_playlist_flags
+        mock_sync = AsyncMock(return_value=10)
+
+        with patch(
+            "chronovista.services.seeding.orchestrator.UserVideoRepository"
+        ) as MockRepo:
+            mock_repo_instance = MagicMock()
+            mock_repo_instance.sync_saved_to_playlist_flags = mock_sync
+            MockRepo.return_value = mock_repo_instance
+
+            results = await orchestrator.seed(
+                mock_session,
+                mock_takeout_data,
+                {"user_videos", "playlist_memberships"},
+            )
+
+            # Verify sync was called
+            mock_sync.assert_called_once_with(mock_session)
+            mock_session.commit.assert_called()
+
+    async def test_seed_does_not_sync_without_both_types(
+        self, orchestrator, mock_session, mock_takeout_data
+    ):
+        """Test that sync is skipped if user_videos or playlist_memberships not seeded."""
+        from unittest.mock import patch, MagicMock
+
+        # Only register user_videos seeder
+        user_videos_seeder = MockSeeder("user_videos", dependencies=set())
+        orchestrator.register_seeder(user_videos_seeder)
+
+        mock_sync = AsyncMock(return_value=10)
+
+        with patch(
+            "chronovista.services.seeding.orchestrator.UserVideoRepository"
+        ) as MockRepo:
+            mock_repo_instance = MagicMock()
+            mock_repo_instance.sync_saved_to_playlist_flags = mock_sync
+            MockRepo.return_value = mock_repo_instance
+
+            results = await orchestrator.seed(
+                mock_session,
+                mock_takeout_data,
+                {"user_videos"},  # Only user_videos, not playlist_memberships
+            )
+
+            # Sync should NOT be called
+            mock_sync.assert_not_called()

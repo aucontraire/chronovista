@@ -11,9 +11,10 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, delete, desc, func, select
+from sqlalchemy import and_, delete, desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..db.models import PlaylistMembership as PlaylistMembershipDB
 from ..db.models import UserVideo as UserVideoDB
 from ..models.user_video import (
     GoogleTakeoutWatchHistoryItem,
@@ -634,3 +635,39 @@ class UserVideoRepository(
         )
 
         return {str(row.watch_date): int(row.video_count or 0) for row in result}
+
+    async def sync_saved_to_playlist_flags(self, session: AsyncSession) -> int:
+        """
+        Sync saved_to_playlist flags based on playlist_memberships table.
+
+        Updates all user_videos records where the video_id exists in
+        playlist_memberships to have saved_to_playlist=True.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+
+        Returns
+        -------
+        int
+            Number of records updated
+        """
+        # Subquery to get all video_ids that are in playlists
+        videos_in_playlists = (
+            select(PlaylistMembershipDB.video_id).distinct().subquery()
+        )
+
+        # Update user_videos where video_id is in a playlist
+        result = await session.execute(
+            update(UserVideoDB)
+            .where(
+                and_(
+                    UserVideoDB.video_id.in_(select(videos_in_playlists)),
+                    UserVideoDB.saved_to_playlist.is_(False),
+                )
+            )
+            .values(saved_to_playlist=True)
+        )
+
+        return result.rowcount

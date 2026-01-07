@@ -878,6 +878,7 @@ class EnrichmentService:
         include_deleted: bool = False,
         dry_run: bool = False,
         check_prerequisites: bool = True,
+        refresh_topics: bool = False,
     ) -> EnrichmentReport:
         """
         Main enrichment method for batch video processing.
@@ -906,6 +907,9 @@ class EnrichmentService:
             If True, simulate enrichment without persisting changes (default False).
         check_prerequisites : bool, optional
             If True, verify seeding data exists before enrichment (default True).
+        refresh_topics : bool, optional
+            If True, process ALL non-deleted videos regardless of metadata state
+            to refresh topic associations (default False).
 
         Returns
         -------
@@ -964,7 +968,7 @@ class EnrichmentService:
 
         # Query videos needing enrichment based on priority
         videos_to_enrich = await self._get_videos_for_enrichment(
-            session, priority, limit, include_deleted
+            session, priority, limit, include_deleted, refresh_topics
         )
 
         if not videos_to_enrich:
@@ -1246,6 +1250,7 @@ class EnrichmentService:
         priority: str,
         limit: int | None,
         include_deleted: bool,
+        refresh_topics: bool = False,
     ) -> List:
         """
         Query videos that need enrichment based on priority level.
@@ -1284,18 +1289,20 @@ class EnrichmentService:
 
         # Handle deleted video exclusion based on priority
         # "all" priority implicitly includes deleted, otherwise respect include_deleted
-        if priority_lower == "all":
-            # ALL priority includes deleted videos
+        if priority_lower == "all" and not refresh_topics:
+            # ALL priority includes deleted videos (unless refresh_topics mode)
             pass
         elif not include_deleted:
             query = query.where(VideoDB.deleted_flag == False)  # noqa: E712
 
         # Build priority filter based on cumulative semantics
-        priority_filter = self._build_priority_filter(
-            priority_lower, VideoDB, ChannelDB
-        )
-        if priority_filter is not None:
-            query = query.where(priority_filter)
+        # Skip priority filter when refresh_topics=True (process ALL videos)
+        if not refresh_topics:
+            priority_filter = self._build_priority_filter(
+                priority_lower, VideoDB, ChannelDB
+            )
+            if priority_filter is not None:
+                query = query.where(priority_filter)
 
         # Order by upload date (newer first)
         query = query.order_by(VideoDB.upload_date.desc())

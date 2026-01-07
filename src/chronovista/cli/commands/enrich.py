@@ -232,6 +232,11 @@ def enrich_videos(
         "-v",
         help="Enable detailed debug logging (T097)",
     ),
+    refresh_topics: bool = typer.Option(
+        False,
+        "--refresh-topics",
+        help="Re-enrich ALL videos to refresh topic associations (ignores priority filters)",
+    ),
     output: Optional[Path] = typer.Option(
         None,
         "--output",
@@ -266,6 +271,7 @@ def enrich_videos(
         chronovista enrich run --include-playlists
         chronovista enrich run --auto-seed
         chronovista enrich run --verbose
+        chronovista enrich run --refresh-topics
         chronovista enrich run --output ./my-report.json
         chronovista enrich run -o ./exports/enrichment.json
     """
@@ -418,6 +424,7 @@ def enrich_videos(
                     "Include Playlists", "Yes" if include_playlists else "No"
                 )
                 config_table.add_row("Auto-Seed", "Yes" if auto_seed else "No")
+                config_table.add_row("Refresh Topics", "Yes" if refresh_topics else "No")
                 config_table.add_row("Verbose", "Yes" if verbose else "No")
                 config_table.add_row("Dry Run", "Yes" if dry_run else "No")
                 console.print(config_table)
@@ -472,6 +479,7 @@ def enrich_videos(
                             include_deleted=include_deleted,
                             dry_run=dry_run,
                             check_prerequisites=check_prereqs,
+                            refresh_topics=refresh_topics,
                         )
 
                     except PrerequisiteError as e:

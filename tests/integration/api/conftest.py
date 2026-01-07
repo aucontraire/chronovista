@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from chronovista.auth.oauth_service import YouTubeOAuthService
 from chronovista.config.settings import get_settings
+from chronovista.db.models import Base
 from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.repositories.user_language_preference_repository import (
     UserLanguagePreferenceRepository,
@@ -69,12 +70,68 @@ def integration_test_db_url():
     )
 
 
+@pytest.fixture(scope="session", autouse=True)
+def integration_db_schema_setup(integration_test_db_url):
+    """
+    Set up database schema for integration tests.
+
+    This fixture runs once per test session to create all tables
+    in the integration database before any tests run.
+
+    Uses autouse=True so it runs automatically for all integration tests.
+    """
+    import asyncio
+
+    engine = create_async_engine(
+        integration_test_db_url,
+        echo=False,
+        pool_pre_ping=True,
+    )
+
+    async def create_tables():
+        """Create all tables defined in Base.metadata."""
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    async def drop_tables_and_cleanup():
+        """Drop all tables and dispose of engine."""
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.drop_all)
+        finally:
+            await engine.dispose()
+
+    # Run the async setup synchronously using a new event loop
+    # We need a new loop because this is session-scoped and runs before pytest-asyncio sets up
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(create_tables())
+    finally:
+        loop.close()
+
+    yield
+
+    # Clean up: optionally drop all tables after tests
+    # NOTE: Disabled to avoid event loop conflicts with pytest-asyncio
+    # Tables will be cleaned up by test isolation (each test deletes its own data)
+    # or by dropping the database between test runs
+    # Uncomment if you need to drop tables after tests:
+    # loop = asyncio.new_event_loop()
+    # asyncio.set_event_loop(loop)
+    # try:
+    #     loop.run_until_complete(drop_tables_and_cleanup())
+    # finally:
+    #     loop.close()
+
+
 @pytest.fixture(scope="function")
-def integration_db_engine(integration_test_db_url):
+def integration_db_engine(integration_test_db_url, integration_db_schema_setup):
     """
     Create database engine for integration tests.
 
     Each test gets its own engine instance to avoid connection issues.
+    Depends on integration_db_schema_setup to ensure tables exist.
     """
     engine = create_async_engine(
         integration_test_db_url,

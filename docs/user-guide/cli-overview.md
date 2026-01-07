@@ -69,6 +69,37 @@ chronovista topics [COMMAND]
 | `engagement` | Engagement analytics |
 | `channel-engagement <id>` | Channel engagement |
 
+### Category Commands
+
+```bash
+chronovista categories [COMMAND]
+```
+
+| Command | Description |
+|---------|-------------|
+| `list` | List all video categories |
+| `show <category>` | Show category details (by ID or name) |
+| `videos <category>` | Videos in category |
+
+**Note:** Categories are YouTube's creator-assigned video categories (e.g., "Music", "Gaming", "Comedy").
+
+### Tag Commands
+
+```bash
+chronovista tags [COMMAND]
+```
+
+| Command | Description |
+|---------|-------------|
+| `list` | List popular tags by video count |
+| `show --tag <tag>` | Show tag details and related tags |
+| `videos --tag <tag>` | Videos with a specific tag |
+| `search --pattern <pattern>` | Search tags by pattern |
+| `stats` | Comprehensive tag statistics |
+| `by-video --id <video_id>` | Show all tags for a video |
+
+**Note:** Tags use `--tag`, `--pattern`, and `--id` options (not positional arguments) to support tags and video IDs that start with `-`.
+
 ### Takeout Commands
 
 ```bash
@@ -260,6 +291,128 @@ Exports topic relationship data for visualization.
 - `--min-confidence <float>` - Minimum relationship confidence
 - `--limit <n>` - Maximum number of topics
 
+### Category Analytics
+
+#### List Categories
+
+```bash
+chronovista categories list [OPTIONS]
+```
+
+Lists all YouTube video categories with video counts.
+
+**Options:**
+
+- `--assignable-only, -a` - Only show categories that creators can assign
+
+#### Show Category
+
+```bash
+chronovista categories show <CATEGORY>
+```
+
+Shows details for a specific category. Accepts category ID (e.g., "23") or name (e.g., "Comedy").
+
+#### Videos by Category
+
+```bash
+chronovista categories videos <CATEGORY> [OPTIONS]
+```
+
+Shows videos in a specific category.
+
+**Options:**
+
+- `--limit, -l <n>` - Number of results (default: 20)
+- `--include-deleted` - Include deleted videos
+
+### Tag Analytics
+
+#### List Tags
+
+```bash
+chronovista tags list [OPTIONS]
+```
+
+Lists the most popular tags ordered by video count.
+
+**Options:**
+
+- `--limit, -l <n>` - Number of results (default: 50)
+
+#### Show Tag
+
+```bash
+chronovista tags show --tag <TAG> [OPTIONS]
+```
+
+Shows details for a specific tag, including related tags that frequently appear together.
+
+**Options:**
+
+- `--tag, -t <tag>` - Tag to show (required)
+- `--related, -r <n>` - Number of related tags (default: 10)
+
+**Example:**
+```bash
+# Tag starting with hyphen requires --tag option
+chronovista tags show --tag "-ALFIE"
+chronovista tags show -t "music"
+```
+
+#### Videos by Tag
+
+```bash
+chronovista tags videos --tag <TAG> [OPTIONS]
+```
+
+Shows videos with a specific tag.
+
+**Options:**
+
+- `--tag, -t <tag>` - Tag to search for (required)
+- `--limit, -l <n>` - Number of results (default: 20)
+
+#### Search Tags
+
+```bash
+chronovista tags search --pattern <PATTERN> [OPTIONS]
+```
+
+Search for tags matching a pattern (case-insensitive partial match).
+
+**Options:**
+
+- `--pattern, -p <pattern>` - Pattern to search for (required)
+- `--limit, -l <n>` - Number of results (default: 30)
+
+#### Tag Statistics
+
+```bash
+chronovista tags stats
+```
+
+Shows comprehensive tag statistics including total tags, unique tags, average tags per video, and most common tags.
+
+#### Tags by Video
+
+```bash
+chronovista tags by-video --id <VIDEO_ID>
+```
+
+Shows all tags for a specific video.
+
+**Options:**
+
+- `--id, -i <video_id>` - Video ID (required)
+
+**Example:**
+```bash
+# Video ID starting with hyphen requires --id option
+chronovista tags by-video --id "-2kc5xfeQEs"
+chronovista tags by-video -i "dQw4w9WgXcQ"
+```
+
 ### Google Takeout
 
 #### Seed Database
@@ -380,6 +533,47 @@ chronovista topics tree 10 --max-depth 3
 
 # Export for visualization
 chronovista topics graph --format json --output topics.json
+```
+
+### Category Exploration
+
+```bash
+# List all categories with video counts
+chronovista categories list
+
+# Show only assignable categories
+chronovista categories list --assignable-only
+
+# View category details (by name or ID)
+chronovista categories show Comedy
+chronovista categories show 23
+
+# Browse videos in a category
+chronovista categories videos Music --limit 50
+```
+
+### Tag Exploration
+
+```bash
+# List most popular tags
+chronovista tags list --limit 20
+
+# View tag details (note: use --tag for tags starting with -)
+chronovista tags show --tag "music"
+chronovista tags show --tag "-ALFIE"
+
+# Find videos with specific tag
+chronovista tags videos --tag "gaming" --limit 30
+
+# Search for tags matching a pattern
+chronovista tags search --pattern "python"
+
+# View tag statistics
+chronovista tags stats
+
+# View all tags for a specific video
+chronovista tags by-video --id "dQw4w9WgXcQ"
+chronovista tags by-video --id "-2kc5xfeQEs"  # Video ID starting with -
 ```
 
 ## Exit Codes

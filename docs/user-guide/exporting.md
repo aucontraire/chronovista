@@ -137,8 +137,8 @@ UCuAXFkgsw1L7xaCfnd5JJOw,"Rick Astley",12000000,150,en,GB
 ### Watch History CSV
 
 ```csv
-video_id,title,watched_at,watch_duration,watch_percentage
-dQw4w9WgXcQ,"Never Gonna Give You Up",2024-01-15T10:30:00,180,85.0
+video_id,title,watched_at,rewatch_count,liked
+dQw4w9WgXcQ,"Never Gonna Give You Up",2024-01-15T10:30:00,2,true
 ```
 
 ## JSON Export Format

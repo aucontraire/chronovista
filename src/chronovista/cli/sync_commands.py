@@ -104,8 +104,6 @@ async def process_watch_history_batch(
                     user_id=user_id,
                     video_id=entry.video_id,
                     watched_at=entry.watched_at,
-                    watch_duration=None,  # Not available in Takeout
-                    completion_percentage=None,  # Not available in Takeout
                 )
                 results["user_videos_created"] += 1
 
@@ -1233,8 +1231,6 @@ def liked(
                         user_id=user_id,
                         video_id=saved_video.video_id,
                         watched_at=None,  # We don't have watch timestamp from liked videos API
-                        watch_duration=None,
-                        completion_percentage=None,
                     )
 
             # Create display table

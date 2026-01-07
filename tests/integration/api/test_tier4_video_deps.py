@@ -516,7 +516,6 @@ class TestUserVideoFromAPI:
                     video_id=video_id,
                     watched_at=datetime.now(timezone.utc),  # Correct field name
                     liked=True,
-                    watch_duration=240,  # Correct field name: 4 minutes
                     rewatch_count=1,  # Correct field name
                     saved_to_playlist=False,  # Correct field name
                 )
@@ -547,14 +546,12 @@ class TestUserVideoFromAPI:
                 assert db_user_video.video_id == video_id
                 assert db_user_video.watched_at is not None  # Correct field name
                 assert db_user_video.liked is True
-                assert db_user_video.watch_duration == 240  # Correct field name
                 assert db_user_video.rewatch_count >= 1  # Correct field name
                 assert db_user_video.created_at is not None
 
                 # Test interaction update using correct field names
 
                 interaction_update = create_user_video_update(
-                    watch_duration=360,  # Correct field name: 6 minutes
                     rewatch_count=2,  # Correct field name
                     watched_at=datetime.now(timezone.utc),  # Correct field name
                 )
@@ -565,7 +562,6 @@ class TestUserVideoFromAPI:
                 await session.commit()
 
                 # Verify update using correct field names
-                assert updated_interaction.watch_duration == 360  # Correct field name
                 assert updated_interaction.rewatch_count == 2  # Correct field name
                 assert updated_interaction.updated_at >= db_user_video.created_at
 
@@ -619,8 +615,6 @@ class TestUserVideoFromAPI:
                         video_id=video_id,
                         watched_at=datetime.now(timezone.utc),  # Correct field name
                         liked=i % 2 == 0,  # Alternate liked status
-                        watch_duration=(i + 1)
-                        * 120,  # Correct field name: varying watch times
                         rewatch_count=i + 1,  # Correct field name
                         saved_to_playlist=i
                         == 0,  # Correct field name: only first video bookmarked
@@ -653,32 +647,20 @@ class TestUserVideoFromAPI:
                 total_videos_watched = len(
                     [i for i in user_interactions if i.watched_at is not None]
                 )  # Correct field name
-                total_watch_time = sum(
-                    i.watch_duration for i in user_interactions if i.watch_duration
-                )  # Correct field name
                 total_likes = len([i for i in user_interactions if i.liked])
                 total_bookmarks = len(
                     [i for i in user_interactions if i.saved_to_playlist]
                 )  # Correct field name
-                avg_watch_time = (
-                    total_watch_time / len(user_interactions)
-                    if user_interactions
-                    else 0
-                )
 
                 # Verify analytics make sense
                 assert total_videos_watched >= 0
-                assert total_watch_time >= 0
                 assert total_likes >= 0
                 assert total_bookmarks >= 0
-                assert avg_watch_time >= 0
 
                 print(f"User {test_user_id} analytics:")
                 print(f"  Videos watched: {total_videos_watched}")
-                print(f"  Total watch time: {total_watch_time} seconds")
                 print(f"  Videos liked: {total_likes}")
                 print(f"  Videos bookmarked: {total_bookmarks}")
-                print(f"  Average watch time: {avg_watch_time:.1f} seconds")
 
                 # Clean up all test data - proper cleanup from lessons learned
                 await session.execute(

@@ -713,6 +713,36 @@ class TestUserVideoRepository:
         repo = UserVideoRepository()
         assert repo.model == UserVideoDB
 
+    @pytest.mark.asyncio
+    async def test_sync_saved_to_playlist_flags(
+        self, repository: UserVideoRepository, mock_session: AsyncSession
+    ):
+        """Test syncing saved_to_playlist flags from playlist_memberships."""
+        # Mock the update result
+        mock_result = MagicMock()
+        mock_result.rowcount = 5  # 5 records updated
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
+
+        result = await repository.sync_saved_to_playlist_flags(mock_session)
+
+        assert result == 5
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio
+    async def test_sync_saved_to_playlist_flags_no_matches(
+        self, repository: UserVideoRepository, mock_session: AsyncSession
+    ):
+        """Test syncing when no videos need updating."""
+        # Mock empty result (no rows updated)
+        mock_result = MagicMock()
+        mock_result.rowcount = 0
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
+
+        result = await repository.sync_saved_to_playlist_flags(mock_session)
+
+        assert result == 0
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
+
 
 class TestUserVideoRepositoryEdgeCases:
     """Test edge cases and error conditions."""

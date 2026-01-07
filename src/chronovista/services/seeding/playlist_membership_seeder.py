@@ -22,6 +22,7 @@ from ...models.video import VideoCreate
 from ...repositories.channel_repository import ChannelRepository
 from ...repositories.playlist_membership_repository import PlaylistMembershipRepository
 from ...repositories.playlist_repository import PlaylistRepository
+from ...repositories.user_video_repository import UserVideoRepository
 from ...repositories.video_repository import VideoRepository
 from .base_seeder import BaseSeeder, ProgressCallback, SeedResult
 
@@ -44,6 +45,7 @@ class PlaylistMembershipSeeder(BaseSeeder):
         self.video_repo = VideoRepository()
         self.playlist_repo = PlaylistRepository()
         self.channel_repo = ChannelRepository()
+        self.user_video_repo = UserVideoRepository()
 
     def get_data_type(self) -> str:
         return "playlist_memberships"
@@ -171,6 +173,13 @@ class PlaylistMembershipSeeder(BaseSeeder):
                 logger.error(f"Failed to process playlist {playlist.name}: {e}")
                 result.failed += len(playlist.videos)
                 result.errors.append(f"Playlist {playlist.name}: {str(e)}")
+
+        # Sync saved_to_playlist flags in user_videos table
+        # This updates user_videos.saved_to_playlist=True for videos that are in playlists
+        synced_count = await self.user_video_repo.sync_saved_to_playlist_flags(session)
+        await session.commit()
+        if synced_count > 0:
+            logger.info(f"🔄 Synced saved_to_playlist flag for {synced_count} user videos")
 
         # Calculate duration
         result.duration_seconds = (datetime.now() - start_time).total_seconds()

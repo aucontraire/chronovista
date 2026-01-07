@@ -47,8 +47,6 @@ class TestUserVideoRepository:
             user_id="test_user",
             video_id="dQw4w9WgXcQ",
             watched_at=datetime.now(timezone.utc),
-            watch_duration=3600,
-            completion_percentage=85.5,
             rewatch_count=2,
             liked=True,
             disliked=False,
@@ -64,8 +62,6 @@ class TestUserVideoRepository:
             user_id="test_user",
             video_id="dQw4w9WgXcQ",
             watched_at=datetime.now(timezone.utc),
-            watch_duration=3600,
-            completion_percentage=85.5,
             rewatch_count=0,
             liked=False,
             disliked=False,
@@ -81,8 +77,6 @@ class TestUserVideoRepository:
                 user_id="test_user",
                 video_id="video_123",
                 watched_at=base_time,
-                watch_duration=3600,
-                completion_percentage=100.0,
                 rewatch_count=0,
                 liked=True,
                 disliked=False,
@@ -94,8 +88,6 @@ class TestUserVideoRepository:
                 user_id="test_user",
                 video_id="video_456",
                 watched_at=base_time - timedelta(days=1),
-                watch_duration=1800,
-                completion_percentage=50.0,
                 rewatch_count=1,
                 liked=False,
                 disliked=True,
@@ -296,7 +288,7 @@ class TestUserVideoRepository:
     ):
         """Test searching user videos with filters."""
         filters = UserVideoSearchFilters(
-            user_ids=["test_user"], liked_only=True, min_completion_percentage=80.0
+            user_ids=["test_user"], liked_only=True
         )
 
         # Filter results
@@ -304,8 +296,6 @@ class TestUserVideoRepository:
             v
             for v in sample_user_videos_list
             if v.liked
-            and v.completion_percentage is not None
-            and v.completion_percentage >= 80.0
         ]
 
         mock_result = MagicMock()
@@ -327,8 +317,6 @@ class TestUserVideoRepository:
         # Create sample statistics
         expected_stats = UserVideoStatistics(
             total_videos=10,
-            total_watch_time=36000,
-            average_completion=75.5,
             liked_count=5,
             disliked_count=1,
             playlist_saved_count=3,
@@ -346,8 +334,6 @@ class TestUserVideoRepository:
 
             assert isinstance(result, UserVideoStatistics)
             assert result.total_videos == 10
-            assert result.total_watch_time == 36000
-            assert result.average_completion == 75.5
             assert result.liked_count == 5
             assert result.disliked_count == 1
             assert result.playlist_saved_count == 3
@@ -365,8 +351,6 @@ class TestUserVideoRepository:
         # Create expected empty statistics
         expected_stats = UserVideoStatistics(
             total_videos=0,
-            total_watch_time=0,
-            average_completion=0.0,
             liked_count=0,
             disliked_count=0,
             playlist_saved_count=0,
@@ -384,8 +368,6 @@ class TestUserVideoRepository:
 
             assert isinstance(result, UserVideoStatistics)
             assert result.total_videos == 0
-            assert result.total_watch_time == 0
-            assert result.average_completion == 0.0
             assert result.liked_count == 0
             assert result.disliked_count == 0
             assert result.playlist_saved_count == 0
@@ -604,8 +586,6 @@ class TestUserVideoRepository:
                 "test_user",
                 "dQw4w9WgXcQ",
                 watched_at=watch_time,
-                watch_duration=3600,
-                completion_percentage=85.5,
             )
 
             assert result is not None
@@ -634,14 +614,10 @@ class TestUserVideoRepository:
                 "test_user",
                 "dQw4w9WgXcQ",
                 watched_at=watch_time,
-                watch_duration=7200,
-                completion_percentage=100.0,
             )
 
             assert result == sample_user_video_db
             assert sample_user_video_db.watched_at == watch_time
-            assert sample_user_video_db.watch_duration == 7200
-            assert sample_user_video_db.completion_percentage == 100.0
             assert sample_user_video_db.rewatch_count == original_rewatch_count + 1
             mock_session.add.assert_called_once_with(sample_user_video_db)  # type: ignore[attr-defined]
             mock_session.flush.assert_called_once()  # type: ignore[attr-defined]
@@ -662,29 +638,29 @@ class TestUserVideoRepository:
         mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
-    async def test_get_watch_time_by_date_range(
+    async def test_get_watch_count_by_date_range(
         self, repository: UserVideoRepository, mock_session: AsyncSession
     ):
-        """Test getting watch time aggregated by date range."""
+        """Test getting watch count aggregated by date range."""
         start_date = datetime(2025, 1, 1, tzinfo=timezone.utc)
         end_date = datetime(2025, 1, 31, tzinfo=timezone.utc)
 
         # Mock aggregated results
         mock_result = MagicMock()
         mock_rows = [
-            MagicMock(watch_date=datetime(2025, 1, 15).date(), total_time=3600),
-            MagicMock(watch_date=datetime(2025, 1, 16).date(), total_time=7200),
+            MagicMock(watch_date=datetime(2025, 1, 15).date(), video_count=5),
+            MagicMock(watch_date=datetime(2025, 1, 16).date(), video_count=8),
         ]
         mock_result.__iter__ = lambda self: iter(mock_rows)
         mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
-        result = await repository.get_watch_time_by_date_range(
+        result = await repository.get_watch_count_by_date_range(
             mock_session, "test_user", start_date, end_date
         )
 
         expected = {
-            "2025-01-15": 3600,
-            "2025-01-16": 7200,
+            "2025-01-15": 5,
+            "2025-01-16": 8,
         }
         assert result == expected
         mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
@@ -838,10 +814,10 @@ class TestUserVideoRepositoryEdgeCases:
         assert result == []
 
     @pytest.mark.asyncio
-    async def test_get_watch_time_by_date_range_no_data(
+    async def test_get_watch_count_by_date_range_no_data(
         self, repository: UserVideoRepository, mock_session: AsyncSession
     ):
-        """Test getting watch time when no data exists in range."""
+        """Test getting watch count when no data exists in range."""
         start_date = datetime(2025, 1, 1, tzinfo=timezone.utc)
         end_date = datetime(2025, 1, 31, tzinfo=timezone.utc)
 
@@ -849,7 +825,7 @@ class TestUserVideoRepositoryEdgeCases:
         mock_result.__iter__ = lambda self: iter([])
         mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
 
-        result = await repository.get_watch_time_by_date_range(
+        result = await repository.get_watch_count_by_date_range(
             mock_session, "test_user", start_date, end_date
         )
 
@@ -918,8 +894,6 @@ class TestGoogleTakeoutIntegration:
         assert result.watched_at == datetime(
             2025, 1, 15, 10, 30, 0, tzinfo=timezone.utc
         )
-        assert result.watch_duration is None  # Not available in Takeout
-        assert result.completion_percentage is None  # Not available in Takeout
         assert result.rewatch_count == 0
 
     def test_takeout_item_invalid_video_id(self):

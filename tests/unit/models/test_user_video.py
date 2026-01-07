@@ -51,7 +51,6 @@ class TestUserVideoBaseFactory:
         assert isinstance(user_video, UserVideoBase)
         assert user_video.user_id == "test_user_123"
         assert user_video.video_id == "dQw4w9WgXcQ"
-        assert user_video.completion_percentage == 85.5
         assert user_video.rewatch_count == 1
         assert user_video.liked is True
         assert user_video.disliked is False
@@ -62,13 +61,11 @@ class TestUserVideoBaseFactory:
         custom_user_video = UserVideoBaseFactory.build(
             user_id="custom_user",
             video_id="9bZkp7q19f0",
-            completion_percentage=50.0,
             liked=False,
         )
 
         assert custom_user_video.user_id == "custom_user"
         assert custom_user_video.video_id == "9bZkp7q19f0"
-        assert custom_user_video.completion_percentage == 50.0
         assert custom_user_video.liked is False
 
     @pytest.mark.parametrize("valid_user_id", UserVideoTestData.VALID_USER_IDS)
@@ -95,22 +92,6 @@ class TestUserVideoBaseFactory:
         with pytest.raises(ValidationError):
             UserVideoBaseFactory.build(video_id=invalid_video_id)
 
-    @pytest.mark.parametrize(
-        "valid_percentage", UserVideoTestData.VALID_COMPLETION_PERCENTAGES
-    )
-    def test_user_video_base_valid_completion_percentages(self, valid_percentage):
-        """Test UserVideoBase with valid completion percentages."""
-        user_video = UserVideoBaseFactory.build(completion_percentage=valid_percentage)
-        assert user_video.completion_percentage == valid_percentage
-
-    @pytest.mark.parametrize(
-        "invalid_percentage", UserVideoTestData.INVALID_COMPLETION_PERCENTAGES
-    )
-    def test_user_video_base_invalid_completion_percentages(self, invalid_percentage):
-        """Test UserVideoBase validation with invalid completion percentages."""
-        with pytest.raises(ValidationError):
-            UserVideoBaseFactory.build(completion_percentage=invalid_percentage)
-
     def test_user_video_base_model_dump(self):
         """Test UserVideoBase model_dump functionality."""
         user_video = UserVideoBaseFactory.build()
@@ -119,7 +100,6 @@ class TestUserVideoBaseFactory:
         assert isinstance(data, dict)
         assert data["user_id"] == "test_user_123"
         assert data["video_id"] == "dQw4w9WgXcQ"
-        assert data["completion_percentage"] == 85.5
 
     def test_user_video_base_model_validate(self):
         """Test UserVideoBase model_validate functionality."""
@@ -127,7 +107,6 @@ class TestUserVideoBaseFactory:
             "user_id": "validate_user",
             "video_id": "3tmd-ClpJxA",
             "watched_at": datetime(2023, 12, 1, 10, 30, 0, tzinfo=timezone.utc),
-            "completion_percentage": 95.0,
             "rewatch_count": 2,
             "liked": True,
             "disliked": False,
@@ -137,7 +116,6 @@ class TestUserVideoBaseFactory:
         user_video = UserVideoBase.model_validate(data)
         assert user_video.user_id == "validate_user"
         assert user_video.video_id == "3tmd-ClpJxA"
-        assert user_video.completion_percentage == 95.0
 
 
 class TestUserVideoCreateFactory:
@@ -150,16 +128,15 @@ class TestUserVideoCreateFactory:
         assert isinstance(user_video, UserVideoCreate)
         assert user_video.user_id == "test_user_456"
         assert user_video.video_id == "9bZkp7q19f0"
-        assert user_video.completion_percentage == 75.0
 
     def test_user_video_create_convenience_function(self):
         """Test convenience function for UserVideoCreate."""
         user_video = create_user_video_create(
-            user_id="convenience_user", completion_percentage=60.0
+            user_id="convenience_user", rewatch_count=3
         )
 
         assert user_video.user_id == "convenience_user"
-        assert user_video.completion_percentage == 60.0
+        assert user_video.rewatch_count == 3
 
 
 class TestUserVideoUpdateFactory:
@@ -168,23 +145,22 @@ class TestUserVideoUpdateFactory:
     def test_user_video_update_creation(self):
         """Test basic UserVideoUpdate creation from factory with explicit values."""
         user_video_update = UserVideoUpdateFactory.build(
-            completion_percentage=90.0, rewatch_count=2, liked=True
+            rewatch_count=2, liked=True
         )
 
         assert isinstance(user_video_update, UserVideoUpdate)
-        assert user_video_update.completion_percentage == 90.0
         assert user_video_update.rewatch_count == 2
         assert user_video_update.liked is True
 
     def test_user_video_update_partial_data(self):
         """Test UserVideoUpdate with partial data."""
         update = UserVideoUpdateFactory.build(
-            completion_percentage=80.0,
+            rewatch_count=5,
             liked=None,  # Only update some fields
             disliked=None,
         )
 
-        assert update.completion_percentage == 80.0
+        assert update.rewatch_count == 5
         assert update.liked is None
         assert update.disliked is None
 
@@ -204,7 +180,6 @@ class TestUserVideoFactory:
         assert isinstance(user_video, UserVideo)
         assert user_video.user_id == "test_user_789"
         assert user_video.video_id == "3tmd-ClpJxA"
-        assert user_video.completion_percentage == 95.0
         assert hasattr(user_video, "created_at")
         assert hasattr(user_video, "updated_at")
 
@@ -449,7 +424,6 @@ class TestUserVideoSearchFiltersFactory:
         assert isinstance(filters, UserVideoSearchFilters)
         assert filters.user_ids == ["user1", "user2", "user3"]
         assert filters.video_ids == ["dQw4w9WgXcQ", "9bZkp7q19f0", "3tmd-ClpJxA"]
-        assert filters.min_completion_percentage == 50.0
         assert filters.liked_only is True
 
     def test_user_video_search_filters_partial(self):
@@ -462,8 +436,8 @@ class TestUserVideoSearchFiltersFactory:
 
     def test_user_video_search_filters_convenience_function(self):
         """Test convenience function for UserVideoSearchFilters."""
-        filters = create_user_video_search_filters(min_completion_percentage=75.0)
-        assert filters.min_completion_percentage == 75.0
+        filters = create_user_video_search_filters(liked_only=True)
+        assert filters.liked_only is True
 
 
 class TestUserVideoStatisticsFactory:
@@ -475,8 +449,6 @@ class TestUserVideoStatisticsFactory:
 
         assert isinstance(stats, UserVideoStatistics)
         assert stats.total_videos == 150
-        assert stats.total_watch_time == 18000
-        assert stats.average_completion == 78.5
         assert stats.liked_count == 45
         assert stats.watch_streak_days == 14
 
@@ -525,7 +497,6 @@ class TestBatchOperations:
 
         assert original.user_id == restored.user_id
         assert original.video_id == restored.video_id
-        assert original.completion_percentage == restored.completion_percentage
         assert original.created_at == restored.created_at
 
     def test_factory_inheritance_behavior(self):
@@ -538,7 +509,7 @@ class TestBatchOperations:
         for video in [base_video, create_video, full_video]:
             assert hasattr(video, "user_id")
             assert hasattr(video, "video_id")
-            assert hasattr(video, "completion_percentage")
+            assert hasattr(video, "rewatch_count")
 
         # Only full video should have timestamps
         assert hasattr(full_video, "created_at")
@@ -553,28 +524,23 @@ class TestValidationEdgeCases:
     def test_none_values_handling(self):
         """Test handling of None values in optional fields."""
         user_video = UserVideoBaseFactory.build(
-            watched_at=None, watch_duration=None, completion_percentage=None
+            watched_at=None
         )
 
         assert user_video.watched_at is None
-        assert user_video.watch_duration is None
-        assert user_video.completion_percentage is None
 
     def test_boundary_values(self):
         """Test boundary values for validation."""
         # Test minimum valid values
         min_video = UserVideoBaseFactory.build(
-            completion_percentage=0.0, rewatch_count=0, watch_duration=0
+            rewatch_count=0
         )
-        assert min_video.completion_percentage == 0.0
         assert min_video.rewatch_count == 0
-        assert min_video.watch_duration == 0
 
-        # Test maximum valid values
+        # Test valid video ID length
         max_video = UserVideoBaseFactory.build(
-            completion_percentage=100.0, video_id="abcdefghijk"  # Valid 11-char length
+            video_id="abcdefghijk"  # Valid 11-char length
         )
-        assert max_video.completion_percentage == 100.0
         assert len(max_video.video_id) == 11
 
     def test_model_config_validation(self):
@@ -582,12 +548,12 @@ class TestValidationEdgeCases:
         user_video = UserVideoFactory.build()
 
         # Test validate_assignment works
-        user_video.completion_percentage = 50.0
-        assert user_video.completion_percentage == 50.0
+        user_video.rewatch_count = 5
+        assert user_video.rewatch_count == 5
 
         # Test that invalid assignment raises validation error
         with pytest.raises(ValidationError):
-            user_video.completion_percentage = 150.0  # Invalid value
+            user_video.rewatch_count = -1  # Invalid value
 
 
 class TestAdditionalValidationEdgeCases:
@@ -600,7 +566,6 @@ class TestAdditionalValidationEdgeCases:
             "user_id": "orm_user",
             "video_id": "dQw4w9WgXcQ",
             "watched_at": datetime(2023, 12, 1, 10, 30, 0, tzinfo=timezone.utc),
-            "completion_percentage": 85.0,
             "rewatch_count": 2,
             "liked": True,
             "disliked": False,
@@ -611,7 +576,7 @@ class TestAdditionalValidationEdgeCases:
 
         user_video = UserVideo.model_validate(video_data)
         assert user_video.user_id == "orm_user"
-        assert user_video.completion_percentage == 85.0
+        assert user_video.rewatch_count == 2
         assert user_video.created_at is not None
         assert user_video.updated_at is not None
 
@@ -620,8 +585,6 @@ class TestAdditionalValidationEdgeCases:
         # Test all None values (should be valid)
         update = UserVideoUpdate(
             watched_at=None,
-            watch_duration=None,
-            completion_percentage=None,
             rewatch_count=None,
             liked=None,
             disliked=None,
@@ -629,30 +592,16 @@ class TestAdditionalValidationEdgeCases:
         )
 
         assert update.watched_at is None
-        assert update.completion_percentage is None
         assert update.liked is None
 
     def test_user_video_update_selective_fields(self):
         """Test UserVideoUpdate with only some fields set."""
-        update = UserVideoUpdateFactory.build(completion_percentage=75.0, liked=True)
+        update = UserVideoUpdateFactory.build(rewatch_count=3, liked=True)
 
-        assert update.completion_percentage == 75.0
+        assert update.rewatch_count == 3
         assert update.liked is True
         assert update.watched_at is None  # Default None
         assert update.disliked is None  # Default None
-
-    @pytest.mark.parametrize(
-        "invalid_completion", [-0.1, -50.0, 100.1, 150.0, float("inf")]
-    )
-    def test_completion_percentage_comprehensive_validation(self, invalid_completion):
-        """Test comprehensive completion percentage validation."""
-        # Test in UserVideoBase/Create
-        with pytest.raises(ValidationError):
-            UserVideoCreateFactory.build(completion_percentage=invalid_completion)
-
-        # Test in UserVideoUpdate
-        with pytest.raises(ValidationError):
-            UserVideoUpdateFactory.build(completion_percentage=invalid_completion)
 
     def test_user_video_search_filters_comprehensive(self):
         """Test UserVideoSearchFilters with all fields."""
@@ -661,8 +610,6 @@ class TestAdditionalValidationEdgeCases:
             video_ids=["dQw4w9WgXcQ", "9bZkp7q19f0"],
             watched_after=datetime(2023, 1, 1, tzinfo=timezone.utc),
             watched_before=datetime(2023, 12, 31, tzinfo=timezone.utc),
-            min_watch_duration=300,
-            min_completion_percentage=50.0,
             liked_only=True,
             disliked_only=False,
             playlist_saved_only=True,
@@ -673,7 +620,6 @@ class TestAdditionalValidationEdgeCases:
 
         assert len(filters.user_ids) == 3
         assert len(filters.video_ids) == 2
-        assert filters.min_completion_percentage == 50.0
         assert filters.liked_only is True
         assert filters.disliked_only is False
         assert filters.playlist_saved_only is True
@@ -683,8 +629,6 @@ class TestAdditionalValidationEdgeCases:
         """Test UserVideoStatistics with all fields."""
         stats = UserVideoStatisticsFactory.build(
             total_videos=500,
-            total_watch_time=36000,  # 10 hours
-            average_completion=82.5,
             liked_count=150,
             disliked_count=25,
             playlist_saved_count=75,
@@ -695,8 +639,6 @@ class TestAdditionalValidationEdgeCases:
         )
 
         assert stats.total_videos == 500
-        assert stats.total_watch_time == 36000
-        assert stats.average_completion == 82.5
         assert stats.liked_count == 150
         assert stats.disliked_count == 25
         assert stats.playlist_saved_count == 75
@@ -727,8 +669,6 @@ class TestAdditionalValidationEdgeCases:
             user_id="serialize_test",
             video_id="dQw4w9WgXcQ",  # Valid 11-character video ID
             watched_at=datetime(2023, 12, 1, 15, 30, tzinfo=timezone.utc),
-            watch_duration=450,
-            completion_percentage=87.5,
             rewatch_count=3,
             liked=True,
             disliked=False,
@@ -738,12 +678,10 @@ class TestAdditionalValidationEdgeCases:
         # Test model_dump
         data = original.model_dump()
         assert data["user_id"] == "serialize_test"
-        assert data["completion_percentage"] == 87.5
         assert data["rewatch_count"] == 3
 
         # Test round-trip serialization
         restored = UserVideo.model_validate(data)
         assert restored.user_id == original.user_id
         assert restored.video_id == original.video_id
-        assert restored.completion_percentage == original.completion_percentage
         assert restored.liked == original.liked

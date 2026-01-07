@@ -35,8 +35,6 @@ class UserVideoBaseFactory(factory.Factory):
     watched_at = factory.LazyFunction(
         lambda: datetime(2023, 12, 1, 10, 30, 0, tzinfo=timezone.utc)
     )
-    watch_duration = factory.LazyFunction(lambda: 180)  # 3 minutes
-    completion_percentage = factory.LazyFunction(lambda: 85.5)
     rewatch_count = factory.LazyFunction(lambda: 1)
     liked = factory.LazyFunction(lambda: True)
     disliked = factory.LazyFunction(lambda: False)
@@ -54,8 +52,6 @@ class UserVideoCreateFactory(factory.Factory):
     watched_at = factory.LazyFunction(
         lambda: datetime(2023, 11, 15, 14, 20, 0, tzinfo=timezone.utc)
     )
-    watch_duration = factory.LazyFunction(lambda: 240)  # 4 minutes
-    completion_percentage = factory.LazyFunction(lambda: 75.0)
     rewatch_count = factory.LazyFunction(lambda: 0)
     liked = factory.LazyFunction(lambda: False)
     disliked = factory.LazyFunction(lambda: False)
@@ -88,8 +84,6 @@ class UserVideoFactory(factory.Factory):
     watched_at = factory.LazyFunction(
         lambda: datetime(2023, 10, 20, 9, 15, 0, tzinfo=timezone.utc)
     )
-    watch_duration = factory.LazyFunction(lambda: 420)  # 7 minutes
-    completion_percentage = factory.LazyFunction(lambda: 95.0)
     rewatch_count = factory.LazyFunction(lambda: 3)
     liked = factory.LazyFunction(lambda: True)
     disliked = factory.LazyFunction(lambda: False)
@@ -144,8 +138,6 @@ class UserVideoSearchFiltersFactory(factory.Factory):
     watched_before = factory.LazyFunction(
         lambda: datetime(2023, 12, 31, tzinfo=timezone.utc)
     )
-    min_watch_duration = factory.LazyFunction(lambda: 60)  # 1 minute
-    min_completion_percentage = factory.LazyFunction(lambda: 50.0)
     liked_only = factory.LazyFunction(lambda: True)
     disliked_only = factory.LazyFunction(lambda: False)
     playlist_saved_only = factory.LazyFunction(lambda: True)
@@ -165,8 +157,6 @@ class UserVideoStatisticsFactory(factory.Factory):
         model = UserVideoStatistics
 
     total_videos = factory.LazyFunction(lambda: 150)
-    total_watch_time = factory.LazyFunction(lambda: 18000)  # 5 hours in seconds
-    average_completion = factory.LazyFunction(lambda: 78.5)
     liked_count = factory.LazyFunction(lambda: 45)
     disliked_count = factory.LazyFunction(lambda: 8)
     playlist_saved_count = factory.LazyFunction(lambda: 32)
@@ -191,7 +181,6 @@ class UserVideoTestData:
         "abcdefghijk",
         "AAAAAAAAAAA",
     ]  # All 11 chars
-    VALID_COMPLETION_PERCENTAGES = [0.0, 25.5, 50.0, 75.5, 100.0]
     VALID_REWATCH_COUNTS = [0, 1, 5, 10, 50]
 
     # Invalid test data
@@ -204,7 +193,6 @@ class UserVideoTestData:
         "aaaaaaaa",
         "bbbbbbbbbbbbbbbbbbbb",
     ]  # Empty, too short, too long
-    INVALID_COMPLETION_PERCENTAGES = [-0.1, -50.0, 100.1, 150.0]
     INVALID_REWATCH_COUNTS = [-1, -5]
 
     # Google Takeout test data
@@ -286,7 +274,6 @@ def create_batch_user_videos(count: int = 5) -> List[UserVideo]:
         video = UserVideoFactory.build(
             user_id=user_id,
             video_id=video_id,
-            completion_percentage=50.0 + (i * 10),
             rewatch_count=i % 3,
         )
         videos.append(video)

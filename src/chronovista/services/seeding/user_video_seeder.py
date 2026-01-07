@@ -118,8 +118,6 @@ class UserVideoSeeder(BaseSeeder):
             user_id=self.user_id,
             video_id=entry.video_id,
             watched_at=entry.watched_at,
-            watch_duration=None,  # Not available in Takeout
-            completion_percentage=None,  # Not available in Takeout
             rewatch_count=0,  # Default value
             liked=False,  # Will be enriched via API
             disliked=False,  # Will be enriched via API

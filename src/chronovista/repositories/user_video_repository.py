@@ -243,7 +243,6 @@ class UserVideoRepository(
             .where(UserVideoDB.user_id == user_id)
             .order_by(
                 UserVideoDB.rewatch_count.desc(),
-                UserVideoDB.watch_duration.desc().nulls_last(),
                 UserVideoDB.watched_at.desc().nulls_last(),
             )
             .limit(limit)
@@ -285,15 +284,6 @@ class UserVideoRepository(
 
         if filters.watched_before:
             conditions.append(UserVideoDB.watched_at <= filters.watched_before)
-
-        # Duration and completion filters
-        if filters.min_watch_duration is not None:
-            conditions.append(UserVideoDB.watch_duration >= filters.min_watch_duration)
-
-        if filters.min_completion_percentage is not None:
-            conditions.append(
-                UserVideoDB.completion_percentage >= filters.min_completion_percentage
-            )
 
         # Action filters
         if filters.liked_only:
@@ -351,8 +341,6 @@ class UserVideoRepository(
         result = await session.execute(
             select(
                 func.count(UserVideoDB.video_id).label("total_videos"),
-                func.sum(UserVideoDB.watch_duration).label("total_watch_time"),
-                func.avg(UserVideoDB.completion_percentage).label("average_completion"),
                 func.sum(func.case((UserVideoDB.liked.is_(True), 1), else_=0)).label(
                     "liked_count"
                 ),
@@ -373,8 +361,6 @@ class UserVideoRepository(
         if not stats_row:
             return UserVideoStatistics(
                 total_videos=0,
-                total_watch_time=0,
-                average_completion=0.0,
                 liked_count=0,
                 disliked_count=0,
                 playlist_saved_count=0,
@@ -406,8 +392,6 @@ class UserVideoRepository(
 
         return UserVideoStatistics(
             total_videos=int(stats_row.total_videos or 0),
-            total_watch_time=int(stats_row.total_watch_time or 0),
-            average_completion=float(stats_row.average_completion or 0.0),
             liked_count=int(stats_row.liked_count or 0),
             disliked_count=int(stats_row.disliked_count or 0),
             playlist_saved_count=int(stats_row.playlist_saved_count or 0),
@@ -541,8 +525,6 @@ class UserVideoRepository(
         user_id: UserId,
         video_id: VideoId,
         watched_at: Optional[datetime] = None,
-        watch_duration: Optional[int] = None,
-        completion_percentage: Optional[float] = None,
     ) -> UserVideoDB:
         """
         Record or update a watch interaction.
@@ -557,10 +539,6 @@ class UserVideoRepository(
             YouTube video identifier
         watched_at : Optional[datetime]
             When the video was watched
-        watch_duration : Optional[int]
-            Duration watched in seconds
-        completion_percentage : Optional[float]
-            Percentage of video watched
 
         Returns
         -------
@@ -573,10 +551,6 @@ class UserVideoRepository(
             # Update existing interaction
             if watched_at:
                 existing.watched_at = watched_at
-            if watch_duration is not None:
-                existing.watch_duration = watch_duration
-            if completion_percentage is not None:
-                existing.completion_percentage = completion_percentage
 
             # Increment rewatch count if this is a repeat watch
             existing.rewatch_count += 1
@@ -590,8 +564,6 @@ class UserVideoRepository(
                 user_id=user_id,
                 video_id=video_id,
                 watched_at=watched_at or datetime.now(timezone.utc),
-                watch_duration=watch_duration,
-                completion_percentage=completion_percentage,
                 rewatch_count=0,
             )
             return await self.create(session, obj_in=new_interaction)
@@ -619,7 +591,7 @@ class UserVideoRepository(
         )
         return result.rowcount
 
-    async def get_watch_time_by_date_range(
+    async def get_watch_count_by_date_range(
         self,
         session: AsyncSession,
         user_id: UserId,
@@ -627,7 +599,7 @@ class UserVideoRepository(
         end_date: datetime,
     ) -> Dict[str, int]:
         """
-        Get watch time aggregated by date within a range.
+        Get watch count aggregated by date within a range.
 
         Parameters
         ----------
@@ -643,23 +615,22 @@ class UserVideoRepository(
         Returns
         -------
         Dict[str, int]
-            Watch time in seconds by date (YYYY-MM-DD format)
+            Video watch count by date (YYYY-MM-DD format)
         """
         result = await session.execute(
             select(
                 func.date(UserVideoDB.watched_at).label("watch_date"),
-                func.sum(UserVideoDB.watch_duration).label("total_time"),
+                func.count(UserVideoDB.video_id).label("video_count"),
             )
             .where(
                 and_(
                     UserVideoDB.user_id == user_id,
                     UserVideoDB.watched_at >= start_date,
                     UserVideoDB.watched_at <= end_date,
-                    UserVideoDB.watch_duration.is_not(None),
                 )
             )
             .group_by(func.date(UserVideoDB.watched_at))
             .order_by("watch_date")
         )
 
-        return {str(row.watch_date): int(row.total_time or 0) for row in result}
+        return {str(row.watch_date): int(row.video_count or 0) for row in result}

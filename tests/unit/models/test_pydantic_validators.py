@@ -265,40 +265,6 @@ class TestUserVideoValidators:
                 user_id="test_user", video_id="", watched_at=datetime.now(timezone.utc)
             )
 
-    def test_completion_percentage_validation_negative(self):
-        """Test completion percentage validation with negative values."""
-        with pytest.raises(
-            ValidationError, match="Input should be greater than or equal to 0"
-        ):
-            UserVideoCreate(
-                user_id="test_user",
-                video_id="dQw4w9WgXcQ",
-                watched_at=datetime.now(timezone.utc),
-                completion_percentage=-1.0,
-            )
-
-    def test_completion_percentage_validation_over_100(self):
-        """Test completion percentage validation with values over 100."""
-        with pytest.raises(
-            ValidationError, match="Input should be less than or equal to 100"
-        ):
-            UserVideoCreate(
-                user_id="test_user",
-                video_id="dQw4w9WgXcQ",
-                watched_at=datetime.now(timezone.utc),
-                completion_percentage=101.0,
-            )
-
-    def test_completion_percentage_validation_valid(self):
-        """Test completion percentage validation with valid values."""
-        user_video = UserVideoCreate(
-            user_id="test_user",
-            video_id="dQw4w9WgXcQ",
-            watched_at=datetime.now(timezone.utc),
-            completion_percentage=75.5,
-        )
-        assert user_video.completion_percentage == 75.5
-
     def test_rewatch_count_validation_negative(self):
         """Test rewatch count validation with negative values."""
         with pytest.raises(
@@ -310,19 +276,6 @@ class TestUserVideoValidators:
                 watched_at=datetime.now(timezone.utc),
                 rewatch_count=-1,
             )
-
-    def test_watch_duration_validation_negative(self):
-        """Test watch duration validation with negative values."""
-        with pytest.raises(
-            ValidationError, match="Input should be greater than or equal to 0"
-        ):
-            UserVideoCreate(
-                user_id="test_user",
-                video_id="dQw4w9WgXcQ",
-                watched_at=datetime.now(timezone.utc),
-                watch_duration=-1,
-            )
-
 
 class TestGoogleTakeoutValidators:
     """Test Google Takeout model validators."""

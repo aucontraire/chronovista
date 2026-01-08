@@ -37,6 +37,109 @@ from chronovista.services.topic_analytics_service import TopicAnalyticsService
 
 console = Console()
 
+
+async def resolve_topic_identifier(
+    session,
+    topic_repo: TopicCategoryRepository,
+    identifier: str,
+) -> Optional[Any]:
+    """
+    Resolve a topic identifier (ID or name) to a topic object.
+
+    Accepts either:
+    - A topic ID (e.g., "10", "23")
+    - A topic name (e.g., "Music", "Gaming")
+
+    If the name matches multiple topics, prompts for disambiguation.
+
+    Parameters
+    ----------
+    session : AsyncSession
+        Database session
+    topic_repo : TopicCategoryRepository
+        Topic category repository
+    identifier : str
+        Topic ID or name to resolve
+
+    Returns
+    -------
+    Optional[TopicCategoryDB]
+        Resolved topic or None if not found/cancelled
+    """
+    # First, try exact ID match
+    topic = await topic_repo.get(session, identifier)
+    if topic:
+        return topic
+
+    # Try exact name match (case-insensitive)
+    from sqlalchemy import select, func
+    from chronovista.db.models import TopicCategory as TopicCategoryDB
+
+    result = await session.execute(
+        select(TopicCategoryDB).where(
+            func.lower(TopicCategoryDB.category_name) == identifier.lower()
+        )
+    )
+    matches = list(result.scalars().all())
+
+    if len(matches) == 1:
+        return matches[0]
+
+    if len(matches) > 1:
+        # Disambiguation needed
+        console.print(
+            f"\n[yellow]Multiple topics match '{identifier}':[/yellow]\n"
+        )
+        for i, match in enumerate(matches, 1):
+            parent_info = f" (parent: {match.parent_topic_id})" if match.parent_topic_id else " (root)"
+            console.print(f"  {i}. [cyan]{match.category_name}[/cyan] - ID: {match.topic_id}{parent_info}")
+
+        console.print()
+        choice = Prompt.ask(
+            "Select topic number (or 'q' to cancel)",
+            choices=[str(i) for i in range(1, len(matches) + 1)] + ["q"],
+            default="1",
+        )
+
+        if choice == "q":
+            return None
+
+        return matches[int(choice) - 1]
+
+    # Try partial name match as fallback
+    partial_matches = await topic_repo.find_by_name(session, identifier)
+    if len(partial_matches) == 1:
+        return partial_matches[0]
+
+    if len(partial_matches) > 1:
+        console.print(
+            f"\n[yellow]Multiple topics partially match '{identifier}':[/yellow]\n"
+        )
+        # Limit to first 10 for readability
+        display_matches = partial_matches[:10]
+        for i, match in enumerate(display_matches, 1):
+            parent_info = f" (parent: {match.parent_topic_id})" if match.parent_topic_id else " (root)"
+            console.print(f"  {i}. [cyan]{match.category_name}[/cyan] - ID: {match.topic_id}{parent_info}")
+
+        if len(partial_matches) > 10:
+            console.print(f"  ... and {len(partial_matches) - 10} more")
+
+        console.print()
+        valid_choices = [str(i) for i in range(1, len(display_matches) + 1)] + ["q"]
+        choice = Prompt.ask(
+            "Select topic number (or 'q' to cancel)",
+            choices=valid_choices,
+            default="1",
+        )
+
+        if choice == "q":
+            return None
+
+        return display_matches[int(choice) - 1]
+
+    return None
+
+
 topic_app = typer.Typer(
     name="topics",
     help="🏷️ Topic exploration and analytics",
@@ -103,7 +206,7 @@ def list_topics(
 
 @topic_app.command("show")
 def show_topic(
-    topic_id: str = typer.Argument(..., help="Topic ID to show details for")
+    topic: str = typer.Argument(..., help="Topic ID or name (e.g., '10' or 'Music')")
 ) -> None:
     """Show detailed information about a specific topic."""
 
@@ -111,12 +214,12 @@ def show_topic(
         try:
             topic_repo = TopicCategoryRepository()
             async for session in db_manager.get_session(echo=False):
-                topic = await topic_repo.get(session, topic_id)
+                resolved_topic = await resolve_topic_identifier(session, topic_repo, topic)
 
-                if not topic:
+                if not resolved_topic:
                     console.print(
                         Panel(
-                            f"[red]Topic '{topic_id}' not found[/red]",
+                            f"[red]Topic '{topic}' not found[/red]",
                             title="Topic Not Found",
                             border_style="red",
                         )
@@ -124,16 +227,16 @@ def show_topic(
                     return
 
                 # Show topic details
-                details = f"""[bold]Topic ID:[/bold] {topic.topic_id}
-[bold]Category Name:[/bold] {topic.category_name}
-[bold]Type:[/bold] {topic.topic_type}
-[bold]Parent Topic:[/bold] {topic.parent_topic_id or 'None'}
-[bold]Created:[/bold] {topic.created_at.strftime('%Y-%m-%d %H:%M:%S')}"""
+                details = f"""[bold]Topic ID:[/bold] {resolved_topic.topic_id}
+[bold]Category Name:[/bold] {resolved_topic.category_name}
+[bold]Type:[/bold] {resolved_topic.topic_type}
+[bold]Parent Topic:[/bold] {resolved_topic.parent_topic_id or 'None'}
+[bold]Created:[/bold] {resolved_topic.created_at.strftime('%Y-%m-%d %H:%M:%S')}"""
 
                 console.print(
                     Panel(
                         details,
-                        title=f"Topic: {topic.category_name}",
+                        title=f"Topic: {resolved_topic.category_name}",
                         border_style="blue",
                     )
                 )
@@ -152,7 +255,7 @@ def show_topic(
 
 @topic_app.command("channels")
 def channels_by_topic(
-    topic_id: str = typer.Argument(..., help="Topic ID to find channels for"),
+    topic: str = typer.Argument(..., help="Topic ID or name (e.g., '10' or 'Music')"),
     limit: int = typer.Option(
         20, "--limit", "-l", help="Maximum number of channels to show"
     ),
@@ -166,12 +269,12 @@ def channels_by_topic(
             channel_repo = ChannelRepository()
 
             async for session in db_manager.get_session(echo=False):
-                # Verify topic exists
-                topic = await topic_repo.get(session, topic_id)
-                if not topic:
+                # Resolve topic by ID or name
+                resolved_topic = await resolve_topic_identifier(session, topic_repo, topic)
+                if not resolved_topic:
                     console.print(
                         Panel(
-                            f"[red]Topic '{topic_id}' not found[/red]",
+                            f"[red]Topic '{topic}' not found[/red]",
                             title="Topic Not Found",
                             border_style="red",
                         )
@@ -179,15 +282,14 @@ def channels_by_topic(
                     return
 
                 # Find channels with this topic
-                # Method signature: find_channels_by_topics(session: AsyncSession, topic_ids: List[str], match_all: bool = False) -> List[str]
                 channel_ids = await channel_topic_repo.find_channels_by_topics(
-                    session, [topic_id], match_all=False
+                    session, [resolved_topic.topic_id], match_all=False
                 )
 
                 if not channel_ids:
                     console.print(
                         Panel(
-                            f"[yellow]No channels found for topic '{topic.category_name}'[/yellow]",
+                            f"[yellow]No channels found for topic '{resolved_topic.category_name}'[/yellow]",
                             title="No Channels",
                             border_style="yellow",
                         )
@@ -199,7 +301,7 @@ def channels_by_topic(
 
                 # Get channel details
                 channels_table = Table(
-                    title=f"Channels for Topic: {topic.category_name} (showing {len(limited_channel_ids)} of {len(channel_ids)})",
+                    title=f"Channels for Topic: {resolved_topic.category_name} (showing {len(limited_channel_ids)} of {len(channel_ids)})",
                     show_header=True,
                     header_style="bold blue",
                 )
@@ -235,7 +337,7 @@ def channels_by_topic(
 
 @topic_app.command("videos")
 def videos_by_topic(
-    topic_id: str = typer.Argument(..., help="Topic ID to find videos for"),
+    topic: str = typer.Argument(..., help="Topic ID or name (e.g., '10' or 'Music')"),
     limit: int = typer.Option(
         20, "--limit", "-l", help="Maximum number of videos to show"
     ),
@@ -249,12 +351,12 @@ def videos_by_topic(
             video_repo = VideoRepository()
 
             async for session in db_manager.get_session(echo=False):
-                # Verify topic exists
-                topic = await topic_repo.get(session, topic_id)
-                if not topic:
+                # Resolve topic by ID or name
+                resolved_topic = await resolve_topic_identifier(session, topic_repo, topic)
+                if not resolved_topic:
                     console.print(
                         Panel(
-                            f"[red]Topic '{topic_id}' not found[/red]",
+                            f"[red]Topic '{topic}' not found[/red]",
                             title="Topic Not Found",
                             border_style="red",
                         )
@@ -262,15 +364,14 @@ def videos_by_topic(
                     return
 
                 # Find videos with this topic
-                # Method signature: find_videos_by_topics(session: AsyncSession, topic_ids: List[str], match_all: bool = False) -> List[str]
                 video_ids = await video_topic_repo.find_videos_by_topics(
-                    session, [topic_id], match_all=False
+                    session, [resolved_topic.topic_id], match_all=False
                 )
 
                 if not video_ids:
                     console.print(
                         Panel(
-                            f"[yellow]No videos found for topic '{topic.category_name}'[/yellow]",
+                            f"[yellow]No videos found for topic '{resolved_topic.category_name}'[/yellow]",
                             title="No Videos",
                             border_style="yellow",
                         )
@@ -282,7 +383,7 @@ def videos_by_topic(
 
                 # Get video details
                 videos_table = Table(
-                    title=f"Videos for Topic: {topic.category_name} (showing {len(limited_video_ids)} of {len(video_ids)})",
+                    title=f"Videos for Topic: {resolved_topic.category_name} (showing {len(limited_video_ids)} of {len(video_ids)})",
                     show_header=True,
                     header_style="bold blue",
                 )
@@ -469,7 +570,7 @@ def popular_topics(
 
 @topic_app.command("related")
 def related_topics(
-    topic_id: str = typer.Argument(..., help="Topic ID to find relationships for"),
+    topic: str = typer.Argument(..., help="Topic ID or name (e.g., '10' or 'Music')"),
     min_confidence: float = typer.Option(
         0.1, "--min-confidence", "-c", help="Minimum confidence score (0.0-1.0)"
     ),
@@ -482,6 +583,7 @@ def related_topics(
     async def run_related() -> None:
         try:
             analytics_service = TopicAnalyticsService()
+            topic_repo = TopicCategoryRepository()
 
             # Validate confidence parameter
             if not 0.0 <= min_confidence <= 1.0:
@@ -494,7 +596,23 @@ def related_topics(
                 )
                 return
 
-            console.print(f"[blue]🔍 Finding topics related to {topic_id}...[/blue]")
+            # Resolve topic by ID or name
+            async for session in db_manager.get_session(echo=False):
+                resolved_topic = await resolve_topic_identifier(session, topic_repo, topic)
+                if not resolved_topic:
+                    console.print(
+                        Panel(
+                            f"[red]Topic '{topic}' not found[/red]",
+                            title="Topic Not Found",
+                            border_style="red",
+                        )
+                    )
+                    return
+
+                topic_id = resolved_topic.topic_id
+                topic_name = resolved_topic.category_name
+
+            console.print(f"[blue]🔍 Finding topics related to {topic_name}...[/blue]")
 
             # Get topic relationships
             relationships = await analytics_service.get_topic_relationships(
@@ -504,7 +622,7 @@ def related_topics(
             if not relationships.relationships:
                 console.print(
                     Panel(
-                        f"[yellow]No related topics found for '{topic_id}' with confidence >= {min_confidence}[/yellow]\n"
+                        f"[yellow]No related topics found for '{topic_name}' with confidence >= {min_confidence}[/yellow]\n"
                         f"Try lowering the minimum confidence score or ensure the topic has associated content.",
                         title="No Related Topics",
                         border_style="yellow",
@@ -602,20 +720,50 @@ def related_topics(
 
 @topic_app.command("overlap")
 def topic_overlap(
-    topic1_id: str = typer.Argument(..., help="First topic ID"),
-    topic2_id: str = typer.Argument(..., help="Second topic ID"),
+    topic1: str = typer.Argument(..., help="First topic ID or name (e.g., '10' or 'Music')"),
+    topic2: str = typer.Argument(..., help="Second topic ID or name (e.g., '20' or 'Gaming')"),
 ) -> None:
     """Show content overlap between two topics."""
 
     async def run_overlap() -> None:
         try:
             analytics_service = TopicAnalyticsService()
+            topic_repo = TopicCategoryRepository()
+
+            # Resolve topics by ID or name
+            async for session in db_manager.get_session(echo=False):
+                resolved_topic1 = await resolve_topic_identifier(session, topic_repo, topic1)
+                if not resolved_topic1:
+                    console.print(
+                        Panel(
+                            f"[red]Topic '{topic1}' not found[/red]",
+                            title="Topic Not Found",
+                            border_style="red",
+                        )
+                    )
+                    return
+
+                resolved_topic2 = await resolve_topic_identifier(session, topic_repo, topic2)
+                if not resolved_topic2:
+                    console.print(
+                        Panel(
+                            f"[red]Topic '{topic2}' not found[/red]",
+                            title="Topic Not Found",
+                            border_style="red",
+                        )
+                    )
+                    return
+
+                topic1_id = resolved_topic1.topic_id
+                topic2_id = resolved_topic2.topic_id
+                topic1_name = resolved_topic1.category_name
+                topic2_name = resolved_topic2.category_name
 
             # Validate that topics are different
             if topic1_id == topic2_id:
                 console.print(
                     Panel(
-                        "[red]Cannot compare a topic with itself. Please provide two different topic IDs.[/red]",
+                        "[red]Cannot compare a topic with itself. Please provide two different topics.[/red]",
                         title="Invalid Comparison",
                         border_style="red",
                     )
@@ -623,7 +771,7 @@ def topic_overlap(
                 return
 
             console.print(
-                f"[blue]🔍 Analyzing overlap between topics {topic1_id} and {topic2_id}...[/blue]"
+                f"[blue]🔍 Analyzing overlap between {topic1_name} and {topic2_name}...[/blue]"
             )
 
             # Get topic overlap analysis
@@ -730,7 +878,7 @@ def topic_overlap(
 
 @topic_app.command("similar")
 def similar_topics(
-    topic_id: str = typer.Argument(..., help="Topic ID to find similar topics for"),
+    topic: str = typer.Argument(..., help="Topic ID or name (e.g., '10' or 'Music')"),
     min_similarity: float = typer.Option(
         0.5, "--min-similarity", "-s", help="Minimum similarity score (0.0-1.0)"
     ),
@@ -743,6 +891,7 @@ def similar_topics(
     async def run_similar() -> None:
         try:
             analytics_service = TopicAnalyticsService()
+            topic_repo = TopicCategoryRepository()
 
             # Validate similarity parameter
             if not 0.0 <= min_similarity <= 1.0:
@@ -755,7 +904,23 @@ def similar_topics(
                 )
                 return
 
-            console.print(f"[blue]🔍 Finding topics similar to {topic_id}...[/blue]")
+            # Resolve topic by ID or name
+            async for session in db_manager.get_session(echo=False):
+                resolved_topic = await resolve_topic_identifier(session, topic_repo, topic)
+                if not resolved_topic:
+                    console.print(
+                        Panel(
+                            f"[red]Topic '{topic}' not found[/red]",
+                            title="Topic Not Found",
+                            border_style="red",
+                        )
+                    )
+                    return
+
+                topic_id = resolved_topic.topic_id
+                topic_name = resolved_topic.category_name
+
+            console.print(f"[blue]🔍 Finding topics similar to {topic_name}...[/blue]")
 
             # Get similar topics
             similar_topics_list = await analytics_service.get_similar_topics(
@@ -765,7 +930,7 @@ def similar_topics(
             if not similar_topics_list:
                 console.print(
                     Panel(
-                        f"[yellow]No similar topics found for '{topic_id}' with similarity >= {min_similarity}[/yellow]\n"
+                        f"[yellow]No similar topics found for '{topic_name}' with similarity >= {min_similarity}[/yellow]\n"
                         f"Try lowering the minimum similarity score or ensure the topic has associated content.",
                         title="No Similar Topics",
                         border_style="yellow",
@@ -773,17 +938,10 @@ def similar_topics(
                 )
                 return
 
-            # Get source topic info for display
-            topic_repo = TopicCategoryRepository()
-            async for session in db_manager.get_session(echo=False):
-                source_topic = await topic_repo.get(session, topic_id)
-                source_name = source_topic.category_name if source_topic else topic_id
-                break
-
             # Display source topic info
             console.print(
                 Panel(
-                    f"[bold cyan]Source Topic:[/bold cyan] {source_name} (ID: {topic_id})",
+                    f"[bold cyan]Source Topic:[/bold cyan] {topic_name} (ID: {topic_id})",
                     title="Finding Similar Topics",
                     border_style="cyan",
                 )
@@ -3368,8 +3526,8 @@ def topic_engagement_analysis(
 
 @topic_app.command("channel-engagement")
 def channel_engagement_analysis(
-    topic_id: str = typer.Argument(
-        ..., help="Topic ID to analyze channel engagement for"
+    topic: str = typer.Argument(
+        ..., help="Topic ID or name (e.g., '10' or 'Music')"
     ),
     limit: int = typer.Option(
         10, "--limit", "-l", help="Maximum number of channels to show"
@@ -3380,6 +3538,23 @@ def channel_engagement_analysis(
     async def run_channel_engagement() -> None:
         try:
             analytics_service = TopicAnalyticsService()
+            topic_repo = TopicCategoryRepository()
+
+            # Resolve topic by ID or name first
+            async for session in db_manager.get_session(echo=False):
+                resolved_topic = await resolve_topic_identifier(session, topic_repo, topic)
+                if not resolved_topic:
+                    console.print(
+                        Panel(
+                            f"[red]Topic '{topic}' not found[/red]",
+                            title="Topic Not Found",
+                            border_style="red",
+                        )
+                    )
+                    return
+
+                topic_id = resolved_topic.topic_id
+                topic_name = resolved_topic.category_name
 
             with Progress(
                 SpinnerColumn(),
@@ -3387,7 +3562,7 @@ def channel_engagement_analysis(
                 console=console,
             ) as progress:
                 progress.add_task(
-                    f"Analyzing channel engagement for topic {topic_id}...", total=None
+                    f"Analyzing channel engagement for {topic_name}...", total=None
                 )
 
                 # Get channel engagement data
@@ -3398,9 +3573,8 @@ def channel_engagement_analysis(
             if not channel_data:
                 console.print(
                     Panel(
-                        f"[yellow]No channel engagement data found for topic '{topic_id}'.[/yellow]\n"
+                        f"[yellow]No channel engagement data found for topic '{topic_name}'.[/yellow]\n"
                         "This could be because:\n"
-                        "• The topic doesn't exist\n"
                         "• No channels have videos with engagement metrics for this topic\n"
                         "• All videos have been deleted",
                         title="No Channel Data",
@@ -3413,7 +3587,7 @@ def channel_engagement_analysis(
             console.print(
                 Panel(
                     f"[bold cyan]Channel Engagement Analysis[/bold cyan]\n"
-                    f"🎯 Topic: {topic_id}\n"
+                    f"🎯 Topic: {topic_name} (ID: {topic_id})\n"
                     f"📊 Channels analyzed: {len(channel_data)}\n"
                     f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
                     title="🏢 Channel Performance",
@@ -3423,7 +3597,7 @@ def channel_engagement_analysis(
 
             # Create channel engagement table
             table = Table(
-                title=f"📺 Channel Engagement for Topic: {topic_id}",
+                title=f"📺 Channel Engagement for Topic: {topic_name}",
                 show_header=True,
                 header_style="bold magenta",
             )

@@ -971,3 +971,80 @@ class VideoRepository(
                 for loc in localizations
             },
         }
+
+    async def find_by_category_id(
+        self,
+        session: AsyncSession,
+        category_id: str,
+        *,
+        skip: int = 0,
+        limit: int | None = None,
+        exclude_deleted: bool = True,
+    ) -> List[VideoDB]:
+        """
+        Find videos by YouTube video category ID.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        category_id : str
+            YouTube video category ID (e.g., "23" for Comedy)
+        skip : int
+            Number of videos to skip (default: 0)
+        limit : int | None
+            Maximum number of videos to return (default: None for all)
+        exclude_deleted : bool
+            Whether to exclude deleted videos (default: True)
+
+        Returns
+        -------
+        List[VideoDB]
+            List of videos in the specified category
+        """
+        query = select(VideoDB).where(VideoDB.category_id == category_id)
+
+        if exclude_deleted:
+            query = query.where(VideoDB.deleted_flag.is_(False))
+
+        query = query.order_by(desc(VideoDB.view_count)).offset(skip)
+
+        if limit is not None:
+            query = query.limit(limit)
+
+        result = await session.execute(query)
+        return list(result.scalars().all())
+
+    async def count_by_category_id(
+        self,
+        session: AsyncSession,
+        category_id: str,
+        *,
+        exclude_deleted: bool = True,
+    ) -> int:
+        """
+        Count videos in a specific category.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        category_id : str
+            YouTube video category ID
+        exclude_deleted : bool
+            Whether to exclude deleted videos (default: True)
+
+        Returns
+        -------
+        int
+            Number of videos in the category
+        """
+        query = select(func.count()).select_from(VideoDB).where(
+            VideoDB.category_id == category_id
+        )
+
+        if exclude_deleted:
+            query = query.where(VideoDB.deleted_flag.is_(False))
+
+        result = await session.execute(query)
+        return result.scalar() or 0

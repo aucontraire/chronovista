@@ -1606,7 +1606,7 @@ class TestChannelEngagementCommand:
         assert (
             "Analyze channel engagement metrics for a specific topic" in result.stdout
         )
-        assert "topic_id" in result.stdout
+        assert "Topic ID or name" in result.stdout
         assert "--limit" in result.stdout
 
     @patch("chronovista.cli.topic_commands.asyncio.run")

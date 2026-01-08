@@ -1432,3 +1432,482 @@ class TestVideoRepositoryAdvancedCoverage:
                 assert result["most_common_language"] is None  # No coverage data
                 assert result["is_multilingual"] is False
                 assert result["localization_summary"] == {}
+
+
+class TestVideoRepositoryCategoryMethods:
+    """Test video repository category-related methods."""
+
+    @pytest.fixture
+    def repository(self) -> VideoRepository:
+        """Create repository instance for testing."""
+        return VideoRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> AsyncSession:
+        """Create mock async session."""
+        return AsyncMock(spec=AsyncSession)
+
+    @pytest.fixture
+    def sample_videos(self) -> list[VideoDB]:
+        """Create sample videos for testing."""
+        videos = []
+        for i in range(5):
+            video = VideoDB(
+                video_id=f"video_{i}",
+                channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",
+                title=f"Test Video {i}",
+                description=f"Description {i}",
+                upload_date=datetime(2023, 10, i + 1),
+                duration=300 + i * 60,
+                category_id="23",
+                view_count=10000 * (5 - i),  # Higher views for earlier videos
+                like_count=1000 * (5 - i),
+                comment_count=100 * (5 - i),
+                deleted_flag=False,
+            )
+            videos.append(video)
+        return videos
+
+    @pytest.mark.asyncio
+    async def test_find_by_category_id_basic(
+        self, repository: VideoRepository, mock_session: AsyncMock, sample_videos: list[VideoDB]
+    ):
+        """Test finding videos by category ID."""
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = sample_videos
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.find_by_category_id(mock_session, "23")
+
+        assert result == sample_videos
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_find_by_category_id_with_skip(
+        self, repository: VideoRepository, mock_session: AsyncMock, sample_videos: list[VideoDB]
+    ):
+        """Test finding videos by category ID with skip parameter."""
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = sample_videos[2:]  # Skip first 2
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.find_by_category_id(mock_session, "23", skip=2)
+
+        assert len(result) == 3
+        assert result == sample_videos[2:]
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_find_by_category_id_with_limit(
+        self, repository: VideoRepository, mock_session: AsyncMock, sample_videos: list[VideoDB]
+    ):
+        """Test finding videos by category ID with limit parameter."""
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = sample_videos[:2]  # Limit to first 2
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.find_by_category_id(mock_session, "23", limit=2)
+
+        assert len(result) == 2
+        assert result == sample_videos[:2]
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_find_by_category_id_with_skip_and_limit(
+        self, repository: VideoRepository, mock_session: AsyncMock, sample_videos: list[VideoDB]
+    ):
+        """Test finding videos by category ID with both skip and limit."""
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = sample_videos[1:3]  # Skip 1, limit 2
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.find_by_category_id(
+            mock_session, "23", skip=1, limit=2
+        )
+
+        assert len(result) == 2
+        assert result == sample_videos[1:3]
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_find_by_category_id_exclude_deleted(
+        self, repository: VideoRepository, mock_session: AsyncMock, sample_videos: list[VideoDB]
+    ):
+        """Test finding videos by category ID excludes deleted videos by default."""
+        # Mark some videos as deleted
+        sample_videos[1].deleted_flag = True
+        sample_videos[3].deleted_flag = True
+
+        non_deleted_videos = [v for v in sample_videos if not v.deleted_flag]
+
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = non_deleted_videos
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.find_by_category_id(
+            mock_session, "23", exclude_deleted=True
+        )
+
+        assert len(result) == 3
+        assert all(not v.deleted_flag for v in result)
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_find_by_category_id_include_deleted(
+        self, repository: VideoRepository, mock_session: AsyncMock, sample_videos: list[VideoDB]
+    ):
+        """Test finding videos by category ID includes deleted videos when specified."""
+        # Mark some videos as deleted
+        sample_videos[1].deleted_flag = True
+        sample_videos[3].deleted_flag = True
+
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = sample_videos
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.find_by_category_id(
+            mock_session, "23", exclude_deleted=False
+        )
+
+        assert len(result) == 5
+        assert result == sample_videos
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_find_by_category_id_no_results(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
+        """Test finding videos by category ID when no videos exist."""
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.find_by_category_id(mock_session, "999")
+
+        assert result == []
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_find_by_category_id_ordered_by_view_count(
+        self, repository: VideoRepository, mock_session: AsyncMock, sample_videos: list[VideoDB]
+    ):
+        """Test that videos are ordered by view count descending."""
+        # Videos already ordered by view count descending in sample_videos fixture
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = sample_videos
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.find_by_category_id(mock_session, "23")
+
+        # Verify order is by view count descending
+        for i in range(len(result) - 1):
+            # Both should have view_count based on fixture setup
+            current_count = result[i].view_count
+            next_count = result[i + 1].view_count
+            assert current_count is not None
+            assert next_count is not None
+            assert current_count >= next_count
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_find_by_category_id_with_none_limit(
+        self, repository: VideoRepository, mock_session: AsyncMock, sample_videos: list[VideoDB]
+    ):
+        """Test finding videos by category ID with limit=None returns all videos."""
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = sample_videos
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.find_by_category_id(
+            mock_session, "23", limit=None
+        )
+
+        assert result == sample_videos
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_count_by_category_id_basic(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
+        """Test counting videos by category ID."""
+        mock_result = MagicMock()
+        mock_result.scalar.return_value = 42
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.count_by_category_id(mock_session, "23")
+
+        assert result == 42
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_count_by_category_id_exclude_deleted(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
+        """Test counting videos by category ID excludes deleted by default."""
+        mock_result = MagicMock()
+        mock_result.scalar.return_value = 10
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.count_by_category_id(
+            mock_session, "23", exclude_deleted=True
+        )
+
+        assert result == 10
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_count_by_category_id_include_deleted(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
+        """Test counting videos by category ID includes deleted when specified."""
+        mock_result = MagicMock()
+        mock_result.scalar.return_value = 15
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.count_by_category_id(
+            mock_session, "23", exclude_deleted=False
+        )
+
+        assert result == 15
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_count_by_category_id_no_results(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
+        """Test counting videos by category ID when no videos exist."""
+        mock_result = MagicMock()
+        mock_result.scalar.return_value = None  # Database returns None for 0 count
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.count_by_category_id(mock_session, "999")
+
+        assert result == 0  # Method should convert None to 0
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_count_by_category_id_zero(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
+        """Test counting videos by category ID returns 0 for empty category."""
+        mock_result = MagicMock()
+        mock_result.scalar.return_value = 0
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.count_by_category_id(mock_session, "23")
+
+        assert result == 0
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_find_by_category_id_with_various_category_ids(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
+        """Test finding videos with various category ID formats."""
+        category_ids = ["1", "10", "23", "44", "999"]
+
+        for category_id in category_ids:
+            mock_result = MagicMock()
+            mock_scalars = MagicMock()
+            mock_scalars.all.return_value = []
+            mock_result.scalars.return_value = mock_scalars
+            mock_session.execute.return_value = mock_result
+
+            result = await repository.find_by_category_id(mock_session, category_id)
+
+            assert isinstance(result, list)
+            mock_session.execute.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_count_by_category_id_with_various_category_ids(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
+        """Test counting videos with various category ID formats."""
+        category_ids = ["1", "10", "23", "44", "999"]
+
+        for category_id in category_ids:
+            mock_result = MagicMock()
+            mock_result.scalar.return_value = 0
+            mock_session.execute.return_value = mock_result
+
+            result = await repository.count_by_category_id(mock_session, category_id)
+
+            assert isinstance(result, int)
+            assert result >= 0
+            mock_session.execute.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_find_by_category_id_with_skip_zero(
+        self, repository: VideoRepository, mock_session: AsyncMock, sample_videos: list[VideoDB]
+    ):
+        """Test finding videos with skip=0 returns all videos from start."""
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = sample_videos
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.find_by_category_id(mock_session, "23", skip=0)
+
+        assert result == sample_videos
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_find_by_category_id_with_large_skip(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
+        """Test finding videos with skip larger than total count returns empty."""
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.find_by_category_id(
+            mock_session, "23", skip=10000
+        )
+
+        assert result == []
+        mock_session.execute.assert_called_once()
+
+
+class TestVideoRepositoryCategoryEdgeCases:
+    """Test edge cases for video repository category methods."""
+
+    @pytest.fixture
+    def repository(self) -> VideoRepository:
+        """Create repository instance for testing."""
+        return VideoRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> AsyncSession:
+        """Create mock async session."""
+        return AsyncMock(spec=AsyncSession)
+
+    @pytest.mark.asyncio
+    async def test_find_by_category_id_null_view_count(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
+        """Test finding videos when some have null view counts."""
+        videos = [
+            VideoDB(
+                video_id="video_1",
+                channel_id="UCtest",
+                title="Video 1",
+                description="Desc 1",
+                upload_date=datetime(2023, 1, 1),
+                duration=300,
+                category_id="23",
+                view_count=None,  # Null view count
+                deleted_flag=False,
+            ),
+            VideoDB(
+                video_id="video_2",
+                channel_id="UCtest",
+                title="Video 2",
+                description="Desc 2",
+                upload_date=datetime(2023, 1, 2),
+                duration=300,
+                category_id="23",
+                view_count=1000,
+                deleted_flag=False,
+            ),
+        ]
+
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = videos
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.find_by_category_id(mock_session, "23")
+
+        assert len(result) == 2
+        assert result == videos
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_find_by_category_id_all_deleted(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
+        """Test finding videos when all are deleted and exclude_deleted=True."""
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.find_by_category_id(
+            mock_session, "23", exclude_deleted=True
+        )
+
+        assert result == []
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_count_by_category_id_large_count(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
+        """Test counting videos with very large count."""
+        mock_result = MagicMock()
+        mock_result.scalar.return_value = 1_000_000
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.count_by_category_id(mock_session, "23")
+
+        assert result == 1_000_000
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_find_by_category_id_mixed_deleted_flags(
+        self, repository: VideoRepository, mock_session: AsyncMock
+    ):
+        """Test finding videos with mixed deleted flags."""
+        videos = []
+        for i in range(10):
+            video = VideoDB(
+                video_id=f"video_{i}",
+                channel_id="UCtest",
+                title=f"Video {i}",
+                description=f"Desc {i}",
+                upload_date=datetime(2023, 1, i + 1),
+                duration=300,
+                category_id="23",
+                view_count=1000,
+                deleted_flag=(i % 2 == 0),  # Every other video is deleted
+            )
+            videos.append(video)
+
+        # When excluding deleted
+        non_deleted_videos = [v for v in videos if not v.deleted_flag]
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = non_deleted_videos
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.find_by_category_id(
+            mock_session, "23", exclude_deleted=True
+        )
+
+        assert len(result) == 5
+        assert all(not v.deleted_flag for v in result)
+        mock_session.execute.assert_called_once()

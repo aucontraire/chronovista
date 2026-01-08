@@ -570,6 +570,41 @@ make db-upgrade        # Run database migrations
 make db-downgrade      # Rollback migrations
 make db-revision       # Create new migration
 
+# Database Admin (pgAdmin)
+make dev-db-admin      # Start pgAdmin web interface
+make dev-db-admin-down # Stop pgAdmin
+```
+
+### pgAdmin Setup (Database Browser)
+
+To visually inspect and query your development database:
+
+```bash
+# Start pgAdmin (available at http://localhost:8081)
+make dev-db-admin
+```
+
+**First-time setup - Add New Server:**
+
+1. Click **"Add New Server"**
+2. **General tab:**
+   - Name: `chronovista-dev`
+3. **Connection tab:**
+   - Host: `postgres-dev`
+   - Port: `5432`
+   - Database: `chronovista_dev`
+   - Username: `dev_user`
+   - Password: `dev_password`
+4. Click **Save**
+
+> **Note:** Make sure there are no leading/trailing spaces in the Host field.
+
+```bash
+# Stop pgAdmin when done
+make dev-db-admin-down
+```
+
+```bash
 # Environment management
 make env-info          # Show virtual environment info
 make deps-show         # Show installed dependencies

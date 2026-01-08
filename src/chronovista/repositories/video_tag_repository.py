@@ -258,9 +258,14 @@ class VideoTagRepository(
         )
         unique_tags = unique_result.scalar() or 0
 
-        # Average tags per video
+        # Average tags per video - use subquery to avoid nested aggregates
+        tag_counts_subquery = (
+            select(func.count(VideoTagDB.tag).label("tag_count"))
+            .group_by(VideoTagDB.video_id)
+            .subquery()
+        )
         avg_result = await session.execute(
-            select(func.avg(func.count(VideoTagDB.tag))).group_by(VideoTagDB.video_id)
+            select(func.avg(tag_counts_subquery.c.tag_count))
         )
         avg_tags_per_video = float(avg_result.scalar() or 0.0)
 

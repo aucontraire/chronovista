@@ -73,18 +73,18 @@ class TestEnrichmentSummary:
 
     def test_all_fields_required(self):
         """Test that all fields are required."""
-        # Missing videos_processed
+        # Missing videos_processed - use model_validate to bypass type checking
         with pytest.raises(ValidationError):
-            EnrichmentSummary(
-                videos_updated=10,
-                videos_deleted=0,
-                channels_created=0,
-                tags_created=0,
-                topic_associations=0,
-                categories_assigned=0,
-                errors=0,
-                quota_used=0,
-            )
+            EnrichmentSummary.model_validate({
+                "videos_updated": 10,
+                "videos_deleted": 0,
+                "channels_created": 0,
+                "tags_created": 0,
+                "topic_associations": 0,
+                "categories_assigned": 0,
+                "errors": 0,
+                "quota_used": 0,
+            })
 
     def test_negative_values_rejected(self):
         """Test that negative values are rejected."""
@@ -238,15 +238,15 @@ class TestEnrichmentDetail:
 
     def test_status_literal_validation(self):
         """Test status field accepts only valid Literal values."""
-        valid_statuses = ["updated", "deleted", "error", "skipped"]
+        valid_statuses: list[str] = ["updated", "deleted", "error", "skipped"]
 
         for status in valid_statuses:
-            detail = EnrichmentDetail(video_id="test123", status=status)
+            detail = EnrichmentDetail.model_validate({"video_id": "test123", "status": status})
             assert detail.status == status
 
         # Invalid status
         with pytest.raises(ValidationError) as exc_info:
-            EnrichmentDetail(video_id="test123", status="invalid")
+            EnrichmentDetail.model_validate({"video_id": "test123", "status": "invalid"})
         assert "Input should be 'updated', 'deleted', 'error' or 'skipped'" in str(
             exc_info.value
         )
@@ -254,7 +254,7 @@ class TestEnrichmentDetail:
     def test_video_id_required(self):
         """Test video_id is required."""
         with pytest.raises(ValidationError):
-            EnrichmentDetail(status="updated")
+            EnrichmentDetail.model_validate({"status": "updated"})
 
     def test_video_id_min_length(self):
         """Test video_id has minimum length of 1."""
@@ -427,7 +427,7 @@ class TestEnrichmentReport:
         )
 
         with pytest.raises(ValidationError):
-            EnrichmentReport(priority="high", summary=summary)
+            EnrichmentReport.model_validate({"priority": "high", "summary": summary})
 
     def test_priority_required(self):
         """Test priority is required."""
@@ -445,7 +445,7 @@ class TestEnrichmentReport:
         )
 
         with pytest.raises(ValidationError):
-            EnrichmentReport(timestamp=timestamp, summary=summary)
+            EnrichmentReport.model_validate({"timestamp": timestamp, "summary": summary})
 
     def test_priority_min_length(self):
         """Test priority has minimum length of 1."""
@@ -470,7 +470,7 @@ class TestEnrichmentReport:
         timestamp = datetime.now(timezone.utc)
 
         with pytest.raises(ValidationError):
-            EnrichmentReport(timestamp=timestamp, priority="high")
+            EnrichmentReport.model_validate({"timestamp": timestamp, "priority": "high"})
 
     def test_details_defaults_to_empty_list(self):
         """Test details defaults to empty list."""

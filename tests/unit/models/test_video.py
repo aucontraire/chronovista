@@ -113,6 +113,7 @@ class TestVideoBaseFactory:
     def test_video_base_valid_languages(self, valid_language):
         """Test VideoBase with valid language codes."""
         video = VideoBaseFactory.build(default_language=valid_language)
+        assert video.default_language is not None
         assert video.default_language.value == valid_language.value
 
     @pytest.mark.parametrize("invalid_language", VideoTestData.INVALID_LANGUAGES)
@@ -370,6 +371,7 @@ class TestVideoSearchFiltersFactory:
             has_transcripts=True,
         )
 
+        assert filters.channel_ids is not None
         assert len(filters.channel_ids) == 3
         assert filters.title_query == "artificial intelligence"
         assert filters.upload_after == upload_after
@@ -684,9 +686,12 @@ class TestValidationEdgeCases:
             content_rating=rating,
         )
 
+        assert video.available_languages is not None
         assert len(video.available_languages) == 5
+        assert video.region_restriction is not None
         assert len(video.region_restriction["blocked"]) == 3
         assert len(video.region_restriction["allowed"]) == 8
+        assert video.content_rating is not None
         assert video.content_rating["ytRating"] == "ytAgeRestricted"
 
     def test_kids_content_validation(self):

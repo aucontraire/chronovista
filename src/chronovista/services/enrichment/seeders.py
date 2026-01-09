@@ -23,6 +23,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import TopicCategory as TopicCategoryDB
+from chronovista.models.api_responses import YouTubeVideoCategoryResponse
 from chronovista.models.enums import TopicType
 from chronovista.models.topic_category import TopicCategoryCreate
 from chronovista.models.video_category import VideoCategoryCreate
@@ -767,15 +768,15 @@ class CategorySeeder:
             raise ValueError(f"API call failed for region {region}: {e}") from e
 
     def _transform_api_response_to_category(
-        self, item: dict[str, Any]
+        self, item: YouTubeVideoCategoryResponse | dict[str, Any]
     ) -> VideoCategoryCreate | None:
         """
         Transform API response item to VideoCategoryCreate.
 
         Parameters
         ----------
-        item : dict[str, Any]
-            Raw API response item with structure:
+        item : YouTubeVideoCategoryResponse | dict[str, Any]
+            API response item (Pydantic model or dict) with structure:
             {
                 "id": "1",
                 "snippet": {
@@ -790,10 +791,18 @@ class CategorySeeder:
             Video category creation object, or None if transformation fails.
         """
         try:
-            category_id = item.get("id")
-            snippet = item.get("snippet", {})
-            name = snippet.get("title")
-            assignable = snippet.get("assignable", True)
+            # Handle both Pydantic model and dict formats
+            if isinstance(item, dict):
+                category_id = item.get("id")
+                snippet = item.get("snippet", {})
+                name = snippet.get("title") if isinstance(snippet, dict) else None
+                assignable = snippet.get("assignable", True) if isinstance(snippet, dict) else True
+            else:
+                # Pydantic model
+                category_id = item.id
+                snippet = item.snippet
+                name = snippet.title if snippet else None
+                assignable = snippet.assignable if snippet else True
 
             if not category_id or not name:
                 logger.warning(f"Skipping invalid category item: {item}")

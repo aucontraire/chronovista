@@ -245,7 +245,7 @@ class TestYouTubeOAuthService:
         # Mock refresh error
         from google.auth.exceptions import RefreshError
 
-        mock_credentials.refresh.side_effect = RefreshError("Refresh failed")
+        mock_credentials.refresh.side_effect = RefreshError("Refresh failed")  # type: ignore[no-untyped-call]  # google-auth has no type stubs
 
         assert not oauth_service.is_authenticated()
 

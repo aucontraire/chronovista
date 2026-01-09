@@ -28,6 +28,7 @@ class UserLanguagePreferenceRepository(
         UserLanguagePreferenceDB,
         UserLanguagePreferenceCreate,
         UserLanguagePreferenceUpdate,
+        Tuple[str, str],
     ]
 ):
     """Repository for user language preferences with specialized operations."""

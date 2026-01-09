@@ -24,7 +24,7 @@ from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
 class VideoTagRepository(
-    BaseSQLAlchemyRepository[VideoTagDB, VideoTagCreate, VideoTagUpdate]
+    BaseSQLAlchemyRepository[VideoTagDB, VideoTagCreate, VideoTagUpdate, Tuple[str, str]]
 ):
     """Repository for video tag operations."""
 

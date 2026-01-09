@@ -49,7 +49,6 @@ class TestUserVideoRepository:
             watched_at=datetime.now(timezone.utc),
             rewatch_count=2,
             liked=True,
-            disliked=False,
             saved_to_playlist=False,
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
@@ -64,7 +63,6 @@ class TestUserVideoRepository:
             watched_at=datetime.now(timezone.utc),
             rewatch_count=0,
             liked=False,
-            disliked=False,
             saved_to_playlist=False,
         )
 
@@ -79,7 +77,6 @@ class TestUserVideoRepository:
                 watched_at=base_time,
                 rewatch_count=0,
                 liked=True,
-                disliked=False,
                 saved_to_playlist=True,
                 created_at=base_time,
                 updated_at=base_time,
@@ -90,7 +87,6 @@ class TestUserVideoRepository:
                 watched_at=base_time - timedelta(days=1),
                 rewatch_count=1,
                 liked=False,
-                disliked=True,
                 saved_to_playlist=False,
                 created_at=base_time - timedelta(days=1),
                 updated_at=base_time,
@@ -318,7 +314,6 @@ class TestUserVideoRepository:
         expected_stats = UserVideoStatistics(
             total_videos=10,
             liked_count=5,
-            disliked_count=1,
             playlist_saved_count=3,
             rewatch_count=2,
             unique_videos=8,
@@ -335,7 +330,6 @@ class TestUserVideoRepository:
             assert isinstance(result, UserVideoStatistics)
             assert result.total_videos == 10
             assert result.liked_count == 5
-            assert result.disliked_count == 1
             assert result.playlist_saved_count == 3
             assert result.rewatch_count == 2
             assert result.unique_videos == 8
@@ -352,7 +346,6 @@ class TestUserVideoRepository:
         expected_stats = UserVideoStatistics(
             total_videos=0,
             liked_count=0,
-            disliked_count=0,
             playlist_saved_count=0,
             rewatch_count=0,
             unique_videos=0,
@@ -369,7 +362,6 @@ class TestUserVideoRepository:
             assert isinstance(result, UserVideoStatistics)
             assert result.total_videos == 0
             assert result.liked_count == 0
-            assert result.disliked_count == 0
             assert result.playlist_saved_count == 0
             assert result.rewatch_count == 0
             assert result.unique_videos == 0
@@ -1023,3 +1015,333 @@ class TestGoogleTakeoutIntegration:
 
             # Verify the existing video's rewatch count was updated correctly
             assert existing_video.rewatch_count == 1  # Second occurrence of same video
+
+
+class TestUserVideoRepositoryRecordLike:
+    """Test suite for record_like method."""
+
+    @pytest.fixture
+    def repository(self) -> UserVideoRepository:
+        """Create repository instance for testing."""
+        return UserVideoRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> AsyncSession:
+        """Create mock async session."""
+        return cast(AsyncSession, AsyncMock())
+
+    @pytest.mark.asyncio
+    async def test_record_like_creates_new_interaction_with_liked_true(
+        self, repository: UserVideoRepository, mock_session: AsyncSession
+    ):
+        """Test record_like creates new interaction with liked=True."""
+        # Mock get_by_composite_key to return None (new interaction)
+        new_interaction = UserVideoDB(
+            user_id="test_user",
+            video_id="dQw4w9WgXcQ",
+            watched_at=None,
+            rewatch_count=0,
+            liked=True,
+            saved_to_playlist=False,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        with (
+            patch.object(
+                repository, "get_by_composite_key", return_value=None
+            ) as mock_get,
+            patch.object(
+                repository, "create", return_value=new_interaction
+            ) as mock_create,
+        ):
+            result = await repository.record_like(
+                mock_session, "test_user", "dQw4w9WgXcQ", liked=True
+            )
+
+            assert result is not None
+            assert result.user_id == "test_user"
+            assert result.video_id == "dQw4w9WgXcQ"
+            assert result.liked is True
+            assert result.watched_at is None  # Should be None for liked videos
+            assert result.rewatch_count == 0
+            mock_get.assert_called_once()
+            mock_create.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_record_like_updates_existing_interaction(
+        self, repository: UserVideoRepository, mock_session: AsyncSession
+    ):
+        """Test record_like updates existing interaction's liked status."""
+        # Create existing interaction with liked=False
+        existing_interaction = UserVideoDB(
+            user_id="test_user",
+            video_id="dQw4w9WgXcQ",
+            watched_at=datetime.now(timezone.utc),
+            rewatch_count=2,
+            liked=False,
+            saved_to_playlist=True,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        with patch.object(
+            repository, "get_by_composite_key", return_value=existing_interaction
+        ) as mock_get:
+            result = await repository.record_like(
+                mock_session, "test_user", "dQw4w9WgXcQ", liked=True
+            )
+
+            assert result == existing_interaction
+            assert existing_interaction.liked is True
+            mock_session.add.assert_called_once_with(existing_interaction)  # type: ignore[attr-defined]
+            mock_session.flush.assert_called_once()  # type: ignore[attr-defined]
+            mock_session.refresh.assert_called_once_with(existing_interaction)  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio
+    async def test_record_like_does_not_affect_watch_data(
+        self, repository: UserVideoRepository, mock_session: AsyncSession
+    ):
+        """Test record_like does not modify watched_at or rewatch_count."""
+        original_watched_at = datetime.now(timezone.utc) - timedelta(days=5)
+        original_rewatch_count = 3
+
+        existing_interaction = UserVideoDB(
+            user_id="test_user",
+            video_id="dQw4w9WgXcQ",
+            watched_at=original_watched_at,
+            rewatch_count=original_rewatch_count,
+            liked=False,
+            saved_to_playlist=False,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        with patch.object(
+            repository, "get_by_composite_key", return_value=existing_interaction
+        ) as mock_get:
+            result = await repository.record_like(
+                mock_session, "test_user", "dQw4w9WgXcQ", liked=True
+            )
+
+            assert result == existing_interaction
+            assert existing_interaction.liked is True
+            # Verify watch data is unchanged
+            assert existing_interaction.watched_at == original_watched_at
+            assert existing_interaction.rewatch_count == original_rewatch_count
+            mock_session.add.assert_called_once_with(existing_interaction)  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio
+    async def test_record_like_with_liked_false(
+        self, repository: UserVideoRepository, mock_session: AsyncSession
+    ):
+        """Test record_like can set liked=False."""
+        existing_interaction = UserVideoDB(
+            user_id="test_user",
+            video_id="dQw4w9WgXcQ",
+            watched_at=datetime.now(timezone.utc),
+            rewatch_count=0,
+            liked=True,
+            saved_to_playlist=False,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        with patch.object(
+            repository, "get_by_composite_key", return_value=existing_interaction
+        ) as mock_get:
+            result = await repository.record_like(
+                mock_session, "test_user", "dQw4w9WgXcQ", liked=False
+            )
+
+            assert result == existing_interaction
+            assert existing_interaction.liked is False
+            mock_session.add.assert_called_once_with(existing_interaction)  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio
+    async def test_record_like_creates_with_liked_false(
+        self, repository: UserVideoRepository, mock_session: AsyncSession
+    ):
+        """Test record_like can create new interaction with liked=False."""
+        new_interaction = UserVideoDB(
+            user_id="test_user",
+            video_id="dQw4w9WgXcQ",
+            watched_at=None,
+            rewatch_count=0,
+            liked=False,
+            saved_to_playlist=False,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        with (
+            patch.object(
+                repository, "get_by_composite_key", return_value=None
+            ) as mock_get,
+            patch.object(
+                repository, "create", return_value=new_interaction
+            ) as mock_create,
+        ):
+            result = await repository.record_like(
+                mock_session, "test_user", "dQw4w9WgXcQ", liked=False
+            )
+
+            assert result is not None
+            assert result.liked is False
+            mock_create.assert_called_once()
+
+
+class TestUserVideoRepositoryUpdateLikeStatusBatch:
+    """Test suite for update_like_status_batch method."""
+
+    @pytest.fixture
+    def repository(self) -> UserVideoRepository:
+        """Create repository instance for testing."""
+        return UserVideoRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> AsyncSession:
+        """Create mock async session."""
+        return cast(AsyncSession, AsyncMock())
+
+    @pytest.mark.asyncio
+    async def test_update_like_status_batch_updates_multiple_videos(
+        self, repository: UserVideoRepository, mock_session: AsyncSession
+    ):
+        """Test batch update updates all specified videos."""
+        video_ids = ["video1", "video2", "video3", "video4", "video5"]
+
+        # Mock execute result to return rowcount
+        mock_result = MagicMock()
+        mock_result.rowcount = 5
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
+
+        result = await repository.update_like_status_batch(
+            mock_session, "test_user", video_ids, liked=True
+        )
+
+        assert result == 5
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio
+    async def test_update_like_status_batch_only_updates_existing(
+        self, repository: UserVideoRepository, mock_session: AsyncSession
+    ):
+        """Test batch update only updates records that exist."""
+        # 5 video IDs provided, but only 3 exist in database
+        video_ids = ["video1", "video2", "video3", "video4", "video5"]
+
+        mock_result = MagicMock()
+        mock_result.rowcount = 3  # Only 3 records exist and were updated
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
+
+        result = await repository.update_like_status_batch(
+            mock_session, "test_user", video_ids, liked=True
+        )
+
+        assert result == 3
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio
+    async def test_update_like_status_batch_returns_correct_count(
+        self, repository: UserVideoRepository, mock_session: AsyncSession
+    ):
+        """Test batch update returns number of updated records."""
+        video_ids = ["video1", "video2"]
+
+        mock_result = MagicMock()
+        mock_result.rowcount = 2
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
+
+        result = await repository.update_like_status_batch(
+            mock_session, "test_user", video_ids, liked=True
+        )
+
+        assert result == 2
+        assert isinstance(result, int)
+
+    @pytest.mark.asyncio
+    async def test_update_like_status_batch_with_empty_list(
+        self, repository: UserVideoRepository, mock_session: AsyncSession
+    ):
+        """Test batch update with empty list returns 0."""
+        result = await repository.update_like_status_batch(
+            mock_session, "test_user", [], liked=True
+        )
+
+        assert result == 0
+        # Should not call execute with empty list
+        mock_session.execute.assert_not_called()  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio
+    async def test_update_like_status_batch_with_liked_false(
+        self, repository: UserVideoRepository, mock_session: AsyncSession
+    ):
+        """Test batch update can set liked=False."""
+        video_ids = ["video1", "video2", "video3"]
+
+        mock_result = MagicMock()
+        mock_result.rowcount = 3
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
+
+        result = await repository.update_like_status_batch(
+            mock_session, "test_user", video_ids, liked=False
+        )
+
+        assert result == 3
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio
+    async def test_update_like_status_batch_no_matching_records(
+        self, repository: UserVideoRepository, mock_session: AsyncSession
+    ):
+        """Test batch update when no records match the criteria."""
+        video_ids = ["nonexistent1", "nonexistent2"]
+
+        mock_result = MagicMock()
+        mock_result.rowcount = 0  # No records matched
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
+
+        result = await repository.update_like_status_batch(
+            mock_session, "test_user", video_ids, liked=True
+        )
+
+        assert result == 0
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio
+    async def test_update_like_status_batch_single_video(
+        self, repository: UserVideoRepository, mock_session: AsyncSession
+    ):
+        """Test batch update with single video ID."""
+        video_ids = ["video1"]
+
+        mock_result = MagicMock()
+        mock_result.rowcount = 1
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
+
+        result = await repository.update_like_status_batch(
+            mock_session, "test_user", video_ids, liked=True
+        )
+
+        assert result == 1
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio
+    async def test_update_like_status_batch_large_batch(
+        self, repository: UserVideoRepository, mock_session: AsyncSession
+    ):
+        """Test batch update with large number of video IDs."""
+        # Create a large list of video IDs
+        video_ids = [f"video{i}" for i in range(100)]
+
+        mock_result = MagicMock()
+        mock_result.rowcount = 100
+        mock_session.execute.return_value = mock_result  # type: ignore[attr-defined]
+
+        result = await repository.update_like_status_batch(
+            mock_session, "test_user", video_ids, liked=True
+        )
+
+        assert result == 100
+        mock_session.execute.assert_called_once()  # type: ignore[attr-defined]

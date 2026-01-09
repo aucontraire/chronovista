@@ -8,7 +8,7 @@ with sensible defaults and easy customization.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import cast
+from typing import Any, cast
 
 import factory
 from factory import Faker, LazyAttribute
@@ -24,17 +24,17 @@ from chronovista.models.channel_keyword import (
 )
 
 
-class ChannelKeywordBaseFactory(factory.Factory):
+class ChannelKeywordBaseFactory(factory.Factory[ChannelKeywordBase]):
     """Factory for ChannelKeywordBase models."""
 
     class Meta:
         model = ChannelKeywordBase
 
-    channel_id = Faker(
+    channel_id: Any = Faker(
         "lexify", text="UC??????????????????????"
     )  # YouTube channel ID pattern (24 chars: UC + 22 ?)
-    keyword = Faker("word")
-    keyword_order = Faker("random_int", min=0, max=50)
+    keyword: Any = Faker("word")
+    keyword_order: Any = Faker("random_int", min=0, max=50)
 
 
 class ChannelKeywordCreateFactory(ChannelKeywordBaseFactory):
@@ -44,7 +44,7 @@ class ChannelKeywordCreateFactory(ChannelKeywordBaseFactory):
         model = ChannelKeywordCreate
 
 
-class ChannelKeywordUpdateFactory(factory.Factory):
+class ChannelKeywordUpdateFactory(factory.Factory[ChannelKeywordUpdate]):
     """Factory for ChannelKeywordUpdate models.
 
     Note: This factory respects the model's default values (None for all fields).
@@ -65,42 +65,42 @@ class ChannelKeywordFactory(ChannelKeywordBaseFactory):
     class Meta:
         model = ChannelKeyword
 
-    created_at = Faker("date_time", tzinfo=timezone.utc)
+    created_at: Any = Faker("date_time", tzinfo=timezone.utc)
 
 
-class ChannelKeywordSearchFiltersFactory(factory.Factory):
+class ChannelKeywordSearchFiltersFactory(factory.Factory[ChannelKeywordSearchFilters]):
     """Factory for ChannelKeywordSearchFilters models."""
 
     class Meta:
         model = ChannelKeywordSearchFilters
 
-    channel_ids = factory.LazyFunction(
+    channel_ids: Any = factory.LazyFunction(
         lambda: ["UCuAXFkgsw1L7xaCfnd5JJOw", "UC-lHJZR3Gqxm24_Vd_AJ5Yw"]
     )
-    keywords = factory.LazyFunction(lambda: ["gaming", "technology", "tutorial"])
-    keyword_pattern = Faker("word")
-    min_keyword_order = Faker("random_int", min=0, max=5)
-    max_keyword_order = Faker("random_int", min=6, max=20)
-    has_order = Faker("boolean")
-    created_after = Faker("date_time", tzinfo=timezone.utc)
-    created_before = Faker("date_time", tzinfo=timezone.utc)
+    keywords: Any = factory.LazyFunction(lambda: ["gaming", "technology", "tutorial"])
+    keyword_pattern: Any = Faker("word")
+    min_keyword_order: Any = Faker("random_int", min=0, max=5)
+    max_keyword_order: Any = Faker("random_int", min=6, max=20)
+    has_order: Any = Faker("boolean")
+    created_after: Any = Faker("date_time", tzinfo=timezone.utc)
+    created_before: Any = Faker("date_time", tzinfo=timezone.utc)
 
 
-class ChannelKeywordStatisticsFactory(factory.Factory):
+class ChannelKeywordStatisticsFactory(factory.Factory[ChannelKeywordStatistics]):
     """Factory for ChannelKeywordStatistics models."""
 
     class Meta:
         model = ChannelKeywordStatistics
 
-    total_keywords = Faker("random_int", min=100, max=5000)
-    unique_keywords = LazyAttribute(
+    total_keywords: Any = Faker("random_int", min=100, max=5000)
+    unique_keywords: Any = LazyAttribute(
         lambda obj: int(obj.total_keywords * 0.8)
     )  # 80% unique
-    unique_channels = Faker("random_int", min=50, max=500)
-    avg_keywords_per_channel = LazyAttribute(
+    unique_channels: Any = Faker("random_int", min=50, max=500)
+    avg_keywords_per_channel: Any = LazyAttribute(
         lambda obj: round(obj.total_keywords / obj.unique_channels, 2)
     )
-    most_common_keywords = factory.LazyFunction(
+    most_common_keywords: Any = factory.LazyFunction(
         lambda: [
             ("gaming", 95),
             ("tech", 88),
@@ -109,27 +109,27 @@ class ChannelKeywordStatisticsFactory(factory.Factory):
             ("music", 52),
         ]
     )
-    keyword_distribution = factory.LazyFunction(
+    keyword_distribution: Any = factory.LazyFunction(
         lambda: {"gaming": 45, "tech": 38, "tutorial": 32, "review": 28, "music": 25}
     )
-    channels_with_ordered_keywords = LazyAttribute(
+    channels_with_ordered_keywords: Any = LazyAttribute(
         lambda obj: int(obj.unique_channels * 0.6)
     )  # 60% have ordered keywords
 
 
-class ChannelKeywordAnalyticsFactory(factory.Factory):
+class ChannelKeywordAnalyticsFactory(factory.Factory[ChannelKeywordAnalytics]):
     """Factory for ChannelKeywordAnalytics models."""
 
     class Meta:
         model = ChannelKeywordAnalytics
 
-    keyword_trends = factory.LazyFunction(
+    keyword_trends: Any = factory.LazyFunction(
         lambda: {
             "gaming": [12, 15, 18, 20, 22, 19, 17, 21, 24, 26, 23, 25],
             "tech": [8, 10, 12, 14, 16, 15, 13, 17, 19, 18, 20, 22],
         }
     )
-    semantic_clusters = factory.LazyFunction(
+    semantic_clusters: Any = factory.LazyFunction(
         lambda: [
             {
                 "cluster_id": 0,
@@ -148,7 +148,7 @@ class ChannelKeywordAnalyticsFactory(factory.Factory):
             },
         ]
     )
-    topic_keywords = factory.LazyFunction(
+    topic_keywords: Any = factory.LazyFunction(
         lambda: {
             "entertainment": ["gaming", "music", "comedy", "vlogs", "streaming"],
             "education": ["tutorial", "science", "math", "history", "language"],
@@ -156,7 +156,7 @@ class ChannelKeywordAnalyticsFactory(factory.Factory):
             "lifestyle": ["travel", "food", "fashion", "fitness", "health"],
         }
     )
-    keyword_similarity = factory.LazyFunction(
+    keyword_similarity: Any = factory.LazyFunction(
         lambda: {
             "gaming-esports": 0.92,
             "tech-programming": 0.88,
@@ -173,38 +173,46 @@ class ChannelKeywordAnalyticsFactory(factory.Factory):
 
 
 # Convenience factory methods
-def create_channel_keyword(**kwargs) -> ChannelKeyword:
+def create_channel_keyword(**kwargs: Any) -> ChannelKeyword:
     """Create a ChannelKeyword with keyword arguments."""
-    return cast(ChannelKeyword, ChannelKeywordFactory.build(**kwargs))
+    result = ChannelKeywordFactory.build(**kwargs)
+    assert isinstance(result, ChannelKeyword)
+    return result
 
 
-def create_channel_keyword_create(**kwargs) -> ChannelKeywordCreate:
+def create_channel_keyword_create(**kwargs: Any) -> ChannelKeywordCreate:
     """Create a ChannelKeywordCreate with keyword arguments."""
-    return cast(ChannelKeywordCreate, ChannelKeywordCreateFactory.build(**kwargs))
+    result = ChannelKeywordCreateFactory.build(**kwargs)
+    assert isinstance(result, ChannelKeywordCreate)
+    return result
 
 
-def create_channel_keyword_update(**kwargs) -> ChannelKeywordUpdate:
+def create_channel_keyword_update(**kwargs: Any) -> ChannelKeywordUpdate:
     """Create a ChannelKeywordUpdate with keyword arguments."""
-    return cast(ChannelKeywordUpdate, ChannelKeywordUpdateFactory.build(**kwargs))
+    result = ChannelKeywordUpdateFactory.build(**kwargs)
+    assert isinstance(result, ChannelKeywordUpdate)
+    return result
 
 
-def create_channel_keyword_filters(**kwargs) -> ChannelKeywordSearchFilters:
+def create_channel_keyword_filters(**kwargs: Any) -> ChannelKeywordSearchFilters:
     """Create ChannelKeywordSearchFilters with keyword arguments."""
-    return cast(
-        ChannelKeywordSearchFilters, ChannelKeywordSearchFiltersFactory.build(**kwargs)
-    )
+    result = ChannelKeywordSearchFiltersFactory.build(**kwargs)
+    assert isinstance(result, ChannelKeywordSearchFilters)
+    return result
 
 
-def create_channel_keyword_statistics(**kwargs) -> ChannelKeywordStatistics:
+def create_channel_keyword_statistics(**kwargs: Any) -> ChannelKeywordStatistics:
     """Create ChannelKeywordStatistics with keyword arguments."""
-    return cast(
-        ChannelKeywordStatistics, ChannelKeywordStatisticsFactory.build(**kwargs)
-    )
+    result = ChannelKeywordStatisticsFactory.build(**kwargs)
+    assert isinstance(result, ChannelKeywordStatistics)
+    return result
 
 
-def create_channel_keyword_analytics(**kwargs) -> ChannelKeywordAnalytics:
+def create_channel_keyword_analytics(**kwargs: Any) -> ChannelKeywordAnalytics:
     """Create ChannelKeywordAnalytics with keyword arguments."""
-    return cast(ChannelKeywordAnalytics, ChannelKeywordAnalyticsFactory.build(**kwargs))
+    result = ChannelKeywordAnalyticsFactory.build(**kwargs)
+    assert isinstance(result, ChannelKeywordAnalytics)
+    return result
 
 
 # Common test data patterns
@@ -252,7 +260,7 @@ class ChannelKeywordTestData:
     ]
 
     @classmethod
-    def valid_channel_keyword_data(cls) -> dict:
+    def valid_channel_keyword_data(cls) -> dict[str, Any]:
         """Get valid channel keyword data."""
         return {
             "channel_id": cls.VALID_CHANNEL_IDS[0],
@@ -261,7 +269,7 @@ class ChannelKeywordTestData:
         }
 
     @classmethod
-    def minimal_channel_keyword_data(cls) -> dict:
+    def minimal_channel_keyword_data(cls) -> dict[str, Any]:
         """Get minimal valid channel keyword data."""
         return {
             "channel_id": cls.VALID_CHANNEL_IDS[1],
@@ -269,7 +277,7 @@ class ChannelKeywordTestData:
         }
 
     @classmethod
-    def comprehensive_search_filters_data(cls) -> dict:
+    def comprehensive_search_filters_data(cls) -> dict[str, Any]:
         """Get comprehensive search filters data."""
         return {
             "channel_ids": cls.VALID_CHANNEL_IDS[:2],

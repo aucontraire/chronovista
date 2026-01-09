@@ -176,6 +176,7 @@ class TestPostgreSQLAdvisoryLock:
         assert acquired is True
         assert lock._has_pg_lock is True
         assert lock._has_file_lock is False
+        assert lock._lock_info is not None
         assert lock._lock_info.lock_type == "postgresql"
 
 
@@ -345,12 +346,16 @@ class TestLockAcquireReleaseCycle:
             # Acquire (no session = file lock)
             acquired = await lock.acquire(session=None)
             assert acquired is True
-            assert lock.is_locked is True
+            # Check lock state after acquire
+            acquired_state = lock.is_locked
+            assert acquired_state is True
             assert lock._has_file_lock is True
 
             # Release
             await lock.release()
-            assert lock.is_locked is False
+            # Check lock state after release
+            released_state = lock.is_locked
+            assert released_state is False
             mock_unlink.assert_called_once()
 
     async def test_acquire_fallback_to_file_lock_on_pg_failure(self) -> None:
@@ -372,6 +377,7 @@ class TestLockAcquireReleaseCycle:
             assert acquired is True
             assert lock._has_pg_lock is False
             assert lock._has_file_lock is True
+            assert lock._lock_info is not None
             assert lock._lock_info.lock_type == "file"
 
 

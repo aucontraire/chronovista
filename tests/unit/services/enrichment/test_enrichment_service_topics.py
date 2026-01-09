@@ -142,26 +142,20 @@ class TestEnrichTopicsMethod:
         rock_topic = MagicMock(topic_id=VALID_TOPIC_ID_ROCK, category_name="Rock music")
         pop_topic = MagicMock(topic_id=VALID_TOPIC_ID_POP, category_name="Pop music")
 
-        service.topic_category_repository.find_by_name = AsyncMock(
-            side_effect=[
-                [music_topic],
-                [rock_topic],
-                [pop_topic],
-            ]
-        )
-
         # Mock video topic repository
         mock_topics_db = [
             MagicMock(video_id=video_id, topic_id=t.topic_id)
             for t in [music_topic, rock_topic, pop_topic]
         ]
-        service.video_topic_repository.replace_video_topics = AsyncMock(
-            return_value=mock_topics_db
-        )
 
-        # Expected: 3 topics extracted
-        expected_count = 3
-        assert expected_count == 3
+        with patch.object(
+            service.topic_category_repository, "find_by_name", new=AsyncMock(side_effect=[[music_topic], [rock_topic], [pop_topic]])
+        ), patch.object(
+            service.video_topic_repository, "replace_video_topics", new=AsyncMock(return_value=mock_topics_db)
+        ):
+            # Expected: 3 topics extracted
+            expected_count = 3
+            assert expected_count == 3
 
     async def test_enrich_topics_handles_empty_topic_urls(
         self, service: EnrichmentService, mock_session: AsyncMock
@@ -172,11 +166,12 @@ class TestEnrichTopicsMethod:
 
         # When topic_urls is empty, should return 0 without calling repository
         # (similar to enrich_tags behavior)
-        service.video_topic_repository.replace_video_topics = AsyncMock(return_value=[])
-
-        # Expected behavior: return 0, don't create placeholder topics
-        expected_count = 0
-        assert expected_count == 0
+        with patch.object(
+            service.video_topic_repository, "replace_video_topics", new=AsyncMock(return_value=[])
+        ):
+            # Expected behavior: return 0, don't create placeholder topics
+            expected_count = 0
+            assert expected_count == 0
 
     async def test_enrich_topics_handles_missing_topic_details(
         self, service: EnrichmentService, mock_session: AsyncMock
@@ -235,16 +230,16 @@ class TestEnrichTopicsMethod:
         mock_topics_db = [
             MagicMock(video_id=video_id, topic_id=t) for t in topic_ids
         ]
-        service.video_topic_repository.replace_video_topics = AsyncMock(
-            return_value=mock_topics_db
-        )
 
-        result = await service.video_topic_repository.replace_video_topics(
-            mock_session, video_id, topic_ids
-        )
+        with patch.object(
+            service.video_topic_repository, "replace_video_topics", new=AsyncMock(return_value=mock_topics_db)
+        ):
+            result = await service.video_topic_repository.replace_video_topics(
+                mock_session, video_id, topic_ids
+            )
 
-        # Then it should return the created topics
-        assert len(result) == 3
+            # Then it should return the created topics
+            assert len(result) == 3
 
 
 class TestWikipediaURLParsing:
@@ -1168,8 +1163,10 @@ class TestVideosWithNoTopics:
         self, mock_session: AsyncMock
     ) -> None:
         """Test that no placeholder topics are created for videos without topics."""
+        from typing import Any, Dict
+
         video_id = VALID_VIDEO_ID
-        api_data = {
+        api_data: Dict[str, Any] = {
             "id": video_id,
             "snippet": {
                 "title": "Video Without Topics",
@@ -1186,8 +1183,10 @@ class TestVideosWithNoTopics:
         self, mock_session: AsyncMock
     ) -> None:
         """Test that empty topicCategories array results in no placeholder topics."""
+        from typing import Any, Dict
+
         video_id = VALID_VIDEO_ID
-        api_data = {
+        api_data: Dict[str, Any] = {
             "id": video_id,
             "topicDetails": {
                 "topicCategories": [],  # Empty array
@@ -1203,7 +1202,9 @@ class TestVideosWithNoTopics:
         self, mock_session: AsyncMock
     ) -> None:
         """Test that count of videos without topics is tracked."""
-        videos_data = [
+        from typing import Any, Dict, List
+
+        videos_data: List[Dict[str, Any]] = [
             {
                 "id": "vid1",
                 "topicDetails": {
@@ -1278,7 +1279,7 @@ class TestTopicEnrichmentIntegration:
     ) -> None:
         """Test topic enrichment integration with API response processing."""
         # Full API response for a video with topics
-        api_response = {
+        api_response: dict[str, Any] = {
             "id": VALID_VIDEO_ID,
             "snippet": {
                 "title": "Test Video",
@@ -1308,7 +1309,9 @@ class TestTopicEnrichmentIntegration:
         self, service: EnrichmentService, mock_session: AsyncMock
     ) -> None:
         """Test topic enrichment within batch video processing."""
-        videos = [
+        from typing import Any, Dict, List
+
+        videos: List[Dict[str, Any]] = [
             {
                 "id": "vid1_abcdef",
                 "topicDetails": {
@@ -1351,17 +1354,15 @@ class TestTopicEnrichmentIntegration:
         video_id = VALID_VIDEO_ID
         topic_ids = [VALID_TOPIC_ID_MUSIC, VALID_TOPIC_ID_ROCK]
 
-        # Simulate repository error
-        service.video_topic_repository.replace_video_topics = AsyncMock(
-            side_effect=Exception("Database error")
-        )
+        with patch.object(
+            service.video_topic_repository, "replace_video_topics", new=AsyncMock(side_effect=Exception("Database error"))
+        ):
+            with pytest.raises(Exception) as exc_info:
+                await service.video_topic_repository.replace_video_topics(
+                    mock_session, video_id, topic_ids
+                )
 
-        with pytest.raises(Exception) as exc_info:
-            await service.video_topic_repository.replace_video_topics(
-                mock_session, video_id, topic_ids
-            )
-
-        assert "Database error" in str(exc_info.value)
+            assert "Database error" in str(exc_info.value)
 
 
 class TestVideoTopicCreateValidation:
@@ -1522,7 +1523,7 @@ class TestYouTubeAPITopicFormat:
     def test_youtube_api_topic_details_structure(self) -> None:
         """Test the expected structure of YouTube API topicDetails."""
         # Example from YouTube Data API documentation
-        api_response = {
+        api_response: dict[str, Any] = {
             "topicDetails": {
                 "topicCategories": [
                     "https://en.wikipedia.org/wiki/Music",

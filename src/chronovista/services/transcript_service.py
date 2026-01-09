@@ -349,8 +349,8 @@ class TranscriptService:
             best_caption = None
             for language_code in language_codes:
                 for caption in captions:
-                    snippet = caption.get("snippet", {})
-                    caption_lang = snippet.get("language", "").lower()
+                    snippet = caption.snippet
+                    caption_lang = snippet.language.lower() if snippet else ""
                     if caption_lang == language_code.lower():
                         best_caption = caption
                         break
@@ -366,12 +366,8 @@ class TranscriptService:
                 return None
 
             # Try to download caption content
-            caption_id = best_caption.get("id")
-            snippet = best_caption.get("snippet", {})
-
-            if caption_id is None:
-                logger.warning(f"No caption ID found for {video_id}")
-                return None
+            caption_id = best_caption.id
+            snippet = best_caption.snippet
 
             caption_content = await youtube_service.download_caption(caption_id)
 
@@ -385,7 +381,7 @@ class TranscriptService:
             snippets = self._parse_srt_content(caption_content)
 
             # Determine language code enum
-            caption_lang = snippet.get("language", "en").lower()
+            caption_lang = snippet.language.lower() if snippet else "en"
             try:
                 lang_code = LanguageCode(caption_lang)
             except ValueError:
@@ -395,15 +391,15 @@ class TranscriptService:
             raw_data = RawTranscriptData(
                 video_id=video_id,
                 language_code=lang_code,
-                language_name=snippet.get("name", f"Language ({caption_lang})"),
+                language_name=snippet.name if snippet else f"Language ({caption_lang})",
                 snippets=snippets,
-                is_generated=snippet.get("trackKind") == "asr",
+                is_generated=(snippet.track_kind == "asr") if snippet else False,
                 is_translatable=True,  # Official API captions are usually translatable
                 source=TranscriptSource.YOUTUBE_DATA_API_V3,
                 source_metadata={
                     "caption_id": caption_id,
-                    "track_kind": snippet.get("trackKind"),
-                    "last_updated": snippet.get("lastUpdated"),
+                    "track_kind": snippet.track_kind if snippet else None,
+                    "last_updated": snippet.last_updated.isoformat() if snippet and snippet.last_updated else None,
                     "download_format": "srt",
                 },
             )

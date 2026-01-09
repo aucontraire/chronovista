@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import TopicCategory as TopicCategoryDB
+from chronovista.models.enums import TopicType
 from chronovista.models.topic_category import (
     TopicCategoryCreate,
     TopicCategorySearchFilters,
@@ -52,7 +53,7 @@ class TestTopicCategoryRepository:
             topic_id="/m/05qjc",
             category_name="Programming",
             parent_topic_id="/m/019_rr",
-            topic_type="youtube",
+            topic_type=TopicType.YOUTUBE,
             created_at=datetime.now(timezone.utc),
         )
 
@@ -63,7 +64,7 @@ class TestTopicCategoryRepository:
             topic_id="/m/019_rr",
             category_name="Technology",
             parent_topic_id=None,
-            topic_type="youtube",
+            topic_type=TopicType.YOUTUBE,
         )
 
     def test_repository_initialization(self, repository: TopicCategoryRepository):
@@ -255,7 +256,7 @@ class TestTopicCategoryRepository:
     ):
         """Test searching topics with filters."""
         filters = TopicCategorySearchFilters(
-            category_name_query="tech", topic_types=["youtube"]
+            category_name_query="tech", topic_types=[TopicType.YOUTUBE]
         )
         mock_topics = [MagicMock()]
         mock_result = MagicMock()
@@ -482,7 +483,7 @@ class TestTopicCategoryRepositoryAdditionalMethods:
             topic_ids=["/m/019_rr"],
             category_name_query="tech",
             parent_topic_ids=["/m/parent"],
-            topic_types=["youtube"],
+            topic_types=[TopicType.YOUTUBE],
             is_root_topic=True,
             created_after=datetime.now(timezone.utc),
             created_before=datetime.now(timezone.utc),

@@ -457,7 +457,6 @@ class UserVideo(Base):
 
     # User actions
     liked: Mapped[bool] = mapped_column(Boolean, default=False)
-    disliked: Mapped[bool] = mapped_column(Boolean, default=False)
     saved_to_playlist: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Timestamps

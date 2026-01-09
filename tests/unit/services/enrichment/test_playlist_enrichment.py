@@ -81,7 +81,7 @@ class TestPlaylistFieldUpdates:
     async def test_title_update_from_api(self) -> None:
         """Test that playlist title is updated from API response."""
         # Mock database playlist (with placeholder title)
-        db_playlist = {
+        db_playlist: dict[str, Any] = {
             "playlist_id": "PLtest123",
             "title": "[Placeholder] Playlist PLtest123",
             "description": None,
@@ -90,7 +90,7 @@ class TestPlaylistFieldUpdates:
         }
 
         # Mock API response
-        api_response = {
+        api_response: dict[str, Any] = {
             "id": "PLtest123",
             "snippet": {
                 "title": "My Awesome Music Collection",
@@ -101,7 +101,7 @@ class TestPlaylistFieldUpdates:
         }
 
         # Apply updates
-        updated_playlist = {
+        updated_playlist: dict[str, Any] = {
             **db_playlist,
             "title": api_response["snippet"]["title"],
             "description": api_response["snippet"]["description"],
@@ -116,12 +116,12 @@ class TestPlaylistFieldUpdates:
 
     async def test_description_update_from_api(self) -> None:
         """Test that playlist description is updated from API response."""
-        db_playlist = {
+        db_playlist: dict[str, Any] = {
             "playlist_id": "PLtest456",
             "description": None,
         }
 
-        api_response = {
+        api_response: dict[str, Any] = {
             "snippet": {
                 "description": "This is a detailed playlist description with multiple lines.\nLine 2\nLine 3",
             },
@@ -142,15 +142,15 @@ class TestPlaylistFieldUpdates:
         ]
 
         for test_case in test_cases:
-            api_response = {"status": {"privacyStatus": test_case["api_status"]}}
+            api_response: dict[str, Any] = {"status": {"privacyStatus": test_case["api_status"]}}
             updated_status = api_response["status"]["privacyStatus"]
             assert updated_status == test_case["expected"]
 
     async def test_item_count_update_from_api(self) -> None:
         """Test that playlist item count is updated from API response."""
-        db_playlist = {"video_count": 0}
+        db_playlist: dict[str, Any] = {"video_count": 0}
 
-        api_response = {"contentDetails": {"itemCount": 157}}
+        api_response: dict[str, Any] = {"contentDetails": {"itemCount": 157}}
 
         updated_count = api_response["contentDetails"]["itemCount"]
 
@@ -158,7 +158,7 @@ class TestPlaylistFieldUpdates:
 
     async def test_empty_description_from_api(self) -> None:
         """Test handling of empty description from API."""
-        api_response = {
+        api_response: dict[str, Any] = {
             "snippet": {
                 "title": "Playlist Title",
                 "description": "",  # Empty but not None
@@ -170,7 +170,7 @@ class TestPlaylistFieldUpdates:
 
     async def test_missing_optional_fields_in_api_response(self) -> None:
         """Test handling of missing optional fields in API response."""
-        api_response = {
+        api_response: dict[str, Any] = {
             "id": "PLtest789",
             "snippet": {
                 "title": "Playlist With Missing Fields",
@@ -196,7 +196,7 @@ class TestDeletedPlaylistHandling:
         # Request 3 playlists, API returns only 1
         requested_ids = ["PLexists", "PLdeleted1", "PLdeleted2"]
 
-        api_response = {
+        api_response: dict[str, Any] = {
             "items": [
                 {
                     "id": "PLexists",
@@ -239,7 +239,7 @@ class TestDeletedPlaylistHandling:
         }
 
         # API now returns this playlist
-        api_response = {
+        api_response: dict[str, Any] = {
             "id": "PLrecovered",
             "snippet": {"title": "Recovered Playlist"},
             "status": {"privacyStatus": "public"},
@@ -329,20 +329,20 @@ class TestDryRunModeForPlaylists:
 
     async def test_dry_run_shows_old_and_new_values(self) -> None:
         """Test that dry run shows old and new values for comparison."""
-        old_playlist = {
+        old_playlist: dict[str, Any] = {
             "playlist_id": "PL001",
             "title": "[Placeholder] Playlist PL001",
             "video_count": 0,
         }
 
-        new_data_from_api = {
+        new_data_from_api: dict[str, Any] = {
             "id": "PL001",
             "snippet": {"title": "My Music Collection"},
             "contentDetails": {"itemCount": 25},
         }
 
         # Preview should show diff
-        preview = {
+        preview: dict[str, Any] = {
             "playlist_id": "PL001",
             "changes": {
                 "title": {
@@ -484,12 +484,12 @@ class TestIntegrationWithVideoEnrichment:
         enrichment_order: List[str] = []
 
         # Mock video enrichment
-        async def mock_video_enrichment():
+        async def mock_video_enrichment() -> dict[str, int]:
             enrichment_order.append("videos")
             return {"videos_processed": 100}
 
         # Mock playlist enrichment
-        async def mock_playlist_enrichment():
+        async def mock_playlist_enrichment() -> dict[str, int]:
             enrichment_order.append("playlists")
             return {"playlists_processed": 10}
 
@@ -522,7 +522,7 @@ class TestPlaylistBatchProcessing:
     async def test_batch_processing_continues_on_partial_failure(self) -> None:
         """Test that batch processing continues after partial failure."""
         # Simulate batch processing with one failed batch
-        batch_results = [
+        batch_results: list[dict[str, Any]] = [
             {"success": True, "playlists": 50},
             {"success": False, "error": "API timeout"},
             {"success": True, "playlists": 20},
@@ -541,7 +541,7 @@ class TestPlaylistBatchProcessing:
         """Test that empty playlist list returns zero counts."""
         playlist_ids: List[str] = []
 
-        result = {
+        result: dict[str, Any] = {
             "playlists_processed": len(playlist_ids),
             "playlists_updated": 0,
             "playlists_deleted": 0,
@@ -587,7 +587,7 @@ class TestPlaylistEnrichmentErrorHandling:
 
     async def test_error_summary_in_result(self) -> None:
         """Test that errors are summarized in the result."""
-        result = {
+        result: dict[str, Any] = {
             "playlists_processed": 100,
             "playlists_updated": 95,
             "playlists_with_errors": 5,
@@ -610,7 +610,7 @@ class TestPlaylistEnrichmentWithTakeoutData:
     async def test_update_placeholder_from_takeout_name(self) -> None:
         """Test updating placeholder playlist title from takeout data."""
         # Database has placeholder
-        db_playlist = {
+        db_playlist: dict[str, Any] = {
             "playlist_id": "PLtest123",
             "title": "[Placeholder] Playlist PLtest123",
         }

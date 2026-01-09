@@ -466,7 +466,9 @@ class TestTranscriptSearchFiltersFactory:
             downloaded_before=download_before,
         )
 
+        assert filters.video_ids is not None
         assert len(filters.video_ids) == 3
+        assert filters.language_codes is not None
         assert len(filters.language_codes) == 4
         assert filters.transcript_types == [TranscriptType.MANUAL]
         assert filters.min_confidence == 0.85
@@ -590,6 +592,7 @@ class TestValidationEdgeCases:
         )
         assert len(max_transcript.video_id) == 11
         assert max_transcript.confidence_score == 1.0
+        assert max_transcript.caption_name is not None
         assert len(max_transcript.caption_name) == 255
 
     def test_model_config_validation(self):

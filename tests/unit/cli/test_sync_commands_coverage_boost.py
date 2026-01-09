@@ -16,8 +16,65 @@ import pytest
 from typer.testing import CliRunner
 
 from chronovista.cli.sync_commands import sync_app
+from chronovista.models.api_responses import (
+    ChannelSnippet,
+    ChannelStatisticsResponse,
+    VideoSnippet,
+    VideoStatisticsResponse,
+    VideoContentDetails,
+    YouTubeChannelResponse,
+    YouTubeVideoResponse,
+)
 
 pytestmark = pytest.mark.asyncio
+
+
+def create_mock_channel_response(
+    channel_id: str = "UCuser123",
+    title: str = "Test Channel",
+    description: str = "Test description",
+) -> YouTubeChannelResponse:
+    """Create a mock YouTubeChannelResponse Pydantic model for testing."""
+    return YouTubeChannelResponse(
+        id=channel_id,
+        snippet=ChannelSnippet(
+            publishedAt=datetime.now(timezone.utc),
+            title=title,
+            description=description,
+        ),
+        statistics=ChannelStatisticsResponse(
+            viewCount=1000,
+            subscriberCount=100,
+            videoCount=10,
+        ),
+    )
+
+
+def create_mock_video_response(
+    video_id: str,
+    title: str = "Test Video",
+    channel_id: str = "UCchannel123",
+    channel_title: str = "Test Channel",
+) -> YouTubeVideoResponse:
+    """Create a mock YouTubeVideoResponse Pydantic model for testing."""
+    return YouTubeVideoResponse(
+        id=video_id,
+        snippet=VideoSnippet(
+            publishedAt=datetime.now(timezone.utc),
+            channelId=channel_id,
+            title=title,
+            description="Test description",
+            channelTitle=channel_title,
+        ),
+        statistics=VideoStatisticsResponse(
+            viewCount=1000,
+            likeCount=50,
+            commentCount=10,
+        ),
+        contentDetails=VideoContentDetails(
+            duration="PT3M33S",
+        ),
+    )
 
 
 class TestSyncCommandsCoverageBoost:
@@ -104,9 +161,9 @@ class TestSyncCommandsCoverageBoost:
 
         mock_parser.parse_watch_history_file.return_value = [mock_entry1, mock_entry2]
 
-        # Mock YouTube service (async functions)
+        # Mock YouTube service (async functions) - return proper Pydantic model
         mock_youtube_service.get_my_channel = AsyncMock(
-            return_value={"id": "UCuser123"}
+            return_value=create_mock_channel_response(channel_id="UCuser123")
         )
 
         # Mock batch processing
@@ -142,8 +199,8 @@ class TestSyncCommandsCoverageBoost:
         # Mock file parsing
         mock_parser.count_entries.return_value = {"videos": 1, "total": 1}
 
-        # Mock YouTube service returning no user ID (async function)
-        mock_youtube_service.get_my_channel = AsyncMock(return_value={})
+        # Mock YouTube service returning None (no channel found)
+        mock_youtube_service.get_my_channel = AsyncMock(return_value=None)
 
         result = runner.invoke(sync_app, ["history", mock_takeout_file_with_data])
 
@@ -170,9 +227,9 @@ class TestSyncCommandsCoverageBoost:
         # Mock file parsing
         mock_parser.count_entries.return_value = {"videos": 100, "total": 100}
 
-        # Mock YouTube service (async functions)
+        # Mock YouTube service (async functions) - return proper Pydantic model
         mock_youtube_service.get_my_channel = AsyncMock(
-            return_value={"id": "UCuser123"}
+            return_value=create_mock_channel_response(channel_id="UCuser123")
         )
 
         # Mock single entry
@@ -216,9 +273,9 @@ class TestSyncCommandsCoverageBoost:
         # Mock file parsing
         mock_parser.count_entries.return_value = {"videos": 3, "total": 3}
 
-        # Mock YouTube service (async functions)
+        # Mock YouTube service (async functions) - return proper Pydantic model
         mock_youtube_service.get_my_channel = AsyncMock(
-            return_value={"id": "UCuser123"}
+            return_value=create_mock_channel_response(channel_id="UCuser123")
         )
 
         # Mock multiple entries
@@ -277,12 +334,13 @@ class TestSyncCommandsCoverageBoost:
         mock_oauth.is_authenticated.return_value = True
 
         # Mock YouTube service - need both get_my_channel and get_liked_videos
+        # Return proper Pydantic models
         mock_youtube_service.get_my_channel = AsyncMock(
-            return_value={"id": "UCuser123"}
+            return_value=create_mock_channel_response(channel_id="UCuser123")
         )
         mock_liked_videos = [
-            {"id": "video1", "snippet": {"title": "Liked Video 1"}},
-            {"id": "video2", "snippet": {"title": "Liked Video 2"}},
+            create_mock_video_response(video_id="video1", title="Liked Video 1"),
+            create_mock_video_response(video_id="video2", title="Liked Video 2"),
         ]
         mock_youtube_service.get_liked_videos = AsyncMock(
             return_value=mock_liked_videos

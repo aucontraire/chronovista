@@ -9,13 +9,15 @@ from pathlib import Path
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
+from chronovista import __version__
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     # Application
     app_name: str = Field(default="chronovista")
-    app_version: str = Field(default="0.1.0")
+    app_version: str = Field(default=__version__)
     debug: bool = Field(default=False)
     log_level: str = Field(default="INFO")
 

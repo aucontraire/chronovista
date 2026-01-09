@@ -8,7 +8,7 @@ with realistic and consistent test data.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import List, cast
+from typing import Any, List, cast
 
 import factory
 
@@ -21,67 +21,67 @@ from chronovista.models.user_language_preference import (
 )
 
 
-class UserLanguagePreferenceBaseFactory(factory.Factory):
+class UserLanguagePreferenceBaseFactory(factory.Factory[UserLanguagePreferenceBase]):
     """Factory for UserLanguagePreferenceBase models."""
 
     class Meta:
         model = UserLanguagePreferenceBase
 
-    user_id = factory.LazyFunction(lambda: "user_12345")
-    language_code = factory.LazyFunction(lambda: LanguageCode.ENGLISH_US)
-    preference_type = factory.LazyFunction(lambda: LanguagePreferenceType.FLUENT)
-    priority = factory.LazyFunction(lambda: 1)
-    auto_download_transcripts = factory.LazyFunction(lambda: True)
-    learning_goal = factory.LazyFunction(
+    user_id: Any = factory.LazyFunction(lambda: "user_12345")
+    language_code: Any = factory.LazyFunction(lambda: LanguageCode.ENGLISH_US)
+    preference_type: Any = factory.LazyFunction(lambda: LanguagePreferenceType.FLUENT)
+    priority: Any = factory.LazyFunction(lambda: 1)
+    auto_download_transcripts: Any = factory.LazyFunction(lambda: True)
+    learning_goal: Any = factory.LazyFunction(
         lambda: "Improve professional English communication skills"
     )
 
 
-class UserLanguagePreferenceCreateFactory(factory.Factory):
+class UserLanguagePreferenceCreateFactory(factory.Factory[UserLanguagePreferenceCreate]):
     """Factory for UserLanguagePreferenceCreate models."""
 
     class Meta:
         model = UserLanguagePreferenceCreate
 
-    user_id = factory.LazyFunction(lambda: "user_create_67890")
-    language_code = factory.LazyFunction(lambda: LanguageCode.SPANISH)
-    preference_type = factory.LazyFunction(lambda: LanguagePreferenceType.LEARNING)
-    priority = factory.LazyFunction(lambda: 2)
-    auto_download_transcripts = factory.LazyFunction(lambda: True)
-    learning_goal = factory.LazyFunction(
+    user_id: Any = factory.LazyFunction(lambda: "user_create_67890")
+    language_code: Any = factory.LazyFunction(lambda: LanguageCode.SPANISH)
+    preference_type: Any = factory.LazyFunction(lambda: LanguagePreferenceType.LEARNING)
+    priority: Any = factory.LazyFunction(lambda: 2)
+    auto_download_transcripts: Any = factory.LazyFunction(lambda: True)
+    learning_goal: Any = factory.LazyFunction(
         lambda: "Learn Spanish for travel and cultural understanding"
     )
 
 
-class UserLanguagePreferenceUpdateFactory(factory.Factory):
+class UserLanguagePreferenceUpdateFactory(factory.Factory[UserLanguagePreferenceUpdate]):
     """Factory for UserLanguagePreferenceUpdate models."""
 
     class Meta:
         model = UserLanguagePreferenceUpdate
 
-    preference_type = factory.LazyFunction(lambda: LanguagePreferenceType.CURIOUS)
-    priority = factory.LazyFunction(lambda: 3)
-    auto_download_transcripts = factory.LazyFunction(lambda: False)
-    learning_goal = factory.LazyFunction(
+    preference_type: Any = factory.LazyFunction(lambda: LanguagePreferenceType.CURIOUS)
+    priority: Any = factory.LazyFunction(lambda: 3)
+    auto_download_transcripts: Any = factory.LazyFunction(lambda: False)
+    learning_goal: Any = factory.LazyFunction(
         lambda: "Updated: Exploring French literature and philosophy"
     )
 
 
-class UserLanguagePreferenceFactory(factory.Factory):
+class UserLanguagePreferenceFactory(factory.Factory[UserLanguagePreference]):
     """Factory for UserLanguagePreference models."""
 
     class Meta:
         model = UserLanguagePreference
 
-    user_id = factory.LazyFunction(lambda: "user_full_11111")
-    language_code = factory.LazyFunction(lambda: LanguageCode.FRENCH_FR)
-    preference_type = factory.LazyFunction(lambda: LanguagePreferenceType.CURIOUS)
-    priority = factory.LazyFunction(lambda: 4)
-    auto_download_transcripts = factory.LazyFunction(lambda: False)
-    learning_goal = factory.LazyFunction(
+    user_id: Any = factory.LazyFunction(lambda: "user_full_11111")
+    language_code: Any = factory.LazyFunction(lambda: LanguageCode.FRENCH_FR)
+    preference_type: Any = factory.LazyFunction(lambda: LanguagePreferenceType.CURIOUS)
+    priority: Any = factory.LazyFunction(lambda: 4)
+    auto_download_transcripts: Any = factory.LazyFunction(lambda: False)
+    learning_goal: Any = factory.LazyFunction(
         lambda: "Cultural interest in French media and cinema"
     )
-    created_at = factory.LazyFunction(
+    created_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 10, 15, 14, 30, 0, tzinfo=timezone.utc)
     )
 
@@ -147,32 +147,32 @@ class UserLanguagePreferenceTestData:
 
 
 # Convenience factory functions
-def create_user_language_preference_base(**kwargs) -> UserLanguagePreferenceBase:
+def create_user_language_preference_base(**kwargs: Any) -> UserLanguagePreferenceBase:
     """Create a UserLanguagePreferenceBase with optional overrides."""
-    return cast(
-        UserLanguagePreferenceBase, UserLanguagePreferenceBaseFactory.build(**kwargs)
-    )
+    result = UserLanguagePreferenceBaseFactory.build(**kwargs)
+    assert isinstance(result, UserLanguagePreferenceBase)
+    return result
 
 
-def create_user_language_preference_create(**kwargs) -> UserLanguagePreferenceCreate:
+def create_user_language_preference_create(**kwargs: Any) -> UserLanguagePreferenceCreate:
     """Create a UserLanguagePreferenceCreate with optional overrides."""
-    return cast(
-        UserLanguagePreferenceCreate,
-        UserLanguagePreferenceCreateFactory.build(**kwargs),
-    )
+    result = UserLanguagePreferenceCreateFactory.build(**kwargs)
+    assert isinstance(result, UserLanguagePreferenceCreate)
+    return result
 
 
-def create_user_language_preference_update(**kwargs) -> UserLanguagePreferenceUpdate:
+def create_user_language_preference_update(**kwargs: Any) -> UserLanguagePreferenceUpdate:
     """Create a UserLanguagePreferenceUpdate with optional overrides."""
-    return cast(
-        UserLanguagePreferenceUpdate,
-        UserLanguagePreferenceUpdateFactory.build(**kwargs),
-    )
+    result = UserLanguagePreferenceUpdateFactory.build(**kwargs)
+    assert isinstance(result, UserLanguagePreferenceUpdate)
+    return result
 
 
-def create_user_language_preference(**kwargs) -> UserLanguagePreference:
+def create_user_language_preference(**kwargs: Any) -> UserLanguagePreference:
     """Create a UserLanguagePreference with optional overrides."""
-    return cast(UserLanguagePreference, UserLanguagePreferenceFactory.build(**kwargs))
+    result = UserLanguagePreferenceFactory.build(**kwargs)
+    assert isinstance(result, UserLanguagePreference)
+    return result
 
 
 def create_batch_user_language_preferences(

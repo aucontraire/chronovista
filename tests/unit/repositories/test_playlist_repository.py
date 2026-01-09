@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import Playlist as PlaylistDB
-from chronovista.models.enums import LanguageCode
+from chronovista.models.enums import LanguageCode, PrivacyStatus
 from chronovista.models.playlist import (
     PlaylistAnalytics,
     PlaylistCreate,
@@ -60,7 +60,7 @@ class TestPlaylistRepository:
             title="Sample Playlist",
             description="A test playlist",
             default_language=LanguageCode.ENGLISH,
-            privacy_status="public",
+            privacy_status=PrivacyStatus.PUBLIC,
             channel_id="UC_x5XG1OV2P6uZZ5FSM9Ttw",
             video_count=10,
         )
@@ -273,7 +273,7 @@ class TestPlaylistRepository:
             title_query="music",
             description_query="playlist",
             language_codes=[LanguageCode.ENGLISH],
-            privacy_statuses=["public"],
+            privacy_statuses=[PrivacyStatus.PUBLIC],
             min_video_count=5,
             max_video_count=50,
             has_description=True,
@@ -735,7 +735,7 @@ class TestPlaylistRepositoryIntegration:
         # Use test data patterns
         filters = PlaylistSearchFilters(
             channel_ids=PlaylistTestData.VALID_CHANNEL_IDS[:2],
-            privacy_statuses=["public", "unlisted"],
+            privacy_statuses=[PrivacyStatus.PUBLIC, PrivacyStatus.UNLISTED],
             min_video_count=5,
         )
 

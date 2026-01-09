@@ -7,6 +7,7 @@ for all VideoLocalization model variants using factory pattern for DRY.
 
 from __future__ import annotations
 
+from typing import cast
 from datetime import datetime, timezone
 
 import pytest
@@ -242,13 +243,13 @@ class TestVideoLocalization:
     def test_create_valid_video_localization(self):
         """Test creating valid VideoLocalization with keyword arguments."""
         now = datetime.now(timezone.utc)
-        localization = VideoLocalizationFactory.build(
+        localization = cast(VideoLocalization, VideoLocalizationFactory.build(
             video_id="dQw4w9WgXcQ",
             language_code=LanguageCode.JAPANESE,
             localized_title="テストビデオ",
             localized_description="テストの説明",
             created_at=now,
-        )
+        ))
 
         assert localization.video_id == "dQw4w9WgXcQ"
         assert localization.language_code == LanguageCode.JAPANESE
@@ -278,7 +279,7 @@ class TestVideoLocalization:
 
     def test_factory_generates_full_model(self):
         """Test factory generates complete VideoLocalization models."""
-        localization = VideoLocalizationFactory.build()
+        localization = cast(VideoLocalization, VideoLocalizationFactory.build())
 
         assert isinstance(localization, VideoLocalization)
         assert isinstance(localization, VideoLocalizationBase)  # Inheritance
@@ -402,13 +403,13 @@ class TestVideoLocalizationModelInteractions:
 
         # Simulate creation
         now = datetime.now(timezone.utc)
-        localization_full = VideoLocalizationFactory.build(
+        localization_full = cast(VideoLocalization, VideoLocalizationFactory.build(
             video_id=localization_create.video_id,
             language_code=localization_create.language_code,
             localized_title=localization_create.localized_title,
             localized_description=localization_create.localized_description,
             created_at=now,
-        )
+        ))
 
         # Update
         localization_update = VideoLocalizationUpdateFactory.build(
@@ -495,7 +496,7 @@ class TestVideoLocalizationModelInteractions:
         """Test that factory-created models maintain proper inheritance."""
         base = VideoLocalizationBaseFactory.build()
         create = VideoLocalizationCreateFactory.build()
-        full = VideoLocalizationFactory.build()
+        full = cast(VideoLocalization, VideoLocalizationFactory.build())
 
         # All should be instances of VideoLocalizationBase
         assert isinstance(base, VideoLocalizationBase)

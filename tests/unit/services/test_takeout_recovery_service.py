@@ -10,7 +10,7 @@ import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, Generator, List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -60,7 +60,7 @@ class TestRecoverFromHistoricalTakeouts:
         return session
 
     @pytest.fixture
-    def mock_repositories(self) -> tuple:
+    def mock_repositories(self) -> tuple[MagicMock, MagicMock]:
         """Create mock video and channel repositories."""
         video_repo = MagicMock()
         video_repo.get_multi = AsyncMock(return_value=[])
@@ -75,7 +75,7 @@ class TestRecoverFromHistoricalTakeouts:
         return video_repo, channel_repo
 
     @pytest.fixture
-    def temp_takeout_dir(self) -> Path:
+    def temp_takeout_dir(self) -> Generator[Path, None, None]:
         """Create a temporary directory structure for testing."""
         temp_dir = Path(tempfile.mkdtemp())
         yield temp_dir
@@ -84,7 +84,7 @@ class TestRecoverFromHistoricalTakeouts:
     async def test_recover_no_historical_takeouts_found(
         self,
         mock_session: AsyncMock,
-        mock_repositories: tuple,
+        mock_repositories: tuple[MagicMock, MagicMock],
         temp_takeout_dir: Path,
     ) -> None:
         """Test recovery when no historical takeouts are found."""
@@ -113,7 +113,7 @@ class TestRecoverFromHistoricalTakeouts:
     async def test_recover_dry_run_mode(
         self,
         mock_session: AsyncMock,
-        mock_repositories: tuple,
+        mock_repositories: tuple[MagicMock, MagicMock],
         temp_takeout_dir: Path,
     ) -> None:
         """Test recovery in dry run mode."""
@@ -158,7 +158,7 @@ class TestRecoverFromHistoricalTakeouts:
     async def test_recover_with_historical_data(
         self,
         mock_session: AsyncMock,
-        mock_repositories: tuple,
+        mock_repositories: tuple[MagicMock, MagicMock],
         temp_takeout_dir: Path,
     ) -> None:
         """Test recovery with historical data available."""

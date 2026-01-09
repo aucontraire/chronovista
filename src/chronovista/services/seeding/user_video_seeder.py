@@ -120,6 +120,5 @@ class UserVideoSeeder(BaseSeeder):
             watched_at=entry.watched_at,
             rewatch_count=0,  # Default value
             liked=False,  # Will be enriched via API
-            disliked=False,  # Will be enriched via API
             saved_to_playlist=False,  # Will be determined from playlist data
         )

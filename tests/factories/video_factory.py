@@ -8,7 +8,7 @@ with realistic and consistent test data.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, cast
+from typing import Any, Any, Dict, List, cast
 
 import factory
 from factory import LazyFunction
@@ -25,236 +25,236 @@ from chronovista.models.video import (
 )
 
 
-class VideoBaseFactory(factory.Factory):
+class VideoBaseFactory(factory.Factory[VideoBase]):
     """Factory for VideoBase models."""
 
     class Meta:
         model = VideoBase
 
-    video_id = factory.LazyFunction(lambda: "dQw4w9WgXcQ")
-    channel_id = factory.LazyFunction(lambda: "UCuAXFkgsw1L7xaCfnd5JJOw")
-    title = factory.LazyFunction(
+    video_id: Any = factory.LazyFunction(lambda: "dQw4w9WgXcQ")
+    channel_id: Any = factory.LazyFunction(lambda: "UCuAXFkgsw1L7xaCfnd5JJOw")
+    title: Any = factory.LazyFunction(
         lambda: "Rick Astley - Never Gonna Give You Up (Official Video)"
     )
-    description = factory.LazyFunction(
+    description: Any = factory.LazyFunction(
         lambda: "The official video for 'Never Gonna Give You Up' by Rick Astley. A timeless classic that has become an internet phenomenon."
     )
-    upload_date = factory.LazyFunction(
+    upload_date: Any = factory.LazyFunction(
         lambda: datetime(2009, 10, 25, 8, 15, 0, tzinfo=timezone.utc)
     )
-    duration = factory.LazyFunction(lambda: 213)  # 3:33 in seconds
-    made_for_kids = factory.LazyFunction(lambda: False)
-    self_declared_made_for_kids = factory.LazyFunction(lambda: False)
-    default_language = factory.LazyFunction(lambda: LanguageCode.ENGLISH)
-    default_audio_language = factory.LazyFunction(lambda: LanguageCode.ENGLISH)
-    available_languages = factory.LazyFunction(
+    duration: Any = factory.LazyFunction(lambda: 213)  # 3:33 in seconds
+    made_for_kids: Any = factory.LazyFunction(lambda: False)
+    self_declared_made_for_kids: Any = factory.LazyFunction(lambda: False)
+    default_language: Any = factory.LazyFunction(lambda: LanguageCode.ENGLISH)
+    default_audio_language: Any = factory.LazyFunction(lambda: LanguageCode.ENGLISH)
+    available_languages: Any = factory.LazyFunction(
         lambda: {"en": "English", "es": "Spanish", "fr": "French"}
     )
-    region_restriction = factory.LazyFunction(
+    region_restriction: Any = factory.LazyFunction(
         lambda: {"blocked": ["CN"], "allowed": ["US", "GB", "CA"]}
     )
-    content_rating = factory.LazyFunction(
+    content_rating: Any = factory.LazyFunction(
         lambda: {"mpaaRating": "G", "ytRating": "ytAgeRestricted"}
     )
-    like_count = factory.LazyFunction(lambda: 1200000)
-    view_count = factory.LazyFunction(lambda: 1400000000)
-    comment_count = factory.LazyFunction(lambda: 2800000)
-    deleted_flag = factory.LazyFunction(lambda: False)
+    like_count: Any = factory.LazyFunction(lambda: 1200000)
+    view_count: Any = factory.LazyFunction(lambda: 1400000000)
+    comment_count: Any = factory.LazyFunction(lambda: 2800000)
+    deleted_flag: Any = factory.LazyFunction(lambda: False)
 
 
-class VideoCreateFactory(factory.Factory):
+class VideoCreateFactory(factory.Factory[VideoCreate]):
     """Factory for VideoCreate models."""
 
     class Meta:
         model = VideoCreate
 
-    video_id = factory.LazyFunction(lambda: "9bZkp7q19f0")
-    channel_id = factory.LazyFunction(lambda: "UC_x5XG1OV2P6uZZ5FSM9Ttw")
-    title = factory.LazyFunction(
+    video_id: Any = factory.LazyFunction(lambda: "9bZkp7q19f0")
+    channel_id: Any = factory.LazyFunction(lambda: "UC_x5XG1OV2P6uZZ5FSM9Ttw")
+    title: Any = factory.LazyFunction(
         lambda: "Google I/O 2023: What's new in Machine Learning"
     )
-    description = factory.LazyFunction(
+    description: Any = factory.LazyFunction(
         lambda: "Join us for an overview of the latest ML developments from Google, including new tools, frameworks, and research breakthroughs."
     )
-    upload_date = factory.LazyFunction(
+    upload_date: Any = factory.LazyFunction(
         lambda: datetime(2023, 5, 10, 17, 0, 0, tzinfo=timezone.utc)
     )
-    duration = factory.LazyFunction(lambda: 2760)  # 46 minutes
-    made_for_kids = factory.LazyFunction(lambda: False)
-    self_declared_made_for_kids = factory.LazyFunction(lambda: False)
-    default_language = factory.LazyFunction(lambda: LanguageCode.ENGLISH_US)
-    default_audio_language = factory.LazyFunction(lambda: LanguageCode.ENGLISH_US)
-    available_languages = factory.LazyFunction(
+    duration: Any = factory.LazyFunction(lambda: 2760)  # 46 minutes
+    made_for_kids: Any = factory.LazyFunction(lambda: False)
+    self_declared_made_for_kids: Any = factory.LazyFunction(lambda: False)
+    default_language: Any = factory.LazyFunction(lambda: LanguageCode.ENGLISH_US)
+    default_audio_language: Any = factory.LazyFunction(lambda: LanguageCode.ENGLISH_US)
+    available_languages: Any = factory.LazyFunction(
         lambda: {"en": "English", "zh": "Chinese", "ja": "Japanese"}
     )
-    region_restriction = factory.LazyFunction(lambda: None)
-    content_rating = factory.LazyFunction(lambda: {"ytRating": "ytAgeAppropriate"})
-    like_count = factory.LazyFunction(lambda: 85000)
-    view_count = factory.LazyFunction(lambda: 2500000)
-    comment_count = factory.LazyFunction(lambda: 12000)
-    deleted_flag = factory.LazyFunction(lambda: False)
+    region_restriction: Any = factory.LazyFunction(lambda: None)
+    content_rating: Any = factory.LazyFunction(lambda: {"ytRating": "ytAgeAppropriate"})
+    like_count: Any = factory.LazyFunction(lambda: 85000)
+    view_count: Any = factory.LazyFunction(lambda: 2500000)
+    comment_count: Any = factory.LazyFunction(lambda: 12000)
+    deleted_flag: Any = factory.LazyFunction(lambda: False)
 
 
-class VideoUpdateFactory(factory.Factory):
+class VideoUpdateFactory(factory.Factory[VideoUpdate]):
     """Factory for VideoUpdate models."""
 
     class Meta:
         model = VideoUpdate
 
-    title = factory.LazyFunction(
+    title: Any = factory.LazyFunction(
         lambda: "Updated: Advanced Python Programming Tutorial"
     )
-    description = factory.LazyFunction(
+    description: Any = factory.LazyFunction(
         lambda: "This is an updated description with new content and corrections."
     )
-    duration = factory.LazyFunction(lambda: 1800)  # 30 minutes
-    made_for_kids = factory.LazyFunction(lambda: False)
-    self_declared_made_for_kids = factory.LazyFunction(lambda: False)
-    default_language = factory.LazyFunction(lambda: LanguageCode.ENGLISH)
-    default_audio_language = factory.LazyFunction(lambda: LanguageCode.ENGLISH)
-    available_languages = factory.LazyFunction(
+    duration: Any = factory.LazyFunction(lambda: 1800)  # 30 minutes
+    made_for_kids: Any = factory.LazyFunction(lambda: False)
+    self_declared_made_for_kids: Any = factory.LazyFunction(lambda: False)
+    default_language: Any = factory.LazyFunction(lambda: LanguageCode.ENGLISH)
+    default_audio_language: Any = factory.LazyFunction(lambda: LanguageCode.ENGLISH)
+    available_languages: Any = factory.LazyFunction(
         lambda: {"en": "English", "es": "Spanish"}
     )
-    region_restriction = factory.LazyFunction(
+    region_restriction: Any = factory.LazyFunction(
         lambda: {"blocked": [], "allowed": ["US", "CA", "GB", "AU"]}
     )
-    content_rating = factory.LazyFunction(lambda: {"ytRating": "ytAgeAppropriate"})
-    like_count = factory.LazyFunction(lambda: 45000)
-    view_count = factory.LazyFunction(lambda: 750000)
-    comment_count = factory.LazyFunction(lambda: 3200)
-    deleted_flag = factory.LazyFunction(lambda: False)
+    content_rating: Any = factory.LazyFunction(lambda: {"ytRating": "ytAgeAppropriate"})
+    like_count: Any = factory.LazyFunction(lambda: 45000)
+    view_count: Any = factory.LazyFunction(lambda: 750000)
+    comment_count: Any = factory.LazyFunction(lambda: 3200)
+    deleted_flag: Any = factory.LazyFunction(lambda: False)
 
 
-class VideoFactory(factory.Factory):
+class VideoFactory(factory.Factory[Video]):
     """Factory for Video models."""
 
     class Meta:
         model = Video
 
-    video_id = factory.LazyFunction(lambda: "3tmd-ClpJxA")
-    channel_id = factory.LazyFunction(lambda: "UCMtFAi84ehTSYSE9XoHefig")
-    title = factory.LazyFunction(
+    video_id: Any = factory.LazyFunction(lambda: "3tmd-ClpJxA")
+    channel_id: Any = factory.LazyFunction(lambda: "UCMtFAi84ehTSYSE9XoHefig")
+    title: Any = factory.LazyFunction(
         lambda: "The Late Show with Stephen Colbert - Best Moments 2023"
     )
-    description = factory.LazyFunction(
+    description: Any = factory.LazyFunction(
         lambda: "A compilation of the funniest and most memorable moments from The Late Show with Stephen Colbert in 2023."
     )
-    upload_date = factory.LazyFunction(
+    upload_date: Any = factory.LazyFunction(
         lambda: datetime(2023, 12, 15, 23, 35, 0, tzinfo=timezone.utc)
     )
-    duration = factory.LazyFunction(lambda: 1440)  # 24 minutes
-    made_for_kids = factory.LazyFunction(lambda: False)
-    self_declared_made_for_kids = factory.LazyFunction(lambda: False)
-    default_language = factory.LazyFunction(lambda: LanguageCode.ENGLISH_US)
-    default_audio_language = factory.LazyFunction(lambda: LanguageCode.ENGLISH_US)
-    available_languages = factory.LazyFunction(
+    duration: Any = factory.LazyFunction(lambda: 1440)  # 24 minutes
+    made_for_kids: Any = factory.LazyFunction(lambda: False)
+    self_declared_made_for_kids: Any = factory.LazyFunction(lambda: False)
+    default_language: Any = factory.LazyFunction(lambda: LanguageCode.ENGLISH_US)
+    default_audio_language: Any = factory.LazyFunction(lambda: LanguageCode.ENGLISH_US)
+    available_languages: Any = factory.LazyFunction(
         lambda: {"en": "English", "es": "Spanish", "pt": "Portuguese"}
     )
-    region_restriction = factory.LazyFunction(lambda: None)
-    content_rating = factory.LazyFunction(lambda: {"ytRating": "ytAgeAppropriate"})
-    like_count = factory.LazyFunction(lambda: 125000)
-    view_count = factory.LazyFunction(lambda: 3200000)
-    comment_count = factory.LazyFunction(lambda: 8500)
-    deleted_flag = factory.LazyFunction(lambda: False)
-    created_at = factory.LazyFunction(
+    region_restriction: Any = factory.LazyFunction(lambda: None)
+    content_rating: Any = factory.LazyFunction(lambda: {"ytRating": "ytAgeAppropriate"})
+    like_count: Any = factory.LazyFunction(lambda: 125000)
+    view_count: Any = factory.LazyFunction(lambda: 3200000)
+    comment_count: Any = factory.LazyFunction(lambda: 8500)
+    deleted_flag: Any = factory.LazyFunction(lambda: False)
+    created_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 12, 15, 23, 35, 0, tzinfo=timezone.utc)
     )
-    updated_at = factory.LazyFunction(
+    updated_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 12, 16, 10, 20, 0, tzinfo=timezone.utc)
     )
 
 
-class VideoSearchFiltersFactory(factory.Factory):
+class VideoSearchFiltersFactory(factory.Factory[VideoSearchFilters]):
     """Factory for VideoSearchFilters models."""
 
     class Meta:
         model = VideoSearchFilters
 
-    channel_ids = factory.LazyFunction(
+    channel_ids: Any = factory.LazyFunction(
         lambda: ["UCuAXFkgsw1L7xaCfnd5JJOw", "UC_x5XG1OV2P6uZZ5FSM9Ttw"]
     )
-    title_query = factory.LazyFunction(lambda: "python tutorial")
-    description_query = factory.LazyFunction(lambda: "programming")
-    language_codes = factory.LazyFunction(
+    title_query: Any = factory.LazyFunction(lambda: "python tutorial")
+    description_query: Any = factory.LazyFunction(lambda: "programming")
+    language_codes: Any = factory.LazyFunction(
         lambda: [LanguageCode.ENGLISH, LanguageCode.ENGLISH_US, LanguageCode.SPANISH]
     )
-    upload_after = factory.LazyFunction(
+    upload_after: Any = factory.LazyFunction(
         lambda: datetime(2023, 1, 1, tzinfo=timezone.utc)
     )
-    upload_before = factory.LazyFunction(
+    upload_before: Any = factory.LazyFunction(
         lambda: datetime(2023, 12, 31, tzinfo=timezone.utc)
     )
-    min_duration = factory.LazyFunction(lambda: 300)  # 5 minutes
-    max_duration = factory.LazyFunction(lambda: 3600)  # 1 hour
-    min_view_count = factory.LazyFunction(lambda: 1000)
-    max_view_count = factory.LazyFunction(lambda: 10000000)
-    min_like_count = factory.LazyFunction(lambda: 100)
-    kids_friendly_only = factory.LazyFunction(lambda: False)
-    exclude_deleted = factory.LazyFunction(lambda: True)
-    has_transcripts = factory.LazyFunction(lambda: True)
+    min_duration: Any = factory.LazyFunction(lambda: 300)  # 5 minutes
+    max_duration: Any = factory.LazyFunction(lambda: 3600)  # 1 hour
+    min_view_count: Any = factory.LazyFunction(lambda: 1000)
+    max_view_count: Any = factory.LazyFunction(lambda: 10000000)
+    min_like_count: Any = factory.LazyFunction(lambda: 100)
+    kids_friendly_only: Any = factory.LazyFunction(lambda: False)
+    exclude_deleted: Any = factory.LazyFunction(lambda: True)
+    has_transcripts: Any = factory.LazyFunction(lambda: True)
 
 
-class VideoStatisticsFactory(factory.Factory):
+class VideoStatisticsFactory(factory.Factory[VideoStatistics]):
     """Factory for VideoStatistics models."""
 
     class Meta:
         model = VideoStatistics
 
-    total_videos = factory.LazyFunction(lambda: 1250)
-    total_duration = factory.LazyFunction(
+    total_videos: Any = factory.LazyFunction(lambda: 1250)
+    total_duration: Any = factory.LazyFunction(
         lambda: 2250000
     )  # Total seconds across all videos
-    avg_duration = factory.LazyFunction(lambda: 1800.0)  # Average 30 minutes
-    total_views = factory.LazyFunction(lambda: 50000000)
-    total_likes = factory.LazyFunction(lambda: 2500000)
-    total_comments = factory.LazyFunction(lambda: 125000)
-    avg_views_per_video = factory.LazyFunction(lambda: 40000.0)
-    avg_likes_per_video = factory.LazyFunction(lambda: 2000.0)
-    deleted_video_count = factory.LazyFunction(lambda: 25)
-    kids_friendly_count = factory.LazyFunction(lambda: 150)
-    top_languages = factory.LazyFunction(
+    avg_duration: Any = factory.LazyFunction(lambda: 1800.0)  # Average 30 minutes
+    total_views: Any = factory.LazyFunction(lambda: 50000000)
+    total_likes: Any = factory.LazyFunction(lambda: 2500000)
+    total_comments: Any = factory.LazyFunction(lambda: 125000)
+    avg_views_per_video: Any = factory.LazyFunction(lambda: 40000.0)
+    avg_likes_per_video: Any = factory.LazyFunction(lambda: 2000.0)
+    deleted_video_count: Any = factory.LazyFunction(lambda: 25)
+    kids_friendly_count: Any = factory.LazyFunction(lambda: 150)
+    top_languages: Any = factory.LazyFunction(
         lambda: [("en", 800), ("es", 200), ("fr", 150), ("de", 100)]
     )
-    upload_trend = factory.LazyFunction(
+    upload_trend: Any = factory.LazyFunction(
         lambda: {"2023-01": 95, "2023-02": 88, "2023-03": 102, "2023-04": 96}
     )
 
 
-class VideoWithChannelFactory(factory.Factory):
+class VideoWithChannelFactory(factory.Factory[VideoWithChannel]):
     """Factory for VideoWithChannel models."""
 
     class Meta:
         model = VideoWithChannel
 
-    video_id = factory.LazyFunction(lambda: "jNQXAC9IVRw")
-    channel_id = factory.LazyFunction(lambda: "UCBJycsmduvYEL83R_U4JriQ")
-    title = factory.LazyFunction(lambda: "Marques Brownlee - iPhone 15 Pro Max Review!")
-    description = factory.LazyFunction(
+    video_id: Any = factory.LazyFunction(lambda: "jNQXAC9IVRw")
+    channel_id: Any = factory.LazyFunction(lambda: "UCBJycsmduvYEL83R_U4JriQ")
+    title: Any = factory.LazyFunction(lambda: "Marques Brownlee - iPhone 15 Pro Max Review!")
+    description: Any = factory.LazyFunction(
         lambda: "The most comprehensive review of Apple's latest flagship iPhone with detailed testing and comparisons."
     )
-    upload_date = factory.LazyFunction(
+    upload_date: Any = factory.LazyFunction(
         lambda: datetime(2023, 9, 22, 12, 0, 0, tzinfo=timezone.utc)
     )
-    duration = factory.LazyFunction(lambda: 1260)  # 21 minutes
-    made_for_kids = factory.LazyFunction(lambda: False)
-    self_declared_made_for_kids = factory.LazyFunction(lambda: False)
-    default_language = factory.LazyFunction(lambda: LanguageCode.ENGLISH_US)
-    default_audio_language = factory.LazyFunction(lambda: LanguageCode.ENGLISH_US)
-    available_languages = factory.LazyFunction(lambda: {"en": "English"})
-    region_restriction = factory.LazyFunction(lambda: None)
-    content_rating = factory.LazyFunction(lambda: {"ytRating": "ytAgeAppropriate"})
-    like_count = factory.LazyFunction(lambda: 450000)
-    view_count = factory.LazyFunction(lambda: 12000000)
-    comment_count = factory.LazyFunction(lambda: 35000)
-    deleted_flag = factory.LazyFunction(lambda: False)
-    created_at = factory.LazyFunction(
+    duration: Any = factory.LazyFunction(lambda: 1260)  # 21 minutes
+    made_for_kids: Any = factory.LazyFunction(lambda: False)
+    self_declared_made_for_kids: Any = factory.LazyFunction(lambda: False)
+    default_language: Any = factory.LazyFunction(lambda: LanguageCode.ENGLISH_US)
+    default_audio_language: Any = factory.LazyFunction(lambda: LanguageCode.ENGLISH_US)
+    available_languages: Any = factory.LazyFunction(lambda: {"en": "English"})
+    region_restriction: Any = factory.LazyFunction(lambda: None)
+    content_rating: Any = factory.LazyFunction(lambda: {"ytRating": "ytAgeAppropriate"})
+    like_count: Any = factory.LazyFunction(lambda: 450000)
+    view_count: Any = factory.LazyFunction(lambda: 12000000)
+    comment_count: Any = factory.LazyFunction(lambda: 35000)
+    deleted_flag: Any = factory.LazyFunction(lambda: False)
+    created_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 9, 22, 12, 0, 0, tzinfo=timezone.utc)
     )
-    updated_at = factory.LazyFunction(
+    updated_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 9, 22, 15, 30, 0, tzinfo=timezone.utc)
     )
-    channel_title = factory.LazyFunction(lambda: "Marques Brownlee")
-    channel_subscriber_count = factory.LazyFunction(lambda: 17800000)
+    channel_title: Any = factory.LazyFunction(lambda: "Marques Brownlee")
+    channel_subscriber_count: Any = factory.LazyFunction(lambda: 17800000)
 
 
 # Test data constants for validation testing
@@ -349,39 +349,53 @@ class VideoTestData:
 
 
 # Convenience factory functions
-def create_video_base(**kwargs) -> VideoBase:
+def create_video_base(**kwargs: Any) -> VideoBase:
     """Create a VideoBase with optional overrides."""
-    return cast(VideoBase, VideoBaseFactory.build(**kwargs))
+    result = VideoBaseFactory.build(**kwargs)
+    assert isinstance(result, VideoBase)
+    return result
 
 
-def create_video_create(**kwargs) -> VideoCreate:
+def create_video_create(**kwargs: Any) -> VideoCreate:
     """Create a VideoCreate with optional overrides."""
-    return cast(VideoCreate, VideoCreateFactory.build(**kwargs))
+    result = VideoCreateFactory.build(**kwargs)
+    assert isinstance(result, VideoCreate)
+    return result
 
 
-def create_video_update(**kwargs) -> VideoUpdate:
+def create_video_update(**kwargs: Any) -> VideoUpdate:
     """Create a VideoUpdate with optional overrides."""
-    return cast(VideoUpdate, VideoUpdateFactory.build(**kwargs))
+    result = VideoUpdateFactory.build(**kwargs)
+    assert isinstance(result, VideoUpdate)
+    return result
 
 
-def create_video(**kwargs) -> Video:
+def create_video(**kwargs: Any) -> Video:
     """Create a Video with optional overrides."""
-    return cast(Video, VideoFactory.build(**kwargs))
+    result = VideoFactory.build(**kwargs)
+    assert isinstance(result, Video)
+    return result
 
 
-def create_video_search_filters(**kwargs) -> VideoSearchFilters:
+def create_video_search_filters(**kwargs: Any) -> VideoSearchFilters:
     """Create a VideoSearchFilters with optional overrides."""
-    return cast(VideoSearchFilters, VideoSearchFiltersFactory.build(**kwargs))
+    result = VideoSearchFiltersFactory.build(**kwargs)
+    assert isinstance(result, VideoSearchFilters)
+    return result
 
 
-def create_video_statistics(**kwargs) -> VideoStatistics:
+def create_video_statistics(**kwargs: Any) -> VideoStatistics:
     """Create a VideoStatistics with optional overrides."""
-    return cast(VideoStatistics, VideoStatisticsFactory.build(**kwargs))
+    result = VideoStatisticsFactory.build(**kwargs)
+    assert isinstance(result, VideoStatistics)
+    return result
 
 
-def create_video_with_channel(**kwargs) -> VideoWithChannel:
+def create_video_with_channel(**kwargs: Any) -> VideoWithChannel:
     """Create a VideoWithChannel with optional overrides."""
-    return cast(VideoWithChannel, VideoWithChannelFactory.build(**kwargs))
+    result = VideoWithChannelFactory.build(**kwargs)
+    assert isinstance(result, VideoWithChannel)
+    return result
 
 
 def create_batch_videos(count: int = 5) -> List[Video]:

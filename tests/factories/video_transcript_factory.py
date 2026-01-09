@@ -8,7 +8,7 @@ with realistic and consistent test data.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import List, cast
+from typing import Any, List, cast
 
 import factory
 from factory import LazyFunction
@@ -29,137 +29,137 @@ from chronovista.models.video_transcript import (
 )
 
 
-class VideoTranscriptBaseFactory(factory.Factory):
+class VideoTranscriptBaseFactory(factory.Factory[VideoTranscriptBase]):
     """Factory for VideoTranscriptBase models."""
 
     class Meta:
         model = VideoTranscriptBase
 
-    video_id = factory.LazyFunction(lambda: "dQw4w9WgXcQ")
-    language_code = factory.LazyFunction(lambda: LanguageCode.ENGLISH_US)
-    transcript_text = factory.LazyFunction(
+    video_id: Any = factory.LazyFunction(lambda: "dQw4w9WgXcQ")
+    language_code: Any = factory.LazyFunction(lambda: LanguageCode.ENGLISH_US)
+    transcript_text: Any = factory.LazyFunction(
         lambda: "Never gonna give you up, never gonna let you down, never gonna run around and desert you."
     )
-    transcript_type = factory.LazyFunction(lambda: TranscriptType.AUTO)
-    download_reason = factory.LazyFunction(lambda: DownloadReason.USER_REQUEST)
-    confidence_score = factory.LazyFunction(lambda: 0.87)
-    is_cc = factory.LazyFunction(lambda: False)
-    is_auto_synced = factory.LazyFunction(lambda: True)
-    track_kind = factory.LazyFunction(lambda: TrackKind.STANDARD)
-    caption_name = factory.LazyFunction(lambda: "English (auto-generated)")
+    transcript_type: Any = factory.LazyFunction(lambda: TranscriptType.AUTO)
+    download_reason: Any = factory.LazyFunction(lambda: DownloadReason.USER_REQUEST)
+    confidence_score: Any = factory.LazyFunction(lambda: 0.87)
+    is_cc: Any = factory.LazyFunction(lambda: False)
+    is_auto_synced: Any = factory.LazyFunction(lambda: True)
+    track_kind: Any = factory.LazyFunction(lambda: TrackKind.STANDARD)
+    caption_name: Any = factory.LazyFunction(lambda: "English (auto-generated)")
 
 
-class VideoTranscriptCreateFactory(factory.Factory):
+class VideoTranscriptCreateFactory(factory.Factory[VideoTranscriptCreate]):
     """Factory for VideoTranscriptCreate models."""
 
     class Meta:
         model = VideoTranscriptCreate
 
-    video_id = factory.LazyFunction(lambda: "9bZkp7q19f0")
-    language_code = factory.LazyFunction(lambda: "en")
-    transcript_text = factory.LazyFunction(
+    video_id: Any = factory.LazyFunction(lambda: "9bZkp7q19f0")
+    language_code: Any = factory.LazyFunction(lambda: "en")
+    transcript_text: Any = factory.LazyFunction(
         lambda: "Welcome to Google I/O 2023. Today we'll explore the latest developments in machine learning and artificial intelligence."
     )
-    transcript_type = factory.LazyFunction(lambda: TranscriptType.MANUAL)
-    download_reason = factory.LazyFunction(lambda: DownloadReason.API_ENRICHMENT)
-    confidence_score = factory.LazyFunction(lambda: 0.95)
-    is_cc = factory.LazyFunction(lambda: True)
-    is_auto_synced = factory.LazyFunction(lambda: False)
-    track_kind = factory.LazyFunction(lambda: TrackKind.STANDARD)
-    caption_name = factory.LazyFunction(lambda: "English (CC)")
+    transcript_type: Any = factory.LazyFunction(lambda: TranscriptType.MANUAL)
+    download_reason: Any = factory.LazyFunction(lambda: DownloadReason.API_ENRICHMENT)
+    confidence_score: Any = factory.LazyFunction(lambda: 0.95)
+    is_cc: Any = factory.LazyFunction(lambda: True)
+    is_auto_synced: Any = factory.LazyFunction(lambda: False)
+    track_kind: Any = factory.LazyFunction(lambda: TrackKind.STANDARD)
+    caption_name: Any = factory.LazyFunction(lambda: "English (CC)")
 
 
-class VideoTranscriptUpdateFactory(factory.Factory):
+class VideoTranscriptUpdateFactory(factory.Factory[VideoTranscriptUpdate]):
     """Factory for VideoTranscriptUpdate models."""
 
     class Meta:
         model = VideoTranscriptUpdate
 
-    transcript_text = factory.LazyFunction(
+    transcript_text: Any = factory.LazyFunction(
         lambda: "Updated transcript text with corrections and improvements."
     )
-    transcript_type = factory.LazyFunction(lambda: TranscriptType.TRANSLATED)
-    download_reason = factory.LazyFunction(lambda: DownloadReason.LEARNING_LANGUAGE)
-    confidence_score = factory.LazyFunction(lambda: 0.92)
-    is_cc = factory.LazyFunction(lambda: True)
-    is_auto_synced = factory.LazyFunction(lambda: False)
-    track_kind = factory.LazyFunction(lambda: TrackKind.STANDARD)
-    caption_name = factory.LazyFunction(lambda: "Updated Caption Track")
+    transcript_type: Any = factory.LazyFunction(lambda: TranscriptType.TRANSLATED)
+    download_reason: Any = factory.LazyFunction(lambda: DownloadReason.LEARNING_LANGUAGE)
+    confidence_score: Any = factory.LazyFunction(lambda: 0.92)
+    is_cc: Any = factory.LazyFunction(lambda: True)
+    is_auto_synced: Any = factory.LazyFunction(lambda: False)
+    track_kind: Any = factory.LazyFunction(lambda: TrackKind.STANDARD)
+    caption_name: Any = factory.LazyFunction(lambda: "Updated Caption Track")
 
 
-class VideoTranscriptFactory(factory.Factory):
+class VideoTranscriptFactory(factory.Factory[VideoTranscript]):
     """Factory for VideoTranscript models."""
 
     class Meta:
         model = VideoTranscript
 
-    video_id = factory.LazyFunction(lambda: "3tmd-ClpJxA")
-    language_code = factory.LazyFunction(lambda: "es")
-    transcript_text = factory.LazyFunction(
+    video_id: Any = factory.LazyFunction(lambda: "3tmd-ClpJxA")
+    language_code: Any = factory.LazyFunction(lambda: "es")
+    transcript_text: Any = factory.LazyFunction(
         lambda: "Hola y bienvenidos al Late Show con Stephen Colbert. Esta noche tenemos grandes momentos de comedia."
     )
-    transcript_type = factory.LazyFunction(lambda: TranscriptType.MANUAL)
-    download_reason = factory.LazyFunction(lambda: DownloadReason.AUTO_PREFERRED)
-    confidence_score = factory.LazyFunction(lambda: 0.89)
-    is_cc = factory.LazyFunction(lambda: True)
-    is_auto_synced = factory.LazyFunction(lambda: False)
-    track_kind = factory.LazyFunction(lambda: TrackKind.STANDARD)
-    caption_name = factory.LazyFunction(lambda: "Español (manual)")
-    downloaded_at = factory.LazyFunction(
+    transcript_type: Any = factory.LazyFunction(lambda: TranscriptType.MANUAL)
+    download_reason: Any = factory.LazyFunction(lambda: DownloadReason.AUTO_PREFERRED)
+    confidence_score: Any = factory.LazyFunction(lambda: 0.89)
+    is_cc: Any = factory.LazyFunction(lambda: True)
+    is_auto_synced: Any = factory.LazyFunction(lambda: False)
+    track_kind: Any = factory.LazyFunction(lambda: TrackKind.STANDARD)
+    caption_name: Any = factory.LazyFunction(lambda: "Español (manual)")
+    downloaded_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 12, 15, 16, 30, 0, tzinfo=timezone.utc)
     )
 
 
-class VideoTranscriptWithQualityFactory(factory.Factory):
+class VideoTranscriptWithQualityFactory(factory.Factory[VideoTranscriptWithQuality]):
     """Factory for VideoTranscriptWithQuality models."""
 
     class Meta:
         model = VideoTranscriptWithQuality
 
-    video_id = factory.LazyFunction(lambda: "jNQXAC9IVRw")
-    language_code = factory.LazyFunction(lambda: LanguageCode.ENGLISH_US)
-    transcript_text = factory.LazyFunction(
+    video_id: Any = factory.LazyFunction(lambda: "jNQXAC9IVRw")
+    language_code: Any = factory.LazyFunction(lambda: LanguageCode.ENGLISH_US)
+    transcript_text: Any = factory.LazyFunction(
         lambda: "The iPhone 15 Pro Max represents Apple's most advanced smartphone technology with titanium construction and advanced camera systems."
     )
-    transcript_type = factory.LazyFunction(lambda: TranscriptType.MANUAL)
-    download_reason = factory.LazyFunction(lambda: DownloadReason.USER_REQUEST)
-    confidence_score = factory.LazyFunction(lambda: 0.96)
-    is_cc = factory.LazyFunction(lambda: True)
-    is_auto_synced = factory.LazyFunction(lambda: False)
-    track_kind = factory.LazyFunction(lambda: TrackKind.STANDARD)
-    caption_name = factory.LazyFunction(lambda: "English (Professional)")
-    downloaded_at = factory.LazyFunction(
+    transcript_type: Any = factory.LazyFunction(lambda: TranscriptType.MANUAL)
+    download_reason: Any = factory.LazyFunction(lambda: DownloadReason.USER_REQUEST)
+    confidence_score: Any = factory.LazyFunction(lambda: 0.96)
+    is_cc: Any = factory.LazyFunction(lambda: True)
+    is_auto_synced: Any = factory.LazyFunction(lambda: False)
+    track_kind: Any = factory.LazyFunction(lambda: TrackKind.STANDARD)
+    caption_name: Any = factory.LazyFunction(lambda: "English (Professional)")
+    downloaded_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 9, 22, 14, 0, 0, tzinfo=timezone.utc)
     )
-    quality_score = factory.LazyFunction(lambda: 0.94)
-    is_high_quality = factory.LazyFunction(lambda: True)
-    language_match_user_prefs = factory.LazyFunction(lambda: True)
+    quality_score: Any = factory.LazyFunction(lambda: 0.94)
+    is_high_quality: Any = factory.LazyFunction(lambda: True)
+    language_match_user_prefs: Any = factory.LazyFunction(lambda: True)
 
 
-class TranscriptSearchFiltersFactory(factory.Factory):
+class TranscriptSearchFiltersFactory(factory.Factory[TranscriptSearchFilters]):
     """Factory for TranscriptSearchFilters models."""
 
     class Meta:
         model = TranscriptSearchFilters
 
-    video_ids = factory.LazyFunction(
+    video_ids: Any = factory.LazyFunction(
         lambda: ["dQw4w9WgXcQ", "9bZkp7q19f0", "3tmd-ClpJxA"]
     )
-    language_codes = factory.LazyFunction(lambda: ["en-US", "es", "fr"])
-    transcript_types = factory.LazyFunction(
+    language_codes: Any = factory.LazyFunction(lambda: ["en-US", "es", "fr"])
+    transcript_types: Any = factory.LazyFunction(
         lambda: [TranscriptType.MANUAL, TranscriptType.AUTO]
     )
-    download_reasons = factory.LazyFunction(
+    download_reasons: Any = factory.LazyFunction(
         lambda: [DownloadReason.USER_REQUEST, DownloadReason.AUTO_PREFERRED]
     )
-    track_kinds = factory.LazyFunction(lambda: [TrackKind.STANDARD, TrackKind.ASR])
-    min_confidence = factory.LazyFunction(lambda: 0.7)
-    is_cc_only = factory.LazyFunction(lambda: True)
-    is_manual_only = factory.LazyFunction(lambda: False)
-    downloaded_after = factory.LazyFunction(
+    track_kinds: Any = factory.LazyFunction(lambda: [TrackKind.STANDARD, TrackKind.ASR])
+    min_confidence: Any = factory.LazyFunction(lambda: 0.7)
+    is_cc_only: Any = factory.LazyFunction(lambda: True)
+    is_manual_only: Any = factory.LazyFunction(lambda: False)
+    downloaded_after: Any = factory.LazyFunction(
         lambda: datetime(2023, 1, 1, tzinfo=timezone.utc)
     )
-    downloaded_before = factory.LazyFunction(
+    downloaded_before: Any = factory.LazyFunction(
         lambda: datetime(2023, 12, 31, tzinfo=timezone.utc)
     )
 
@@ -254,36 +254,46 @@ class VideoTranscriptTestData:
 
 
 # Convenience factory functions
-def create_video_transcript_base(**kwargs) -> VideoTranscriptBase:
+def create_video_transcript_base(**kwargs: Any) -> VideoTranscriptBase:
     """Create a VideoTranscriptBase with optional overrides."""
-    return cast(VideoTranscriptBase, VideoTranscriptBaseFactory.build(**kwargs))
+    result = VideoTranscriptBaseFactory.build(**kwargs)
+    assert isinstance(result, VideoTranscriptBase)
+    return result
 
 
-def create_video_transcript_create(**kwargs) -> VideoTranscriptCreate:
+def create_video_transcript_create(**kwargs: Any) -> VideoTranscriptCreate:
     """Create a VideoTranscriptCreate with optional overrides."""
-    return cast(VideoTranscriptCreate, VideoTranscriptCreateFactory.build(**kwargs))
+    result = VideoTranscriptCreateFactory.build(**kwargs)
+    assert isinstance(result, VideoTranscriptCreate)
+    return result
 
 
-def create_video_transcript_update(**kwargs) -> VideoTranscriptUpdate:
+def create_video_transcript_update(**kwargs: Any) -> VideoTranscriptUpdate:
     """Create a VideoTranscriptUpdate with optional overrides."""
-    return cast(VideoTranscriptUpdate, VideoTranscriptUpdateFactory.build(**kwargs))
+    result = VideoTranscriptUpdateFactory.build(**kwargs)
+    assert isinstance(result, VideoTranscriptUpdate)
+    return result
 
 
-def create_video_transcript(**kwargs) -> VideoTranscript:
+def create_video_transcript(**kwargs: Any) -> VideoTranscript:
     """Create a VideoTranscript with optional overrides."""
-    return cast(VideoTranscript, VideoTranscriptFactory.build(**kwargs))
+    result = VideoTranscriptFactory.build(**kwargs)
+    assert isinstance(result, VideoTranscript)
+    return result
 
 
-def create_video_transcript_with_quality(**kwargs) -> VideoTranscriptWithQuality:
+def create_video_transcript_with_quality(**kwargs: Any) -> VideoTranscriptWithQuality:
     """Create a VideoTranscriptWithQuality with optional overrides."""
-    return cast(
-        VideoTranscriptWithQuality, VideoTranscriptWithQualityFactory.build(**kwargs)
-    )
+    result = VideoTranscriptWithQualityFactory.build(**kwargs)
+    assert isinstance(result, VideoTranscriptWithQuality)
+    return result
 
 
-def create_transcript_search_filters(**kwargs) -> TranscriptSearchFilters:
+def create_transcript_search_filters(**kwargs: Any) -> TranscriptSearchFilters:
     """Create a TranscriptSearchFilters with optional overrides."""
-    return cast(TranscriptSearchFilters, TranscriptSearchFiltersFactory.build(**kwargs))
+    result = TranscriptSearchFiltersFactory.build(**kwargs)
+    assert isinstance(result, TranscriptSearchFilters)
+    return result
 
 
 def create_batch_video_transcripts(count: int = 5) -> List[VideoTranscript]:

@@ -440,15 +440,15 @@ class TestSC015IdempotencyVerification:
         seeder = TopicSeeder(topic_repository=mock_repo)
 
         # Run 10 times
-        results = []
+        results: list[tuple[int, int, int]] = []
         for _ in range(10):
             result = await seeder.seed(mock_session, force=False)
             results.append((result.created, result.skipped, result.deleted))
 
         # All results should be identical
         first_result = results[0]
-        for i, result in enumerate(results):
-            assert result == first_result, f"Run {i+1} differs from run 1"
+        for i, result_tuple in enumerate(results):
+            assert result_tuple == first_result, f"Run {i+1} differs from run 1"
 
     async def test_category_seeding_preserves_existing_unchanged(self) -> None:
         """Test that CategorySeeder leaves existing categories unchanged."""

@@ -8,7 +8,7 @@ with sensible defaults and easy customization.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import cast
+from typing import Any, cast
 
 import factory
 from factory import Faker, LazyAttribute
@@ -24,14 +24,14 @@ from chronovista.models.video_localization import (
 )
 
 
-class VideoLocalizationBaseFactory(factory.Factory):
+class VideoLocalizationBaseFactory(factory.Factory[VideoLocalizationBase]):
     """Factory for VideoLocalizationBase models."""
 
     class Meta:
         model = VideoLocalizationBase
 
-    video_id = Faker("lexify", text="???????????")  # 11-char YouTube ID pattern
-    language_code = Faker(
+    video_id: Any = Faker("lexify", text="???????????")  # 11-char YouTube ID pattern
+    language_code: Any = Faker(
         "random_element",
         elements=[
             LanguageCode.ENGLISH,
@@ -44,8 +44,8 @@ class VideoLocalizationBaseFactory(factory.Factory):
             LanguageCode.PORTUGUESE,
         ],
     )
-    localized_title = Faker("sentence", nb_words=6)
-    localized_description = Faker("text", max_nb_chars=500)
+    localized_title: Any = Faker("sentence", nb_words=6)
+    localized_description: Any = Faker("text", max_nb_chars=500)
 
 
 class VideoLocalizationCreateFactory(VideoLocalizationBaseFactory):
@@ -55,14 +55,14 @@ class VideoLocalizationCreateFactory(VideoLocalizationBaseFactory):
         model = VideoLocalizationCreate
 
 
-class VideoLocalizationUpdateFactory(factory.Factory):
+class VideoLocalizationUpdateFactory(factory.Factory[VideoLocalizationUpdate]):
     """Factory for VideoLocalizationUpdate models."""
 
     class Meta:
         model = VideoLocalizationUpdate
 
-    localized_title = Faker("sentence", nb_words=5)
-    localized_description = Faker("text", max_nb_chars=300)
+    localized_title: Any = Faker("sentence", nb_words=5)
+    localized_description: Any = Faker("text", max_nb_chars=300)
 
 
 class VideoLocalizationFactory(VideoLocalizationBaseFactory):
@@ -71,80 +71,85 @@ class VideoLocalizationFactory(VideoLocalizationBaseFactory):
     class Meta:
         model = VideoLocalization
 
-    created_at = Faker("date_time", tzinfo=timezone.utc)
+    created_at: Any = Faker("date_time", tzinfo=timezone.utc)
 
 
-class VideoLocalizationSearchFiltersFactory(factory.Factory):
+class VideoLocalizationSearchFiltersFactory(factory.Factory[VideoLocalizationSearchFilters]):
     """Factory for VideoLocalizationSearchFilters models."""
 
     class Meta:
         model = VideoLocalizationSearchFilters
 
-    video_ids = factory.LazyFunction(lambda: ["dQw4w9WgXcQ", "9bZkp7q19f0"])
-    language_codes = factory.LazyFunction(
+    video_ids: Any = factory.LazyFunction(lambda: ["dQw4w9WgXcQ", "9bZkp7q19f0"])
+    language_codes: Any = factory.LazyFunction(
         lambda: [LanguageCode.ENGLISH, LanguageCode.SPANISH]
     )
-    title_query = Faker("word")
-    description_query = Faker("word")
-    has_description = Faker("boolean")
-    created_after = Faker("date_time", tzinfo=timezone.utc)
-    created_before = Faker("date_time", tzinfo=timezone.utc)
+    title_query: Any = Faker("word")
+    description_query: Any = Faker("word")
+    has_description: Any = Faker("boolean")
+    created_after: Any = Faker("date_time", tzinfo=timezone.utc)
+    created_before: Any = Faker("date_time", tzinfo=timezone.utc)
 
 
-class VideoLocalizationStatisticsFactory(factory.Factory):
+class VideoLocalizationStatisticsFactory(factory.Factory[VideoLocalizationStatistics]):
     """Factory for VideoLocalizationStatistics models."""
 
     class Meta:
         model = VideoLocalizationStatistics
 
-    total_localizations = Faker("random_int", min=100, max=5000)
-    unique_videos = LazyAttribute(
+    total_localizations: Any = Faker("random_int", min=100, max=5000)
+    unique_videos: Any = LazyAttribute(
         lambda obj: int(obj.total_localizations * 0.6)
     )  # 60% unique videos
-    unique_languages = Faker("random_int", min=5, max=20)
-    avg_localizations_per_video = LazyAttribute(
+    unique_languages: Any = Faker("random_int", min=5, max=20)
+    avg_localizations_per_video: Any = LazyAttribute(
         lambda obj: round(obj.total_localizations / obj.unique_videos, 2)
     )
-    top_languages = factory.LazyFunction(
+    top_languages: Any = factory.LazyFunction(
         lambda: [("en", 150), ("es", 120), ("fr", 100), ("de", 80), ("ja", 60)]
     )
-    localization_coverage = factory.LazyFunction(
+    localization_coverage: Any = factory.LazyFunction(
         lambda: {"en": 150, "es": 120, "fr": 100, "de": 80, "ja": 60, "ko": 40}
     )
-    videos_with_descriptions = LazyAttribute(
+    videos_with_descriptions: Any = LazyAttribute(
         lambda obj: int(obj.unique_videos * 0.8)
     )  # 80% have descriptions
 
 
 # Convenience factory methods
-def create_video_localization(**kwargs) -> VideoLocalization:
+def create_video_localization(**kwargs: Any) -> VideoLocalization:
     """Create a VideoLocalization with keyword arguments."""
-    return cast(VideoLocalization, VideoLocalizationFactory.build(**kwargs))
+    result = VideoLocalizationFactory.build(**kwargs)
+    assert isinstance(result, VideoLocalization)
+    return result
 
 
-def create_video_localization_create(**kwargs) -> VideoLocalizationCreate:
+def create_video_localization_create(**kwargs: Any) -> VideoLocalizationCreate:
     """Create a VideoLocalizationCreate with keyword arguments."""
-    return cast(VideoLocalizationCreate, VideoLocalizationCreateFactory.build(**kwargs))
+    result = VideoLocalizationCreateFactory.build(**kwargs)
+    assert isinstance(result, VideoLocalizationCreate)
+    return result
 
 
-def create_video_localization_update(**kwargs) -> VideoLocalizationUpdate:
+def create_video_localization_update(**kwargs: Any) -> VideoLocalizationUpdate:
     """Create a VideoLocalizationUpdate with keyword arguments."""
-    return cast(VideoLocalizationUpdate, VideoLocalizationUpdateFactory.build(**kwargs))
+    result = VideoLocalizationUpdateFactory.build(**kwargs)
+    assert isinstance(result, VideoLocalizationUpdate)
+    return result
 
 
-def create_video_localization_filters(**kwargs) -> VideoLocalizationSearchFilters:
+def create_video_localization_filters(**kwargs: Any) -> VideoLocalizationSearchFilters:
     """Create VideoLocalizationSearchFilters with keyword arguments."""
-    return cast(
-        VideoLocalizationSearchFilters,
-        VideoLocalizationSearchFiltersFactory.build(**kwargs),
-    )
+    result = VideoLocalizationSearchFiltersFactory.build(**kwargs)
+    assert isinstance(result, VideoLocalizationSearchFilters)
+    return result
 
 
-def create_video_localization_statistics(**kwargs) -> VideoLocalizationStatistics:
+def create_video_localization_statistics(**kwargs: Any) -> VideoLocalizationStatistics:
     """Create VideoLocalizationStatistics with keyword arguments."""
-    return cast(
-        VideoLocalizationStatistics, VideoLocalizationStatisticsFactory.build(**kwargs)
-    )
+    result = VideoLocalizationStatisticsFactory.build(**kwargs)
+    assert isinstance(result, VideoLocalizationStatistics)
+    return result
 
 
 # Common test data patterns
@@ -211,7 +216,7 @@ class VideoLocalizationTestData:
     ]
 
     @classmethod
-    def valid_video_localization_data(cls) -> dict:
+    def valid_video_localization_data(cls) -> dict[str, Any]:
         """Get valid video localization data."""
         return {
             "video_id": cls.VALID_VIDEO_IDS[0],
@@ -221,7 +226,7 @@ class VideoLocalizationTestData:
         }
 
     @classmethod
-    def minimal_video_localization_data(cls) -> dict:
+    def minimal_video_localization_data(cls) -> dict[str, Any]:
         """Get minimal valid video localization data."""
         return {
             "video_id": cls.VALID_VIDEO_IDS[1],
@@ -230,7 +235,7 @@ class VideoLocalizationTestData:
         }
 
     @classmethod
-    def comprehensive_search_filters_data(cls) -> dict:
+    def comprehensive_search_filters_data(cls) -> dict[str, Any]:
         """Get comprehensive search filters data."""
         return {
             "video_ids": cls.VALID_VIDEO_IDS[:2],

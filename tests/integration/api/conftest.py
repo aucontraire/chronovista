@@ -8,7 +8,8 @@ fixtures for systematic integration testing across model tiers.
 from __future__ import annotations
 
 import os
-from typing import Any, Awaitable, Dict
+import asyncio
+from typing import Any, Awaitable, Callable, Dict, Generator
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -88,12 +89,12 @@ def integration_db_schema_setup(integration_test_db_url):
         pool_pre_ping=True,
     )
 
-    async def create_tables():
+    async def create_tables() -> None:
         """Create all tables defined in Base.metadata."""
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-    async def drop_tables_and_cleanup():
+    async def drop_tables_and_cleanup() -> None:
         """Drop all tables and dispose of engine."""
         try:
             async with engine.begin() as conn:
@@ -157,6 +158,29 @@ def integration_session_factory(integration_db_engine):
     )
 
 
+class SessionWithCheck:
+    """Session context manager that checks availability."""
+
+    def __init__(
+        self,
+        factory: async_sessionmaker[AsyncSession],
+        checker: "DatabaseAvailabilityChecker",
+    ) -> None:
+        self._factory = factory
+        self._checker = checker
+        self._session: AsyncSession | None = None
+
+    async def __aenter__(self) -> AsyncSession:
+        # Check availability before creating session
+        await self._checker._check_availability()
+        self._session = self._factory()
+        return await self._session.__aenter__()
+
+    async def __aexit__(self, *exc_info: Any) -> None:
+        if self._session:
+            await self._session.__aexit__(*exc_info)
+
+
 class DatabaseAvailabilityChecker:
     """
     Wrapper around session factory that checks database availability on first use.
@@ -165,13 +189,18 @@ class DatabaseAvailabilityChecker:
     while keeping the fixture synchronous for compatibility with test code.
     """
 
-    def __init__(self, session_factory, db_engine, db_url):
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        db_engine: Any,
+        db_url: str,
+    ) -> None:
         self._session_factory = session_factory
         self._db_engine = db_engine
         self._db_url = db_url
         self._checked = False
 
-    async def _check_availability(self):
+    async def _check_availability(self) -> None:
         """Check if database is available, skip test if not."""
         if not self._checked:
             self._checked = True
@@ -183,27 +212,9 @@ class DatabaseAvailabilityChecker:
                     "Example: createdb chronovista_integration_test"
                 )
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args: Any, **kwargs: Any) -> SessionWithCheck:
         """Create a session, checking availability first."""
-
-        class SessionWithCheck:
-            """Session context manager that checks availability."""
-
-            def __init__(checker_self, factory):
-                checker_self._factory = factory
-                checker_self._session = None
-
-            async def __aenter__(checker_self):
-                # Check availability before creating session
-                await self._check_availability()
-                checker_self._session = checker_self._factory()
-                return await checker_self._session.__aenter__()
-
-            async def __aexit__(checker_self, *exc_info):
-                if checker_self._session:
-                    return await checker_self._session.__aexit__(*exc_info)
-
-        return SessionWithCheck(self._session_factory)
+        return SessionWithCheck(self._session_factory, self)
 
 
 @pytest.fixture

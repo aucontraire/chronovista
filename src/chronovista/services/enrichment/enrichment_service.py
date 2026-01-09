@@ -29,6 +29,10 @@ from chronovista.exceptions import (
     PrerequisiteError,
     QuotaExceededException,
 )
+from chronovista.models.api_responses import (
+    YouTubePlaylistResponse,
+    YouTubeVideoResponse,
+)
 from chronovista.models.enrichment_report import (
     EnrichmentDetail,
     EnrichmentReport,
@@ -1057,8 +1061,8 @@ class EnrichmentService:
             raise
 
         # Create a map of video_id -> API data for quick lookup
-        api_data_map: Dict[str, Dict[str, Any]] = {
-            v.get("id", ""): v for v in api_videos
+        api_data_map: Dict[str, YouTubeVideoResponse] = {
+            v.id: v for v in api_videos
         }
 
         # Process each video using cached IDs (not ORM objects which may have stale connections)
@@ -1111,7 +1115,10 @@ class EnrichmentService:
                 # Extract video metadata from cached values (avoiding stale ORM objects)
                 old_title = cached["title"]
                 old_channel_id = cached["channel_id"]
-                update_data = self._extract_video_update(api_data)
+                # Convert Pydantic model to dict for _extract_video_update
+                # Use mode='json' to serialize datetime objects to ISO strings
+                api_data_dict = api_data.model_dump(by_alias=True, exclude_none=False, mode='json')
+                update_data = self._extract_video_update_from_dict(api_data_dict)
 
                 # Fetch fresh video object from database for update
                 video = await self.video_repository.get(session, video_id)
@@ -1132,39 +1139,44 @@ class EnrichmentService:
                     setattr(video, key, value)
 
                 # Handle channel creation/update
-                snippet = api_data.get("snippet", {})
-                channel_id = snippet.get("channelId")
-                channel_title = snippet.get("channelTitle")
+                if api_data.snippet:
+                    channel_id = api_data.snippet.channel_id
+                    channel_title = api_data.snippet.channel_title
 
-                if channel_id and channel_title:
-                    channel_created = await self._ensure_channel_exists(
-                        session, channel_id, channel_title
-                    )
-                    if channel_created:
-                        channels_created += 1
+                    if channel_id and channel_title:
+                        channel_created = await self._ensure_channel_exists(
+                            session, channel_id, channel_title
+                        )
+                        if channel_created:
+                            channels_created += 1
 
-                # T068-T073: Enrich tags from snippet.tags array
-                # T069: Extract tags from snippet.tags (already a list of strings)
-                # T073: Tags are preserved exactly as returned (Unicode/special chars)
-                api_tags = snippet.get("tags", [])
-                video_tags_count = await self.enrich_tags(session, video_id, api_tags)
-                tags_created += video_tags_count
+                    # T068-T073: Enrich tags from snippet.tags array
+                    # T069: Extract tags from snippet.tags (already a list of strings)
+                    # T073: Tags are preserved exactly as returned (Unicode/special chars)
+                    api_tags = api_data.snippet.tags or []
+                    video_tags_count = await self.enrich_tags(session, video_id, api_tags)
+                    tags_created += video_tags_count
+
+                    # T085-T088: Enrich category from snippet.categoryId
+                    # T086: Extract category ID from API response
+                    # T087: Match against pre-seeded video_categories table (FR-046)
+                    # T088: Log warning for unrecognized IDs (FR-047)
+                    api_category_id = api_data.snippet.category_id
+                else:
+                    api_tags = []
+                    api_category_id = None
 
                 # T076-T082: Enrich topics from topicDetails.topicCategories
                 # T077: Parse Wikipedia URLs and extract topic names
                 # T078: Match against pre-seeded topic_categories table
-                topic_details = api_data.get("topicDetails", {})
-                topic_urls = topic_details.get("topicCategories", [])
-                video_topics_count = await self.enrich_topics(
-                    session, video_id, topic_urls
-                )
-                topics_created += video_topics_count
-
-                # T085-T088: Enrich category from snippet.categoryId
-                # T086: Extract category ID from API response
-                # T087: Match against pre-seeded video_categories table (FR-046)
-                # T088: Log warning for unrecognized IDs (FR-047)
-                api_category_id = snippet.get("categoryId")
+                if api_data.topic_details:
+                    topic_urls = api_data.topic_details.topic_categories or []
+                    video_topics_count = await self.enrich_topics(
+                        session, video_id, topic_urls
+                    )
+                    topics_created += video_topics_count
+                else:
+                    video_topics_count = 0
                 category_was_assigned = await self.enrich_categories(
                     session, video_id, api_category_id
                 )
@@ -1251,7 +1263,7 @@ class EnrichmentService:
         limit: int | None,
         include_deleted: bool,
         refresh_topics: bool = False,
-    ) -> List:
+    ) -> List[Any]:
         """
         Query videos that need enrichment based on priority level.
 
@@ -1563,23 +1575,23 @@ class EnrichmentService:
         else:
             logger.warning(f"Video {video_id} not found for deletion marking")
 
-    def _extract_video_update(self, api_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _extract_video_update_from_dict(self, api_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Extract video update data from YouTube API response.
+        Extract video update data from YouTube API response (dict format).
 
         Parameters
         ----------
         api_data : Dict[str, Any]
-            YouTube API video resource
+            YouTube API video resource as dict
 
         Returns
         -------
         Dict[str, Any]
             Dictionary of fields to update
         """
-        snippet = api_data.get("snippet", {})
-        content_details = api_data.get("contentDetails", {})
-        statistics = api_data.get("statistics", {})
+        snippet = api_data.get("snippet") or {}
+        content_details = api_data.get("contentDetails") or {}
+        statistics = api_data.get("statistics") or {}
 
         update_data: Dict[str, Any] = {}
 
@@ -1606,11 +1618,12 @@ class EnrichmentService:
                 logger.warning(f"Could not parse upload date: {published_at}")
 
         # Engagement metrics
-        if "viewCount" in statistics:
+        # Note: Check for None values since model_dump(exclude_none=False) includes them
+        if statistics.get("viewCount") is not None:
             update_data["view_count"] = int(statistics["viewCount"])
-        if "likeCount" in statistics:
+        if statistics.get("likeCount") is not None:
             update_data["like_count"] = int(statistics["likeCount"])
-        if "commentCount" in statistics:
+        if statistics.get("commentCount") is not None:
             update_data["comment_count"] = int(statistics["commentCount"])
 
         # Category
@@ -1618,7 +1631,7 @@ class EnrichmentService:
             update_data["category_id"] = snippet["categoryId"]
 
         # Content restrictions
-        status = api_data.get("status", {})
+        status = api_data.get("status") or {}
         if "madeForKids" in status:
             update_data["made_for_kids"] = status["madeForKids"]
         if "selfDeclaredMadeForKids" in status:
@@ -1676,7 +1689,7 @@ class EnrichmentService:
                     channel_id=channel_id,
                     title=channel_title,
                 )
-                await self.channel_repository.create(session, channel_create)
+                await self.channel_repository.create(session, obj_in=channel_create)
                 logger.info(f"Created channel: {channel_title} ({channel_id})")
                 return True
             except Exception as e:
@@ -2039,7 +2052,7 @@ class EnrichmentService:
             result = await session.execute(query)
             row = result.first()
             if row:
-                topic_id = row[0]
+                topic_id: str = row[0]
                 logger.debug(f"Matched topic URL '{url}' to topic_id '{topic_id}'")
                 return topic_id
 
@@ -2220,8 +2233,8 @@ class EnrichmentService:
         )
 
         # Create a map of playlist_id -> API data for quick lookup
-        api_data_map: Dict[str, Dict[str, Any]] = {
-            p.get("id", ""): p for p in api_playlists
+        api_data_map: Dict[str, YouTubePlaylistResponse] = {
+            p.id: p for p in api_playlists
         }
 
         playlists_processed = 0
@@ -2247,45 +2260,35 @@ class EnrichmentService:
                     continue
 
                 # Extract and update playlist metadata
-                snippet = api_data.get("snippet", {})
-                status = api_data.get("status", {})
-                content_details = api_data.get("contentDetails", {})
-
                 # Update title
-                if snippet.get("title"):
-                    playlist.title = snippet["title"]
+                if api_data.snippet and api_data.snippet.title:
+                    playlist.title = api_data.snippet.title
 
                 # Update description
-                if "description" in snippet:
-                    playlist.description = snippet.get("description", "")
+                if api_data.snippet and api_data.snippet.description is not None:
+                    playlist.description = api_data.snippet.description
 
                 # Update published_at
-                published_at = snippet.get("publishedAt")
-                if published_at:
-                    try:
-                        if published_at.endswith("Z"):
-                            published_at = published_at[:-1] + "+00:00"
-                        playlist.published_at = datetime.fromisoformat(published_at)
-                    except ValueError:
-                        logger.warning(f"Could not parse published_at: {published_at}")
+                if api_data.snippet and api_data.snippet.published_at:
+                    # published_at is already a datetime object from the Pydantic model
+                    playlist.published_at = api_data.snippet.published_at
 
                 # Update privacy status
-                privacy = status.get("privacyStatus", "").lower()
-                if privacy:
+                if api_data.status and api_data.status.privacy_status:
+                    privacy = api_data.status.privacy_status.lower()
                     try:
                         playlist.privacy_status = PrivacyStatus(privacy).value
                     except ValueError:
                         logger.warning(f"Unknown privacy status: {privacy}")
 
                 # Update video count
-                item_count = content_details.get("itemCount")
-                if item_count is not None:
+                if api_data.content_details and api_data.content_details.item_count is not None:
+                    item_count = api_data.content_details.item_count
                     playlist.video_count = int(item_count)
 
                 # Update default language
-                default_language = snippet.get("defaultLanguage")
-                if default_language:
-                    playlist.default_language = default_language
+                if api_data.snippet and api_data.snippet.default_language:
+                    playlist.default_language = api_data.snippet.default_language
 
                 playlists_updated += 1
                 logger.debug(f"Updated playlist {playlist_id}: {playlist.title}")

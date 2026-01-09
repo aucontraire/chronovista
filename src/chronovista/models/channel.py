@@ -82,13 +82,13 @@ class ChannelCreate(ChannelBase):
 class ChannelUpdate(BaseModel):
     """Model for updating channels."""
 
-    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    title: Optional[str] = Field(default=None, min_length=1, max_length=255)
     description: Optional[str] = None
-    subscriber_count: Optional[int] = Field(None, ge=0)
-    video_count: Optional[int] = Field(None, ge=0)
+    subscriber_count: Optional[int] = Field(default=None, ge=0)
+    video_count: Optional[int] = Field(default=None, ge=0)
     default_language: Optional[LanguageCode] = None
-    country: Optional[str] = Field(None, min_length=2, max_length=2)
-    thumbnail_url: Optional[str] = Field(None, max_length=500)
+    country: Optional[str] = Field(default=None, min_length=2, max_length=2)
+    thumbnail_url: Optional[str] = Field(default=None, max_length=500)
     is_subscribed: Optional[bool] = None
 
     @field_validator("title")

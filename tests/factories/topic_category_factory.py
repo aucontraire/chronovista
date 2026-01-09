@@ -8,7 +8,7 @@ with sensible defaults and easy customization.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import cast
+from typing import Any, cast
 
 import factory
 from factory import Faker, LazyAttribute
@@ -25,16 +25,16 @@ from chronovista.models.topic_category import (
 )
 
 
-class TopicCategoryBaseFactory(factory.Factory):
+class TopicCategoryBaseFactory(factory.Factory[TopicCategoryBase]):
     """Factory for TopicCategoryBase models."""
 
     class Meta:
         model = TopicCategoryBase
 
-    topic_id = Faker("lexify", text="topic_????")  # e.g., topic_1234
-    category_name = Faker("word")
+    topic_id: Any = Faker("lexify", text="topic_????")  # e.g., topic_1234
+    category_name: Any = Faker("word")
     parent_topic_id = None  # Most topics are root by default
-    topic_type = Faker("random_element", elements=["youtube", "custom"])
+    topic_type: Any = Faker("random_element", elements=["youtube", "custom"])
 
 
 class TopicCategoryCreateFactory(TopicCategoryBaseFactory):
@@ -44,15 +44,15 @@ class TopicCategoryCreateFactory(TopicCategoryBaseFactory):
         model = TopicCategoryCreate
 
 
-class TopicCategoryUpdateFactory(factory.Factory):
+class TopicCategoryUpdateFactory(factory.Factory[TopicCategoryUpdate]):
     """Factory for TopicCategoryUpdate models."""
 
     class Meta:
         model = TopicCategoryUpdate
 
-    category_name = Faker("word")
+    category_name: Any = Faker("word")
     parent_topic_id = None
-    topic_type = Faker("random_element", elements=["youtube", "custom"])
+    topic_type: Any = Faker("random_element", elements=["youtube", "custom"])
 
 
 class TopicCategoryFactory(TopicCategoryBaseFactory):
@@ -61,44 +61,44 @@ class TopicCategoryFactory(TopicCategoryBaseFactory):
     class Meta:
         model = TopicCategory
 
-    created_at = Faker("date_time", tzinfo=timezone.utc)
+    created_at: Any = Faker("date_time", tzinfo=timezone.utc)
 
 
-class TopicCategorySearchFiltersFactory(factory.Factory):
+class TopicCategorySearchFiltersFactory(factory.Factory[TopicCategorySearchFilters]):
     """Factory for TopicCategorySearchFilters models."""
 
     class Meta:
         model = TopicCategorySearchFilters
 
-    topic_ids = factory.LazyFunction(lambda: ["gaming", "tech", "education"])
-    category_name_query = Faker("word")
-    parent_topic_ids = factory.LazyFunction(lambda: ["entertainment", "technology"])
-    topic_types = factory.LazyFunction(lambda: ["youtube", "custom"])
-    is_root_topic = Faker("boolean")
-    has_children = Faker("boolean")
-    max_depth = Faker("random_int", min=1, max=5)
-    created_after = Faker("date_time", tzinfo=timezone.utc)
-    created_before = Faker("date_time", tzinfo=timezone.utc)
+    topic_ids: Any = factory.LazyFunction(lambda: ["gaming", "tech", "education"])
+    category_name_query: Any = Faker("word")
+    parent_topic_ids: Any = factory.LazyFunction(lambda: ["entertainment", "technology"])
+    topic_types: Any = factory.LazyFunction(lambda: ["youtube", "custom"])
+    is_root_topic: Any = Faker("boolean")
+    has_children: Any = Faker("boolean")
+    max_depth: Any = Faker("random_int", min=1, max=5)
+    created_after: Any = Faker("date_time", tzinfo=timezone.utc)
+    created_before: Any = Faker("date_time", tzinfo=timezone.utc)
 
 
-class TopicCategoryStatisticsFactory(factory.Factory):
+class TopicCategoryStatisticsFactory(factory.Factory[TopicCategoryStatistics]):
     """Factory for TopicCategoryStatistics models."""
 
     class Meta:
         model = TopicCategoryStatistics
 
-    total_topics = Faker("random_int", min=50, max=500)
-    root_topics = LazyAttribute(
+    total_topics: Any = Faker("random_int", min=50, max=500)
+    root_topics: Any = LazyAttribute(
         lambda obj: int(obj.total_topics * 0.2)
     )  # 20% are root topics
-    max_hierarchy_depth = Faker("random_int", min=2, max=6)
-    avg_children_per_topic = LazyAttribute(
+    max_hierarchy_depth: Any = Faker("random_int", min=2, max=6)
+    avg_children_per_topic: Any = LazyAttribute(
         lambda obj: round((obj.total_topics - obj.root_topics) / obj.root_topics, 2)
     )
-    topic_type_distribution = factory.LazyFunction(
+    topic_type_distribution: Any = factory.LazyFunction(
         lambda: {"youtube": 180, "custom": 120}
     )
-    most_popular_topics = factory.LazyFunction(
+    most_popular_topics: Any = factory.LazyFunction(
         lambda: [
             ("gaming", 45),
             ("music", 38),
@@ -107,7 +107,7 @@ class TopicCategoryStatisticsFactory(factory.Factory):
             ("entertainment", 25),
         ]
     )
-    hierarchy_distribution = factory.LazyFunction(
+    hierarchy_distribution: Any = factory.LazyFunction(
         lambda: {
             0: 20,
             1: 45,
@@ -118,40 +118,40 @@ class TopicCategoryStatisticsFactory(factory.Factory):
     )
 
 
-class TopicCategoryHierarchyFactory(factory.Factory):
+class TopicCategoryHierarchyFactory(factory.Factory[TopicCategoryHierarchy]):
     """Factory for TopicCategoryHierarchy models."""
 
     class Meta:
         model = TopicCategoryHierarchy
 
-    topic_id = Faker("lexify", text="topic_????")
-    category_name = Faker("word")
-    topic_type = Faker("random_element", elements=["youtube", "custom"])
-    level = Faker("random_int", min=0, max=3)
-    children = factory.LazyFunction(lambda: [])  # Empty by default
-    path = factory.LazyFunction(lambda: ["root", "entertainment"])
+    topic_id: Any = Faker("lexify", text="topic_????")
+    category_name: Any = Faker("word")
+    topic_type: Any = Faker("random_element", elements=["youtube", "custom"])
+    level: Any = Faker("random_int", min=0, max=3)
+    children: Any = factory.LazyFunction(lambda: [])  # Empty by default
+    path: Any = factory.LazyFunction(lambda: ["root", "entertainment"])
 
 
-class TopicCategoryAnalyticsFactory(factory.Factory):
+class TopicCategoryAnalyticsFactory(factory.Factory[TopicCategoryAnalytics]):
     """Factory for TopicCategoryAnalytics models."""
 
     class Meta:
         model = TopicCategoryAnalytics
 
-    topic_trends = factory.LazyFunction(
+    topic_trends: Any = factory.LazyFunction(
         lambda: {
             "gaming": [10, 12, 15, 18, 20, 22, 25, 28, 30, 32, 35, 38],
             "music": [8, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29],
         }
     )
-    topic_relationships = factory.LazyFunction(
+    topic_relationships: Any = factory.LazyFunction(
         lambda: {
             "gaming": ["esports", "streaming", "reviews"],
             "music": ["pop", "rock", "classical", "playlists"],
             "education": ["tutorial", "science", "math", "language"],
         }
     )
-    semantic_similarity = factory.LazyFunction(
+    semantic_similarity: Any = factory.LazyFunction(
         lambda: {
             "gaming-esports": 0.92,
             "music-entertainment": 0.78,
@@ -160,7 +160,7 @@ class TopicCategoryAnalyticsFactory(factory.Factory):
             "fitness-health": 0.72,
         }
     )
-    content_classification = factory.LazyFunction(
+    content_classification: Any = factory.LazyFunction(
         lambda: {
             "gaming": {"entertainment": 0.95, "technology": 0.75, "education": 0.25},
             "tutorial": {"education": 0.92, "technology": 0.65, "entertainment": 0.35},
@@ -170,41 +170,53 @@ class TopicCategoryAnalyticsFactory(factory.Factory):
 
 
 # Convenience factory methods
-def create_topic_category(**kwargs) -> TopicCategory:
+def create_topic_category(**kwargs: Any) -> TopicCategory:
     """Create a TopicCategory with keyword arguments."""
-    return cast(TopicCategory, TopicCategoryFactory.build(**kwargs))
+    result = TopicCategoryFactory.build(**kwargs)
+    assert isinstance(result, TopicCategory)
+    return result
 
 
-def create_topic_category_create(**kwargs) -> TopicCategoryCreate:
+def create_topic_category_create(**kwargs: Any) -> TopicCategoryCreate:
     """Create a TopicCategoryCreate with keyword arguments."""
-    return cast(TopicCategoryCreate, TopicCategoryCreateFactory.build(**kwargs))
+    result = TopicCategoryCreateFactory.build(**kwargs)
+    assert isinstance(result, TopicCategoryCreate)
+    return result
 
 
-def create_topic_category_update(**kwargs) -> TopicCategoryUpdate:
+def create_topic_category_update(**kwargs: Any) -> TopicCategoryUpdate:
     """Create a TopicCategoryUpdate with keyword arguments."""
-    return cast(TopicCategoryUpdate, TopicCategoryUpdateFactory.build(**kwargs))
+    result = TopicCategoryUpdateFactory.build(**kwargs)
+    assert isinstance(result, TopicCategoryUpdate)
+    return result
 
 
-def create_topic_category_filters(**kwargs) -> TopicCategorySearchFilters:
+def create_topic_category_filters(**kwargs: Any) -> TopicCategorySearchFilters:
     """Create TopicCategorySearchFilters with keyword arguments."""
-    return cast(
-        TopicCategorySearchFilters, TopicCategorySearchFiltersFactory.build(**kwargs)
-    )
+    result = TopicCategorySearchFiltersFactory.build(**kwargs)
+    assert isinstance(result, TopicCategorySearchFilters)
+    return result
 
 
-def create_topic_category_statistics(**kwargs) -> TopicCategoryStatistics:
+def create_topic_category_statistics(**kwargs: Any) -> TopicCategoryStatistics:
     """Create TopicCategoryStatistics with keyword arguments."""
-    return cast(TopicCategoryStatistics, TopicCategoryStatisticsFactory.build(**kwargs))
+    result = TopicCategoryStatisticsFactory.build(**kwargs)
+    assert isinstance(result, TopicCategoryStatistics)
+    return result
 
 
-def create_topic_category_hierarchy(**kwargs) -> TopicCategoryHierarchy:
+def create_topic_category_hierarchy(**kwargs: Any) -> TopicCategoryHierarchy:
     """Create TopicCategoryHierarchy with keyword arguments."""
-    return cast(TopicCategoryHierarchy, TopicCategoryHierarchyFactory.build(**kwargs))
+    result = TopicCategoryHierarchyFactory.build(**kwargs)
+    assert isinstance(result, TopicCategoryHierarchy)
+    return result
 
 
-def create_topic_category_analytics(**kwargs) -> TopicCategoryAnalytics:
+def create_topic_category_analytics(**kwargs: Any) -> TopicCategoryAnalytics:
     """Create TopicCategoryAnalytics with keyword arguments."""
-    return cast(TopicCategoryAnalytics, TopicCategoryAnalyticsFactory.build(**kwargs))
+    result = TopicCategoryAnalyticsFactory.build(**kwargs)
+    assert isinstance(result, TopicCategoryAnalytics)
+    return result
 
 
 # Common test data patterns
@@ -302,7 +314,7 @@ class TopicCategoryTestData:
     ]
 
     @classmethod
-    def valid_topic_category_data(cls) -> dict:
+    def valid_topic_category_data(cls) -> dict[str, Any]:
         """Get valid topic category data."""
         return {
             "topic_id": cls.VALID_TOPIC_IDS[0],
@@ -312,7 +324,7 @@ class TopicCategoryTestData:
         }
 
     @classmethod
-    def hierarchical_topic_data(cls) -> dict:
+    def hierarchical_topic_data(cls) -> dict[str, Any]:
         """Get hierarchical topic data."""
         topic_id, category_name, parent_id = cls.HIERARCHICAL_TOPICS[
             5
@@ -325,7 +337,7 @@ class TopicCategoryTestData:
         }
 
     @classmethod
-    def custom_topic_data(cls) -> dict:
+    def custom_topic_data(cls) -> dict[str, Any]:
         """Get custom topic data."""
         return {
             "topic_id": "custom_ai_ml",
@@ -335,7 +347,7 @@ class TopicCategoryTestData:
         }
 
     @classmethod
-    def comprehensive_search_filters_data(cls) -> dict:
+    def comprehensive_search_filters_data(cls) -> dict[str, Any]:
         """Get comprehensive search filters data."""
         return {
             "topic_ids": cls.VALID_TOPIC_IDS[:3],
@@ -350,7 +362,7 @@ class TopicCategoryTestData:
         }
 
     @classmethod
-    def hierarchy_tree_data(cls) -> dict:
+    def hierarchy_tree_data(cls) -> dict[str, Any]:
         """Get sample hierarchy tree data."""
         return {
             "topic_id": "entertainment",

@@ -108,6 +108,7 @@ class TestChannelBaseFactory:
         """Test ChannelBase with valid language codes."""
         channel = ChannelBaseFactory.build(default_language=valid_language)
         # Language codes are now LanguageCode enums, so compare the value
+        assert channel.default_language is not None
         assert channel.default_language.value == valid_language
 
     @pytest.mark.parametrize("invalid_language", ChannelTestData.INVALID_LANGUAGES)
@@ -343,7 +344,9 @@ class TestChannelSearchFiltersFactory:
 
         assert filters.title_query == "machine learning"
         assert filters.description_query == "artificial intelligence"
+        assert filters.language_codes is not None
         assert len(filters.language_codes) == 3
+        assert filters.countries is not None
         assert len(filters.countries) == 3
         assert filters.min_subscriber_count == 50000
         assert filters.max_subscriber_count == 5000000
@@ -514,6 +517,7 @@ class TestValidationEdgeCases:
         )
         assert len(max_channel.channel_id) == 24
         assert len(max_channel.title) == 255
+        assert max_channel.thumbnail_url is not None
         assert len(max_channel.thumbnail_url) <= 500
 
     def test_model_config_validation(self):

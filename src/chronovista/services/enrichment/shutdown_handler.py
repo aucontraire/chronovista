@@ -13,9 +13,13 @@ from __future__ import annotations
 import logging
 import signal
 import threading
-from typing import Callable, Optional
+from types import FrameType
+from typing import Any, Callable, Optional, Union
 
 from chronovista.exceptions import GracefulShutdownException
+
+# Type for signal handlers as returned by signal.getsignal()
+SignalHandlerType = Union[Callable[[int, Optional[FrameType]], Any], int, None]
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +60,14 @@ class ShutdownHandler:
     _instance: Optional["ShutdownHandler"] = None
     _lock = threading.Lock()
 
+    # Instance attributes with type hints (for mypy)
+    _initialized: bool
+    _shutdown_requested: bool
+    _signal_received: Optional[str]
+    _original_sigint: SignalHandlerType
+    _original_sigterm: SignalHandlerType
+    _installed: bool
+
     def __new__(cls) -> "ShutdownHandler":
         """Ensure singleton instance for signal handling."""
         with cls._lock:
@@ -70,9 +82,9 @@ class ShutdownHandler:
             return
 
         self._shutdown_requested = False
-        self._signal_received: str | None = None
-        self._original_sigint: Optional[Callable[..., None]] = None
-        self._original_sigterm: Optional[Callable[..., None]] = None
+        self._signal_received = None
+        self._original_sigint = None
+        self._original_sigterm = None
         self._installed = False
         self._initialized = True
 

@@ -8,7 +8,7 @@ with realistic and consistent test data.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import List, cast
+from typing import Any, List, cast
 
 import factory
 from factory import LazyFunction
@@ -24,41 +24,39 @@ from chronovista.models.user_video import (
 )
 
 
-class UserVideoBaseFactory(factory.Factory):
+class UserVideoBaseFactory(factory.Factory[UserVideoBase]):
     """Factory for UserVideoBase models."""
 
     class Meta:
         model = UserVideoBase
 
-    user_id = factory.LazyFunction(lambda: "test_user_123")
-    video_id = factory.LazyFunction(lambda: "dQw4w9WgXcQ")
-    watched_at = factory.LazyFunction(
+    user_id: Any = factory.LazyFunction(lambda: "test_user_123")
+    video_id: Any = factory.LazyFunction(lambda: "dQw4w9WgXcQ")
+    watched_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 12, 1, 10, 30, 0, tzinfo=timezone.utc)
     )
-    rewatch_count = factory.LazyFunction(lambda: 1)
-    liked = factory.LazyFunction(lambda: True)
-    disliked = factory.LazyFunction(lambda: False)
-    saved_to_playlist = factory.LazyFunction(lambda: True)
+    rewatch_count: Any = factory.LazyFunction(lambda: 1)
+    liked: Any = factory.LazyFunction(lambda: True)
+    saved_to_playlist: Any = factory.LazyFunction(lambda: True)
 
 
-class UserVideoCreateFactory(factory.Factory):
+class UserVideoCreateFactory(factory.Factory[UserVideoCreate]):
     """Factory for UserVideoCreate models."""
 
     class Meta:
         model = UserVideoCreate
 
-    user_id = factory.LazyFunction(lambda: "test_user_456")
-    video_id = factory.LazyFunction(lambda: "9bZkp7q19f0")
-    watched_at = factory.LazyFunction(
+    user_id: Any = factory.LazyFunction(lambda: "test_user_456")
+    video_id: Any = factory.LazyFunction(lambda: "9bZkp7q19f0")
+    watched_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 11, 15, 14, 20, 0, tzinfo=timezone.utc)
     )
-    rewatch_count = factory.LazyFunction(lambda: 0)
-    liked = factory.LazyFunction(lambda: False)
-    disliked = factory.LazyFunction(lambda: False)
-    saved_to_playlist = factory.LazyFunction(lambda: False)
+    rewatch_count: Any = factory.LazyFunction(lambda: 0)
+    liked: Any = factory.LazyFunction(lambda: False)
+    saved_to_playlist: Any = factory.LazyFunction(lambda: False)
 
 
-class UserVideoUpdateFactory(factory.Factory):
+class UserVideoUpdateFactory(factory.Factory[UserVideoUpdate]):
     """Factory for UserVideoUpdate models.
 
     Note: This factory respects the model's default values (None for all fields).
@@ -73,43 +71,42 @@ class UserVideoUpdateFactory(factory.Factory):
     # Values will only be generated when explicitly passed to build()
 
 
-class UserVideoFactory(factory.Factory):
+class UserVideoFactory(factory.Factory[UserVideo]):
     """Factory for UserVideo models."""
 
     class Meta:
         model = UserVideo
 
-    user_id = factory.LazyFunction(lambda: "test_user_789")
-    video_id = factory.LazyFunction(lambda: "3tmd-ClpJxA")
-    watched_at = factory.LazyFunction(
+    user_id: Any = factory.LazyFunction(lambda: "test_user_789")
+    video_id: Any = factory.LazyFunction(lambda: "3tmd-ClpJxA")
+    watched_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 10, 20, 9, 15, 0, tzinfo=timezone.utc)
     )
-    rewatch_count = factory.LazyFunction(lambda: 3)
-    liked = factory.LazyFunction(lambda: True)
-    disliked = factory.LazyFunction(lambda: False)
-    saved_to_playlist = factory.LazyFunction(lambda: True)
-    created_at = factory.LazyFunction(
+    rewatch_count: Any = factory.LazyFunction(lambda: 3)
+    liked: Any = factory.LazyFunction(lambda: True)
+    saved_to_playlist: Any = factory.LazyFunction(lambda: True)
+    created_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 10, 20, 9, 15, 0, tzinfo=timezone.utc)
     )
-    updated_at = factory.LazyFunction(
+    updated_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 12, 1, 10, 30, 0, tzinfo=timezone.utc)
     )
 
 
-class GoogleTakeoutWatchHistoryItemFactory(factory.Factory):
+class GoogleTakeoutWatchHistoryItemFactory(factory.Factory[GoogleTakeoutWatchHistoryItem]):
     """Factory for GoogleTakeoutWatchHistoryItem models."""
 
     class Meta:
         model = GoogleTakeoutWatchHistoryItem
 
-    header = factory.LazyFunction(lambda: "YouTube")
-    title = factory.LazyFunction(
+    header: Any = factory.LazyFunction(lambda: "YouTube")
+    title: Any = factory.LazyFunction(
         lambda: "Watched Rick Astley - Never Gonna Give You Up (Official Video)"
     )
-    titleUrl = factory.LazyFunction(
+    titleUrl: Any = factory.LazyFunction(
         lambda: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
     )
-    subtitles = factory.LazyFunction(
+    subtitles: Any = factory.LazyFunction(
         lambda: [
             {
                 "name": "Rick Astley",
@@ -117,55 +114,53 @@ class GoogleTakeoutWatchHistoryItemFactory(factory.Factory):
             }
         ]
     )
-    time = factory.LazyFunction(lambda: "2023-12-01T10:30:00Z")
-    products = factory.LazyFunction(lambda: ["YouTube"])
-    activityControls = factory.LazyFunction(lambda: ["YouTube watch history"])
+    time: Any = factory.LazyFunction(lambda: "2023-12-01T10:30:00Z")
+    products: Any = factory.LazyFunction(lambda: ["YouTube"])
+    activityControls: Any = factory.LazyFunction(lambda: ["YouTube watch history"])
 
 
-class UserVideoSearchFiltersFactory(factory.Factory):
+class UserVideoSearchFiltersFactory(factory.Factory[UserVideoSearchFilters]):
     """Factory for UserVideoSearchFilters models."""
 
     class Meta:
         model = UserVideoSearchFilters
 
-    user_ids = factory.LazyFunction(lambda: ["user1", "user2", "user3"])
-    video_ids = factory.LazyFunction(
+    user_ids: Any = factory.LazyFunction(lambda: ["user1", "user2", "user3"])
+    video_ids: Any = factory.LazyFunction(
         lambda: ["dQw4w9WgXcQ", "9bZkp7q19f0", "3tmd-ClpJxA"]
     )
-    watched_after = factory.LazyFunction(
+    watched_after: Any = factory.LazyFunction(
         lambda: datetime(2023, 1, 1, tzinfo=timezone.utc)
     )
-    watched_before = factory.LazyFunction(
+    watched_before: Any = factory.LazyFunction(
         lambda: datetime(2023, 12, 31, tzinfo=timezone.utc)
     )
-    liked_only = factory.LazyFunction(lambda: True)
-    disliked_only = factory.LazyFunction(lambda: False)
-    playlist_saved_only = factory.LazyFunction(lambda: True)
-    min_rewatch_count = factory.LazyFunction(lambda: 1)
-    created_after = factory.LazyFunction(
+    liked_only: Any = factory.LazyFunction(lambda: True)
+    playlist_saved_only: Any = factory.LazyFunction(lambda: True)
+    min_rewatch_count: Any = factory.LazyFunction(lambda: 1)
+    created_after: Any = factory.LazyFunction(
         lambda: datetime(2023, 6, 1, tzinfo=timezone.utc)
     )
-    created_before = factory.LazyFunction(
+    created_before: Any = factory.LazyFunction(
         lambda: datetime(2023, 12, 1, tzinfo=timezone.utc)
     )
 
 
-class UserVideoStatisticsFactory(factory.Factory):
+class UserVideoStatisticsFactory(factory.Factory[UserVideoStatistics]):
     """Factory for UserVideoStatistics models."""
 
     class Meta:
         model = UserVideoStatistics
 
-    total_videos = factory.LazyFunction(lambda: 150)
-    liked_count = factory.LazyFunction(lambda: 45)
-    disliked_count = factory.LazyFunction(lambda: 8)
-    playlist_saved_count = factory.LazyFunction(lambda: 32)
-    rewatch_count = factory.LazyFunction(lambda: 25)
-    unique_videos = factory.LazyFunction(lambda: 125)
-    most_watched_date = factory.LazyFunction(
+    total_videos: Any = factory.LazyFunction(lambda: 150)
+    liked_count: Any = factory.LazyFunction(lambda: 45)
+    playlist_saved_count: Any = factory.LazyFunction(lambda: 32)
+    rewatch_count: Any = factory.LazyFunction(lambda: 25)
+    unique_videos: Any = factory.LazyFunction(lambda: 125)
+    most_watched_date: Any = factory.LazyFunction(
         lambda: datetime(2023, 11, 15, tzinfo=timezone.utc)
     )
-    watch_streak_days = factory.LazyFunction(lambda: 14)
+    watch_streak_days: Any = factory.LazyFunction(lambda: 14)
 
 
 # Test data constants for validation testing
@@ -217,42 +212,53 @@ class UserVideoTestData:
 
 
 # Convenience factory functions
-def create_user_video_base(**kwargs) -> UserVideoBase:
+def create_user_video_base(**kwargs: Any) -> UserVideoBase:
     """Create a UserVideoBase with optional overrides."""
-    return cast(UserVideoBase, UserVideoBaseFactory.build(**kwargs))
+    result = UserVideoBaseFactory.build(**kwargs)
+    assert isinstance(result, UserVideoBase)
+    return result
 
 
-def create_user_video_create(**kwargs) -> UserVideoCreate:
+def create_user_video_create(**kwargs: Any) -> UserVideoCreate:
     """Create a UserVideoCreate with optional overrides."""
-    return cast(UserVideoCreate, UserVideoCreateFactory.build(**kwargs))
+    result = UserVideoCreateFactory.build(**kwargs)
+    assert isinstance(result, UserVideoCreate)
+    return result
 
 
-def create_user_video_update(**kwargs) -> UserVideoUpdate:
+def create_user_video_update(**kwargs: Any) -> UserVideoUpdate:
     """Create a UserVideoUpdate with optional overrides."""
-    return cast(UserVideoUpdate, UserVideoUpdateFactory.build(**kwargs))
+    result = UserVideoUpdateFactory.build(**kwargs)
+    assert isinstance(result, UserVideoUpdate)
+    return result
 
 
-def create_user_video(**kwargs) -> UserVideo:
+def create_user_video(**kwargs: Any) -> UserVideo:
     """Create a UserVideo with optional overrides."""
-    return cast(UserVideo, UserVideoFactory.build(**kwargs))
+    result = UserVideoFactory.build(**kwargs)
+    assert isinstance(result, UserVideo)
+    return result
 
 
-def create_google_takeout_item(**kwargs) -> GoogleTakeoutWatchHistoryItem:
+def create_google_takeout_item(**kwargs: Any) -> GoogleTakeoutWatchHistoryItem:
     """Create a GoogleTakeoutWatchHistoryItem with optional overrides."""
-    return cast(
-        GoogleTakeoutWatchHistoryItem,
-        GoogleTakeoutWatchHistoryItemFactory.build(**kwargs),
-    )
+    result = GoogleTakeoutWatchHistoryItemFactory.build(**kwargs)
+    assert isinstance(result, GoogleTakeoutWatchHistoryItem)
+    return result
 
 
-def create_user_video_search_filters(**kwargs) -> UserVideoSearchFilters:
+def create_user_video_search_filters(**kwargs: Any) -> UserVideoSearchFilters:
     """Create a UserVideoSearchFilters with optional overrides."""
-    return cast(UserVideoSearchFilters, UserVideoSearchFiltersFactory.build(**kwargs))
+    result = UserVideoSearchFiltersFactory.build(**kwargs)
+    assert isinstance(result, UserVideoSearchFilters)
+    return result
 
 
-def create_user_video_statistics(**kwargs) -> UserVideoStatistics:
+def create_user_video_statistics(**kwargs: Any) -> UserVideoStatistics:
     """Create a UserVideoStatistics with optional overrides."""
-    return cast(UserVideoStatistics, UserVideoStatisticsFactory.build(**kwargs))
+    result = UserVideoStatisticsFactory.build(**kwargs)
+    assert isinstance(result, UserVideoStatistics)
+    return result
 
 
 def create_batch_user_videos(count: int = 5) -> List[UserVideo]:

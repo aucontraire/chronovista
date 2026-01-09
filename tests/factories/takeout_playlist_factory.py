@@ -8,7 +8,7 @@ with realistic and consistent test data.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, List, cast
+from typing import Any, Any, List, cast
 
 import factory
 
@@ -19,65 +19,65 @@ from tests.factories.takeout_playlist_item_factory import (
 )
 
 
-class TakeoutPlaylistFactory(factory.Factory):
+class TakeoutPlaylistFactory(factory.Factory[TakeoutPlaylist]):
     """Factory for TakeoutPlaylist models."""
 
     class Meta:
         model = TakeoutPlaylist
 
     # Required fields
-    name = factory.LazyFunction(lambda: "Liked videos")
-    file_path = factory.LazyFunction(
+    name: Any = factory.LazyFunction(lambda: "Liked videos")
+    file_path: Any = factory.LazyFunction(
         lambda: Path("/tmp/takeout/playlists/liked-videos.csv")
     )
 
     # Optional fields with realistic defaults
-    videos = factory.LazyFunction(lambda: create_batch_takeout_playlist_items(3))
+    videos: Any = factory.LazyFunction(lambda: create_batch_takeout_playlist_items(3))
     video_count = 0  # Will be calculated automatically
 
 
-class TakeoutPlaylistMinimalFactory(factory.Factory):
+class TakeoutPlaylistMinimalFactory(factory.Factory[TakeoutPlaylist]):
     """Factory for TakeoutPlaylist models with only required fields."""
 
     class Meta:
         model = TakeoutPlaylist
 
     # Only required fields
-    name = factory.LazyFunction(lambda: "Watch later")
-    file_path = factory.LazyFunction(
+    name: Any = factory.LazyFunction(lambda: "Watch later")
+    file_path: Any = factory.LazyFunction(
         lambda: Path("/tmp/takeout/playlists/watch-later.csv")
     )
 
     # Set optional fields to minimal values
-    videos = factory.LazyFunction(list)  # Empty list
+    videos: Any = factory.LazyFunction(list)  # Empty list
     video_count = 0
 
 
-class TakeoutPlaylistLargeFactory(factory.Factory):
+class TakeoutPlaylistLargeFactory(factory.Factory[TakeoutPlaylist]):
     """Factory for TakeoutPlaylist models with many videos."""
 
     class Meta:
         model = TakeoutPlaylist
 
-    name = factory.LazyFunction(lambda: "My Favorites")
-    file_path = factory.LazyFunction(
+    name: Any = factory.LazyFunction(lambda: "My Favorites")
+    file_path: Any = factory.LazyFunction(
         lambda: Path("/tmp/takeout/playlists/my-favorites.csv")
     )
-    videos = factory.LazyFunction(lambda: create_batch_takeout_playlist_items(25))
+    videos: Any = factory.LazyFunction(lambda: create_batch_takeout_playlist_items(25))
     video_count = 0  # Will be calculated automatically
 
 
-class TakeoutPlaylistMusicFactory(factory.Factory):
+class TakeoutPlaylistMusicFactory(factory.Factory[TakeoutPlaylist]):
     """Factory for TakeoutPlaylist models with music content."""
 
     class Meta:
         model = TakeoutPlaylist
 
-    name = factory.LazyFunction(lambda: "Music Playlist")
-    file_path = factory.LazyFunction(
+    name: Any = factory.LazyFunction(lambda: "Music Playlist")
+    file_path: Any = factory.LazyFunction(
         lambda: Path("/tmp/takeout/playlists/music-playlist.csv")
     )
-    videos = factory.LazyFunction(
+    videos: Any = factory.LazyFunction(
         lambda: [
             TakeoutPlaylistItemFactory(
                 video_id="dQw4w9WgXcQ"
@@ -89,17 +89,17 @@ class TakeoutPlaylistMusicFactory(factory.Factory):
     video_count = 0
 
 
-class TakeoutPlaylistTechFactory(factory.Factory):
+class TakeoutPlaylistTechFactory(factory.Factory[TakeoutPlaylist]):
     """Factory for TakeoutPlaylist models with tech content."""
 
     class Meta:
         model = TakeoutPlaylist
 
-    name = factory.LazyFunction(lambda: "Tech Tutorials")
-    file_path = factory.LazyFunction(
+    name: Any = factory.LazyFunction(lambda: "Tech Tutorials")
+    file_path: Any = factory.LazyFunction(
         lambda: Path("/tmp/takeout/playlists/tech-tutorials.csv")
     )
-    videos = factory.LazyFunction(
+    videos: Any = factory.LazyFunction(
         lambda: [
             TakeoutPlaylistItemFactory(video_id="9bZkp7q19f0"),  # Python tutorial
             TakeoutPlaylistItemFactory(video_id="jNQXAC9IVRw"),  # Google I/O
@@ -143,27 +143,37 @@ class TakeoutPlaylistTestData:
 # Convenience factory functions
 def create_takeout_playlist(**kwargs: Any) -> TakeoutPlaylist:
     """Create a TakeoutPlaylist with optional overrides."""
-    return cast(TakeoutPlaylist, TakeoutPlaylistFactory.build(**kwargs))
+    result = TakeoutPlaylistFactory.build(**kwargs)
+    assert isinstance(result, TakeoutPlaylist)
+    return result
 
 
 def create_minimal_takeout_playlist(**kwargs: Any) -> TakeoutPlaylist:
     """Create a minimal TakeoutPlaylist with only required fields."""
-    return cast(TakeoutPlaylist, TakeoutPlaylistMinimalFactory.build(**kwargs))
+    result = TakeoutPlaylistMinimalFactory.build(**kwargs)
+    assert isinstance(result, TakeoutPlaylist)
+    return result
 
 
 def create_large_takeout_playlist(**kwargs: Any) -> TakeoutPlaylist:
     """Create a TakeoutPlaylist with many videos."""
-    return cast(TakeoutPlaylist, TakeoutPlaylistLargeFactory.build(**kwargs))
+    result = TakeoutPlaylistLargeFactory.build(**kwargs)
+    assert isinstance(result, TakeoutPlaylist)
+    return result
 
 
 def create_music_takeout_playlist(**kwargs: Any) -> TakeoutPlaylist:
     """Create a TakeoutPlaylist with music content."""
-    return cast(TakeoutPlaylist, TakeoutPlaylistMusicFactory.build(**kwargs))
+    result = TakeoutPlaylistMusicFactory.build(**kwargs)
+    assert isinstance(result, TakeoutPlaylist)
+    return result
 
 
 def create_tech_takeout_playlist(**kwargs: Any) -> TakeoutPlaylist:
     """Create a TakeoutPlaylist with tech content."""
-    return cast(TakeoutPlaylist, TakeoutPlaylistTechFactory.build(**kwargs))
+    result = TakeoutPlaylistTechFactory.build(**kwargs)
+    assert isinstance(result, TakeoutPlaylist)
+    return result
 
 
 def create_batch_takeout_playlists(count: int = 3) -> List[TakeoutPlaylist]:

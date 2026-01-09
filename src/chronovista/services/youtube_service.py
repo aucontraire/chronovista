@@ -6,19 +6,32 @@ including channel info, videos, playlists, and watch history.
 
 Implements retry logic with exponential backoff for transient failures
 and quota exceeded detection per FR-051 and FR-052.
+
+All methods return strongly-typed Pydantic models (FR-005, FR-006, FR-007)
+instead of Dict[str, Any] for improved type safety and runtime validation.
 """
 
 from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 from googleapiclient.errors import HttpError
+from pydantic import ValidationError
 
 from chronovista.auth import youtube_oauth
 from chronovista.exceptions import NetworkError, QuotaExceededException
+from chronovista.models.api_responses import (
+    YouTubeCaptionResponse,
+    YouTubeChannelResponse,
+    YouTubePlaylistItemResponse,
+    YouTubePlaylistResponse,
+    YouTubeSearchResponse,
+    YouTubeSubscriptionResponse,
+    YouTubeVideoCategoryResponse,
+    YouTubeVideoResponse,
+)
 from chronovista.models.youtube_types import ChannelId, PlaylistId, VideoId
 
 logger = logging.getLogger(__name__)
@@ -211,14 +224,20 @@ class YouTubeService:
             self._service = youtube_oauth.get_authenticated_service()
         return self._service
 
-    async def get_my_channel(self) -> Dict[str, Any]:
+    async def get_my_channel(self) -> Optional[YouTubeChannelResponse]:
         """
         Get information about the authenticated user's channel.
 
         Returns
         -------
-        Dict[str, Any]
-            Channel information including id, title, description, statistics
+        Optional[YouTubeChannelResponse]
+            Channel information including id, title, description, statistics.
+            Returns None if no channel found.
+
+        Raises
+        ------
+        ValueError
+            If no channel is found for the authenticated user.
         """
         request = self.service.channels().list(
             part="id,snippet,statistics,contentDetails,status,brandingSettings,topicDetails",
@@ -229,36 +248,59 @@ class YouTubeService:
         if not response.get("items"):
             raise ValueError("No channel found for authenticated user")
 
-        return dict(response["items"][0])
+        try:
+            return YouTubeChannelResponse.model_validate(response["items"][0])
+        except ValidationError as e:
+            logger.warning(f"Failed to parse channel response: {e}")
+            raise ValueError(f"Failed to parse channel response: {e}") from e
 
-    async def get_channel_details(self, channel_id: ChannelId) -> Dict[str, Any]:
+    async def get_channel_details(
+        self, channel_id: ChannelId | list[ChannelId]
+    ) -> list[YouTubeChannelResponse]:
         """
-        Get detailed information about a specific channel.
+        Get detailed information about one or more channels.
 
         Parameters
         ----------
-        channel_id : ChannelId
-            The channel ID to fetch details for (validated)
+        channel_id : ChannelId | list[ChannelId]
+            The channel ID(s) to fetch details for (validated)
 
         Returns
         -------
-        Dict[str, Any]
-            Channel information including id, title, description, statistics
+        list[YouTubeChannelResponse]
+            List containing channel information.
+
+        Raises
+        ------
+        ValueError
+            If no channels are found.
         """
+        # Handle both single channel ID and list of channel IDs
+        if isinstance(channel_id, list):
+            channel_ids_str = ",".join(channel_id)
+        else:
+            channel_ids_str = channel_id
+
         request = self.service.channels().list(
             part="id,snippet,statistics,contentDetails,status,brandingSettings,topicDetails",
-            id=channel_id,
+            id=channel_ids_str,
         )
         response = request.execute()
 
         if not response.get("items"):
-            raise ValueError(f"Channel {channel_id} not found")
+            raise ValueError(f"Channels {channel_ids_str} not found")
 
-        return dict(response["items"][0])
+        results: list[YouTubeChannelResponse] = []
+        for item in response.get("items", []):
+            try:
+                results.append(YouTubeChannelResponse.model_validate(item))
+            except ValidationError as e:
+                logger.warning(f"Failed to parse channel response: {e}")
+        return results
 
     async def get_channel_videos(
         self, channel_id: ChannelId, max_results: int = 50
-    ) -> List[Dict[str, Any]]:
+    ) -> list[YouTubePlaylistItemResponse]:
         """
         Get videos from a specific channel.
 
@@ -271,8 +313,13 @@ class YouTubeService:
 
         Returns
         -------
-        List[Dict[str, Any]]
-            List of video information
+        list[YouTubePlaylistItemResponse]
+            List of playlist item information representing channel videos.
+
+        Raises
+        ------
+        ValueError
+            If the channel is not found.
         """
         # First get the uploads playlist ID
         request = self.service.channels().list(part="contentDetails", id=channel_id)
@@ -293,9 +340,17 @@ class YouTubeService:
         )
         response = request.execute()
 
-        return list(response.get("items", []))
+        results: list[YouTubePlaylistItemResponse] = []
+        for item in response.get("items", []):
+            try:
+                results.append(YouTubePlaylistItemResponse.model_validate(item))
+            except ValidationError as e:
+                logger.warning(f"Failed to parse playlist item response: {e}")
+        return results
 
-    async def get_video_details(self, video_ids: list[VideoId]) -> list[Dict[str, Any]]:
+    async def get_video_details(
+        self, video_ids: list[VideoId]
+    ) -> list[YouTubeVideoResponse]:
         """
         Get detailed information about specific videos.
 
@@ -304,13 +359,13 @@ class YouTubeService:
 
         Parameters
         ----------
-        video_ids : List[VideoId]
+        video_ids : list[VideoId]
             List of video IDs to fetch details for (max 50, validated)
 
         Returns
         -------
-        List[Dict[str, Any]]
-            List of detailed video information
+        list[YouTubeVideoResponse]
+            List of detailed video information as typed models.
 
         Raises
         ------
@@ -329,11 +384,17 @@ class YouTubeService:
         )
         response = self._execute_with_retry(request)
 
-        return list(response.get("items", []))
+        results: list[YouTubeVideoResponse] = []
+        for item in response.get("items", []):
+            try:
+                results.append(YouTubeVideoResponse.model_validate(item))
+            except ValidationError as e:
+                logger.warning(f"Failed to parse video response: {e}")
+        return results
 
     async def fetch_videos_batched(
         self, video_ids: List[str], batch_size: int = 50
-    ) -> tuple[List[Dict[str, Any]], set[str]]:
+    ) -> tuple[list[YouTubeVideoResponse], set[str]]:
         """
         Fetch video details in batches, handling pagination for large lists.
 
@@ -356,8 +417,8 @@ class YouTubeService:
 
         Returns
         -------
-        tuple[List[Dict[str, Any]], set[str]]
-            Tuple of (list of video details, set of video IDs not found)
+        tuple[list[YouTubeVideoResponse], set[str]]
+            Tuple of (list of video details as typed models, set of video IDs not found)
             Videos not returned by API are considered deleted/private.
 
         Raises
@@ -372,7 +433,7 @@ class YouTubeService:
         >>> print(f"Found {len(videos)}, missing {len(not_found)}")
         """
         batch_size = min(batch_size, 50)  # YouTube API max is 50
-        all_videos: List[Dict[str, Any]] = []
+        all_videos: list[YouTubeVideoResponse] = []
         requested_ids = set(video_ids)
         found_ids: set[str] = set()
 
@@ -392,9 +453,8 @@ class YouTubeService:
                 # T094: Track which IDs were found (partial response handling)
                 # Videos not in response are deleted/private
                 for video in batch_results:
-                    video_id = video.get("id", "")
-                    if video_id:
-                        found_ids.add(video_id)
+                    if video.id:
+                        found_ids.add(video.id)
 
                 # Update processed count for quota exceeded reporting
                 self._videos_processed += len(batch)
@@ -446,7 +506,9 @@ class YouTubeService:
         except Exception:
             return False
 
-    async def get_my_playlists(self, max_results: int = 50) -> List[Dict[str, Any]]:
+    async def get_my_playlists(
+        self, max_results: int = 50
+    ) -> list[YouTubePlaylistResponse]:
         """
         Get playlists owned by the authenticated user.
 
@@ -457,19 +519,25 @@ class YouTubeService:
 
         Returns
         -------
-        List[Dict[str, Any]]
-            List of playlist information
+        list[YouTubePlaylistResponse]
+            List of playlist information as typed models.
         """
         request = self.service.playlists().list(
             part="id,snippet,status,contentDetails", mine=True, maxResults=max_results
         )
         response = request.execute()
 
-        return list(response.get("items", []))
+        results: list[YouTubePlaylistResponse] = []
+        for item in response.get("items", []):
+            try:
+                results.append(YouTubePlaylistResponse.model_validate(item))
+            except ValidationError as e:
+                logger.warning(f"Failed to parse playlist response: {e}")
+        return results
 
     async def get_playlist_videos(
         self, playlist_id: PlaylistId, max_results: int = 50
-    ) -> List[Dict[str, Any]]:
+    ) -> list[YouTubePlaylistItemResponse]:
         """
         Get videos from a specific playlist.
 
@@ -482,8 +550,8 @@ class YouTubeService:
 
         Returns
         -------
-        List[Dict[str, Any]]
-            List of video information from the playlist
+        list[YouTubePlaylistItemResponse]
+            List of playlist item information as typed models.
         """
         request = self.service.playlistItems().list(
             part="snippet,contentDetails,status",
@@ -492,11 +560,17 @@ class YouTubeService:
         )
         response = request.execute()
 
-        return list(response.get("items", []))
+        results: list[YouTubePlaylistItemResponse] = []
+        for item in response.get("items", []):
+            try:
+                results.append(YouTubePlaylistItemResponse.model_validate(item))
+            except ValidationError as e:
+                logger.warning(f"Failed to parse playlist item response: {e}")
+        return results
 
     async def search_my_videos(
         self, query: str, max_results: int = 25
-    ) -> List[Dict[str, Any]]:
+    ) -> list[YouTubeSearchResponse]:
         """
         Search through the authenticated user's videos.
 
@@ -509,8 +583,8 @@ class YouTubeService:
 
         Returns
         -------
-        List[Dict[str, Any]]
-            List of matching video information
+        list[YouTubeSearchResponse]
+            List of matching search results as typed models.
         """
         request = self.service.search().list(
             part="id,snippet",
@@ -521,9 +595,17 @@ class YouTubeService:
         )
         response = request.execute()
 
-        return list(response.get("items", []))
+        results: list[YouTubeSearchResponse] = []
+        for item in response.get("items", []):
+            try:
+                results.append(YouTubeSearchResponse.model_validate(item))
+            except ValidationError as e:
+                logger.warning(f"Failed to parse search response: {e}")
+        return results
 
-    async def get_video_captions(self, video_id: VideoId) -> List[Dict[str, Any]]:
+    async def get_video_captions(
+        self, video_id: VideoId
+    ) -> list[YouTubeCaptionResponse]:
         """
         Get available captions/transcripts for a video.
 
@@ -534,16 +616,23 @@ class YouTubeService:
 
         Returns
         -------
-        List[Dict[str, Any]]
-            List of available caption tracks
+        list[YouTubeCaptionResponse]
+            List of available caption tracks as typed models.
         """
         try:
             request = self.service.captions().list(part="id,snippet", videoId=video_id)
             response = request.execute()
-            return list(response.get("items", []))
+
+            results: list[YouTubeCaptionResponse] = []
+            for item in response.get("items", []):
+                try:
+                    results.append(YouTubeCaptionResponse.model_validate(item))
+                except ValidationError as e:
+                    logger.warning(f"Failed to parse caption response: {e}")
+            return results
         except Exception as e:
             # Captions API may not be accessible for all videos
-            print(f"Could not fetch captions for video {video_id}: {e}")
+            logger.warning(f"Could not fetch captions for video {video_id}: {e}")
             return []
 
     async def download_caption(
@@ -583,7 +672,7 @@ class YouTubeService:
 
     async def get_my_watch_later_videos(
         self, max_results: int = 50
-    ) -> List[Dict[str, Any]]:
+    ) -> list[YouTubePlaylistItemResponse]:
         """
         Get videos in the authenticated user's Watch Later playlist.
 
@@ -594,17 +683,26 @@ class YouTubeService:
 
         Returns
         -------
-        List[Dict[str, Any]]
-            List of Watch Later video information
+        list[YouTubePlaylistItemResponse]
+            List of Watch Later playlist item information as typed models.
         """
         try:
             # First get user's channel to find watch later playlist
             my_channel = await self.get_my_channel()
+            if my_channel is None:
+                logger.warning("No channel found for authenticated user")
+                return []
 
-            # Get the watch later playlist ID
-            watch_later_playlist_id = my_channel["contentDetails"]["relatedPlaylists"][
-                "watchLater"
-            ]
+            # Get the watch later playlist ID from typed model
+            content_details = my_channel.content_details
+            if content_details is None:
+                logger.warning("No content details found for channel")
+                return []
+
+            watch_later_playlist_id = content_details.related_playlists.watch_later
+            if watch_later_playlist_id is None:
+                logger.warning("No Watch Later playlist found for channel")
+                return []
 
             # Get videos from watch later playlist
             request = self.service.playlistItems().list(
@@ -614,9 +712,15 @@ class YouTubeService:
             )
             response = request.execute()
 
-            return list(response.get("items", []))
+            results: list[YouTubePlaylistItemResponse] = []
+            for item in response.get("items", []):
+                try:
+                    results.append(YouTubePlaylistItemResponse.model_validate(item))
+                except ValidationError as e:
+                    logger.warning(f"Failed to parse playlist item response: {e}")
+            return results
         except Exception as e:
-            print(f"Could not fetch Watch Later videos: {e}")
+            logger.warning(f"Could not fetch Watch Later videos: {e}")
             return []
 
     async def check_video_in_playlist(
@@ -651,7 +755,7 @@ class YouTubeService:
             print(f"Could not check video {video_id} in playlist {playlist_id}: {e}")
             return False
 
-    async def get_user_playlists_for_video(self, video_id: VideoId) -> List[str]:
+    async def get_user_playlists_for_video(self, video_id: VideoId) -> list[str]:
         """
         Get all user playlists that contain a specific video.
 
@@ -662,39 +766,46 @@ class YouTubeService:
 
         Returns
         -------
-        List[str]
+        list[str]
             List of playlist IDs that contain the video
         """
         try:
             # Get all user playlists
             all_playlists = await self.get_my_playlists(max_results=50)
 
-            video_playlists = []
+            video_playlists: list[str] = []
 
             # Check each playlist for the video
             for playlist in all_playlists:
-                playlist_id = playlist["id"]
+                playlist_id = playlist.id
                 if await self.check_video_in_playlist(video_id, playlist_id):
                     video_playlists.append(playlist_id)
 
             return video_playlists
         except Exception as e:
-            print(f"Could not get playlists for video {video_id}: {e}")
+            logger.warning(f"Could not get playlists for video {video_id}: {e}")
             return []
 
-    async def get_liked_videos(self, max_results: int = 10) -> List[Dict[str, Any]]:
+    async def get_liked_videos(
+        self, max_results: Optional[int] = None
+    ) -> list[YouTubeVideoResponse]:
         """
         Get videos that the authenticated user has liked.
 
+        Supports pagination to fetch all liked videos. The YouTube API
+        returns a maximum of 50 items per page, so this method automatically
+        paginates through all results.
+
         Parameters
         ----------
-        max_results : int
-            Maximum number of liked videos to return (default 10, max 50)
+        max_results : Optional[int]
+            Maximum number of liked videos to return. If None (default),
+            fetches ALL liked videos by paginating through the entire playlist.
 
         Returns
         -------
-        List[Dict[str, Any]]
-            List of liked videos with details
+        list[YouTubeVideoResponse]
+            List of liked videos with details as typed models.
         """
         try:
             # First get the liked videos playlist ID
@@ -712,41 +823,66 @@ class YouTubeService:
             if not liked_playlist_id:
                 return []  # No liked videos playlist available
 
-            # Get videos from liked playlist
-            request = self.service.playlistItems().list(
-                part="snippet,contentDetails",
-                playlistId=liked_playlist_id,
-                maxResults=min(max_results, 50),  # API max is 50
-            )
-            response = request.execute()
+            # Paginate through all liked videos
+            all_video_ids: list[str] = []
+            page_token: Optional[str] = None
 
-            playlist_items = response.get("items", [])
+            while True:
+                # Determine how many to fetch in this page
+                if max_results is not None:
+                    remaining = max_results - len(all_video_ids)
+                    if remaining <= 0:
+                        break
+                    page_size = min(remaining, 50)
+                else:
+                    page_size = 50  # API max per page
 
-            if not playlist_items:
+                # Get videos from liked playlist
+                request = self.service.playlistItems().list(
+                    part="snippet,contentDetails",
+                    playlistId=liked_playlist_id,
+                    maxResults=page_size,
+                    pageToken=page_token,
+                )
+                response = request.execute()
+
+                playlist_items = response.get("items", [])
+
+                # Extract video IDs
+                for item in playlist_items:
+                    video_id = item.get("contentDetails", {}).get("videoId")
+                    if video_id:
+                        all_video_ids.append(video_id)
+
+                # Check for next page
+                page_token = response.get("nextPageToken")
+                if not page_token:
+                    break
+
+                # Stop if we've reached the limit
+                if max_results is not None and len(all_video_ids) >= max_results:
+                    break
+
+            if not all_video_ids:
                 return []
 
-            # Extract video IDs to get detailed video information
-            video_ids = [
-                item["contentDetails"]["videoId"]
-                for item in playlist_items
-                if item.get("contentDetails", {}).get("videoId")
-            ]
+            # Get detailed video information (returns typed models)
+            # Process in batches of 50 (API limit)
+            all_detailed_videos: list[YouTubeVideoResponse] = []
+            for i in range(0, len(all_video_ids), 50):
+                batch_ids = all_video_ids[i : i + 50]
+                detailed_videos = await self.get_video_details(batch_ids)
+                all_detailed_videos.extend(detailed_videos)
 
-            if not video_ids:
-                return []
-
-            # Get detailed video information
-            detailed_videos = await self.get_video_details(video_ids)
-
-            return detailed_videos
+            return all_detailed_videos
 
         except Exception as e:
-            print(f"Could not fetch liked videos: {e}")
+            logger.warning(f"Could not fetch liked videos: {e}")
             return []
 
     async def get_subscription_channels(
         self, max_results: int = 50
-    ) -> List[Dict[str, Any]]:
+    ) -> list[YouTubeSubscriptionResponse]:
         """
         Get channels that the authenticated user is subscribed to.
 
@@ -757,19 +893,25 @@ class YouTubeService:
 
         Returns
         -------
-        List[Dict[str, Any]]
-            List of subscribed channels
+        list[YouTubeSubscriptionResponse]
+            List of subscribed channels as typed models.
         """
         request = self.service.subscriptions().list(
             part="id,snippet,subscriberSnippet", mine=True, maxResults=max_results
         )
         response = request.execute()
 
-        return list(response.get("items", []))
+        results: list[YouTubeSubscriptionResponse] = []
+        for item in response.get("items", []):
+            try:
+                results.append(YouTubeSubscriptionResponse.model_validate(item))
+            except ValidationError as e:
+                logger.warning(f"Failed to parse subscription response: {e}")
+        return results
 
     async def get_playlist_details(
         self, playlist_ids: list[str]
-    ) -> list[Dict[str, Any]]:
+    ) -> list[YouTubePlaylistResponse]:
         """
         Get detailed information about specific playlists.
 
@@ -777,13 +919,13 @@ class YouTubeService:
 
         Parameters
         ----------
-        playlist_ids : List[str]
+        playlist_ids : list[str]
             List of playlist IDs to fetch details for (max 50)
 
         Returns
         -------
-        List[Dict[str, Any]]
-            List of detailed playlist information
+        list[YouTubePlaylistResponse]
+            List of detailed playlist information as typed models.
 
         Raises
         ------
@@ -802,11 +944,17 @@ class YouTubeService:
         )
         response = self._execute_with_retry(request)
 
-        return list(response.get("items", []))
+        results: list[YouTubePlaylistResponse] = []
+        for item in response.get("items", []):
+            try:
+                results.append(YouTubePlaylistResponse.model_validate(item))
+            except ValidationError as e:
+                logger.warning(f"Failed to parse playlist response: {e}")
+        return results
 
     async def fetch_playlists_batched(
         self, playlist_ids: List[str], batch_size: int = 50
-    ) -> tuple[List[Dict[str, Any]], set[str]]:
+    ) -> tuple[list[YouTubePlaylistResponse], set[str]]:
         """
         Fetch playlist details in batches, handling pagination for large lists.
 
@@ -822,8 +970,8 @@ class YouTubeService:
 
         Returns
         -------
-        tuple[List[Dict[str, Any]], set[str]]
-            Tuple of (list of playlist details, set of playlist IDs not found)
+        tuple[list[YouTubePlaylistResponse], set[str]]
+            Tuple of (list of playlist details as typed models, set of playlist IDs not found)
             Playlists not returned by API are considered deleted/private.
 
         Examples
@@ -832,7 +980,7 @@ class YouTubeService:
         >>> print(f"Found {len(playlists)}, missing {len(not_found)}")
         """
         batch_size = min(batch_size, 50)  # YouTube API max is 50
-        all_playlists: List[Dict[str, Any]] = []
+        all_playlists: list[YouTubePlaylistResponse] = []
         requested_ids = set(playlist_ids)
         found_ids: set[str] = set()
 
@@ -841,19 +989,19 @@ class YouTubeService:
             try:
                 batch_results = await self.get_playlist_details(batch)
                 all_playlists.extend(batch_results)
-                # Track which IDs were found
+                # Track which IDs were found (now using typed model)
                 for playlist in batch_results:
-                    found_ids.add(playlist.get("id", ""))
+                    found_ids.add(playlist.id)
             except Exception as e:
                 # Log error but continue with remaining batches
-                print(f"Error fetching playlist batch {i // batch_size + 1}: {e}")
+                logger.warning(f"Error fetching playlist batch {i // batch_size + 1}: {e}")
 
         not_found = requested_ids - found_ids
         return all_playlists, not_found
 
     async def get_video_categories(
         self, region_code: str = "US"
-    ) -> List[Dict[str, Any]]:
+    ) -> list[YouTubeVideoCategoryResponse]:
         """
         Get YouTube video categories for a specific region.
 
@@ -865,12 +1013,12 @@ class YouTubeService:
 
         Returns
         -------
-        List[Dict[str, Any]]
-            List of video category information including id, title, and channel ID.
+        list[YouTubeVideoCategoryResponse]
+            List of video category information as typed models.
             Each category contains:
             - id: Category ID (e.g., "1", "10", "15")
             - snippet.title: Category name (e.g., "Film & Animation", "Music", "Pets & Animals")
-            - snippet.channelId: Channel ID that owns the category
+            - snippet.channel_id: Channel ID that owns the category
             - snippet.assignable: Whether the category can be assigned to videos
 
         Raises
@@ -889,12 +1037,20 @@ class YouTubeService:
             )
             response = request.execute()
 
-            categories = response.get("items", [])
-            if not categories:
+            items = response.get("items", [])
+            if not items:
                 raise ValueError(f"No video categories found for region: {region_code}")
 
-            return list(categories)
+            results: list[YouTubeVideoCategoryResponse] = []
+            for item in items:
+                try:
+                    results.append(YouTubeVideoCategoryResponse.model_validate(item))
+                except ValidationError as e:
+                    logger.warning(f"Failed to parse video category response: {e}")
+            return results
 
+        except ValueError:
+            raise
         except Exception as e:
             raise ValueError(
                 f"Failed to fetch video categories for region {region_code}: {str(e)}"

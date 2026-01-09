@@ -22,6 +22,7 @@ from chronovista.models.channel_keyword import (
     ChannelKeywordCreate,
     ChannelKeywordUpdate,
 )
+from chronovista.models.enums import PrivacyStatus
 from chronovista.models.playlist import PlaylistCreate, PlaylistUpdate
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 
@@ -329,7 +330,7 @@ class TestPlaylistFromAPI:
                     title="Integration Test Playlist",
                     description="Test playlist for integration testing",
                     video_count=0,
-                    privacy_status="public",
+                    privacy_status=PrivacyStatus.PUBLIC,
                     default_language=None,  # Use None instead of hardcoded string
                 )
 
@@ -427,7 +428,7 @@ class TestPlaylistFromAPI:
                         title=playlist_data["title"],
                         description=playlist_data["description"],
                         video_count=0,  # Will be updated when videos are added
-                        privacy_status="public",
+                        privacy_status=PrivacyStatus.PUBLIC,
                         default_language=None,  # Use None instead of hardcoded string
                     )
 

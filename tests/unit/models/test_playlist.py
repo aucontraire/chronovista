@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from chronovista.models.enums import LanguageCode
+from chronovista.models.enums import LanguageCode, PrivacyStatus
 from chronovista.models.playlist import (
     Playlist,
     PlaylistBase,
@@ -156,6 +156,7 @@ class TestPlaylistBase:
     def test_default_language_validation_valid(self, valid_language_code):
         """Test default_language validation with various valid inputs."""
         playlist = PlaylistBaseFactory.build(default_language=valid_language_code)
+        assert playlist.default_language is not None
         assert playlist.default_language.value == valid_language_code
 
     def test_default_language_none_allowed(self):
@@ -354,6 +355,7 @@ class TestPlaylist:
             created_at=created_at,
             updated_at=updated_at,
         )
+        assert isinstance(playlist, Playlist)  # Type guard for mypy
 
         assert playlist.playlist_id == "PLMYEtPqzjdeev14J_RpAU_RQKyeaROB8T"
         assert playlist.title == "Tech Tutorials"
@@ -604,7 +606,7 @@ class TestPlaylistModelInteractions:
         # Update
         playlist_update = PlaylistUpdate(
             title="Updated Title",
-            privacy_status="public",
+            privacy_status=PrivacyStatus.PUBLIC,
             video_count=25,
             # description and default_language intentionally omitted - no change
         )
@@ -634,7 +636,7 @@ class TestPlaylistModelInteractions:
             channel_ids=["UCuAXFkgsw1L7xaCfnd5JJOw"],
             title_query="python",
             language_codes=[LanguageCode.ENGLISH, LanguageCode.SPANISH],
-            privacy_statuses=["public"],
+            privacy_statuses=[PrivacyStatus.PUBLIC],
             min_video_count=5,
             max_video_count=100,
             has_description=True,
@@ -648,7 +650,7 @@ class TestPlaylistModelInteractions:
             "channel_ids": ["UCuAXFkgsw1L7xaCfnd5JJOw"],
             "title_query": "python",
             "language_codes": [LanguageCode.ENGLISH, LanguageCode.SPANISH],
-            "privacy_statuses": ["public"],
+            "privacy_statuses": [PrivacyStatus.PUBLIC],
             "min_video_count": 5,
             "max_video_count": 100,
             "has_description": True,
@@ -788,6 +790,7 @@ class TestPlaylistModelInteractions:
 
         for input_code, expected_code in test_cases:
             playlist = PlaylistBaseFactory.build(default_language=input_code)
+            assert playlist.default_language is not None
             assert playlist.default_language.value == expected_code
 
     def test_privacy_status_business_logic(self):

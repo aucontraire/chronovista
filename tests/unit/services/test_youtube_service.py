@@ -1,9 +1,13 @@
 """
 Comprehensive tests for YouTubeService.
+
+Updated for Phase 4 type-safety improvements: YouTubeService now returns
+typed Pydantic models instead of Dict[str, Any].
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,6 +16,224 @@ import pytest
 from chronovista.services.youtube_service import YouTubeService
 
 pytestmark = pytest.mark.asyncio
+
+
+# Helper function to create valid mock API responses
+def make_channel_response(
+    channel_id: str = "UCtest123456789012345",
+    title: str = "Test Channel",
+    description: str = "Test Description",
+    subscriber_count: str = "1000",
+    video_count: str = "50",
+) -> dict[str, Any]:
+    """Create a valid channel API response with required fields."""
+    return {
+        "kind": "youtube#channel",
+        "etag": "test_etag_123",
+        "id": channel_id,
+        "snippet": {
+            "title": title,
+            "description": description,
+            "publishedAt": "2020-01-01T00:00:00Z",
+            "thumbnails": {},
+        },
+        "statistics": {
+            "subscriberCount": subscriber_count,
+            "videoCount": video_count,
+            "viewCount": "100000",
+        },
+        "contentDetails": {
+            "relatedPlaylists": {
+                "uploads": "UU" + channel_id[2:],
+                "likes": "LL" + channel_id[2:],
+            }
+        },
+    }
+
+
+def make_video_response(
+    video_id: str = "test_vid_01",
+    title: str = "Test Video",
+    channel_id: str = "UCtest123456789012345",
+    view_count: str = "1000",
+) -> dict[str, Any]:
+    """Create a valid video API response with required fields."""
+    return {
+        "kind": "youtube#video",
+        "etag": "test_etag_123",
+        "id": video_id,
+        "snippet": {
+            "title": title,
+            "description": "Test description",
+            "channelId": channel_id,
+            "channelTitle": "Test Channel",
+            "publishedAt": "2021-01-01T00:00:00Z",
+            "thumbnails": {},
+            "tags": [],
+            "categoryId": "22",
+        },
+        "statistics": {
+            "viewCount": view_count,
+            "likeCount": "100",
+            "commentCount": "10",
+        },
+        "contentDetails": {
+            "duration": "PT5M30S",
+            "dimension": "2d",
+            "definition": "hd",
+        },
+    }
+
+
+def make_playlist_response(
+    playlist_id: str = "PLtest12345678901234567890",
+    title: str = "Test Playlist",
+    channel_id: str = "UCtest123456789012345",
+) -> dict[str, Any]:
+    """Create a valid playlist API response with required fields."""
+    return {
+        "kind": "youtube#playlist",
+        "etag": "test_etag_123",
+        "id": playlist_id,
+        "snippet": {
+            "title": title,
+            "description": "Test description",
+            "channelId": channel_id,
+            "channelTitle": "Test Channel",
+            "publishedAt": "2021-01-01T00:00:00Z",
+            "thumbnails": {},
+        },
+        "contentDetails": {
+            "itemCount": 10,
+        },
+        "status": {
+            "privacyStatus": "public",
+        },
+    }
+
+
+def make_playlist_item_response(
+    item_id: str = "PLitem_123",
+    video_id: str = "test_vid_01",
+    playlist_id: str = "PLtest12345678901234567890",
+    title: str = "Playlist Video",
+    channel_id: str = "UCtest123456789012345",
+) -> dict[str, Any]:
+    """Create a valid playlist item API response with required fields."""
+    return {
+        "kind": "youtube#playlistItem",
+        "etag": "test_etag_123",
+        "id": item_id,
+        "snippet": {
+            "title": title,
+            "description": "Test description",
+            "channelId": channel_id,
+            "channelTitle": "Test Channel",
+            "playlistId": playlist_id,
+            "position": 0,
+            "publishedAt": "2021-01-01T00:00:00Z",
+            "thumbnails": {},
+            "resourceId": {
+                "kind": "youtube#video",
+                "videoId": video_id,
+            },
+        },
+        "contentDetails": {
+            "videoId": video_id,
+            "videoPublishedAt": "2021-01-01T00:00:00Z",
+        },
+    }
+
+
+def make_search_response(
+    video_id: str = "test_vid_01",
+    title: str = "Search Result",
+    channel_id: str = "UCtest123456789012345",
+) -> dict[str, Any]:
+    """Create a valid search API response with required fields."""
+    return {
+        "kind": "youtube#searchResult",
+        "etag": "test_etag_123",
+        "id": {
+            "kind": "youtube#video",
+            "videoId": video_id,
+        },
+        "snippet": {
+            "title": title,
+            "description": "Test description",
+            "channelId": channel_id,
+            "channelTitle": "Test Channel",
+            "publishedAt": "2021-01-01T00:00:00Z",
+            "thumbnails": {},
+            "liveBroadcastContent": "none",
+        },
+    }
+
+
+def make_caption_response(
+    caption_id: str = "caption_123",
+    video_id: str = "test_vid_01",
+    language: str = "en",
+    name: str = "English",
+) -> dict[str, Any]:
+    """Create a valid caption API response with required fields."""
+    return {
+        "kind": "youtube#caption",
+        "etag": "test_etag_123",
+        "id": caption_id,
+        "snippet": {
+            "videoId": video_id,
+            "language": language,
+            "name": name,
+            "trackKind": "standard",
+            "audioTrackType": "unknown",
+            "isCC": False,
+            "isDraft": False,
+            "isAutoSynced": False,
+        },
+    }
+
+
+def make_subscription_response(
+    subscription_id: str = "sub_123",
+    channel_id: str = "UCtest123456789012345",
+    subscribed_channel_id: str = "UCsubscribed1234567890",
+    title: str = "Subscribed Channel",
+) -> dict[str, Any]:
+    """Create a valid subscription API response with required fields."""
+    return {
+        "kind": "youtube#subscription",
+        "etag": "test_etag_123",
+        "id": subscription_id,
+        "snippet": {
+            "title": title,
+            "description": "Subscribed channel description",
+            "channelId": channel_id,
+            "publishedAt": "2021-01-01T00:00:00Z",
+            "thumbnails": {},
+            "resourceId": {
+                "kind": "youtube#channel",
+                "channelId": subscribed_channel_id,
+            },
+        },
+    }
+
+
+def make_category_response(
+    category_id: str = "1",
+    title: str = "Film & Animation",
+) -> dict[str, Any]:
+    """Create a valid video category API response with required fields."""
+    return {
+        "kind": "youtube#videoCategory",
+        "etag": "test_etag_123",
+        "id": category_id,
+        "snippet": {
+            "title": title,
+            "channelId": "UCBR8-60-B28hp2BmDPdntcQ",
+            "assignable": True,
+        },
+    }
 
 
 class TestYouTubeService:
@@ -51,21 +273,12 @@ class TestYouTubeService:
 
     @pytest.mark.asyncio
     async def test_get_my_channel_success(self, youtube_service, mock_service_client):
-        """Test successful get_my_channel."""
+        """Test successful get_my_channel returns YouTubeChannelResponse."""
         youtube_service._service = mock_service_client
 
-        # Mock API response
+        # Mock API response with all required fields for Pydantic model
         mock_response = {
-            "items": [
-                {
-                    "id": "UCtest123",
-                    "snippet": {
-                        "title": "Test Channel",
-                        "description": "Test Description",
-                    },
-                    "statistics": {"subscriberCount": "1000", "videoCount": "50"},
-                }
-            ]
+            "items": [make_channel_response(channel_id="UCtest123456789012345")]
         }
 
         mock_request = MagicMock()
@@ -74,8 +287,11 @@ class TestYouTubeService:
 
         result = await youtube_service.get_my_channel()
 
-        assert result["id"] == "UCtest123"
-        assert result["snippet"]["title"] == "Test Channel"
+        # Now returns YouTubeChannelResponse typed model
+        assert result is not None
+        assert result.id == "UCtest123456789012345"
+        assert result.snippet is not None
+        assert result.snippet.title == "Test Channel"
         mock_service_client.channels.assert_called_once()
 
     @pytest.mark.asyncio
@@ -95,18 +311,16 @@ class TestYouTubeService:
     async def test_get_channel_details_success(
         self, youtube_service, mock_service_client
     ):
-        """Test successful get_channel_details."""
+        """Test successful get_channel_details returns list[YouTubeChannelResponse]."""
         youtube_service._service = mock_service_client
 
         mock_response = {
             "items": [
-                {
-                    "id": "UCother123",
-                    "snippet": {
-                        "title": "Other Channel",
-                        "description": "Other Description",
-                    },
-                }
+                make_channel_response(
+                    channel_id="UCother12345678901234",
+                    title="Other Channel",
+                    description="Other Description",
+                )
             ]
         }
 
@@ -114,10 +328,13 @@ class TestYouTubeService:
         mock_request.execute.return_value = mock_response
         mock_service_client.channels.return_value.list.return_value = mock_request
 
-        result = await youtube_service.get_channel_details("UCother123")
+        result = await youtube_service.get_channel_details("UCother12345678901234")
 
-        assert result["id"] == "UCother123"
-        assert result["snippet"]["title"] == "Other Channel"
+        # Now returns list[YouTubeChannelResponse]
+        assert len(result) == 1
+        assert result[0].id == "UCother12345678901234"
+        assert result[0].snippet is not None
+        assert result[0].snippet.title == "Other Channel"
 
     @pytest.mark.asyncio
     async def test_get_channel_details_not_found(
@@ -131,34 +348,32 @@ class TestYouTubeService:
         mock_request.execute.return_value = mock_response
         mock_service_client.channels.return_value.list.return_value = mock_request
 
-        with pytest.raises(ValueError, match="Channel UCnonexistent not found"):
+        with pytest.raises(ValueError, match="Channels? UCnonexistent not found"):
             await youtube_service.get_channel_details("UCnonexistent")
 
     @pytest.mark.asyncio
     async def test_get_channel_videos_success(
         self, youtube_service, mock_service_client
     ):
-        """Test successful get_channel_videos."""
+        """Test successful get_channel_videos returns list[YouTubePlaylistItemResponse]."""
         youtube_service._service = mock_service_client
 
         # Mock channel details response for uploads playlist ID
         mock_channel_response = {
             "items": [
-                {"contentDetails": {"relatedPlaylists": {"uploads": "UUtest123"}}}
+                {"contentDetails": {"relatedPlaylists": {"uploads": "UUtest123456789012345"}}}
             ]
         }
 
-        # Mock playlist items response
+        # Mock playlist items response with all required fields
         mock_playlist_response = {
             "items": [
-                {
-                    "snippet": {"title": "Video 1"},
-                    "contentDetails": {"videoId": "video1"},
-                },
-                {
-                    "snippet": {"title": "Video 2"},
-                    "contentDetails": {"videoId": "video2"},
-                },
+                make_playlist_item_response(
+                    item_id="item1", video_id="video1_____", title="Video 1"
+                ),
+                make_playlist_item_response(
+                    item_id="item2", video_id="video2_____", title="Video 2"
+                ),
             ]
         }
 
@@ -170,11 +385,14 @@ class TestYouTubeService:
         mock_request2.execute.return_value = mock_playlist_response
         mock_service_client.playlistItems.return_value.list.return_value = mock_request2
 
-        result = await youtube_service.get_channel_videos("UCtest123", max_results=25)
+        result = await youtube_service.get_channel_videos("UCtest123456789012345", max_results=25)
 
+        # Now returns list[YouTubePlaylistItemResponse]
         assert len(result) == 2
-        assert result[0]["snippet"]["title"] == "Video 1"
-        assert result[1]["snippet"]["title"] == "Video 2"
+        assert result[0].snippet is not None
+        assert result[0].snippet.title == "Video 1"
+        assert result[1].snippet is not None
+        assert result[1].snippet.title == "Video 2"
 
     @pytest.mark.asyncio
     async def test_get_channel_videos_empty(self, youtube_service, mock_service_client):
@@ -207,21 +425,13 @@ class TestYouTubeService:
     async def test_get_video_details_success(
         self, youtube_service, mock_service_client
     ):
-        """Test successful get_video_details."""
+        """Test successful get_video_details returns list[YouTubeVideoResponse]."""
         youtube_service._service = mock_service_client
 
         mock_response = {
             "items": [
-                {
-                    "id": "video1",
-                    "snippet": {"title": "Video 1"},
-                    "statistics": {"viewCount": "1000"},
-                },
-                {
-                    "id": "video2",
-                    "snippet": {"title": "Video 2"},
-                    "statistics": {"viewCount": "2000"},
-                },
+                make_video_response(video_id="video1_____", title="Video 1", view_count="1000"),
+                make_video_response(video_id="video2_____", title="Video 2", view_count="2000"),
             ]
         }
 
@@ -229,11 +439,14 @@ class TestYouTubeService:
         mock_request.execute.return_value = mock_response
         mock_service_client.videos.return_value.list.return_value = mock_request
 
-        result = await youtube_service.get_video_details(["video1", "video2"])
+        result = await youtube_service.get_video_details(["video1_____", "video2_____"])
 
+        # Now returns list[YouTubeVideoResponse]
         assert len(result) == 2
-        assert result[0]["id"] == "video1"
-        assert result[1]["id"] == "video2"
+        assert result[0].id == "video1_____"
+        assert result[1].id == "video2_____"
+        assert result[0].snippet is not None
+        assert result[0].snippet.title == "Video 1"
 
     @pytest.mark.asyncio
     async def test_get_video_details_empty_list(
@@ -252,13 +465,17 @@ class TestYouTubeService:
 
     @pytest.mark.asyncio
     async def test_get_my_playlists_success(self, youtube_service, mock_service_client):
-        """Test successful get_my_playlists."""
+        """Test successful get_my_playlists returns list[YouTubePlaylistResponse]."""
         youtube_service._service = mock_service_client
 
         mock_response = {
             "items": [
-                {"id": "playlist1", "snippet": {"title": "My Playlist 1"}},
-                {"id": "playlist2", "snippet": {"title": "My Playlist 2"}},
+                make_playlist_response(
+                    playlist_id="PLtest12345678901234567891", title="My Playlist 1"
+                ),
+                make_playlist_response(
+                    playlist_id="PLtest12345678901234567892", title="My Playlist 2"
+                ),
             ]
         }
 
@@ -268,25 +485,28 @@ class TestYouTubeService:
 
         result = await youtube_service.get_my_playlists(max_results=25)
 
+        # Now returns list[YouTubePlaylistResponse]
         assert len(result) == 2
-        assert result[0]["id"] == "playlist1"
-        assert result[1]["id"] == "playlist2"
+        assert result[0].id == "PLtest12345678901234567891"
+        assert result[1].id == "PLtest12345678901234567892"
+        assert result[0].snippet is not None
+        assert result[0].snippet.title == "My Playlist 1"
 
     @pytest.mark.asyncio
     async def test_get_playlist_videos_success(
         self, youtube_service, mock_service_client
     ):
-        """Test successful get_playlist_videos."""
+        """Test successful get_playlist_videos returns list[YouTubePlaylistItemResponse]."""
         youtube_service._service = mock_service_client
 
         mock_response = {
             "items": [
-                {
-                    "snippet": {
-                        "resourceId": {"videoId": "video1"},
-                        "title": "Playlist Video 1",
-                    }
-                }
+                make_playlist_item_response(
+                    item_id="item1",
+                    video_id="video1_____",
+                    playlist_id="PLtest12345678901234567890",
+                    title="Playlist Video 1",
+                )
             ]
         }
 
@@ -294,19 +514,22 @@ class TestYouTubeService:
         mock_request.execute.return_value = mock_response
         mock_service_client.playlistItems.return_value.list.return_value = mock_request
 
-        result = await youtube_service.get_playlist_videos("PLtest123")
+        result = await youtube_service.get_playlist_videos("PLtest12345678901234567890")
 
+        # Now returns list[YouTubePlaylistItemResponse]
         assert len(result) == 1
-        assert result[0]["snippet"]["resourceId"]["videoId"] == "video1"
+        assert result[0].snippet is not None
+        assert result[0].snippet.resource_id is not None
+        assert result[0].snippet.resource_id.video_id == "video1_____"
 
     @pytest.mark.asyncio
     async def test_search_my_videos_success(self, youtube_service, mock_service_client):
-        """Test successful search_my_videos."""
+        """Test successful search_my_videos returns list[YouTubeSearchResponse]."""
         youtube_service._service = mock_service_client
 
         mock_response = {
             "items": [
-                {"id": {"videoId": "search1"}, "snippet": {"title": "Search Result 1"}}
+                make_search_response(video_id="search1____", title="Search Result 1")
             ]
         }
 
@@ -316,19 +539,26 @@ class TestYouTubeService:
 
         result = await youtube_service.search_my_videos("test query")
 
+        # Now returns list[YouTubeSearchResponse]
         assert len(result) == 1
-        assert result[0]["id"]["videoId"] == "search1"
+        assert result[0].id is not None
+        assert result[0].id.video_id == "search1____"
 
     @pytest.mark.asyncio
     async def test_get_video_captions_success(
         self, youtube_service, mock_service_client
     ):
-        """Test successful get_video_captions."""
+        """Test successful get_video_captions returns list[YouTubeCaptionResponse]."""
         youtube_service._service = mock_service_client
 
         mock_response = {
             "items": [
-                {"id": "caption1", "snippet": {"language": "en", "name": "English"}}
+                make_caption_response(
+                    caption_id="caption_123",
+                    video_id="video123___",
+                    language="en",
+                    name="English",
+                )
             ]
         }
 
@@ -336,27 +566,29 @@ class TestYouTubeService:
         mock_request.execute.return_value = mock_response
         mock_service_client.captions.return_value.list.return_value = mock_request
 
-        result = await youtube_service.get_video_captions("video123")
+        result = await youtube_service.get_video_captions("video123___")
 
+        # Now returns list[YouTubeCaptionResponse]
         assert len(result) == 1
-        assert result[0]["snippet"]["language"] == "en"
+        assert result[0].snippet is not None
+        assert result[0].snippet.language == "en"
 
     @pytest.mark.asyncio
     async def test_get_liked_videos_success(self, youtube_service, mock_service_client):
-        """Test successful get_liked_videos."""
+        """Test successful get_liked_videos returns list[YouTubeVideoResponse]."""
         youtube_service._service = mock_service_client
 
         # Mock channel response for liked playlist ID
         mock_channel_response = {
-            "items": [{"contentDetails": {"relatedPlaylists": {"likes": "LLtest123"}}}]
+            "items": [{"contentDetails": {"relatedPlaylists": {"likes": "LLtest12345678901234567890"}}}]
         }
 
         # Mock playlist items response
-        mock_playlist_response = {"items": [{"contentDetails": {"videoId": "video1"}}]}
+        mock_playlist_response = {"items": [{"contentDetails": {"videoId": "video1_____"}}]}
 
-        # Mock video details response
+        # Mock video details response with all required fields
         mock_video_response = {
-            "items": [{"id": "video1", "snippet": {"title": "Liked Video 1"}}]
+            "items": [make_video_response(video_id="video1_____", title="Liked Video 1")]
         }
 
         # Mock the three API calls
@@ -372,24 +604,26 @@ class TestYouTubeService:
 
         result = await youtube_service.get_liked_videos(max_results=5)
 
+        # Now returns list[YouTubeVideoResponse]
         assert len(result) == 1
-        assert result[0]["id"] == "video1"
+        assert result[0].id == "video1_____"
+        assert result[0].snippet is not None
+        assert result[0].snippet.title == "Liked Video 1"
 
     @pytest.mark.asyncio
     async def test_get_subscription_channels_success(
         self, youtube_service, mock_service_client
     ):
-        """Test successful get_subscription_channels."""
+        """Test successful get_subscription_channels returns list[YouTubeSubscriptionResponse]."""
         youtube_service._service = mock_service_client
 
         mock_response = {
             "items": [
-                {
-                    "snippet": {
-                        "resourceId": {"channelId": "UC123"},
-                        "title": "Subscribed Channel",
-                    }
-                }
+                make_subscription_response(
+                    subscription_id="sub_123",
+                    subscribed_channel_id="UCsubscribed1234567890",
+                    title="Subscribed Channel",
+                )
             ]
         }
 
@@ -399,8 +633,11 @@ class TestYouTubeService:
 
         result = await youtube_service.get_subscription_channels()
 
+        # Now returns list[YouTubeSubscriptionResponse]
         assert len(result) == 1
-        assert result[0]["snippet"]["resourceId"]["channelId"] == "UC123"
+        assert result[0].snippet is not None
+        assert result[0].snippet.resource_id is not None
+        assert result[0].snippet.resource_id.channel_id == "UCsubscribed1234567890"
 
 
 class TestYouTubeServiceErrorHandling:
@@ -593,15 +830,15 @@ class TestYouTubeServiceEdgeCases:
     async def test_multiple_service_method_calls(
         self, youtube_service, mock_service_client
     ):
-        """Test multiple consecutive service method calls."""
+        """Test multiple consecutive service method calls return typed models."""
         youtube_service._service = mock_service_client
 
-        # Mock responses for different methods
+        # Mock responses for different methods with all required fields
         mock_channel_response = {
-            "items": [{"id": "UC123", "snippet": {"title": "Test"}}]
+            "items": [make_channel_response(channel_id="UC12345678901234567890", title="Test")]
         }
         mock_video_response = {
-            "items": [{"id": "video1", "snippet": {"title": "Video"}}]
+            "items": [make_video_response(video_id="video1_____", title="Video")]
         }
 
         mock_request1 = MagicMock()
@@ -614,11 +851,13 @@ class TestYouTubeServiceEdgeCases:
 
         # Call multiple methods
         channel_result = await youtube_service.get_my_channel()
-        video_result = await youtube_service.get_video_details(["video1"])
+        video_result = await youtube_service.get_video_details(["video1_____"])
 
-        assert channel_result["id"] == "UC123"
+        # Both return typed models
+        assert channel_result is not None
+        assert channel_result.id == "UC12345678901234567890"
         assert len(video_result) == 1
-        assert video_result[0]["id"] == "video1"
+        assert video_result[0].id == "video1_____"
 
 
 class TestYouTubeServiceIntegration:
@@ -647,14 +886,14 @@ class TestYouTubeServiceIntegration:
 
     @pytest.mark.asyncio
     async def test_full_workflow_simulation(self, youtube_service):
-        """Test a complete workflow simulation."""
+        """Test a complete workflow simulation with typed models."""
         with patch("chronovista.services.youtube_service.youtube_oauth") as mock_oauth:
             mock_service_client = MagicMock()
             mock_oauth.get_authenticated_service.return_value = mock_service_client
 
-            # Mock channel response
+            # Mock channel response with all required fields
             mock_channel_response = {
-                "items": [{"id": "UC123", "snippet": {"title": "My Channel"}}]
+                "items": [make_channel_response(channel_id="UC12345678901234567890", title="My Channel")]
             }
             mock_request = MagicMock()
             mock_request.execute.return_value = mock_channel_response
@@ -662,12 +901,13 @@ class TestYouTubeServiceIntegration:
 
             # Simulate workflow: get channel, then get videos
             channel = await youtube_service.get_my_channel()
-            assert channel["id"] == "UC123"
+            assert channel is not None
+            assert channel.id == "UC12345678901234567890"
 
             # Mock videos response for channel videos
             mock_channel_detail_response = {
                 "items": [
-                    {"contentDetails": {"relatedPlaylists": {"uploads": "UUtest123"}}}
+                    {"contentDetails": {"relatedPlaylists": {"uploads": "UUtest123456789012345"}}}
                 ]
             }
             mock_video_response: Dict[str, Any] = {"items": []}
@@ -689,7 +929,7 @@ class TestYouTubeServiceIntegration:
                 mock_request3
             )
 
-            videos = await youtube_service.get_channel_videos("UC123")
+            videos = await youtube_service.get_channel_videos("UC12345678901234567890")
             assert videos == []
 
 
@@ -920,25 +1160,11 @@ class TestYouTubeServiceMissingCoverage:
     async def test_get_video_categories_success(
         self, youtube_service, mock_service_client
     ):
-        """Test successful video categories retrieval."""
-        # Mock response data
+        """Test successful video categories retrieval returns list[YouTubeVideoCategoryResponse]."""
+        # Mock response data with all required fields
         mock_categories = [
-            {
-                "id": "1",
-                "snippet": {
-                    "title": "Film & Animation",
-                    "channelId": "UCBR8-60-B28hp2BmDPdntcQ",
-                    "assignable": True,
-                },
-            },
-            {
-                "id": "10",
-                "snippet": {
-                    "title": "Music",
-                    "channelId": "UCBR8-60-B28hp2BmDPdntcQ",
-                    "assignable": True,
-                },
-            },
+            make_category_response(category_id="1", title="Film & Animation"),
+            make_category_response(category_id="10", title="Music"),
         ]
 
         mock_response = {"items": mock_categories}
@@ -960,11 +1186,12 @@ class TestYouTubeServiceMissingCoverage:
             part="id,snippet", regionCode="US"
         )
 
-        # Verify result
-        assert result == mock_categories
+        # Verify result - now returns list[YouTubeVideoCategoryResponse]
         assert len(result) == 2
-        assert result[0]["snippet"]["title"] == "Film & Animation"
-        assert result[1]["snippet"]["title"] == "Music"
+        assert result[0].snippet is not None
+        assert result[0].snippet.title == "Film & Animation"
+        assert result[1].snippet is not None
+        assert result[1].snippet.title == "Music"
 
     @pytest.mark.asyncio
     async def test_get_video_categories_invalid_region_code(self, youtube_service):
@@ -1028,8 +1255,8 @@ class TestYouTubeServiceMissingCoverage:
         self, youtube_service, mock_service_client
     ):
         """Test video categories with lowercase region code."""
-        # Mock response
-        mock_categories = [{"id": "1", "snippet": {"title": "Film & Animation"}}]
+        # Mock response with all required fields
+        mock_categories = [make_category_response(category_id="1", title="Film & Animation")]
         mock_response = {"items": mock_categories}
         mock_request = MagicMock()
         mock_request.execute.return_value = mock_response
@@ -1048,4 +1275,7 @@ class TestYouTubeServiceMissingCoverage:
             part="id,snippet", regionCode="GB"
         )
 
-        assert result == mock_categories
+        # Now returns list[YouTubeVideoCategoryResponse]
+        assert len(result) == 1
+        assert result[0].snippet is not None
+        assert result[0].snippet.title == "Film & Animation"

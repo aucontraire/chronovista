@@ -21,11 +21,12 @@ from chronovista.models.topic_category import (
     TopicCategoryStatistics,
     TopicCategoryUpdate,
 )
+from chronovista.models.youtube_types import TopicId
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
 class TopicCategoryRepository(
-    BaseSQLAlchemyRepository[TopicCategoryDB, TopicCategoryCreate, TopicCategoryUpdate]
+    BaseSQLAlchemyRepository[TopicCategoryDB, TopicCategoryCreate, TopicCategoryUpdate, str]
 ):
     """Repository for topic category operations."""
 

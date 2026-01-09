@@ -24,7 +24,7 @@ from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
 class VideoTopicRepository(
-    BaseSQLAlchemyRepository[VideoTopicDB, VideoTopicCreate, VideoTopicUpdate]
+    BaseSQLAlchemyRepository[VideoTopicDB, VideoTopicCreate, VideoTopicUpdate, Tuple[str, str]]
 ):
     """Repository for video topic operations."""
 

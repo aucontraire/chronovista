@@ -8,7 +8,7 @@ with realistic and consistent test data.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, cast
+from typing import Any, Any, Dict, List, cast
 
 import factory
 from factory import LazyFunction
@@ -16,42 +16,42 @@ from factory import LazyFunction
 from chronovista.models.takeout.takeout_data import TakeoutWatchEntry
 
 
-class TakeoutWatchEntryFactory(factory.Factory):
+class TakeoutWatchEntryFactory(factory.Factory[TakeoutWatchEntry]):
     """Factory for TakeoutWatchEntry models."""
 
     class Meta:
         model = TakeoutWatchEntry
 
     # Required fields
-    title = factory.LazyFunction(
+    title: Any = factory.LazyFunction(
         lambda: "Watched Rick Astley - Never Gonna Give You Up (Official Video)"
     )
-    title_url = factory.LazyFunction(
+    title_url: Any = factory.LazyFunction(
         lambda: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
     )
 
     # Optional fields with realistic defaults
-    video_id = factory.LazyFunction(lambda: "dQw4w9WgXcQ")
-    channel_name = factory.LazyFunction(lambda: "Rick Astley")
-    channel_url = factory.LazyFunction(
+    video_id: Any = factory.LazyFunction(lambda: "dQw4w9WgXcQ")
+    channel_name: Any = factory.LazyFunction(lambda: "Rick Astley")
+    channel_url: Any = factory.LazyFunction(
         lambda: "https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw"
     )
-    channel_id = factory.LazyFunction(lambda: "UCuAXFkgsw1L7xaCfnd5JJOw")
-    watched_at = factory.LazyFunction(
+    channel_id: Any = factory.LazyFunction(lambda: "UCuAXFkgsw1L7xaCfnd5JJOw")
+    watched_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 6, 15, 14, 30, 0, tzinfo=timezone.utc)
     )
-    raw_time = factory.LazyFunction(lambda: "2023-06-15T14:30:00Z")
+    raw_time: Any = factory.LazyFunction(lambda: "2023-06-15T14:30:00Z")
 
 
-class TakeoutWatchEntryMinimalFactory(factory.Factory):
+class TakeoutWatchEntryMinimalFactory(factory.Factory[TakeoutWatchEntry]):
     """Factory for TakeoutWatchEntry models with only required fields."""
 
     class Meta:
         model = TakeoutWatchEntry
 
     # Only required fields
-    title = factory.LazyFunction(lambda: "Watched Python Tutorial - Complete Course")
-    title_url = factory.LazyFunction(
+    title: Any = factory.LazyFunction(lambda: "Watched Python Tutorial - Complete Course")
+    title_url: Any = factory.LazyFunction(
         lambda: "https://www.youtube.com/watch?v=9bZkp7q19f0"
     )
 
@@ -64,52 +64,52 @@ class TakeoutWatchEntryMinimalFactory(factory.Factory):
     raw_time = None
 
 
-class TakeoutWatchEntryWithTimeFactory(factory.Factory):
+class TakeoutWatchEntryWithTimeFactory(factory.Factory[TakeoutWatchEntry]):
     """Factory for TakeoutWatchEntry models with realistic time data."""
 
     class Meta:
         model = TakeoutWatchEntry
 
-    title = factory.LazyFunction(
+    title: Any = factory.LazyFunction(
         lambda: "Watched The Late Show with Stephen Colbert - Best Moments 2023"
     )
-    title_url = factory.LazyFunction(
+    title_url: Any = factory.LazyFunction(
         lambda: "https://www.youtube.com/watch?v=3tmd-ClpJxA"
     )
-    video_id = factory.LazyFunction(lambda: "3tmd-ClpJxA")
-    channel_name = factory.LazyFunction(lambda: "The Late Show with Stephen Colbert")
-    channel_url = factory.LazyFunction(
+    video_id: Any = factory.LazyFunction(lambda: "3tmd-ClpJxA")
+    channel_name: Any = factory.LazyFunction(lambda: "The Late Show with Stephen Colbert")
+    channel_url: Any = factory.LazyFunction(
         lambda: "https://www.youtube.com/channel/UCMtFAi84ehTSYSE9XoHefig"
     )
-    channel_id = factory.LazyFunction(lambda: "UCMtFAi84ehTSYSE9XoHefig")
-    watched_at = factory.LazyFunction(
+    channel_id: Any = factory.LazyFunction(lambda: "UCMtFAi84ehTSYSE9XoHefig")
+    watched_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 12, 15, 23, 35, 0, tzinfo=timezone.utc)
     )
-    raw_time = factory.LazyFunction(lambda: "2023-12-15T23:35:00Z")
+    raw_time: Any = factory.LazyFunction(lambda: "2023-12-15T23:35:00Z")
 
 
-class TakeoutWatchEntryTechFactory(factory.Factory):
+class TakeoutWatchEntryTechFactory(factory.Factory[TakeoutWatchEntry]):
     """Factory for TakeoutWatchEntry models with tech content."""
 
     class Meta:
         model = TakeoutWatchEntry
 
-    title = factory.LazyFunction(
+    title: Any = factory.LazyFunction(
         lambda: "Watched Google I/O 2023: What's new in Machine Learning"
     )
-    title_url = factory.LazyFunction(
+    title_url: Any = factory.LazyFunction(
         lambda: "https://www.youtube.com/watch?v=jNQXAC9IVRw"
     )
-    video_id = factory.LazyFunction(lambda: "jNQXAC9IVRw")
-    channel_name = factory.LazyFunction(lambda: "Google Developers")
-    channel_url = factory.LazyFunction(
+    video_id: Any = factory.LazyFunction(lambda: "jNQXAC9IVRw")
+    channel_name: Any = factory.LazyFunction(lambda: "Google Developers")
+    channel_url: Any = factory.LazyFunction(
         lambda: "https://www.youtube.com/channel/UC_x5XG1OV2P6uZZ5FSM9Ttw"
     )
-    channel_id = factory.LazyFunction(lambda: "UC_x5XG1OV2P6uZZ5FSM9Ttw")
-    watched_at = factory.LazyFunction(
+    channel_id: Any = factory.LazyFunction(lambda: "UC_x5XG1OV2P6uZZ5FSM9Ttw")
+    watched_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 5, 10, 17, 0, 0, tzinfo=timezone.utc)
     )
-    raw_time = factory.LazyFunction(lambda: "2023-05-10T17:00:00Z")
+    raw_time: Any = factory.LazyFunction(lambda: "2023-05-10T17:00:00Z")
 
 
 # Test data constants for validation testing
@@ -214,22 +214,30 @@ class TakeoutWatchEntryTestData:
 # Convenience factory functions
 def create_takeout_watch_entry(**kwargs: Any) -> TakeoutWatchEntry:
     """Create a TakeoutWatchEntry with optional overrides."""
-    return cast(TakeoutWatchEntry, TakeoutWatchEntryFactory.build(**kwargs))
+    result = TakeoutWatchEntryFactory.build(**kwargs)
+    assert isinstance(result, TakeoutWatchEntry)
+    return result
 
 
 def create_minimal_takeout_watch_entry(**kwargs: Any) -> TakeoutWatchEntry:
     """Create a minimal TakeoutWatchEntry with only required fields."""
-    return cast(TakeoutWatchEntry, TakeoutWatchEntryMinimalFactory.build(**kwargs))
+    result = TakeoutWatchEntryMinimalFactory.build(**kwargs)
+    assert isinstance(result, TakeoutWatchEntry)
+    return result
 
 
 def create_takeout_watch_entry_with_time(**kwargs: Any) -> TakeoutWatchEntry:
     """Create a TakeoutWatchEntry with realistic time data."""
-    return cast(TakeoutWatchEntry, TakeoutWatchEntryWithTimeFactory.build(**kwargs))
+    result = TakeoutWatchEntryWithTimeFactory.build(**kwargs)
+    assert isinstance(result, TakeoutWatchEntry)
+    return result
 
 
 def create_tech_takeout_watch_entry(**kwargs: Any) -> TakeoutWatchEntry:
     """Create a TakeoutWatchEntry with tech content."""
-    return cast(TakeoutWatchEntry, TakeoutWatchEntryTechFactory.build(**kwargs))
+    result = TakeoutWatchEntryTechFactory.build(**kwargs)
+    assert isinstance(result, TakeoutWatchEntry)
+    return result
 
 
 def create_batch_takeout_watch_entries(count: int = 5) -> List[TakeoutWatchEntry]:

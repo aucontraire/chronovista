@@ -7,38 +7,38 @@ with realistic and consistent test data.
 
 from __future__ import annotations
 
-from typing import Any, List, cast
+from typing import Any, Any, List, cast
 
 import factory
 
 from chronovista.models.takeout.takeout_data import TakeoutSubscription
 
 
-class TakeoutSubscriptionFactory(factory.Factory):
+class TakeoutSubscriptionFactory(factory.Factory[TakeoutSubscription]):
     """Factory for TakeoutSubscription models."""
 
     class Meta:
         model = TakeoutSubscription
 
     # Required fields
-    channel_title = factory.LazyFunction(lambda: "Rick Astley")
-    channel_url = factory.LazyFunction(
+    channel_title: Any = factory.LazyFunction(lambda: "Rick Astley")
+    channel_url: Any = factory.LazyFunction(
         lambda: "https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw"
     )
 
     # Optional fields with realistic defaults
-    channel_id = factory.LazyFunction(lambda: "UCuAXFkgsw1L7xaCfnd5JJOw")
+    channel_id: Any = factory.LazyFunction(lambda: "UCuAXFkgsw1L7xaCfnd5JJOw")
 
 
-class TakeoutSubscriptionMinimalFactory(factory.Factory):
+class TakeoutSubscriptionMinimalFactory(factory.Factory[TakeoutSubscription]):
     """Factory for TakeoutSubscription models with only required fields."""
 
     class Meta:
         model = TakeoutSubscription
 
     # Only required fields
-    channel_title = factory.LazyFunction(lambda: "Python Tutorials")
-    channel_url = factory.LazyFunction(
+    channel_title: Any = factory.LazyFunction(lambda: "Python Tutorials")
+    channel_url: Any = factory.LazyFunction(
         lambda: "https://www.youtube.com/channel/UC_x5XG1OV2P6uZZ5FSM9Ttw"
     )
 
@@ -46,53 +46,53 @@ class TakeoutSubscriptionMinimalFactory(factory.Factory):
     channel_id = None
 
 
-class TakeoutSubscriptionTechFactory(factory.Factory):
+class TakeoutSubscriptionTechFactory(factory.Factory[TakeoutSubscription]):
     """Factory for TakeoutSubscription models with tech channels."""
 
     class Meta:
         model = TakeoutSubscription
 
-    channel_title = factory.LazyFunction(lambda: "Google Developers")
-    channel_url = factory.LazyFunction(
+    channel_title: Any = factory.LazyFunction(lambda: "Google Developers")
+    channel_url: Any = factory.LazyFunction(
         lambda: "https://www.youtube.com/channel/UC_x5XG1OV2P6uZZ5FSM9Ttw"
     )
-    channel_id = factory.LazyFunction(lambda: "UC_x5XG1OV2P6uZZ5FSM9Ttw")
+    channel_id: Any = factory.LazyFunction(lambda: "UC_x5XG1OV2P6uZZ5FSM9Ttw")
 
 
-class TakeoutSubscriptionMusicFactory(factory.Factory):
+class TakeoutSubscriptionMusicFactory(factory.Factory[TakeoutSubscription]):
     """Factory for TakeoutSubscription models with music channels."""
 
     class Meta:
         model = TakeoutSubscription
 
-    channel_title = factory.LazyFunction(lambda: "Rick Astley")
-    channel_url = factory.LazyFunction(
+    channel_title: Any = factory.LazyFunction(lambda: "Rick Astley")
+    channel_url: Any = factory.LazyFunction(
         lambda: "https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw"
     )
-    channel_id = factory.LazyFunction(lambda: "UCuAXFkgsw1L7xaCfnd5JJOw")
+    channel_id: Any = factory.LazyFunction(lambda: "UCuAXFkgsw1L7xaCfnd5JJOw")
 
 
-class TakeoutSubscriptionCustomUrlFactory(factory.Factory):
+class TakeoutSubscriptionCustomUrlFactory(factory.Factory[TakeoutSubscription]):
     """Factory for TakeoutSubscription models with custom URL (no channel ID extractable)."""
 
     class Meta:
         model = TakeoutSubscription
 
-    channel_title = factory.LazyFunction(lambda: "Custom Channel")
-    channel_url = factory.LazyFunction(
+    channel_title: Any = factory.LazyFunction(lambda: "Custom Channel")
+    channel_url: Any = factory.LazyFunction(
         lambda: "https://www.youtube.com/c/CustomChannelName"
     )
     channel_id = None  # Cannot extract from custom URL
 
 
-class TakeoutSubscriptionHandleFactory(factory.Factory):
+class TakeoutSubscriptionHandleFactory(factory.Factory[TakeoutSubscription]):
     """Factory for TakeoutSubscription models with handle URL (no channel ID extractable)."""
 
     class Meta:
         model = TakeoutSubscription
 
-    channel_title = factory.LazyFunction(lambda: "Handle Channel")
-    channel_url = factory.LazyFunction(lambda: "https://www.youtube.com/@handlechannel")
+    channel_title: Any = factory.LazyFunction(lambda: "Handle Channel")
+    channel_url: Any = factory.LazyFunction(lambda: "https://www.youtube.com/@handlechannel")
     channel_id = None  # Cannot extract from handle URL
 
 
@@ -153,34 +153,44 @@ class TakeoutSubscriptionTestData:
 # Convenience factory functions
 def create_takeout_subscription(**kwargs: Any) -> TakeoutSubscription:
     """Create a TakeoutSubscription with optional overrides."""
-    return cast(TakeoutSubscription, TakeoutSubscriptionFactory.build(**kwargs))
+    result = TakeoutSubscriptionFactory.build(**kwargs)
+    assert isinstance(result, TakeoutSubscription)
+    return result
 
 
 def create_minimal_takeout_subscription(**kwargs: Any) -> TakeoutSubscription:
     """Create a minimal TakeoutSubscription with only required fields."""
-    return cast(TakeoutSubscription, TakeoutSubscriptionMinimalFactory.build(**kwargs))
+    result = TakeoutSubscriptionMinimalFactory.build(**kwargs)
+    assert isinstance(result, TakeoutSubscription)
+    return result
 
 
 def create_tech_takeout_subscription(**kwargs: Any) -> TakeoutSubscription:
     """Create a TakeoutSubscription with tech channel."""
-    return cast(TakeoutSubscription, TakeoutSubscriptionTechFactory.build(**kwargs))
+    result = TakeoutSubscriptionTechFactory.build(**kwargs)
+    assert isinstance(result, TakeoutSubscription)
+    return result
 
 
 def create_music_takeout_subscription(**kwargs: Any) -> TakeoutSubscription:
     """Create a TakeoutSubscription with music channel."""
-    return cast(TakeoutSubscription, TakeoutSubscriptionMusicFactory.build(**kwargs))
+    result = TakeoutSubscriptionMusicFactory.build(**kwargs)
+    assert isinstance(result, TakeoutSubscription)
+    return result
 
 
 def create_custom_url_takeout_subscription(**kwargs: Any) -> TakeoutSubscription:
     """Create a TakeoutSubscription with custom URL."""
-    return cast(
-        TakeoutSubscription, TakeoutSubscriptionCustomUrlFactory.build(**kwargs)
-    )
+    result = TakeoutSubscriptionCustomUrlFactory.build(**kwargs)
+    assert isinstance(result, TakeoutSubscription)
+    return result
 
 
 def create_handle_takeout_subscription(**kwargs: Any) -> TakeoutSubscription:
     """Create a TakeoutSubscription with handle URL."""
-    return cast(TakeoutSubscription, TakeoutSubscriptionHandleFactory.build(**kwargs))
+    result = TakeoutSubscriptionHandleFactory.build(**kwargs)
+    assert isinstance(result, TakeoutSubscription)
+    return result
 
 
 def create_batch_takeout_subscriptions(count: int = 5) -> List[TakeoutSubscription]:

@@ -22,11 +22,12 @@ from chronovista.models.playlist import (
     PlaylistStatistics,
     PlaylistUpdate,
 )
+from chronovista.models.youtube_types import PlaylistId
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
 class PlaylistRepository(
-    BaseSQLAlchemyRepository[PlaylistDB, PlaylistCreate, PlaylistUpdate]
+    BaseSQLAlchemyRepository[PlaylistDB, PlaylistCreate, PlaylistUpdate, str]
 ):
     """Repository for playlist operations."""
 

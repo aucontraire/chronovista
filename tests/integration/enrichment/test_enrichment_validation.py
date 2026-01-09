@@ -653,7 +653,7 @@ class TestT105FinalIntegrationFlow:
         # Return different counts for each tier
         counts = iter([10, 50, 200, 30])
 
-        def make_result():
+        def make_result() -> MagicMock:
             mock_result = MagicMock()
             mock_result.scalar.return_value = next(counts)
             return mock_result
@@ -904,12 +904,14 @@ class TestEnrichmentReportDetailStatus:
 
     def test_valid_status_values(self) -> None:
         """Test that all valid status values are accepted."""
+        from typing import Literal, cast
+
         valid_statuses = ["updated", "deleted", "error", "skipped"]
 
         for status in valid_statuses:
             detail = EnrichmentDetail(
                 video_id="test_vid",
-                status=status,
+                status=cast(Literal["updated", "deleted", "error", "skipped"], status),
             )
             assert detail.status == status
 
@@ -926,7 +928,9 @@ class TestEnrichmentReportDetailStatus:
         )
 
         assert detail.status == "updated"
+        assert detail.old_title is not None
         assert detail.old_title.startswith("[Placeholder]")
+        assert detail.new_title is not None
         assert not detail.new_title.startswith("[Placeholder]")
         assert detail.tags_count == 5
         assert detail.topics_count == 3

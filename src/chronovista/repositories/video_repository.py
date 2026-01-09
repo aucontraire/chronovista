@@ -32,6 +32,7 @@ class VideoRepository(
         VideoDB,
         VideoCreate,
         VideoUpdate,
+        VideoId,
     ]
 ):
     """Repository for YouTube video management with multi-language support."""

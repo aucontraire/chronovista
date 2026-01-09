@@ -41,6 +41,9 @@ from chronovista.services.enrichment.enrichment_service import (
 )
 from chronovista.services.enrichment.shutdown_handler import get_shutdown_handler
 
+# Export symbols used by tests
+__all__ = ["BATCH_SIZE", "estimate_quota_cost", "app"]
+
 app = typer.Typer(help="Enrich video metadata from YouTube API")
 console = Console()
 
@@ -237,6 +240,11 @@ def enrich_videos(
         "--refresh-topics",
         help="Re-enrich ALL videos to refresh topic associations (ignores priority filters)",
     ),
+    sync_likes: bool = typer.Option(
+        False,
+        "--sync-likes",
+        help="After enrichment, sync liked status for existing videos from YouTube API (~2 extra quota units)",
+    ),
     output: Optional[Path] = typer.Option(
         None,
         "--output",
@@ -272,6 +280,7 @@ def enrich_videos(
         chronovista enrich run --auto-seed
         chronovista enrich run --verbose
         chronovista enrich run --refresh-topics
+        chronovista enrich run --sync-likes
         chronovista enrich run --output ./my-report.json
         chronovista enrich run -o ./exports/enrichment.json
     """
@@ -425,6 +434,7 @@ def enrich_videos(
                 )
                 config_table.add_row("Auto-Seed", "Yes" if auto_seed else "No")
                 config_table.add_row("Refresh Topics", "Yes" if refresh_topics else "No")
+                config_table.add_row("Sync Likes", "Yes" if sync_likes else "No")
                 config_table.add_row("Verbose", "Yes" if verbose else "No")
                 config_table.add_row("Dry Run", "Yes" if dry_run else "No")
                 console.print(config_table)
@@ -572,6 +582,84 @@ def enrich_videos(
                             )
                             raise typer.Exit(EXIT_CODE_INTERRUPTED)
 
+                    # Sync liked videos if enabled
+                    likes_synced = 0
+                    likes_skipped = 0
+                    if sync_likes and not dry_run:
+                        progress.update(task, description="Syncing liked videos...")
+                        try:
+                            from chronovista.repositories.user_video_repository import (
+                                UserVideoRepository,
+                            )
+                            from chronovista.repositories.video_repository import (
+                                VideoRepository as VR,
+                            )
+
+                            user_video_repo = UserVideoRepository()
+                            video_repo_for_likes = VR()
+
+                            # Get user's channel ID
+                            my_channel = await youtube_service.get_my_channel()
+                            if my_channel:
+                                user_id = my_channel.id
+
+                                # Fetch all liked videos from YouTube API (no artificial limit)
+                                liked_videos = await youtube_service.get_liked_videos()
+
+                                if liked_videos:
+                                    # Categorize into existing vs missing
+                                    existing_video_ids = []
+                                    for video in liked_videos:
+                                        if await video_repo_for_likes.exists(
+                                            session, video.id
+                                        ):
+                                            existing_video_ids.append(video.id)
+                                        else:
+                                            likes_skipped += 1
+
+                                    # Batch update liked status for existing videos
+                                    if existing_video_ids:
+                                        likes_synced = (
+                                            await user_video_repo.update_like_status_batch(
+                                                session,
+                                                user_id,
+                                                existing_video_ids,
+                                                liked=True,
+                                            )
+                                        )
+                                        await session.commit()
+
+                        except QuotaExceededException:
+                            progress.stop()
+                            console.print(
+                                Panel(
+                                    "[red]Quota exceeded during liked video sync![/red]\n\n"
+                                    "Video enrichment completed successfully.\n"
+                                    "Liked video sync was partial.",
+                                    title="Quota Exceeded",
+                                    border_style="red",
+                                )
+                            )
+                            raise typer.Exit(EXIT_CODE_QUOTA_EXCEEDED)
+
+                        except GracefulShutdownException:
+                            progress.stop()
+                            console.print(
+                                Panel(
+                                    "[yellow]Shutdown during liked video sync[/yellow]\n\n"
+                                    "Video enrichment completed. Liked sync was partial.",
+                                    title="Graceful Shutdown",
+                                    border_style="yellow",
+                                )
+                            )
+                            raise typer.Exit(EXIT_CODE_INTERRUPTED)
+
+                        except Exception as e:
+                            # Non-fatal error - log and continue
+                            console.print(
+                                f"[yellow]Warning: Could not sync liked videos: {e}[/yellow]"
+                            )
+
                     progress.update(task, description="Enrichment complete!")
 
                 # Display results
@@ -604,6 +692,16 @@ def enrich_videos(
                                 f"Playlists Processed: [cyan]{summary.playlists_processed}[/cyan]",
                                 f"Playlists Updated: [green]{summary.playlists_updated}[/green]",
                                 f"Playlists Deleted: [red]{summary.playlists_deleted}[/red]",
+                            ]
+                        )
+
+                    # Add liked video sync stats if sync was performed
+                    if sync_likes and (likes_synced > 0 or likes_skipped > 0):
+                        summary_lines.extend(
+                            [
+                                "",  # Blank line for visual separation
+                                f"Liked Videos Synced: [green]{likes_synced}[/green]",
+                                f"Liked Videos Skipped (not in DB): [dim]{likes_skipped}[/dim]",
                             ]
                         )
 

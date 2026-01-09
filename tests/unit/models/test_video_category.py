@@ -214,7 +214,7 @@ class TestVideoCategoryUpdate:
 
     def test_create_empty_video_category_update(self):
         """Test creating empty VideoCategoryUpdate (all fields None)."""
-        update = VideoCategoryUpdate()
+        update = VideoCategoryUpdate(name=None, assignable=None)
 
         assert update.name is None
         assert update.assignable is None
@@ -228,7 +228,7 @@ class TestVideoCategoryUpdate:
 
     def test_partial_update_assignable_only(self):
         """Test partial update with assignable only."""
-        update = VideoCategoryUpdate(assignable=True)
+        update = VideoCategoryUpdate(name=None, assignable=True)
 
         assert update.name is None
         assert update.assignable is True
@@ -330,19 +330,21 @@ class TestVideoCategory:
         """Test that timestamps are required fields."""
         # Missing created_at
         with pytest.raises(ValidationError):
-            VideoCategory(
-                category_id="1",
-                name="Test",
-                updated_at=datetime.now(timezone.utc),
-            )
+            VideoCategory.model_validate({
+                "category_id": "1",
+                "name": "Test",
+                "assignable": True,
+                "updated_at": datetime.now(timezone.utc),
+            })
 
         # Missing updated_at
         with pytest.raises(ValidationError):
-            VideoCategory(
-                category_id="1",
-                name="Test",
-                created_at=datetime.now(timezone.utc),
-            )
+            VideoCategory.model_validate({
+                "category_id": "1",
+                "name": "Test",
+                "assignable": True,
+                "created_at": datetime.now(timezone.utc),
+            })
 
     def test_model_dump_includes_timestamps(self):
         """Test model_dump() includes timestamp fields."""

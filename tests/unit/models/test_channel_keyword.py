@@ -8,6 +8,7 @@ for all ChannelKeyword model variants using factory pattern for DRY.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import cast
 
 import pytest
 from pydantic import ValidationError
@@ -209,11 +210,14 @@ class TestChannelKeyword:
     def test_create_valid_channel_keyword(self):
         """Test creating valid ChannelKeyword with keyword arguments."""
         now = datetime.now(timezone.utc)
-        keyword = ChannelKeywordFactory.build(
-            channel_id="UCsXVk37bltHxD1rDPwtNM8Q",
-            keyword="programming",
-            keyword_order=2,
-            created_at=now,
+        keyword = cast(
+            ChannelKeyword,
+            ChannelKeywordFactory.build(
+                channel_id="UCsXVk37bltHxD1rDPwtNM8Q",
+                keyword="programming",
+                keyword_order=2,
+                created_at=now,
+            ),
         )
 
         assert keyword.channel_id == "UCsXVk37bltHxD1rDPwtNM8Q"
@@ -626,6 +630,9 @@ class TestChannelKeywordModelInteractions:
         no_priority = ChannelKeywordBaseFactory.build(keyword_order=None)
 
         # Higher priority should have lower numbers
+        assert high_priority.keyword_order is not None
+        assert medium_priority.keyword_order is not None
+        assert low_priority.keyword_order is not None
         assert high_priority.keyword_order < medium_priority.keyword_order
         assert medium_priority.keyword_order < low_priority.keyword_order
         assert no_priority.keyword_order is None

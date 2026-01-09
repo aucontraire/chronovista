@@ -3,10 +3,55 @@ Data models module for chronovista.
 
 Defines Pydantic models for representing YouTube data including videos,
 playlists, annotations, and metadata with full type safety and validation.
+
+Includes YouTube API response models for type-safe API parsing (FR-005, FR-006, FR-007).
 """
 
 from __future__ import annotations
 
+from .api_responses import (
+    # Base
+    BaseYouTubeModel,
+    # Supporting models
+    LocalizedString,
+    PageInfo,
+    RegionRestriction,
+    RelatedPlaylists,
+    ResourceId,
+    Thumbnail,
+    TopicDetails,
+    # Snippet models
+    CaptionSnippet,
+    CategorySnippet,
+    ChannelSnippet,
+    PlaylistItemSnippet,
+    PlaylistSnippet,
+    SearchSnippet,
+    SubscriptionSnippet,
+    VideoSnippet,
+    # Statistics models
+    ChannelStatisticsResponse,
+    VideoStatisticsResponse,
+    # ContentDetails models
+    ChannelContentDetails,
+    PlaylistContentDetails,
+    PlaylistItemContentDetails,
+    VideoContentDetails,
+    # Status models
+    ChannelStatus,
+    PlaylistStatus,
+    VideoStatus,
+    # Root response models
+    YouTubeCaptionResponse,
+    YouTubeChannelResponse,
+    YouTubeListResponseMetadata,
+    YouTubePlaylistItemResponse,
+    YouTubePlaylistResponse,
+    YouTubeSearchResponse,
+    YouTubeSubscriptionResponse,
+    YouTubeVideoCategoryResponse,
+    YouTubeVideoResponse,
+)
 from .channel import (
     Channel,
     ChannelBase,
@@ -123,6 +168,48 @@ from .video_transcript import (
 )
 
 __all__ = [
+    # YouTube API Response Models (FR-005, FR-006, FR-007)
+    # Base
+    "BaseYouTubeModel",
+    # Supporting models
+    "Thumbnail",
+    "LocalizedString",
+    "ResourceId",
+    "RegionRestriction",
+    "TopicDetails",
+    "RelatedPlaylists",
+    "PageInfo",
+    # Snippet models
+    "VideoSnippet",
+    "ChannelSnippet",
+    "PlaylistSnippet",
+    "PlaylistItemSnippet",
+    "SearchSnippet",
+    "CaptionSnippet",
+    "SubscriptionSnippet",
+    "CategorySnippet",
+    # Statistics models (API responses)
+    "VideoStatisticsResponse",
+    "ChannelStatisticsResponse",
+    # ContentDetails models
+    "VideoContentDetails",
+    "ChannelContentDetails",
+    "PlaylistContentDetails",
+    "PlaylistItemContentDetails",
+    # Status models
+    "VideoStatus",
+    "PlaylistStatus",
+    "ChannelStatus",
+    # Root response models
+    "YouTubeVideoResponse",
+    "YouTubeChannelResponse",
+    "YouTubePlaylistResponse",
+    "YouTubePlaylistItemResponse",
+    "YouTubeSearchResponse",
+    "YouTubeCaptionResponse",
+    "YouTubeSubscriptionResponse",
+    "YouTubeVideoCategoryResponse",
+    "YouTubeListResponseMetadata",
     # Enums
     "LanguagePreferenceType",
     "TranscriptType",

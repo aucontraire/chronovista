@@ -27,7 +27,10 @@ from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 class VideoLocalizationRepository(
     BaseSQLAlchemyRepository[
-        VideoLocalizationDB, VideoLocalizationCreate, VideoLocalizationUpdate
+        VideoLocalizationDB,
+        VideoLocalizationCreate,
+        VideoLocalizationUpdate,
+        Tuple[str, str],
     ]
 ):
     """Repository for video localization operations."""

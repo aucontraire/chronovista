@@ -10,7 +10,7 @@ import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, Generator, List
 
 import pytest
 
@@ -28,7 +28,7 @@ class TestDiscoverHistoricalTakeouts:
     """Tests for discover_historical_takeouts static method (T025a)."""
 
     @pytest.fixture
-    def temp_takeout_base(self) -> Path:
+    def temp_takeout_base(self) -> Generator[Path, None, None]:
         """Create a temporary base directory for takeouts."""
         temp_dir = Path(tempfile.mkdtemp())
         yield temp_dir
@@ -177,7 +177,7 @@ class TestParseHistoricalWatchHistory:
     """Tests for parse_historical_watch_history method (T025b)."""
 
     @pytest.fixture
-    def temp_takeout_dir(self) -> Path:
+    def temp_takeout_dir(self) -> Generator[Path, None, None]:
         """Create a temporary takeout directory."""
         temp_dir = Path(tempfile.mkdtemp())
         youtube_dir = temp_dir / "YouTube and YouTube Music"
@@ -187,7 +187,7 @@ class TestParseHistoricalWatchHistory:
         shutil.rmtree(temp_dir)
 
     @pytest.fixture
-    def sample_watch_history(self) -> List[dict]:
+    def sample_watch_history(self) -> List[dict[str, Any]]:
         """Sample watch history JSON data."""
         return [
             {
@@ -214,7 +214,7 @@ class TestParseHistoricalWatchHistory:
         ]
 
     async def test_parse_valid_watch_history(
-        self, temp_takeout_dir: Path, sample_watch_history: List[dict]
+        self, temp_takeout_dir: Path, sample_watch_history: List[dict[str, Any]]
     ) -> None:
         """Test parsing a valid watch history file."""
         youtube_dir = temp_takeout_dir / "YouTube and YouTube Music"
@@ -230,6 +230,8 @@ class TestParseHistoricalWatchHistory:
             path=youtube_dir,
             export_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
             has_watch_history=True,
+            has_playlists=False,
+            has_subscriptions=False,
         )
 
         entries = await service.parse_historical_watch_history(takeout)
@@ -254,6 +256,8 @@ class TestParseHistoricalWatchHistory:
             path=youtube_dir,
             export_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
             has_watch_history=True,
+            has_playlists=False,
+            has_subscriptions=False,
         )
 
         entries = await service.parse_historical_watch_history(takeout)
@@ -289,6 +293,8 @@ class TestParseHistoricalWatchHistory:
             path=youtube_dir,
             export_date=datetime.now(timezone.utc),
             has_watch_history=True,
+            has_playlists=False,
+            has_subscriptions=False,
         )
 
         entries = await service.parse_historical_watch_history(takeout)
@@ -326,6 +332,8 @@ class TestParseHistoricalWatchHistory:
             path=youtube_dir,
             export_date=datetime.now(timezone.utc),
             has_watch_history=True,
+            has_playlists=False,
+            has_subscriptions=False,
         )
 
         entries = await service.parse_historical_watch_history(takeout)
@@ -345,6 +353,8 @@ class TestParseHistoricalWatchHistory:
             path=youtube_dir,
             export_date=datetime.now(timezone.utc),
             has_watch_history=False,  # No watch history
+            has_playlists=False,
+            has_subscriptions=False,
         )
 
         entries = await service.parse_historical_watch_history(takeout)
@@ -365,6 +375,8 @@ class TestParseHistoricalWatchHistory:
             path=youtube_dir,
             export_date=datetime.now(timezone.utc),
             has_watch_history=True,
+            has_playlists=False,
+            has_subscriptions=False,
         )
 
         entries = await service.parse_historical_watch_history(takeout)
@@ -376,7 +388,7 @@ class TestBuildRecoveryMetadataMap:
     """Tests for build_recovery_metadata_map method (T025c/T025d)."""
 
     @pytest.fixture
-    def temp_takeout_base(self) -> Path:
+    def temp_takeout_base(self) -> Generator[Path, None, None]:
         """Create a temporary base directory."""
         temp_dir = Path(tempfile.mkdtemp())
         yield temp_dir
@@ -386,7 +398,7 @@ class TestBuildRecoveryMetadataMap:
         self,
         base_path: Path,
         name: str,
-        history_data: List[dict],
+        history_data: List[Dict[str, Any]],
     ) -> HistoricalTakeout:
         """Helper to create a takeout with watch history."""
         takeout_dir = base_path / name
@@ -413,6 +425,8 @@ class TestBuildRecoveryMetadataMap:
             path=youtube_dir,
             export_date=export_date,
             has_watch_history=True,
+            has_playlists=False,
+            has_subscriptions=False,
         )
 
     async def test_build_map_single_takeout(self, temp_takeout_base: Path) -> None:
@@ -583,17 +597,21 @@ class TestGetRecoverySummary:
                 path=Path("/takeouts/2023-01-15"),
                 export_date=datetime(2023, 1, 15, tzinfo=timezone.utc),
                 has_watch_history=True,
+                has_playlists=False,
+                has_subscriptions=False,
             ),
             HistoricalTakeout(
                 path=Path("/takeouts/2024-06-15"),
                 export_date=datetime(2024, 6, 15, tzinfo=timezone.utc),
                 has_watch_history=True,
                 has_playlists=True,
+                has_subscriptions=False,
             ),
             HistoricalTakeout(
                 path=Path("/takeouts/2024-12-01"),
                 export_date=datetime(2024, 12, 1, tzinfo=timezone.utc),
                 has_watch_history=False,
+                has_playlists=False,
                 has_subscriptions=True,
             ),
         ]

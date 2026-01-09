@@ -529,7 +529,6 @@ class TestUserVideoSeederEdgeCases:
         # Check fields that actually exist in the implementation
         assert user_video_create is not None
         assert user_video_create.liked == False  # Default value
-        assert user_video_create.disliked == False  # Default value
         assert user_video_create.saved_to_playlist == False  # Default value
 
 

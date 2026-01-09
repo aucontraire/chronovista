@@ -23,7 +23,7 @@ from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
 class ChannelTopicRepository(
-    BaseSQLAlchemyRepository[ChannelTopicDB, ChannelTopicCreate, ChannelTopicUpdate]
+    BaseSQLAlchemyRepository[ChannelTopicDB, ChannelTopicCreate, ChannelTopicUpdate, Tuple[str, str]]
 ):
     """Repository for channel topic operations."""
 

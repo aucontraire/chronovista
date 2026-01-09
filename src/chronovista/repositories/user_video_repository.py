@@ -32,6 +32,7 @@ class UserVideoRepository(
         UserVideoDB,
         UserVideoCreate,
         UserVideoUpdate,
+        Tuple[str, str],
     ]
 ):
     """Repository for user-video interactions with Google Takeout support."""
@@ -290,9 +291,6 @@ class UserVideoRepository(
         if filters.liked_only:
             conditions.append(UserVideoDB.liked.is_(True))
 
-        if filters.disliked_only:
-            conditions.append(UserVideoDB.disliked.is_(True))
-
         if filters.playlist_saved_only:
             conditions.append(UserVideoDB.saved_to_playlist.is_(True))
 
@@ -345,9 +343,6 @@ class UserVideoRepository(
                 func.sum(func.case((UserVideoDB.liked.is_(True), 1), else_=0)).label(
                     "liked_count"
                 ),
-                func.sum(func.case((UserVideoDB.disliked.is_(True), 1), else_=0)).label(
-                    "disliked_count"
-                ),
                 func.sum(
                     func.case((UserVideoDB.saved_to_playlist.is_(True), 1), else_=0)
                 ).label("playlist_saved_count"),
@@ -363,7 +358,6 @@ class UserVideoRepository(
             return UserVideoStatistics(
                 total_videos=0,
                 liked_count=0,
-                disliked_count=0,
                 playlist_saved_count=0,
                 rewatch_count=0,
                 unique_videos=0,
@@ -394,7 +388,6 @@ class UserVideoRepository(
         return UserVideoStatistics(
             total_videos=int(stats_row.total_videos or 0),
             liked_count=int(stats_row.liked_count or 0),
-            disliked_count=int(stats_row.disliked_count or 0),
             playlist_saved_count=int(stats_row.playlist_saved_count or 0),
             rewatch_count=int(stats_row.rewatch_count or 0),
             unique_videos=int(stats_row.unique_videos or 0),
@@ -568,6 +561,100 @@ class UserVideoRepository(
                 rewatch_count=0,
             )
             return await self.create(session, obj_in=new_interaction)
+
+    async def record_like(
+        self,
+        session: AsyncSession,
+        user_id: UserId,
+        video_id: VideoId,
+        liked: bool = True,
+    ) -> UserVideoDB:
+        """
+        Record or update a like interaction for a video.
+
+        This method is used to mark videos as liked from the YouTube API's
+        Liked Playlist. Unlike record_watch(), this does not increment
+        rewatch_count or update watched_at.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        user_id : UserId
+            User identifier (validated)
+        video_id : VideoId
+            YouTube video identifier (validated)
+        liked : bool
+            Whether the video is liked (default True)
+
+        Returns
+        -------
+        UserVideoDB
+            Created or updated interaction with liked status set
+        """
+        existing = await self.get_by_composite_key(session, user_id, video_id)
+
+        if existing:
+            # Update existing interaction's liked status
+            existing.liked = liked
+            session.add(existing)
+            await session.flush()
+            await session.refresh(existing)
+            return existing
+        else:
+            # Create new interaction with liked status
+            new_interaction = UserVideoCreate(
+                user_id=user_id,
+                video_id=video_id,
+                watched_at=None,  # User may have liked without watching (from liked playlist)
+                rewatch_count=0,
+                liked=liked,
+            )
+            return await self.create(session, obj_in=new_interaction)
+
+    async def update_like_status_batch(
+        self,
+        session: AsyncSession,
+        user_id: UserId,
+        video_ids: List[VideoId],
+        liked: bool = True,
+    ) -> int:
+        """
+        Batch update like status for multiple videos.
+
+        Only updates videos that already have a user_video record.
+        This is an efficient bulk operation for syncing liked status.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        user_id : UserId
+            User identifier (validated)
+        video_ids : List[VideoId]
+            List of video IDs to update
+        liked : bool
+            Whether to set liked=True or liked=False
+
+        Returns
+        -------
+        int
+            Number of records updated
+        """
+        if not video_ids:
+            return 0
+
+        result = await session.execute(
+            update(UserVideoDB)
+            .where(
+                and_(
+                    UserVideoDB.user_id == user_id,
+                    UserVideoDB.video_id.in_(video_ids),
+                )
+            )
+            .values(liked=liked)
+        )
+        return result.rowcount
 
     async def delete_user_interactions(
         self, session: AsyncSession, user_id: UserId

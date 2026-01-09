@@ -21,7 +21,7 @@ from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
 class VideoCategoryRepository(
-    BaseSQLAlchemyRepository[VideoCategoryDB, VideoCategoryCreate, VideoCategoryUpdate]
+    BaseSQLAlchemyRepository[VideoCategoryDB, VideoCategoryCreate, VideoCategoryUpdate, str]
 ):
     """Repository for video category operations."""
 

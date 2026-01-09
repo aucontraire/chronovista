@@ -8,6 +8,7 @@ for all VideoTag model variants using factory pattern for DRY.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import cast
 
 import pytest
 from pydantic import ValidationError
@@ -188,9 +189,9 @@ class TestVideoTag:
     def test_create_valid_video_tag(self):
         """Test creating valid VideoTag with keyword arguments."""
         now = datetime.now(timezone.utc)
-        tag = VideoTagFactory.build(
+        tag = cast(VideoTag, VideoTagFactory.build(
             video_id="dQw4w9WgXcQ", tag="tutorial", tag_order=1, created_at=now
-        )
+        ))
 
         assert tag.video_id == "dQw4w9WgXcQ"
         assert tag.tag == "tutorial"

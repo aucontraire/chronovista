@@ -132,9 +132,9 @@ class VideoCreate(VideoBase):
 class VideoUpdate(BaseModel):
     """Model for updating videos."""
 
-    title: Optional[str] = Field(None, min_length=1)
+    title: Optional[str] = Field(default=None, min_length=1)
     description: Optional[str] = None
-    duration: Optional[int] = Field(None, ge=0)
+    duration: Optional[int] = Field(default=None, ge=0)
     made_for_kids: Optional[bool] = None
     self_declared_made_for_kids: Optional[bool] = None
     default_language: Optional[LanguageCode] = None
@@ -142,10 +142,10 @@ class VideoUpdate(BaseModel):
     available_languages: Optional[Dict[str, Any]] = None
     region_restriction: Optional[Dict[str, Any]] = None
     content_rating: Optional[Dict[str, Any]] = None
-    category_id: Optional[str] = Field(None, max_length=10)
-    like_count: Optional[int] = Field(None, ge=0)
-    view_count: Optional[int] = Field(None, ge=0)
-    comment_count: Optional[int] = Field(None, ge=0)
+    category_id: Optional[str] = Field(default=None, max_length=10)
+    like_count: Optional[int] = Field(default=None, ge=0)
+    view_count: Optional[int] = Field(default=None, ge=0)
+    comment_count: Optional[int] = Field(default=None, ge=0)
     deleted_flag: Optional[bool] = None
 
     @field_validator("title")

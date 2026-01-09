@@ -34,10 +34,12 @@ class TestPlaylistMetadataExtraction:
             videos=[
                 TakeoutPlaylistItem(
                     video_id="dQw4w9WgXcQ",
+                    creation_timestamp=None,
                     raw_timestamp="2024-01-15T10:30:00+00:00",
                 ),
                 TakeoutPlaylistItem(
                     video_id="abc123XYZ",
+                    creation_timestamp=None,
                     raw_timestamp="2024-01-16T14:45:00+00:00",
                 ),
             ],
@@ -54,6 +56,7 @@ class TestPlaylistMetadataExtraction:
         """Test that playlist item timestamps are parsed correctly."""
         item = TakeoutPlaylistItem(
             video_id="test123",
+            creation_timestamp=None,
             raw_timestamp="2024-06-15T08:30:45+00:00",
         )
 
@@ -67,6 +70,7 @@ class TestPlaylistMetadataExtraction:
         """Test handling of invalid timestamps in playlist items."""
         item = TakeoutPlaylistItem(
             video_id="test456",
+            creation_timestamp=None,
             raw_timestamp="invalid-date-format",
         )
 
@@ -103,6 +107,7 @@ class TestPlaylistMetadataExtraction:
         videos = [
             TakeoutPlaylistItem(
                 video_id=f"video_{i:04d}",
+                creation_timestamp=None,
                 raw_timestamp=f"2024-01-{(i % 28) + 1:02d}T12:00:00+00:00",
             )
             for i in range(500)
@@ -185,10 +190,11 @@ class TestPlaylistUpdateFromHistoricalData:
             name="My Favorites",
             file_path=Path("/tmp/historical-takeout/playlists/my-favorites-videos.csv"),
             videos=[
-                TakeoutPlaylistItem(video_id="video1", raw_timestamp="2023-06-15T10:00:00+00:00"),
-                TakeoutPlaylistItem(video_id="video2", raw_timestamp="2023-06-16T11:00:00+00:00"),
-                TakeoutPlaylistItem(video_id="video3", raw_timestamp="2023-06-17T12:00:00+00:00"),
+                TakeoutPlaylistItem(video_id="video1", creation_timestamp=None, raw_timestamp="2023-06-15T10:00:00+00:00"),
+                TakeoutPlaylistItem(video_id="video2", creation_timestamp=None, raw_timestamp="2023-06-16T11:00:00+00:00"),
+                TakeoutPlaylistItem(video_id="video3", creation_timestamp=None, raw_timestamp="2023-06-17T12:00:00+00:00"),
             ],
+            video_count=0,
         )
 
         # Current playlist (missing some historical videos)
@@ -196,9 +202,10 @@ class TestPlaylistUpdateFromHistoricalData:
             name="My Favorites",
             file_path=Path("/tmp/current-takeout/playlists/my-favorites-videos.csv"),
             videos=[
-                TakeoutPlaylistItem(video_id="video1", raw_timestamp="2023-06-15T10:00:00+00:00"),
-                TakeoutPlaylistItem(video_id="video4", raw_timestamp="2024-01-01T09:00:00+00:00"),
+                TakeoutPlaylistItem(video_id="video1", creation_timestamp=None, raw_timestamp="2023-06-15T10:00:00+00:00"),
+                TakeoutPlaylistItem(video_id="video4", creation_timestamp=None, raw_timestamp="2024-01-01T09:00:00+00:00"),
             ],
+            video_count=0,
         )
 
         # Merge video IDs (simulating recovery of historical data)
@@ -354,7 +361,7 @@ class TestPlaylistRecoveryIntegration:
     async def test_full_playlist_recovery_workflow(self) -> None:
         """Test the complete playlist recovery workflow from takeout."""
         # Step 1: Discover historical takeouts
-        historical_takeouts = [
+        historical_takeouts: List[Dict[str, Any]] = [
             {"path": Path("/takeouts/2022-01-01"), "date": datetime(2022, 1, 1, tzinfo=timezone.utc)},
             {"path": Path("/takeouts/2023-06-15"), "date": datetime(2023, 6, 15, tzinfo=timezone.utc)},
             {"path": Path("/takeouts/2024-01-01"), "date": datetime(2024, 1, 1, tzinfo=timezone.utc)},
@@ -363,10 +370,12 @@ class TestPlaylistRecoveryIntegration:
         # Step 2: Parse playlists from each takeout (oldest first)
         all_playlists: Dict[str, Dict[str, Any]] = {}
 
-        for takeout in sorted(historical_takeouts, key=lambda x: x["date"]):
+        for takeout in sorted(historical_takeouts, key=lambda x: x["date"] if isinstance(x["date"], datetime) else datetime.min):
             # Simulated parsing
+            takeout_date = takeout["date"]
+            assert isinstance(takeout_date, datetime), "Expected datetime object"
             mock_playlists = [
-                {"id": "PL123", "name": f"Playlist from {takeout['date'].year}"},
+                {"id": "PL123", "name": f"Playlist from {takeout_date.year}"},
                 {"id": "PL456", "name": "Another Playlist"},
             ]
 
@@ -374,7 +383,7 @@ class TestPlaylistRecoveryIntegration:
                 # Newer data overwrites older
                 all_playlists[playlist["id"]] = {
                     **playlist,
-                    "source_date": takeout["date"],
+                    "source_date": takeout_date,
                 }
 
         # Step 3: Verify newest data is used
@@ -399,7 +408,7 @@ class TestPlaylistRecoveryIntegration:
         PLAYLIST_PLACEHOLDER_PREFIX = "[Placeholder] Playlist "
 
         # Database has placeholder playlist
-        db_playlist = {
+        db_playlist: Dict[str, Any] = {
             "playlist_id": "PLtest123",
             "title": "[Placeholder] Playlist PLtest123",
             "description": None,
@@ -411,13 +420,16 @@ class TestPlaylistRecoveryIntegration:
             name="My Awesome Music Collection",
             file_path=Path("/tmp/takeout/playlists/my-awesome-music-collection-videos.csv"),
             videos=[
-                TakeoutPlaylistItem(video_id="song1", raw_timestamp="2023-01-01T00:00:00+00:00"),
-                TakeoutPlaylistItem(video_id="song2", raw_timestamp="2023-01-02T00:00:00+00:00"),
+                TakeoutPlaylistItem(video_id="song1", creation_timestamp=None, raw_timestamp="2023-01-01T00:00:00+00:00"),
+                TakeoutPlaylistItem(video_id="song2", creation_timestamp=None, raw_timestamp="2023-01-02T00:00:00+00:00"),
             ],
+            video_count=0,
         )
 
         # Check if update is needed
-        is_placeholder = db_playlist["title"].startswith(PLAYLIST_PLACEHOLDER_PREFIX)
+        title = db_playlist["title"]
+        assert isinstance(title, str), "Expected string title"
+        is_placeholder = title.startswith(PLAYLIST_PLACEHOLDER_PREFIX)
         assert is_placeholder is True
 
         # Apply update from recovery

@@ -7,24 +7,40 @@ Provides common CRUD operations and patterns for all repositories.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Generic, List, Optional, TypeVar, Union
+from typing import Any, Generic, List, Optional, Union
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase
+from typing_extensions import TypeVar
 
 # Type variables for generic repository
 ModelType = TypeVar("ModelType", bound=DeclarativeBase)
 CreateSchemaType = TypeVar("CreateSchemaType")
 UpdateSchemaType = TypeVar("UpdateSchemaType")
+# IdType represents the primary key type for repository entities
+# Default is Any for backward compatibility with existing code
+IdType = TypeVar("IdType", default=Any)
 
 
-class BaseRepository(ABC, Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
+class BaseRepository(ABC, Generic[ModelType, CreateSchemaType, UpdateSchemaType, IdType]):
     """
     Base repository interface defining common CRUD operations.
 
     This abstract base class provides a consistent interface for all repositories
     following the Repository pattern.
+
+    Type Parameters
+    ---------------
+    ModelType : DeclarativeBase
+        The SQLAlchemy model type for this repository.
+    CreateSchemaType : Any
+        The Pydantic schema type for creating entities.
+    UpdateSchemaType : Any
+        The Pydantic schema type for updating entities.
+    IdType : Any
+        The primary key type (e.g., VideoId, ChannelId, Tuple[str, str]).
+        Defaults to Any for backward compatibility.
     """
 
     @abstractmethod
@@ -35,7 +51,7 @@ class BaseRepository(ABC, Generic[ModelType, CreateSchemaType, UpdateSchemaType]
         pass
 
     @abstractmethod
-    async def get(self, session: AsyncSession, id: Any) -> Optional[ModelType]:
+    async def get(self, session: AsyncSession, id: IdType) -> Optional[ModelType]:
         """Get entity by ID."""
         pass
 
@@ -58,19 +74,31 @@ class BaseRepository(ABC, Generic[ModelType, CreateSchemaType, UpdateSchemaType]
         pass
 
     @abstractmethod
-    async def delete(self, session: AsyncSession, *, id: Any) -> Optional[ModelType]:
+    async def delete(self, session: AsyncSession, *, id: IdType) -> Optional[ModelType]:
         """Delete an entity by ID."""
         pass
 
 
 class BaseSQLAlchemyRepository(
-    BaseRepository[ModelType, CreateSchemaType, UpdateSchemaType]
+    BaseRepository[ModelType, CreateSchemaType, UpdateSchemaType, IdType]
 ):
     """
     Base SQLAlchemy repository implementation.
 
     Provides common SQLAlchemy-based implementations of CRUD operations
     that can be inherited by specific repository implementations.
+
+    Type Parameters
+    ---------------
+    ModelType : DeclarativeBase
+        The SQLAlchemy model type for this repository.
+    CreateSchemaType : Any
+        The Pydantic schema type for creating entities.
+    UpdateSchemaType : Any
+        The Pydantic schema type for updating entities.
+    IdType : Any
+        The primary key type (e.g., VideoId, ChannelId, Tuple[str, str]).
+        Defaults to Any for backward compatibility.
     """
 
     def __init__(self, model: type[ModelType]):
@@ -96,7 +124,7 @@ class BaseSQLAlchemyRepository(
         await session.refresh(db_obj)
         return db_obj
 
-    async def get(self, session: AsyncSession, id: Any) -> Optional[ModelType]:
+    async def get(self, session: AsyncSession, id: IdType) -> Optional[ModelType]:
         """Get entity by primary key."""
         # This method should be overridden by subclasses since different models
         # may use different primary key column names
@@ -136,7 +164,7 @@ class BaseSQLAlchemyRepository(
         await session.refresh(db_obj)
         return db_obj
 
-    async def delete(self, session: AsyncSession, *, id: Any) -> Optional[ModelType]:
+    async def delete(self, session: AsyncSession, *, id: IdType) -> Optional[ModelType]:
         """Delete an entity by ID."""
         db_obj = await self.get(session, id)
         if db_obj:
@@ -144,7 +172,7 @@ class BaseSQLAlchemyRepository(
             await session.flush()
         return db_obj
 
-    async def exists(self, session: AsyncSession, id: Any) -> bool:
+    async def exists(self, session: AsyncSession, id: IdType) -> bool:
         """Check if entity exists by ID."""
         # This method should be overridden by subclasses since different models
         # may use different primary key column names

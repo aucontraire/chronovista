@@ -53,7 +53,6 @@ class TestUserVideoBaseFactory:
         assert user_video.video_id == "dQw4w9WgXcQ"
         assert user_video.rewatch_count == 1
         assert user_video.liked is True
-        assert user_video.disliked is False
         assert user_video.saved_to_playlist is True
 
     def test_user_video_base_custom_values(self):
@@ -109,7 +108,6 @@ class TestUserVideoBaseFactory:
             "watched_at": datetime(2023, 12, 1, 10, 30, 0, tzinfo=timezone.utc),
             "rewatch_count": 2,
             "liked": True,
-            "disliked": False,
             "saved_to_playlist": True,
         }
 
@@ -157,12 +155,10 @@ class TestUserVideoUpdateFactory:
         update = UserVideoUpdateFactory.build(
             rewatch_count=5,
             liked=None,  # Only update some fields
-            disliked=None,
         )
 
         assert update.rewatch_count == 5
         assert update.liked is None
-        assert update.disliked is None
 
     def test_user_video_update_convenience_function(self):
         """Test convenience function for UserVideoUpdate."""
@@ -432,7 +428,6 @@ class TestUserVideoSearchFiltersFactory:
 
         assert filters.user_ids == ["single_user"]
         assert filters.liked_only is None
-        assert filters.disliked_only is None
 
     def test_user_video_search_filters_convenience_function(self):
         """Test convenience function for UserVideoSearchFilters."""
@@ -568,7 +563,6 @@ class TestAdditionalValidationEdgeCases:
             "watched_at": datetime(2023, 12, 1, 10, 30, 0, tzinfo=timezone.utc),
             "rewatch_count": 2,
             "liked": True,
-            "disliked": False,
             "saved_to_playlist": True,
             "created_at": datetime(2023, 12, 1, 10, 35, 0, tzinfo=timezone.utc),
             "updated_at": datetime(2023, 12, 1, 11, 30, 0, tzinfo=timezone.utc),
@@ -587,7 +581,6 @@ class TestAdditionalValidationEdgeCases:
             watched_at=None,
             rewatch_count=None,
             liked=None,
-            disliked=None,
             saved_to_playlist=None,
         )
 
@@ -601,7 +594,6 @@ class TestAdditionalValidationEdgeCases:
         assert update.rewatch_count == 3
         assert update.liked is True
         assert update.watched_at is None  # Default None
-        assert update.disliked is None  # Default None
 
     def test_user_video_search_filters_comprehensive(self):
         """Test UserVideoSearchFilters with all fields."""
@@ -611,17 +603,17 @@ class TestAdditionalValidationEdgeCases:
             watched_after=datetime(2023, 1, 1, tzinfo=timezone.utc),
             watched_before=datetime(2023, 12, 31, tzinfo=timezone.utc),
             liked_only=True,
-            disliked_only=False,
             playlist_saved_only=True,
             min_rewatch_count=2,
             created_after=datetime(2023, 6, 1, tzinfo=timezone.utc),
             created_before=datetime(2023, 11, 30, tzinfo=timezone.utc),
         )
 
+        assert filters.user_ids is not None
         assert len(filters.user_ids) == 3
+        assert filters.video_ids is not None
         assert len(filters.video_ids) == 2
         assert filters.liked_only is True
-        assert filters.disliked_only is False
         assert filters.playlist_saved_only is True
         assert filters.min_rewatch_count == 2
 
@@ -630,7 +622,6 @@ class TestAdditionalValidationEdgeCases:
         stats = UserVideoStatisticsFactory.build(
             total_videos=500,
             liked_count=150,
-            disliked_count=25,
             playlist_saved_count=75,
             rewatch_count=100,
             unique_videos=450,
@@ -640,7 +631,6 @@ class TestAdditionalValidationEdgeCases:
 
         assert stats.total_videos == 500
         assert stats.liked_count == 150
-        assert stats.disliked_count == 25
         assert stats.playlist_saved_count == 75
         assert stats.rewatch_count == 100
         assert stats.unique_videos == 450
@@ -671,7 +661,6 @@ class TestAdditionalValidationEdgeCases:
             watched_at=datetime(2023, 12, 1, 15, 30, tzinfo=timezone.utc),
             rewatch_count=3,
             liked=True,
-            disliked=False,
             saved_to_playlist=True,
         )
 

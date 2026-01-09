@@ -482,13 +482,14 @@ class TestEnrichmentServiceLogging:
             enrichment_service,
             "_get_videos_for_enrichment",
             new_callable=AsyncMock,
-        ) as mock_get:
+        ) as mock_get, patch.object(
+            enrichment_service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([], {"test_vid"}))
+        ), patch.object(
+            mock_session, "commit", new=AsyncMock()
+        ), patch.object(
+            mock_session, "rollback", new=AsyncMock()
+        ):
             mock_get.return_value = [mock_video]
-            enrichment_service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=([], {"test_vid"})
-            )
-            mock_session.commit = AsyncMock()
-            mock_session.rollback = AsyncMock()
 
             with caplog.at_level(logging.INFO):
                 await enrichment_service.enrich_videos(mock_session)

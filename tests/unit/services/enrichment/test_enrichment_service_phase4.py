@@ -6,10 +6,12 @@ quota estimation, and enrichment flow.
 """
 
 from datetime import datetime, timezone
+from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from chronovista.models.api_responses import YouTubeVideoResponse
 from chronovista.models.enrichment_report import EnrichmentReport, EnrichmentSummary
 from chronovista.services.enrichment.enrichment_service import (
     BATCH_SIZE,
@@ -19,6 +21,27 @@ from chronovista.services.enrichment.enrichment_service import (
     is_placeholder_video_title,
     parse_iso8601_duration,
 )
+
+
+def make_video_response(video_id: str, **kwargs: Any) -> YouTubeVideoResponse:
+    """
+    Create a YouTubeVideoResponse from a video ID and optional kwargs.
+
+    This helper ensures tests return proper Pydantic objects instead of dicts.
+    The snippet field requires publishedAt and channelId, so we provide defaults.
+    """
+    data: Dict[str, Any] = {"id": video_id, **kwargs}
+
+    # If snippet is provided, ensure required fields are present
+    if "snippet" in data:
+        snippet = data["snippet"]
+        if isinstance(snippet, dict):
+            if "publishedAt" not in snippet:
+                snippet["publishedAt"] = datetime.now(timezone.utc).isoformat()
+            if "channelId" not in snippet:
+                snippet["channelId"] = "UC_test_channel"
+
+    return YouTubeVideoResponse.model_validate(data)
 
 pytestmark = pytest.mark.asyncio
 
@@ -158,7 +181,7 @@ class TestExtractVideoUpdate:
                 "description": "Test description",
             }
         }
-        update = service._extract_video_update(api_data)
+        update = service._extract_video_update_from_dict(api_data)
         assert update["title"] == "Test Video Title"
         assert update["description"] == "Test description"
 
@@ -168,7 +191,7 @@ class TestExtractVideoUpdate:
             "snippet": {},
             "contentDetails": {"duration": "PT10M30S"},
         }
-        update = service._extract_video_update(api_data)
+        update = service._extract_video_update_from_dict(api_data)
         assert update["duration"] == 630
 
     def test_extract_upload_date(self, service: EnrichmentService) -> None:
@@ -176,7 +199,7 @@ class TestExtractVideoUpdate:
         api_data = {
             "snippet": {"publishedAt": "2024-01-15T14:30:00Z"},
         }
-        update = service._extract_video_update(api_data)
+        update = service._extract_video_update_from_dict(api_data)
         assert update["upload_date"] == datetime(2024, 1, 15, 14, 30, 0, tzinfo=timezone.utc)
 
     def test_extract_statistics(self, service: EnrichmentService) -> None:
@@ -189,7 +212,7 @@ class TestExtractVideoUpdate:
                 "commentCount": "2500",
             },
         }
-        update = service._extract_video_update(api_data)
+        update = service._extract_video_update_from_dict(api_data)
         assert update["view_count"] == 1000000
         assert update["like_count"] == 50000
         assert update["comment_count"] == 2500
@@ -199,7 +222,7 @@ class TestExtractVideoUpdate:
         api_data = {
             "snippet": {"categoryId": "10"},
         }
-        update = service._extract_video_update(api_data)
+        update = service._extract_video_update_from_dict(api_data)
         assert update["category_id"] == "10"
 
     def test_extract_content_restrictions(self, service: EnrichmentService) -> None:
@@ -211,7 +234,7 @@ class TestExtractVideoUpdate:
                 "selfDeclaredMadeForKids": True,
             },
         }
-        update = service._extract_video_update(api_data)
+        update = service._extract_video_update_from_dict(api_data)
         assert update["made_for_kids"] is True
         assert update["self_declared_made_for_kids"] is True
 
@@ -223,14 +246,14 @@ class TestExtractVideoUpdate:
                 "defaultAudioLanguage": "en-US",
             },
         }
-        update = service._extract_video_update(api_data)
+        update = service._extract_video_update_from_dict(api_data)
         assert update["default_language"] == "en"
         assert update["default_audio_language"] == "en-US"
 
     def test_extract_empty_api_data(self, service: EnrichmentService) -> None:
         """Test extracting from empty API data."""
-        api_data = {}
-        update = service._extract_video_update(api_data)
+        api_data: dict[str, Any] = {}
+        update = service._extract_video_update_from_dict(api_data)
         assert len(update) == 0
 
 
@@ -313,13 +336,12 @@ class TestEnrichVideos:
 
         with patch.object(
             service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get:
+        ) as mock_get, patch.object(
+            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([], {"deleted123"}))
+        ), patch.object(
+            service.video_repository, "get", new=AsyncMock(return_value=mock_video)
+        ):
             mock_get.return_value = [mock_video]
-            service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=([], {"deleted123"})
-            )
-            # Mock video_repository.get to return the video for deletion marking
-            service.video_repository.get = AsyncMock(return_value=mock_video)
 
             report = await service.enrich_videos(mock_session, check_prerequisites=False)
 
@@ -335,33 +357,34 @@ class TestEnrichVideos:
         mock_video.title = "[Placeholder] Video dQw4w9WgXcQ"
         mock_video.channel_id = "UCplaceholder"
 
-        api_response = {
-            "id": "dQw4w9WgXcQ",
-            "snippet": {
+        api_response = make_video_response(
+            "dQw4w9WgXcQ",
+            snippet={
                 "title": "Never Gonna Give You Up",
                 "description": "Music video",
                 "channelId": "UCuAXFkgsw1L7xaCfnd5JJOw",
                 "channelTitle": "RickAstleyVEVO",
                 "categoryId": "10",
             },
-            "contentDetails": {"duration": "PT3M33S"},
-            "statistics": {
+            contentDetails={"duration": "PT3M33S"},
+            statistics={
                 "viewCount": "1500000000",
                 "likeCount": "15000000",
             },
-        }
+        )
 
         with patch.object(
             service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get:
+        ) as mock_get, patch.object(
+            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([api_response], set()))
+        ), patch.object(
+            service.channel_repository, "get", new=AsyncMock(return_value=None)
+        ), patch.object(
+            service.channel_repository, "create", new=AsyncMock()
+        ), patch.object(
+            service.video_repository, "get", new=AsyncMock(return_value=mock_video)
+        ):
             mock_get.return_value = [mock_video]
-            service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=([api_response], set())
-            )
-            service.channel_repository.get = AsyncMock(return_value=None)
-            service.channel_repository.create = AsyncMock()
-            # Mock video_repository.get for potential deletion marking (though not used in this case)
-            service.video_repository.get = AsyncMock(return_value=mock_video)
 
             report = await service.enrich_videos(mock_session, check_prerequisites=False)
 
@@ -410,17 +433,19 @@ class TestEnsureChannelExists:
         self, service: EnrichmentService, mock_session: AsyncMock
     ) -> None:
         """Test creating a new channel when it doesn't exist."""
-        service.channel_repository.get = AsyncMock(return_value=None)
-        service.channel_repository.create = AsyncMock()
+        with patch.object(
+            service.channel_repository, "get", new=AsyncMock(return_value=None)
+        ), patch.object(
+            service.channel_repository, "create", new=AsyncMock()
+        ) as mock_create:
+            created = await service._ensure_channel_exists(
+                mock_session,
+                "UCuAXFkgsw1L7xaCfnd5JJOw",
+                "RickAstleyVEVO",
+            )
 
-        created = await service._ensure_channel_exists(
-            mock_session,
-            "UCuAXFkgsw1L7xaCfnd5JJOw",
-            "RickAstleyVEVO",
-        )
-
-        assert created is True
-        service.channel_repository.create.assert_called_once()
+            assert created is True
+            mock_create.assert_called_once()
 
     async def test_updates_placeholder_channel(
         self, service: EnrichmentService, mock_session: AsyncMock
@@ -429,16 +454,17 @@ class TestEnsureChannelExists:
         mock_existing = MagicMock()
         mock_existing.title = "[Placeholder] Unknown Channel"
 
-        service.channel_repository.get = AsyncMock(return_value=mock_existing)
+        with patch.object(
+            service.channel_repository, "get", new=AsyncMock(return_value=mock_existing)
+        ):
+            created = await service._ensure_channel_exists(
+                mock_session,
+                "UCuAXFkgsw1L7xaCfnd5JJOw",
+                "RickAstleyVEVO",
+            )
 
-        created = await service._ensure_channel_exists(
-            mock_session,
-            "UCuAXFkgsw1L7xaCfnd5JJOw",
-            "RickAstleyVEVO",
-        )
-
-        assert created is False
-        assert mock_existing.title == "RickAstleyVEVO"
+            assert created is False
+            assert mock_existing.title == "RickAstleyVEVO"
 
     async def test_skips_existing_real_channel(
         self, service: EnrichmentService, mock_session: AsyncMock
@@ -447,17 +473,18 @@ class TestEnsureChannelExists:
         mock_existing = MagicMock()
         mock_existing.title = "RickAstleyVEVO"
 
-        service.channel_repository.get = AsyncMock(return_value=mock_existing)
+        with patch.object(
+            service.channel_repository, "get", new=AsyncMock(return_value=mock_existing)
+        ):
+            created = await service._ensure_channel_exists(
+                mock_session,
+                "UCuAXFkgsw1L7xaCfnd5JJOw",
+                "RickAstleyVEVO",
+            )
 
-        created = await service._ensure_channel_exists(
-            mock_session,
-            "UCuAXFkgsw1L7xaCfnd5JJOw",
-            "RickAstleyVEVO",
-        )
-
-        assert created is False
-        # Title should not have been changed
-        assert mock_existing.title == "RickAstleyVEVO"
+            assert created is False
+            # Title should not have been changed
+            assert mock_existing.title == "RickAstleyVEVO"
 
 
 class TestBatchSize:

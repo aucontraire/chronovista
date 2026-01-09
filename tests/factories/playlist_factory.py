@@ -8,7 +8,7 @@ with sensible defaults and easy customization.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import cast
+from typing import Any, cast
 
 import factory
 from factory import Faker, LazyAttribute
@@ -23,23 +23,23 @@ from chronovista.models.playlist import (
 )
 
 
-class PlaylistBaseFactory(factory.Factory):
+class PlaylistBaseFactory(factory.Factory[PlaylistBase]):
     """Factory for PlaylistBase models."""
 
     class Meta:
         model = PlaylistBase
 
-    playlist_id = factory.LazyFunction(
+    playlist_id: Any = factory.LazyFunction(
         lambda: "PLrAXtmRdnEQy3roZQD5TZuDCU5x-X4V8f"
     )  # Use fixed valid playlist ID
-    title = Faker("sentence", nb_words=4)
-    description = Faker("text", max_nb_chars=200)
-    default_language = Faker("random_element", elements=["en", "es", "fr", "de", "ja"])
-    privacy_status = Faker("random_element", elements=["private", "public", "unlisted"])
-    channel_id = factory.LazyFunction(
+    title: Any = Faker("sentence", nb_words=4)
+    description: Any = Faker("text", max_nb_chars=200)
+    default_language: Any = Faker("random_element", elements=["en", "es", "fr", "de", "ja"])
+    privacy_status: Any = Faker("random_element", elements=["private", "public", "unlisted"])
+    channel_id: Any = factory.LazyFunction(
         lambda: "UCuAXFkgsw1L7xaCfnd5JJOw"
     )  # Use fixed valid channel ID
-    video_count = Faker("random_int", min=0, max=100)
+    video_count: Any = Faker("random_int", min=0, max=100)
 
 
 class PlaylistCreateFactory(PlaylistBaseFactory):
@@ -49,7 +49,7 @@ class PlaylistCreateFactory(PlaylistBaseFactory):
         model = PlaylistCreate
 
 
-class PlaylistUpdateFactory(factory.Factory):
+class PlaylistUpdateFactory(factory.Factory[PlaylistUpdate]):
     """Factory for PlaylistUpdate models.
 
     Note: This factory respects the model's default values (None for all fields).
@@ -70,68 +70,68 @@ class PlaylistFactory(PlaylistBaseFactory):
     class Meta:
         model = Playlist
 
-    created_at = Faker("date_time", tzinfo=timezone.utc)
-    updated_at = Faker("date_time", tzinfo=timezone.utc)
+    created_at: Any = Faker("date_time", tzinfo=timezone.utc)
+    updated_at: Any = Faker("date_time", tzinfo=timezone.utc)
 
 
-class PlaylistSearchFiltersFactory(factory.Factory):
+class PlaylistSearchFiltersFactory(factory.Factory[PlaylistSearchFilters]):
     """Factory for PlaylistSearchFilters models."""
 
     class Meta:
         model = PlaylistSearchFilters
 
-    playlist_ids = factory.LazyFunction(
+    playlist_ids: Any = factory.LazyFunction(
         lambda: [
             "PLrAXtmRdnEQy3roZQD5TZuDCU5x-X4V8f",
             "PLs9ACwy3uKTOT2q_test123456789ABC",
         ]
     )
-    channel_ids = factory.LazyFunction(
+    channel_ids: Any = factory.LazyFunction(
         lambda: ["UCuAXFkgsw1L7xaCfnd5JJOw", "UC-lHJZR3Gqxm24_Vd_AJ5Yw"]
     )
-    title_query = Faker("word")
-    description_query = Faker("word")
-    language_codes = factory.LazyFunction(lambda: ["en", "es", "fr"])
-    privacy_statuses = factory.LazyFunction(lambda: ["public", "unlisted"])
-    min_video_count = Faker("random_int", min=1, max=10)
-    max_video_count = Faker("random_int", min=11, max=100)
-    has_description = Faker("boolean")
-    created_after = Faker("date_time", tzinfo=timezone.utc)
-    created_before = Faker("date_time", tzinfo=timezone.utc)
-    updated_after = Faker("date_time", tzinfo=timezone.utc)
-    updated_before = Faker("date_time", tzinfo=timezone.utc)
+    title_query: Any = Faker("word")
+    description_query: Any = Faker("word")
+    language_codes: Any = factory.LazyFunction(lambda: ["en", "es", "fr"])
+    privacy_statuses: Any = factory.LazyFunction(lambda: ["public", "unlisted"])
+    min_video_count: Any = Faker("random_int", min=1, max=10)
+    max_video_count: Any = Faker("random_int", min=11, max=100)
+    has_description: Any = Faker("boolean")
+    created_after: Any = Faker("date_time", tzinfo=timezone.utc)
+    created_before: Any = Faker("date_time", tzinfo=timezone.utc)
+    updated_after: Any = Faker("date_time", tzinfo=timezone.utc)
+    updated_before: Any = Faker("date_time", tzinfo=timezone.utc)
 
 
-class PlaylistStatisticsFactory(factory.Factory):
+class PlaylistStatisticsFactory(factory.Factory[PlaylistStatistics]):
     """Factory for PlaylistStatistics models."""
 
     class Meta:
         model = PlaylistStatistics
 
-    total_playlists = Faker("random_int", min=50, max=500)
-    total_videos = LazyAttribute(
+    total_playlists: Any = Faker("random_int", min=50, max=500)
+    total_videos: Any = LazyAttribute(
         lambda obj: int(obj.total_playlists * 15)
     )  # ~15 videos per playlist average
-    avg_videos_per_playlist = LazyAttribute(
+    avg_videos_per_playlist: Any = LazyAttribute(
         lambda obj: round(obj.total_videos / obj.total_playlists, 2)
     )
-    unique_channels = LazyAttribute(
+    unique_channels: Any = LazyAttribute(
         lambda obj: int(obj.total_playlists * 0.7)
     )  # 70% unique channels
-    privacy_distribution = factory.LazyFunction(
+    privacy_distribution: Any = factory.LazyFunction(
         lambda: {"public": 180, "unlisted": 120, "private": 100}
     )
-    language_distribution = factory.LazyFunction(
+    language_distribution: Any = factory.LazyFunction(
         lambda: {"en": 200, "es": 100, "fr": 80, "de": 60, "ja": 50, "ko": 40}
     )
-    top_channels_by_playlists = factory.LazyFunction(
+    top_channels_by_playlists: Any = factory.LazyFunction(
         lambda: [
             ("UCuAXFkgsw1L7xaCfnd5JJOw", 25),
             ("UC-lHJZR3Gqxm24_Vd_AJ5Yw", 20),
             ("UCBJycsmduvYEL83R_U4JriQ", 18),
         ]
     )
-    playlist_size_distribution = factory.LazyFunction(
+    playlist_size_distribution: Any = factory.LazyFunction(
         lambda: {
             "1-5 videos": 120,
             "6-20 videos": 180,
@@ -139,35 +139,45 @@ class PlaylistStatisticsFactory(factory.Factory):
             "50+ videos": 80,
         }
     )
-    playlists_with_descriptions = LazyAttribute(
+    playlists_with_descriptions: Any = LazyAttribute(
         lambda obj: int(obj.total_playlists * 0.75)
     )  # 75% have descriptions
 
 
 # Convenience factory methods
-def create_playlist(**kwargs) -> Playlist:
+def create_playlist(**kwargs: Any) -> Playlist:
     """Create a Playlist with keyword arguments."""
-    return cast(Playlist, PlaylistFactory.build(**kwargs))
+    result = PlaylistFactory.build(**kwargs)
+    assert isinstance(result, Playlist)
+    return result
 
 
-def create_playlist_create(**kwargs) -> PlaylistCreate:
+def create_playlist_create(**kwargs: Any) -> PlaylistCreate:
     """Create a PlaylistCreate with keyword arguments."""
-    return cast(PlaylistCreate, PlaylistCreateFactory.build(**kwargs))
+    result = PlaylistCreateFactory.build(**kwargs)
+    assert isinstance(result, PlaylistCreate)
+    return result
 
 
-def create_playlist_update(**kwargs) -> PlaylistUpdate:
+def create_playlist_update(**kwargs: Any) -> PlaylistUpdate:
     """Create a PlaylistUpdate with keyword arguments."""
-    return cast(PlaylistUpdate, PlaylistUpdateFactory.build(**kwargs))
+    result = PlaylistUpdateFactory.build(**kwargs)
+    assert isinstance(result, PlaylistUpdate)
+    return result
 
 
-def create_playlist_filters(**kwargs) -> PlaylistSearchFilters:
+def create_playlist_filters(**kwargs: Any) -> PlaylistSearchFilters:
     """Create PlaylistSearchFilters with keyword arguments."""
-    return cast(PlaylistSearchFilters, PlaylistSearchFiltersFactory.build(**kwargs))
+    result = PlaylistSearchFiltersFactory.build(**kwargs)
+    assert isinstance(result, PlaylistSearchFilters)
+    return result
 
 
-def create_playlist_statistics(**kwargs) -> PlaylistStatistics:
+def create_playlist_statistics(**kwargs: Any) -> PlaylistStatistics:
     """Create PlaylistStatistics with keyword arguments."""
-    return cast(PlaylistStatistics, PlaylistStatisticsFactory.build(**kwargs))
+    result = PlaylistStatisticsFactory.build(**kwargs)
+    assert isinstance(result, PlaylistStatistics)
+    return result
 
 
 # Common test data patterns
@@ -271,7 +281,7 @@ class PlaylistTestData:
     ]
 
     @classmethod
-    def valid_playlist_data(cls) -> dict:
+    def valid_playlist_data(cls) -> dict[str, Any]:
         """Get valid playlist data."""
         return {
             "playlist_id": cls.VALID_PLAYLIST_IDS[0],
@@ -284,7 +294,7 @@ class PlaylistTestData:
         }
 
     @classmethod
-    def minimal_playlist_data(cls) -> dict:
+    def minimal_playlist_data(cls) -> dict[str, Any]:
         """Get minimal valid playlist data."""
         return {
             "playlist_id": cls.VALID_PLAYLIST_IDS[1],
@@ -293,7 +303,7 @@ class PlaylistTestData:
         }
 
     @classmethod
-    def youtube_playlist_data(cls) -> dict:
+    def youtube_playlist_data(cls) -> dict[str, Any]:
         """Get typical YouTube playlist data."""
         return {
             "playlist_id": "PLrAXtmRdnEQy3roZQD5TZuDCU5x-X4V8f",
@@ -306,7 +316,7 @@ class PlaylistTestData:
         }
 
     @classmethod
-    def private_playlist_data(cls) -> dict:
+    def private_playlist_data(cls) -> dict[str, Any]:
         """Get private playlist data."""
         return {
             "playlist_id": "PLs9ACwy3uKTOT2q9gLKUvyqPOjLXUlAWg",
@@ -319,7 +329,7 @@ class PlaylistTestData:
         }
 
     @classmethod
-    def comprehensive_search_filters_data(cls) -> dict:
+    def comprehensive_search_filters_data(cls) -> dict[str, Any]:
         """Get comprehensive search filters data."""
         return {
             "playlist_ids": cls.VALID_PLAYLIST_IDS[:2],
@@ -338,7 +348,7 @@ class PlaylistTestData:
         }
 
     @classmethod
-    def multilingual_playlists_data(cls) -> list[dict]:
+    def multilingual_playlists_data(cls) -> list[dict[str, Any]]:
         """Get multilingual playlist test data."""
         return [
             {

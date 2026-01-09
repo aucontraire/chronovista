@@ -5,9 +5,11 @@ Tests for SeedingOrchestrator - dependency resolution and execution coordination
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, Optional
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.services.seeding.base_seeder import (
     BaseSeeder,
@@ -15,6 +17,7 @@ from chronovista.services.seeding.base_seeder import (
     SeedResult,
 )
 from chronovista.services.seeding.orchestrator import SeedingOrchestrator
+from chronovista.models.takeout.takeout_data import TakeoutData
 from tests.factories.takeout_data_factory import create_takeout_data
 
 # CRITICAL: This line ensures async tests work with coverage
@@ -35,7 +38,12 @@ class MockSeeder(BaseSeeder):
     def get_data_type(self) -> str:
         return self.data_type
 
-    async def seed(self, session, takeout_data, progress=None):
+    async def seed(
+        self,
+        session: AsyncSession,
+        takeout_data: TakeoutData,
+        progress: Optional[ProgressCallback] = None,
+    ) -> SeedResult:
         self.seed_called = True
         if progress:
             progress.update(self.data_type)
@@ -182,7 +190,12 @@ class TestSeedingOrchestrator:
             def __init__(self, data_type: str, dependencies: set[str] | None = None):
                 super().__init__(data_type, dependencies)
 
-            async def seed(self, session, takeout_data, progress=None):
+            async def seed(
+                self,
+                session: AsyncSession,
+                takeout_data: TakeoutData,
+                progress: Optional[ProgressCallback] = None,
+            ) -> SeedResult:
                 execution_log.append(self.data_type)
                 return await super().seed(session, takeout_data, progress)
 

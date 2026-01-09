@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from chronovista import __version__
 from chronovista.config.settings import Settings
 
 
@@ -23,7 +24,7 @@ def test_settings_defaults():
     )
 
     assert settings.app_name == "chronovista"
-    assert settings.app_version == "0.1.0"
+    assert settings.app_version == __version__
     assert settings.debug is False
     assert settings.log_level == "INFO"
     assert settings.nlp_batch_size == 100

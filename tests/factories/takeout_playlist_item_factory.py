@@ -8,67 +8,67 @@ with realistic and consistent test data.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, List, cast
+from typing import Any, Any, List, cast
 
 import factory
 
 from chronovista.models.takeout.takeout_data import TakeoutPlaylistItem
 
 
-class TakeoutPlaylistItemFactory(factory.Factory):
+class TakeoutPlaylistItemFactory(factory.Factory[TakeoutPlaylistItem]):
     """Factory for TakeoutPlaylistItem models."""
 
     class Meta:
         model = TakeoutPlaylistItem
 
     # Required fields
-    video_id = factory.LazyFunction(lambda: "dQw4w9WgXcQ")
+    video_id: Any = factory.LazyFunction(lambda: "dQw4w9WgXcQ")
 
     # Optional fields with realistic defaults
-    creation_timestamp = factory.LazyFunction(
+    creation_timestamp: Any = factory.LazyFunction(
         lambda: datetime(2023, 6, 15, 14, 30, 0, tzinfo=timezone.utc)
     )
-    raw_timestamp = factory.LazyFunction(lambda: "2023-06-15T14:30:00+00:00")
+    raw_timestamp: Any = factory.LazyFunction(lambda: "2023-06-15T14:30:00+00:00")
 
 
-class TakeoutPlaylistItemMinimalFactory(factory.Factory):
+class TakeoutPlaylistItemMinimalFactory(factory.Factory[TakeoutPlaylistItem]):
     """Factory for TakeoutPlaylistItem models with only required fields."""
 
     class Meta:
         model = TakeoutPlaylistItem
 
     # Only required field
-    video_id = factory.LazyFunction(lambda: "9bZkp7q19f0")
+    video_id: Any = factory.LazyFunction(lambda: "9bZkp7q19f0")
 
     # Set optional fields explicitly to None
     creation_timestamp = None
     raw_timestamp = None
 
 
-class TakeoutPlaylistItemRecentFactory(factory.Factory):
+class TakeoutPlaylistItemRecentFactory(factory.Factory[TakeoutPlaylistItem]):
     """Factory for TakeoutPlaylistItem models with recent timestamps."""
 
     class Meta:
         model = TakeoutPlaylistItem
 
-    video_id = factory.LazyFunction(lambda: "3tmd-ClpJxA")
-    creation_timestamp = factory.LazyFunction(
+    video_id: Any = factory.LazyFunction(lambda: "3tmd-ClpJxA")
+    creation_timestamp: Any = factory.LazyFunction(
         lambda: datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
     )
-    raw_timestamp = factory.LazyFunction(lambda: "2024-01-15T10:00:00+00:00")
+    raw_timestamp: Any = factory.LazyFunction(lambda: "2024-01-15T10:00:00+00:00")
 
 
-class TakeoutPlaylistItemOldFactory(factory.Factory):
+class TakeoutPlaylistItemOldFactory(factory.Factory[TakeoutPlaylistItem]):
     """Factory for TakeoutPlaylistItem models with old timestamps."""
 
     class Meta:
         model = TakeoutPlaylistItem
 
-    video_id = factory.LazyFunction(lambda: "jNQXAC9IVRw")
-    creation_timestamp = factory.LazyFunction(
+    video_id: Any = factory.LazyFunction(lambda: "jNQXAC9IVRw")
+    creation_timestamp: Any = factory.LazyFunction(
         lambda: datetime(2020, 5, 10, 16, 45, 0, tzinfo=timezone.utc)
     )
-    raw_timestamp = factory.LazyFunction(lambda: "2020-05-10T16:45:00+00:00")
+    raw_timestamp: Any = factory.LazyFunction(lambda: "2020-05-10T16:45:00+00:00")
 
 
 # Test data constants for validation testing
@@ -115,22 +115,30 @@ class TakeoutPlaylistItemTestData:
 # Convenience factory functions
 def create_takeout_playlist_item(**kwargs: Any) -> TakeoutPlaylistItem:
     """Create a TakeoutPlaylistItem with optional overrides."""
-    return cast(TakeoutPlaylistItem, TakeoutPlaylistItemFactory.build(**kwargs))
+    result = TakeoutPlaylistItemFactory.build(**kwargs)
+    assert isinstance(result, TakeoutPlaylistItem)
+    return result
 
 
 def create_minimal_takeout_playlist_item(**kwargs: Any) -> TakeoutPlaylistItem:
     """Create a minimal TakeoutPlaylistItem with only required fields."""
-    return cast(TakeoutPlaylistItem, TakeoutPlaylistItemMinimalFactory.build(**kwargs))
+    result = TakeoutPlaylistItemMinimalFactory.build(**kwargs)
+    assert isinstance(result, TakeoutPlaylistItem)
+    return result
 
 
 def create_recent_takeout_playlist_item(**kwargs: Any) -> TakeoutPlaylistItem:
     """Create a TakeoutPlaylistItem with recent timestamp."""
-    return cast(TakeoutPlaylistItem, TakeoutPlaylistItemRecentFactory.build(**kwargs))
+    result = TakeoutPlaylistItemRecentFactory.build(**kwargs)
+    assert isinstance(result, TakeoutPlaylistItem)
+    return result
 
 
 def create_old_takeout_playlist_item(**kwargs: Any) -> TakeoutPlaylistItem:
     """Create a TakeoutPlaylistItem with old timestamp."""
-    return cast(TakeoutPlaylistItem, TakeoutPlaylistItemOldFactory.build(**kwargs))
+    result = TakeoutPlaylistItemOldFactory.build(**kwargs)
+    assert isinstance(result, TakeoutPlaylistItem)
+    return result
 
 
 def create_batch_takeout_playlist_items(count: int = 5) -> List[TakeoutPlaylistItem]:

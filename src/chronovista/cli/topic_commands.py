@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import typer
+from sqlalchemy.ext.asyncio import AsyncSession
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import (
@@ -39,7 +40,7 @@ console = Console()
 
 
 async def resolve_topic_identifier(
-    session,
+    session: AsyncSession,
     topic_repo: TopicCategoryRepository,
     identifier: str,
 ) -> Optional[Any]:
@@ -888,16 +889,22 @@ def similar_topics(
 ) -> None:
     """Show topics that are similar to the given topic based on content patterns."""
 
+    # Capture outer scope variables before async function
+    _topic = topic
+    _min_similarity = min_similarity
+    _limit = limit
+
     async def run_similar() -> None:
+
         try:
             analytics_service = TopicAnalyticsService()
             topic_repo = TopicCategoryRepository()
 
             # Validate similarity parameter
-            if not 0.0 <= min_similarity <= 1.0:
+            if not 0.0 <= _min_similarity <= 1.0:
                 console.print(
                     Panel(
-                        f"[red]Invalid similarity score '{min_similarity}'. Must be between 0.0 and 1.0[/red]",
+                        f"[red]Invalid similarity score '{_min_similarity}'. Must be between 0.0 and 1.0[/red]",
                         title="Invalid Parameter",
                         border_style="red",
                     )
@@ -906,11 +913,11 @@ def similar_topics(
 
             # Resolve topic by ID or name
             async for session in db_manager.get_session(echo=False):
-                resolved_topic = await resolve_topic_identifier(session, topic_repo, topic)
+                resolved_topic = await resolve_topic_identifier(session, topic_repo, _topic)
                 if not resolved_topic:
                     console.print(
                         Panel(
-                            f"[red]Topic '{topic}' not found[/red]",
+                            f"[red]Topic '{_topic}' not found[/red]",
                             title="Topic Not Found",
                             border_style="red",
                         )
@@ -924,13 +931,13 @@ def similar_topics(
 
             # Get similar topics
             similar_topics_list = await analytics_service.get_similar_topics(
-                topic_id=topic_id, min_similarity=min_similarity, limit=limit
+                topic_id=topic_id, min_similarity=_min_similarity, limit=_limit
             )
 
             if not similar_topics_list:
                 console.print(
                     Panel(
-                        f"[yellow]No similar topics found for '{topic_name}' with similarity >= {min_similarity}[/yellow]\n"
+                        f"[yellow]No similar topics found for '{topic_name}' with similarity >= {_min_similarity}[/yellow]\n"
                         f"Try lowering the minimum similarity score or ensure the topic has associated content.",
                         title="No Similar Topics",
                         border_style="yellow",

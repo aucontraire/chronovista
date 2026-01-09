@@ -6,7 +6,7 @@ Handles CRUD operations and specialized queries for playlist-video relationships
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +23,10 @@ from .base import BaseSQLAlchemyRepository
 
 class PlaylistMembershipRepository(
     BaseSQLAlchemyRepository[
-        DBPlaylistMembership, PlaylistMembershipCreate, PlaylistMembershipUpdate
+        DBPlaylistMembership,
+        PlaylistMembershipCreate,
+        PlaylistMembershipUpdate,
+        Tuple[str, str],
     ]
 ):
     """Repository for playlist membership operations with specialized queries."""

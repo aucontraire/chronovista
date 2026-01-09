@@ -8,16 +8,38 @@ Covers T040a-c:
 """
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from chronovista.models.api_responses import YouTubeVideoResponse
 from chronovista.models.enrichment_report import EnrichmentReport, EnrichmentSummary
 from chronovista.services.enrichment.enrichment_service import (
     BATCH_SIZE,
     EnrichmentService,
 )
+
+
+def make_video_response(video_id: str, **kwargs: Any) -> YouTubeVideoResponse:
+    """
+    Create a YouTubeVideoResponse from a video ID and optional kwargs.
+
+    This helper ensures tests return proper Pydantic objects instead of dicts.
+    The snippet field requires publishedAt and channelId, so we provide defaults.
+    """
+    data: Dict[str, Any] = {"id": video_id, **kwargs}
+
+    # If snippet is provided, ensure required fields are present
+    if "snippet" in data:
+        snippet = data["snippet"]
+        if isinstance(snippet, dict):
+            if "publishedAt" not in snippet:
+                snippet["publishedAt"] = datetime.now(timezone.utc).isoformat()
+            if "channelId" not in snippet:
+                snippet["channelId"] = "UC_test_channel"
+
+    return YouTubeVideoResponse.model_validate(data)
 
 pytestmark = pytest.mark.asyncio
 
@@ -66,14 +88,12 @@ class TestDeletedVideoDetection:
 
         with patch.object(
             service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get:
+        ) as mock_get, patch.object(
+            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([], {"dQw4w9WgXcQ"}))
+        ), patch.object(
+            service.video_repository, "get", new=AsyncMock(return_value=mock_video)
+        ):
             mock_get.return_value = [mock_video]
-            # API returns empty list for found videos, with the video_id in not_found set
-            service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=([], {"dQw4w9WgXcQ"})
-            )
-            # Mock video_repository.get to return the video for deletion marking
-            service.video_repository.get = AsyncMock(return_value=mock_video)
 
             report = await service.enrich_videos(mock_session, check_prerequisites=False)
 
@@ -92,27 +112,27 @@ class TestDeletedVideoDetection:
         mock_video.channel_id = "UCplaceholder"
         mock_video.deleted_flag = False
 
-        api_response = {
-            "id": "dQw4w9WgXcQ",
-            "snippet": {
+        api_response = make_video_response(
+            "dQw4w9WgXcQ",
+            snippet={
                 "title": "Never Gonna Give You Up",
                 "description": "Music video",
                 "channelId": "UCuAXFkgsw1L7xaCfnd5JJOw",
                 "channelTitle": "RickAstleyVEVO",
             },
-            "contentDetails": {"duration": "PT3M33S"},
-        }
+            contentDetails={"duration": "PT3M33S"},
+        )
 
         with patch.object(
             service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get:
+        ) as mock_get, patch.object(
+            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([api_response], set()))
+        ), patch.object(
+            service.channel_repository, "get", new=AsyncMock(return_value=None)
+        ), patch.object(
+            service.channel_repository, "create", new=AsyncMock()
+        ):
             mock_get.return_value = [mock_video]
-            # Video found in API - not in not_found set
-            service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=([api_response], set())
-            )
-            service.channel_repository.get = AsyncMock(return_value=None)
-            service.channel_repository.create = AsyncMock()
 
             report = await service.enrich_videos(mock_session, check_prerequisites=False)
 
@@ -138,33 +158,35 @@ class TestDeletedVideoDetection:
         mock_video_deleted.channel_id = "UCplaceholder"
         mock_video_deleted.deleted_flag = False
 
-        api_response = {
-            "id": "foundVideo123",
-            "snippet": {
+        api_response = make_video_response(
+            "foundVideo123",
+            snippet={
                 "title": "Found Video Title",
                 "description": "This video was found",
                 "channelId": "UCuAXFkgsw1L7xaCfnd5JJOw",
                 "channelTitle": "FoundChannel",
             },
-            "contentDetails": {"duration": "PT5M"},
-        }
+            contentDetails={"duration": "PT5M"},
+        )
+
+        # Mock video_repository.get to return the correct video based on video_id
+        def get_video_by_id(session: Any, video_id: str) -> MagicMock:
+            if video_id == "deletedVideo99":
+                return mock_video_deleted
+            return mock_video_found
 
         with patch.object(
             service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get:
+        ) as mock_get, patch.object(
+            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([api_response], {"deletedVideo99"}))
+        ), patch.object(
+            service.channel_repository, "get", new=AsyncMock(return_value=None)
+        ), patch.object(
+            service.channel_repository, "create", new=AsyncMock()
+        ), patch.object(
+            service.video_repository, "get", new=AsyncMock(side_effect=get_video_by_id)
+        ):
             mock_get.return_value = [mock_video_found, mock_video_deleted]
-            # One video found, one in not_found set
-            service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=([api_response], {"deletedVideo99"})
-            )
-            service.channel_repository.get = AsyncMock(return_value=None)
-            service.channel_repository.create = AsyncMock()
-            # Mock video_repository.get to return the correct video based on video_id
-            def get_video_by_id(session: Any, video_id: str) -> MagicMock:
-                if video_id == "deletedVideo99":
-                    return mock_video_deleted
-                return mock_video_found
-            service.video_repository.get = AsyncMock(side_effect=get_video_by_id)
 
             report = await service.enrich_videos(mock_session, check_prerequisites=False)
 
@@ -186,27 +208,27 @@ class TestDeletedVideoDetection:
         mock_video.channel_id = "UCplaceholder"
         mock_video.deleted_flag = True  # Previously marked as deleted
 
-        api_response = {
-            "id": "recoveredVid1",
-            "snippet": {
+        api_response = make_video_response(
+            "recoveredVid1",
+            snippet={
                 "title": "Recovered Video",
                 "description": "This video is back",
                 "channelId": "UCuAXFkgsw1L7xaCfnd5JJOw",
                 "channelTitle": "RecoveredChannel",
             },
-            "contentDetails": {"duration": "PT2M30S"},
-        }
+            contentDetails={"duration": "PT2M30S"},
+        )
 
         with patch.object(
             service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get:
+        ) as mock_get, patch.object(
+            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([api_response], set()))
+        ), patch.object(
+            service.channel_repository, "get", new=AsyncMock(return_value=None)
+        ), patch.object(
+            service.channel_repository, "create", new=AsyncMock()
+        ):
             mock_get.return_value = [mock_video]
-            # Video found in API - it's been restored/recovered
-            service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=([api_response], set())
-            )
-            service.channel_repository.get = AsyncMock(return_value=None)
-            service.channel_repository.create = AsyncMock()
 
             report = await service.enrich_videos(mock_session, check_prerequisites=False)
 
@@ -227,11 +249,10 @@ class TestDeletedVideoDetection:
 
         with patch.object(
             service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get:
+        ) as mock_get, patch.object(
+            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([], {"deletedVidXYZ"}))
+        ):
             mock_get.return_value = [mock_video]
-            service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=([], {"deletedVidXYZ"})
-            )
 
             report = await service.enrich_videos(mock_session, check_prerequisites=False)
 
@@ -318,29 +339,29 @@ class TestIncludeDeletedFlagBehavior:
         mock_video.channel_id = "UCplaceholder"
         mock_video.deleted_flag = True  # Was marked as deleted
 
-        api_response = {
-            "id": "restoredVideo1",
-            "snippet": {
+        api_response = make_video_response(
+            "restoredVideo1",
+            snippet={
                 "title": "Restored Video Title",
                 "description": "This video has been restored",
                 "channelId": "UCuAXFkgsw1L7xaCfnd5JJOw",
                 "channelTitle": "RestoredChannel",
             },
-            "contentDetails": {"duration": "PT4M"},
-        }
+            contentDetails={"duration": "PT4M"},
+        )
 
         with patch.object(
             service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get:
+        ) as mock_get, patch.object(
+            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([api_response], set()))
+        ), patch.object(
+            service.channel_repository, "get", new=AsyncMock(return_value=None)
+        ), patch.object(
+            service.channel_repository, "create", new=AsyncMock()
+        ), patch.object(
+            service.video_repository, "get", new=AsyncMock(return_value=mock_video)
+        ):
             mock_get.return_value = [mock_video]
-            # Video now found - it was restored
-            service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=([api_response], set())
-            )
-            service.channel_repository.get = AsyncMock(return_value=None)
-            service.channel_repository.create = AsyncMock()
-            # Mock video_repository.get for potential deletion marking (though not used in this case)
-            service.video_repository.get = AsyncMock(return_value=mock_video)
 
             # Use include_deleted=True to query deleted videos for re-verification
             report = await service.enrich_videos(mock_session, include_deleted=True)
@@ -522,19 +543,17 @@ class TestMultipleDeletedVideosInBatch:
             ),
         ]
 
+        # Mock video_repository.get to return the correct video by ID
+        video_lookup = {v.video_id: v for v in mock_videos}
+
         with patch.object(
             service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get:
+        ) as mock_get, patch.object(
+            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([], {"deleted001", "deleted002", "deleted003"}))
+        ), patch.object(
+            service.video_repository, "get", new=AsyncMock(side_effect=lambda session, video_id: video_lookup.get(video_id))
+        ):
             mock_get.return_value = mock_videos
-            # All videos not found
-            service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=([], {"deleted001", "deleted002", "deleted003"})
-            )
-            # Mock video_repository.get to return the correct video by ID
-            video_lookup = {v.video_id: v for v in mock_videos}
-            service.video_repository.get = AsyncMock(
-                side_effect=lambda session, video_id: video_lookup.get(video_id)
-            )
 
             report = await service.enrich_videos(mock_session, check_prerequisites=False)
 
@@ -563,11 +582,10 @@ class TestMultipleDeletedVideosInBatch:
 
         with patch.object(
             service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get:
+        ) as mock_get, patch.object(
+            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([], {"del_vid_A", "del_vid_B"}))
+        ):
             mock_get.return_value = mock_videos
-            service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=([], {"del_vid_A", "del_vid_B"})
-            )
 
             report = await service.enrich_videos(mock_session, check_prerequisites=False)
 
@@ -755,14 +773,13 @@ class TestLocalRecoveryDoesNotSetDeletedFlag:
         # Pattern that would set deleted_flag to True
         set_true_pattern = re.compile(r"deleted_flag\s*=\s*True")
 
-        for root, _dirs, files in Path(src_dir).walk():
-            for filename in files:
-                if filename in prohibited_files:
-                    file_path = root / filename
-                    content = file_path.read_text()
+        # Use rglob to find all Python files matching prohibited names
+        for file_path in src_dir.rglob("*.py"):
+            if file_path.name in prohibited_files:
+                content = file_path.read_text()
 
-                    matches = set_true_pattern.findall(content)
-                    assert len(matches) == 0, (
-                        f"File {filename} should not set deleted_flag=True. "
-                        f"Only enrichment_service.py should do this after API verification."
-                    )
+                matches = set_true_pattern.findall(content)
+                assert len(matches) == 0, (
+                    f"File {file_path.name} should not set deleted_flag=True. "
+                    f"Only enrichment_service.py should do this after API verification."
+                )

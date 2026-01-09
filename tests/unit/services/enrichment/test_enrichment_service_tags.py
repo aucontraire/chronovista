@@ -82,16 +82,16 @@ class TestEnrichTagsMethod:
         # Mock repository to return created tags
         mock_tags_db = [MagicMock(video_id=video_id, tag=t, tag_order=i)
                         for i, t in enumerate(tags)]
-        service.video_tag_repository.replace_video_tags = AsyncMock(
-            return_value=mock_tags_db
-        )
 
-        # When enrich_tags is called (mocking the expected behavior)
-        # Note: The actual implementation may differ, but tests document expected behavior
-        created_count = len(tags)
+        with patch.object(
+            service.video_tag_repository, "replace_video_tags", new=AsyncMock(return_value=mock_tags_db)
+        ):
+            # When enrich_tags is called (mocking the expected behavior)
+            # Note: The actual implementation may differ, but tests document expected behavior
+            created_count = len(tags)
 
-        # Then tags should be extracted and counted correctly
-        assert created_count == 4
+            # Then tags should be extracted and counted correctly
+            assert created_count == 4
 
     async def test_enrich_tags_calls_repository_correctly(
         self, service: EnrichmentService, mock_session: AsyncMock
@@ -101,15 +101,19 @@ class TestEnrichTagsMethod:
         tags = ["tag1", "tag2", "tag3"]
         tag_orders = [0, 1, 2]
 
-        # Call the repository method
-        await service.video_tag_repository.replace_video_tags(
-            mock_session, video_id, tags, tag_orders
-        )
+        mock_replace = AsyncMock(return_value=[])
+        with patch.object(
+            service.video_tag_repository, "replace_video_tags", new=mock_replace
+        ):
+            # Call the repository method
+            await service.video_tag_repository.replace_video_tags(
+                mock_session, video_id, tags, tag_orders
+            )
 
-        # Verify repository was called with correct arguments
-        service.video_tag_repository.replace_video_tags.assert_called_once_with(
-            mock_session, video_id, tags, tag_orders
-        )
+            # Verify repository was called with correct arguments
+            mock_replace.assert_called_once_with(
+                mock_session, video_id, tags, tag_orders
+            )
 
     async def test_enrich_tags_handles_empty_tags(
         self, service: EnrichmentService, mock_session: AsyncMock
@@ -118,15 +122,16 @@ class TestEnrichTagsMethod:
         video_id = "videoWithNoTags"
         tags: List[str] = []
 
-        service.video_tag_repository.replace_video_tags = AsyncMock(return_value=[])
+        with patch.object(
+            service.video_tag_repository, "replace_video_tags", new=AsyncMock(return_value=[])
+        ):
+            # When enrich_tags is called with empty tags
+            result = await service.video_tag_repository.replace_video_tags(
+                mock_session, video_id, tags
+            )
 
-        # When enrich_tags is called with empty tags
-        result = await service.video_tag_repository.replace_video_tags(
-            mock_session, video_id, tags
-        )
-
-        # Then it should return an empty list (no placeholder tags created)
-        assert result == []
+            # Then it should return an empty list (no placeholder tags created)
+            assert result == []
 
     async def test_enrich_tags_handles_missing_tags_field(
         self, service: EnrichmentService, mock_session: AsyncMock
@@ -180,16 +185,16 @@ class TestEnrichTagsMethod:
         tags = ["tag1", "tag2", "tag3", "tag4", "tag5"]
 
         mock_tags_db = [MagicMock(video_id=video_id, tag=t) for t in tags]
-        service.video_tag_repository.replace_video_tags = AsyncMock(
-            return_value=mock_tags_db
-        )
 
-        result = await service.video_tag_repository.replace_video_tags(
-            mock_session, video_id, tags
-        )
+        with patch.object(
+            service.video_tag_repository, "replace_video_tags", new=AsyncMock(return_value=mock_tags_db)
+        ):
+            result = await service.video_tag_repository.replace_video_tags(
+                mock_session, video_id, tags
+            )
 
-        # Then it should return the created tags
-        assert len(result) == 5
+            # Then it should return the created tags
+            assert len(result) == 5
 
 
 class TestTagExtractionFromSnippet:
@@ -228,13 +233,13 @@ class TestTagExtractionFromSnippet:
         ]
 
         for case in test_cases:
-            api_data = {"snippet": {"tags": case["tags"]}}
+            api_data: dict[str, Any] = {"snippet": {"tags": case["tags"]}}
             extracted = api_data["snippet"]["tags"]
             assert len(extracted) == case["expected_count"]
 
     def test_extraction_from_api_response_format(self) -> None:
         """Test extraction from complete YouTube API response format."""
-        api_data = {
+        api_data: dict[str, Any] = {
             "kind": "youtube#video",
             "etag": "abc123",
             "id": "dQw4w9WgXcQ",
@@ -632,7 +637,7 @@ class TestVideosWithNoTags:
     ) -> None:
         """Test that no placeholder tags are created for videos without tags."""
         video_id = "noTagsVideo"
-        api_data = {
+        api_data: dict[str, Any] = {
             "id": video_id,
             "snippet": {
                 "title": "Video Without Tags",
@@ -653,7 +658,7 @@ class TestVideosWithNoTags:
     ) -> None:
         """Test that empty tags array results in no placeholder tags."""
         video_id = "emptyTagsVideo"
-        api_data = {
+        api_data: dict[str, Any] = {
             "id": video_id,
             "snippet": {
                 "title": "Video With Empty Tags",
@@ -671,7 +676,7 @@ class TestVideosWithNoTags:
     ) -> None:
         """Test that count of videos without tags is tracked."""
         # Simulate enrichment of multiple videos
-        videos_data = [
+        videos_data: list[dict[str, Any]] = [
             {"id": "vid1", "snippet": {"tags": ["tag1", "tag2"]}},  # Has tags
             {"id": "vid2", "snippet": {}},  # No tags field
             {"id": "vid3", "snippet": {"tags": []}},  # Empty tags
@@ -816,7 +821,7 @@ class TestTagEnrichmentIntegration:
     ) -> None:
         """Test tag enrichment integration with API response processing."""
         # Full API response for a video
-        api_response = {
+        api_response: dict[str, Any] = {
             "id": "testVideoId123",
             "snippet": {
                 "title": "Test Video",
@@ -848,23 +853,23 @@ class TestTagEnrichmentIntegration:
             MagicMock(video_id=video_id, tag=t, tag_order=i)
             for i, t in enumerate(tags)
         ]
-        service.video_tag_repository.replace_video_tags = AsyncMock(
-            return_value=mock_tags_db
-        )
 
-        # Call repository
-        result = await service.video_tag_repository.replace_video_tags(
-            mock_session, video_id, tags, list(range(len(tags)))
-        )
+        with patch.object(
+            service.video_tag_repository, "replace_video_tags", new=AsyncMock(return_value=mock_tags_db)
+        ):
+            # Call repository
+            result = await service.video_tag_repository.replace_video_tags(
+                mock_session, video_id, tags, list(range(len(tags)))
+            )
 
-        assert len(result) == 4
+            assert len(result) == 4
 
     async def test_tag_enrichment_batch_processing(
         self, service: EnrichmentService, mock_session: AsyncMock
     ) -> None:
         """Test tag enrichment within batch video processing."""
         # Simulate multiple videos with varying tag counts
-        videos = [
+        videos: list[dict[str, Any]] = [
             {"id": "vid1", "snippet": {"tags": ["a", "b", "c"]}},
             {"id": "vid2", "snippet": {"tags": ["x", "y"]}},
             {"id": "vid3", "snippet": {}},  # No tags
@@ -885,17 +890,15 @@ class TestTagEnrichmentIntegration:
         video_id = "errorVideo"
         tags = ["tag1", "tag2"]
 
-        # Simulate repository error
-        service.video_tag_repository.replace_video_tags = AsyncMock(
-            side_effect=Exception("Database error")
-        )
+        with patch.object(
+            service.video_tag_repository, "replace_video_tags", new=AsyncMock(side_effect=Exception("Database error"))
+        ):
+            with pytest.raises(Exception) as exc_info:
+                await service.video_tag_repository.replace_video_tags(
+                    mock_session, video_id, tags
+                )
 
-        with pytest.raises(Exception) as exc_info:
-            await service.video_tag_repository.replace_video_tags(
-                mock_session, video_id, tags
-            )
-
-        assert "Database error" in str(exc_info.value)
+            assert "Database error" in str(exc_info.value)
 
 
 class TestTagValidation:
@@ -1034,13 +1037,13 @@ class TestEnrichTagsImplementation:
 
         # Mock repository to return created tags
         mock_tags_db = [MagicMock(tag=t) for t in tags]
-        service.video_tag_repository.replace_video_tags = AsyncMock(
-            return_value=mock_tags_db
-        )
 
-        result = await service.enrich_tags(mock_session, video_id, tags)
+        with patch.object(
+            service.video_tag_repository, "replace_video_tags", new=AsyncMock(return_value=mock_tags_db)
+        ):
+            result = await service.enrich_tags(mock_session, video_id, tags)
 
-        assert result == 3
+            assert result == 3
 
     async def test_enrich_tags_returns_zero_for_empty_tags(
         self, service: EnrichmentService, mock_session: AsyncMock
@@ -1049,11 +1052,15 @@ class TestEnrichTagsImplementation:
         video_id = VALID_VIDEO_ID
         tags: List[str] = []
 
-        result = await service.enrich_tags(mock_session, video_id, tags)
+        mock_replace = AsyncMock(return_value=[])
+        with patch.object(
+            service.video_tag_repository, "replace_video_tags", new=mock_replace
+        ):
+            result = await service.enrich_tags(mock_session, video_id, tags)
 
-        # Should return 0 without calling repository
-        assert result == 0
-        service.video_tag_repository.replace_video_tags.assert_not_called()
+            # Should return 0 without calling repository
+            assert result == 0
+            mock_replace.assert_not_called()
 
     async def test_enrich_tags_returns_zero_for_none_tags(
         self, service: EnrichmentService, mock_session: AsyncMock
@@ -1102,19 +1109,19 @@ class TestEnrichTagsImplementation:
         tags = ["tag1", "tag2"]
 
         mock_tags_db = [MagicMock(tag=t) for t in tags]
-        service.video_tag_repository.replace_video_tags = AsyncMock(
-            return_value=mock_tags_db
-        )
 
-        await service.enrich_tags(mock_session, video_id, tags)
+        with patch.object(
+            service.video_tag_repository, "replace_video_tags", new=AsyncMock(return_value=mock_tags_db)
+        ) as mock_replace:
+            await service.enrich_tags(mock_session, video_id, tags)
 
-        # Verify repository was called with correct arguments
-        service.video_tag_repository.replace_video_tags.assert_called_once()
-        call_args = service.video_tag_repository.replace_video_tags.call_args
-        assert call_args[0][0] == mock_session
-        assert call_args[0][1] == video_id
-        assert call_args[0][2] == tags
-        assert call_args[0][3] == [0, 1]  # tag_orders
+            # Verify repository was called with correct arguments
+            mock_replace.assert_called_once()
+            call_args = mock_replace.call_args
+            assert call_args[0][0] == mock_session
+            assert call_args[0][1] == video_id
+            assert call_args[0][2] == tags
+            assert call_args[0][3] == [0, 1]  # tag_orders
 
     async def test_enrich_tags_generates_tag_orders(
         self, service: EnrichmentService, mock_session: AsyncMock
@@ -1124,13 +1131,13 @@ class TestEnrichTagsImplementation:
         tags = ["first", "second", "third", "fourth"]
 
         mock_tags_db = [MagicMock(tag=t) for t in tags]
-        service.video_tag_repository.replace_video_tags = AsyncMock(
-            return_value=mock_tags_db
-        )
 
-        await service.enrich_tags(mock_session, video_id, tags)
+        with patch.object(
+            service.video_tag_repository, "replace_video_tags", new=AsyncMock(return_value=mock_tags_db)
+        ) as mock_replace:
+            await service.enrich_tags(mock_session, video_id, tags)
 
-        # Check tag_orders were passed correctly
-        call_args = service.video_tag_repository.replace_video_tags.call_args
-        expected_orders = [0, 1, 2, 3]
-        assert call_args[0][3] == expected_orders
+            # Check tag_orders were passed correctly
+            call_args = mock_replace.call_args
+            expected_orders = [0, 1, 2, 3]
+            assert call_args[0][3] == expected_orders

@@ -31,6 +31,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, call, patch
 import pytest
 from googleapiclient.errors import HttpError
 
+from chronovista.models.api_responses import YouTubeVideoResponse
 from chronovista.models.enrichment_report import (
     EnrichmentDetail,
     EnrichmentReport,
@@ -59,6 +60,34 @@ pytestmark = pytest.mark.asyncio
 VALID_VIDEO_ID = "dQw4w9WgXcQ"
 VALID_VIDEO_ID_2 = "abc12345678"
 VALID_VIDEO_ID_3 = "xyz_1234567"
+
+
+def make_video_response(video_id: str, **kwargs: Any) -> YouTubeVideoResponse:
+    """
+    Create a YouTubeVideoResponse from a video ID and optional kwargs.
+
+    This helper ensures tests return proper Pydantic objects instead of dicts.
+    The snippet field requires publishedAt and channelId, so we provide defaults.
+    """
+    data: Dict[str, Any] = {"id": video_id, **kwargs}
+
+    # If snippet is provided, ensure required fields are present
+    if "snippet" in data:
+        snippet = data["snippet"]
+        if isinstance(snippet, dict):
+            if "publishedAt" not in snippet:
+                snippet["publishedAt"] = datetime.now(timezone.utc).isoformat()
+            if "channelId" not in snippet:
+                snippet["channelId"] = "UC_test_channel"
+
+    return YouTubeVideoResponse.model_validate(data)
+
+
+def make_video_responses(video_dicts: List[Dict[str, Any]]) -> List[YouTubeVideoResponse]:
+    """
+    Convert a list of video dictionaries to YouTubeVideoResponse objects.
+    """
+    return [YouTubeVideoResponse.model_validate(d) for d in video_dicts]
 
 
 class QuotaExceededException(Exception):
@@ -157,26 +186,27 @@ class TestQuotaExceededHandling:
             # Mock API to return quota error after some processing
             call_count = 0
 
-            async def quota_error_on_call(*args: Any, **kwargs: Any) -> tuple:
+            async def quota_error_on_call(
+                *args: Any, **kwargs: Any
+            ) -> tuple[list[YouTubeVideoResponse], set[str]]:
                 nonlocal call_count
                 call_count += 1
                 if call_count > 1:
                     raise create_http_error(403, "quotaExceeded")
-                return ([{"id": VALID_VIDEO_ID, "snippet": {"title": "Test"}}], set())
+                return ([make_video_response(VALID_VIDEO_ID, snippet={"title": "Test"})], set())
 
-            enrichment_service.youtube_service.fetch_videos_batched = AsyncMock(
-                side_effect=quota_error_on_call
-            )
+            with patch.object(
+                enrichment_service.youtube_service, "fetch_videos_batched", new=AsyncMock(side_effect=quota_error_on_call)
+            ):
+                # Run enrichment - should handle quota error gracefully
+                try:
+                    await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
+                except HttpError:
+                    pass  # Expected to fail on quota
 
-            # Run enrichment - should handle quota error gracefully
-            try:
-                await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
-            except HttpError:
-                pass  # Expected to fail on quota
-
-            # Verify that commit was attempted
-            # The service should try to commit partial work before failing
-            # Note: In actual implementation, commit happens on batch completion
+                # Verify that commit was attempted
+                # The service should try to commit partial work before failing
+                # Note: In actual implementation, commit happens on batch completion
 
     def test_quota_exceeded_returns_exit_code_3(self) -> None:
         """Test that exit code 2 is returned for no credentials."""
@@ -218,18 +248,17 @@ class TestQuotaExceededHandling:
             mock_get.return_value = mock_videos
 
             # Mock to simulate quota error after first batch
-            api_responses: List[Dict[str, Any]] = [
-                {"id": "vid0", "snippet": {"title": "Updated Title 0"}}
+            api_responses: List[YouTubeVideoResponse] = [
+                make_video_response("vid0", snippet={"title": "Updated Title 0"})
             ]
 
-            enrichment_service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=(api_responses, {"vid1", "vid2"})
-            )
+            with patch.object(
+                enrichment_service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=(api_responses, {"vid1", "vid2"}))
+            ):
+                report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
 
-            report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
-
-            # Verify that some videos were processed
-            assert report.summary.videos_processed == 3
+                # Verify that some videos were processed
+                assert report.summary.videos_processed == 3
 
     def test_quota_cost_estimation(self) -> None:
         """Test that quota cost is estimated correctly."""
@@ -262,7 +291,7 @@ class TestNetworkRetryExponentialBackoff:
 
         async def connection_error_then_success(
             *args: Any, **kwargs: Any
-        ) -> tuple:
+        ) -> tuple[list[dict[str, Any]], set[str]]:
             nonlocal call_count
             call_count += 1
             if call_count < 3:
@@ -294,7 +323,7 @@ class TestNetworkRetryExponentialBackoff:
         """Test retry on timeout errors."""
         call_count = 0
 
-        async def timeout_then_success(*args: Any, **kwargs: Any) -> tuple:
+        async def timeout_then_success(*args: Any, **kwargs: Any) -> tuple[list[dict[str, Any]], set[str]]:
             nonlocal call_count
             call_count += 1
             if call_count < 2:
@@ -323,7 +352,7 @@ class TestNetworkRetryExponentialBackoff:
         """Test retry on 5xx server errors."""
         call_count = 0
 
-        async def server_error_then_success(*args: Any, **kwargs: Any) -> tuple:
+        async def server_error_then_success(*args: Any, **kwargs: Any) -> tuple[list[dict[str, Any]], set[str]]:
             nonlocal call_count
             call_count += 1
             if call_count < 2:
@@ -394,7 +423,7 @@ class TestNetworkRetryExponentialBackoff:
         """Test successful retry after transient failure."""
         call_count = 0
 
-        async def transient_then_success(*args: Any, **kwargs: Any) -> tuple:
+        async def transient_then_success(*args: Any, **kwargs: Any) -> tuple[list[dict[str, Any]], set[str]]:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -508,16 +537,15 @@ class TestSIGINTGracefulShutdown:
         ) as mock_get:
             mock_get.return_value = [mock_video]
 
-            enrichment_service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=([{"id": VALID_VIDEO_ID}], set())
-            )
+            with patch.object(
+                enrichment_service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([make_video_response(VALID_VIDEO_ID)], set()))
+            ):
+                # Run enrichment
+                report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
 
-            # Run enrichment
-            report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
-
-            # Partial report should be generated
-            assert report is not None
-            assert isinstance(report, EnrichmentReport)
+                # Partial report should be generated
+                assert report is not None
+                assert isinstance(report, EnrichmentReport)
 
     def test_exit_code_130_on_sigint(self) -> None:
         """Test exit code 130 is returned on SIGINT."""
@@ -570,17 +598,13 @@ class TestSIGINTGracefulShutdown:
         ) as mock_get:
             mock_get.return_value = mock_videos[:2]  # Only 2 videos
 
-            enrichment_service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=(
-                    [{"id": "vid0"}, {"id": "vid1"}],
-                    set()
-                )
-            )
+            with patch.object(
+                enrichment_service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([make_video_response("vid0"), make_video_response("vid1")], set()))
+            ):
+                report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
 
-            report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
-
-            # Should have processed 2 videos before "shutdown"
-            assert report.summary.videos_processed == 2
+                # Should have processed 2 videos before "shutdown"
+                assert report.summary.videos_processed == 2
 
 
 # =============================================================================
@@ -618,48 +642,42 @@ class TestPartialAPIResponseHandling:
             mock_get.return_value = mock_videos
 
             # One video found, one not found
-            found_video = {
-                "id": "vid_found",
-                "snippet": {
+            found_video = make_video_response(
+                "vid_found",
+                snippet={
                     "title": "Found Video Title",
                     "channelId": "UC_channel",
                     "channelTitle": "Test Channel",
                 },
-                "contentDetails": {"duration": "PT10M"},
-                "statistics": {"viewCount": "1000"},
-            }
-
-            enrichment_service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=([found_video], {"vid_notfound"})
+                contentDetails={"duration": "PT10M"},
+                statistics={"viewCount": "1000"},
             )
 
-            # Mock channel repository
-            enrichment_service.channel_repository.get = AsyncMock(return_value=None)
-            enrichment_service.channel_repository.create = AsyncMock()
-
-            # Mock tag, topic, category repositories
-            enrichment_service.video_tag_repository.replace_video_tags = AsyncMock(
-                return_value=[]
-            )
-            enrichment_service.video_topic_repository.replace_video_topics = AsyncMock(
-                return_value=[]
-            )
-            enrichment_service.video_category_repository.get = AsyncMock(
-                return_value=None
-            )
             # Mock video_repository.get to return the correct video by ID
             video_lookup = {v.video_id: v for v in mock_videos}
-            enrichment_service.video_repository.get = AsyncMock(
-                side_effect=lambda session, video_id: video_lookup.get(video_id)
-            )
 
-            report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
+            with patch.object(
+                enrichment_service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([found_video], {"vid_notfound"}))
+            ), patch.object(
+                enrichment_service.channel_repository, "get", new=AsyncMock(return_value=None)
+            ), patch.object(
+                enrichment_service.channel_repository, "create", new=AsyncMock()
+            ), patch.object(
+                enrichment_service.video_tag_repository, "replace_video_tags", new=AsyncMock(return_value=[])
+            ), patch.object(
+                enrichment_service.video_topic_repository, "replace_video_topics", new=AsyncMock(return_value=[])
+            ), patch.object(
+                enrichment_service.video_category_repository, "get", new=AsyncMock(return_value=None)
+            ), patch.object(
+                enrichment_service.video_repository, "get", new=AsyncMock(side_effect=lambda session, video_id: video_lookup.get(video_id))
+            ):
+                report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
 
-            # Both videos should be processed
-            assert report.summary.videos_processed == 2
-            # One updated, one deleted
-            assert report.summary.videos_updated == 1
-            assert report.summary.videos_deleted == 1
+                # Both videos should be processed
+                assert report.summary.videos_processed == 2
+                # One updated, one deleted
+                assert report.summary.videos_updated == 1
+                assert report.summary.videos_deleted == 1
 
     async def test_found_videos_updated_correctly(
         self, mock_session: AsyncMock, enrichment_service: EnrichmentService
@@ -678,42 +696,38 @@ class TestPartialAPIResponseHandling:
         ) as mock_get:
             mock_get.return_value = [mock_video]
 
-            api_data = {
-                "id": VALID_VIDEO_ID,
-                "snippet": {
+            api_data = make_video_response(
+                VALID_VIDEO_ID,
+                snippet={
                     "title": "Real Title",
                     "description": "Real description",
                     "channelId": "UC_new_channel",
                     "channelTitle": "New Channel",
                 },
-                "contentDetails": {"duration": "PT5M30S"},
-                "statistics": {"viewCount": "5000", "likeCount": "100"},
-            }
-
-            enrichment_service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=([api_data], set())
+                contentDetails={"duration": "PT5M30S"},
+                statistics={"viewCount": "5000", "likeCount": "100"},
             )
 
-            # Mock repositories
-            enrichment_service.channel_repository.get = AsyncMock(return_value=None)
-            enrichment_service.channel_repository.create = AsyncMock()
-            enrichment_service.video_tag_repository.replace_video_tags = AsyncMock(
-                return_value=[]
-            )
-            enrichment_service.video_topic_repository.replace_video_topics = AsyncMock(
-                return_value=[]
-            )
-            enrichment_service.video_category_repository.get = AsyncMock(
-                return_value=None
-            )
-            # Mock video_repository.get to return the video for potential deletion marking
-            enrichment_service.video_repository.get = AsyncMock(return_value=mock_video)
+            with patch.object(
+                enrichment_service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([api_data], set()))
+            ), patch.object(
+                enrichment_service.channel_repository, "get", new=AsyncMock(return_value=None)
+            ), patch.object(
+                enrichment_service.channel_repository, "create", new=AsyncMock()
+            ), patch.object(
+                enrichment_service.video_tag_repository, "replace_video_tags", new=AsyncMock(return_value=[])
+            ), patch.object(
+                enrichment_service.video_topic_repository, "replace_video_topics", new=AsyncMock(return_value=[])
+            ), patch.object(
+                enrichment_service.video_category_repository, "get", new=AsyncMock(return_value=None)
+            ), patch.object(
+                enrichment_service.video_repository, "get", new=AsyncMock(return_value=mock_video)
+            ):
+                report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
 
-            report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
-
-            assert report.summary.videos_updated == 1
-            # Verify video was updated
-            assert mock_video.title == "Real Title"
+                assert report.summary.videos_updated == 1
+                # Verify video was updated
+                assert mock_video.title == "Real Title"
 
     async def test_not_found_videos_marked_deleted(
         self, mock_session: AsyncMock, enrichment_service: EnrichmentService
@@ -732,18 +746,16 @@ class TestPartialAPIResponseHandling:
         ) as mock_get:
             mock_get.return_value = [mock_video]
 
-            # Video not found in API response
-            enrichment_service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=([], {VALID_VIDEO_ID})
-            )
-            # Mock video_repository.get to return the video for deletion marking
-            enrichment_service.video_repository.get = AsyncMock(return_value=mock_video)
+            with patch.object(
+                enrichment_service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([], {VALID_VIDEO_ID}))
+            ), patch.object(
+                enrichment_service.video_repository, "get", new=AsyncMock(return_value=mock_video)
+            ):
+                report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
 
-            report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
-
-            # Video should be marked as deleted
-            assert report.summary.videos_deleted == 1
-            assert mock_video.deleted_flag is True
+                # Video should be marked as deleted
+                assert report.summary.videos_deleted == 1
+                assert mock_video.deleted_flag is True
 
     async def test_mixed_response_no_errors(
         self, mock_session: AsyncMock, enrichment_service: EnrichmentService
@@ -768,43 +780,38 @@ class TestPartialAPIResponseHandling:
 
             # 3 found, 2 not found
             found_videos = [
-                {
-                    "id": f"vid{i}",
-                    "snippet": {"title": f"Title {i}", "channelId": "UC_channel", "channelTitle": "Channel"},
-                    "contentDetails": {"duration": "PT5M"},
-                    "statistics": {"viewCount": "100"},
-                }
+                make_video_response(
+                    f"vid{i}",
+                    snippet={"title": f"Title {i}", "channelId": "UC_channel", "channelTitle": "Channel"},
+                    contentDetails={"duration": "PT5M"},
+                    statistics={"viewCount": "100"},
+                )
                 for i in range(3)
             ]
 
-            enrichment_service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=(found_videos, {"vid3", "vid4"})
-            )
-
-            # Mock repositories
-            enrichment_service.channel_repository.get = AsyncMock(return_value=MagicMock())
-            enrichment_service.video_tag_repository.replace_video_tags = AsyncMock(
-                return_value=[]
-            )
-            enrichment_service.video_topic_repository.replace_video_topics = AsyncMock(
-                return_value=[]
-            )
-            enrichment_service.video_category_repository.get = AsyncMock(
-                return_value=None
-            )
             # Mock video_repository.get to return the correct video by ID
             video_lookup = {v.video_id: v for v in mock_videos}
-            enrichment_service.video_repository.get = AsyncMock(
-                side_effect=lambda session, video_id: video_lookup.get(video_id)
-            )
 
-            report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
+            with patch.object(
+                enrichment_service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=(found_videos, {"vid3", "vid4"}))
+            ), patch.object(
+                enrichment_service.channel_repository, "get", new=AsyncMock(return_value=MagicMock())
+            ), patch.object(
+                enrichment_service.video_tag_repository, "replace_video_tags", new=AsyncMock(return_value=[])
+            ), patch.object(
+                enrichment_service.video_topic_repository, "replace_video_topics", new=AsyncMock(return_value=[])
+            ), patch.object(
+                enrichment_service.video_category_repository, "get", new=AsyncMock(return_value=None)
+            ), patch.object(
+                enrichment_service.video_repository, "get", new=AsyncMock(side_effect=lambda session, video_id: video_lookup.get(video_id))
+            ):
+                report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
 
-            # No errors should occur
-            assert report.summary.errors == 0
-            assert report.summary.videos_processed == 5
-            assert report.summary.videos_updated == 3
-            assert report.summary.videos_deleted == 2
+                # No errors should occur
+                assert report.summary.errors == 0
+                assert report.summary.videos_processed == 5
+                assert report.summary.videos_updated == 3
+                assert report.summary.videos_deleted == 2
 
     async def test_counts_accurate_in_report(
         self, mock_session: AsyncMock, enrichment_service: EnrichmentService
@@ -829,43 +836,38 @@ class TestPartialAPIResponseHandling:
 
             # 6 found, 4 not found
             found_videos = [
-                {
-                    "id": f"vid{i}",
-                    "snippet": {"title": f"Title {i}", "channelId": "UC_channel", "channelTitle": "Channel"},
-                    "contentDetails": {"duration": "PT5M"},
-                    "statistics": {"viewCount": "100"},
-                }
+                make_video_response(
+                    f"vid{i}",
+                    snippet={"title": f"Title {i}", "channelId": "UC_channel", "channelTitle": "Channel"},
+                    contentDetails={"duration": "PT5M"},
+                    statistics={"viewCount": "100"},
+                )
                 for i in range(6)
             ]
 
-            enrichment_service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=(found_videos, {f"vid{i}" for i in range(6, 10)})
-            )
-
-            # Mock repositories
-            enrichment_service.channel_repository.get = AsyncMock(return_value=MagicMock())
-            enrichment_service.video_tag_repository.replace_video_tags = AsyncMock(
-                return_value=[]
-            )
-            enrichment_service.video_topic_repository.replace_video_topics = AsyncMock(
-                return_value=[]
-            )
-            enrichment_service.video_category_repository.get = AsyncMock(
-                return_value=None
-            )
             # Mock video_repository.get to return the correct video by ID
             video_lookup = {v.video_id: v for v in mock_videos}
-            enrichment_service.video_repository.get = AsyncMock(
-                side_effect=lambda session, video_id: video_lookup.get(video_id)
-            )
 
-            report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
+            with patch.object(
+                enrichment_service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=(found_videos, {f"vid{i}" for i in range(6, 10)}))
+            ), patch.object(
+                enrichment_service.channel_repository, "get", new=AsyncMock(return_value=MagicMock())
+            ), patch.object(
+                enrichment_service.video_tag_repository, "replace_video_tags", new=AsyncMock(return_value=[])
+            ), patch.object(
+                enrichment_service.video_topic_repository, "replace_video_topics", new=AsyncMock(return_value=[])
+            ), patch.object(
+                enrichment_service.video_category_repository, "get", new=AsyncMock(return_value=None)
+            ), patch.object(
+                enrichment_service.video_repository, "get", new=AsyncMock(side_effect=lambda session, video_id: video_lookup.get(video_id))
+            ):
+                report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
 
-            # Verify counts
-            assert report.summary.videos_processed == 10
-            assert report.summary.videos_updated == 6
-            assert report.summary.videos_deleted == 4
-            assert report.summary.videos_updated + report.summary.videos_deleted == 10
+                # Verify counts
+                assert report.summary.videos_processed == 10
+                assert report.summary.videos_updated == 6
+                assert report.summary.videos_deleted == 4
+                assert report.summary.videos_updated + report.summary.videos_deleted == 10
 
 
 # =============================================================================
@@ -1227,7 +1229,7 @@ class TestRecoveryAfterTransientErrors:
         """Test recovery after temporary network failure."""
         call_count = 0
 
-        async def temporary_failure(*args: Any, **kwargs: Any) -> tuple:
+        async def temporary_failure(*args: Any, **kwargs: Any) -> tuple[list[dict[str, Any]], set[str]]:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -1255,7 +1257,7 @@ class TestRecoveryAfterTransientErrors:
         """Test recovery after temporary API error (5xx)."""
         call_count = 0
 
-        async def temporary_api_error(*args: Any, **kwargs: Any) -> tuple:
+        async def temporary_api_error(*args: Any, **kwargs: Any) -> tuple[list[dict[str, Any]], set[str]]:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -1283,7 +1285,7 @@ class TestRecoveryAfterTransientErrors:
         self, mock_session: AsyncMock, enrichment_service: EnrichmentService
     ) -> None:
         """Test that state is preserved after recovery."""
-        processed_videos = []
+        processed_videos: list[str] = []
 
         mock_videos = [
             MagicMock(
@@ -1302,17 +1304,13 @@ class TestRecoveryAfterTransientErrors:
         ) as mock_get:
             mock_get.return_value = mock_videos
 
-            enrichment_service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=(
-                    [{"id": f"vid{i}"} for i in range(3)],
-                    set()
-                )
-            )
+            with patch.object(
+                enrichment_service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([make_video_response(f"vid{i}") for i in range(3)], set()))
+            ):
+                report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
 
-            report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
-
-            # All videos should be processed
-            assert report.summary.videos_processed == 3
+                # All videos should be processed
+                assert report.summary.videos_processed == 3
 
     async def test_batch_boundary_maintained_on_recovery(
         self, mock_session: AsyncMock, enrichment_service: EnrichmentService
@@ -1339,16 +1337,15 @@ class TestRecoveryAfterTransientErrors:
         ) as mock_get:
             mock_get.return_value = mock_videos
 
-            api_response = [{"id": f"vid{i}"} for i in range(60)]
+            api_response = [make_video_response(f"vid{i}") for i in range(60)]
 
-            enrichment_service.youtube_service.fetch_videos_batched = AsyncMock(
-                return_value=(api_response, set())
-            )
+            with patch.object(
+                enrichment_service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=(api_response, set()))
+            ):
+                report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
 
-            report = await enrichment_service.enrich_videos(mock_session, check_prerequisites=False)
-
-            # All videos should be processed even across batch boundaries
-            assert report.summary.videos_processed == 60
+                # All videos should be processed even across batch boundaries
+                assert report.summary.videos_processed == 60
 
 
 # =============================================================================
@@ -1381,7 +1378,9 @@ class TestDryRunErrorHandling:
             )
 
             # Verify no API calls were made
-            enrichment_service.youtube_service.fetch_videos_batched.assert_not_called()
+            youtube_mock = enrichment_service.youtube_service
+            assert isinstance(youtube_mock, AsyncMock)
+            youtube_mock.fetch_videos_batched.assert_not_called()
 
             # Verify report shows skipped status
             assert report.summary.videos_processed == 1

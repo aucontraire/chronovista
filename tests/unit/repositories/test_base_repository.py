@@ -23,11 +23,11 @@ class TestBaseSQLAlchemyRepository:
     class MockRepository(BaseSQLAlchemyRepository[VideoDB, VideoCreate, VideoUpdate]):
         """Mock repository for testing."""
 
-        def __init__(self):
+        def __init__(self) -> None:
             super().__init__(VideoDB)
 
     @pytest.fixture
-    def repository(self):
+    def repository(self) -> "TestBaseSQLAlchemyRepository.MockRepository":
         """Create repository instance for testing."""
         return self.MockRepository()
 
@@ -253,11 +253,11 @@ class TestBaseRepositoryEdgeCases:
     class MockRepository(BaseSQLAlchemyRepository[VideoDB, VideoCreate, VideoUpdate]):
         """Mock repository for testing."""
 
-        def __init__(self):
+        def __init__(self) -> None:
             super().__init__(VideoDB)
 
     @pytest.fixture
-    def repository(self):
+    def repository(self) -> "TestBaseRepositoryEdgeCases.MockRepository":
         """Create repository instance for testing."""
         return self.MockRepository()
 

@@ -36,6 +36,7 @@ class VideoTranscriptRepository(
         VideoTranscriptDB,
         VideoTranscriptCreate,
         VideoTranscriptUpdate,
+        Tuple[str, str],
     ]
 ):
     """Repository for video transcripts with multi-language and quality support."""

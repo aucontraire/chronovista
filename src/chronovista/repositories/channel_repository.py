@@ -28,6 +28,7 @@ class ChannelRepository(
         ChannelDB,
         ChannelCreate,
         ChannelUpdate,
+        ChannelId,
     ]
 ):
     """Repository for YouTube channel management with subscription tracking."""

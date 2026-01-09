@@ -45,8 +45,6 @@ class TestVideoCategoryRepository:
             assignable=True,
             created_at=datetime.now(timezone.utc),
         )
-        # Set updated_at separately as it might not be in __init__
-        category.updated_at = datetime.now(timezone.utc)
         return category
 
     @pytest.fixture

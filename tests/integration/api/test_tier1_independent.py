@@ -79,18 +79,21 @@ class TestChannelFromYouTubeAPI:
                     print(f"Cleanup warning: {e}")
                     await session.rollback()
 
-                api_data = await authenticated_youtube_service.get_channel_details(
+                # Returns a list of YouTubeChannelResponse Pydantic models
+                api_data_list = await authenticated_youtube_service.get_channel_details(
                     channel_id
                 )
 
                 # Validate API data structure matches our expectations
-                assert "id" in api_data
-                assert "snippet" in api_data
-                assert api_data["id"] == channel_id
+                assert len(api_data_list) > 0
+                api_data = api_data_list[0]  # Get first channel from list
+                assert api_data.id == channel_id
+                assert api_data.snippet is not None
 
                 # Create Pydantic model from API data
                 # Handle language code properly with enum
-                default_lang = api_data["snippet"].get("defaultLanguage")
+                snippet = api_data.snippet
+                default_lang = snippet.default_language if snippet else None
                 if default_lang:
                     try:
                         default_language = LanguageCode(default_lang)
@@ -99,17 +102,20 @@ class TestChannelFromYouTubeAPI:
                 else:
                     default_language = LanguageCode.ENGLISH  # Default fallback
 
+                statistics = api_data.statistics
+                thumbnails = snippet.thumbnails if snippet else {}
+                default_thumb = thumbnails.get("default") if thumbnails else None
+                thumbnail_url = default_thumb.url if default_thumb else None
+
                 channel_create = ChannelCreate(
-                    channel_id=api_data["id"],
-                    title=api_data["snippet"]["title"],
-                    description=api_data["snippet"].get("description", ""),
+                    channel_id=api_data.id,
+                    title=snippet.title if snippet else "",
+                    description=snippet.description if snippet else "",
                     default_language=default_language,
-                    country=api_data["snippet"].get("country", None),
-                    subscriber_count=api_data.get("statistics", {}).get(
-                        "subscriberCount", 0
-                    ),
-                    video_count=api_data.get("statistics", {}).get("videoCount", 0),
-                    thumbnail_url=api_data["snippet"]["thumbnails"]["default"]["url"],
+                    country=snippet.country if snippet else None,
+                    subscriber_count=statistics.subscriber_count if statistics else 0,
+                    video_count=statistics.video_count if statistics else 0,
+                    thumbnail_url=thumbnail_url,
                 )
 
                 # Validate Pydantic model
@@ -186,33 +192,37 @@ class TestChannelFromYouTubeAPI:
             pytest.skip("YouTube API not available")
 
         for channel_id in sample_youtube_channel_ids:
-            api_data = await authenticated_youtube_service.get_channel_details(
+            # Returns a list of YouTubeChannelResponse Pydantic models
+            api_data_list = await authenticated_youtube_service.get_channel_details(
                 channel_id
             )
+            assert len(api_data_list) > 0
+            api_data = api_data_list[0]
 
             # Test channel ID validation
-            assert len(api_data["id"]) <= 24  # Max length constraint
-            assert len(api_data["id"]) >= 1  # Min length constraint
+            assert len(api_data.id) <= 24  # Max length constraint
+            assert len(api_data.id) >= 1  # Min length constraint
 
             # Test title validation
-            title = api_data["snippet"]["title"]
+            snippet = api_data.snippet
+            title = snippet.title if snippet else ""
             assert len(title) > 0  # Non-empty constraint
             assert len(title.strip()) > 0  # Non-whitespace constraint
 
             # Test language code validation
-            default_language = api_data["snippet"].get("defaultLanguage")
+            default_language = snippet.default_language if snippet else None
             if default_language:
                 assert 2 <= len(default_language) <= 10  # BCP-47 constraint
 
             # Test country code validation
-            country = api_data["snippet"].get("country")
+            country = snippet.country if snippet else None
             if country:
                 assert len(country) == 2  # ISO 3166-1 alpha-2
 
             # Test numeric field validation
-            stats = api_data.get("statistics", {})
-            subscriber_count = int(stats.get("subscriberCount", 0))
-            video_count = int(stats.get("videoCount", 0))
+            stats = api_data.statistics
+            subscriber_count = stats.subscriber_count if stats else 0
+            video_count = stats.video_count if stats else 0
             assert subscriber_count >= 0
             assert video_count >= 0
 
@@ -241,17 +251,17 @@ class TestChannelFromYouTubeAPI:
                     DBChannel, ChannelCreate, ChannelUpdate
                 ] = BaseSQLAlchemyRepository(DBChannel)
 
-                # Create initial channel
-                initial_api_data = (
+                # Create initial channel - returns list of YouTubeChannelResponse
+                initial_api_data_list = (
                     await authenticated_youtube_service.get_channel_details(
                         base_channel_id
                     )
                 )
+                initial_api_data = initial_api_data_list[0]
 
                 # Handle language code properly with enum
-                initial_default_lang = initial_api_data["snippet"].get(
-                    "defaultLanguage"
-                )
+                initial_snippet = initial_api_data.snippet
+                initial_default_lang = initial_snippet.default_language if initial_snippet else None
                 if initial_default_lang:
                     try:
                         initial_default_language = LanguageCode(initial_default_lang)
@@ -260,17 +270,19 @@ class TestChannelFromYouTubeAPI:
                 else:
                     initial_default_language = LanguageCode.ENGLISH  # Default fallback
 
+                initial_thumbnails = initial_snippet.thumbnails if initial_snippet else {}
+                initial_default_thumb = initial_thumbnails.get("default") if initial_thumbnails else None
+                initial_thumbnail_url = initial_default_thumb.url if initial_default_thumb else None
+
                 initial_channel_create = ChannelCreate(
                     channel_id=channel_id,  # Use unique ID
                     title="Initial Title",  # Use different title to test update
-                    description=initial_api_data["snippet"].get("description", ""),
+                    description=initial_snippet.description if initial_snippet else "",
                     default_language=initial_default_language,
-                    country=initial_api_data["snippet"].get("country", None),
+                    country=initial_snippet.country if initial_snippet else None,
                     subscriber_count=0,  # Use different values to test update
                     video_count=0,
-                    thumbnail_url=initial_api_data["snippet"]["thumbnails"]["default"][
-                        "url"
-                    ],
+                    thumbnail_url=initial_thumbnail_url,
                 )
 
                 initial_channel = await channel_repo.create(
@@ -278,17 +290,19 @@ class TestChannelFromYouTubeAPI:
                 )
                 await session.commit()
 
-                # Get fresh data from API
-                fresh_api_data = (
+                # Get fresh data from API - returns list of YouTubeChannelResponse
+                fresh_api_data_list = (
                     await authenticated_youtube_service.get_channel_details(
                         base_channel_id
                     )
                 )
+                fresh_api_data = fresh_api_data_list[0]
 
                 # Create update model
 
                 # Handle language code properly with enum
-                fresh_default_lang = fresh_api_data["snippet"].get("defaultLanguage")
+                fresh_snippet = fresh_api_data.snippet
+                fresh_default_lang = fresh_snippet.default_language if fresh_snippet else None
                 if fresh_default_lang:
                     try:
                         fresh_default_language = LanguageCode(fresh_default_lang)
@@ -297,20 +311,19 @@ class TestChannelFromYouTubeAPI:
                 else:
                     fresh_default_language = LanguageCode.ENGLISH  # Default fallback
 
+                fresh_statistics = fresh_api_data.statistics
+                fresh_thumbnails = fresh_snippet.thumbnails if fresh_snippet else {}
+                fresh_default_thumb = fresh_thumbnails.get("default") if fresh_thumbnails else None
+                fresh_thumbnail_url = fresh_default_thumb.url if fresh_default_thumb else None
+
                 channel_update = ChannelUpdate(
-                    title=fresh_api_data["snippet"]["title"],
-                    description=fresh_api_data["snippet"].get("description"),
-                    subscriber_count=int(
-                        fresh_api_data.get("statistics", {}).get("subscriberCount", 0)
-                    ),
-                    video_count=int(
-                        fresh_api_data.get("statistics", {}).get("videoCount", 0)
-                    ),
+                    title=fresh_snippet.title if fresh_snippet else "",
+                    description=fresh_snippet.description if fresh_snippet else None,
+                    subscriber_count=fresh_statistics.subscriber_count if fresh_statistics else 0,
+                    video_count=fresh_statistics.video_count if fresh_statistics else 0,
                     default_language=fresh_default_language,
-                    country=fresh_api_data["snippet"].get("country", None),
-                    thumbnail_url=fresh_api_data["snippet"]["thumbnails"]["default"][
-                        "url"
-                    ],
+                    country=fresh_snippet.country if fresh_snippet else None,
+                    thumbnail_url=fresh_thumbnail_url,
                 )
 
                 # Update in database using the base repository method
@@ -321,7 +334,7 @@ class TestChannelFromYouTubeAPI:
 
                 # Verify update
                 assert updated_channel.channel_id == channel_id
-                assert updated_channel.title == fresh_api_data["snippet"]["title"]
+                assert updated_channel.title == (fresh_snippet.title if fresh_snippet else "")
                 assert updated_channel.title != "Initial Title"  # Should be updated
                 assert updated_channel.updated_at > initial_channel.created_at
 
@@ -373,11 +386,18 @@ class TestChannelFromYouTubeAPI:
                     sample_youtube_channel_ids[:2]
                 ):  # Limit to 2 to avoid rate limits
                     try:
-                        api_data = (
+                        # Returns a list of YouTubeChannelResponse Pydantic models
+                        api_data_list = (
                             await authenticated_youtube_service.get_channel_details(
                                 channel_id
                             )
                         )
+
+                        if not api_data_list:
+                            print(f"No data returned for channel {channel_id}")
+                            continue
+
+                        api_data = api_data_list[0]  # Get first channel from list
 
                         # Use unique channel ID for this test to avoid conflicts
                         # YouTube channel IDs are exactly 24 chars, so create a shorter unique ID
@@ -388,11 +408,12 @@ class TestChannelFromYouTubeAPI:
                         ]  # Last 6 digits + index
                         # Replace last chars with unique suffix to keep it 24 chars
                         unique_channel_id = (
-                            api_data["id"][: -len(unique_suffix)] + unique_suffix
+                            api_data.id[: -len(unique_suffix)] + unique_suffix
                         )
 
                         # Handle language code properly with enum
-                        default_lang = api_data["snippet"].get("defaultLanguage")
+                        snippet = api_data.snippet
+                        default_lang = snippet.default_language if snippet else None
                         if default_lang:
                             try:
                                 default_language = LanguageCode(default_lang)
@@ -401,21 +422,20 @@ class TestChannelFromYouTubeAPI:
                         else:
                             default_language = LanguageCode.ENGLISH  # Default fallback
 
+                        statistics = api_data.statistics
+                        thumbnails = snippet.thumbnails if snippet else {}
+                        default_thumb = thumbnails.get("default") if thumbnails else None
+                        thumbnail_url = default_thumb.url if default_thumb else None
+
                         channel_create = ChannelCreate(
                             channel_id=unique_channel_id,
-                            title=api_data["snippet"]["title"],
-                            description=api_data["snippet"].get("description", ""),
+                            title=snippet.title if snippet else "",
+                            description=snippet.description if snippet else "",
                             default_language=default_language,
-                            country=api_data["snippet"].get("country", None),
-                            subscriber_count=int(
-                                api_data.get("statistics", {}).get("subscriberCount", 0)
-                            ),
-                            video_count=int(
-                                api_data.get("statistics", {}).get("videoCount", 0)
-                            ),
-                            thumbnail_url=api_data["snippet"]["thumbnails"]["default"][
-                                "url"
-                            ],
+                            country=snippet.country if snippet else None,
+                            subscriber_count=statistics.subscriber_count if statistics else 0,
+                            video_count=statistics.video_count if statistics else 0,
+                            thumbnail_url=thumbnail_url,
                         )
 
                         db_channel = await channel_repo.create(

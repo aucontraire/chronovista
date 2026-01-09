@@ -7,11 +7,13 @@ for all TopicCategory model variants using factory pattern for DRY.
 
 from __future__ import annotations
 
+from typing import cast
 from datetime import datetime, timezone
 
 import pytest
 from pydantic import ValidationError
 
+from chronovista.models.enums import TopicType
 from chronovista.models.topic_category import (
     TopicCategory,
     TopicCategoryAnalytics,
@@ -44,7 +46,7 @@ class TestTopicCategoryBase:
         topic = TopicCategoryBaseFactory.build(
             topic_id="gaming",
             category_name="Gaming",
-            topic_type="youtube",
+            topic_type=TopicType.YOUTUBE,
         )
 
         assert topic.topic_id == "gaming"
@@ -58,7 +60,7 @@ class TestTopicCategoryBase:
             topic_id="esports",
             category_name="Esports",
             parent_topic_id="gaming",
-            topic_type="custom",
+            topic_type=TopicType.CUSTOM,
         )
 
         assert topic.topic_id == "esports"
@@ -141,7 +143,7 @@ class TestTopicCategoryBase:
         topic = TopicCategoryBaseFactory.build(
             topic_id="tech",
             category_name="Technology",
-            topic_type="youtube",
+            topic_type=TopicType.YOUTUBE,
         )
 
         data = topic.model_dump()
@@ -175,7 +177,7 @@ class TestTopicCategoryCreate:
             topic_id="music",
             category_name="Music & Audio",
             parent_topic_id="entertainment",
-            topic_type="youtube",
+            topic_type=TopicType.YOUTUBE,
         )
 
         assert topic.topic_id == "music"
@@ -211,7 +213,7 @@ class TestTopicCategoryUpdate:
         update = TopicCategoryUpdateFactory.build(
             category_name="Updated Gaming",
             parent_topic_id="entertainment",
-            topic_type="custom",
+            topic_type=TopicType.CUSTOM,
         )
 
         assert update.category_name == "Updated Gaming"
@@ -263,12 +265,12 @@ class TestTopicCategory:
     def test_create_valid_topic_category(self):
         """Test creating valid TopicCategory with keyword arguments."""
         now = datetime.now(timezone.utc)
-        topic = TopicCategoryFactory.build(
+        topic = cast(TopicCategory, TopicCategoryFactory.build(
             topic_id="education",
             category_name="Education",
-            topic_type="youtube",
+            topic_type=TopicType.YOUTUBE,
             created_at=now,
-        )
+        ))
 
         assert topic.topic_id == "education"
         assert topic.category_name == "Education"
@@ -298,7 +300,7 @@ class TestTopicCategory:
 
     def test_factory_generates_full_model(self):
         """Test factory generates complete TopicCategory models."""
-        topic = TopicCategoryFactory.build()
+        topic = cast(TopicCategory, TopicCategoryFactory.build())
 
         assert isinstance(topic, TopicCategory)
         assert isinstance(topic, TopicCategoryBase)  # Inheritance
@@ -433,7 +435,7 @@ class TestTopicCategoryHierarchy:
         hierarchy = TopicCategoryHierarchyFactory.build(
             topic_id="gaming",
             category_name="Gaming",
-            topic_type="youtube",
+            topic_type=TopicType.YOUTUBE,
             level=1,
             children=[],
             path=["entertainment", "gaming"],
@@ -451,7 +453,7 @@ class TestTopicCategoryHierarchy:
         hierarchy = TopicCategoryHierarchy(
             topic_id="entertainment",
             category_name="Entertainment",
-            topic_type="youtube",
+            topic_type=TopicType.YOUTUBE,
             level=0,
             children=[],
             path=["entertainment"],
@@ -475,7 +477,7 @@ class TestTopicCategoryHierarchy:
         child_hierarchy = TopicCategoryHierarchy(
             topic_id="esports",
             category_name="Esports",
-            topic_type="custom",
+            topic_type=TopicType.CUSTOM,
             level=2,
             children=[],
             path=["entertainment", "gaming", "esports"],
@@ -484,7 +486,7 @@ class TestTopicCategoryHierarchy:
         parent_hierarchy = TopicCategoryHierarchy(
             topic_id="gaming",
             category_name="Gaming",
-            topic_type="youtube",
+            topic_type=TopicType.YOUTUBE,
             level=1,
             children=[child_hierarchy],
             path=["entertainment", "gaming"],
@@ -554,18 +556,18 @@ class TestTopicCategoryModelInteractions:
         topic_create = TopicCategoryCreateFactory.build(
             topic_id="gaming",
             category_name="Gaming",
-            topic_type="youtube",
+            topic_type=TopicType.YOUTUBE,
         )
 
         # Simulate creation
         now = datetime.now(timezone.utc)
-        topic_full = TopicCategoryFactory.build(
+        topic_full = cast(TopicCategory, TopicCategoryFactory.build(
             topic_id=topic_create.topic_id,
             category_name=topic_create.category_name,
             parent_topic_id=topic_create.parent_topic_id,
             topic_type=topic_create.topic_type,
             created_at=now,
-        )
+        ))
 
         # Update
         topic_update = TopicCategoryUpdate(
@@ -699,7 +701,7 @@ class TestTopicCategoryModelInteractions:
             topic_id="science",
             category_name="Science & Technology",
             parent_topic_id="education",
-            topic_type="youtube",
+            topic_type=TopicType.YOUTUBE,
         )
 
         assert isinstance(topic, TopicCategory)
@@ -713,7 +715,7 @@ class TestTopicCategoryModelInteractions:
         """Test that factory-created models maintain proper inheritance."""
         base = TopicCategoryBaseFactory.build()
         create = TopicCategoryCreateFactory.build()
-        full = TopicCategoryFactory.build()
+        full = cast(TopicCategory, TopicCategoryFactory.build())
 
         # All should be instances of TopicCategoryBase
         assert isinstance(base, TopicCategoryBase)
@@ -733,7 +735,7 @@ class TestTopicCategoryModelInteractions:
             topic = TopicCategoryBaseFactory.build(
                 topic_id=topic_id,
                 category_name=category_name,
-                topic_type="youtube",
+                topic_type=TopicType.YOUTUBE,
             )
 
             assert topic.topic_id == topic_id
@@ -769,19 +771,19 @@ class TestTopicCategoryModelInteractions:
     def test_hierarchy_depth_validation(self):
         """Test hierarchy depth business logic."""
         # Create a deep hierarchy to test depth constraints
-        root = TopicCategoryFactory.build(topic_id="entertainment")
+        root = cast(TopicCategory, TopicCategoryFactory.build(topic_id="entertainment"))
 
-        level1 = TopicCategoryFactory.build(
+        level1 = cast(TopicCategory, TopicCategoryFactory.build(
             topic_id="gaming", parent_topic_id="entertainment"
-        )
+        ))
 
-        level2 = TopicCategoryFactory.build(
+        level2 = cast(TopicCategory, TopicCategoryFactory.build(
             topic_id="esports", parent_topic_id="gaming"
-        )
+        ))
 
-        level3 = TopicCategoryFactory.build(
+        level3 = cast(TopicCategory, TopicCategoryFactory.build(
             topic_id="fps_games", parent_topic_id="esports"
-        )
+        ))
 
         # Validate parent-child relationships
         assert root.parent_topic_id is None

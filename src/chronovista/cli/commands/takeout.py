@@ -2726,7 +2726,7 @@ def recover_metadata(
 
 def _display_recovery_results(result: Any, verbose: bool) -> None:
     """Display recovery operation results."""
-    from ...models.takeout import RecoveryResult
+    from ...models.takeout import ChannelRecoveryAction, RecoveryResult, VideoRecoveryAction
 
     if not isinstance(result, RecoveryResult):
         console.print("[red]Invalid result type[/red]")
@@ -2795,13 +2795,14 @@ Duration: {duration_seconds:.1f} seconds
             table.add_column("Action", style="yellow", width=12)
             table.add_column("Source Date", style="blue", width=12)
 
-            for action in result.channel_actions[:20]:  # Limit to first 20
-                name = action.channel_name[:32] + "..." if len(action.channel_name) > 35 else action.channel_name
+            channel_action: ChannelRecoveryAction
+            for channel_action in result.channel_actions[:20]:  # Limit to first 20
+                name = channel_action.channel_name[:32] + "..." if len(channel_action.channel_name) > 35 else channel_action.channel_name
                 table.add_row(
-                    action.channel_id,
+                    channel_action.channel_id,
                     name,
-                    action.action_type,
-                    str(action.source_date.date()),
+                    channel_action.action_type,
+                    str(channel_action.source_date.date()),
                 )
 
             console.print(table)

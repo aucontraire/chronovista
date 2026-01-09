@@ -26,7 +26,6 @@ class UserVideoBase(BaseModel):
     )
     rewatch_count: int = Field(default=0, ge=0, description="Number of times rewatched")
     liked: bool = Field(default=False, description="Whether user liked the video")
-    disliked: bool = Field(default=False, description="Whether user disliked the video")
     saved_to_playlist: bool = Field(
         default=False, description="Whether saved to playlist"
     )
@@ -51,7 +50,6 @@ class UserVideoUpdate(BaseModel):
     watched_at: Optional[datetime] = None
     rewatch_count: Optional[int] = Field(None, ge=0)
     liked: Optional[bool] = None
-    disliked: Optional[bool] = None
     saved_to_playlist: Optional[bool] = None
 
     model_config = ConfigDict(
@@ -272,9 +270,6 @@ class UserVideoSearchFilters(BaseModel):
     liked_only: Optional[bool] = Field(
         default=None, description="Filter for liked videos only"
     )
-    disliked_only: Optional[bool] = Field(
-        default=None, description="Filter for disliked videos only"
-    )
     playlist_saved_only: Optional[bool] = Field(
         default=None, description="Filter for playlist-saved videos"
     )
@@ -298,7 +293,6 @@ class UserVideoStatistics(BaseModel):
 
     total_videos: int = Field(..., description="Total number of videos watched")
     liked_count: int = Field(..., description="Number of liked videos")
-    disliked_count: int = Field(..., description="Number of disliked videos")
     playlist_saved_count: int = Field(
         ..., description="Number of videos saved to playlists"
     )

@@ -209,10 +209,209 @@ class PrerequisiteError(ChronovistaError):
         super().__init__(message)
 
 
+class YouTubeAPIError(ChronovistaError):
+    """
+    Exception raised for YouTube API errors.
+
+    This exception wraps errors returned by the YouTube Data API,
+    including client errors (4xx) and server errors (5xx) that are
+    not specifically quota-related.
+
+    Attributes
+    ----------
+    message : str
+        Human-readable error message.
+    status_code : int | None
+        HTTP status code returned by the API.
+    error_reason : str | None
+        The error reason from the API response (e.g., "videoNotFound").
+
+    Examples
+    --------
+    >>> try:
+    ...     video = await youtube_service.get_video(video_id)
+    ... except YouTubeAPIError as e:
+    ...     if e.status_code == 404:
+    ...         print(f"Video not found: {e.error_reason}")
+    """
+
+    def __init__(
+        self,
+        message: str = "YouTube API error occurred",
+        status_code: int | None = None,
+        error_reason: str | None = None,
+    ) -> None:
+        """
+        Initialize YouTubeAPIError.
+
+        Parameters
+        ----------
+        message : str, optional
+            Human-readable error message (default: "YouTube API error occurred").
+        status_code : int | None, optional
+            HTTP status code returned by the API (default: None).
+        error_reason : str | None, optional
+            The error reason from the API response (default: None).
+        """
+        self.status_code: int | None = status_code
+        self.error_reason: str | None = error_reason
+        super().__init__(message)
+
+
+class AuthenticationError(ChronovistaError):
+    """
+    Exception raised for authentication-related failures.
+
+    This exception is raised when OAuth authentication fails,
+    tokens are expired or invalid, or required scopes are missing.
+
+    Attributes
+    ----------
+    message : str
+        Human-readable error message.
+    expired : bool
+        Whether the authentication token has expired.
+    scope : str | None
+        The OAuth scope that caused the error, if applicable.
+
+    Examples
+    --------
+    >>> try:
+    ...     credentials = await oauth_service.get_credentials()
+    ... except AuthenticationError as e:
+    ...     if e.expired:
+    ...         print("Token expired, please re-authenticate")
+    ...     raise typer.Exit(5)
+    """
+
+    def __init__(
+        self,
+        message: str = "Authentication failed",
+        expired: bool = False,
+        scope: str | None = None,
+    ) -> None:
+        """
+        Initialize AuthenticationError.
+
+        Parameters
+        ----------
+        message : str, optional
+            Human-readable error message (default: "Authentication failed").
+        expired : bool, optional
+            Whether the authentication token has expired (default: False).
+        scope : str | None, optional
+            The OAuth scope that caused the error (default: None).
+        """
+        self.expired: bool = expired
+        self.scope: str | None = scope
+        super().__init__(message)
+
+
+class ValidationError(ChronovistaError):
+    """
+    Exception raised for data validation failures.
+
+    This exception is raised when input data fails validation,
+    either from user input, API responses, or database constraints.
+
+    Attributes
+    ----------
+    message : str
+        Human-readable error message.
+    field_name : str | None
+        The name of the field that failed validation.
+    invalid_value : object
+        The value that failed validation.
+
+    Examples
+    --------
+    >>> try:
+    ...     video = VideoCreate.model_validate(data)
+    ... except ValidationError as e:
+    ...     print(f"Invalid {e.field_name}: {e.invalid_value}")
+    """
+
+    def __init__(
+        self,
+        message: str = "Validation failed",
+        field_name: str | None = None,
+        invalid_value: object = None,
+    ) -> None:
+        """
+        Initialize ValidationError.
+
+        Parameters
+        ----------
+        message : str, optional
+            Human-readable error message (default: "Validation failed").
+        field_name : str | None, optional
+            The name of the field that failed validation (default: None).
+        invalid_value : object, optional
+            The value that failed validation (default: None).
+        """
+        self.field_name: str | None = field_name
+        self.invalid_value: object = invalid_value
+        super().__init__(message)
+
+
+class RepositoryError(ChronovistaError):
+    """
+    Exception raised for repository/database operation failures.
+
+    This exception wraps database-related errors such as connection
+    failures, constraint violations, and query errors.
+
+    Attributes
+    ----------
+    message : str
+        Human-readable error message.
+    operation : str | None
+        The database operation that failed (e.g., "insert", "update", "delete").
+    entity_type : str | None
+        The type of entity involved (e.g., "Video", "Channel").
+    original_error : Exception | None
+        The original database exception that caused this error.
+
+    Examples
+    --------
+    >>> try:
+    ...     await video_repository.create(session, video_create)
+    ... except RepositoryError as e:
+    ...     print(f"Failed to {e.operation} {e.entity_type}: {e.message}")
+    """
+
+    def __init__(
+        self,
+        message: str = "Repository operation failed",
+        operation: str | None = None,
+        entity_type: str | None = None,
+        original_error: Exception | None = None,
+    ) -> None:
+        """
+        Initialize RepositoryError.
+
+        Parameters
+        ----------
+        message : str, optional
+            Human-readable error message (default: "Repository operation failed").
+        operation : str | None, optional
+            The database operation that failed (default: None).
+        entity_type : str | None, optional
+            The type of entity involved (default: None).
+        original_error : Exception | None, optional
+            The original database exception (default: None).
+        """
+        self.operation: str | None = operation
+        self.entity_type: str | None = entity_type
+        self.original_error: Exception | None = original_error
+        super().__init__(message)
+
+
 # Exit codes for CLI integration
 EXIT_CODE_SUCCESS = 0
 EXIT_CODE_GENERAL_ERROR = 1
 EXIT_CODE_INVALID_ARGS = 2
 EXIT_CODE_QUOTA_EXCEEDED = 3
 EXIT_CODE_PREREQUISITES_MISSING = 4
+EXIT_CODE_AUTHENTICATION_FAILED = 5
 EXIT_CODE_INTERRUPTED = 130  # Standard Unix signal interrupt exit code

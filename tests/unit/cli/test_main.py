@@ -7,6 +7,7 @@ from __future__ import annotations
 import pytest
 from typer.testing import CliRunner
 
+from chronovista import __version__
 from chronovista.cli.main import app
 
 
@@ -20,7 +21,7 @@ def test_cli_version(runner):
     """Test version command."""
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert "chronovista v0.1.0" in result.stdout
+    assert f"chronovista v{__version__}" in result.stdout
 
 
 def test_cli_help(runner):

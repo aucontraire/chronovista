@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from chronovista.exceptions import ValidationError, YouTubeAPIError
 from chronovista.services.youtube_service import YouTubeService
 
 pytestmark = pytest.mark.asyncio
@@ -304,7 +305,7 @@ class TestYouTubeService:
         mock_request.execute.return_value = mock_response
         mock_service_client.channels.return_value.list.return_value = mock_request
 
-        with pytest.raises(ValueError, match="No channel found for authenticated user"):
+        with pytest.raises(YouTubeAPIError, match="No channel found for authenticated user"):
             await youtube_service.get_my_channel()
 
     @pytest.mark.asyncio
@@ -348,7 +349,7 @@ class TestYouTubeService:
         mock_request.execute.return_value = mock_response
         mock_service_client.channels.return_value.list.return_value = mock_request
 
-        with pytest.raises(ValueError, match="Channels? UCnonexistent not found"):
+        with pytest.raises(YouTubeAPIError, match="Channels? UCnonexistent not found"):
             await youtube_service.get_channel_details("UCnonexistent")
 
     @pytest.mark.asyncio
@@ -766,7 +767,7 @@ class TestYouTubeServiceEdgeCases:
         video_ids = [f"video{i}" for i in range(100)]
 
         with pytest.raises(
-            ValueError, match="Maximum 50 video IDs allowed per request"
+            ValidationError, match="Maximum 50 video IDs allowed per request"
         ):
             await youtube_service.get_video_details(video_ids)
 
@@ -823,7 +824,7 @@ class TestYouTubeServiceEdgeCases:
         mock_request.execute.return_value = mock_response
         mock_service_client.channels.return_value.list.return_value = mock_request
 
-        with pytest.raises(ValueError, match="No channel found for authenticated user"):
+        with pytest.raises(YouTubeAPIError, match="No channel found for authenticated user"):
             await youtube_service.get_my_channel()
 
     @pytest.mark.asyncio
@@ -959,7 +960,7 @@ class TestYouTubeServiceMissingCoverage:
         mock_request.execute.return_value = mock_response
         mock_service_client.channels.return_value.list.return_value = mock_request
 
-        with pytest.raises(ValueError, match="Channel UCnonexistent not found"):
+        with pytest.raises(YouTubeAPIError, match="Channel UCnonexistent not found"):
             await youtube_service.get_channel_videos("UCnonexistent")
 
     @pytest.mark.asyncio
@@ -1197,12 +1198,12 @@ class TestYouTubeServiceMissingCoverage:
     async def test_get_video_categories_invalid_region_code(self, youtube_service):
         """Test video categories with invalid region code."""
         with pytest.raises(
-            ValueError, match="Invalid region code: ABC. Must be 2 characters"
+            ValidationError, match="Invalid region code: ABC. Must be 2 characters"
         ):
             await youtube_service.get_video_categories("ABC")
 
         with pytest.raises(
-            ValueError, match="Invalid region code: A. Must be 2 characters"
+            ValidationError, match="Invalid region code: A. Must be 2 characters"
         ):
             await youtube_service.get_video_categories("A")
 
@@ -1222,9 +1223,9 @@ class TestYouTubeServiceMissingCoverage:
         # Set mock service
         youtube_service._service = mock_service_client
 
-        # Should raise ValueError
+        # Should raise YouTubeAPIError
         with pytest.raises(
-            ValueError, match="No video categories found for region: US"
+            YouTubeAPIError, match="No video categories found for region: US"
         ):
             await youtube_service.get_video_categories("US")
 
@@ -1243,9 +1244,9 @@ class TestYouTubeServiceMissingCoverage:
         # Set mock service
         youtube_service._service = mock_service_client
 
-        # Should raise ValueError with wrapped error
+        # Should raise YouTubeAPIError with wrapped error
         with pytest.raises(
-            ValueError,
+            YouTubeAPIError,
             match="Failed to fetch video categories for region US: API quota exceeded",
         ):
             await youtube_service.get_video_categories("US")

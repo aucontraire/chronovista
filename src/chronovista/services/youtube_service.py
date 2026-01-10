@@ -18,10 +18,15 @@ import time
 from typing import Any, List, Optional
 
 from googleapiclient.errors import HttpError
-from pydantic import ValidationError
+from pydantic import ValidationError as PydanticValidationError
 
 from chronovista.auth import youtube_oauth
-from chronovista.exceptions import NetworkError, QuotaExceededException
+from chronovista.exceptions import (
+    NetworkError,
+    QuotaExceededException,
+    ValidationError,
+    YouTubeAPIError,
+)
 from chronovista.models.api_responses import (
     YouTubeCaptionResponse,
     YouTubeChannelResponse,
@@ -41,7 +46,10 @@ MAX_RETRIES = 3
 RETRY_DELAYS = [1.0, 2.0, 4.0]  # Exponential backoff: 1s, 2s, 4s
 
 # HTTP status codes
+HTTP_BAD_REQUEST = 400
+HTTP_UNAUTHORIZED = 401
 HTTP_FORBIDDEN = 403
+HTTP_NOT_FOUND = 404
 HTTP_TOO_MANY_REQUESTS = 429
 HTTP_INTERNAL_ERROR = 500
 HTTP_BAD_GATEWAY = 502
@@ -138,6 +146,33 @@ class YouTubeService:
         }
         return error_type_name in retryable_error_types
 
+    def _extract_error_reason(self, error: HttpError) -> str | None:
+        """
+        Extract error reason from YouTube API HttpError response.
+
+        Parameters
+        ----------
+        error : HttpError
+            The HTTP error from YouTube API.
+
+        Returns
+        -------
+        str | None
+            The error reason from the API response, or None if not found.
+        """
+        try:
+            error_content = error.content.decode("utf-8") if error.content else ""
+            # Try to parse JSON error response
+            import json
+
+            error_json = json.loads(error_content)
+            errors = error_json.get("error", {}).get("errors", [])
+            if errors:
+                return str(errors[0].get("reason", "unknown"))
+        except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, KeyError):
+            pass
+        return None
+
     def _execute_with_retry(self, request: Any) -> Any:
         """
         Execute a YouTube API request with retry logic.
@@ -192,8 +227,13 @@ class YouTubeService:
                     last_error = e
                     continue
 
-                # Non-retryable HTTP error
-                raise
+                # Non-retryable HTTP error - wrap in YouTubeAPIError
+                error_reason = self._extract_error_reason(e)
+                raise YouTubeAPIError(
+                    message=f"YouTube API error: {e.reason}",
+                    status_code=e.resp.status,
+                    error_reason=error_reason,
+                ) from e
 
             except Exception as e:
                 # Check if retryable network error
@@ -246,13 +286,20 @@ class YouTubeService:
         response = request.execute()
 
         if not response.get("items"):
-            raise ValueError("No channel found for authenticated user")
+            raise YouTubeAPIError(
+                message="No channel found for authenticated user",
+                status_code=HTTP_NOT_FOUND,
+                error_reason="channelNotFound",
+            )
 
         try:
             return YouTubeChannelResponse.model_validate(response["items"][0])
-        except ValidationError as e:
+        except PydanticValidationError as e:
             logger.warning(f"Failed to parse channel response: {e}")
-            raise ValueError(f"Failed to parse channel response: {e}") from e
+            raise ValidationError(
+                message=f"Failed to parse channel response: {e}",
+                field_name="channel_response",
+            ) from e
 
     async def get_channel_details(
         self, channel_id: ChannelId | list[ChannelId]
@@ -288,13 +335,17 @@ class YouTubeService:
         response = request.execute()
 
         if not response.get("items"):
-            raise ValueError(f"Channels {channel_ids_str} not found")
+            raise YouTubeAPIError(
+                message=f"Channels {channel_ids_str} not found",
+                status_code=HTTP_NOT_FOUND,
+                error_reason="channelNotFound",
+            )
 
         results: list[YouTubeChannelResponse] = []
         for item in response.get("items", []):
             try:
                 results.append(YouTubeChannelResponse.model_validate(item))
-            except ValidationError as e:
+            except PydanticValidationError as e:
                 logger.warning(f"Failed to parse channel response: {e}")
         return results
 
@@ -318,7 +369,7 @@ class YouTubeService:
 
         Raises
         ------
-        ValueError
+        YouTubeAPIError
             If the channel is not found.
         """
         # First get the uploads playlist ID
@@ -326,7 +377,11 @@ class YouTubeService:
         response = request.execute()
 
         if not response.get("items"):
-            raise ValueError(f"Channel {channel_id} not found")
+            raise YouTubeAPIError(
+                message=f"Channel {channel_id} not found",
+                status_code=HTTP_NOT_FOUND,
+                error_reason="channelNotFound",
+            )
 
         uploads_playlist_id = response["items"][0]["contentDetails"][
             "relatedPlaylists"
@@ -344,7 +399,7 @@ class YouTubeService:
         for item in response.get("items", []):
             try:
                 results.append(YouTubePlaylistItemResponse.model_validate(item))
-            except ValidationError as e:
+            except PydanticValidationError as e:
                 logger.warning(f"Failed to parse playlist item response: {e}")
         return results
 
@@ -371,12 +426,16 @@ class YouTubeService:
         ------
         QuotaExceededException
             If YouTube API quota is exceeded.
-        ValueError
+        ValidationError
             If more than 50 video IDs are provided.
         """
         # YouTube API allows max 50 video IDs per request
         if len(video_ids) > 50:
-            raise ValueError("Maximum 50 video IDs allowed per request")
+            raise ValidationError(
+                message="Maximum 50 video IDs allowed per request",
+                field_name="video_ids",
+                invalid_value=len(video_ids),
+            )
 
         request = self.service.videos().list(
             part="id,snippet,statistics,contentDetails,status,localizations,topicDetails",
@@ -388,7 +447,7 @@ class YouTubeService:
         for item in response.get("items", []):
             try:
                 results.append(YouTubeVideoResponse.model_validate(item))
-            except ValidationError as e:
+            except PydanticValidationError as e:
                 logger.warning(f"Failed to parse video response: {e}")
         return results
 
@@ -531,7 +590,7 @@ class YouTubeService:
         for item in response.get("items", []):
             try:
                 results.append(YouTubePlaylistResponse.model_validate(item))
-            except ValidationError as e:
+            except PydanticValidationError as e:
                 logger.warning(f"Failed to parse playlist response: {e}")
         return results
 
@@ -564,7 +623,7 @@ class YouTubeService:
         for item in response.get("items", []):
             try:
                 results.append(YouTubePlaylistItemResponse.model_validate(item))
-            except ValidationError as e:
+            except PydanticValidationError as e:
                 logger.warning(f"Failed to parse playlist item response: {e}")
         return results
 
@@ -599,7 +658,7 @@ class YouTubeService:
         for item in response.get("items", []):
             try:
                 results.append(YouTubeSearchResponse.model_validate(item))
-            except ValidationError as e:
+            except PydanticValidationError as e:
                 logger.warning(f"Failed to parse search response: {e}")
         return results
 
@@ -627,7 +686,7 @@ class YouTubeService:
             for item in response.get("items", []):
                 try:
                     results.append(YouTubeCaptionResponse.model_validate(item))
-                except ValidationError as e:
+                except PydanticValidationError as e:
                     logger.warning(f"Failed to parse caption response: {e}")
             return results
         except Exception as e:
@@ -716,7 +775,7 @@ class YouTubeService:
             for item in response.get("items", []):
                 try:
                     results.append(YouTubePlaylistItemResponse.model_validate(item))
-                except ValidationError as e:
+                except PydanticValidationError as e:
                     logger.warning(f"Failed to parse playlist item response: {e}")
             return results
         except Exception as e:
@@ -813,7 +872,11 @@ class YouTubeService:
             response = request.execute()
 
             if not response.get("items"):
-                raise ValueError("No channel found for authenticated user")
+                raise YouTubeAPIError(
+                    message="No channel found for authenticated user",
+                    status_code=HTTP_NOT_FOUND,
+                    error_reason="channelNotFound",
+                )
 
             # Get the liked videos playlist ID
             content_details = response["items"][0].get("contentDetails", {})
@@ -905,7 +968,7 @@ class YouTubeService:
         for item in response.get("items", []):
             try:
                 results.append(YouTubeSubscriptionResponse.model_validate(item))
-            except ValidationError as e:
+            except PydanticValidationError as e:
                 logger.warning(f"Failed to parse subscription response: {e}")
         return results
 
@@ -931,12 +994,16 @@ class YouTubeService:
         ------
         QuotaExceededException
             If YouTube API quota is exceeded.
-        ValueError
+        ValidationError
             If more than 50 playlist IDs are provided
         """
         # YouTube API allows max 50 playlist IDs per request
         if len(playlist_ids) > 50:
-            raise ValueError("Maximum 50 playlist IDs allowed per request")
+            raise ValidationError(
+                message="Maximum 50 playlist IDs allowed per request",
+                field_name="playlist_ids",
+                invalid_value=len(playlist_ids),
+            )
 
         request = self.service.playlists().list(
             part="id,snippet,status,contentDetails",
@@ -948,7 +1015,7 @@ class YouTubeService:
         for item in response.get("items", []):
             try:
                 results.append(YouTubePlaylistResponse.model_validate(item))
-            except ValidationError as e:
+            except PydanticValidationError as e:
                 logger.warning(f"Failed to parse playlist response: {e}")
         return results
 
@@ -1023,12 +1090,16 @@ class YouTubeService:
 
         Raises
         ------
-        ValueError
-            If region_code is not a valid 2-character country code or API request fails
+        ValidationError
+            If region_code is not a valid 2-character country code.
+        YouTubeAPIError
+            If no categories found for region or API request fails.
         """
         if len(region_code) != 2:
-            raise ValueError(
-                f"Invalid region code: {region_code}. Must be 2 characters (e.g., 'US', 'GB')"
+            raise ValidationError(
+                message=f"Invalid region code: {region_code}. Must be 2 characters (e.g., 'US', 'GB')",
+                field_name="region_code",
+                invalid_value=region_code,
             )
 
         try:
@@ -1039,22 +1110,27 @@ class YouTubeService:
 
             items = response.get("items", [])
             if not items:
-                raise ValueError(f"No video categories found for region: {region_code}")
+                raise YouTubeAPIError(
+                    message=f"No video categories found for region: {region_code}",
+                    status_code=HTTP_NOT_FOUND,
+                    error_reason="videoCategoriesNotFound",
+                )
 
             results: list[YouTubeVideoCategoryResponse] = []
             for item in items:
                 try:
                     results.append(YouTubeVideoCategoryResponse.model_validate(item))
-                except ValidationError as e:
+                except PydanticValidationError as e:
                     logger.warning(f"Failed to parse video category response: {e}")
             return results
 
-        except ValueError:
+        except (ValidationError, YouTubeAPIError):
             raise
         except Exception as e:
-            raise ValueError(
-                f"Failed to fetch video categories for region {region_code}: {str(e)}"
-            )
+            raise YouTubeAPIError(
+                message=f"Failed to fetch video categories for region {region_code}: {str(e)}",
+                error_reason="videoCategoriesFetchFailed",
+            ) from e
 
     def close(self) -> None:
         """Clean up resources."""

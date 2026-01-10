@@ -12,6 +12,7 @@ from typing import Any, Dict, List
 
 import pytest
 
+from chronovista.exceptions import ValidationError
 from chronovista.parsers.takeout_parser import TakeoutParser, WatchHistoryEntry
 
 
@@ -377,7 +378,7 @@ class TestTakeoutParserFileProcessing:
         file_path = Path(temp_file.name)
 
         try:
-            with pytest.raises(ValueError, match="Failed to parse JSON file"):
+            with pytest.raises(ValidationError, match="Failed to parse JSON file"):
                 list(TakeoutParser.parse_watch_history_file(file_path))
         finally:
             file_path.unlink()
@@ -386,7 +387,7 @@ class TestTakeoutParserFileProcessing:
         """Test parsing non-existent file."""
         file_path = Path("/nonexistent/file.json")
 
-        with pytest.raises(ValueError, match="Failed to parse JSON file"):
+        with pytest.raises(ValidationError, match="Failed to parse JSON file"):
             list(TakeoutParser.parse_watch_history_file(file_path))
 
     def test_parse_watch_history_file_not_array(self):
@@ -398,7 +399,7 @@ class TestTakeoutParserFileProcessing:
         file_path = Path(temp_file.name)
 
         try:
-            with pytest.raises(ValueError, match="Expected JSON array at root level"):
+            with pytest.raises(ValidationError, match="Expected JSON array at root level"):
                 list(TakeoutParser.parse_watch_history_file(file_path))
         finally:
             file_path.unlink()

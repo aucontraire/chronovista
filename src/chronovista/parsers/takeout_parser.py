@@ -16,6 +16,8 @@ from urllib.parse import parse_qs, urlparse
 
 from pydantic import BaseModel, Field
 
+from chronovista.exceptions import ValidationError
+
 
 class WatchHistoryEntry(BaseModel):
     """
@@ -139,10 +141,18 @@ class TakeoutParser:
             with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except (json.JSONDecodeError, FileNotFoundError) as e:
-            raise ValueError(f"Failed to parse JSON file {file_path}: {e}")
+            raise ValidationError(
+                message=f"Failed to parse JSON file {file_path}: {e}",
+                field_name="file_path",
+                invalid_value=str(file_path),
+            ) from e
 
         if not isinstance(data, list):
-            raise ValueError("Expected JSON array at root level")
+            raise ValidationError(
+                message="Expected JSON array at root level",
+                field_name="data",
+                invalid_value=type(data).__name__,
+            )
 
         for i, entry in enumerate(data):
             try:

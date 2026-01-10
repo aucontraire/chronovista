@@ -10,6 +10,8 @@ from typing import Dict, List, Optional, Set
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chronovista.exceptions import ValidationError
+
 from ...models.takeout.takeout_data import TakeoutData
 from ...repositories.user_video_repository import UserVideoRepository
 from .base_seeder import BaseSeeder, ProgressCallback, SeedResult
@@ -50,7 +52,11 @@ class SeedingOrchestrator:
             # Validate requested types
             invalid_types = types_to_process - self.get_available_types()
             if invalid_types:
-                raise ValueError(f"Unknown data types: {invalid_types}")
+                raise ValidationError(
+                    message=f"Unknown data types: {invalid_types}",
+                    field_name="types_to_process",
+                    invalid_value=invalid_types,
+                )
 
         # Resolve execution order based on dependencies
         execution_order = self._resolve_dependencies(types_to_process)
@@ -117,7 +123,11 @@ class SeedingOrchestrator:
 
             if not ready:
                 # Circular dependency or missing dependency
-                raise ValueError(f"Circular dependency detected for: {remaining}")
+                raise ValidationError(
+                    message=f"Circular dependency detected for: {remaining}",
+                    field_name="dependencies",
+                    invalid_value=remaining,
+                )
 
             # Add ready types to execution order
             for data_type in ready:
@@ -139,8 +149,10 @@ class SeedingOrchestrator:
                 continue
 
             if data_type not in self.seeders:
-                raise ValueError(
-                    f"Missing dependencies: {data_type} seeder not registered"
+                raise ValidationError(
+                    message=f"Missing dependencies: {data_type} seeder not registered",
+                    field_name="seeder",
+                    invalid_value=data_type,
                 )
 
             all_types.add(data_type)

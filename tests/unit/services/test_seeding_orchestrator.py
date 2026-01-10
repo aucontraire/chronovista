@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chronovista.exceptions import ValidationError
 from chronovista.services.seeding.base_seeder import (
     BaseSeeder,
     ProgressCallback,
@@ -152,7 +153,7 @@ class TestSeedingOrchestrator:
         seeder2 = MockSeeder("type2", dependencies={"type1"})
         orchestrator.register_seeder(seeder2)
 
-        with pytest.raises(ValueError, match="Missing dependencies.*type1"):
+        with pytest.raises(ValidationError, match="Missing dependencies.*type1"):
             orchestrator._resolve_dependencies({"type2"})
 
     def test_dependency_resolution_circular_dependency(self, orchestrator):
@@ -164,7 +165,7 @@ class TestSeedingOrchestrator:
         orchestrator.register_seeder(seeder1)
         orchestrator.register_seeder(seeder2)
 
-        with pytest.raises(ValueError, match="Circular dependency detected"):
+        with pytest.raises(ValidationError, match="Circular dependency detected"):
             orchestrator._resolve_dependencies({"type1", "type2"})
 
     def test_dependency_resolution_partial_request(self, orchestrator):

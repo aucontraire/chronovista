@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, Mock, mock_open, patch
 import pytest
 
 from chronovista.auth.oauth_service import YouTubeOAuthService
+from chronovista.exceptions import AuthenticationError
 
 
 class TestYouTubeOAuthService:
@@ -101,7 +102,7 @@ class TestYouTubeOAuthService:
         mock_urlparse.return_value.query = "state=wrong_state"
         mock_parse_qs.return_value = {"state": ["wrong_state"]}
 
-        with pytest.raises(ValueError, match="Invalid state parameter"):
+        with pytest.raises(AuthenticationError, match="Invalid state parameter"):
             oauth_service.authorize_from_callback(
                 "http://localhost:8080?state=wrong_state", "expected_state"
             )
@@ -118,7 +119,7 @@ class TestYouTubeOAuthService:
             "state": ["test_state"],
         }
 
-        with pytest.raises(ValueError, match="Authorization denied: access_denied"):
+        with pytest.raises(AuthenticationError, match="Authorization denied: access_denied"):
             oauth_service.authorize_from_callback(
                 "http://localhost:8080?error=access_denied&state=test_state",
                 "test_state",
@@ -359,7 +360,7 @@ class TestYouTubeOAuthService:
         """Test getting authenticated service when not authenticated."""
         oauth_service.is_authenticated = MagicMock(return_value=False)
 
-        with pytest.raises(ValueError, match="Not authenticated"):
+        with pytest.raises(AuthenticationError, match="Not authenticated"):
             oauth_service.get_authenticated_service()
 
     @patch("chronovista.auth.oauth_service.webbrowser.open")
@@ -534,7 +535,7 @@ class TestYouTubeOAuthServiceInteractive:
         """Test get_authenticated_service when not authenticated."""
         oauth_service.is_authenticated = MagicMock(return_value=False)
 
-        with pytest.raises(ValueError, match="Not authenticated"):
+        with pytest.raises(AuthenticationError, match="Not authenticated"):
             oauth_service.get_authenticated_service()
 
     @patch("chronovista.auth.oauth_service.build")

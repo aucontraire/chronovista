@@ -21,6 +21,7 @@ from google_auth_oauthlib.flow import Flow  # type: ignore[import-untyped]
 from googleapiclient.discovery import build
 
 from chronovista.config.settings import settings
+from chronovista.exceptions import AuthenticationError
 
 # Allow insecure transport for localhost development
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
@@ -115,12 +116,18 @@ class YouTubeOAuthService:
         # Verify state parameter
         received_state = query_params.get("state", [None])[0]
         if received_state != expected_state:
-            raise ValueError("Invalid state parameter. Possible CSRF attack.")
+            raise AuthenticationError(
+                message="Invalid state parameter. Possible CSRF attack.",
+                expired=False,
+            )
 
         # Check for authorization denial
         if "error" in query_params:
             error = query_params.get("error", ["unknown"])[0]
-            raise ValueError(f"Authorization denied: {error}")
+            raise AuthenticationError(
+                message=f"Authorization denied: {error}",
+                expired=False,
+            )
 
         # Create flow and fetch token
         flow = Flow.from_client_config(
@@ -215,11 +222,14 @@ class YouTubeOAuthService:
 
         Raises
         ------
-        ValueError
+        AuthenticationError
             If no valid credentials are available
         """
         if not self.is_authenticated():
-            raise ValueError("Not authenticated. Run authentication flow first.")
+            raise AuthenticationError(
+                message="Not authenticated. Run authentication flow first.",
+                expired=False,
+            )
 
         credentials = self._load_token()
 
@@ -229,10 +239,16 @@ class YouTubeOAuthService:
                 credentials.refresh(Request())  # type: ignore[no-untyped-call]  # google-auth has no type stubs
                 self._save_token(credentials)
             except RefreshError as e:
-                raise ValueError(f"Failed to refresh credentials: {e}")
+                raise AuthenticationError(
+                    message=f"Failed to refresh credentials: {e}",
+                    expired=True,
+                ) from e
 
         if not credentials.valid:
-            raise ValueError("Credentials are invalid and cannot be refreshed.")
+            raise AuthenticationError(
+                message="Credentials are invalid and cannot be refreshed.",
+                expired=True,
+            )
 
         return build("youtube", "v3", credentials=credentials)
 

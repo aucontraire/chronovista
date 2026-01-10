@@ -23,6 +23,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import TopicCategory as TopicCategoryDB
+from chronovista.exceptions import YouTubeAPIError
 from chronovista.models.api_responses import YouTubeVideoCategoryResponse
 from chronovista.models.enums import TopicType
 from chronovista.models.topic_category import TopicCategoryCreate
@@ -674,7 +675,7 @@ class CategorySeeder:
                         f"Fetched {len(region_categories)} categories from region {region}"
                     )
 
-                except ValueError as e:
+                except (ValueError, YouTubeAPIError) as e:
                     error_msg = f"Failed to fetch categories for region {region}: {e}"
                     logger.warning(error_msg)
                     result.errors.append(error_msg)
@@ -747,7 +748,7 @@ class CategorySeeder:
 
         Raises
         ------
-        ValueError
+        YouTubeAPIError
             If the API call fails or returns invalid data.
         """
         try:
@@ -764,8 +765,13 @@ class CategorySeeder:
 
             return categories
 
+        except YouTubeAPIError:
+            raise
         except Exception as e:
-            raise ValueError(f"API call failed for region {region}: {e}") from e
+            raise YouTubeAPIError(
+                message=f"API call failed for region {region}: {e}",
+                error_reason="categoryFetchFailed",
+            ) from e
 
     def _transform_api_response_to_category(
         self, item: YouTubeVideoCategoryResponse | dict[str, Any]

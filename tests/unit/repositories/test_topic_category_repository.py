@@ -288,6 +288,7 @@ class TestTopicCategoryRepository:
             MagicMock(scalar=lambda: 0),  # root_topics
             empty_result,  # type_result
             empty_result,  # popular_result
+            MagicMock(scalar=lambda: 0),  # parent_count (for avg_children calc)
         ]
 
         result = await repository.get_topic_statistics(mock_session)
@@ -297,6 +298,8 @@ class TestTopicCategoryRepository:
         assert result.root_topics == 0
         assert result.topic_type_distribution == {}
         assert result.most_popular_topics == []
+        assert result.avg_children_per_topic == 0.0
+        assert result.max_hierarchy_depth == 0
 
     @pytest.mark.asyncio
     async def test_delete_by_topic_id(

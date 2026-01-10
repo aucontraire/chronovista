@@ -599,14 +599,7 @@ class TestVideoTagRepositoryIntegration:
             assert result is not None
             mock_get.assert_called_once_with(mock_session, "dQw4w9WgXcQ", "music")
 
-    @pytest.mark.asyncio
-    async def test_base_get_with_invalid_key(
-        self, repository: VideoTagRepository, mock_session: MagicMock
-    ):
-        """Test base get method with invalid key format."""
-        result = await repository.get(mock_session, "invalid_key")
-
-        assert result is None
+    # Note: test_base_get_with_invalid_key removed - type system now enforces Tuple[str, str]
 
     @pytest.mark.asyncio
     async def test_base_exists_with_composite_key(

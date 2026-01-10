@@ -21,6 +21,7 @@ from googleapiclient.errors import HttpError
 from pydantic import ValidationError as PydanticValidationError
 
 from chronovista.auth import youtube_oauth
+from chronovista.config.settings import settings
 from chronovista.exceptions import (
     NetworkError,
     QuotaExceededException,
@@ -42,8 +43,9 @@ from chronovista.models.youtube_types import ChannelId, PlaylistId, VideoId
 logger = logging.getLogger(__name__)
 
 # Retry configuration for transient failures (FR-052)
-MAX_RETRIES = 3
-RETRY_DELAYS = [1.0, 2.0, 4.0]  # Exponential backoff: 1s, 2s, 4s
+# Uses settings.retry_attempts and settings.retry_backoff for configurability
+MAX_RETRIES = settings.retry_attempts
+RETRY_DELAYS = [1.0 * (settings.retry_backoff**i) for i in range(settings.retry_attempts)]
 
 # HTTP status codes
 HTTP_BAD_REQUEST = 400

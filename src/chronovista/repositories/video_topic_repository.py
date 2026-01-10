@@ -31,19 +31,17 @@ class VideoTopicRepository(
     def __init__(self) -> None:
         super().__init__(VideoTopicDB)
 
-    async def get(self, session: AsyncSession, id: Any) -> Optional[VideoTopicDB]:
+    async def get(
+        self, session: AsyncSession, id: Tuple[str, str]
+    ) -> Optional[VideoTopicDB]:
         """Get video topic by composite key tuple (video_id, topic_id)."""
-        if isinstance(id, tuple) and len(id) == 2:
-            video_id, topic_id = id
-            return await self.get_by_composite_key(session, video_id, topic_id)
-        return None
+        video_id, topic_id = id
+        return await self.get_by_composite_key(session, video_id, topic_id)
 
-    async def exists(self, session: AsyncSession, id: Any) -> bool:
+    async def exists(self, session: AsyncSession, id: Tuple[str, str]) -> bool:
         """Check if video topic exists by composite key tuple (video_id, topic_id)."""
-        if isinstance(id, tuple) and len(id) == 2:
-            video_id, topic_id = id
-            return await self.exists_by_composite_key(session, video_id, topic_id)
-        return False
+        video_id, topic_id = id
+        return await self.exists_by_composite_key(session, video_id, topic_id)
 
     async def get_by_composite_key(
         self, session: AsyncSession, video_id: str, topic_id: str

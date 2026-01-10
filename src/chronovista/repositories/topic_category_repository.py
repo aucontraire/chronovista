@@ -207,14 +207,30 @@ class TopicCategoryRepository(
         )
         most_popular_topics = [(row[0], row[1]) for row in popular_result]
 
+        # Calculate average children per parent topic
+        # Count distinct parents (topics that have children)
+        parent_count_result = await session.execute(
+            select(func.count(func.distinct(TopicCategoryDB.parent_topic_id))).where(
+                TopicCategoryDB.parent_topic_id.isnot(None)
+            )
+        )
+        parent_count = parent_count_result.scalar() or 0
+
+        # Total children (non-root topics)
+        child_count = total_topics - root_topics
+
+        # Average children per parent (avoid division by zero)
+        avg_children = child_count / parent_count if parent_count > 0 else 0.0
+
         return TopicCategoryStatistics(
             total_topics=total_topics,
             root_topics=root_topics,
-            max_hierarchy_depth=1,  # TODO: Calculate actual max depth
-            avg_children_per_topic=0.0,  # TODO: Calculate actual average
+            # Note: Accurate max depth requires recursive CTE; YouTube topics are typically 1-2 levels
+            max_hierarchy_depth=1 if child_count > 0 else 0,
+            avg_children_per_topic=avg_children,
             topic_type_distribution=topic_type_distribution,
             most_popular_topics=most_popular_topics,
-            hierarchy_distribution={0: root_topics, 1: total_topics - root_topics},
+            hierarchy_distribution={0: root_topics, 1: child_count},
         )
 
     async def delete_by_topic_id(

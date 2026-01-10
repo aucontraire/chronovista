@@ -145,16 +145,7 @@ class TestVideoLocalizationRepository:
         # Assert
         assert result == expected_localization
 
-    @pytest.mark.asyncio
-    async def test_get_with_invalid_id(
-        self, repository: VideoLocalizationRepository, mock_session: AsyncMock
-    ):
-        """Test get method with invalid ID format."""
-        # Act
-        result = await repository.get(mock_session, "invalid_id")
-
-        # Assert
-        assert result is None
+    # Note: test_get_with_invalid_id removed - type system now enforces Tuple[str, str]
 
     @pytest.mark.asyncio
     async def test_exists_by_composite_key_true(

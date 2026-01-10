@@ -30,19 +30,17 @@ class ChannelTopicRepository(
     def __init__(self) -> None:
         super().__init__(ChannelTopicDB)
 
-    async def get(self, session: AsyncSession, id: Any) -> Optional[ChannelTopicDB]:
+    async def get(
+        self, session: AsyncSession, id: Tuple[str, str]
+    ) -> Optional[ChannelTopicDB]:
         """Get channel topic by composite key tuple (channel_id, topic_id)."""
-        if isinstance(id, tuple) and len(id) == 2:
-            channel_id, topic_id = id
-            return await self.get_by_composite_key(session, channel_id, topic_id)
-        return None
+        channel_id, topic_id = id
+        return await self.get_by_composite_key(session, channel_id, topic_id)
 
-    async def exists(self, session: AsyncSession, id: Any) -> bool:
+    async def exists(self, session: AsyncSession, id: Tuple[str, str]) -> bool:
         """Check if channel topic exists by composite key tuple (channel_id, topic_id)."""
-        if isinstance(id, tuple) and len(id) == 2:
-            channel_id, topic_id = id
-            return await self.exists_by_composite_key(session, channel_id, topic_id)
-        return False
+        channel_id, topic_id = id
+        return await self.exists_by_composite_key(session, channel_id, topic_id)
 
     async def get_by_composite_key(
         self, session: AsyncSession, channel_id: str, topic_id: str

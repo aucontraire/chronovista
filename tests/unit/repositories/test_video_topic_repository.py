@@ -377,14 +377,7 @@ class TestVideoTopicRepository:
             mock_session, TestIds.TEST_VIDEO_1, TestIds.MUSIC_TOPIC
         )
 
-    @pytest.mark.asyncio
-    async def test_get_with_invalid_id(self, repository, mock_session):
-        """Test get method with invalid ID format."""
-        result = await repository.get(mock_session, "invalid_id")
-        assert result is None
-
-        result = await repository.get(mock_session, ("single_element",))
-        assert result is None
+    # Note: test_get_with_invalid_id removed - type system now enforces Tuple[str, str]
 
     @pytest.mark.asyncio
     async def test_exists_with_valid_tuple(self, repository, mock_session):
@@ -400,14 +393,7 @@ class TestVideoTopicRepository:
             mock_session, TestIds.TEST_VIDEO_1, TestIds.MUSIC_TOPIC
         )
 
-    @pytest.mark.asyncio
-    async def test_exists_with_invalid_id(self, repository, mock_session):
-        """Test exists method with invalid ID format."""
-        result = await repository.exists(mock_session, "invalid_id")
-        assert result is False
-
-        result = await repository.exists(mock_session, ("single_element",))
-        assert result is False
+    # Note: test_exists_with_invalid_id removed - type system now enforces Tuple[str, str]
 
     @pytest.mark.asyncio
     async def test_replace_video_topics(self, repository, mock_session):

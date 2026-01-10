@@ -39,20 +39,16 @@ class VideoLocalizationRepository(
         super().__init__(VideoLocalizationDB)
 
     async def get(
-        self, session: AsyncSession, id: Any
+        self, session: AsyncSession, id: Tuple[str, str]
     ) -> Optional[VideoLocalizationDB]:
         """Get video localization by composite key tuple (video_id, language_code)."""
-        if isinstance(id, tuple) and len(id) == 2:
-            video_id, language_code = id
-            return await self.get_by_composite_key(session, video_id, language_code)
-        return None
+        video_id, language_code = id
+        return await self.get_by_composite_key(session, video_id, language_code)
 
-    async def exists(self, session: AsyncSession, id: Any) -> bool:
+    async def exists(self, session: AsyncSession, id: Tuple[str, str]) -> bool:
         """Check if video localization exists by composite key tuple (video_id, language_code)."""
-        if isinstance(id, tuple) and len(id) == 2:
-            video_id, language_code = id
-            return await self.exists_by_composite_key(session, video_id, language_code)
-        return False
+        video_id, language_code = id
+        return await self.exists_by_composite_key(session, video_id, language_code)
 
     async def get_by_composite_key(
         self, session: AsyncSession, video_id: str, language_code: str

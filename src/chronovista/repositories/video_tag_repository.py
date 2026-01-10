@@ -31,19 +31,17 @@ class VideoTagRepository(
     def __init__(self) -> None:
         super().__init__(VideoTagDB)
 
-    async def get(self, session: AsyncSession, id: Any) -> Optional[VideoTagDB]:
+    async def get(
+        self, session: AsyncSession, id: Tuple[str, str]
+    ) -> Optional[VideoTagDB]:
         """Get video tag by composite key tuple (video_id, tag)."""
-        if isinstance(id, tuple) and len(id) == 2:
-            video_id, tag = id
-            return await self.get_by_composite_key(session, video_id, tag)
-        return None
+        video_id, tag = id
+        return await self.get_by_composite_key(session, video_id, tag)
 
-    async def exists(self, session: AsyncSession, id: Any) -> bool:
+    async def exists(self, session: AsyncSession, id: Tuple[str, str]) -> bool:
         """Check if video tag exists by composite key tuple (video_id, tag)."""
-        if isinstance(id, tuple) and len(id) == 2:
-            video_id, tag = id
-            return await self.exists_by_composite_key(session, video_id, tag)
-        return False
+        video_id, tag = id
+        return await self.exists_by_composite_key(session, video_id, tag)
 
     async def get_by_composite_key(
         self, session: AsyncSession, video_id: str, tag: str

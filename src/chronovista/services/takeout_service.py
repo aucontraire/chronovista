@@ -36,6 +36,7 @@ from ..models.takeout import (
     TakeoutWatchEntry,
     ViewingPatterns,
 )
+from ..services.interfaces import TakeoutServiceInterface
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +47,13 @@ class TakeoutParsingError(Exception):
     pass
 
 
-class TakeoutService:
+class TakeoutService(TakeoutServiceInterface):
     """
     Service for parsing and analyzing Google Takeout data.
 
     Provides local analysis capabilities without requiring API calls,
     enabling cost-effective data discovery and relationship analysis.
+    Implements TakeoutServiceInterface for dependency injection and testability.
     """
 
     def __init__(self, takeout_path: Path) -> None:

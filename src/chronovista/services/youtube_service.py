@@ -39,6 +39,7 @@ from chronovista.models.api_responses import (
     YouTubeVideoResponse,
 )
 from chronovista.models.youtube_types import ChannelId, PlaylistId, VideoId
+from chronovista.services.interfaces import YouTubeServiceInterface
 
 logger = logging.getLogger(__name__)
 
@@ -76,11 +77,12 @@ QUOTA_EXCEEDED_REASONS = {
 }
 
 
-class YouTubeService:
+class YouTubeService(YouTubeServiceInterface):
     """
     YouTube Data API service.
 
     Provides methods for fetching YouTube data using authenticated API client.
+    Implements YouTubeServiceInterface for dependency injection and testability.
     """
 
     def __init__(self) -> None:

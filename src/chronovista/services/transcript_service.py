@@ -31,6 +31,7 @@ from ..models.transcript_source import (
 )
 from ..models.video_transcript import EnhancedVideoTranscriptBase
 from ..models.youtube_types import VideoId
+from ..services.interfaces import TranscriptServiceInterface
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ class TranscriptServiceUnavailableError(TranscriptServiceError):
     pass
 
 
-class TranscriptService:
+class TranscriptService(TranscriptServiceInterface):
     """Service for downloading and processing YouTube transcripts."""
 
     def __init__(self, enable_mock_fallback: bool = True):

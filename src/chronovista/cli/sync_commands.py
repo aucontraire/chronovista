@@ -13,6 +13,17 @@ from rich.panel import Panel
 from rich.table import Table
 
 from chronovista.auth import youtube_oauth
+from chronovista.cli.sync.base import (
+    SyncResult,
+    check_authenticated,
+    display_auth_error,
+    display_progress_start,
+    display_success,
+    display_sync_results,
+    display_warning,
+    run_sync_operation,
+)
+from chronovista.cli.sync.transformers import DataTransformers
 from chronovista.config.database import db_manager
 from chronovista.db.models import Video as VideoDB
 from chronovista.models.api_responses import YouTubeVideoResponse
@@ -318,142 +329,70 @@ def topics(
 ) -> None:
     """Sync YouTube video categories/topics to database."""
 
-    async def sync_topics_data() -> None:
+    async def sync_topics_data() -> SyncResult:
         """Sync topic categories from YouTube API."""
-        # Check authentication
-        if not youtube_oauth.is_authenticated():
-            console.print(
-                Panel(
-                    "[red]❌ Not authenticated[/red]\n"
-                    "Use [bold]chronovista auth login[/bold] to sign in first.",
-                    title="Authentication Required",
-                    border_style="red",
-                )
-            )
-            return
+        result = SyncResult()
 
-        try:
-            console.print(
-                Panel(
-                    f"[blue]🔄 Fetching video categories from YouTube API...[/blue]\n"
-                    f"Region: {region_code.upper()}",
-                    title="Sync Topics",
-                    border_style="blue",
-                )
-            )
+        # Check authentication using shared utility
+        if not check_authenticated():
+            display_auth_error("Sync Topics")
+            return result
 
-            # Fetch video categories from YouTube API
-            categories = await youtube_service.get_video_categories(region_code)
-
-            if not categories:
-                console.print(
-                    Panel(
-                        f"[yellow]⚠️ No video categories found for region: {region_code}[/yellow]",
-                        title="No Categories",
-                        border_style="yellow",
-                    )
-                )
-                return
-
-            console.print(f"[green]✅ Found {len(categories)} video categories[/green]")
-
-            # Process and save categories to database
-            created_count = 0
-            updated_count = 0
-            error_count = 0
-
-            async for session in db_manager.get_session(echo=False):
-                for category in categories:
-                    try:
-                        # Extract category data
-                        category_id = category.id
-                        snippet = category.snippet
-                        category_name = snippet.title if snippet else ""
-
-                        # Create topic category model
-                        topic_data = TopicCategoryCreate(
-                            topic_id=category_id,
-                            category_name=category_name,
-                            parent_topic_id=None,  # YouTube categories don't have hierarchy
-                            topic_type=TopicType.YOUTUBE,
-                        )
-
-                        # Check if category already exists and create or update
-                        existing = await topic_category_repository.exists(
-                            session, category_id
-                        )
-
-                        await topic_category_repository.create_or_update(
-                            session, topic_data
-                        )
-
-                        if existing:
-                            updated_count += 1
-                        else:
-                            created_count += 1
-
-                    except Exception as e:
-                        error_count += 1
-                        console.print(
-                            f"[red]Error processing category {category.id}: {e}[/red]"
-                        )
-
-            # Display results summary
-            results_table = Table(
-                title=f"Topic Sync Results - Region: {region_code.upper()}"
-            )
-            results_table.add_column("Metric", style="cyan")
-            results_table.add_column("Count", style="green")
-
-            results_table.add_row("Categories Found", str(len(categories)))
-            results_table.add_row("Created", str(created_count))
-            results_table.add_row("Updated", str(updated_count))
-            results_table.add_row("Errors", str(error_count))
-
-            console.print(results_table)
-
-            if error_count == 0:
-                console.print(
-                    Panel(
-                        f"[green]✅ Topic sync completed successfully![/green]\n"
-                        f"Created: {created_count} | Updated: {updated_count}\n"
-                        f"Total topics available: {created_count + updated_count}\n\n"
-                        f"Use [bold]chronovista topics list[/bold] to explore synced topics.",
-                        title="Sync Complete",
-                        border_style="green",
-                    )
-                )
-            else:
-                console.print(
-                    Panel(
-                        f"[yellow]⚠️ Topic sync completed with {error_count} errors[/yellow]\n"
-                        f"Successfully processed: {created_count + updated_count} topics\n"
-                        f"Use [bold]chronovista topics list[/bold] to explore synced topics.",
-                        title="Sync Complete with Errors",
-                        border_style="yellow",
-                    )
-                )
-
-        except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]❌ Failed to sync topics:[/red]\n{str(e)}",
-                    title="Sync Error",
-                    border_style="red",
-                )
-            )
-
-    # Run the async function
-    try:
-        asyncio.run(sync_topics_data())
-    except Exception as e:
-        console.print(
-            Panel(
-                f"[red]❌ Sync failed:[/red]\n{str(e)}",
-                title="Sync Error",
-                border_style="red",
-            )
+        display_progress_start(
+            f"Fetching video categories from YouTube API...\nRegion: {region_code.upper()}",
+            title="Sync Topics",
         )
+
+        # Fetch video categories from YouTube API
+        categories = await youtube_service.get_video_categories(region_code)
+
+        if not categories:
+            display_warning(
+                f"No video categories found for region: {region_code}",
+                title="No Categories",
+            )
+            return result
+
+        display_success(f"Found {len(categories)} video categories")
+
+        # Process and save categories to database
+        async for session in db_manager.get_session(echo=False):
+            for category in categories:
+                try:
+                    # Use transformer to create the model
+                    topic_data = DataTransformers.extract_topic_category_create(category)
+
+                    # Check if category already exists and create or update
+                    existing = await topic_category_repository.exists(
+                        session, category.id
+                    )
+
+                    await topic_category_repository.create_or_update(
+                        session, topic_data
+                    )
+
+                    if existing:
+                        result.updated += 1
+                    else:
+                        result.created += 1
+
+                except Exception as e:
+                    result.add_error(f"Category {category.id}: {e}")
+                    console.print(
+                        f"[red]Error processing category {category.id}: {e}[/red]"
+                    )
+
+        # Display results using shared utility
+        display_sync_results(
+            result,
+            title=f"Topic Sync - Region: {region_code.upper()}",
+            extra_info="Use [bold]chronovista topics list[/bold] to explore synced topics.",
+        )
+
+        return result
+
+    # Run the async function using shared wrapper
+    run_sync_operation(sync_topics_data, "Sync Topics")
 
 
 @sync_app.command()

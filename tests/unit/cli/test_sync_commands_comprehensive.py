@@ -522,13 +522,17 @@ class TestSyncCommandsErrorHandling:
         assert result.exit_code == 0
         mock_console.print.assert_called()
 
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
-    @patch("chronovista.cli.sync_commands.console")
-    @patch("chronovista.cli.sync_commands.asyncio.run")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
+    @patch("chronovista.cli.sync.base.console")
+    @patch("chronovista.cli.sync.base.asyncio.run")
     def test_channel_command_general_exception(
         self, mock_asyncio_run, mock_console, mock_oauth, runner
     ):
-        """Test channel command with general exception."""
+        """Test channel command with general exception.
+
+        Note: channel command now uses run_sync_operation from base module,
+        so we mock asyncio.run in the base module.
+        """
         mock_oauth.is_authenticated.return_value = True
         mock_asyncio_run.side_effect = Exception("General error")
 

@@ -645,227 +645,164 @@ def channel(
 ) -> None:
     """Fetch and save your channel information to database."""
 
-    async def sync_channel_data() -> None:
+    async def sync_channel_data() -> SyncResult:
         """Sync channel data from YouTube API."""
-        # Check authentication
-        if not youtube_oauth.is_authenticated():
-            console.print(
-                Panel(
-                    "[red]❌ Not authenticated[/red]\n"
-                    "Use [bold]chronovista auth login[/bold] to sign in first.",
-                    title="Channel Sync",
-                    border_style="red",
-                )
-            )
-            return
+        result = SyncResult()
 
-        try:
-            console.print(
-                "[blue]🔄 Fetching your YouTube channel information...[/blue]"
-            )
+        # Check authentication using shared utility
+        if not check_authenticated():
+            display_auth_error("Channel Sync")
+            return result
 
-            # Fetch channel data from YouTube API
-            channel_data = await youtube_service.get_my_channel()
-
-            # Apply topic filtering if requested
-            if topic:
-                console.print(
-                    f"[blue]🔍 Checking if channel matches topic ID: {topic}[/blue]"
-                )
-
-                # Validate topic exists
-                async for session in db_manager.get_session():
-                    if not await topic_category_repository.exists(session, topic):
-                        console.print(
-                            Panel(
-                                f"[red]❌ Invalid topic ID: {topic}[/red]\n"
-                                f"Use [bold]chronovista topics list[/bold] to see available topics.",
-                                title="Topic Filter Error",
-                                border_style="red",
-                            )
-                        )
-                        return
-
-                # Check if channel has matching topics
-                topic_details = channel_data.topic_details if channel_data else None
-                topic_ids = topic_details.topic_ids if topic_details else []
-
-                # For channels, we also need to check if any of the channel's videos match the topic
-                # Since we don't have video category info in channel response, we'll check topicDetails
-                has_matching_topic = topic in topic_ids
-
-                if not has_matching_topic:
-                    console.print(
-                        Panel(
-                            f"[yellow]ℹ️ Channel does not match topic ID: {topic}[/yellow]\n"
-                            f"Channel topics: {topic_ids[:3] if topic_ids else 'None'}\n"
-                            f"Use [bold]chronovista sync channel[/bold] without --topic to sync anyway.",
-                            title="Topic Filter: No Match",
-                            border_style="yellow",
-                        )
-                    )
-                    return
-
-                console.print(f"[green]✅ Channel matches topic {topic}[/green]")
-
-            if not channel_data:
-                console.print("[red]No channel data retrieved[/red]")
-                return
-
-            console.print("[blue]💾 Saving channel data to database...[/blue]")
-
-            # Transform YouTube API data to our Channel model
-            snippet = channel_data.snippet
-            statistics = channel_data.statistics
-
-            # Parse dates
-            from datetime import datetime
-
-            published_at = snippet.published_at if snippet else None
-
-            # Create Channel instance
-            thumbnails = snippet.thumbnails if snippet else {}
-            high_thumb = thumbnails.get("high")
-            thumbnail_url = high_thumb.url if high_thumb else None
-
-            # Cast default_language to LanguageCode if present
-            default_lang: LanguageCode | None = None
-            if snippet and snippet.default_language:
-                try:
-                    default_lang = LanguageCode(snippet.default_language)
-                except ValueError:
-                    default_lang = None
-
-            channel_create = ChannelCreate(
-                channel_id=channel_data.id,
-                title=snippet.title if snippet else "",
-                description=snippet.description if snippet else None,
-                subscriber_count=statistics.subscriber_count if statistics else None,
-                video_count=statistics.video_count if statistics else None,
-                default_language=default_lang,
-                country=snippet.country if snippet else None,
-                thumbnail_url=thumbnail_url,
-            )
-
-            # Save to database using repository
-            async for session in db_manager.get_session():
-                saved_channel = await channel_repository.create_or_update(
-                    session, channel_create
-                )
-
-                # Extract and create channel-topic associations if topicDetails exists
-                topic_details = channel_data.topic_details if channel_data else None
-                topic_ids = topic_details.topic_ids if topic_details else []
-                if topic_ids:
-                    try:
-                        valid_associations = 0
-                        for topic_id in topic_ids:
-                            # Check if topic exists in our database (only video categories are synced)
-                            if await topic_category_repository.exists(
-                                session, topic_id
-                            ):
-                                # Create channel-topic association
-                                channel_topic_create = ChannelTopicCreate(
-                                    channel_id=saved_channel.channel_id,
-                                    topic_id=topic_id,
-                                )
-                                await channel_topic_repository.create_or_update(
-                                    session, channel_topic_create
-                                )
-                                valid_associations += 1
-                            else:
-                                console.print(
-                                    f"[dim]⚠️  Skipping unknown topic ID: {topic_id}[/dim]"
-                                )
-
-                        if valid_associations > 0:
-                            console.print(
-                                f"[green]✅ Created {valid_associations} channel-topic associations[/green]"
-                            )
-                        else:
-                            console.print(
-                                f"[yellow]⚠️  No valid topic associations created (all topic IDs are Freebase entities, not video categories)[/yellow]"
-                            )
-                    except Exception as e:
-                        console.print(
-                            f"[yellow]⚠️  Could not create topic associations for channel {saved_channel.channel_id}: {e}[/yellow]"
-                        )
-
-            # Create display table
-            table = Table(title="Channel Synced to Database")
-            table.add_column("Property", style="cyan")
-            table.add_column("Value", style="green")
-
-            table.add_row("Channel ID", saved_channel.channel_id)
-            table.add_row("Title", saved_channel.title)
-            table.add_row(
-                "Description",
-                (
-                    (saved_channel.description or "No description")[:100] + "..."
-                    if saved_channel.description
-                    and len(saved_channel.description) > 100
-                    else saved_channel.description or "No description"
-                ),
-            )
-            table.add_row(
-                "Subscriber Count",
-                (
-                    str(saved_channel.subscriber_count)
-                    if saved_channel.subscriber_count
-                    else "Unknown"
-                ),
-            )
-            table.add_row(
-                "Video Count",
-                (
-                    str(saved_channel.video_count)
-                    if saved_channel.video_count
-                    else "Unknown"
-                ),
-            )
-            table.add_row("Country", saved_channel.country or "Unknown")
-            table.add_row(
-                "Default Language", saved_channel.default_language or "Unknown"
-            )
-            table.add_row(
-                "Created At", saved_channel.created_at.strftime("%Y-%m-%d %H:%M:%S UTC")
-            )
-            table.add_row(
-                "Updated At", saved_channel.updated_at.strftime("%Y-%m-%d %H:%M:%S UTC")
-            )
-
-            console.print(table)
-
-            console.print(
-                Panel(
-                    "[green]✅ Channel data synced successfully![/green]\n"
-                    f"Channel '{saved_channel.title}' saved to database.\n"
-                    "End-to-end data flow: YouTube API → Database ✅",
-                    title="Channel Sync Complete",
-                    border_style="green",
-                )
-            )
-
-        except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]❌ Failed to sync channel data:[/red]\n{str(e)}",
-                    title="Channel Sync Error",
-                    border_style="red",
-                )
-            )
-
-    # Run the async function
-    try:
-        asyncio.run(sync_channel_data())
-    except Exception as e:
-        console.print(
-            Panel(
-                f"[red]❌ Sync failed:[/red]\n{str(e)}",
-                title="Sync Error",
-                border_style="red",
-            )
+        display_progress_start(
+            "Fetching your YouTube channel information...",
+            title="Channel Sync",
         )
+
+        # Fetch channel data from YouTube API
+        channel_data = await youtube_service.get_my_channel()
+
+        if not channel_data:
+            display_warning("No channel data retrieved", title="Channel Sync")
+            return result
+
+        # Apply topic filtering if requested
+        if topic:
+            console.print(
+                f"[blue]🔍 Checking if channel matches topic ID: {topic}[/blue]"
+            )
+
+            # Validate topic exists
+            async for session in db_manager.get_session():
+                if not await topic_category_repository.exists(session, topic):
+                    from chronovista.cli.sync.base import display_error
+
+                    display_error(
+                        f"Invalid topic ID: {topic}\n"
+                        f"Use [bold]chronovista topics list[/bold] to see available topics.",
+                        title="Topic Filter Error",
+                    )
+                    return result
+
+            # Check if channel has matching topics using transformer
+            topic_ids = DataTransformers.extract_topic_ids(channel_data)
+            has_matching_topic = topic in topic_ids
+
+            if not has_matching_topic:
+                display_warning(
+                    f"Channel does not match topic ID: {topic}\n"
+                    f"Channel topics: {topic_ids[:3] if topic_ids else 'None'}\n"
+                    f"Use [bold]chronovista sync channel[/bold] without --topic to sync anyway.",
+                    title="Topic Filter: No Match",
+                )
+                return result
+
+            display_success(f"Channel matches topic {topic}")
+
+        console.print("[blue]💾 Saving channel data to database...[/blue]")
+
+        # Transform YouTube API data using DataTransformers
+        channel_create = DataTransformers.extract_channel_create(channel_data)
+
+        # Save to database using repository
+        async for session in db_manager.get_session():
+            existing = await channel_repository.exists(session, channel_data.id)
+            saved_channel = await channel_repository.create_or_update(
+                session, channel_create
+            )
+
+            if existing:
+                result.updated += 1
+            else:
+                result.created += 1
+
+            # Extract and create channel-topic associations using transformer
+            topic_ids = DataTransformers.extract_topic_ids(channel_data)
+            if topic_ids:
+                valid_associations = 0
+                for topic_id in topic_ids:
+                    # Check if topic exists in our database
+                    if await topic_category_repository.exists(session, topic_id):
+                        channel_topic_create = ChannelTopicCreate(
+                            channel_id=saved_channel.channel_id,
+                            topic_id=topic_id,
+                        )
+                        await channel_topic_repository.create_or_update(
+                            session, channel_topic_create
+                        )
+                        valid_associations += 1
+                    else:
+                        console.print(
+                            f"[dim]⚠️  Skipping unknown topic ID: {topic_id}[/dim]"
+                        )
+
+                if valid_associations > 0:
+                    display_success(
+                        f"Created {valid_associations} channel-topic associations"
+                    )
+                else:
+                    display_warning(
+                        "No valid topic associations created "
+                        "(all topic IDs are Freebase entities, not video categories)"
+                    )
+
+        # Create display table for channel details
+        table = Table(title="Channel Synced to Database")
+        table.add_column("Property", style="cyan")
+        table.add_column("Value", style="green")
+
+        table.add_row("Channel ID", saved_channel.channel_id)
+        table.add_row("Title", saved_channel.title)
+        table.add_row(
+            "Description",
+            (
+                (saved_channel.description or "No description")[:100] + "..."
+                if saved_channel.description
+                and len(saved_channel.description) > 100
+                else saved_channel.description or "No description"
+            ),
+        )
+        table.add_row(
+            "Subscriber Count",
+            (
+                str(saved_channel.subscriber_count)
+                if saved_channel.subscriber_count
+                else "Unknown"
+            ),
+        )
+        table.add_row(
+            "Video Count",
+            (
+                str(saved_channel.video_count)
+                if saved_channel.video_count
+                else "Unknown"
+            ),
+        )
+        table.add_row("Country", saved_channel.country or "Unknown")
+        table.add_row(
+            "Default Language", saved_channel.default_language or "Unknown"
+        )
+        table.add_row(
+            "Created At", saved_channel.created_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+        )
+        table.add_row(
+            "Updated At", saved_channel.updated_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+        )
+
+        console.print(table)
+
+        # Display final results
+        display_sync_results(
+            result,
+            title="Channel Sync Complete",
+            extra_info=f"Channel '{saved_channel.title}' saved to database.\n"
+            "End-to-end data flow: YouTube API → Database ✅",
+        )
+
+        return result
+
+    # Run the async function using shared wrapper
+    run_sync_operation(sync_channel_data, "Channel Sync")
 
 
 # Liked videos sync implementation moved to command function

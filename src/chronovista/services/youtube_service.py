@@ -570,7 +570,7 @@ class YouTubeService(YouTubeServiceInterface):
             return False
 
     async def get_my_playlists(
-        self, max_results: int = 50, fetch_all: bool = True
+        self, max_results: int | None = None, fetch_all: bool = True
     ) -> list[YouTubePlaylistResponse]:
         """
         Get playlists owned by the authenticated user.
@@ -581,13 +581,13 @@ class YouTubeService(YouTubeServiceInterface):
 
         Parameters
         ----------
-        max_results : int
-            Maximum number of playlists to return (default 50).
+        max_results : int | None
+            Maximum number of playlists to return. None (default) means no limit.
             When fetch_all is True, this is the total limit across all pages.
             When fetch_all is False, this is passed directly to the API (max 50).
         fetch_all : bool
             If True (default), automatically paginate through all results up to
-            max_results. If False, make a single API call with max_results (max 50).
+            max_results. If False, make a single API call (max 50 per page).
 
         Returns
         -------
@@ -600,12 +600,15 @@ class YouTubeService(YouTubeServiceInterface):
         while True:
             # Determine page size for this request
             if fetch_all:
-                remaining = max_results - len(results)
-                if remaining <= 0:
-                    break
-                page_size = min(remaining, 50)
+                if max_results is not None:
+                    remaining = max_results - len(results)
+                    if remaining <= 0:
+                        break
+                    page_size = min(remaining, 50)
+                else:
+                    page_size = 50  # No limit, use max per page
             else:
-                page_size = min(max_results, 50)
+                page_size = min(max_results, 50) if max_results else 50
 
             request = self.service.playlists().list(
                 part="id,snippet,status,contentDetails",
@@ -631,13 +634,13 @@ class YouTubeService(YouTubeServiceInterface):
                 break
 
             # Stop if we've reached the limit
-            if len(results) >= max_results:
+            if max_results is not None and len(results) >= max_results:
                 break
 
         return results
 
     async def get_playlist_videos(
-        self, playlist_id: PlaylistId, max_results: int = 50, fetch_all: bool = True
+        self, playlist_id: PlaylistId, max_results: int | None = None, fetch_all: bool = True
     ) -> list[YouTubePlaylistItemResponse]:
         """
         Get videos from a specific playlist.
@@ -650,13 +653,13 @@ class YouTubeService(YouTubeServiceInterface):
         ----------
         playlist_id : PlaylistId
             The playlist ID to fetch videos from (validated)
-        max_results : int
-            Maximum number of videos to return (default 50).
+        max_results : int | None
+            Maximum number of videos to return. None (default) means no limit.
             When fetch_all is True, this is the total limit across all pages.
             When fetch_all is False, this is passed directly to the API (max 50).
         fetch_all : bool
             If True (default), automatically paginate through all results up to
-            max_results. If False, make a single API call with max_results (max 50).
+            max_results. If False, make a single API call (max 50 per page).
 
         Returns
         -------
@@ -669,12 +672,15 @@ class YouTubeService(YouTubeServiceInterface):
         while True:
             # Determine page size for this request
             if fetch_all:
-                remaining = max_results - len(results)
-                if remaining <= 0:
-                    break
-                page_size = min(remaining, 50)
+                if max_results is not None:
+                    remaining = max_results - len(results)
+                    if remaining <= 0:
+                        break
+                    page_size = min(remaining, 50)
+                else:
+                    page_size = 50  # No limit, use max per page
             else:
-                page_size = min(max_results, 50)
+                page_size = min(max_results, 50) if max_results else 50
 
             request = self.service.playlistItems().list(
                 part="snippet,contentDetails,status",
@@ -700,7 +706,7 @@ class YouTubeService(YouTubeServiceInterface):
                 break
 
             # Stop if we've reached the limit
-            if len(results) >= max_results:
+            if max_results is not None and len(results) >= max_results:
                 break
 
         return results

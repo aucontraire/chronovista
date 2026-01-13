@@ -143,11 +143,7 @@ class TestSyncAppCommands:
         # Should handle file not found gracefully
         assert result.exit_code == 0
 
-    def test_playlists_command(self, runner):
-        """Test playlists command (not implemented yet)."""
-        result = runner.invoke(sync_app, ["playlists"])
-
-        assert result.exit_code == 0
+    # Removed test_playlists_command - tested in tests/unit/cli/sync/test_sync_playlists.py
 
     def test_transcripts_command(self, runner):
         """Test transcripts command (not implemented yet)."""
@@ -598,12 +594,7 @@ class TestSyncCommandsAdditionalCoverage:
         """Create CLI runner."""
         return CliRunner()
 
-    def test_playlists_command(self, runner):
-        """Test playlists command (not implemented)."""
-        result = runner.invoke(sync_app, ["playlists"])
-
-        assert result.exit_code == 0
-        assert "not yet implemented" in result.output.lower()
+    # Removed test_playlists_command - tested in tests/unit/cli/sync/test_sync_playlists.py
 
     def test_transcripts_command(self, runner):
         """Test transcripts command (not implemented)."""

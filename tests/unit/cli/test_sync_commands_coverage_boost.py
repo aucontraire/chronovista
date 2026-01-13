@@ -368,12 +368,7 @@ class TestSyncCommandsCoverageBoost:
         mock_youtube_service.get_my_channel.assert_called_once()
         mock_youtube_service.get_liked_videos.assert_called_once()
 
-    def test_playlists_command_not_implemented(self, runner):
-        """Test playlists command shows not implemented message."""
-        result = runner.invoke(sync_app, ["playlists"])
-
-        assert result.exit_code == 0
-        assert "not yet implemented" in result.output.lower()
+    # Removed test_playlists_command_not_implemented - tested in tests/unit/cli/sync/test_sync_playlists.py
 
     def test_transcripts_command_not_implemented(self, runner):
         """Test transcripts command shows not implemented message."""

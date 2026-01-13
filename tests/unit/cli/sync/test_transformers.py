@@ -21,16 +21,23 @@ from chronovista.models.api_responses import (
     CategorySnippet,
     ChannelSnippet,
     ChannelStatisticsResponse,
+    PlaylistContentDetails,
+    PlaylistItemContentDetails,
+    PlaylistItemSnippet,
+    PlaylistSnippet,
+    PlaylistStatus,
     Thumbnail,
     TopicDetails,
     VideoContentDetails,
     VideoSnippet,
     VideoStatus,
     YouTubeChannelResponse,
+    YouTubePlaylistItemResponse,
+    YouTubePlaylistResponse,
     YouTubeVideoCategoryResponse,
     YouTubeVideoResponse,
 )
-from chronovista.models.enums import LanguageCode, TopicType
+from chronovista.models.enums import LanguageCode, PrivacyStatus, TopicType
 
 
 class TestParseDuration:
@@ -404,3 +411,366 @@ class TestExtractTopicIds:
         result = DataTransformers.extract_topic_ids(channel)
 
         assert result == []
+
+
+class TestExtractPlaylistCreate:
+    """Tests for extract_playlist_create method."""
+
+    # Valid 24-char channel ID (UC + 22 chars = 24 total)
+    VALID_CHANNEL_ID = "UCxxxxxxxxxxxxxxxxxxxxxx"
+    # Valid 34-char playlist ID (PL + 32 chars = 34 total)
+    VALID_PLAYLIST_ID = "PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+    def test_extract_playlist_create_valid_response(self) -> None:
+        """Test extracting playlist with full valid response."""
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        snippet = PlaylistSnippet(
+            published_at=published,
+            channel_id=self.VALID_CHANNEL_ID,
+            title="My Test Playlist",
+            description="A comprehensive test playlist",
+            channel_title="Test Channel",
+            default_language="en",
+        )
+        content_details = PlaylistContentDetails(
+            item_count=25,
+        )
+        status = PlaylistStatus(
+            privacy_status="public",
+        )
+        playlist = YouTubePlaylistResponse(
+            kind="youtube#playlist",
+            etag="xyz123",
+            id=self.VALID_PLAYLIST_ID,
+            snippet=snippet,
+            content_details=content_details,
+            status=status,
+        )
+
+        result = DataTransformers.extract_playlist_create(playlist)
+
+        assert result.playlist_id == self.VALID_PLAYLIST_ID
+        assert result.title == "My Test Playlist"
+        assert result.description == "A comprehensive test playlist"
+        assert result.default_language == LanguageCode.ENGLISH
+        assert result.privacy_status == PrivacyStatus.PUBLIC
+        assert result.channel_id == self.VALID_CHANNEL_ID
+        assert result.video_count == 25
+        assert result.published_at == published
+
+    def test_extract_playlist_create_missing_snippet(self) -> None:
+        """Test extracting playlist without snippet raises validation error.
+
+        When snippet is None, title defaults to "" which doesn't pass the
+        min_length=1 validation. This is expected - callers should ensure
+        they have valid data.
+        """
+        from pydantic import ValidationError
+
+        playlist = YouTubePlaylistResponse(
+            kind="youtube#playlist",
+            etag="xyz123",
+            id=self.VALID_PLAYLIST_ID,
+            snippet=None,
+            content_details=None,
+            status=None,
+        )
+
+        with pytest.raises(ValidationError):
+            DataTransformers.extract_playlist_create(playlist)
+
+    def test_extract_playlist_create_with_language(self) -> None:
+        """Test extracting playlist with different language codes."""
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        snippet = PlaylistSnippet(
+            published_at=published,
+            channel_id=self.VALID_CHANNEL_ID,
+            title="Mi Lista de Reproducción",
+            description="Una lista en español",
+            channel_title="Test Channel",
+            default_language="es",
+        )
+        playlist = YouTubePlaylistResponse(
+            kind="youtube#playlist",
+            etag="xyz123",
+            id=self.VALID_PLAYLIST_ID,
+            snippet=snippet,
+        )
+
+        result = DataTransformers.extract_playlist_create(playlist)
+
+        assert result.default_language == LanguageCode.SPANISH
+
+    def test_extract_playlist_create_invalid_language_defaults_to_none(self) -> None:
+        """Test extracting playlist with invalid language code defaults to None."""
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        snippet = PlaylistSnippet(
+            published_at=published,
+            channel_id=self.VALID_CHANNEL_ID,
+            title="Test Playlist",
+            description="Test",
+            channel_title="Test Channel",
+            default_language="invalid_lang",
+        )
+        playlist = YouTubePlaylistResponse(
+            kind="youtube#playlist",
+            etag="xyz123",
+            id=self.VALID_PLAYLIST_ID,
+            snippet=snippet,
+        )
+
+        result = DataTransformers.extract_playlist_create(playlist)
+
+        assert result.default_language is None
+
+    def test_extract_playlist_create_private_status(self) -> None:
+        """Test extracting playlist with private status."""
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        snippet = PlaylistSnippet(
+            published_at=published,
+            channel_id=self.VALID_CHANNEL_ID,
+            title="Private Playlist",
+            description="",
+            channel_title="Test Channel",
+        )
+        status = PlaylistStatus(
+            privacy_status="private",
+        )
+        playlist = YouTubePlaylistResponse(
+            kind="youtube#playlist",
+            etag="xyz123",
+            id=self.VALID_PLAYLIST_ID,
+            snippet=snippet,
+            status=status,
+        )
+
+        result = DataTransformers.extract_playlist_create(playlist)
+
+        assert result.privacy_status == PrivacyStatus.PRIVATE
+
+    def test_extract_playlist_create_unlisted_status(self) -> None:
+        """Test extracting playlist with unlisted status."""
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        snippet = PlaylistSnippet(
+            published_at=published,
+            channel_id=self.VALID_CHANNEL_ID,
+            title="Unlisted Playlist",
+            description="",
+            channel_title="Test Channel",
+        )
+        status = PlaylistStatus(
+            privacy_status="unlisted",
+        )
+        playlist = YouTubePlaylistResponse(
+            kind="youtube#playlist",
+            etag="xyz123",
+            id=self.VALID_PLAYLIST_ID,
+            snippet=snippet,
+            status=status,
+        )
+
+        result = DataTransformers.extract_playlist_create(playlist)
+
+        assert result.privacy_status == PrivacyStatus.UNLISTED
+
+    def test_extract_playlist_create_invalid_privacy_defaults_to_private(self) -> None:
+        """Test extracting playlist with invalid privacy status defaults to private."""
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        snippet = PlaylistSnippet(
+            published_at=published,
+            channel_id=self.VALID_CHANNEL_ID,
+            title="Test Playlist",
+            description="",
+            channel_title="Test Channel",
+        )
+        status = PlaylistStatus(
+            privacy_status="invalid_status",
+        )
+        playlist = YouTubePlaylistResponse(
+            kind="youtube#playlist",
+            etag="xyz123",
+            id=self.VALID_PLAYLIST_ID,
+            snippet=snippet,
+            status=status,
+        )
+
+        result = DataTransformers.extract_playlist_create(playlist)
+
+        assert result.privacy_status == PrivacyStatus.PRIVATE
+
+    def test_extract_playlist_create_no_content_details(self) -> None:
+        """Test extracting playlist without content details defaults video_count to 0."""
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        snippet = PlaylistSnippet(
+            published_at=published,
+            channel_id=self.VALID_CHANNEL_ID,
+            title="Empty Playlist",
+            description="No videos yet",
+            channel_title="Test Channel",
+        )
+        playlist = YouTubePlaylistResponse(
+            kind="youtube#playlist",
+            etag="xyz123",
+            id=self.VALID_PLAYLIST_ID,
+            snippet=snippet,
+            content_details=None,
+        )
+
+        result = DataTransformers.extract_playlist_create(playlist)
+
+        assert result.video_count == 0
+
+
+class TestExtractPlaylistMembershipCreate:
+    """Tests for extract_playlist_membership_create method."""
+
+    # Valid 34-char playlist ID (PL + 32 chars = 34 total)
+    VALID_PLAYLIST_ID = "PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    # Valid 11-char video ID for tests
+    VALID_VIDEO_ID = "dQw4w9WgXcQ"
+    # Valid 24-char channel ID (UC + 22 chars = 24 total)
+    VALID_CHANNEL_ID = "UCxxxxxxxxxxxxxxxxxxxxxx"
+
+    def test_extract_playlist_membership_create_valid(self) -> None:
+        """Test extracting playlist membership with valid data."""
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        snippet = PlaylistItemSnippet(
+            published_at=published,
+            channel_id=self.VALID_CHANNEL_ID,
+            title="Test Video",
+            description="A test video",
+            channel_title="Test Channel",
+            playlist_id=self.VALID_PLAYLIST_ID,
+            position=5,
+            resource_id={
+                "kind": "youtube#video",
+                "videoId": self.VALID_VIDEO_ID,
+            },
+        )
+        content_details = PlaylistItemContentDetails(
+            video_id=self.VALID_VIDEO_ID,
+        )
+        item = YouTubePlaylistItemResponse(
+            kind="youtube#playlistItem",
+            etag="abc123",
+            id="UExxxx",
+            snippet=snippet,
+            content_details=content_details,
+        )
+
+        result = DataTransformers.extract_playlist_membership_create(item)
+
+        assert result is not None
+        assert result.playlist_id == self.VALID_PLAYLIST_ID
+        assert result.video_id == self.VALID_VIDEO_ID
+        assert result.position == 5
+        assert result.added_at == published
+
+    def test_extract_playlist_membership_create_missing_snippet(self) -> None:
+        """Test extracting playlist membership without snippet returns None."""
+        content_details = PlaylistItemContentDetails(
+            video_id=self.VALID_VIDEO_ID,
+        )
+        item = YouTubePlaylistItemResponse(
+            kind="youtube#playlistItem",
+            etag="abc123",
+            id="UExxxx",
+            snippet=None,
+            content_details=content_details,
+        )
+
+        result = DataTransformers.extract_playlist_membership_create(item)
+
+        assert result is None
+
+    def test_extract_playlist_membership_create_missing_content_details(self) -> None:
+        """Test extracting playlist membership without content_details returns None."""
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        snippet = PlaylistItemSnippet(
+            published_at=published,
+            channel_id=self.VALID_CHANNEL_ID,
+            title="Test Video",
+            description="A test video",
+            channel_title="Test Channel",
+            playlist_id=self.VALID_PLAYLIST_ID,
+            position=5,
+            resource_id={
+                "kind": "youtube#video",
+                "videoId": self.VALID_VIDEO_ID,
+            },
+        )
+        item = YouTubePlaylistItemResponse(
+            kind="youtube#playlistItem",
+            etag="abc123",
+            id="UExxxx",
+            snippet=snippet,
+            content_details=None,
+        )
+
+        result = DataTransformers.extract_playlist_membership_create(item)
+
+        assert result is None
+
+    def test_extract_playlist_membership_create_missing_video_id(self) -> None:
+        """Test extracting playlist membership without video_id returns None."""
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        snippet = PlaylistItemSnippet(
+            published_at=published,
+            channel_id=self.VALID_CHANNEL_ID,
+            title="Test Video",
+            description="A test video",
+            channel_title="Test Channel",
+            playlist_id=self.VALID_PLAYLIST_ID,
+            position=5,
+            resource_id={
+                "kind": "youtube#video",
+                "videoId": self.VALID_VIDEO_ID,
+            },
+        )
+        # Create content_details without video_id by using empty string
+        content_details = PlaylistItemContentDetails(
+            video_id="",  # Empty video_id should cause None to be returned
+        )
+        item = YouTubePlaylistItemResponse(
+            kind="youtube#playlistItem",
+            etag="abc123",
+            id="UExxxx",
+            snippet=snippet,
+            content_details=content_details,
+        )
+
+        result = DataTransformers.extract_playlist_membership_create(item)
+
+        assert result is None
+
+    def test_extract_playlist_membership_create_position_zero(self) -> None:
+        """Test extracting playlist membership with position 0 (first item)."""
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        snippet = PlaylistItemSnippet(
+            published_at=published,
+            channel_id=self.VALID_CHANNEL_ID,
+            title="First Video",
+            description="The first video in playlist",
+            channel_title="Test Channel",
+            playlist_id=self.VALID_PLAYLIST_ID,
+            position=0,
+            resource_id={
+                "kind": "youtube#video",
+                "videoId": self.VALID_VIDEO_ID,
+            },
+        )
+        content_details = PlaylistItemContentDetails(
+            video_id=self.VALID_VIDEO_ID,
+        )
+        item = YouTubePlaylistItemResponse(
+            kind="youtube#playlistItem",
+            etag="abc123",
+            id="UExxxx",
+            snippet=snippet,
+            content_details=content_details,
+        )
+
+        result = DataTransformers.extract_playlist_membership_create(item)
+
+        assert result is not None
+        assert result.position == 0

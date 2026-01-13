@@ -13,11 +13,15 @@ from typing import Optional
 
 from chronovista.models.api_responses import (
     YouTubeChannelResponse,
+    YouTubePlaylistItemResponse,
+    YouTubePlaylistResponse,
     YouTubeVideoCategoryResponse,
     YouTubeVideoResponse,
 )
 from chronovista.models.channel import ChannelCreate
-from chronovista.models.enums import LanguageCode, TopicType
+from chronovista.models.enums import LanguageCode, PrivacyStatus, TopicType
+from chronovista.models.playlist import PlaylistCreate
+from chronovista.models.playlist_membership import PlaylistMembershipCreate
 from chronovista.models.topic_category import TopicCategoryCreate
 from chronovista.models.video import VideoCreate
 
@@ -252,3 +256,99 @@ class DataTransformers:
             return []
 
         return topic_details.topic_ids or []
+
+    @staticmethod
+    def extract_playlist_create(
+        playlist: YouTubePlaylistResponse,
+    ) -> PlaylistCreate:
+        """
+        Convert YouTube playlist response to PlaylistCreate.
+
+        Parameters
+        ----------
+        playlist : YouTubePlaylistResponse
+            YouTube API playlist response.
+
+        Returns
+        -------
+        PlaylistCreate
+            Pydantic model for database insertion.
+        """
+        snippet = playlist.snippet
+        content_details = playlist.content_details
+        status = playlist.status
+
+        # Extract language code
+        default_language = DataTransformers.cast_language_code(
+            snippet.default_language if snippet else None
+        )
+
+        # Extract privacy status
+        privacy_status = PrivacyStatus.PRIVATE
+        if status and status.privacy_status:
+            try:
+                privacy_status = PrivacyStatus(status.privacy_status)
+            except ValueError:
+                privacy_status = PrivacyStatus.PRIVATE
+
+        # Extract video count
+        video_count = content_details.item_count if content_details else 0
+
+        # Extract published_at
+        published_at = snippet.published_at if snippet else None
+
+        return PlaylistCreate(
+            playlist_id=playlist.id,
+            title=snippet.title if snippet else "",
+            description=snippet.description if snippet else None,
+            default_language=default_language,
+            privacy_status=privacy_status,
+            channel_id=snippet.channel_id if snippet else "",
+            video_count=video_count,
+            published_at=published_at,
+        )
+
+    @staticmethod
+    def extract_playlist_membership_create(
+        item: YouTubePlaylistItemResponse,
+    ) -> Optional[PlaylistMembershipCreate]:
+        """
+        Convert YouTube playlist item response to PlaylistMembershipCreate.
+
+        Parameters
+        ----------
+        item : YouTubePlaylistItemResponse
+            YouTube API playlist item response.
+
+        Returns
+        -------
+        Optional[PlaylistMembershipCreate]
+            Pydantic model for database insertion, or None if required data is missing.
+        """
+        snippet = item.snippet
+        content_details = item.content_details
+
+        # Return None if snippet or content_details missing
+        if not snippet or not content_details:
+            return None
+
+        # Extract video_id from content_details
+        video_id = content_details.video_id
+        if not video_id:
+            return None
+
+        # Extract playlist_id from snippet
+        playlist_id = snippet.playlist_id
+
+        # Extract position from snippet
+        position = snippet.position
+
+        # Extract added_at from snippet.published_at
+        added_at = snippet.published_at
+
+        return PlaylistMembershipCreate(
+            playlist_id=playlist_id,
+            video_id=video_id,
+            position=position,
+            added_at=added_at,
+        )

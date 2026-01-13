@@ -25,7 +25,10 @@ from chronovista.cli.sync.base import (
 from chronovista.cli.sync.transformers import DataTransformers
 from chronovista.config.database import db_manager
 from chronovista.db.models import Video as VideoDB
-from chronovista.models.api_responses import YouTubeVideoResponse
+from chronovista.models.api_responses import (
+    YouTubePlaylistResponse,
+    YouTubeVideoResponse,
+)
 from chronovista.models.channel import ChannelCreate
 from chronovista.models.channel_topic import ChannelTopicCreate
 from chronovista.models.video import VideoCreate
@@ -33,6 +36,10 @@ from chronovista.models.video_topic import VideoTopicCreate
 from chronovista.models.youtube_types import UserId
 from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.repositories.channel_topic_repository import ChannelTopicRepository
+from chronovista.repositories.playlist_membership_repository import (
+    PlaylistMembershipRepository,
+)
+from chronovista.repositories.playlist_repository import PlaylistRepository
 from chronovista.repositories.topic_category_repository import TopicCategoryRepository
 from chronovista.repositories.user_video_repository import UserVideoRepository
 from chronovista.repositories.video_repository import VideoRepository
@@ -43,6 +50,8 @@ console = Console()
 
 # Repository instances
 channel_repository = ChannelRepository()
+playlist_repository = PlaylistRepository()
+playlist_membership_repository = PlaylistMembershipRepository()
 topic_category_repository = TopicCategoryRepository()
 user_video_repository = UserVideoRepository()
 video_repository = VideoRepository()
@@ -281,17 +290,330 @@ def history(
     run_sync_operation(import_watch_history, "Watch History Import")
 
 
-@sync_app.command()
-def playlists() -> None:
-    """Sync playlists from YouTube."""
+async def _show_playlists_dry_run(
+    playlists: list[YouTubePlaylistResponse],
+    include_items: bool,
+) -> None:
+    """
+    Display preview of playlists that would be synced without making database changes.
+
+    Parameters
+    ----------
+    playlists : list[YouTubePlaylistResponse]
+        List of playlists from YouTube API
+    include_items : bool
+        Whether --include-items flag is set
+    """
+    # Display panel header
+    console.print()
     console.print(
         Panel(
-            "[yellow]Playlist sync not yet implemented[/yellow]\n"
-            "This will fetch and store your YouTube playlists.",
-            title="Sync Playlists",
-            border_style="yellow",
+            f"[blue]Sync Preview (Dry Run)[/blue]\n"
+            f"Total playlists: {len(playlists)}\n"
+            f"Include items: {'Yes' if include_items else 'No'}",
+            title="Playlist Sync Preview",
+            border_style="blue",
         )
     )
+
+    # Create preview table
+    table = Table(title=f"Preview: {len(playlists)} Playlists")
+    table.add_column("Title", style="cyan", max_width=40)
+    table.add_column("Videos", style="yellow", justify="right")
+    table.add_column("Privacy", style="green")
+    table.add_column("Language", style="magenta")
+    table.add_column("Playlist ID", style="dim", max_width=20)
+
+    for playlist in playlists:
+        snippet = playlist.snippet
+        content_details = playlist.content_details
+        status = playlist.status
+
+        title = snippet.title if snippet else "Unknown"
+        video_count = content_details.item_count if content_details else 0
+        privacy = status.privacy_status if status else "unknown"
+        language = snippet.default_language if snippet else None
+
+        table.add_row(
+            title[:37] + "..." if len(title) > 40 else title,
+            str(video_count),
+            privacy,
+            language or "N/A",
+            playlist.id[:17] + "..." if len(playlist.id) > 20 else playlist.id,
+        )
+
+    console.print(table)
+
+    # Footer message showing what would happen
+    console.print()
+    console.print(
+        "[yellow]This is a dry run - no data will be written to the database[/yellow]"
+    )
+    console.print()
+    console.print("[blue]What would happen:[/blue]")
+    console.print(f"   [green]Create or update {len(playlists)} playlists[/green]")
+
+    if include_items:
+        total_videos = sum(
+            p.content_details.item_count if p.content_details else 0 for p in playlists
+        )
+        console.print(
+            f"   [yellow]Sync up to {total_videos} playlist memberships "
+            f"(requires additional API calls)[/yellow]"
+        )
+    else:
+        console.print(
+            "   [dim]Skipping playlist items (use --include-items to sync videos)[/dim]"
+        )
+
+    console.print()
+    console.print("[yellow]Remove --dry-run to perform actual sync[/yellow]")
+
+
+async def _sync_playlist_items(
+    playlists: list[YouTubePlaylistResponse],
+    create_missing_channels: bool,
+) -> SyncResult:
+    """
+    Sync videos for each playlist (playlist memberships).
+
+    Parameters
+    ----------
+    playlists : list[YouTubePlaylistResponse]
+        List of playlists to sync items for
+    create_missing_channels : bool
+        Whether to create channel records if they don't exist
+
+    Returns
+    -------
+    SyncResult
+        Result tracking created/updated/failed memberships
+    """
+    result = SyncResult()
+
+    for playlist in playlists:
+        playlist_id = playlist.id
+        snippet = playlist.snippet
+        playlist_title = snippet.title if snippet else playlist_id
+
+        console.print(f"[blue]Syncing items for playlist: {playlist_title}[/blue]")
+
+        try:
+            # Fetch playlist items from YouTube API
+            items = await youtube_service.get_playlist_videos(playlist_id)
+
+            if not items:
+                console.print(f"   [dim]No items found in playlist[/dim]")
+                continue
+
+            console.print(f"   [dim]Found {len(items)} items[/dim]")
+
+            async for session in db_manager.get_session():
+                for item in items:
+                    try:
+                        # Transform to PlaylistMembershipCreate
+                        membership_create = (
+                            DataTransformers.extract_playlist_membership_create(item)
+                        )
+
+                        if membership_create is None:
+                            # Missing required data
+                            continue
+
+                        # Check if video exists, create if necessary
+                        video_id = membership_create.video_id
+                        video_exists = await video_repository.exists(session, video_id)
+
+                        if not video_exists:
+                            # Skip videos not in database - video creation
+                            # would require additional API calls
+                            result.skipped += 1
+                            continue
+
+                        # Check if this is an update or create
+                        existing = await playlist_membership_repository.get_membership(
+                            session, membership_create.playlist_id, video_id
+                        )
+
+                        # Save membership
+                        await playlist_membership_repository.create_or_update(
+                            session, membership_create
+                        )
+
+                        if existing:
+                            result.updated += 1
+                        else:
+                            result.created += 1
+
+                    except Exception as e:
+                        result.add_error(f"Item in {playlist_title}: {e}")
+
+                await session.commit()
+
+        except Exception as e:
+            result.add_error(f"Playlist {playlist_title}: {e}")
+            console.print(f"   [red]Error syncing items: {e}[/red]")
+
+    return result
+
+
+@sync_app.command()
+def playlists(
+    include_items: bool = typer.Option(
+        False,
+        "--include-items",
+        "-i",
+        help="Also sync videos within each playlist (requires additional API calls)",
+    ),
+    create_missing_channels: bool = typer.Option(
+        False,
+        "--create-missing-channels",
+        help="Create channel records if they don't exist",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview what would be synced without making database changes",
+    ),
+) -> None:
+    """
+    Sync playlists from YouTube.
+
+    By default, syncs only playlist metadata. Use --include-items to also
+    sync the videos within each playlist (requires additional API calls).
+
+    Examples:
+        chronovista sync playlists                    # Sync playlist metadata only
+        chronovista sync playlists --include-items    # Include playlist videos
+        chronovista sync playlists --dry-run          # Preview without changes
+    """
+    # Check authentication using framework utility
+    if not check_authenticated():
+        display_auth_error("Playlist Sync")
+        return
+
+    async def sync_playlists_data() -> SyncResult:
+        """Sync playlists from YouTube API."""
+        result = SyncResult()
+
+        display_progress_start(
+            "Fetching your YouTube playlists...",
+            title="Playlist Sync",
+        )
+
+        # Fetch playlists from YouTube API
+        youtube_playlists = await youtube_service.get_my_playlists()
+
+        if not youtube_playlists:
+            display_warning(
+                "No playlists found\n"
+                "Either you haven't created any playlists or they are not accessible.",
+                title="No Playlists",
+            )
+            return result
+
+        display_success(f"Found {len(youtube_playlists)} playlists from YouTube")
+
+        # Handle dry-run mode
+        if dry_run:
+            await _show_playlists_dry_run(youtube_playlists, include_items)
+            return result
+
+        # Process playlists
+        console.print("[blue]Saving playlists to database...[/blue]")
+
+        async for session in db_manager.get_session():
+            for playlist_data in youtube_playlists:
+                try:
+                    # Transform YouTube API data using DataTransformers
+                    playlist_create = DataTransformers.extract_playlist_create(
+                        playlist_data
+                    )
+
+                    # Check if playlist already exists
+                    existing = await playlist_repository.exists(
+                        session, playlist_data.id
+                    )
+
+                    # Save to database
+                    await playlist_repository.create_or_update(session, playlist_create)
+
+                    if existing:
+                        result.updated += 1
+                    else:
+                        result.created += 1
+
+                except Exception as e:
+                    snippet = playlist_data.snippet
+                    title = snippet.title if snippet else playlist_data.id
+                    result.add_error(f"Playlist '{title}': {e}")
+                    console.print(f"[red]Error processing playlist: {e}[/red]")
+
+            await session.commit()
+
+        # Sync playlist items if requested
+        items_result = SyncResult()
+        if include_items:
+            console.print()
+            console.print("[blue]Syncing playlist items...[/blue]")
+            items_result = await _sync_playlist_items(
+                youtube_playlists, create_missing_channels
+            )
+
+        # Merge results
+        final_result = result.merge(items_result)
+
+        # Create display table for playlists
+        table = Table(title="Playlists Synced to Database")
+        table.add_column("Title", style="cyan", max_width=40)
+        table.add_column("Videos", style="yellow", justify="right")
+        table.add_column("Privacy", style="green")
+        table.add_column("Status", style="magenta")
+
+        for playlist_data in youtube_playlists[:10]:  # Show first 10
+            snippet = playlist_data.snippet
+            content_details = playlist_data.content_details
+            status = playlist_data.status
+
+            title = snippet.title if snippet else "Unknown"
+            video_count = content_details.item_count if content_details else 0
+            privacy = status.privacy_status if status else "unknown"
+
+            table.add_row(
+                title[:37] + "..." if len(title) > 40 else title,
+                str(video_count),
+                privacy,
+                "Synced",
+            )
+
+        if len(youtube_playlists) > 10:
+            table.add_row("...", "...", "...", f"+{len(youtube_playlists) - 10} more")
+
+        console.print(table)
+
+        # Display final results
+        extra_info = f"Synced {len(youtube_playlists)} playlists to database."
+        if include_items:
+            extra_info += (
+                f"\nPlaylist items: {items_result.created} created, "
+                f"{items_result.updated} updated"
+            )
+            if items_result.skipped > 0:
+                extra_info += (
+                    f", {items_result.skipped} skipped (videos not in database)"
+                )
+        extra_info += "\nData flow: YouTube API -> Playlists -> Database"
+
+        display_sync_results(
+            final_result,
+            title="Playlist Sync Complete",
+            extra_info=extra_info,
+        )
+
+        return final_result
+
+    # Run the async function using shared wrapper
+    run_sync_operation(sync_playlists_data, "Playlist Sync")
 
 
 @sync_app.command()

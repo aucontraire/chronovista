@@ -246,15 +246,24 @@ class YouTubeServiceInterface(ABC):
 
     @abstractmethod
     async def get_my_playlists(
-        self, max_results: int = 50
+        self, max_results: int | None = None, fetch_all: bool = True
     ) -> list[YouTubePlaylistResponse]:
         """
         Get playlists owned by the authenticated user.
 
+        Supports pagination to fetch all playlists. The YouTube API returns
+        a maximum of 50 items per page, so this method automatically paginates
+        through all results when fetch_all is True.
+
         Parameters
         ----------
-        max_results : int
-            Maximum number of playlists to return (default 50).
+        max_results : int | None
+            Maximum number of playlists to return. None (default) means no limit.
+            When fetch_all is True, this is the total limit across all pages.
+            When fetch_all is False, this is passed directly to the API (max 50).
+        fetch_all : bool
+            If True (default), automatically paginate through all results up to
+            max_results. If False, make a single API call (max 50 per page).
 
         Returns
         -------
@@ -265,17 +274,26 @@ class YouTubeServiceInterface(ABC):
 
     @abstractmethod
     async def get_playlist_videos(
-        self, playlist_id: PlaylistId, max_results: int = 50
+        self, playlist_id: PlaylistId, max_results: int | None = None, fetch_all: bool = True
     ) -> list[YouTubePlaylistItemResponse]:
         """
         Get videos from a specific playlist.
+
+        Supports pagination to fetch all videos. The YouTube API returns
+        a maximum of 50 items per page, so this method automatically paginates
+        through all results when fetch_all is True.
 
         Parameters
         ----------
         playlist_id : PlaylistId
             The playlist ID to fetch videos from.
-        max_results : int
-            Maximum number of videos to return (default 50).
+        max_results : int | None
+            Maximum number of videos to return. None (default) means no limit.
+            When fetch_all is True, this is the total limit across all pages.
+            When fetch_all is False, this is passed directly to the API (max 50).
+        fetch_all : bool
+            If True (default), automatically paginate through all results up to
+            max_results. If False, make a single API call (max 50 per page).
 
         Returns
         -------

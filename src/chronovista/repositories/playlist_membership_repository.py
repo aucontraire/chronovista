@@ -197,3 +197,33 @@ class PlaylistMembershipRepository(
 
         # Return 0 for empty playlist, or max_position + 1
         return 0 if max_position is None else max_position + 1
+
+    async def create_or_update(
+        self, session: AsyncSession, membership_create: PlaylistMembershipCreate
+    ) -> DBPlaylistMembership:
+        """
+        Create new playlist membership or update existing one.
+
+        Args:
+            session: Database session
+            membership_create: Playlist membership data
+
+        Returns:
+            Created or updated playlist membership
+        """
+        # Check if membership already exists
+        existing = await self.get_membership(
+            session, membership_create.playlist_id, membership_create.video_id
+        )
+
+        if existing:
+            # Update existing membership
+            existing.position = membership_create.position
+            if membership_create.added_at is not None:
+                existing.added_at = membership_create.added_at
+            await session.flush()
+            await session.refresh(existing)
+            return existing
+        else:
+            # Create new membership
+            return await self.create(session, obj_in=membership_create)

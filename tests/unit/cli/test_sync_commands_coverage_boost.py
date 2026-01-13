@@ -126,7 +126,7 @@ class TestSyncCommandsCoverageBoost:
 
     @patch("chronovista.parsers.takeout_parser.TakeoutParser")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     @patch("chronovista.cli.sync_commands.process_watch_history_batch")
     def test_history_command_successful_flow(
         self,
@@ -137,7 +137,11 @@ class TestSyncCommandsCoverageBoost:
         runner,
         mock_takeout_file_with_data,
     ):
-        """Test successful history command flow to cover async implementation."""
+        """Test successful history command flow to cover async implementation.
+
+        Note: history command now uses check_authenticated from base module,
+        so we mock youtube_oauth in the base module.
+        """
         # Mock authentication
         mock_oauth.is_authenticated.return_value = True
 
@@ -183,7 +187,7 @@ class TestSyncCommandsCoverageBoost:
 
     @patch("chronovista.parsers.takeout_parser.TakeoutParser")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_history_command_no_user_channel(
         self,
         mock_oauth,
@@ -192,7 +196,11 @@ class TestSyncCommandsCoverageBoost:
         runner,
         mock_takeout_file_with_data,
     ):
-        """Test history command when user channel cannot be identified."""
+        """Test history command when user channel cannot be identified.
+
+        Note: history command now uses check_authenticated from base module,
+        so we mock youtube_oauth in the base module.
+        """
         # Mock authentication
         mock_oauth.is_authenticated.return_value = True
 
@@ -209,7 +217,7 @@ class TestSyncCommandsCoverageBoost:
 
     @patch("chronovista.parsers.takeout_parser.TakeoutParser")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     @patch("chronovista.cli.sync_commands.process_watch_history_batch")
     def test_history_command_with_limit(
         self,
@@ -220,7 +228,11 @@ class TestSyncCommandsCoverageBoost:
         runner,
         mock_takeout_file_with_data,
     ):
-        """Test history command with limit parameter."""
+        """Test history command with limit parameter.
+
+        Note: history command now uses check_authenticated from base module,
+        so we mock youtube_oauth in the base module.
+        """
         # Mock authentication
         mock_oauth.is_authenticated.return_value = True
 
@@ -255,7 +267,7 @@ class TestSyncCommandsCoverageBoost:
 
     @patch("chronovista.parsers.takeout_parser.TakeoutParser")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     @patch("chronovista.cli.sync_commands.process_watch_history_batch")
     def test_history_command_batch_processing(
         self,
@@ -266,7 +278,11 @@ class TestSyncCommandsCoverageBoost:
         runner,
         mock_takeout_file_with_data,
     ):
-        """Test history command batch processing with custom batch size."""
+        """Test history command batch processing with custom batch size.
+
+        Note: history command now uses check_authenticated from base module,
+        so we mock youtube_oauth in the base module.
+        """
         # Mock authentication
         mock_oauth.is_authenticated.return_value = True
 
@@ -304,7 +320,7 @@ class TestSyncCommandsCoverageBoost:
         assert mock_process_batch.call_count >= 1
 
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_channel_command_successful_flow(
         self, mock_oauth, mock_youtube_service, runner
     ):
@@ -325,7 +341,7 @@ class TestSyncCommandsCoverageBoost:
         mock_youtube_service.get_my_channel.assert_called_once()
 
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_liked_command_successful_flow(
         self, mock_oauth, mock_youtube_service, runner
     ):
@@ -352,12 +368,7 @@ class TestSyncCommandsCoverageBoost:
         mock_youtube_service.get_my_channel.assert_called_once()
         mock_youtube_service.get_liked_videos.assert_called_once()
 
-    def test_playlists_command_not_implemented(self, runner):
-        """Test playlists command shows not implemented message."""
-        result = runner.invoke(sync_app, ["playlists"])
-
-        assert result.exit_code == 0
-        assert "not yet implemented" in result.output.lower()
+    # Removed test_playlists_command_not_implemented - tested in tests/unit/cli/sync/test_sync_playlists.py
 
     def test_transcripts_command_not_implemented(self, runner):
         """Test transcripts command shows not implemented message."""
@@ -375,7 +386,7 @@ class TestSyncCommandsCoverageBoost:
 
     @patch("chronovista.parsers.takeout_parser.TakeoutParser")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_history_command_exception_handling(
         self,
         mock_oauth,
@@ -384,7 +395,11 @@ class TestSyncCommandsCoverageBoost:
         runner,
         mock_takeout_file_with_data,
     ):
-        """Test history command handles exceptions gracefully."""
+        """Test history command handles exceptions gracefully.
+
+        Note: history command now uses check_authenticated from base module,
+        so we mock youtube_oauth in the base module.
+        """
         # Mock authentication
         mock_oauth.is_authenticated.return_value = True
 
@@ -396,7 +411,7 @@ class TestSyncCommandsCoverageBoost:
         assert result.exit_code == 0  # Should handle gracefully
 
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_channel_command_exception_handling(
         self, mock_oauth, mock_youtube_service, runner
     ):
@@ -414,7 +429,7 @@ class TestSyncCommandsCoverageBoost:
         assert result.exit_code == 0  # Should handle gracefully
 
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_liked_command_exception_handling(
         self, mock_oauth, mock_youtube_service, runner
     ):

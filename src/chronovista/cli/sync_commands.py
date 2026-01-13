@@ -4,7 +4,6 @@ Data synchronization CLI commands for chronovista.
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any, Dict, List
 
 import typer
@@ -12,19 +11,35 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from chronovista.auth import youtube_oauth
+from chronovista.cli.sync.base import (
+    SyncResult,
+    check_authenticated,
+    display_auth_error,
+    display_error,
+    display_progress_start,
+    display_success,
+    display_sync_results,
+    display_warning,
+    run_sync_operation,
+)
+from chronovista.cli.sync.transformers import DataTransformers
 from chronovista.config.database import db_manager
 from chronovista.db.models import Video as VideoDB
-from chronovista.models.api_responses import YouTubeVideoResponse
+from chronovista.models.api_responses import (
+    YouTubePlaylistResponse,
+    YouTubeVideoResponse,
+)
 from chronovista.models.channel import ChannelCreate
 from chronovista.models.channel_topic import ChannelTopicCreate
-from chronovista.models.enums import LanguageCode, TopicType
-from chronovista.models.topic_category import TopicCategoryCreate
 from chronovista.models.video import VideoCreate
 from chronovista.models.video_topic import VideoTopicCreate
 from chronovista.models.youtube_types import UserId
 from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.repositories.channel_topic_repository import ChannelTopicRepository
+from chronovista.repositories.playlist_membership_repository import (
+    PlaylistMembershipRepository,
+)
+from chronovista.repositories.playlist_repository import PlaylistRepository
 from chronovista.repositories.topic_category_repository import TopicCategoryRepository
 from chronovista.repositories.user_video_repository import UserVideoRepository
 from chronovista.repositories.video_repository import VideoRepository
@@ -35,6 +50,8 @@ console = Console()
 
 # Repository instances
 channel_repository = ChannelRepository()
+playlist_repository = PlaylistRepository()
+playlist_membership_repository = PlaylistMembershipRepository()
 topic_category_repository = TopicCategoryRepository()
 user_video_repository = UserVideoRepository()
 video_repository = VideoRepository()
@@ -138,36 +155,27 @@ def history(
 ) -> None:
     """Import watch history from Google Takeout JSON file."""
 
-    async def import_watch_history() -> None:
+    async def import_watch_history() -> SyncResult:
         """Import watch history data from takeout file."""
         from pathlib import Path
 
         from chronovista.parsers.takeout_parser import TakeoutParser
 
+        result = SyncResult()
+
         # Validate file path
         takeout_file = Path(file_path)
         if not takeout_file.exists():
-            console.print(
-                Panel(
-                    f"[red]❌ File not found[/red]\n"
-                    f"Could not find file: {file_path}",
-                    title="Watch History Import",
-                    border_style="red",
-                )
+            display_error(
+                f"File not found\nCould not find file: {file_path}",
+                title="Watch History Import",
             )
-            return
+            return result
 
-        # Check authentication
-        if not youtube_oauth.is_authenticated():
-            console.print(
-                Panel(
-                    "[red]❌ Not authenticated[/red]\n"
-                    "Use [bold]chronovista auth login[/bold] to sign in first.",
-                    title="Watch History Import",
-                    border_style="red",
-                )
-            )
-            return
+        # Check authentication using shared utility
+        if not check_authenticated():
+            display_auth_error("Watch History Import")
+            return result
 
         try:
             console.print(
@@ -186,15 +194,12 @@ def history(
             user_id = my_channel.id if my_channel else None
 
             if not user_id:
-                console.print(
-                    Panel(
-                        "[red]❌ Could not identify user[/red]\n"
-                        "Unable to get your channel ID for user tracking.",
-                        title="Watch History Import",
-                        border_style="red",
-                    )
+                display_error(
+                    "Could not identify user\n"
+                    "Unable to get your channel ID for user tracking.",
+                    title="Watch History Import",
                 )
-                return
+                return result
 
             # Determine how many entries to process
             total_to_process = (
@@ -230,8 +235,8 @@ def history(
                     errors += batch_results["errors"]
 
                     processed += len(batch)
-                    console.print(
-                        f"[green]✅ Processed {processed:,} / {total_to_process:,} entries[/green]"
+                    display_success(
+                        f"Processed {processed:,} / {total_to_process:,} entries"
                     )
 
                     batch = []  # Clear batch
@@ -247,54 +252,368 @@ def history(
 
                 processed += len(batch)
 
+            # Update result counts
+            result.created = videos_created + channels_created + user_videos_created
+            result.failed = errors
+
             # Display final results
-            console.print(
-                Panel(
-                    f"[green]✅ Watch history import complete![/green]\n"
+            if errors == 0:
+                display_success(
+                    f"Watch history import complete!\n"
                     f"Processed: {processed:,} entries\n"
                     f"Videos: {videos_created:,} created/updated\n"
                     f"Channels: {channels_created:,} created/updated\n"
                     f"User interactions: {user_videos_created:,} created/updated\n"
-                    f"Errors: {errors:,}\n"
-                    "Data flow: Google Takeout → Videos + Channels + UserVideos → Database ✅",
-                    title="Watch History Import Complete",
-                    border_style="green",
+                    f"Data flow: Google Takeout -> Videos + Channels + UserVideos -> Database"
                 )
-            )
+            else:
+                display_warning(
+                    f"Watch history import completed with {errors} errors\n"
+                    f"Processed: {processed:,} entries\n"
+                    f"Videos: {videos_created:,} created/updated\n"
+                    f"Channels: {channels_created:,} created/updated\n"
+                    f"User interactions: {user_videos_created:,} created/updated\n"
+                    f"Errors: {errors:,}",
+                    title="Watch History Import Complete",
+                )
+
+            return result
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]❌ Failed to import watch history:[/red]\n{str(e)}",
-                    title="Watch History Import Error",
-                    border_style="red",
-                )
+            display_error(
+                f"Failed to import watch history:\n{str(e)}",
+                title="Watch History Import Error",
             )
+            return result
 
-    # Run the async function
-    try:
-        asyncio.run(import_watch_history())
-    except Exception as e:
-        console.print(
-            Panel(
-                f"[red]❌ Import failed:[/red]\n{str(e)}",
-                title="Import Error",
-                border_style="red",
-            )
+    # Run the async function using shared wrapper
+    run_sync_operation(import_watch_history, "Watch History Import")
+
+
+async def _show_playlists_dry_run(
+    playlists: list[YouTubePlaylistResponse],
+    include_items: bool,
+) -> None:
+    """
+    Display preview of playlists that would be synced without making database changes.
+
+    Parameters
+    ----------
+    playlists : list[YouTubePlaylistResponse]
+        List of playlists from YouTube API
+    include_items : bool
+        Whether --include-items flag is set
+    """
+    # Display panel header
+    console.print()
+    console.print(
+        Panel(
+            f"[blue]Sync Preview (Dry Run)[/blue]\n"
+            f"Total playlists: {len(playlists)}\n"
+            f"Include items: {'Yes' if include_items else 'No'}",
+            title="Playlist Sync Preview",
+            border_style="blue",
         )
+    )
+
+    # Create preview table
+    table = Table(title=f"Preview: {len(playlists)} Playlists")
+    table.add_column("Title", style="cyan", max_width=40)
+    table.add_column("Videos", style="yellow", justify="right")
+    table.add_column("Privacy", style="green")
+    table.add_column("Language", style="magenta")
+    table.add_column("Playlist ID", style="dim", max_width=20)
+
+    for playlist in playlists:
+        snippet = playlist.snippet
+        content_details = playlist.content_details
+        status = playlist.status
+
+        title = snippet.title if snippet else "Unknown"
+        video_count = content_details.item_count if content_details else 0
+        privacy = status.privacy_status if status else "unknown"
+        language = snippet.default_language if snippet else None
+
+        table.add_row(
+            title[:37] + "..." if len(title) > 40 else title,
+            str(video_count),
+            privacy,
+            language or "N/A",
+            playlist.id[:17] + "..." if len(playlist.id) > 20 else playlist.id,
+        )
+
+    console.print(table)
+
+    # Footer message showing what would happen
+    console.print()
+    console.print(
+        "[yellow]This is a dry run - no data will be written to the database[/yellow]"
+    )
+    console.print()
+    console.print("[blue]What would happen:[/blue]")
+    console.print(f"   [green]Create or update {len(playlists)} playlists[/green]")
+
+    if include_items:
+        total_videos = sum(
+            p.content_details.item_count if p.content_details else 0 for p in playlists
+        )
+        console.print(
+            f"   [yellow]Sync up to {total_videos} playlist memberships "
+            f"(requires additional API calls)[/yellow]"
+        )
+    else:
+        console.print(
+            "   [dim]Skipping playlist items (use --include-items to sync videos)[/dim]"
+        )
+
+    console.print()
+    console.print("[yellow]Remove --dry-run to perform actual sync[/yellow]")
+
+
+async def _sync_playlist_items(
+    playlists: list[YouTubePlaylistResponse],
+    create_missing_channels: bool,
+) -> SyncResult:
+    """
+    Sync videos for each playlist (playlist memberships).
+
+    Parameters
+    ----------
+    playlists : list[YouTubePlaylistResponse]
+        List of playlists to sync items for
+    create_missing_channels : bool
+        Whether to create channel records if they don't exist
+
+    Returns
+    -------
+    SyncResult
+        Result tracking created/updated/failed memberships
+    """
+    result = SyncResult()
+
+    for playlist in playlists:
+        playlist_id = playlist.id
+        snippet = playlist.snippet
+        playlist_title = snippet.title if snippet else playlist_id
+
+        console.print(f"[blue]Syncing items for playlist: {playlist_title}[/blue]")
+
+        try:
+            # Fetch playlist items from YouTube API
+            items = await youtube_service.get_playlist_videos(playlist_id)
+
+            if not items:
+                console.print(f"   [dim]No items found in playlist[/dim]")
+                continue
+
+            console.print(f"   [dim]Found {len(items)} items[/dim]")
+
+            async for session in db_manager.get_session():
+                for item in items:
+                    try:
+                        # Transform to PlaylistMembershipCreate
+                        membership_create = (
+                            DataTransformers.extract_playlist_membership_create(item)
+                        )
+
+                        if membership_create is None:
+                            # Missing required data
+                            continue
+
+                        # Check if video exists, create if necessary
+                        video_id = membership_create.video_id
+                        video_exists = await video_repository.exists(session, video_id)
+
+                        if not video_exists:
+                            # Skip videos not in database - video creation
+                            # would require additional API calls
+                            result.skipped += 1
+                            continue
+
+                        # Check if this is an update or create
+                        existing = await playlist_membership_repository.get_membership(
+                            session, membership_create.playlist_id, video_id
+                        )
+
+                        # Save membership
+                        await playlist_membership_repository.create_or_update(
+                            session, membership_create
+                        )
+
+                        if existing:
+                            result.updated += 1
+                        else:
+                            result.created += 1
+
+                    except Exception as e:
+                        result.add_error(f"Item in {playlist_title}: {e}")
+
+                await session.commit()
+
+        except Exception as e:
+            result.add_error(f"Playlist {playlist_title}: {e}")
+            console.print(f"   [red]Error syncing items: {e}[/red]")
+
+    return result
 
 
 @sync_app.command()
-def playlists() -> None:
-    """Sync playlists from YouTube."""
-    console.print(
-        Panel(
-            "[yellow]Playlist sync not yet implemented[/yellow]\n"
-            "This will fetch and store your YouTube playlists.",
-            title="Sync Playlists",
-            border_style="yellow",
+def playlists(
+    include_items: bool = typer.Option(
+        False,
+        "--include-items",
+        "-i",
+        help="Also sync videos within each playlist (requires additional API calls)",
+    ),
+    create_missing_channels: bool = typer.Option(
+        False,
+        "--create-missing-channels",
+        help="Create channel records if they don't exist",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview what would be synced without making database changes",
+    ),
+) -> None:
+    """
+    Sync playlists from YouTube.
+
+    By default, syncs only playlist metadata. Use --include-items to also
+    sync the videos within each playlist (requires additional API calls).
+
+    Examples:
+        chronovista sync playlists                    # Sync playlist metadata only
+        chronovista sync playlists --include-items    # Include playlist videos
+        chronovista sync playlists --dry-run          # Preview without changes
+    """
+    # Check authentication using framework utility
+    if not check_authenticated():
+        display_auth_error("Playlist Sync")
+        return
+
+    async def sync_playlists_data() -> SyncResult:
+        """Sync playlists from YouTube API."""
+        result = SyncResult()
+
+        display_progress_start(
+            "Fetching your YouTube playlists...",
+            title="Playlist Sync",
         )
-    )
+
+        # Fetch playlists from YouTube API
+        youtube_playlists = await youtube_service.get_my_playlists()
+
+        if not youtube_playlists:
+            display_warning(
+                "No playlists found\n"
+                "Either you haven't created any playlists or they are not accessible.",
+                title="No Playlists",
+            )
+            return result
+
+        display_success(f"Found {len(youtube_playlists)} playlists from YouTube")
+
+        # Handle dry-run mode
+        if dry_run:
+            await _show_playlists_dry_run(youtube_playlists, include_items)
+            return result
+
+        # Process playlists
+        console.print("[blue]Saving playlists to database...[/blue]")
+
+        async for session in db_manager.get_session():
+            for playlist_data in youtube_playlists:
+                try:
+                    # Transform YouTube API data using DataTransformers
+                    playlist_create = DataTransformers.extract_playlist_create(
+                        playlist_data
+                    )
+
+                    # Check if playlist already exists
+                    existing = await playlist_repository.exists(
+                        session, playlist_data.id
+                    )
+
+                    # Save to database
+                    await playlist_repository.create_or_update(session, playlist_create)
+
+                    if existing:
+                        result.updated += 1
+                    else:
+                        result.created += 1
+
+                except Exception as e:
+                    snippet = playlist_data.snippet
+                    title = snippet.title if snippet else playlist_data.id
+                    result.add_error(f"Playlist '{title}': {e}")
+                    console.print(f"[red]Error processing playlist: {e}[/red]")
+
+            await session.commit()
+
+        # Sync playlist items if requested
+        items_result = SyncResult()
+        if include_items:
+            console.print()
+            console.print("[blue]Syncing playlist items...[/blue]")
+            items_result = await _sync_playlist_items(
+                youtube_playlists, create_missing_channels
+            )
+
+        # Merge results
+        final_result = result.merge(items_result)
+
+        # Create display table for playlists
+        table = Table(title="Playlists Synced to Database")
+        table.add_column("Title", style="cyan", max_width=40)
+        table.add_column("Videos", style="yellow", justify="right")
+        table.add_column("Privacy", style="green")
+        table.add_column("Status", style="magenta")
+
+        for playlist_data in youtube_playlists[:10]:  # Show first 10
+            snippet = playlist_data.snippet
+            content_details = playlist_data.content_details
+            status = playlist_data.status
+
+            title = snippet.title if snippet else "Unknown"
+            video_count = content_details.item_count if content_details else 0
+            privacy = status.privacy_status if status else "unknown"
+
+            table.add_row(
+                title[:37] + "..." if len(title) > 40 else title,
+                str(video_count),
+                privacy,
+                "Synced",
+            )
+
+        if len(youtube_playlists) > 10:
+            table.add_row("...", "...", "...", f"+{len(youtube_playlists) - 10} more")
+
+        console.print(table)
+
+        # Display final results
+        extra_info = f"Synced {len(youtube_playlists)} playlists to database."
+        if include_items:
+            extra_info += (
+                f"\nPlaylist items: {items_result.created} created, "
+                f"{items_result.updated} updated"
+            )
+            if items_result.skipped > 0:
+                extra_info += (
+                    f", {items_result.skipped} skipped (videos not in database)"
+                )
+        extra_info += "\nData flow: YouTube API -> Playlists -> Database"
+
+        display_sync_results(
+            final_result,
+            title="Playlist Sync Complete",
+            extra_info=extra_info,
+        )
+
+        return final_result
+
+    # Run the async function using shared wrapper
+    run_sync_operation(sync_playlists_data, "Playlist Sync")
 
 
 @sync_app.command()
@@ -318,142 +637,70 @@ def topics(
 ) -> None:
     """Sync YouTube video categories/topics to database."""
 
-    async def sync_topics_data() -> None:
+    async def sync_topics_data() -> SyncResult:
         """Sync topic categories from YouTube API."""
-        # Check authentication
-        if not youtube_oauth.is_authenticated():
-            console.print(
-                Panel(
-                    "[red]❌ Not authenticated[/red]\n"
-                    "Use [bold]chronovista auth login[/bold] to sign in first.",
-                    title="Authentication Required",
-                    border_style="red",
-                )
-            )
-            return
+        result = SyncResult()
 
-        try:
-            console.print(
-                Panel(
-                    f"[blue]🔄 Fetching video categories from YouTube API...[/blue]\n"
-                    f"Region: {region_code.upper()}",
-                    title="Sync Topics",
-                    border_style="blue",
-                )
-            )
+        # Check authentication using shared utility
+        if not check_authenticated():
+            display_auth_error("Sync Topics")
+            return result
 
-            # Fetch video categories from YouTube API
-            categories = await youtube_service.get_video_categories(region_code)
-
-            if not categories:
-                console.print(
-                    Panel(
-                        f"[yellow]⚠️ No video categories found for region: {region_code}[/yellow]",
-                        title="No Categories",
-                        border_style="yellow",
-                    )
-                )
-                return
-
-            console.print(f"[green]✅ Found {len(categories)} video categories[/green]")
-
-            # Process and save categories to database
-            created_count = 0
-            updated_count = 0
-            error_count = 0
-
-            async for session in db_manager.get_session(echo=False):
-                for category in categories:
-                    try:
-                        # Extract category data
-                        category_id = category.id
-                        snippet = category.snippet
-                        category_name = snippet.title if snippet else ""
-
-                        # Create topic category model
-                        topic_data = TopicCategoryCreate(
-                            topic_id=category_id,
-                            category_name=category_name,
-                            parent_topic_id=None,  # YouTube categories don't have hierarchy
-                            topic_type=TopicType.YOUTUBE,
-                        )
-
-                        # Check if category already exists and create or update
-                        existing = await topic_category_repository.exists(
-                            session, category_id
-                        )
-
-                        await topic_category_repository.create_or_update(
-                            session, topic_data
-                        )
-
-                        if existing:
-                            updated_count += 1
-                        else:
-                            created_count += 1
-
-                    except Exception as e:
-                        error_count += 1
-                        console.print(
-                            f"[red]Error processing category {category.id}: {e}[/red]"
-                        )
-
-            # Display results summary
-            results_table = Table(
-                title=f"Topic Sync Results - Region: {region_code.upper()}"
-            )
-            results_table.add_column("Metric", style="cyan")
-            results_table.add_column("Count", style="green")
-
-            results_table.add_row("Categories Found", str(len(categories)))
-            results_table.add_row("Created", str(created_count))
-            results_table.add_row("Updated", str(updated_count))
-            results_table.add_row("Errors", str(error_count))
-
-            console.print(results_table)
-
-            if error_count == 0:
-                console.print(
-                    Panel(
-                        f"[green]✅ Topic sync completed successfully![/green]\n"
-                        f"Created: {created_count} | Updated: {updated_count}\n"
-                        f"Total topics available: {created_count + updated_count}\n\n"
-                        f"Use [bold]chronovista topics list[/bold] to explore synced topics.",
-                        title="Sync Complete",
-                        border_style="green",
-                    )
-                )
-            else:
-                console.print(
-                    Panel(
-                        f"[yellow]⚠️ Topic sync completed with {error_count} errors[/yellow]\n"
-                        f"Successfully processed: {created_count + updated_count} topics\n"
-                        f"Use [bold]chronovista topics list[/bold] to explore synced topics.",
-                        title="Sync Complete with Errors",
-                        border_style="yellow",
-                    )
-                )
-
-        except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]❌ Failed to sync topics:[/red]\n{str(e)}",
-                    title="Sync Error",
-                    border_style="red",
-                )
-            )
-
-    # Run the async function
-    try:
-        asyncio.run(sync_topics_data())
-    except Exception as e:
-        console.print(
-            Panel(
-                f"[red]❌ Sync failed:[/red]\n{str(e)}",
-                title="Sync Error",
-                border_style="red",
-            )
+        display_progress_start(
+            f"Fetching video categories from YouTube API...\nRegion: {region_code.upper()}",
+            title="Sync Topics",
         )
+
+        # Fetch video categories from YouTube API
+        categories = await youtube_service.get_video_categories(region_code)
+
+        if not categories:
+            display_warning(
+                f"No video categories found for region: {region_code}",
+                title="No Categories",
+            )
+            return result
+
+        display_success(f"Found {len(categories)} video categories")
+
+        # Process and save categories to database
+        async for session in db_manager.get_session(echo=False):
+            for category in categories:
+                try:
+                    # Use transformer to create the model
+                    topic_data = DataTransformers.extract_topic_category_create(category)
+
+                    # Check if category already exists and create or update
+                    existing = await topic_category_repository.exists(
+                        session, category.id
+                    )
+
+                    await topic_category_repository.create_or_update(
+                        session, topic_data
+                    )
+
+                    if existing:
+                        result.updated += 1
+                    else:
+                        result.created += 1
+
+                except Exception as e:
+                    result.add_error(f"Category {category.id}: {e}")
+                    console.print(
+                        f"[red]Error processing category {category.id}: {e}[/red]"
+                    )
+
+        # Display results using shared utility
+        display_sync_results(
+            result,
+            title=f"Topic Sync - Region: {region_code.upper()}",
+            extra_info="Use [bold]chronovista topics list[/bold] to explore synced topics.",
+        )
+
+        return result
+
+    # Run the async function using shared wrapper
+    run_sync_operation(sync_topics_data, "Sync Topics")
 
 
 @sync_app.command()
@@ -469,25 +716,15 @@ def all(
 
     async def sync_all_data() -> None:
         """Perform complete data synchronization."""
-        # Check authentication
-        if not youtube_oauth.is_authenticated():
-            console.print(
-                Panel(
-                    "[red]❌ Not authenticated[/red]\n"
-                    "Use [bold]chronovista auth login[/bold] to sign in first.",
-                    title="Authentication Required",
-                    border_style="red",
-                )
-            )
+        # Check authentication using framework utility
+        if not check_authenticated():
+            display_auth_error("Full Sync")
             return
 
-        console.print(
-            Panel(
-                "[blue]🚀 Starting complete data synchronization...[/blue]\n"
-                "This will sync: Topics → Channel → Liked Videos",
-                title="Full Sync",
-                border_style="blue",
-            )
+        display_progress_start(
+            "Starting complete data synchronization...\n"
+            "This will sync: Topics -> Channel -> Liked Videos",
+            title="Full Sync",
         )
 
         sync_results: dict[str, dict[str, Any]] = {
@@ -509,19 +746,13 @@ def all(
                 async for session in db_manager.get_session(echo=False):
                     for category in categories:
                         try:
-                            category_id = category.id
-                            snippet = category.snippet
-                            category_name = snippet.title if snippet else ""
-
-                            topic_data = TopicCategoryCreate(
-                                topic_id=category_id,
-                                category_name=category_name,
-                                parent_topic_id=None,
-                                topic_type=TopicType.YOUTUBE,
+                            # Use transformer to create the model
+                            topic_data = DataTransformers.extract_topic_category_create(
+                                category
                             )
 
                             existing = await topic_category_repository.exists(
-                                session, category_id
+                                session, category.id
                             )
                             await topic_category_repository.create_or_update(
                                 session, topic_data
@@ -539,16 +770,17 @@ def all(
                             )
 
                 sync_results["topics"]["status"] = "completed"
-                console.print(
-                    f"[green]✅ Topics: {sync_results['topics']['created']} created, {sync_results['topics']['updated']} updated[/green]"
+                display_success(
+                    f"Topics: {sync_results['topics']['created']} created, "
+                    f"{sync_results['topics']['updated']} updated"
                 )
             else:
-                console.print("[yellow]⚠️ No topic categories found[/yellow]")
+                display_warning("No topic categories found", title="Topics")
                 sync_results["topics"]["status"] = "no_data"
 
         except Exception as e:
             sync_results["topics"]["status"] = "failed"
-            console.print(f"[red]❌ Topic sync failed: {e}[/red]")
+            display_error(f"Topic sync failed: {e}", title="Topics")
 
         # Step 2: Sync Channel Data
         try:
@@ -560,18 +792,16 @@ def all(
             if channel_data:
                 # Process channel data (simplified version)
                 title = channel_data.snippet.title if channel_data.snippet else "Unknown"
-                console.print(
-                    f"[green]✅ Channel synced: {title}[/green]"
-                )
+                display_success(f"Channel synced: {title}")
                 sync_results["channel"]["success"] = True
                 sync_results["channel"]["status"] = "completed"
             else:
-                console.print("[yellow]⚠️ No channel data found[/yellow]")
+                display_warning("No channel data found", title="Channel")
                 sync_results["channel"]["status"] = "no_data"
 
         except Exception as e:
             sync_results["channel"]["status"] = "failed"
-            console.print(f"[red]❌ Channel sync failed: {e}[/red]")
+            display_error(f"Channel sync failed: {e}", title="Channel")
 
         # Step 3: Sync Liked Videos
         try:
@@ -583,18 +813,16 @@ def all(
 
             if liked_videos:
                 sync_results["liked"]["count"] = len(liked_videos)
-                console.print(
-                    f"[green]✅ Found {len(liked_videos)} liked videos[/green]"
-                )
+                display_success(f"Found {len(liked_videos)} liked videos")
                 sync_results["liked"]["status"] = "completed"
             else:
-                console.print("[yellow]⚠️ No liked videos found[/yellow]")
+                display_warning("No liked videos found", title="Liked Videos")
                 sync_results["liked"]["status"] = "no_data"
 
         except Exception as e:
             sync_results["liked"]["status"] = "failed"
             sync_results["liked"]["errors"] = 1
-            console.print(f"[red]❌ Liked videos sync failed: {e}[/red]")
+            display_error(f"Liked videos sync failed: {e}", title="Liked Videos")
 
         # Display final results
         results_table = Table(title="Full Sync Results Summary")
@@ -680,17 +908,8 @@ def all(
                 )
             )
 
-    # Run the async function
-    try:
-        asyncio.run(sync_all_data())
-    except Exception as e:
-        console.print(
-            Panel(
-                f"[red]❌ Full sync failed:[/red]\n{str(e)}",
-                title="Sync Error",
-                border_style="red",
-            )
-        )
+    # Run the async function using shared wrapper
+    run_sync_operation(sync_all_data, "Full Sync")
 
 
 # Channel sync implementation moved to command function
@@ -706,227 +925,164 @@ def channel(
 ) -> None:
     """Fetch and save your channel information to database."""
 
-    async def sync_channel_data() -> None:
+    async def sync_channel_data() -> SyncResult:
         """Sync channel data from YouTube API."""
-        # Check authentication
-        if not youtube_oauth.is_authenticated():
-            console.print(
-                Panel(
-                    "[red]❌ Not authenticated[/red]\n"
-                    "Use [bold]chronovista auth login[/bold] to sign in first.",
-                    title="Channel Sync",
-                    border_style="red",
-                )
-            )
-            return
+        result = SyncResult()
 
-        try:
-            console.print(
-                "[blue]🔄 Fetching your YouTube channel information...[/blue]"
-            )
+        # Check authentication using shared utility
+        if not check_authenticated():
+            display_auth_error("Channel Sync")
+            return result
 
-            # Fetch channel data from YouTube API
-            channel_data = await youtube_service.get_my_channel()
-
-            # Apply topic filtering if requested
-            if topic:
-                console.print(
-                    f"[blue]🔍 Checking if channel matches topic ID: {topic}[/blue]"
-                )
-
-                # Validate topic exists
-                async for session in db_manager.get_session():
-                    if not await topic_category_repository.exists(session, topic):
-                        console.print(
-                            Panel(
-                                f"[red]❌ Invalid topic ID: {topic}[/red]\n"
-                                f"Use [bold]chronovista topics list[/bold] to see available topics.",
-                                title="Topic Filter Error",
-                                border_style="red",
-                            )
-                        )
-                        return
-
-                # Check if channel has matching topics
-                topic_details = channel_data.topic_details if channel_data else None
-                topic_ids = topic_details.topic_ids if topic_details else []
-
-                # For channels, we also need to check if any of the channel's videos match the topic
-                # Since we don't have video category info in channel response, we'll check topicDetails
-                has_matching_topic = topic in topic_ids
-
-                if not has_matching_topic:
-                    console.print(
-                        Panel(
-                            f"[yellow]ℹ️ Channel does not match topic ID: {topic}[/yellow]\n"
-                            f"Channel topics: {topic_ids[:3] if topic_ids else 'None'}\n"
-                            f"Use [bold]chronovista sync channel[/bold] without --topic to sync anyway.",
-                            title="Topic Filter: No Match",
-                            border_style="yellow",
-                        )
-                    )
-                    return
-
-                console.print(f"[green]✅ Channel matches topic {topic}[/green]")
-
-            if not channel_data:
-                console.print("[red]No channel data retrieved[/red]")
-                return
-
-            console.print("[blue]💾 Saving channel data to database...[/blue]")
-
-            # Transform YouTube API data to our Channel model
-            snippet = channel_data.snippet
-            statistics = channel_data.statistics
-
-            # Parse dates
-            from datetime import datetime
-
-            published_at = snippet.published_at if snippet else None
-
-            # Create Channel instance
-            thumbnails = snippet.thumbnails if snippet else {}
-            high_thumb = thumbnails.get("high")
-            thumbnail_url = high_thumb.url if high_thumb else None
-
-            # Cast default_language to LanguageCode if present
-            default_lang: LanguageCode | None = None
-            if snippet and snippet.default_language:
-                try:
-                    default_lang = LanguageCode(snippet.default_language)
-                except ValueError:
-                    default_lang = None
-
-            channel_create = ChannelCreate(
-                channel_id=channel_data.id,
-                title=snippet.title if snippet else "",
-                description=snippet.description if snippet else None,
-                subscriber_count=statistics.subscriber_count if statistics else None,
-                video_count=statistics.video_count if statistics else None,
-                default_language=default_lang,
-                country=snippet.country if snippet else None,
-                thumbnail_url=thumbnail_url,
-            )
-
-            # Save to database using repository
-            async for session in db_manager.get_session():
-                saved_channel = await channel_repository.create_or_update(
-                    session, channel_create
-                )
-
-                # Extract and create channel-topic associations if topicDetails exists
-                topic_details = channel_data.topic_details if channel_data else None
-                topic_ids = topic_details.topic_ids if topic_details else []
-                if topic_ids:
-                    try:
-                        valid_associations = 0
-                        for topic_id in topic_ids:
-                            # Check if topic exists in our database (only video categories are synced)
-                            if await topic_category_repository.exists(
-                                session, topic_id
-                            ):
-                                # Create channel-topic association
-                                channel_topic_create = ChannelTopicCreate(
-                                    channel_id=saved_channel.channel_id,
-                                    topic_id=topic_id,
-                                )
-                                await channel_topic_repository.create_or_update(
-                                    session, channel_topic_create
-                                )
-                                valid_associations += 1
-                            else:
-                                console.print(
-                                    f"[dim]⚠️  Skipping unknown topic ID: {topic_id}[/dim]"
-                                )
-
-                        if valid_associations > 0:
-                            console.print(
-                                f"[green]✅ Created {valid_associations} channel-topic associations[/green]"
-                            )
-                        else:
-                            console.print(
-                                f"[yellow]⚠️  No valid topic associations created (all topic IDs are Freebase entities, not video categories)[/yellow]"
-                            )
-                    except Exception as e:
-                        console.print(
-                            f"[yellow]⚠️  Could not create topic associations for channel {saved_channel.channel_id}: {e}[/yellow]"
-                        )
-
-            # Create display table
-            table = Table(title="Channel Synced to Database")
-            table.add_column("Property", style="cyan")
-            table.add_column("Value", style="green")
-
-            table.add_row("Channel ID", saved_channel.channel_id)
-            table.add_row("Title", saved_channel.title)
-            table.add_row(
-                "Description",
-                (
-                    (saved_channel.description or "No description")[:100] + "..."
-                    if saved_channel.description
-                    and len(saved_channel.description) > 100
-                    else saved_channel.description or "No description"
-                ),
-            )
-            table.add_row(
-                "Subscriber Count",
-                (
-                    str(saved_channel.subscriber_count)
-                    if saved_channel.subscriber_count
-                    else "Unknown"
-                ),
-            )
-            table.add_row(
-                "Video Count",
-                (
-                    str(saved_channel.video_count)
-                    if saved_channel.video_count
-                    else "Unknown"
-                ),
-            )
-            table.add_row("Country", saved_channel.country or "Unknown")
-            table.add_row(
-                "Default Language", saved_channel.default_language or "Unknown"
-            )
-            table.add_row(
-                "Created At", saved_channel.created_at.strftime("%Y-%m-%d %H:%M:%S UTC")
-            )
-            table.add_row(
-                "Updated At", saved_channel.updated_at.strftime("%Y-%m-%d %H:%M:%S UTC")
-            )
-
-            console.print(table)
-
-            console.print(
-                Panel(
-                    "[green]✅ Channel data synced successfully![/green]\n"
-                    f"Channel '{saved_channel.title}' saved to database.\n"
-                    "End-to-end data flow: YouTube API → Database ✅",
-                    title="Channel Sync Complete",
-                    border_style="green",
-                )
-            )
-
-        except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]❌ Failed to sync channel data:[/red]\n{str(e)}",
-                    title="Channel Sync Error",
-                    border_style="red",
-                )
-            )
-
-    # Run the async function
-    try:
-        asyncio.run(sync_channel_data())
-    except Exception as e:
-        console.print(
-            Panel(
-                f"[red]❌ Sync failed:[/red]\n{str(e)}",
-                title="Sync Error",
-                border_style="red",
-            )
+        display_progress_start(
+            "Fetching your YouTube channel information...",
+            title="Channel Sync",
         )
+
+        # Fetch channel data from YouTube API
+        channel_data = await youtube_service.get_my_channel()
+
+        if not channel_data:
+            display_warning("No channel data retrieved", title="Channel Sync")
+            return result
+
+        # Apply topic filtering if requested
+        if topic:
+            console.print(
+                f"[blue]🔍 Checking if channel matches topic ID: {topic}[/blue]"
+            )
+
+            # Validate topic exists
+            async for session in db_manager.get_session():
+                if not await topic_category_repository.exists(session, topic):
+                    from chronovista.cli.sync.base import display_error
+
+                    display_error(
+                        f"Invalid topic ID: {topic}\n"
+                        f"Use [bold]chronovista topics list[/bold] to see available topics.",
+                        title="Topic Filter Error",
+                    )
+                    return result
+
+            # Check if channel has matching topics using transformer
+            topic_ids = DataTransformers.extract_topic_ids(channel_data)
+            has_matching_topic = topic in topic_ids
+
+            if not has_matching_topic:
+                display_warning(
+                    f"Channel does not match topic ID: {topic}\n"
+                    f"Channel topics: {topic_ids[:3] if topic_ids else 'None'}\n"
+                    f"Use [bold]chronovista sync channel[/bold] without --topic to sync anyway.",
+                    title="Topic Filter: No Match",
+                )
+                return result
+
+            display_success(f"Channel matches topic {topic}")
+
+        console.print("[blue]💾 Saving channel data to database...[/blue]")
+
+        # Transform YouTube API data using DataTransformers
+        channel_create = DataTransformers.extract_channel_create(channel_data)
+
+        # Save to database using repository
+        async for session in db_manager.get_session():
+            existing = await channel_repository.exists(session, channel_data.id)
+            saved_channel = await channel_repository.create_or_update(
+                session, channel_create
+            )
+
+            if existing:
+                result.updated += 1
+            else:
+                result.created += 1
+
+            # Extract and create channel-topic associations using transformer
+            topic_ids = DataTransformers.extract_topic_ids(channel_data)
+            if topic_ids:
+                valid_associations = 0
+                for topic_id in topic_ids:
+                    # Check if topic exists in our database
+                    if await topic_category_repository.exists(session, topic_id):
+                        channel_topic_create = ChannelTopicCreate(
+                            channel_id=saved_channel.channel_id,
+                            topic_id=topic_id,
+                        )
+                        await channel_topic_repository.create_or_update(
+                            session, channel_topic_create
+                        )
+                        valid_associations += 1
+                    else:
+                        console.print(
+                            f"[dim]⚠️  Skipping unknown topic ID: {topic_id}[/dim]"
+                        )
+
+                if valid_associations > 0:
+                    display_success(
+                        f"Created {valid_associations} channel-topic associations"
+                    )
+                else:
+                    display_warning(
+                        "No valid topic associations created "
+                        "(all topic IDs are Freebase entities, not video categories)"
+                    )
+
+        # Create display table for channel details
+        table = Table(title="Channel Synced to Database")
+        table.add_column("Property", style="cyan")
+        table.add_column("Value", style="green")
+
+        table.add_row("Channel ID", saved_channel.channel_id)
+        table.add_row("Title", saved_channel.title)
+        table.add_row(
+            "Description",
+            (
+                (saved_channel.description or "No description")[:100] + "..."
+                if saved_channel.description
+                and len(saved_channel.description) > 100
+                else saved_channel.description or "No description"
+            ),
+        )
+        table.add_row(
+            "Subscriber Count",
+            (
+                str(saved_channel.subscriber_count)
+                if saved_channel.subscriber_count
+                else "Unknown"
+            ),
+        )
+        table.add_row(
+            "Video Count",
+            (
+                str(saved_channel.video_count)
+                if saved_channel.video_count
+                else "Unknown"
+            ),
+        )
+        table.add_row("Country", saved_channel.country or "Unknown")
+        table.add_row(
+            "Default Language", saved_channel.default_language or "Unknown"
+        )
+        table.add_row(
+            "Created At", saved_channel.created_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+        )
+        table.add_row(
+            "Updated At", saved_channel.updated_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+        )
+
+        console.print(table)
+
+        # Display final results
+        display_sync_results(
+            result,
+            title="Channel Sync Complete",
+            extra_info=f"Channel '{saved_channel.title}' saved to database.\n"
+            "End-to-end data flow: YouTube API → Database ✅",
+        )
+
+        return result
+
+    # Run the async function using shared wrapper
+    run_sync_operation(sync_channel_data, "Channel Sync")
 
 
 # Liked videos sync implementation moved to command function
@@ -938,6 +1094,8 @@ async def _create_videos_with_channels(
 ) -> tuple[List[VideoDB], int]:
     """
     Helper function to create videos and their associated channels with batch channel fetching.
+
+    Uses DataTransformers for consistent data conversion from YouTube API responses.
 
     Parameters
     ----------
@@ -951,9 +1109,6 @@ async def _create_videos_with_channels(
     tuple[List[VideoDB], int]
         Tuple of (created videos, count of new channels created)
     """
-    from datetime import datetime
-    import re
-
     created_videos: List[VideoDB] = []
     new_channels_count = 0
 
@@ -975,34 +1130,12 @@ async def _create_videos_with_channels(
                 list(missing_channel_ids)
             )
 
-            # Create all channels
+            # Create all channels using DataTransformers
             async for session in db_manager.get_session():
                 for channel_data in channel_details:
-                    channel_snippet = channel_data.snippet
-                    channel_statistics = channel_data.statistics
-
-                    # Cast channel default_language
-                    channel_default_lang: LanguageCode | None = None
-                    if channel_snippet and channel_snippet.default_language:
-                        try:
-                            channel_default_lang = LanguageCode(channel_snippet.default_language)
-                        except ValueError:
-                            pass
-
-                    # Get channel thumbnails
-                    channel_thumbnails = channel_snippet.thumbnails if channel_snippet else {}
-                    high_thumb = channel_thumbnails.get("high")
-                    channel_thumbnail_url = high_thumb.url if high_thumb else None
-
-                    channel_create_obj = ChannelCreate(
-                        channel_id=channel_data.id,
-                        title=channel_snippet.title if channel_snippet else f"Channel {channel_data.id}",
-                        description=channel_snippet.description if channel_snippet else "",
-                        subscriber_count=channel_statistics.subscriber_count if channel_statistics else None,
-                        video_count=channel_statistics.video_count if channel_statistics else None,
-                        default_language=channel_default_lang,
-                        country=channel_snippet.country if channel_snippet else None,
-                        thumbnail_url=channel_thumbnail_url,
+                    # Use DataTransformers for channel creation
+                    channel_create_obj = DataTransformers.extract_channel_create(
+                        channel_data
                     )
 
                     saved_channel = await channel_repository.create_or_update(
@@ -1010,81 +1143,49 @@ async def _create_videos_with_channels(
                     )
                     new_channels_count += 1
 
-                    # Extract and create channel-topic associations
-                    topic_details = channel_data.topic_details
-                    topic_ids = topic_details.topic_ids if topic_details else []
-                    if topic_ids:
-                        for topic_id in topic_ids:
-                            # Check if topic exists in our database
-                            if await topic_category_repository.exists(session, topic_id):
-                                channel_topic_create = ChannelTopicCreate(
-                                    channel_id=saved_channel.channel_id,
-                                    topic_id=topic_id,
-                                )
-                                await channel_topic_repository.create_or_update(
-                                    session, channel_topic_create
-                                )
+                    # Extract and create channel-topic associations using DataTransformers
+                    topic_ids = DataTransformers.extract_topic_ids(channel_data)
+                    for topic_id in topic_ids:
+                        # Check if topic exists in our database
+                        if await topic_category_repository.exists(session, topic_id):
+                            channel_topic_create = ChannelTopicCreate(
+                                channel_id=saved_channel.channel_id,
+                                topic_id=topic_id,
+                            )
+                            await channel_topic_repository.create_or_update(
+                                session, channel_topic_create
+                            )
 
                 await session.commit()
 
         except Exception as e:
-            console.print(f"[yellow]⚠️  Could not batch fetch channel details: {e}[/yellow]")
+            display_warning(f"Could not batch fetch channel details: {e}")
 
-    # Now create all videos
+    # Now create all videos using DataTransformers
     async for session in db_manager.get_session():
         for video_data in videos_to_create:
             snippet = video_data.snippet
             statistics = video_data.statistics
-            content_details = video_data.content_details
 
-            # Parse upload date
-            upload_date = snippet.published_at if snippet else None
+            # Use DataTransformers for video creation
+            video_create = DataTransformers.extract_video_create(video_data)
 
-            # Parse duration (PT4M13S format)
-            duration_str = content_details.duration if content_details else "PT0S"
-            duration_seconds = 0
-            if duration_str and duration_str.startswith("PT"):
-                # Parse ISO 8601 duration format
-                pattern = r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?"
-                match = re.match(pattern, duration_str)
-                if match:
-                    hours = int(match.group(1) or 0)
-                    minutes = int(match.group(2) or 0)
-                    seconds = int(match.group(3) or 0)
-                    duration_seconds = hours * 3600 + minutes * 60 + seconds
-
-            # Create Video instance
-            content_rating = content_details.content_rating if content_details else None
-            made_for_kids = False
-            if content_rating and isinstance(content_rating, dict):
-                made_for_kids = content_rating.get("ytRating") == "ytAgeRestricted"
-
-            # Cast language codes
-            default_lang: LanguageCode | None = None
-            default_audio_lang: LanguageCode | None = None
-            if snippet:
-                if snippet.default_language:
-                    try:
-                        default_lang = LanguageCode(snippet.default_language)
-                    except ValueError:
-                        pass
-                if snippet.default_audio_language:
-                    try:
-                        default_audio_lang = LanguageCode(snippet.default_audio_language)
-                    except ValueError:
-                        pass
-
-            video_create = VideoCreate(
-                video_id=video_data.id,
-                channel_id=snippet.channel_id if snippet else "",
-                title=snippet.title if snippet else "",
-                description=snippet.description if snippet else None,
-                upload_date=upload_date or datetime.now(),
-                duration=duration_seconds,
-                made_for_kids=made_for_kids,
-                self_declared_made_for_kids=False,  # Not available in API
-                default_language=default_lang,
-                default_audio_language=default_audio_lang,
+            # Add statistics that aren't in the base transformer
+            # (transformer handles core fields, we add engagement metrics here)
+            video_create_with_stats = VideoCreate(
+                video_id=video_create.video_id,
+                channel_id=video_create.channel_id,
+                title=video_create.title,
+                description=video_create.description,
+                upload_date=video_create.upload_date,
+                duration=video_create.duration,
+                made_for_kids=video_create.made_for_kids,
+                self_declared_made_for_kids=video_create.self_declared_made_for_kids,
+                default_language=video_create.default_language,
+                default_audio_language=DataTransformers.cast_language_code(
+                    snippet.default_audio_language if snippet else None
+                ),
+                category_id=video_create.category_id,
                 like_count=statistics.like_count if statistics else None,
                 view_count=statistics.view_count if statistics else None,
                 comment_count=statistics.comment_count if statistics else None,
@@ -1092,7 +1193,9 @@ async def _create_videos_with_channels(
             )
 
             # Now save the video
-            saved_video = await video_repository.create_or_update(session, video_create)
+            saved_video = await video_repository.create_or_update(
+                session, video_create_with_stats
+            )
             created_videos.append(saved_video)
 
             # Extract and create video-topic association if categoryId exists
@@ -1127,6 +1230,8 @@ async def _show_liked_videos_dry_run(
     """
     Display preview of liked videos that would be synced without making database changes.
 
+    Uses DataTransformers for duration parsing.
+
     Parameters
     ----------
     videos : list[YouTubeVideoResponse]
@@ -1140,23 +1245,6 @@ async def _show_liked_videos_dry_run(
     create_missing : bool
         Whether --create-missing flag is set
     """
-    import re
-    from datetime import datetime
-
-    # Helper function to parse ISO 8601 duration
-    def parse_duration(duration_str: str) -> int:
-        """Parse ISO 8601 duration (PT4M13S) to seconds."""
-        if not duration_str or not duration_str.startswith("PT"):
-            return 0
-        pattern = r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?"
-        match = re.match(pattern, duration_str)
-        if match:
-            hours = int(match.group(1) or 0)
-            minutes = int(match.group(2) or 0)
-            seconds = int(match.group(3) or 0)
-            return hours * 3600 + minutes * 60 + seconds
-        return 0
-
     # Display panel header with database status
     console.print()
     console.print(
@@ -1184,9 +1272,9 @@ async def _show_liked_videos_dry_run(
         statistics = video.statistics
         content_details = video.content_details
 
-        # Parse duration
-        duration_str = content_details.duration if content_details else "PT0S"
-        duration_seconds = parse_duration(duration_str)
+        # Parse duration using DataTransformers
+        duration_str = content_details.duration if content_details else None
+        duration_seconds = DataTransformers.parse_duration(duration_str)
         duration_formatted = f"{duration_seconds // 60}:{duration_seconds % 60:02d}"
 
         # Format counts
@@ -1263,227 +1351,186 @@ def liked(
         chronovista sync liked --create-missing   # Fetch all liked videos with full metadata
         chronovista sync liked --dry-run          # Preview without changes
     """
+    # Check authentication using framework utility
+    if not check_authenticated():
+        display_auth_error("Liked Videos Sync")
+        return
 
     async def sync_liked_videos() -> None:
         """Sync liked videos from YouTube API."""
-        # Check authentication
-        if not youtube_oauth.is_authenticated():
-            console.print(
-                Panel(
-                    "[red]❌ Not authenticated[/red]\n"
-                    "Use [bold]chronovista auth login[/bold] to sign in first.",
-                    title="Liked Videos Sync",
-                    border_style="red",
-                )
+        console.print(
+            "[blue]🔄 Fetching your channel info for user identification...[/blue]"
+        )
+
+        # Get user's channel ID to use as user_id
+        my_channel = await youtube_service.get_my_channel()
+        user_id = my_channel.id if my_channel else None
+
+        if not user_id:
+            display_error(
+                "Could not identify user\n"
+                "Unable to get your channel ID for user tracking.",
+                title="Liked Videos Sync",
             )
             return
 
-        try:
-            console.print(
-                "[blue]🔄 Fetching your channel info for user identification...[/blue]"
+        console.print(
+            "[blue]🔄 Fetching your liked videos...[/blue]"
+        )
+
+        # Fetch all liked videos from YouTube API (no artificial limit)
+        liked_videos = await youtube_service.get_liked_videos()
+
+        if not liked_videos:
+            display_warning(
+                "No liked videos found\n"
+                "Either you haven't liked any videos or the liked videos playlist is private.",
             )
+            return
 
-            # Get user's channel ID to use as user_id
-            my_channel = await youtube_service.get_my_channel()
-            user_id = my_channel.id if my_channel else None
+        display_success(f"Found {len(liked_videos)} liked videos from YouTube")
 
-            if not user_id:
-                console.print(
-                    Panel(
-                        "[red]❌ Could not identify user[/red]\n"
-                        "Unable to get your channel ID for user tracking.",
-                        title="Liked Videos Sync",
-                        border_style="red",
-                    )
-                )
-                return
+        # Apply topic filtering if requested
+        if topic:
+            console.print(f"[blue]🔍 Filtering videos by topic ID: {topic}[/blue]")
 
-            console.print(
-                "[blue]🔄 Fetching your liked videos...[/blue]"
-            )
-
-            # Fetch all liked videos from YouTube API (no artificial limit)
-            liked_videos = await youtube_service.get_liked_videos()
-
-            if not liked_videos:
-                console.print(
-                    Panel(
-                        "[yellow]ℹ️ No liked videos found[/yellow]\n"
-                        "Either you haven't liked any videos or the liked videos playlist is private.",
-                        title="Liked Videos Sync",
-                        border_style="yellow",
-                    )
-                )
-                return
-
-            console.print(f"[green]✅ Found {len(liked_videos)} liked videos from YouTube[/green]")
-
-            # Apply topic filtering if requested
-            if topic:
-                console.print(f"[blue]🔍 Filtering videos by topic ID: {topic}[/blue]")
-
-                # Validate topic exists
-                async for session in db_manager.get_session():
-                    if not await topic_category_repository.exists(session, topic):
-                        console.print(
-                            Panel(
-                                f"[red]❌ Invalid topic ID: {topic}[/red]\n"
-                                f"Use [bold]chronovista topics list[/bold] to see available topics.",
-                                title="Topic Filter Error",
-                                border_style="red",
-                            )
-                        )
-                        return
-
-                # Filter videos by categoryId
-                filtered_videos = []
-                for video in liked_videos:
-                    snippet = video.snippet
-                    category_id = snippet.category_id if snippet else None
-                    if category_id == topic:
-                        filtered_videos.append(video)
-
-                console.print(
-                    f"[blue]📊 Topic filter: {len(filtered_videos)} of {len(liked_videos)} videos match topic {topic}[/blue]"
-                )
-                liked_videos = filtered_videos
-
-                if not liked_videos:
-                    console.print(
-                        Panel(
-                            f"[yellow]ℹ️ No videos found with topic ID: {topic}[/yellow]\n"
-                            f"Try a different topic or remove the --topic filter.",
-                            title="No Matching Videos",
-                            border_style="yellow",
-                        )
+            # Validate topic exists
+            async for session in db_manager.get_session():
+                if not await topic_category_repository.exists(session, topic):
+                    display_error(
+                        f"Invalid topic ID: {topic}\n"
+                        "Use [bold]chronovista topics list[/bold] to see available topics.",
+                        title="Topic Filter Error",
                     )
                     return
 
-            # Categorize videos: existing vs missing from database
-            console.print()
-            console.print("[blue]📊 Checking database status...[/blue]")
+            # Filter videos by categoryId
+            filtered_videos = []
+            for video in liked_videos:
+                snippet = video.snippet
+                category_id = snippet.category_id if snippet else None
+                if category_id == topic:
+                    filtered_videos.append(video)
 
-            existing_video_ids: List[str] = []
-            missing_video_ids: List[str] = []
+            console.print(
+                f"[blue]📊 Topic filter: {len(filtered_videos)} of {len(liked_videos)} videos match topic {topic}[/blue]"
+            )
+            liked_videos = filtered_videos
 
-            async for session in db_manager.get_session():
-                for video_data in liked_videos:
-                    video_id = video_data.id
-                    if await video_repository.exists(session, video_id):
-                        existing_video_ids.append(video_id)
-                    else:
-                        missing_video_ids.append(video_id)
-
-            console.print()
-            console.print("[blue]📊 Database Status:[/blue]")
-            console.print(f"   [green]• Videos already in database: {len(existing_video_ids)}[/green]")
-            console.print(f"   [yellow]• Videos NOT in database: {len(missing_video_ids)}[/yellow]")
-            console.print()
-
-            # Handle dry-run mode
-            if dry_run:
-                await _show_liked_videos_dry_run(
-                    liked_videos, user_id, existing_video_ids, missing_video_ids, create_missing
+            if not liked_videos:
+                display_warning(
+                    f"No videos found with topic ID: {topic}\n"
+                    "Try a different topic or remove the --topic filter.",
                 )
                 return
 
-            # Process existing videos (default behavior)
-            if existing_video_ids:
-                console.print(f"[blue]💾 Updating liked status for {len(existing_video_ids)} videos...[/blue]")
+        # Categorize videos: existing vs missing from database
+        console.print()
+        console.print("[blue]📊 Checking database status...[/blue]")
 
-                async for session in db_manager.get_session():
-                    # Batch update liked status for existing videos
-                    updated_count = await user_video_repository.update_like_status_batch(
+        existing_video_ids: List[str] = []
+        missing_video_ids: List[str] = []
+
+        async for session in db_manager.get_session():
+            for video_data in liked_videos:
+                video_id = video_data.id
+                if await video_repository.exists(session, video_id):
+                    existing_video_ids.append(video_id)
+                else:
+                    missing_video_ids.append(video_id)
+
+        console.print()
+        console.print("[blue]📊 Database Status:[/blue]")
+        console.print(f"   [green]• Videos already in database: {len(existing_video_ids)}[/green]")
+        console.print(f"   [yellow]• Videos NOT in database: {len(missing_video_ids)}[/yellow]")
+        console.print()
+
+        # Handle dry-run mode
+        if dry_run:
+            await _show_liked_videos_dry_run(
+                liked_videos, user_id, existing_video_ids, missing_video_ids, create_missing
+            )
+            return
+
+        # Process existing videos (default behavior)
+        if existing_video_ids:
+            console.print(f"[blue]💾 Updating liked status for {len(existing_video_ids)} videos...[/blue]")
+
+            async for session in db_manager.get_session():
+                # Batch update liked status for existing videos
+                await user_video_repository.update_like_status_batch(
+                    session=session,
+                    user_id=user_id,
+                    video_ids=existing_video_ids,
+                    liked=True,
+                )
+
+                # For videos that don't have user_video records yet, create them
+                videos_to_like = []
+                for video_id in existing_video_ids:
+                    existing_interaction = await user_video_repository.get_by_composite_key(
+                        session, user_id, video_id
+                    )
+                    if not existing_interaction:
+                        videos_to_like.append(video_id)
+
+                # Create new user_video records with liked=True
+                for video_id in videos_to_like:
+                    await user_video_repository.record_like(
                         session=session,
                         user_id=user_id,
-                        video_ids=existing_video_ids,
+                        video_id=video_id,
                         liked=True,
                     )
 
-                    # For videos that don't have user_video records yet, create them
-                    videos_to_like = []
-                    for video_id in existing_video_ids:
-                        existing_interaction = await user_video_repository.get_by_composite_key(
-                            session, user_id, video_id
-                        )
-                        if not existing_interaction:
-                            videos_to_like.append(video_id)
+                await session.commit()
 
-                    # Create new user_video records with liked=True
-                    for video_id in videos_to_like:
-                        await user_video_repository.record_like(
-                            session=session,
-                            user_id=user_id,
-                            video_id=video_id,
-                            liked=True,
-                        )
+            display_success(f"Updated liked status for {len(existing_video_ids)} videos")
 
-                    await session.commit()
-
-                console.print(f"[green]✅ Updated liked status for {len(existing_video_ids)} videos[/green]")
-
-            # Process missing videos only if --create-missing flag is set
-            if missing_video_ids and create_missing:
-                console.print()
-                console.print(f"[blue]💾 Creating {len(missing_video_ids)} new videos and channels...[/blue]")
-
-                videos_to_create = [v for v in liked_videos if v.id in missing_video_ids]
-                created_videos, created_channels = await _create_videos_with_channels(
-                    videos_to_create, user_id
-                )
-
-                console.print(f"[green]✅ Created {len(created_videos)} new videos, {created_channels} new channels[/green]")
-                console.print(f"[blue]💾 Updating liked status for {len(created_videos)} videos...[/blue]")
-
-                # Update liked status for newly created videos
-                async for session in db_manager.get_session():
-                    for video_id in [v.video_id for v in created_videos]:
-                        await user_video_repository.record_like(
-                            session=session,
-                            user_id=user_id,
-                            video_id=video_id,
-                            liked=True,
-                        )
-                    await session.commit()
-
-                console.print(f"[green]✅ Updated liked status for {len(created_videos)} videos[/green]")
-
-            elif missing_video_ids and not create_missing:
-                console.print()
-                console.print(f"[yellow]ℹ️  Skipped {len(missing_video_ids)} videos not in your database[/yellow]")
-                console.print("[yellow]💡 To fetch metadata for these videos, run:[/yellow]")
-                console.print("[yellow]   chronovista sync liked --create-missing[/yellow]")
-
-            # Final summary
+        # Process missing videos only if --create-missing flag is set
+        if missing_video_ids and create_missing:
             console.print()
-            total_updated = len(existing_video_ids) + (len(missing_video_ids) if create_missing else 0)
-            console.print(
-                Panel(
-                    f"[green]✅ Liked videos synced successfully![/green]\n"
-                    f"Updated liked status for {total_updated} videos.\n"
-                    f"Data flow: YouTube API → User Video Interactions → Database ✅",
-                    title="Liked Videos Sync Complete",
-                    border_style="green",
-                )
+            console.print(f"[blue]💾 Creating {len(missing_video_ids)} new videos and channels...[/blue]")
+
+            videos_to_create = [v for v in liked_videos if v.id in missing_video_ids]
+            created_videos, created_channels = await _create_videos_with_channels(
+                videos_to_create, user_id
             )
 
-        except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]❌ Failed to sync liked videos:[/red]\n{str(e)}",
-                    title="Liked Videos Sync Error",
-                    border_style="red",
-                )
-            )
+            display_success(f"Created {len(created_videos)} new videos, {created_channels} new channels")
+            console.print(f"[blue]💾 Updating liked status for {len(created_videos)} videos...[/blue]")
 
-    # Run the async function
-    try:
-        asyncio.run(sync_liked_videos())
-    except Exception as e:
+            # Update liked status for newly created videos
+            async for session in db_manager.get_session():
+                for video_id in [v.video_id for v in created_videos]:
+                    await user_video_repository.record_like(
+                        session=session,
+                        user_id=user_id,
+                        video_id=video_id,
+                        liked=True,
+                    )
+                await session.commit()
+
+            display_success(f"Updated liked status for {len(created_videos)} videos")
+
+        elif missing_video_ids and not create_missing:
+            console.print()
+            console.print(f"[yellow]ℹ️  Skipped {len(missing_video_ids)} videos not in your database[/yellow]")
+            console.print("[yellow]💡 To fetch metadata for these videos, run:[/yellow]")
+            console.print("[yellow]   chronovista sync liked --create-missing[/yellow]")
+
+        # Final summary
+        console.print()
+        total_updated = len(existing_video_ids) + (len(missing_video_ids) if create_missing else 0)
         console.print(
             Panel(
-                f"[red]❌ Sync failed:[/red]\n{str(e)}",
-                title="Sync Error",
-                border_style="red",
+                f"[green]✅ Liked videos synced successfully![/green]\n"
+                f"Updated liked status for {total_updated} videos.\n"
+                f"Data flow: YouTube API → User Video Interactions → Database ✅",
+                title="Liked Videos Sync Complete",
+                border_style="green",
             )
         )
+
+    # Run the async function using framework wrapper
+    run_sync_operation(sync_liked_videos, "Liked Videos Sync")

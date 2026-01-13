@@ -1280,3 +1280,348 @@ class TestYouTubeServiceMissingCoverage:
         assert len(result) == 1
         assert result[0].snippet is not None
         assert result[0].snippet.title == "Film & Animation"
+
+
+class TestYouTubeServicePagination:
+    """Test pagination functionality for get_my_playlists and get_playlist_videos."""
+
+    @pytest.fixture
+    def youtube_service(self) -> YouTubeService:
+        """Create YouTube service instance."""
+        return YouTubeService()
+
+    @pytest.fixture
+    def mock_service_client(self) -> MagicMock:
+        """Create mock YouTube API service client."""
+        return MagicMock()
+
+    # -------------------------------------------------------------------------
+    # get_my_playlists pagination tests
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_get_my_playlists_single_page(
+        self, youtube_service: YouTubeService, mock_service_client: MagicMock
+    ) -> None:
+        """Test get_my_playlists with single page (< 50 results)."""
+        object.__setattr__(youtube_service, "_service", mock_service_client)
+
+        # Create 10 playlists (single page)
+        mock_playlists = [
+            make_playlist_response(
+                playlist_id=f"PL{'test' + str(i).zfill(20)}", title=f"Playlist {i}"
+            )
+            for i in range(10)
+        ]
+        mock_response = {"items": mock_playlists}  # No nextPageToken
+
+        mock_request = MagicMock()
+        mock_request.execute.return_value = mock_response
+        mock_service_client.playlists.return_value.list.return_value = mock_request
+
+        result = await youtube_service.get_my_playlists()
+
+        assert len(result) == 10
+        assert result[0].snippet is not None
+        assert result[0].snippet.title == "Playlist 0"
+
+    @pytest.mark.asyncio
+    async def test_get_my_playlists_multiple_pages(
+        self, youtube_service: YouTubeService, mock_service_client: MagicMock
+    ) -> None:
+        """Test get_my_playlists with multiple pages (pagination)."""
+        object.__setattr__(youtube_service, "_service", mock_service_client)
+
+        # Create responses for 3 pages
+        page1_playlists = [
+            make_playlist_response(
+                playlist_id=f"PL{'page1' + str(i).zfill(19)}", title=f"Page1 Playlist {i}"
+            )
+            for i in range(50)
+        ]
+        page2_playlists = [
+            make_playlist_response(
+                playlist_id=f"PL{'page2' + str(i).zfill(19)}", title=f"Page2 Playlist {i}"
+            )
+            for i in range(50)
+        ]
+        page3_playlists = [
+            make_playlist_response(
+                playlist_id=f"PL{'page3' + str(i).zfill(19)}", title=f"Page3 Playlist {i}"
+            )
+            for i in range(25)
+        ]
+
+        responses = [
+            {"items": page1_playlists, "nextPageToken": "token_page2"},
+            {"items": page2_playlists, "nextPageToken": "token_page3"},
+            {"items": page3_playlists},  # No nextPageToken - last page
+        ]
+
+        mock_request = MagicMock()
+        mock_request.execute.side_effect = responses
+        mock_service_client.playlists.return_value.list.return_value = mock_request
+
+        result = await youtube_service.get_my_playlists(max_results=200)
+
+        # Should have collected all 125 playlists
+        assert len(result) == 125
+
+    @pytest.mark.asyncio
+    async def test_get_my_playlists_respects_max_results(
+        self, youtube_service: YouTubeService, mock_service_client: MagicMock
+    ) -> None:
+        """Test get_my_playlists respects max_results limit across pages."""
+        object.__setattr__(youtube_service, "_service", mock_service_client)
+
+        # Create responses for 2 pages (user wants max 75)
+        # The API in real life respects maxResults, so page 2 would only return 25
+        page1_playlists = [
+            make_playlist_response(
+                playlist_id=f"PL{'page1' + str(i).zfill(19)}", title=f"Playlist {i}"
+            )
+            for i in range(50)
+        ]
+        # Second page only returns 25 items (which is what the API would return)
+        page2_playlists = [
+            make_playlist_response(
+                playlist_id=f"PL{'page2' + str(i).zfill(19)}", title=f"Playlist {i + 50}"
+            )
+            for i in range(25)
+        ]
+
+        responses = [
+            {"items": page1_playlists, "nextPageToken": "token_page2"},
+            {"items": page2_playlists},
+        ]
+
+        mock_request = MagicMock()
+        mock_request.execute.side_effect = responses
+        mock_service_client.playlists.return_value.list.return_value = mock_request
+
+        result = await youtube_service.get_my_playlists(max_results=75)
+
+        # Should get all 75 items (50 from page 1, 25 from page 2)
+        assert len(result) == 75
+        # Verify the method called the API with correct page sizes
+        assert mock_request.execute.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_get_my_playlists_fetch_all_false(
+        self, youtube_service: YouTubeService, mock_service_client: MagicMock
+    ) -> None:
+        """Test get_my_playlists with fetch_all=False makes single API call."""
+        object.__setattr__(youtube_service, "_service", mock_service_client)
+
+        mock_playlists = [
+            make_playlist_response(
+                playlist_id=f"PL{'test' + str(i).zfill(20)}", title=f"Playlist {i}"
+            )
+            for i in range(50)
+        ]
+        mock_response = {
+            "items": mock_playlists,
+            "nextPageToken": "should_not_be_used",
+        }
+
+        mock_request = MagicMock()
+        mock_request.execute.return_value = mock_response
+        mock_service_client.playlists.return_value.list.return_value = mock_request
+
+        result = await youtube_service.get_my_playlists(max_results=50, fetch_all=False)
+
+        # Should only make one call despite nextPageToken
+        assert len(result) == 50
+        assert mock_request.execute.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_get_my_playlists_empty_results(
+        self, youtube_service: YouTubeService, mock_service_client: MagicMock
+    ) -> None:
+        """Test get_my_playlists with empty results."""
+        object.__setattr__(youtube_service, "_service", mock_service_client)
+
+        mock_response: Dict[str, Any] = {"items": []}
+
+        mock_request = MagicMock()
+        mock_request.execute.return_value = mock_response
+        mock_service_client.playlists.return_value.list.return_value = mock_request
+
+        result = await youtube_service.get_my_playlists()
+
+        assert len(result) == 0
+
+    # -------------------------------------------------------------------------
+    # get_playlist_videos pagination tests
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_get_playlist_videos_single_page(
+        self, youtube_service: YouTubeService, mock_service_client: MagicMock
+    ) -> None:
+        """Test get_playlist_videos with single page (< 50 results)."""
+        object.__setattr__(youtube_service, "_service", mock_service_client)
+
+        mock_items = [
+            make_playlist_item_response(
+                item_id=f"item_{i}",
+                video_id=f"vid{str(i).zfill(7)}",
+                title=f"Video {i}",
+            )
+            for i in range(10)
+        ]
+        mock_response = {"items": mock_items}
+
+        mock_request = MagicMock()
+        mock_request.execute.return_value = mock_response
+        mock_service_client.playlistItems.return_value.list.return_value = mock_request
+
+        result = await youtube_service.get_playlist_videos("PLtest12345678901234567890")
+
+        assert len(result) == 10
+        assert result[0].snippet is not None
+        assert result[0].snippet.title == "Video 0"
+
+    @pytest.mark.asyncio
+    async def test_get_playlist_videos_multiple_pages(
+        self, youtube_service: YouTubeService, mock_service_client: MagicMock
+    ) -> None:
+        """Test get_playlist_videos with multiple pages (pagination)."""
+        object.__setattr__(youtube_service, "_service", mock_service_client)
+
+        # Create responses for 3 pages
+        page1_items = [
+            make_playlist_item_response(
+                item_id=f"item_p1_{i}",
+                video_id=f"vid1{str(i).zfill(6)}",
+                title=f"Video P1 {i}",
+            )
+            for i in range(50)
+        ]
+        page2_items = [
+            make_playlist_item_response(
+                item_id=f"item_p2_{i}",
+                video_id=f"vid2{str(i).zfill(6)}",
+                title=f"Video P2 {i}",
+            )
+            for i in range(50)
+        ]
+        page3_items = [
+            make_playlist_item_response(
+                item_id=f"item_p3_{i}",
+                video_id=f"vid3{str(i).zfill(6)}",
+                title=f"Video P3 {i}",
+            )
+            for i in range(30)
+        ]
+
+        responses = [
+            {"items": page1_items, "nextPageToken": "token_page2"},
+            {"items": page2_items, "nextPageToken": "token_page3"},
+            {"items": page3_items},  # No nextPageToken - last page
+        ]
+
+        mock_request = MagicMock()
+        mock_request.execute.side_effect = responses
+        mock_service_client.playlistItems.return_value.list.return_value = mock_request
+
+        result = await youtube_service.get_playlist_videos(
+            "PLtest12345678901234567890", max_results=200
+        )
+
+        # Should have collected all 130 items
+        assert len(result) == 130
+
+    @pytest.mark.asyncio
+    async def test_get_playlist_videos_respects_max_results(
+        self, youtube_service: YouTubeService, mock_service_client: MagicMock
+    ) -> None:
+        """Test get_playlist_videos respects max_results limit across pages."""
+        object.__setattr__(youtube_service, "_service", mock_service_client)
+
+        # Create responses for 2 pages (user wants max 60)
+        # The API in real life respects maxResults, so page 2 would only return 10
+        page1_items = [
+            make_playlist_item_response(
+                item_id=f"item_{i}",
+                video_id=f"vid{str(i).zfill(7)}",
+                title=f"Video {i}",
+            )
+            for i in range(50)
+        ]
+        # Second page only returns 10 items (which is what the API would return)
+        page2_items = [
+            make_playlist_item_response(
+                item_id=f"item_{i + 50}",
+                video_id=f"vid{str(i + 50).zfill(7)}",
+                title=f"Video {i + 50}",
+            )
+            for i in range(10)
+        ]
+
+        responses = [
+            {"items": page1_items, "nextPageToken": "token_page2"},
+            {"items": page2_items},
+        ]
+
+        mock_request = MagicMock()
+        mock_request.execute.side_effect = responses
+        mock_service_client.playlistItems.return_value.list.return_value = mock_request
+
+        result = await youtube_service.get_playlist_videos(
+            "PLtest12345678901234567890", max_results=60
+        )
+
+        # Should get all 60 items (50 from page 1, 10 from page 2)
+        assert len(result) == 60
+        # Verify the method called the API with correct page sizes
+        assert mock_request.execute.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_get_playlist_videos_fetch_all_false(
+        self, youtube_service: YouTubeService, mock_service_client: MagicMock
+    ) -> None:
+        """Test get_playlist_videos with fetch_all=False makes single API call."""
+        object.__setattr__(youtube_service, "_service", mock_service_client)
+
+        mock_items = [
+            make_playlist_item_response(
+                item_id=f"item_{i}",
+                video_id=f"vid{str(i).zfill(7)}",
+                title=f"Video {i}",
+            )
+            for i in range(50)
+        ]
+        mock_response = {
+            "items": mock_items,
+            "nextPageToken": "should_not_be_used",
+        }
+
+        mock_request = MagicMock()
+        mock_request.execute.return_value = mock_response
+        mock_service_client.playlistItems.return_value.list.return_value = mock_request
+
+        result = await youtube_service.get_playlist_videos(
+            "PLtest12345678901234567890", max_results=50, fetch_all=False
+        )
+
+        # Should only make one call despite nextPageToken
+        assert len(result) == 50
+        assert mock_request.execute.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_get_playlist_videos_empty_results(
+        self, youtube_service: YouTubeService, mock_service_client: MagicMock
+    ) -> None:
+        """Test get_playlist_videos with empty results."""
+        object.__setattr__(youtube_service, "_service", mock_service_client)
+
+        mock_response: Dict[str, Any] = {"items": []}
+
+        mock_request = MagicMock()
+        mock_request.execute.return_value = mock_response
+        mock_service_client.playlistItems.return_value.list.return_value = mock_request
+
+        result = await youtube_service.get_playlist_videos("PLtest12345678901234567890")
+
+        assert len(result) == 0

@@ -570,65 +570,145 @@ class YouTubeService(YouTubeServiceInterface):
             return False
 
     async def get_my_playlists(
-        self, max_results: int = 50
+        self, max_results: int | None = None, fetch_all: bool = True
     ) -> list[YouTubePlaylistResponse]:
         """
         Get playlists owned by the authenticated user.
 
+        Supports pagination to fetch all playlists. The YouTube API returns
+        a maximum of 50 items per page, so this method automatically paginates
+        through all results when fetch_all is True.
+
         Parameters
         ----------
-        max_results : int
-            Maximum number of playlists to return (default 50)
+        max_results : int | None
+            Maximum number of playlists to return. None (default) means no limit.
+            When fetch_all is True, this is the total limit across all pages.
+            When fetch_all is False, this is passed directly to the API (max 50).
+        fetch_all : bool
+            If True (default), automatically paginate through all results up to
+            max_results. If False, make a single API call (max 50 per page).
 
         Returns
         -------
         list[YouTubePlaylistResponse]
             List of playlist information as typed models.
         """
-        request = self.service.playlists().list(
-            part="id,snippet,status,contentDetails", mine=True, maxResults=max_results
-        )
-        response = request.execute()
-
         results: list[YouTubePlaylistResponse] = []
-        for item in response.get("items", []):
-            try:
-                results.append(YouTubePlaylistResponse.model_validate(item))
-            except PydanticValidationError as e:
-                logger.warning(f"Failed to parse playlist response: {e}")
+        page_token: str | None = None
+
+        while True:
+            # Determine page size for this request
+            if fetch_all:
+                if max_results is not None:
+                    remaining = max_results - len(results)
+                    if remaining <= 0:
+                        break
+                    page_size = min(remaining, 50)
+                else:
+                    page_size = 50  # No limit, use max per page
+            else:
+                page_size = min(max_results, 50) if max_results else 50
+
+            request = self.service.playlists().list(
+                part="id,snippet,status,contentDetails",
+                mine=True,
+                maxResults=page_size,
+                pageToken=page_token,
+            )
+            response = request.execute()
+
+            for item in response.get("items", []):
+                try:
+                    results.append(YouTubePlaylistResponse.model_validate(item))
+                except PydanticValidationError as e:
+                    logger.warning(f"Failed to parse playlist response: {e}")
+
+            # Check if we should continue pagination
+            if not fetch_all:
+                # Single page mode - stop after first request
+                break
+
+            page_token = response.get("nextPageToken")
+            if not page_token:
+                break
+
+            # Stop if we've reached the limit
+            if max_results is not None and len(results) >= max_results:
+                break
+
         return results
 
     async def get_playlist_videos(
-        self, playlist_id: PlaylistId, max_results: int = 50
+        self, playlist_id: PlaylistId, max_results: int | None = None, fetch_all: bool = True
     ) -> list[YouTubePlaylistItemResponse]:
         """
         Get videos from a specific playlist.
+
+        Supports pagination to fetch all videos. The YouTube API returns
+        a maximum of 50 items per page, so this method automatically paginates
+        through all results when fetch_all is True.
 
         Parameters
         ----------
         playlist_id : PlaylistId
             The playlist ID to fetch videos from (validated)
-        max_results : int
-            Maximum number of videos to return (default 50)
+        max_results : int | None
+            Maximum number of videos to return. None (default) means no limit.
+            When fetch_all is True, this is the total limit across all pages.
+            When fetch_all is False, this is passed directly to the API (max 50).
+        fetch_all : bool
+            If True (default), automatically paginate through all results up to
+            max_results. If False, make a single API call (max 50 per page).
 
         Returns
         -------
         list[YouTubePlaylistItemResponse]
             List of playlist item information as typed models.
         """
-        request = self.service.playlistItems().list(
-            part="snippet,contentDetails,status",
-            playlistId=playlist_id,
-            maxResults=max_results,
-        )
-        response = request.execute()
-
         results: list[YouTubePlaylistItemResponse] = []
-        for item in response.get("items", []):
-            try:
-                results.append(YouTubePlaylistItemResponse.model_validate(item))
-            except PydanticValidationError as e:
-                logger.warning(f"Failed to parse playlist item response: {e}")
+        page_token: str | None = None
+
+        while True:
+            # Determine page size for this request
+            if fetch_all:
+                if max_results is not None:
+                    remaining = max_results - len(results)
+                    if remaining <= 0:
+                        break
+                    page_size = min(remaining, 50)
+                else:
+                    page_size = 50  # No limit, use max per page
+            else:
+                page_size = min(max_results, 50) if max_results else 50
+
+            request = self.service.playlistItems().list(
+                part="snippet,contentDetails,status",
+                playlistId=playlist_id,
+                maxResults=page_size,
+                pageToken=page_token,
+            )
+            response = request.execute()
+
+            for item in response.get("items", []):
+                try:
+                    results.append(YouTubePlaylistItemResponse.model_validate(item))
+                except PydanticValidationError as e:
+                    logger.warning(f"Failed to parse playlist item response: {e}")
+
+            # Check if we should continue pagination
+            if not fetch_all:
+                # Single page mode - stop after first request
+                break
+
+            page_token = response.get("nextPageToken")
+            if not page_token:
+                break
+
+            # Stop if we've reached the limit
+            if max_results is not None and len(results) >= max_results:
+                break
+
         return results
 
     async def search_my_videos(

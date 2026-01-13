@@ -124,7 +124,7 @@ class TestSyncLikedExistingOnlyMode:
     @patch("chronovista.cli.sync_commands.video_repository")
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_default_only_updates_existing_videos(
         self,
         mock_oauth: MagicMock,
@@ -184,7 +184,7 @@ class TestSyncLikedExistingOnlyMode:
     @patch("chronovista.cli.sync_commands.video_repository")
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_default_shows_skipped_count(
         self,
         mock_oauth: MagicMock,
@@ -244,7 +244,7 @@ class TestSyncLikedExistingOnlyMode:
     @patch("chronovista.cli.sync_commands.video_repository")
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_default_uses_record_like(
         self,
         mock_oauth: MagicMock,
@@ -301,7 +301,7 @@ class TestSyncLikedExistingOnlyMode:
     @patch("chronovista.cli.sync_commands.video_repository")
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_default_with_no_existing_videos(
         self,
         mock_oauth: MagicMock,
@@ -353,10 +353,10 @@ class TestSyncLikedExistingOnlyMode:
     @patch("chronovista.cli.sync_commands.video_repository")
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync_commands.check_authenticated")
     def test_sync_liked_default_with_all_existing_videos(
         self,
-        mock_oauth: MagicMock,
+        mock_check_auth: MagicMock,
         mock_youtube_service: MagicMock,
         mock_db_manager: MagicMock,
         mock_video_repo: MagicMock,
@@ -371,7 +371,7 @@ class TestSyncLikedExistingOnlyMode:
         Verifies all videos get liked status updated.
         """
         # Setup: User is authenticated
-        mock_oauth.is_authenticated.return_value = True
+        mock_check_auth.return_value = True
 
         # Setup: Mock YouTube API responses
         mock_youtube_service.get_my_channel = AsyncMock(
@@ -473,7 +473,7 @@ class TestSyncLikedCreateMissingMode:
     @patch("chronovista.cli.sync_commands.video_repository")
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_create_missing_creates_videos(
         self,
         mock_oauth: MagicMock,
@@ -547,7 +547,7 @@ class TestSyncLikedCreateMissingMode:
     @patch("chronovista.cli.sync_commands.video_repository")
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_create_missing_creates_channels(
         self,
         mock_oauth: MagicMock,
@@ -624,7 +624,7 @@ class TestSyncLikedCreateMissingMode:
     @patch("chronovista.cli.sync_commands.video_repository")
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_create_missing_batch_fetches_channels(
         self,
         mock_oauth: MagicMock,
@@ -700,7 +700,7 @@ class TestSyncLikedCreateMissingMode:
     @patch("chronovista.cli.sync_commands.video_repository")
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_create_missing_with_no_missing_videos(
         self,
         mock_oauth: MagicMock,
@@ -757,7 +757,7 @@ class TestSyncLikedCreateMissingMode:
     @patch("chronovista.cli.sync_commands.video_repository")
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_create_missing_mixed_existing_and_new(
         self,
         mock_oauth: MagicMock,
@@ -898,7 +898,7 @@ class TestSyncLikedCombinedBehavior:
     @patch("chronovista.cli.sync_commands.video_repository")
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_sets_liked_true(
         self,
         mock_oauth: MagicMock,
@@ -955,7 +955,7 @@ class TestSyncLikedCombinedBehavior:
     @patch("chronovista.cli.sync_commands.video_repository")
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_dry_run_shows_database_status(
         self,
         mock_oauth: MagicMock,
@@ -1008,7 +1008,7 @@ class TestSyncLikedCombinedBehavior:
     @patch("chronovista.cli.sync_commands.video_repository")
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_uses_batch_update_for_existing(
         self,
         mock_oauth: MagicMock,
@@ -1066,7 +1066,7 @@ class TestSyncLikedCombinedBehavior:
     @patch("chronovista.cli.sync_commands.video_repository")
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_creates_user_video_records_for_new_videos(
         self,
         mock_oauth: MagicMock,

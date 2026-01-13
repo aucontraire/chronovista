@@ -154,18 +154,18 @@ class TestSyncLikedDryRun:
             ),
         )
 
-    @patch("chronovista.cli.sync_commands.asyncio.run")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_dry_run_unauthenticated(
         self,
         mock_oauth: MagicMock,
-        mock_asyncio_run: MagicMock,
         runner: CliRunner,
     ) -> None:
         """
         Test dry-run mode when user is not authenticated.
 
         Verifies that authentication error is shown even in dry-run mode.
+        Authentication check happens before any async operations, so the command
+        returns early and asyncio.run is never called.
         """
         # Setup: User is not authenticated
         mock_oauth.is_authenticated.return_value = False
@@ -173,13 +173,14 @@ class TestSyncLikedDryRun:
         # Execute: Run command with --dry-run flag
         result = runner.invoke(sync_app, ["liked", "--dry-run"])
 
-        # Assert: Command executes (asyncio.run is called)
+        # Assert: Command exits early due to auth failure
         assert result.exit_code == 0
-        mock_asyncio_run.assert_called_once()
+        # Authentication error should be displayed in the output
+        # (The command returns early, so no async operations occur)
 
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_dry_run_shows_preview(
         self,
         mock_oauth: MagicMock,
@@ -229,7 +230,7 @@ class TestSyncLikedDryRun:
     @patch("chronovista.cli.sync_commands.user_video_repository")
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_dry_run_no_database_writes(
         self,
         mock_oauth: MagicMock,
@@ -289,7 +290,7 @@ class TestSyncLikedDryRun:
     @patch("chronovista.cli.sync_commands.topic_category_repository")
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_dry_run_with_topic_filter(
         self,
         mock_oauth: MagicMock,
@@ -371,7 +372,7 @@ class TestSyncLikedDryRun:
     @patch("chronovista.cli.sync_commands.topic_category_repository")
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_dry_run_invalid_topic(
         self,
         mock_oauth: MagicMock,
@@ -413,12 +414,12 @@ class TestSyncLikedDryRun:
         # Assert: Command succeeds (with error message shown)
         assert result.exit_code == 0
 
-    @patch("chronovista.cli.sync_commands.asyncio.run")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync_commands.run_sync_operation")
+    @patch("chronovista.cli.sync_commands.check_authenticated")
     def test_sync_liked_without_dry_run_executes_normally(
         self,
-        mock_oauth: MagicMock,
-        mock_asyncio_run: MagicMock,
+        mock_check_auth: MagicMock,
+        mock_run_sync: MagicMock,
         runner: CliRunner,
     ) -> None:
         """
@@ -426,14 +427,14 @@ class TestSyncLikedDryRun:
 
         This is a control test to verify current behavior.
         The actual database write verification would require integration tests
-        or a more complex mocking setup that doesn't bypass asyncio.run.
+        or a more complex mocking setup that doesn't bypass run_sync_operation.
 
         Verifies:
         - Command executes successfully without --dry-run flag
-        - asyncio.run is called (indicating the async function was invoked)
+        - run_sync_operation is called (indicating the async function was invoked)
         """
         # Setup: User is authenticated
-        mock_oauth.is_authenticated.return_value = True
+        mock_check_auth.return_value = True
 
         # Execute: Run command WITHOUT --dry-run flag
         result = runner.invoke(sync_app, ["liked"])
@@ -441,11 +442,11 @@ class TestSyncLikedDryRun:
         # Assert: Command succeeds
         assert result.exit_code == 0
 
-        # Assert: The async function was executed
-        mock_asyncio_run.assert_called_once()
+        # Assert: The async function was executed via run_sync_operation
+        mock_run_sync.assert_called_once()
 
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_dry_run_no_liked_videos(
         self,
         mock_oauth: MagicMock,
@@ -473,7 +474,7 @@ class TestSyncLikedDryRun:
 
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_dry_run_multiple_videos(
         self,
         mock_oauth: MagicMock,
@@ -552,7 +553,7 @@ class TestSyncLikedDryRunEdgeCases:
         return CliRunner()
 
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_dry_run_api_error(
         self,
         mock_oauth: MagicMock,
@@ -579,7 +580,7 @@ class TestSyncLikedDryRunEdgeCases:
         assert result.exit_code == 0
 
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_dry_run_no_user_channel(
         self,
         mock_oauth: MagicMock,
@@ -606,7 +607,7 @@ class TestSyncLikedDryRunEdgeCases:
     @patch("chronovista.cli.sync_commands.topic_category_repository")
     @patch("chronovista.cli.sync_commands.db_manager")
     @patch("chronovista.cli.sync_commands.youtube_service")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_sync_liked_dry_run_topic_filter_no_matches(
         self,
         mock_oauth: MagicMock,

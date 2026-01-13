@@ -86,39 +86,39 @@ class TestSyncCommands:
         assert result.exit_code == 0
         assert "Data synchronization commands" in result.output
 
-    @patch("chronovista.cli.sync_commands.asyncio.run")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.asyncio.run")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_channel_command_not_authenticated(self, mock_oauth, mock_asyncio, runner):
         """Test channel command when not authenticated."""
-        mock_oauth.is_authenticated = False
+        mock_oauth.is_authenticated.return_value = False
 
         result = runner.invoke(sync_app, ["channel"])
 
         assert result.exit_code == 0
         # Command should handle unauthenticated state
 
-    @patch("chronovista.cli.sync_commands.asyncio.run")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.asyncio.run")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_liked_command_not_authenticated(self, mock_oauth, mock_asyncio, runner):
         """Test liked command when not authenticated."""
-        mock_oauth.is_authenticated = False
+        mock_oauth.is_authenticated.return_value = False
 
         result = runner.invoke(sync_app, ["liked"])
 
         assert result.exit_code == 0
 
-    @patch("chronovista.cli.sync_commands.asyncio.run")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.asyncio.run")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_history_command_not_authenticated(self, mock_oauth, mock_asyncio, runner):
         """Test history command when not authenticated."""
-        mock_oauth.is_authenticated = False
+        mock_oauth.is_authenticated.return_value = False
 
         result = runner.invoke(sync_app, ["history", "test.json"])
 
         assert result.exit_code == 0
 
-    @patch("chronovista.cli.sync_commands.asyncio.run")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
+    @patch("chronovista.cli.sync.base.asyncio.run")
+    @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_history_command_help(self, mock_oauth, mock_asyncio, runner):
         """Test history command help."""
         result = runner.invoke(sync_app, ["history", "--help"])
@@ -126,16 +126,14 @@ class TestSyncCommands:
         assert result.exit_code == 0
         assert "Import" in result.output or "history" in result.output.lower()
 
-    @patch("chronovista.cli.sync_commands.asyncio.run")
-    @patch("chronovista.cli.sync_commands.youtube_oauth")
-    def test_all_command_help(self, mock_oauth, mock_asyncio, runner):
+    def test_all_command_help(self, runner):
         """Test all command help."""
         result = runner.invoke(sync_app, ["all", "--help"])
 
         assert result.exit_code == 0
 
-    @patch("chronovista.cli.sync_commands.asyncio.run")
-    @patch("chronovista.cli.sync_commands.console")
+    @patch("chronovista.cli.sync.base.asyncio.run")
+    @patch("chronovista.cli.sync.base.console")
     def test_command_execution_with_mocked_console(
         self, mock_console, mock_asyncio, runner
     ):
@@ -208,7 +206,7 @@ class TestSyncCommandsWithRealModules:
 
     def test_console_import(self):
         """Test that console is imported and configured."""
-        from chronovista.cli.sync_commands import console
+        from chronovista.cli.sync.base import console
 
         assert console is not None
         assert hasattr(console, "print")
@@ -227,7 +225,7 @@ class TestSyncCommandsEdgeCases:
         result = runner.invoke(sync_app, ["invalid-command"])
         assert result.exit_code != 0
 
-    @patch("chronovista.cli.sync_commands.asyncio.run")
+    @patch("chronovista.cli.sync.base.asyncio.run")
     def test_command_with_exception(self, mock_asyncio, runner):
         """Test command handling when asyncio.run raises exception."""
         mock_asyncio.side_effect = Exception("Test exception")

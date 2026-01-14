@@ -1728,10 +1728,12 @@ class EnrichmentService:
             update_data["category_id"] = snippet["categoryId"]
 
         # Content restrictions
+        # Note: Must check for None explicitly since model_dump(exclude_none=False)
+        # includes keys with None values, but our DB columns are NOT NULL
         status = api_data.get("status") or {}
-        if "madeForKids" in status:
+        if status.get("madeForKids") is not None:
             update_data["made_for_kids"] = status["madeForKids"]
-        if "selfDeclaredMadeForKids" in status:
+        if status.get("selfDeclaredMadeForKids") is not None:
             update_data["self_declared_made_for_kids"] = status[
                 "selfDeclaredMadeForKids"
             ]

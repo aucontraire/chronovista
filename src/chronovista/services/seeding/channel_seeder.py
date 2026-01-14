@@ -1,10 +1,13 @@
 """
 Channel seeder - creates channels from subscriptions and watch history.
+
+NOTE: This seeder ONLY creates channels with real YouTube channel IDs.
+Entries without valid channel IDs are skipped - videos referencing unknown
+channels will use channel_id=None with channel_name_hint for future resolution.
 """
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from datetime import datetime
 from typing import Optional, Set
@@ -22,12 +25,6 @@ from ...repositories.channel_repository import ChannelRepository
 from .base_seeder import BaseSeeder, ProgressCallback, SeedResult
 
 logger = logging.getLogger(__name__)
-
-
-def generate_valid_channel_id(seed: str) -> str:
-    """Generate a valid 24-character YouTube channel ID starting with 'UC'."""
-    hash_suffix = hashlib.md5(seed.encode()).hexdigest()[:22]
-    return f"UC{hash_suffix}"
 
 
 class ChannelSeeder(BaseSeeder):
@@ -87,8 +84,13 @@ class ChannelSeeder(BaseSeeder):
         subscriptions: list[TakeoutSubscription],
         progress: Optional[ProgressCallback],
     ) -> SeedResult:
-        """Seed channels from subscription data (Phase 1)."""
+        """Seed channels from subscription data (Phase 1).
+
+        NOTE: Only processes subscriptions with real channel_id values.
+        Subscriptions without channel_id are skipped (we don't generate fake IDs).
+        """
         result = SeedResult()
+        skipped_no_channel_id = 0
 
         logger.info(
             f"📺 Phase 1: Processing {len(subscriptions)} subscription channels..."
@@ -97,6 +99,11 @@ class ChannelSeeder(BaseSeeder):
         for i, subscription in enumerate(subscriptions):
             try:
                 channel_create = self._transform_subscription_to_channel(subscription)
+
+                # Skip subscriptions without real channel_id
+                if channel_create is None:
+                    skipped_no_channel_id += 1
+                    continue
 
                 # Check if channel already exists
                 existing_channel = await self.channel_repo.get_by_channel_id(
@@ -133,6 +140,12 @@ class ChannelSeeder(BaseSeeder):
         # Final commit
         await session.commit()
 
+        if skipped_no_channel_id > 0:
+            logger.info(
+                f"⏭️  Skipped {skipped_no_channel_id} subscriptions without channel IDs "
+                "(will not generate fake IDs)"
+            )
+
         logger.info(
             f"📺 Phase 1 complete: {result.created} created, {result.updated} updated"
         )
@@ -144,18 +157,31 @@ class ChannelSeeder(BaseSeeder):
         watch_history: list[TakeoutWatchEntry],
         progress: Optional[ProgressCallback],
     ) -> SeedResult:
-        """Seed additional channels from watch history (Phase 2)."""
+        """Seed additional channels from watch history (Phase 2).
+
+        NOTE: Only processes entries with real channel_id values.
+        Entries without channel_id are skipped - their videos will use
+        channel_id=None with channel_name_hint for future resolution.
+        """
         result = SeedResult()
 
-        # Get unique channels from watch history
+        # Get unique channels from watch history - ONLY those with real channel IDs
         unique_channels: dict[str, TakeoutWatchEntry] = {}
+        skipped_no_channel_id = 0
         for entry in watch_history:
-            if entry.channel_name or entry.channel_id:
-                channel_id = entry.channel_id or generate_valid_channel_id(
-                    entry.channel_name or "unknown"
-                )
-                if channel_id not in unique_channels:
-                    unique_channels[channel_id] = entry
+            if entry.channel_id:
+                # Real channel ID from Takeout
+                if entry.channel_id not in unique_channels:
+                    unique_channels[entry.channel_id] = entry
+            elif entry.channel_name:
+                # Has channel name but no channel ID - skip (don't generate fake ID)
+                skipped_no_channel_id += 1
+
+        if skipped_no_channel_id > 0:
+            logger.info(
+                f"⏭️  Skipped {skipped_no_channel_id} watch history entries without channel IDs "
+                "(will not generate fake IDs - videos will use channel_name_hint)"
+            )
 
         logger.info(
             f"📺 Phase 2: Processing {len(unique_channels)} additional channels from watch history..."
@@ -178,6 +204,7 @@ class ChannelSeeder(BaseSeeder):
                         await self.channel_repo.create(session, obj_in=channel_create)
                         result.created += 1
                     else:
+                        # This shouldn't happen since we already filtered for channel_id
                         result.failed += 1
                         result.errors.append(
                             f"Could not transform watch entry to channel: {entry.channel_name}"
@@ -212,15 +239,20 @@ class ChannelSeeder(BaseSeeder):
 
     def _transform_subscription_to_channel(
         self, subscription: TakeoutSubscription
-    ) -> ChannelCreate:
-        """Transform subscription data to ChannelCreate model."""
-        # Generate valid channel ID if missing
-        channel_id = subscription.channel_id or generate_valid_channel_id(
-            subscription.channel_title
-        )
+    ) -> Optional[ChannelCreate]:
+        """Transform subscription data to ChannelCreate model.
+
+        Returns None if subscription has no real channel_id (we don't generate fake IDs).
+        """
+        # Require real channel ID - don't generate fake ones
+        if not subscription.channel_id:
+            logger.debug(
+                f"Skipping subscription '{subscription.channel_title}' - no channel_id"
+            )
+            return None
 
         return ChannelCreate(
-            channel_id=channel_id,
+            channel_id=subscription.channel_id,
             title=subscription.channel_title,
             description="",  # Not available in Takeout
             default_language=LanguageCode.ENGLISH,  # Default fallback
@@ -233,17 +265,19 @@ class ChannelSeeder(BaseSeeder):
     def _transform_watch_entry_to_channel(
         self, entry: TakeoutWatchEntry
     ) -> Optional[ChannelCreate]:
-        """Transform watch entry to ChannelCreate model."""
-        # Need either channel_id or channel_name to create a channel
-        if not entry.channel_name and not entry.channel_id:
+        """Transform watch entry to ChannelCreate model.
+
+        Returns None if entry has no real channel_id (we don't generate fake IDs).
+        """
+        # Require real channel ID - don't generate fake ones
+        if not entry.channel_id:
             return None
 
-        channel_id = entry.channel_id or generate_valid_channel_id(entry.channel_name or "unknown")
         # Use channel_name if available, otherwise create placeholder title from channel_id
-        title = entry.channel_name or f"[Unknown Channel] {channel_id}"
+        title = entry.channel_name or f"[Channel] {entry.channel_id}"
 
         return ChannelCreate(
-            channel_id=channel_id,
+            channel_id=entry.channel_id,
             title=title,
             description="",  # Not available in Takeout
             default_language=LanguageCode.ENGLISH,  # Default fallback

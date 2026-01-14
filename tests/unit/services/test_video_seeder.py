@@ -19,11 +19,7 @@ from chronovista.models.takeout.takeout_data import TakeoutData, TakeoutWatchEnt
 from chronovista.models.video import VideoCreate
 from chronovista.repositories.video_repository import VideoRepository
 from chronovista.services.seeding.base_seeder import ProgressCallback, SeedResult
-from chronovista.services.seeding.video_seeder import (
-    VideoSeeder,
-    generate_valid_channel_id,
-    generate_valid_video_id,
-)
+from chronovista.services.seeding.video_seeder import VideoSeeder
 from tests.factories.id_factory import TestIds, YouTubeIdFactory
 from tests.factories.takeout_data_factory import create_takeout_data
 from tests.factories.takeout_watch_entry_factory import create_takeout_watch_entry
@@ -32,27 +28,12 @@ from tests.factories.takeout_watch_entry_factory import create_takeout_watch_ent
 class TestVideoSeederUtilityFunctions:
     """Tests for utility functions."""
 
-    def test_generate_valid_video_id(self) -> None:
-        """Test video ID generation."""
-        seed = "test_video"
-        video_id = generate_valid_video_id(seed)
+    # Note: generate_valid_video_id and generate_valid_channel_id were removed
+    # as part of T017-T020. The new pattern uses:
+    # - Real video IDs from Takeout data
+    # - NULL channel_id with channel_name_hint for unknown channels
 
-        assert len(video_id) == 11
-        assert video_id.isalnum()
-
-        # Should be consistent for same input
-        assert generate_valid_video_id(seed) == video_id
-
-    def test_generate_valid_channel_id(self) -> None:
-        """Test channel ID generation."""
-        seed = "test_channel"
-        channel_id = generate_valid_channel_id(seed)
-
-        assert channel_id.startswith("UC")
-        assert len(channel_id) == 24
-
-        # Should be consistent for same input
-        assert generate_valid_channel_id(seed) == channel_id
+    pass  # No utility functions to test anymore
 
 
 class TestVideoSeederInitialization:
@@ -184,28 +165,155 @@ class TestVideoSeederSeeding:
             # Verify repository calls
             assert mock_create.call_count == 3
 
-    async def test_seed_existing_videos(
+    async def test_seed_existing_videos_no_update_needed(
         self,
         seeder: VideoSeeder,
         mock_session: AsyncMock,
         sample_takeout_data: TakeoutData,
     ) -> None:
-        """Test seeding existing videos (updates)."""
-        # Mock repository to return existing video
+        """Test seeding existing videos that don't need updates.
+
+        When existing video has complete data (channel_id, proper title),
+        no update should occur.
+        """
+        # Mock video with complete data - no update needed
         mock_video = Mock()
+        mock_video.channel_id = TestIds.TEST_CHANNEL_1  # Has channel_id
+        mock_video.channel_name_hint = None
+        mock_video.title = "Existing Title"  # Real title, not placeholder
+
         with patch.object(
             seeder.video_repo,
             "get_by_video_id",
             new_callable=AsyncMock,
             return_value=mock_video,
         ):
-
             result = await seeder.seed(mock_session, sample_takeout_data)
 
             assert result.created == 0
-            assert result.updated == 3  # Three videos updated
+            assert result.updated == 0  # No updates needed - data is complete
             assert result.failed == 0
             assert result.success_rate == 100.0
+
+    async def test_seed_existing_videos_update_channel_id(
+        self,
+        seeder: VideoSeeder,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Test seeding updates channel_id when existing is NULL.
+
+        This is the key fix for the bug where playlist_membership_seeder
+        creates placeholder videos with NULL channel_id, and video_seeder
+        should update them when takeout data has the real channel_id.
+        """
+        # Create takeout data with channel_id
+        takeout_data = create_takeout_data(
+            takeout_path=Path("/test/takeout"),
+            subscriptions=[],
+            watch_history=[
+                create_takeout_watch_entry(
+                    title="Test Video",
+                    title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
+                    channel_name="Test Channel",
+                    watched_at=datetime.now(timezone.utc),
+                    video_id=TestIds.TEST_VIDEO_1,
+                    channel_id=TestIds.TEST_CHANNEL_1,  # Has real channel_id
+                ),
+            ],
+            playlists=[],
+        )
+
+        # Mock existing video with NULL channel_id (placeholder scenario)
+        mock_video = Mock()
+        mock_video.channel_id = None  # NULL - needs update
+        mock_video.channel_name_hint = None
+        mock_video.title = "[Placeholder] Video"  # Placeholder title
+
+        with (
+            patch.object(
+                seeder.video_repo,
+                "get_by_video_id",
+                new_callable=AsyncMock,
+                return_value=mock_video,
+            ),
+            patch.object(
+                seeder.video_repo,
+                "update",
+                new_callable=AsyncMock,
+            ) as mock_update,
+        ):
+            result = await seeder.seed(mock_session, takeout_data)
+
+            assert result.created == 0
+            assert result.updated == 1  # Should update with channel_id
+            assert result.failed == 0
+
+            # Verify update was called with channel_id
+            mock_update.assert_called_once()
+            update_call = mock_update.call_args
+            update_obj = update_call.kwargs["obj_in"]
+            assert update_obj.channel_id == TestIds.TEST_CHANNEL_1
+            assert update_obj.title == "Test Video"  # Title also updated
+
+    async def test_seed_existing_videos_update_channel_name_hint(
+        self,
+        seeder: VideoSeeder,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Test seeding updates channel_name_hint when no channel_id available.
+
+        When takeout entry has channel_name but no channel_id, and the existing
+        video has neither, we should store the channel_name_hint for future resolution.
+        """
+        # Create takeout data without channel_id but with channel_name
+        # NOTE: Must also set channel_url=None because the model validator
+        # extracts channel_id from channel_url if present
+        takeout_data = create_takeout_data(
+            takeout_path=Path("/test/takeout"),
+            subscriptions=[],
+            watch_history=[
+                create_takeout_watch_entry(
+                    title="Test Video",
+                    title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
+                    channel_name="Some Channel Name",  # Has name
+                    watched_at=datetime.now(timezone.utc),
+                    video_id=TestIds.TEST_VIDEO_1,
+                    channel_id=None,  # No channel_id
+                    channel_url=None,  # No URL either - prevents model validator from extracting channel_id
+                ),
+            ],
+            playlists=[],
+        )
+
+        # Mock existing video with no channel info
+        mock_video = Mock()
+        mock_video.channel_id = None
+        mock_video.channel_name_hint = None  # Missing - needs hint
+        mock_video.title = "Existing Title"  # Has proper title
+
+        with (
+            patch.object(
+                seeder.video_repo,
+                "get_by_video_id",
+                new_callable=AsyncMock,
+                return_value=mock_video,
+            ),
+            patch.object(
+                seeder.video_repo,
+                "update",
+                new_callable=AsyncMock,
+            ) as mock_update,
+        ):
+            result = await seeder.seed(mock_session, takeout_data)
+
+            assert result.created == 0
+            assert result.updated == 1  # Should update with hint
+
+            # Verify update was called with channel_name_hint
+            mock_update.assert_called_once()
+            update_call = mock_update.call_args
+            update_obj = update_call.kwargs["obj_in"]
+            assert update_obj.channel_name_hint == "Some Channel Name"
 
     async def test_seed_with_progress_callback(
         self,

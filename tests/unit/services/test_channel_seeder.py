@@ -305,28 +305,20 @@ class TestChannelSeeder:
         # Should have called commit multiple times for batching
         assert mock_session.commit.call_count >= 2  # At least 2 batch commits
 
+    @pytest.mark.skip(
+        reason="generate_valid_channel_id removed in T017-T020. "
+        "Seeder now uses real channel IDs from YouTube API or NULL with hint."
+    )
     def test_channel_id_generation_consistency(self, channel_seeder):
         """Test that channel ID generation is consistent for same input."""
-        channel_name = "Test Channel"
-
-        from chronovista.services.seeding.channel_seeder import (
-            generate_valid_channel_id,
-        )
-
-        id1 = generate_valid_channel_id(channel_name)
-        id2 = generate_valid_channel_id(channel_name)
-
-        # Should generate same ID for same input
-        assert id1 == id2
-        assert id1.startswith("UC")
-        assert len(id1) == 24
+        pass  # Test skipped - helper function removed
 
     async def test_missing_channel_name_handling(self, channel_seeder):
         """Test handling of entries with missing channel names.
 
-        New behavior: When channel_name is missing, we create a placeholder channel
-        with a generated channel_id, rather than skipping the entry entirely.
-        This allows videos to be seeded even when channel info is incomplete.
+        Updated behavior (T017-T020): When channel_name is missing, we create
+        a placeholder channel with the actual channel_id from the entry.
+        The placeholder prefix is now "[Channel]" not "[Unknown Channel]".
         """
         watch_entry = create_takeout_watch_entry(
             title="Test Video",
@@ -338,8 +330,9 @@ class TestChannelSeeder:
 
         channel_create = channel_seeder._transform_watch_entry_to_channel(watch_entry)
 
-        # Should create placeholder channel with generated channel_id
+        # Should create placeholder channel with the entry's channel_id
         assert channel_create is not None
         assert channel_create.channel_id.startswith("UC")
         assert len(channel_create.channel_id) == 24
-        assert channel_create.title.startswith("[Unknown Channel]")
+        # Updated: prefix is now "[Channel]" not "[Unknown Channel]"
+        assert channel_create.title.startswith("[Channel]")

@@ -17,7 +17,6 @@ from chronovista.repositories.playlist_repository import PlaylistRepository
 from chronovista.services.seeding.base_seeder import ProgressCallback, SeedResult
 from chronovista.services.seeding.playlist_seeder import (
     PlaylistSeeder,
-    generate_valid_channel_id,
     generate_valid_playlist_id,
 )
 from tests.factories.id_factory import TestIds, YouTubeIdFactory
@@ -43,16 +42,8 @@ class TestPlaylistSeederUtilityFunctions:
         # Should be consistent for same input
         assert generate_valid_playlist_id(seed) == playlist_id
 
-    def test_generate_valid_channel_id(self) -> None:
-        """Test channel ID generation."""
-        seed = "test_channel"
-        channel_id = generate_valid_channel_id(seed)
-
-        assert channel_id.startswith("UC")
-        assert len(channel_id) == 24  # UC + 22 hex chars
-
-        # Should be consistent for same input
-        assert generate_valid_channel_id(seed) == channel_id
+    # Note: generate_valid_channel_id was removed as part of T017-T020
+    # The new pattern uses NULL channel_id with channel_name_hint
 
 
 class TestPlaylistSeederInitialization:
@@ -310,31 +301,15 @@ class TestPlaylistSeederSeeding:
         assert len(playlist_create.playlist_id) == 34
 
     @pytest.mark.asyncio
+    @pytest.mark.skip(
+        reason="generate_valid_channel_id removed in T017-T020. "
+        "Seeder now uses real channel IDs from YouTube API or NULL with hint."
+    )
     async def test_ensure_user_channel_exists_first_time(
         self, seeder: PlaylistSeeder, mock_session: AsyncMock
     ) -> None:
         """Test ensuring user channel creation on first call."""
-        # Mock channel repository to return None (channel doesn't exist)
-        with (
-            patch.object(
-                seeder.channel_repo, "get_by_channel_id", new_callable=AsyncMock
-            ) as mock_get,
-            patch.object(
-                seeder.channel_repo, "create", new_callable=AsyncMock
-            ) as mock_create,
-        ):
-            mock_get.return_value = None
-
-            # Generate the expected channel ID for this user
-            from chronovista.services.seeding.playlist_seeder import (
-                generate_valid_channel_id,
-            )
-
-            expected_channel_id = generate_valid_channel_id(seeder.user_id)
-
-            await seeder._ensure_user_channel_exists(mock_session, expected_channel_id)
-
-            mock_create.assert_called_once()
+        pass  # Test skipped - helper function removed
 
     @pytest.mark.asyncio
     async def test_ensure_user_channel_exists_existing(
@@ -407,20 +382,15 @@ class TestPlaylistSeederChannelHandling:
         return AsyncMock()
 
     @pytest.mark.asyncio
+    @pytest.mark.skip(
+        reason="generate_valid_channel_id removed in T017-T020. "
+        "Seeder now uses real channel IDs from YouTube API or NULL with hint."
+    )
     async def test_user_channel_id_generation_consistency(
         self, seeder: PlaylistSeeder
     ) -> None:
         """Test that user channel ID is consistent for same user."""
-        from chronovista.services.seeding.playlist_seeder import (
-            generate_valid_channel_id,
-        )
-
-        channel_id_1 = generate_valid_channel_id(seeder.user_id)
-        channel_id_2 = generate_valid_channel_id(seeder.user_id)
-
-        assert channel_id_1 == channel_id_2
-        assert channel_id_1.startswith("UC")
-        assert len(channel_id_1) == 24
+        pass  # Test skipped - helper function removed
 
 
 class TestPlaylistSeederBatchProcessing:

@@ -26,7 +26,10 @@ from chronovista.exceptions import (
     EXIT_CODE_INTERRUPTED,
     EXIT_CODE_PREREQUISITES_MISSING,
     EXIT_CODE_QUOTA_EXCEEDED,
+    AuthenticationError,
+    ChannelEnrichmentError,
     GracefulShutdownException,
+    NetworkError,
     PrerequisiteError,
     QuotaExceededException,
 )
@@ -35,6 +38,7 @@ from chronovista.services.enrichment.enrichment_service import (
     BATCH_SIZE,
     EXIT_CODE_LOCK_FAILED,
     EXIT_CODE_NO_CREDENTIALS,
+    ChannelEnrichmentResult,
     EnrichmentStatus,
     LockAcquisitionError,
     estimate_quota_cost,
@@ -683,6 +687,11 @@ def enrich_videos(
                         f"Videos Deleted: [red]{summary.videos_deleted}[/red]",
                         f"Channels Created: [cyan]{summary.channels_created}[/cyan]",
                     ]
+                    # T045-T049: Show auto-resolved channels if any
+                    if summary.channels_auto_resolved > 0:
+                        summary_lines.append(
+                            f"Channels Auto-Resolved: [green]{summary.channels_auto_resolved}[/green]"
+                        )
 
                     # Add playlist stats if playlists were enriched
                     if include_playlists:
@@ -939,6 +948,386 @@ def show_status() -> None:
             _render_status_panel(status)
 
     asyncio.run(fetch_and_display_status())
+
+
+def _render_channel_status(
+    total_channels: int,
+    enriched: int,
+    unenriched: int,
+) -> None:
+    """
+    Render channel enrichment status as a Rich panel.
+
+    Parameters
+    ----------
+    total_channels : int
+        Total number of channels in database.
+    enriched : int
+        Number of fully enriched channels.
+    unenriched : int
+        Number of channels needing enrichment.
+    """
+    table = Table(show_header=False, box=None, padding=(0, 1), expand=True)
+    table.add_column("Label", style="cyan", width=25)
+    table.add_column("Value", style="green", justify="right")
+
+    table.add_row("Total Channels:", f"{total_channels:,}")
+    table.add_row(
+        "Fully Enriched:",
+        _format_count_with_percentage(enriched, total_channels),
+    )
+    table.add_row(
+        "Needing Enrichment:",
+        _format_count_with_percentage(unenriched, total_channels),
+    )
+    table.add_row("", "")  # Separator
+    table.add_row(
+        "Estimated Quota Cost:",
+        f"~{(unenriched + BATCH_SIZE - 1) // BATCH_SIZE} units",
+    )
+
+    # Determine border color based on enrichment progress
+    if total_channels > 0:
+        pct = (enriched / total_channels) * 100
+        if pct >= 90:
+            border_style = "green"
+        elif pct >= 50:
+            border_style = "yellow"
+        else:
+            border_style = "cyan"
+    else:
+        border_style = "dim"
+
+    panel = Panel(
+        table,
+        title="Channel Enrichment Status",
+        border_style=border_style,
+        padding=(1, 2),
+    )
+    console.print(panel)
+
+
+def _render_channel_enrichment_result(result: ChannelEnrichmentResult, dry_run: bool) -> None:
+    """
+    Render channel enrichment result as a Rich panel.
+
+    Parameters
+    ----------
+    result : ChannelEnrichmentResult
+        The enrichment result to display.
+    dry_run : bool
+        Whether this was a dry run.
+    """
+    if dry_run:
+        console.print(
+            Panel(
+                f"[yellow]DRY RUN[/yellow] - No changes were made\n\n"
+                f"Channels that would be processed: [cyan]{result.channels_processed:,}[/cyan]\n"
+                f"Estimated quota cost: [cyan]~{(result.channels_processed + BATCH_SIZE - 1) // BATCH_SIZE}[/cyan] units",
+                title="Dry Run Summary",
+                border_style="yellow",
+            )
+        )
+        return
+
+    # Build summary lines
+    summary_lines = [
+        f"Channels Processed: [cyan]{result.channels_processed:,}[/cyan]",
+        f"Channels Enriched: [green]{result.channels_enriched:,}[/green]",
+        f"Channels Skipped: [dim]{result.channels_skipped:,}[/dim]",
+        f"Channels Failed: [red]{result.channels_failed:,}[/red]",
+        "",  # Separator
+        f"Batches Processed: [cyan]{result.batches_processed:,}[/cyan]",
+        f"Quota Used: [yellow]~{result.quota_used}[/yellow] units",
+    ]
+
+    if result.duration_seconds > 0:
+        duration_min = result.duration_seconds / 60
+        summary_lines.append(f"Duration: [dim]{duration_min:.1f} minutes[/dim]")
+
+    if result.network_instability_warning:
+        summary_lines.append("")
+        summary_lines.append(
+            "[yellow]⚠ Network instability detected (3+ consecutive batch failures)[/yellow]"
+        )
+
+    if result.was_interrupted:
+        summary_lines.append("")
+        summary_lines.append("[yellow]⚠ Operation was interrupted (SIGINT)[/yellow]")
+
+    # Determine border color
+    if result.channels_failed == 0 and not result.was_interrupted:
+        border_style = "green"
+    elif result.was_interrupted or result.network_instability_warning:
+        border_style = "yellow"
+    else:
+        border_style = "red" if result.channels_failed > result.channels_enriched else "yellow"
+
+    console.print(
+        Panel(
+            "\n".join(summary_lines),
+            title="Channel Enrichment Complete",
+            border_style=border_style,
+        )
+    )
+
+
+@app.command("channels")
+def enrich_channels(
+    limit: Optional[int] = typer.Option(
+        None,
+        "--limit",
+        "-l",
+        help="Maximum number of channels to process (default: all)",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        "-d",
+        help="Preview what would be enriched without making changes",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Override any existing enrichment lock",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable detailed debug logging and track individual channel IDs",
+    ),
+) -> None:
+    """
+    Enrich channel metadata from YouTube Data API.
+
+    Fetches current channel metadata (subscriber count, description, thumbnails,
+    etc.) from YouTube and updates the local database. Channels are processed
+    in batches of 50 (YouTube API limit) with automatic transaction management.
+
+    Only channels without subscriber_count data are considered for enrichment.
+    Use --dry-run to preview which channels would be enriched without making
+    API calls.
+
+    Exit codes:
+    - 0: Success
+    - 3: YouTube API quota exceeded
+    - 4: Lock acquisition failed (use --force to override)
+    - 5: Authentication failed
+    - 130: Interrupted by user (SIGINT/SIGTERM)
+
+    Examples:
+        chronovista enrich channels
+        chronovista enrich channels --limit 100
+        chronovista enrich channels --dry-run
+        chronovista enrich channels --force
+        chronovista enrich channels --verbose
+        chronovista enrich channels -l 50 -d
+    """
+    import asyncio
+
+    from chronovista.config.database import db_manager
+    from chronovista.repositories.channel_repository import ChannelRepository
+    from chronovista.repositories.topic_category_repository import (
+        TopicCategoryRepository,
+    )
+    from chronovista.repositories.video_category_repository import (
+        VideoCategoryRepository,
+    )
+    from chronovista.repositories.video_repository import VideoRepository
+    from chronovista.repositories.video_tag_repository import VideoTagRepository
+    from chronovista.repositories.video_topic_repository import VideoTopicRepository
+    from chronovista.services.enrichment.enrichment_service import EnrichmentService
+    from chronovista.services.youtube_service import YouTubeService
+
+    # Generate timestamp for logging
+    timestamp = _generate_timestamp()
+
+    # Set up file logging with verbose support
+    log_file = _setup_enrichment_logging(timestamp, verbose=verbose)
+    console.print(f"[dim]Logging to: {log_file}[/dim]")
+    if verbose:
+        console.print("[dim]Verbose logging enabled (DEBUG level)[/dim]")
+    console.print()
+
+    async def run_channel_enrichment() -> ChannelEnrichmentResult:
+        # Install shutdown handler for graceful shutdown
+        shutdown = get_shutdown_handler()
+        shutdown.install()
+
+        try:
+            return await _run_channel_enrichment_inner()
+        finally:
+            # Uninstall shutdown handler
+            shutdown.uninstall()
+
+    async def _run_channel_enrichment_inner() -> ChannelEnrichmentResult:
+        # T032: Check credentials first (FR-021)
+        youtube_service = YouTubeService()
+        if not youtube_service.check_credentials():
+            console.print(
+                Panel(
+                    "[red]YouTube API credentials not configured![/red]\n\n"
+                    "Run [cyan]chronovista auth setup[/cyan] to configure OAuth credentials.",
+                    title="Authentication Required",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(EXIT_CODE_NO_CREDENTIALS)
+
+        # Initialize repositories
+        video_repo = VideoRepository()
+        channel_repo = ChannelRepository()
+        tag_repo = VideoTagRepository()
+        topic_repo = VideoTopicRepository()
+        category_repo = VideoCategoryRepository()
+        topic_cat_repo = TopicCategoryRepository()
+
+        # Create enrichment service
+        service = EnrichmentService(
+            video_repository=video_repo,
+            channel_repository=channel_repo,
+            video_tag_repository=tag_repo,
+            video_topic_repository=topic_repo,
+            video_category_repository=category_repo,
+            topic_category_repository=topic_cat_repo,
+            youtube_service=youtube_service,
+        )
+
+        async for session in db_manager.get_session(echo=False):
+            # T028: Acquire lock with --force support (FR-016/017/019)
+            try:
+                await service.lock.acquire(session, force=force)
+            except LockAcquisitionError as e:
+                console.print(
+                    Panel(
+                        f"[red]{e}[/red]\n\n"
+                        "Use [cyan]--force[/cyan] to override the lock.",
+                        title="Lock Acquisition Failed",
+                        border_style="red",
+                    )
+                )
+                raise typer.Exit(EXIT_CODE_LOCK_FAILED)
+
+            try:
+                # Show configuration
+                config_table = Table(
+                    title="Channel Enrichment Configuration", show_header=False
+                )
+                config_table.add_column("Setting", style="cyan")
+                config_table.add_column("Value", style="green")
+                config_table.add_row("Limit", str(limit) if limit else "No limit")
+                config_table.add_row("Verbose", "Yes" if verbose else "No")
+                config_table.add_row("Dry Run", "Yes" if dry_run else "No")
+                console.print(config_table)
+                console.print()
+
+                # Show channel status before processing
+                status = await service.get_channel_enrichment_status(session)
+                _render_channel_status(
+                    total_channels=status["total_channels"],
+                    enriched=status["enriched_channels"],
+                    unenriched=status["unenriched_channels"],
+                )
+                console.print()
+
+                # Run channel enrichment with progress display
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    console=console,
+                ) as progress:
+                    task = progress.add_task("Enriching channels...", total=None)
+
+                    try:
+                        # T023-T034: Run channel enrichment
+                        result = await service.enrich_channels(
+                            session,
+                            limit=limit,
+                            dry_run=dry_run,
+                            verbose=verbose,
+                        )
+
+                    except QuotaExceededException as e:
+                        # T042: Exit code 3 for quota exceeded
+                        progress.stop()
+                        console.print(
+                            Panel(
+                                f"[red]YouTube API quota exceeded![/red]\n\n"
+                                f"Processed [cyan]{e.videos_processed}[/cyan] channels "
+                                f"before quota was exhausted.\n\n"
+                                f"The current batch has been committed.\n"
+                                f"Wait until tomorrow for quota reset, then run again.",
+                                title="Quota Exceeded",
+                                border_style="red",
+                            )
+                        )
+                        raise typer.Exit(EXIT_CODE_QUOTA_EXCEEDED)
+
+                    except GracefulShutdownException as e:
+                        # T030/T042: Exit code 130 for SIGINT
+                        progress.stop()
+                        console.print(
+                            Panel(
+                                f"[yellow]Shutdown requested via {e.signal_received}[/yellow]\n\n"
+                                f"Current batch has been committed.\n"
+                                f"Run again to continue from where you left off.",
+                                title="Graceful Shutdown",
+                                border_style="yellow",
+                            )
+                        )
+                        raise typer.Exit(EXIT_CODE_INTERRUPTED)
+
+                    except AuthenticationError as e:
+                        # T033/T042: Exit code 5 for auth failure
+                        progress.stop()
+                        console.print(
+                            Panel(
+                                f"[red]Authentication failed![/red]\n\n"
+                                f"{e.message}\n\n"
+                                f"Run [cyan]chronovista auth setup[/cyan] to re-authenticate.",
+                                title="Authentication Error",
+                                border_style="red",
+                            )
+                        )
+                        raise typer.Exit(EXIT_CODE_NO_CREDENTIALS)
+
+                    except NetworkError as e:
+                        # Network error - show warning but continue
+                        progress.stop()
+                        console.print(
+                            Panel(
+                                f"[red]Network error occurred![/red]\n\n"
+                                f"{e.message}\n\n"
+                                f"Check your internet connection and try again.",
+                                title="Network Error",
+                                border_style="red",
+                            )
+                        )
+                        raise typer.Exit(1)
+
+                    progress.update(task, description="Channel enrichment complete!")
+
+                # T041: Display completion summary (NFR-028)
+                _render_channel_enrichment_result(result, dry_run)
+
+                return result
+
+            finally:
+                # Release lock
+                await service.lock.release(session)
+
+        # Return empty result if we exit early
+        from datetime import timezone
+
+        return ChannelEnrichmentResult(
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
+        )
+
+    # Run the enrichment
+    asyncio.run(run_channel_enrichment())
 
 
 @app.callback(invoke_without_command=True)

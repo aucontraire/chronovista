@@ -117,8 +117,11 @@ class Video(Base):
     video_id: Mapped[str] = mapped_column(String(20), primary_key=True)
 
     # Foreign keys
-    channel_id: Mapped[str] = mapped_column(
-        String(24), ForeignKey("channels.channel_id")
+    channel_id: Mapped[Optional[str]] = mapped_column(
+        String(24), ForeignKey("channels.channel_id"), nullable=True
+    )
+    channel_name_hint: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True, comment="Original channel name when channel_id is NULL"
     )
     category_id: Mapped[Optional[str]] = mapped_column(
         String(10),
@@ -175,7 +178,7 @@ class Video(Base):
     )
 
     # Relationships
-    channel: Mapped["Channel"] = relationship("Channel", back_populates="videos")
+    channel: Mapped[Optional["Channel"]] = relationship("Channel", back_populates="videos")
     category: Mapped[Optional["VideoCategory"]] = relationship(
         "VideoCategory", back_populates="videos"
     )

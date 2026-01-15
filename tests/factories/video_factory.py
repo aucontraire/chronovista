@@ -8,7 +8,7 @@ with realistic and consistent test data.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Any, Dict, List, cast
+from typing import Any, Dict, List, Optional, cast
 
 import factory
 from factory import LazyFunction
@@ -26,13 +26,19 @@ from chronovista.models.video import (
 
 
 class VideoBaseFactory(factory.Factory[VideoBase]):
-    """Factory for VideoBase models."""
+    """Factory for VideoBase models.
+
+    Note: channel_id defaults to a valid ID for backwards compatibility,
+    but can be set to None for testing videos without channels.
+    Use channel_name_hint to preserve the original channel name when channel_id is None.
+    """
 
     class Meta:
         model = VideoBase
 
     video_id: Any = factory.LazyFunction(lambda: "dQw4w9WgXcQ")
     channel_id: Any = factory.LazyFunction(lambda: "UCuAXFkgsw1L7xaCfnd5JJOw")
+    channel_name_hint: Any = factory.LazyFunction(lambda: None)
     title: Any = factory.LazyFunction(
         lambda: "Rick Astley - Never Gonna Give You Up (Official Video)"
     )
@@ -63,13 +69,19 @@ class VideoBaseFactory(factory.Factory[VideoBase]):
 
 
 class VideoCreateFactory(factory.Factory[VideoCreate]):
-    """Factory for VideoCreate models."""
+    """Factory for VideoCreate models.
+
+    Note: channel_id defaults to a valid ID for backwards compatibility,
+    but can be set to None for testing videos without channels.
+    Use channel_name_hint to preserve the original channel name when channel_id is None.
+    """
 
     class Meta:
         model = VideoCreate
 
     video_id: Any = factory.LazyFunction(lambda: "9bZkp7q19f0")
     channel_id: Any = factory.LazyFunction(lambda: "UC_x5XG1OV2P6uZZ5FSM9Ttw")
+    channel_name_hint: Any = factory.LazyFunction(lambda: None)
     title: Any = factory.LazyFunction(
         lambda: "Google I/O 2023: What's new in Machine Learning"
     )
@@ -126,13 +138,19 @@ class VideoUpdateFactory(factory.Factory[VideoUpdate]):
 
 
 class VideoFactory(factory.Factory[Video]):
-    """Factory for Video models."""
+    """Factory for Video models.
+
+    Note: channel_id defaults to a valid ID for backwards compatibility,
+    but can be set to None for testing videos without channels.
+    Use channel_name_hint to preserve the original channel name when channel_id is None.
+    """
 
     class Meta:
         model = Video
 
     video_id: Any = factory.LazyFunction(lambda: "3tmd-ClpJxA")
     channel_id: Any = factory.LazyFunction(lambda: "UCMtFAi84ehTSYSE9XoHefig")
+    channel_name_hint: Any = factory.LazyFunction(lambda: None)
     title: Any = factory.LazyFunction(
         lambda: "The Late Show with Stephen Colbert - Best Moments 2023"
     )
@@ -221,13 +239,19 @@ class VideoStatisticsFactory(factory.Factory[VideoStatistics]):
 
 
 class VideoWithChannelFactory(factory.Factory[VideoWithChannel]):
-    """Factory for VideoWithChannel models."""
+    """Factory for VideoWithChannel models.
+
+    Note: channel_id defaults to a valid ID for backwards compatibility,
+    but can be set to None for testing videos without channels.
+    Use channel_name_hint to preserve the original channel name when channel_id is None.
+    """
 
     class Meta:
         model = VideoWithChannel
 
     video_id: Any = factory.LazyFunction(lambda: "jNQXAC9IVRw")
     channel_id: Any = factory.LazyFunction(lambda: "UCBJycsmduvYEL83R_U4JriQ")
+    channel_name_hint: Any = factory.LazyFunction(lambda: None)
     title: Any = factory.LazyFunction(lambda: "Marques Brownlee - iPhone 15 Pro Max Review!")
     description: Any = factory.LazyFunction(
         lambda: "The most comprehensive review of Apple's latest flagship iPhone with detailed testing and comparisons."
@@ -262,6 +286,12 @@ class VideoTestData:
     """Test data constants for video models."""
 
     # Valid test data
+    VALID_CHANNEL_NAME_HINTS = [
+        "Unknown Channel",
+        "[Placeholder] Some Channel",
+        "Some Creator",
+    ]
+
     VALID_VIDEO_IDS = [
         "dQw4w9WgXcQ",  # Rick Astley (11 chars)
         "9bZkp7q19f0",  # Tech video (11 chars)
@@ -439,3 +469,53 @@ def create_batch_videos(count: int = 5) -> List[Video]:
         videos.append(video)
 
     return videos
+
+
+def create_video_without_channel(**kwargs: Any) -> Video:
+    """Create a Video with channel_id=None and channel_name_hint set.
+
+    This is useful for testing scenarios where a video exists but its
+    channel has been deleted or is otherwise unavailable.
+
+    Parameters
+    ----------
+    **kwargs : Any
+        Override any Video fields. If channel_name_hint is not provided,
+        defaults to "Unknown Channel".
+
+    Returns
+    -------
+    Video
+        A Video instance with channel_id=None.
+    """
+    if "channel_name_hint" not in kwargs:
+        kwargs["channel_name_hint"] = "Unknown Channel"
+    kwargs["channel_id"] = None
+    result = VideoFactory.build(**kwargs)
+    assert isinstance(result, Video)
+    return result
+
+
+def create_orphan_video(channel_name: str, **kwargs: Any) -> Video:
+    """Create a Video with NULL channel_id but preserves channel_name_hint.
+
+    This creates an "orphan" video - a video whose channel has been deleted
+    but we still want to preserve the original channel name for display purposes.
+
+    Parameters
+    ----------
+    channel_name : str
+        The original channel name to preserve in channel_name_hint.
+    **kwargs : Any
+        Override any other Video fields.
+
+    Returns
+    -------
+    Video
+        A Video instance with channel_id=None and channel_name_hint set.
+    """
+    kwargs["channel_id"] = None
+    kwargs["channel_name_hint"] = channel_name
+    result = VideoFactory.build(**kwargs)
+    assert isinstance(result, Video)
+    return result

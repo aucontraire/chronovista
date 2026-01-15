@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from chronovista.models.channel import ChannelCreate
+from chronovista.models.channel import ChannelCreate, ChannelUpdate
 from chronovista.models.takeout.takeout_data import TakeoutData
 from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.services.seeding.base_seeder import ProgressCallback
@@ -18,7 +18,10 @@ from chronovista.services.seeding.channel_seeder import ChannelSeeder
 from tests.factories.id_factory import TestIds, YouTubeIdFactory
 from tests.factories.takeout_data_factory import create_takeout_data
 from tests.factories.takeout_subscription_factory import create_takeout_subscription
-from tests.factories.takeout_watch_entry_factory import create_takeout_watch_entry
+from tests.factories.takeout_watch_entry_factory import (
+    create_minimal_takeout_watch_entry,
+    create_takeout_watch_entry,
+)
 
 # CRITICAL: This line ensures async tests work with coverage
 pytestmark = pytest.mark.asyncio
@@ -33,6 +36,7 @@ class TestChannelSeeder:
         repo = Mock(spec=ChannelRepository)
         repo.get_by_channel_id = AsyncMock()
         repo.create = AsyncMock()
+        repo.update = AsyncMock()
         return repo
 
     @pytest.fixture
@@ -132,8 +136,9 @@ class TestChannelSeeder:
         mock_channel_repo,
     ):
         """Test seeding subscriptions with existing channels."""
-        # Mock repository to return existing channel
+        # Mock repository to return existing channel with is_subscribed=False
         mock_existing_channel = Mock()
+        mock_existing_channel.is_subscribed = False
         mock_channel_repo.get_by_channel_id.return_value = mock_existing_channel
 
         result = await channel_seeder.seed(
@@ -145,6 +150,39 @@ class TestChannelSeeder:
         assert result.created == 0
         assert result.failed == 0
         assert result.success_rate == 100.0
+
+        # Should have called update to set is_subscribed=True
+        assert mock_channel_repo.update.call_count > 0
+        # Verify the update was called with is_subscribed=True
+        update_call = mock_channel_repo.update.call_args
+        update_data = update_call.kwargs["obj_in"]
+        assert isinstance(update_data, ChannelUpdate)
+        assert update_data.is_subscribed is True
+
+    async def test_seed_existing_channels_already_subscribed(
+        self,
+        channel_seeder,
+        mock_session,
+        takeout_data_with_subscriptions,
+        mock_channel_repo,
+    ):
+        """Test that existing channels with is_subscribed=True are not updated."""
+        # Mock repository to return existing channel already subscribed
+        mock_existing_channel = Mock()
+        mock_existing_channel.is_subscribed = True  # Already subscribed
+        mock_channel_repo.get_by_channel_id.return_value = mock_existing_channel
+
+        result = await channel_seeder.seed(
+            mock_session, takeout_data_with_subscriptions
+        )
+
+        # Should still count as updated
+        assert result.updated > 0
+        assert result.created == 0
+        assert result.failed == 0
+
+        # Should NOT have called update since is_subscribed is already True
+        assert mock_channel_repo.update.call_count == 0
 
     async def test_seed_with_progress_callback(
         self,
@@ -203,6 +241,7 @@ class TestChannelSeeder:
         assert channel_create.channel_id == TestIds.TEST_CHANNEL_1
         assert channel_create.title == "Test Channel"
         assert channel_create.description == ""  # Not available in Takeout
+        assert channel_create.is_subscribed is True  # Subscriptions mean user is subscribed
 
     def test_transform_watch_entry_to_channel(self, channel_seeder):
         """Test transforming watch entry to ChannelCreate model."""
@@ -223,8 +262,13 @@ class TestChannelSeeder:
         assert channel_create.description == ""  # Not available in Takeout
 
     async def test_handle_missing_channel_id_in_watch_entry(self, channel_seeder):
-        """Test handling watch entry with missing channel ID."""
-        watch_entry = create_takeout_watch_entry(
+        """Test handling watch entry with missing channel ID.
+
+        Updated behavior (T017-T020): When channel_id is missing, we return None
+        instead of generating fake IDs. Videos will use channel_name_hint instead.
+        """
+        # Use minimal factory which has channel_id=None by default
+        watch_entry = create_minimal_takeout_watch_entry(
             title="Test Video",
             title_url="https://youtube.com/watch?v=abc",
             channel_name="Unknown Channel",
@@ -234,10 +278,8 @@ class TestChannelSeeder:
 
         channel_create = channel_seeder._transform_watch_entry_to_channel(watch_entry)
 
-        # Should generate a valid channel ID
-        assert channel_create.channel_id.startswith("UC")
-        assert len(channel_create.channel_id) == 24
-        assert channel_create.title == "Unknown Channel"
+        # Should return None when channel_id is missing (no fake ID generation)
+        assert channel_create is None
 
     async def test_deduplication_across_sources(
         self, channel_seeder, mock_session, mock_channel_repo
@@ -305,28 +347,20 @@ class TestChannelSeeder:
         # Should have called commit multiple times for batching
         assert mock_session.commit.call_count >= 2  # At least 2 batch commits
 
+    @pytest.mark.skip(
+        reason="generate_valid_channel_id removed in T017-T020. "
+        "Seeder now uses real channel IDs from YouTube API or NULL with hint."
+    )
     def test_channel_id_generation_consistency(self, channel_seeder):
         """Test that channel ID generation is consistent for same input."""
-        channel_name = "Test Channel"
-
-        from chronovista.services.seeding.channel_seeder import (
-            generate_valid_channel_id,
-        )
-
-        id1 = generate_valid_channel_id(channel_name)
-        id2 = generate_valid_channel_id(channel_name)
-
-        # Should generate same ID for same input
-        assert id1 == id2
-        assert id1.startswith("UC")
-        assert len(id1) == 24
+        pass  # Test skipped - helper function removed
 
     async def test_missing_channel_name_handling(self, channel_seeder):
         """Test handling of entries with missing channel names.
 
-        New behavior: When channel_name is missing, we create a placeholder channel
-        with a generated channel_id, rather than skipping the entry entirely.
-        This allows videos to be seeded even when channel info is incomplete.
+        Updated behavior (T017-T020): When channel_name is missing, we create
+        a placeholder channel with the actual channel_id from the entry.
+        The placeholder prefix is now "[Channel]" not "[Unknown Channel]".
         """
         watch_entry = create_takeout_watch_entry(
             title="Test Video",
@@ -338,8 +372,9 @@ class TestChannelSeeder:
 
         channel_create = channel_seeder._transform_watch_entry_to_channel(watch_entry)
 
-        # Should create placeholder channel with generated channel_id
+        # Should create placeholder channel with the entry's channel_id
         assert channel_create is not None
         assert channel_create.channel_id.startswith("UC")
         assert len(channel_create.channel_id) == 24
-        assert channel_create.title.startswith("[Unknown Channel]")
+        # Updated: prefix is now "[Channel]" not "[Unknown Channel]"
+        assert channel_create.title.startswith("[Channel]")

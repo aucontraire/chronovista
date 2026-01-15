@@ -949,11 +949,20 @@ class YouTubeService(YouTubeServiceInterface):
         -------
         list[YouTubeVideoResponse]
             List of liked videos with details as typed models.
+
+        Raises
+        ------
+        QuotaExceededException
+            If YouTube API quota is exceeded during pagination.
+        YouTubeAPIError
+            If a non-retryable API error occurs.
         """
+        logger.info("Fetching liked videos from YouTube API")
+
         try:
             # First get the liked videos playlist ID
             request = self.service.channels().list(part="contentDetails", mine=True)
-            response = request.execute()
+            response = self._execute_with_retry(request)
 
             if not response.get("items"):
                 raise YouTubeAPIError(
@@ -968,13 +977,19 @@ class YouTubeService(YouTubeServiceInterface):
             liked_playlist_id = related_playlists.get("likes")
 
             if not liked_playlist_id:
-                return []  # No liked videos playlist available
+                logger.warning("No liked videos playlist found for user")
+                return []
+
+            logger.debug(f"Liked playlist ID: {liked_playlist_id}")
 
             # Paginate through all liked videos
             all_video_ids: list[str] = []
             page_token: Optional[str] = None
+            page_number = 0
 
             while True:
+                page_number += 1
+
                 # Determine how many to fetch in this page
                 if max_results is not None:
                     remaining = max_results - len(all_video_ids)
@@ -984,16 +999,17 @@ class YouTubeService(YouTubeServiceInterface):
                 else:
                     page_size = 50  # API max per page
 
-                # Get videos from liked playlist
+                # Get videos from liked playlist with retry logic
                 request = self.service.playlistItems().list(
                     part="snippet,contentDetails",
                     playlistId=liked_playlist_id,
                     maxResults=page_size,
                     pageToken=page_token,
                 )
-                response = request.execute()
+                response = self._execute_with_retry(request)
 
                 playlist_items = response.get("items", [])
+                items_in_page = len(playlist_items)
 
                 # Extract video IDs
                 for item in playlist_items:
@@ -1001,14 +1017,29 @@ class YouTubeService(YouTubeServiceInterface):
                     if video_id:
                         all_video_ids.append(video_id)
 
+                logger.debug(
+                    f"Liked videos page {page_number}: fetched {items_in_page} items, "
+                    f"total so far: {len(all_video_ids)}"
+                )
+
                 # Check for next page
                 page_token = response.get("nextPageToken")
                 if not page_token:
+                    logger.debug(
+                        f"Pagination complete after {page_number} pages, "
+                        f"no more nextPageToken"
+                    )
                     break
 
                 # Stop if we've reached the limit
                 if max_results is not None and len(all_video_ids) >= max_results:
+                    logger.debug(f"Reached max_results limit: {max_results}")
                     break
+
+            logger.info(
+                f"Fetched {len(all_video_ids)} liked video IDs "
+                f"across {page_number} pages"
+            )
 
             if not all_video_ids:
                 return []
@@ -1021,11 +1052,30 @@ class YouTubeService(YouTubeServiceInterface):
                 detailed_videos = await self.get_video_details(batch_ids)
                 all_detailed_videos.extend(detailed_videos)
 
+            logger.info(
+                f"Retrieved details for {len(all_detailed_videos)} liked videos "
+                f"({len(all_video_ids) - len(all_detailed_videos)} unavailable/deleted)"
+            )
+
             return all_detailed_videos
 
+        except QuotaExceededException:
+            # Re-raise quota exceptions so callers can handle them
+            logger.error("Quota exceeded while fetching liked videos")
+            raise
+
+        except YouTubeAPIError:
+            # Re-raise API errors so callers can handle them
+            logger.error("YouTube API error while fetching liked videos")
+            raise
+
         except Exception as e:
-            logger.warning(f"Could not fetch liked videos: {e}")
-            return []
+            # Log unexpected errors with full context, but still raise them
+            logger.error(
+                f"Unexpected error fetching liked videos: {type(e).__name__}: {e}",
+                exc_info=True,
+            )
+            raise
 
     async def get_subscription_channels(
         self, max_results: int = 50

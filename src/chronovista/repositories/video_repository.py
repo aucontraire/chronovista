@@ -1049,3 +1049,171 @@ class VideoRepository(
 
         result = await session.execute(query)
         return result.scalar() or 0
+
+    # Orphan video methods for channel enrichment integration
+
+    async def find_orphan_videos(
+        self,
+        session: AsyncSession,
+        *,
+        limit: Optional[int] = None,
+        offset: int = 0,
+        with_hint_only: bool = False,
+    ) -> List[VideoDB]:
+        """
+        Find videos with NULL channel_id (orphan videos).
+
+        Orphan videos are those without a linked channel, typically because:
+        - The channel was deleted or is private
+        - The video was imported without channel information
+        - The channel was a placeholder that was cleaned up
+
+        Uses the partial index idx_videos_null_channel for efficient lookups.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        limit : Optional[int]
+            Maximum number of videos to return (default: None for all)
+        offset : int
+            Number of videos to skip (default: 0)
+        with_hint_only : bool
+            If True, only return orphan videos that have channel_name_hint set
+            (these are candidates for resolution via YouTube API)
+
+        Returns
+        -------
+        List[VideoDB]
+            List of orphan videos, ordered by created_at descending
+        """
+        conditions = [VideoDB.channel_id.is_(None)]
+
+        if with_hint_only:
+            conditions.append(VideoDB.channel_name_hint.is_not(None))
+
+        query = (
+            select(VideoDB)
+            .where(and_(*conditions))
+            .order_by(VideoDB.created_at.desc())
+            .offset(offset)
+        )
+
+        if limit is not None:
+            query = query.limit(limit)
+
+        result = await session.execute(query)
+        return list(result.scalars().all())
+
+    async def count_orphan_videos(
+        self,
+        session: AsyncSession,
+        *,
+        with_hint_only: bool = False,
+    ) -> int:
+        """
+        Count orphan videos (videos with NULL channel_id).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        with_hint_only : bool
+            If True, only count orphan videos that have channel_name_hint set
+
+        Returns
+        -------
+        int
+            Number of orphan videos
+        """
+        conditions = [VideoDB.channel_id.is_(None)]
+
+        if with_hint_only:
+            conditions.append(VideoDB.channel_name_hint.is_not(None))
+
+        result = await session.execute(
+            select(func.count())
+            .select_from(VideoDB)
+            .where(and_(*conditions))
+        )
+        return result.scalar() or 0
+
+    async def find_videos_by_channel_hint(
+        self,
+        session: AsyncSession,
+        channel_name_hint: str,
+    ) -> List[VideoDB]:
+        """
+        Find orphan videos by channel_name_hint for resolution.
+
+        This method is used during video enrichment to find videos that
+        might belong to a channel we just discovered.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        channel_name_hint : str
+            Channel name hint to search for
+
+        Returns
+        -------
+        List[VideoDB]
+            List of orphan videos with matching channel_name_hint
+        """
+        result = await session.execute(
+            select(VideoDB)
+            .where(
+                and_(
+                    VideoDB.channel_id.is_(None),
+                    VideoDB.channel_name_hint == channel_name_hint,
+                )
+            )
+            .order_by(VideoDB.created_at.desc())
+        )
+        return list(result.scalars().all())
+
+    async def link_videos_to_channel(
+        self,
+        session: AsyncSession,
+        video_ids: List[VideoId],
+        channel_id: ChannelId,
+        clear_hint: bool = True,
+    ) -> int:
+        """
+        Link multiple orphan videos to a channel.
+
+        Used when we discover the correct channel for previously orphan videos,
+        typically during video enrichment when the API returns channel data.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        video_ids : List[VideoId]
+            List of video IDs to link
+        channel_id : ChannelId
+            Channel ID to link videos to
+        clear_hint : bool
+            If True, also clear channel_name_hint after linking (default: True)
+
+        Returns
+        -------
+        int
+            Number of videos updated
+        """
+        if not video_ids:
+            return 0
+
+        from sqlalchemy import update
+
+        update_values: Dict[str, Any] = {"channel_id": channel_id}
+        if clear_hint:
+            update_values["channel_name_hint"] = None
+
+        result = await session.execute(
+            update(VideoDB)
+            .where(VideoDB.video_id.in_(video_ids))
+            .values(**update_values)
+        )
+        return result.rowcount

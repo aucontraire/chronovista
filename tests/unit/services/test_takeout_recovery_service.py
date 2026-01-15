@@ -273,14 +273,14 @@ class TestRecoverVideos:
         assert result.video_actions[0].new_title == "Never Gonna Give You Up"
         video_repo.update.assert_called_once()
 
-    async def test_no_recovery_for_non_placeholder(
+    async def test_no_recovery_for_non_placeholder_with_channel(
         self, mock_session: AsyncMock
     ) -> None:
-        """Test that non-placeholder videos are not recovered."""
+        """Test that non-placeholder videos with channel_id are not recovered."""
         mock_video = MagicMock()
         mock_video.video_id = "dQw4w9WgXcQ"
         mock_video.title = "Real Video Title"
-        mock_video.channel_id = "UCreal"
+        mock_video.channel_id = "UCreal"  # Has channel_id already
 
         video_repo = MagicMock()
         video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
@@ -306,6 +306,145 @@ class TestRecoverVideos:
 
         assert result.videos_recovered == 0
         assert len(result.video_actions) == 0
+
+    async def test_recover_null_channel_id_on_non_placeholder_video(
+        self, mock_session: AsyncMock
+    ) -> None:
+        """Test recovering channel_id for video with real title but NULL channel_id."""
+        mock_video = MagicMock()
+        mock_video.video_id = "dQw4w9WgXcQ"
+        mock_video.title = "Never Gonna Give You Up"  # Real title, not placeholder
+        mock_video.channel_id = None  # NULL channel_id - needs recovery
+
+        # Mock channel that exists in database
+        mock_channel = MagicMock()
+        mock_channel.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
+
+        video_repo = MagicMock()
+        video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
+        video_repo.update = AsyncMock()
+
+        channel_repo = MagicMock()
+        channel_repo.get = AsyncMock(return_value=mock_channel)
+
+        service = TakeoutRecoveryService(
+            video_repository=video_repo,
+            channel_repository=channel_repo,
+        )
+
+        video_metadata = {
+            "dQw4w9WgXcQ": RecoveredVideoMetadata(
+                video_id="dQw4w9WgXcQ",
+                title="Never Gonna Give You Up",
+                channel_name="RickAstleyVEVO",
+                channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",
+                source_takeout=Path("/takeouts/2024"),
+                source_date=datetime.now(timezone.utc),
+            )
+        }
+
+        result = RecoveryResult()
+        options = RecoveryOptions()
+
+        await service._recover_videos(mock_session, video_metadata, result, options)
+
+        # Should recover the video by updating channel_id
+        assert result.videos_recovered == 1
+        assert len(result.video_actions) == 1
+        assert result.video_actions[0].action_type == "update_channel"
+        assert result.video_actions[0].new_channel_id == "UCuAXFkgsw1L7xaCfnd5JJOw"
+        video_repo.update.assert_called_once()
+
+    async def test_recover_both_title_and_channel_id(
+        self, mock_session: AsyncMock
+    ) -> None:
+        """Test recovering both placeholder title and NULL channel_id."""
+        mock_video = MagicMock()
+        mock_video.video_id = "dQw4w9WgXcQ"
+        mock_video.title = "[Placeholder] Video dQw4w9WgXcQ"  # Placeholder title
+        mock_video.channel_id = None  # NULL channel_id - needs recovery
+
+        # Mock channel that exists in database
+        mock_channel = MagicMock()
+        mock_channel.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
+
+        video_repo = MagicMock()
+        video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
+        video_repo.update = AsyncMock()
+
+        channel_repo = MagicMock()
+        channel_repo.get = AsyncMock(return_value=mock_channel)
+
+        service = TakeoutRecoveryService(
+            video_repository=video_repo,
+            channel_repository=channel_repo,
+        )
+
+        video_metadata = {
+            "dQw4w9WgXcQ": RecoveredVideoMetadata(
+                video_id="dQw4w9WgXcQ",
+                title="Never Gonna Give You Up",
+                channel_name="RickAstleyVEVO",
+                channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",
+                source_takeout=Path("/takeouts/2024"),
+                source_date=datetime.now(timezone.utc),
+            )
+        }
+
+        result = RecoveryResult()
+        options = RecoveryOptions()
+
+        await service._recover_videos(mock_session, video_metadata, result, options)
+
+        # Should recover with "both" action type
+        assert result.videos_recovered == 1
+        assert len(result.video_actions) == 1
+        assert result.video_actions[0].action_type == "both"
+        assert result.video_actions[0].new_title == "Never Gonna Give You Up"
+        assert result.video_actions[0].new_channel_id == "UCuAXFkgsw1L7xaCfnd5JJOw"
+        video_repo.update.assert_called_once()
+
+    async def test_skip_channel_update_if_channel_not_in_db(
+        self, mock_session: AsyncMock
+    ) -> None:
+        """Test that channel_id is not updated if the channel doesn't exist in DB."""
+        mock_video = MagicMock()
+        mock_video.video_id = "dQw4w9WgXcQ"
+        mock_video.title = "Real Video Title"  # Not placeholder
+        mock_video.channel_id = None  # NULL channel_id
+
+        video_repo = MagicMock()
+        video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
+        video_repo.update = AsyncMock()
+
+        channel_repo = MagicMock()
+        channel_repo.get = AsyncMock(return_value=None)  # Channel doesn't exist in DB
+
+        service = TakeoutRecoveryService(
+            video_repository=video_repo,
+            channel_repository=channel_repo,
+        )
+
+        video_metadata = {
+            "dQw4w9WgXcQ": RecoveredVideoMetadata(
+                video_id="dQw4w9WgXcQ",
+                title="Never Gonna Give You Up",
+                channel_name="RickAstleyVEVO",
+                channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",  # This channel doesn't exist in DB
+                source_takeout=Path("/takeouts/2024"),
+                source_date=datetime.now(timezone.utc),
+            )
+        }
+
+        result = RecoveryResult()
+        options = RecoveryOptions()
+
+        await service._recover_videos(mock_session, video_metadata, result, options)
+
+        # Action is recorded but channel_id wasn't updated since channel doesn't exist
+        assert result.videos_recovered == 1
+        # update was NOT called because channel doesn't exist and title is not placeholder
+        video_repo.update.assert_not_called()
 
     async def test_placeholder_without_recovery_data(
         self, mock_session: AsyncMock

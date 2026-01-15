@@ -211,8 +211,13 @@ class DataTransformers:
         if upload_date is None:
             upload_date = datetime.now(timezone.utc)
 
-        # Channel ID from snippet or override
-        effective_channel_id = channel_id or (snippet.channel_id if snippet else "UNKNOWN")
+        # T050: Channel ID from snippet or override, with NULL support
+        # If we have a valid channel_id (override or from snippet), use it
+        # Otherwise, set channel_id=None and preserve channel_name_hint for future resolution
+        effective_channel_id = channel_id or (snippet.channel_id if snippet else None)
+        channel_name_hint = None
+        if effective_channel_id is None and snippet and snippet.channel_title:
+            channel_name_hint = snippet.channel_title
 
         # Handle made_for_kids fields - ensure bool, not None
         made_for_kids = status.made_for_kids if status and status.made_for_kids is not None else False
@@ -225,6 +230,7 @@ class DataTransformers:
         return VideoCreate(
             video_id=video.id,
             channel_id=effective_channel_id,
+            channel_name_hint=channel_name_hint,
             title=snippet.title if snippet else "",
             description=snippet.description if snippet else None,
             upload_date=upload_date,

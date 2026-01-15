@@ -32,13 +32,17 @@ class TestPlaylistMembershipSeederInitialization:
     """Tests for PlaylistMembershipSeeder initialization."""
 
     def test_initialization(self) -> None:
-        """Test seeder initialization."""
+        """Test seeder initialization.
+
+        Updated (T017-T020): channel_repo was removed since we no longer
+        create placeholder channels during membership seeding.
+        """
         seeder = PlaylistMembershipSeeder()
 
         assert isinstance(seeder.membership_repo, PlaylistMembershipRepository)
         assert isinstance(seeder.video_repo, VideoRepository)
         assert isinstance(seeder.playlist_repo, PlaylistRepository)
-        assert isinstance(seeder.channel_repo, ChannelRepository)
+        # Note: channel_repo was removed in T017-T020
         assert seeder.get_dependencies() == {"playlists", "videos"}
         assert seeder.get_data_type() == "playlist_memberships"
 
@@ -59,9 +63,6 @@ class TestPlaylistMembershipSeederSeeding:
         seeder.video_repo.create = AsyncMock()
         seeder.playlist_repo = Mock(spec=PlaylistRepository)
         seeder.playlist_repo.get_by_playlist_id = AsyncMock()
-        seeder.channel_repo = Mock(spec=ChannelRepository)
-        seeder.channel_repo.get_by_channel_id = AsyncMock()
-        seeder.channel_repo.create = AsyncMock()
         return seeder
 
     @pytest.fixture
@@ -333,38 +334,27 @@ class TestPlaylistMembershipSeederTransformations:
     async def test_create_placeholder_video(
         self, seeder: PlaylistMembershipSeeder
     ) -> None:
-        """Test creating placeholder video for missing video."""
-        video_id = TestIds.TEST_VIDEO_1
-        session = AsyncMock()
+        """Test creating placeholder video for missing video.
 
-        # Mock the repository methods using patch.object
-        with (
-            patch.object(
-                seeder.channel_repo, "get_by_channel_id", return_value=None
-            ) as mock_get_channel,
-            patch.object(seeder.channel_repo, "create") as mock_channel_create,
-            patch.object(seeder.video_repo, "create") as mock_video_create,
-        ):
-
-            # This should not raise an error
-            await seeder._create_placeholder_video(session, video_id)
-
-            # Verify that the video creation was called
-            mock_video_create.assert_called_once()
+        SKIPPED: T017-T020 removed placeholder video/channel creation.
+        New pattern uses NULL channel_id with channel_name_hint.
+        """
+        pytest.skip(
+            "Placeholder video creation removed in T017-T020. "
+            "New pattern uses NULL channel_id with channel_name_hint."
+        )
 
     def test_generate_placeholder_channel_id(
         self, seeder: PlaylistMembershipSeeder
     ) -> None:
-        """Test generating placeholder channel ID."""
-        video_id = TestIds.TEST_VIDEO_1
+        """Test generating placeholder channel ID.
 
-        channel_id = seeder._generate_placeholder_channel_id(video_id)
-
-        assert channel_id.startswith("UC")
-        assert len(channel_id) == 24
-
-        # Should be consistent
-        assert seeder._generate_placeholder_channel_id(video_id) == channel_id
+        SKIPPED: T017-T020 removed placeholder channel ID generation.
+        """
+        pytest.skip(
+            "_generate_placeholder_channel_id removed in T017-T020. "
+            "New pattern uses NULL channel_id with channel_name_hint."
+        )
 
 
 class TestPlaylistMembershipSeederPositioning:
@@ -552,9 +542,6 @@ class TestPlaylistMembershipSeederEdgeCases:
         seeder.video_repo.get_by_video_id = AsyncMock()
         seeder.playlist_repo = Mock(spec=PlaylistRepository)
         seeder.playlist_repo.get_by_playlist_id = AsyncMock()
-        seeder.channel_repo = Mock(spec=ChannelRepository)
-        seeder.channel_repo.get_by_channel_id = AsyncMock()
-        seeder.channel_repo.create = AsyncMock()
         return seeder
 
     @pytest.fixture
@@ -730,9 +717,6 @@ class TestPlaylistMembershipSeederIntegration:
         seeder.video_repo.create = AsyncMock()
         seeder.playlist_repo = Mock(spec=PlaylistRepository)
         seeder.playlist_repo.get_by_playlist_id = AsyncMock()
-        seeder.channel_repo = Mock(spec=ChannelRepository)
-        seeder.channel_repo.get_by_channel_id = AsyncMock()
-        seeder.channel_repo.create = AsyncMock()
         return seeder
 
     @pytest.fixture

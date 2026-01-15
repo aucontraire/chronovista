@@ -28,6 +28,9 @@ class EnrichmentSummary(BaseModel):
     channels_created: int = Field(
         ..., ge=0, description="Number of new channels created"
     )
+    channels_auto_resolved: int = Field(
+        default=0, ge=0, description="Number of orphan videos linked to real channels"
+    )
     tags_created: int = Field(
         ..., ge=0, description="Number of new tags created"
     )

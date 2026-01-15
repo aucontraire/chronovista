@@ -101,10 +101,12 @@ async def process_watch_history_batch(
                     session, entry.video_id
                 )
                 if not existing_video:
-                    # Create minimal video record from Takeout data
+                    # T050: Create minimal video record with nullable channel_id
+                    # If no valid channel_id, set channel_name_hint for future resolution
                     video_data = VideoCreate(
                         video_id=entry.video_id,
-                        channel_id=entry.channel_id or "UNKNOWN",
+                        channel_id=entry.channel_id if entry.channel_id else None,
+                        channel_name_hint=entry.channel_name if not entry.channel_id else None,
                         title=entry.title,
                         description=None,
                         upload_date=entry.watched_at,  # Placeholder - we don't have actual upload date

@@ -128,6 +128,7 @@ class TestEnrichmentSummary:
             "videos_updated": 45,
             "videos_deleted": 2,
             "channels_created": 3,
+            "channels_auto_resolved": 0,  # T045-T049: Added for channel auto-resolution tracking
             "tags_created": 120,
             "topic_associations": 90,
             "categories_assigned": 48,

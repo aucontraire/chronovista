@@ -470,12 +470,12 @@ class TestT102SuccessCriteriaSC013TopicSeeding:
             topic_info = TopicSeeder.get_topic_by_id(topic_id)
             assert topic_info is not None
             # Parent topics have no parent_id
-            category_name, parent_id = topic_info
+            category_name, parent_id, _ = topic_info
             assert parent_id is None
 
     def test_child_topics_have_valid_parents(self) -> None:
         """Test that all child topics reference valid parent IDs."""
-        for topic_id, (name, parent_id) in TopicSeeder.YOUTUBE_TOPICS.items():
+        for topic_id, (name, parent_id, _) in TopicSeeder.YOUTUBE_TOPICS.items():
             if parent_id is not None:
                 # Parent must exist in the topics dict
                 assert parent_id in TopicSeeder.YOUTUBE_TOPICS

@@ -1,5 +1,17 @@
 """
 Playlist seeder - creates playlists from takeout data.
+
+NOTE: This seeder currently generates a fake "user channel" ID to own playlists
+because the Playlist model requires channel_id (not nullable).
+
+TODO: Consider making Playlist.channel_id nullable to avoid fake channel IDs.
+This would align with the approach used in video_seeder.py where videos can have
+channel_id=None with channel_name_hint for future resolution.
+
+For now, we use a consistent fake ID based on user_id so:
+1. All user's playlists are grouped under one fake channel
+2. The fake channel is easily identifiable by title "[User Channel]"
+3. It can be replaced with a real channel ID if the user authenticates
 """
 
 from __future__ import annotations
@@ -28,9 +40,17 @@ def generate_valid_playlist_id(seed: str) -> str:
     return f"PL{hash_suffix}"
 
 
-def generate_valid_channel_id(seed: str) -> str:
-    """Generate a valid 24-character YouTube channel ID starting with 'UC'."""
-    hash_suffix = hashlib.md5(seed.encode()).hexdigest()[:22]
+def generate_user_channel_id(user_id: str) -> str:
+    """
+    Generate a channel ID for the user's own playlists.
+
+    NOTE: This generates a fake channel ID because Playlist.channel_id is required.
+    The ID is based on user_id for consistency, so all user playlists are grouped.
+
+    TODO: When Playlist.channel_id becomes nullable, remove this function
+    and use channel_id=None with the user's actual channel ID from YouTube API.
+    """
+    hash_suffix = hashlib.md5(user_id.encode()).hexdigest()[:22]
     return f"UC{hash_suffix}"
 
 
@@ -68,7 +88,8 @@ class PlaylistSeeder(BaseSeeder):
         logger.info(f"📋 Seeding {len(takeout_data.playlists)} playlists...")
 
         # Generate user channel ID for playlist ownership
-        user_channel_id = generate_valid_channel_id(self.user_id)
+        # NOTE: This is a fake ID because Playlist.channel_id is required (see module docstring)
+        user_channel_id = generate_user_channel_id(self.user_id)
 
         # Ensure user channel exists (create if necessary)
         if not self._user_channel_created:
@@ -153,10 +174,12 @@ class PlaylistSeeder(BaseSeeder):
 
             if not existing_channel:
                 # Create user channel for playlist ownership
+                # NOTE: This is a placeholder channel - will be replaced when user authenticates
                 user_channel = ChannelCreate(
                     channel_id=user_channel_id,
-                    title=f"User Channel ({self.user_id})",
-                    description="User channel created for Google Takeout playlist imports",
+                    title=f"[User Channel] {self.user_id}",
+                    description="Placeholder user channel for Google Takeout playlist imports. "
+                    "Will be replaced with real channel ID after YouTube API authentication.",
                     default_language=LanguageCode.ENGLISH,
                     country=None,
                     subscriber_count=0,

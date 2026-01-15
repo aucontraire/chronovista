@@ -9,7 +9,7 @@ with real metadata from historical takeout data.
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -168,6 +168,10 @@ class TakeoutRecoveryService:
         """
         Recover placeholder videos from historical metadata.
 
+        This method handles two recovery scenarios:
+        1. Videos with placeholder titles - updates title (and channel_id if NULL)
+        2. Videos with NULL channel_id but real titles - updates channel_id only
+
         Parameters
         ----------
         session : AsyncSession
@@ -179,13 +183,14 @@ class TakeoutRecoveryService:
         options : RecoveryOptions
             Recovery options
         """
-        logger.info("Scanning database for placeholder videos...")
+        logger.info("Scanning database for recoverable videos...")
 
         # Get all videos from database
         # Process in batches to handle large datasets
         skip = 0
         videos_checked = 0
         placeholder_count = 0
+        null_channel_count = 0
 
         while True:
             videos = await self.video_repository.get_multi(
@@ -197,69 +202,107 @@ class TakeoutRecoveryService:
 
             for video in videos:
                 videos_checked += 1
+                is_placeholder_title = is_placeholder_video_title(video.title)
+                has_null_channel = video.channel_id is None
 
-                # Check if this video has a placeholder title
-                if is_placeholder_video_title(video.title):
+                if is_placeholder_title:
                     placeholder_count += 1
 
-                    # Check if we have recovery metadata for this video
-                    if video.video_id in video_metadata:
-                        recovered = video_metadata[video.video_id]
+                if has_null_channel:
+                    null_channel_count += 1
 
-                        # Create recovery action
-                        action = VideoRecoveryAction(
-                            video_id=video.video_id,
-                            old_title=video.title,
-                            new_title=recovered.title,
-                            old_channel_id=video.channel_id,
-                            new_channel_id=recovered.channel_id,
-                            channel_name=recovered.channel_name,
-                            source_date=recovered.source_date,
-                            action_type="update_title",
+                # Check if we have recovery metadata for this video
+                if video.video_id not in video_metadata:
+                    # No recovery data available
+                    if is_placeholder_title:
+                        result.videos_not_recovered.append(video.video_id)
+                        result.videos_still_missing += 1
+                    continue
+
+                recovered = video_metadata[video.video_id]
+
+                # Determine what needs to be updated
+                needs_title_update = is_placeholder_title and recovered.title
+                needs_channel_update = (
+                    has_null_channel
+                    and recovered.channel_id
+                )
+
+                if not needs_title_update and not needs_channel_update:
+                    # Nothing to recover for this video
+                    continue
+
+                # Determine action type
+                if needs_title_update and needs_channel_update:
+                    action_type = "both"
+                elif needs_title_update:
+                    action_type = "update_title"
+                else:
+                    action_type = "update_channel"
+
+                # Create recovery action
+                action = VideoRecoveryAction(
+                    video_id=video.video_id,
+                    old_title=video.title,
+                    new_title=recovered.title if needs_title_update else video.title,
+                    old_channel_id=video.channel_id,
+                    new_channel_id=recovered.channel_id if needs_channel_update else video.channel_id,
+                    channel_name=recovered.channel_name,
+                    source_date=recovered.source_date,
+                    action_type=action_type,
+                )
+
+                result.video_actions.append(action)
+
+                if not options.dry_run:
+                    # Build update data based on what's needed
+                    update_fields: Dict[str, Any] = {}
+
+                    if needs_title_update:
+                        update_fields["title"] = recovered.title
+
+                    if needs_channel_update:
+                        # Verify the channel exists before updating FK
+                        # recovered.channel_id is guaranteed non-None here due to needs_channel_update check
+                        assert recovered.channel_id is not None
+                        channel = await self.channel_repository.get(
+                            session, recovered.channel_id
+                        )
+                        if channel:
+                            update_fields["channel_id"] = recovered.channel_id
+                            # Clear channel_name_hint since we now have real channel_id
+                            update_fields["channel_name_hint"] = None
+                            logger.debug(
+                                f"Recovering channel_id for video {video.video_id}: "
+                                f"NULL -> '{recovered.channel_id}'"
+                            )
+                        else:
+                            logger.debug(
+                                f"Cannot update channel_id for video {video.video_id}: "
+                                f"channel {recovered.channel_id} not found in database"
+                            )
+
+                    if update_fields:
+                        update_data = VideoUpdate(**update_fields)
+                        await self.video_repository.update(
+                            session, db_obj=video, obj_in=update_data
                         )
 
-                        result.video_actions.append(action)
-
-                        if not options.dry_run:
-                            # Update the video
-                            update_data = VideoUpdate(title=recovered.title)
-
-                            # If we have channel info and it's different, update that too
-                            # But only if the current channel is also a placeholder
-                            if (
-                                recovered.channel_id
-                                and video.channel_id
-                                and video.channel_id != recovered.channel_id
-                            ):
-                                # Check if channel exists and if we should update
-                                channel = await self.channel_repository.get(
-                                    session, video.channel_id
-                                )
-                                if channel and is_placeholder_channel_name(channel.title):
-                                    # Channel is placeholder, we can update
-                                    action.action_type = "both"
-                                    # Note: We can't easily change channel_id on video
-                                    # due to foreign key constraints, so we just update title
-
-                            await self.video_repository.update(
-                                session, db_obj=video, obj_in=update_data
-                            )
+                        if needs_title_update:
                             logger.debug(
                                 f"Recovered video {video.video_id}: "
                                 f"'{video.title}' -> '{recovered.title}'"
                             )
 
-                        result.videos_recovered += 1
-                    else:
-                        result.videos_not_recovered.append(video.video_id)
-                        result.videos_still_missing += 1
+                result.videos_recovered += 1
 
             skip += options.batch_size
 
             if options.verbose:
                 logger.info(
                     f"Processed {videos_checked} videos, "
-                    f"found {placeholder_count} placeholders"
+                    f"found {placeholder_count} placeholders, "
+                    f"{null_channel_count} with NULL channel_id"
                 )
 
         if not options.dry_run:
@@ -267,7 +310,8 @@ class TakeoutRecoveryService:
 
         logger.info(
             f"Video recovery: {result.videos_recovered} recovered out of "
-            f"{placeholder_count} placeholders ({result.videos_still_missing} still missing)"
+            f"{placeholder_count} placeholders + {null_channel_count} with NULL channel_id "
+            f"({result.videos_still_missing} still missing)"
         )
 
     async def _recover_channels(

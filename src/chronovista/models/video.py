@@ -20,8 +20,13 @@ class VideoBase(BaseModel):
     """Base model for video data."""
 
     video_id: VideoId = Field(..., description="YouTube video ID (validated)")
-    channel_id: ChannelId = Field(
-        ..., description="Channel ID (foreign key, validated)"
+    channel_id: Optional[ChannelId] = Field(
+        default=None, description="Channel ID (foreign key, validated). NULL for orphaned videos."
+    )
+    channel_name_hint: Optional[str] = Field(
+        default=None,
+        max_length=255,
+        description="Original channel name for future resolution when channel_id is NULL",
     )
     title: str = Field(..., min_length=1, description="Video title")
     description: Optional[str] = Field(default=None, description="Video description")
@@ -89,10 +94,13 @@ class VideoBase(BaseModel):
 
     @field_validator("channel_id")
     @classmethod
-    def validate_channel_id(cls, v: str) -> str:
-        """Validate channel ID format."""
-        if not v or not v.strip():
-            raise ValueError("Channel ID cannot be empty")
+    def validate_channel_id(cls, v: Optional[str]) -> Optional[str]:
+        """Validate channel ID format. Accepts None for orphaned videos."""
+        if v is None:
+            return None
+
+        if not v.strip():
+            raise ValueError("Channel ID cannot be empty string (use None instead)")
 
         channel_id = v.strip()
         if len(channel_id) < 1 or len(channel_id) > 24:
@@ -132,6 +140,8 @@ class VideoCreate(VideoBase):
 class VideoUpdate(BaseModel):
     """Model for updating videos."""
 
+    channel_id: Optional[ChannelId] = None
+    channel_name_hint: Optional[str] = None
     title: Optional[str] = Field(default=None, min_length=1)
     description: Optional[str] = None
     duration: Optional[int] = Field(default=None, ge=0)

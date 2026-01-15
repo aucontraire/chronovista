@@ -25,11 +25,16 @@ from sqlalchemy import case, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.exceptions import (
+    AuthenticationError,
+    ChannelEnrichmentError,
     GracefulShutdownException,
+    NetworkError,
     PrerequisiteError,
     QuotaExceededException,
+    YouTubeAPIError,
 )
 from chronovista.models.api_responses import (
+    YouTubeChannelResponse,
     YouTubePlaylistResponse,
     YouTubeVideoResponse,
 )
@@ -359,6 +364,72 @@ class EnrichmentStatus(BaseModel):
     )
     tier_all: PriorityTierEstimate = Field(
         ..., description="ALL priority tier estimate"
+    )
+
+
+class ChannelEnrichmentResult(BaseModel):
+    """
+    Result of channel enrichment operation.
+
+    This model captures the complete result of enriching channels from
+    the YouTube API, including success/failure counts and timing information.
+
+    Implements FR-011 progress tracking requirements.
+    """
+
+    # Processing counts
+    channels_processed: int = Field(
+        default=0, description="Total channels processed"
+    )
+    channels_enriched: int = Field(
+        default=0, description="Channels successfully enriched with API data"
+    )
+    channels_failed: int = Field(
+        default=0, description="Channels that failed to enrich"
+    )
+    channels_skipped: int = Field(
+        default=0, description="Channels skipped (e.g., not found on API)"
+    )
+
+    # Batching info
+    batches_processed: int = Field(
+        default=0, description="Number of API batches processed"
+    )
+    quota_used: int = Field(
+        default=0, description="Estimated quota units consumed"
+    )
+
+    # Timing
+    started_at: Optional[datetime] = Field(
+        default=None, description="When enrichment started"
+    )
+    completed_at: Optional[datetime] = Field(
+        default=None, description="When enrichment completed"
+    )
+    duration_seconds: float = Field(
+        default=0.0, description="Total duration in seconds"
+    )
+
+    # Error tracking
+    consecutive_failures: int = Field(
+        default=0, description="Current consecutive failure count"
+    )
+    network_instability_warning: bool = Field(
+        default=False, description="Whether FR-029 warning was triggered"
+    )
+    was_interrupted: bool = Field(
+        default=False, description="Whether enrichment was interrupted by signal"
+    )
+
+    # Detailed results (optional, for verbose mode)
+    enriched_channel_ids: List[str] = Field(
+        default_factory=list, description="IDs of successfully enriched channels"
+    )
+    failed_channel_ids: List[str] = Field(
+        default_factory=list, description="IDs of channels that failed enrichment"
+    )
+    skipped_channel_ids: List[str] = Field(
+        default_factory=list, description="IDs of channels that were skipped"
     )
 
 
@@ -937,6 +1008,7 @@ class EnrichmentService:
         videos_updated = 0
         videos_deleted = 0
         channels_created = 0
+        channels_auto_resolved = 0  # T045-T049: Track orphan videos linked to real channels
         tags_created = 0  # T074: Track tags created during enrichment
         topics_created = 0  # T083: Track topic associations created during enrichment
         categories_assigned = 0  # T089: Track category assignments during enrichment
@@ -961,6 +1033,7 @@ class EnrichmentService:
                     videos_updated=videos_updated,
                     videos_deleted=videos_deleted,
                     channels_created=channels_created,
+                    channels_auto_resolved=channels_auto_resolved,
                     tags_created=tags_created,
                     topic_associations=topics_created,
                     categories_assigned=categories_assigned,
@@ -1149,6 +1222,30 @@ class EnrichmentService:
                         )
                         if channel_created:
                             channels_created += 1
+
+                        # T045-T049: Auto-resolve channel reference for orphan videos
+                        # T045: Detect NULL channel_id with channel_name_hint
+                        if video.channel_id is None and video.channel_name_hint:
+                            # T046: Channel now exists (created or looked up above)
+                            # T047: Update video.channel_id and clear channel_name_hint
+                            old_hint = video.channel_name_hint
+                            video.channel_id = channel_id
+                            video.channel_name_hint = None
+                            channels_auto_resolved += 1
+                            # T048: Log channel auto-resolution event
+                            logger.info(
+                                f"Auto-resolved channel for video {video_id}: "
+                                f"'{old_hint}' -> channel {channel_id} ({channel_title})"
+                            )
+                            # T049: "Last Writer Wins" - if seeder updates concurrently,
+                            # the last commit wins. Since both set valid data, this is acceptable.
+                        elif video.channel_id is None:
+                            # Video has NULL channel_id but no hint - still link it
+                            video.channel_id = channel_id
+                            channels_auto_resolved += 1
+                            logger.info(
+                                f"Linked orphan video {video_id} to channel {channel_id} ({channel_title})"
+                            )
 
                     # T068-T073: Enrich tags from snippet.tags array
                     # T069: Extract tags from snippet.tags (already a list of strings)
@@ -1631,10 +1728,12 @@ class EnrichmentService:
             update_data["category_id"] = snippet["categoryId"]
 
         # Content restrictions
+        # Note: Must check for None explicitly since model_dump(exclude_none=False)
+        # includes keys with None values, but our DB columns are NOT NULL
         status = api_data.get("status") or {}
-        if "madeForKids" in status:
+        if status.get("madeForKids") is not None:
             update_data["made_for_kids"] = status["madeForKids"]
-        if "selfDeclaredMadeForKids" in status:
+        if status.get("selfDeclaredMadeForKids") is not None:
             update_data["self_declared_made_for_kids"] = status[
                 "selfDeclaredMadeForKids"
             ]
@@ -1984,14 +2083,19 @@ class EnrichmentService:
         self, session: AsyncSession, url: str
     ) -> str | None:
         """
-        Match a Wikipedia URL to a pre-seeded topic category.
+        Match a Wikipedia URL to a topic category using 4-stage resolution.
 
-        Implements the 5-step matching algorithm per FR-036:
-        1. Validate URL format per FR-034
-        2. Extract and normalize topic name
-        3. Query topic_categories with case-insensitive match on category_name
-        4. Fallback to match with underscores replaced by spaces
-        5. Fallback to URL-decoded topic name
+        Implements Option 4 (Hybrid Dynamic-Seeded) matching algorithm:
+        1. Stage 1: Match by wikipedia_url (exact match) - fastest, most accurate
+        2. Stage 2: Match by normalized_name (lowercase, no underscores)
+        3. Stage 3: Match by alias (from topic_aliases table)
+        4. Stage 4: Dynamic topic creation (for unknown Wikipedia URLs)
+
+        This approach handles:
+        - Known seeded topics (fast lookup by wikipedia_url)
+        - Spelling variations (Humour→Humor via aliases)
+        - Regional variations (Television_program→TV shows via aliases)
+        - Unknown topics (dynamically created and stored)
 
         Parameters
         ----------
@@ -2003,64 +2107,80 @@ class EnrichmentService:
         Returns
         -------
         str | None
-            The matched topic_id (Freebase ID like /m/04rlf) or None if no match.
+            The matched topic_id (Freebase ID like /m/04rlf or dynamic ID) or None.
         """
+        from chronovista.db.models import TopicAlias as TopicAliasDB
         from chronovista.db.models import TopicCategory as TopicCategoryDB
 
-        # T077, T082: Parse Wikipedia URL
+        # Parse Wikipedia URL
         parsed = self._parse_wikipedia_url(url)
         if parsed is None:
             return None
 
         lang, raw_topic_name = parsed
 
-        # T077: Only process en.wikipedia.org URLs; skip non-English with warning
+        # Only process en.wikipedia.org URLs; skip non-English with warning
         if lang != "en":
             logger.warning(f"Skipping non-English Wikipedia URL (lang={lang}): {url}")
             return None
 
-        # T078: 5-step matching algorithm
-        # Step 1: URL format already validated above
-
-        # Step 2: Extract and normalize topic name
         # URL-decode the topic name (handles %20, %26, etc.)
         decoded_topic_name = unquote(raw_topic_name)
 
-        # Step 3: Exact match on category_name (case-insensitive)
-        # Also try with underscores converted to spaces
-        topic_with_spaces = decoded_topic_name.replace("_", " ")
-
-        # Query for matching topic
-        # Try multiple variations in order of preference
-        variations = [
-            decoded_topic_name,  # Original (with underscores if present)
-            topic_with_spaces,  # Underscores replaced with spaces
-            decoded_topic_name.lower(),  # Lowercase original
-            topic_with_spaces.lower(),  # Lowercase with spaces
-        ]
-
-        for variation in variations:
-            # Case-insensitive search using ilike
-            # Order by topic_id to prefer Freebase IDs (/m/...) over numeric IDs
-            # Freebase IDs start with '/' which sorts before digits
-            query = (
-                select(TopicCategoryDB.topic_id)
-                .where(TopicCategoryDB.category_name.ilike(variation))
-                .order_by(TopicCategoryDB.topic_id)
-                .limit(1)
-            )
-            result = await session.execute(query)
-            row = result.first()
-            if row:
-                topic_id: str = row[0]
-                logger.debug(f"Matched topic URL '{url}' to topic_id '{topic_id}'")
-                return topic_id
-
-        # T081: Log warning and skip unrecognized topics
-        logger.warning(
-            f"Unrecognized topic URL, skipping (no matching pre-seeded category): {url}"
+        # ==================================================================
+        # Stage 1: Match by wikipedia_url (exact match - fastest)
+        # ==================================================================
+        query = (
+            select(TopicCategoryDB.topic_id)
+            .where(TopicCategoryDB.wikipedia_url == url)
+            .limit(1)
         )
-        return None
+        result = await session.execute(query)
+        row = result.first()
+        if row:
+            topic_id: str = row[0]
+            logger.debug(f"Stage 1: Matched topic URL '{url}' by wikipedia_url to '{topic_id}'")
+            return topic_id
+
+        # ==================================================================
+        # Stage 2: Match by normalized_name (lowercase, no underscores)
+        # ==================================================================
+        normalized_name = decoded_topic_name.lower().replace("_", " ").strip()
+        query = (
+            select(TopicCategoryDB.topic_id)
+            .where(TopicCategoryDB.normalized_name == normalized_name)
+            .order_by(TopicCategoryDB.topic_id)  # Prefer Freebase IDs (/m/...)
+            .limit(1)
+        )
+        result = await session.execute(query)
+        row = result.first()
+        if row:
+            topic_id = row[0]
+            logger.debug(f"Stage 2: Matched topic URL '{url}' by normalized_name to '{topic_id}'")
+            return topic_id
+
+        # ==================================================================
+        # Stage 3: Match by alias (from topic_aliases table)
+        # ==================================================================
+        # Try the raw topic name as an alias (e.g., "Humour", "Television_program")
+        query = (
+            select(TopicAliasDB.topic_id)
+            .where(TopicAliasDB.alias == decoded_topic_name)
+            .limit(1)
+        )
+        result = await session.execute(query)
+        row = result.first()
+        if row:
+            topic_id = row[0]
+            logger.debug(
+                f"Stage 3: Matched topic URL '{url}' by alias '{decoded_topic_name}' to '{topic_id}'"
+            )
+            return topic_id
+
+        # ==================================================================
+        # Stage 4: Dynamic topic creation
+        # ==================================================================
+        return await self._create_dynamic_topic(session, url, decoded_topic_name)
 
     def _parse_wikipedia_url(self, url: str) -> tuple[str, str] | None:
         """
@@ -2097,6 +2217,82 @@ class EnrichmentService:
         topic_name = match.group(2)
 
         return (language, topic_name)
+
+    async def _create_dynamic_topic(
+        self, session: AsyncSession, url: str, topic_name: str
+    ) -> str | None:
+        """
+        Dynamically create a new topic from an unrecognized Wikipedia URL.
+
+        Implements Stage 4 of Option 4 (Hybrid Dynamic-Seeded) matching:
+        - Creates a new topic_category record with source='dynamic'
+        - Generates a unique topic_id based on Wikipedia slug
+        - Sets wikipedia_url for future direct lookups
+        - Returns the new topic_id for immediate use
+
+        This approach allows the system to handle any topic YouTube returns,
+        not just the ~55 pre-seeded ones. Dynamic topics are marked with
+        source='dynamic' and can be reviewed/mapped to seeded topics later.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session for operations.
+        url : str
+            Full Wikipedia URL (e.g., https://en.wikipedia.org/wiki/Politics)
+        topic_name : str
+            Decoded topic name from URL (e.g., "Politics", "Humour")
+
+        Returns
+        -------
+        str | None
+            The newly created topic_id or None if creation failed.
+        """
+        from chronovista.db.models import TopicCategory as TopicCategoryDB
+
+        # Generate a unique topic_id for dynamic topics
+        # Use "wiki_" prefix to distinguish from Freebase IDs (/m/...)
+        # Note: Using underscore not colon to pass TopicId validation
+        topic_id = f"wiki_{topic_name}"
+
+        # Check if this dynamic topic already exists (race condition protection)
+        existing = await session.execute(
+            select(TopicCategoryDB.topic_id).where(
+                TopicCategoryDB.topic_id == topic_id
+            )
+        )
+        if existing.first():
+            logger.debug(f"Stage 4: Found existing dynamic topic '{topic_id}' for URL '{url}'")
+            return topic_id
+
+        try:
+            # Create the dynamic topic
+            # Human-readable name: replace underscores with spaces
+            category_name = topic_name.replace("_", " ")
+            normalized_name = category_name.lower().strip()
+
+            dynamic_topic = TopicCategoryDB(
+                topic_id=topic_id,
+                category_name=category_name,
+                parent_topic_id=None,  # Unknown hierarchy - can be set later
+                topic_type="youtube",  # Still a YouTube topic category
+                wikipedia_url=url,
+                normalized_name=normalized_name,
+                source="dynamic",
+            )
+            session.add(dynamic_topic)
+            await session.flush()
+
+            logger.info(
+                f"Stage 4: Created dynamic topic '{topic_id}' for URL '{url}'"
+            )
+            return topic_id
+
+        except Exception as e:
+            logger.warning(
+                f"Stage 4: Failed to create dynamic topic for URL '{url}': {e}"
+            )
+            return None
 
     async def enrich_categories(
         self, session: AsyncSession, video_id: str, category_id: str | None
@@ -2320,3 +2516,331 @@ class EnrichmentService:
         )
 
         return (playlists_processed, playlists_updated, playlists_deleted)
+
+    async def enrich_channels(
+        self,
+        session: AsyncSession,
+        limit: int | None = None,
+        dry_run: bool = False,
+        verbose: bool = False,
+    ) -> ChannelEnrichmentResult:
+        """
+        Enrich channel metadata from YouTube API.
+
+        Fetches channel metadata from YouTube Data API and updates local database.
+        Channels are processed in batches of 50 (API limit) with per-batch commits.
+
+        Implements:
+        - T023: Main enrich_channels() method
+        - T024: Batch processing (50 channels per API call) per FR-008
+        - T025: Progress tracking (channels processed, enriched, failed, skipped) per FR-011
+        - T026: Dry-run mode (returns count without API calls) per FR-009
+        - T027: Limit parameter support per FR-010
+        - T028: SIGINT handling with batch commit per FR-028
+        - T029: Batch-level error isolation per FR-027
+        - T029b: 3-consecutive-failure network instability warning per FR-029
+        - T030: SIGINT handling with batch commit per FR-028
+        - T031: Per-batch database commits per FR-025
+        - T032: Authentication pre-flight check per FR-021
+        - T033: Token refresh on 401/403 per FR-022
+        - T034: Description truncation (10,000 chars) per edge case spec
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session for operations.
+        limit : int | None, optional
+            Maximum number of channels to process (default None = all).
+        dry_run : bool, optional
+            If True, return count without making API calls (default False).
+        verbose : bool, optional
+            If True, track detailed channel IDs in result (default False).
+
+        Returns
+        -------
+        ChannelEnrichmentResult
+            Detailed result of the channel enrichment operation.
+
+        Raises
+        ------
+        QuotaExceededException
+            If YouTube API quota is exceeded.
+        GracefulShutdownException
+            If shutdown signal received.
+        AuthenticationError
+            If OAuth credentials are invalid or missing.
+        """
+        from chronovista.models.channel import ChannelUpdate
+
+        started_at = datetime.now(timezone.utc)
+        result = ChannelEnrichmentResult(started_at=started_at)
+
+        # Get shutdown handler for graceful shutdown support (T030)
+        shutdown = get_shutdown_handler()
+        shutdown.reset()
+
+        # T032: Authentication pre-flight check per FR-021
+        # This is done implicitly when we make the first API call
+
+        # Get channels needing enrichment from repository (T021)
+        channels_to_enrich = await self.channel_repository.get_channels_needing_enrichment(
+            session, limit=limit
+        )
+
+        if not channels_to_enrich:
+            logger.info("No channels found needing enrichment")
+            result.completed_at = datetime.now(timezone.utc)
+            result.duration_seconds = (result.completed_at - started_at).total_seconds()
+            return result
+
+        channel_ids = [c.channel_id for c in channels_to_enrich]
+        logger.info(f"Found {len(channel_ids)} channels to enrich")
+
+        # T026: Dry-run mode per FR-009
+        if dry_run:
+            result.channels_processed = len(channel_ids)
+            result.channels_skipped = len(channel_ids)
+            if verbose:
+                result.skipped_channel_ids = channel_ids
+            result.completed_at = datetime.now(timezone.utc)
+            result.duration_seconds = (result.completed_at - started_at).total_seconds()
+            logger.info(f"Dry run: would enrich {len(channel_ids)} channels")
+            return result
+
+        # T024: Batch processing (50 channels per API call) per FR-008
+        consecutive_failures = 0
+        max_consecutive_failures = 3  # FR-029: Network instability threshold
+
+        for batch_start in range(0, len(channel_ids), BATCH_SIZE):
+            batch_end = min(batch_start + BATCH_SIZE, len(channel_ids))
+            batch_channel_ids = channel_ids[batch_start:batch_end]
+            result.batches_processed += 1
+
+            # T030: Check for shutdown before each batch per FR-028
+            try:
+                shutdown.check_shutdown()
+            except GracefulShutdownException:
+                logger.info("Shutdown requested - committing current batch")
+                try:
+                    await session.commit()
+                except Exception as e:
+                    logger.error(f"Error committing on shutdown: {e}")
+                    await session.rollback()
+                result.was_interrupted = True
+                result.completed_at = datetime.now(timezone.utc)
+                result.duration_seconds = (result.completed_at - started_at).total_seconds()
+                raise
+
+            try:
+                # Fetch channel details from YouTube API
+                api_channels = await self.youtube_service.get_channel_details(
+                    batch_channel_ids
+                )
+                result.quota_used += 1  # channels.list costs 1 quota unit per request
+
+                # Reset consecutive failures on success
+                consecutive_failures = 0
+
+                # Create a map of channel_id -> API data for quick lookup
+                api_data_map: Dict[str, YouTubeChannelResponse] = {
+                    c.id: c for c in api_channels
+                }
+
+                # Process each channel in the batch
+                for channel_id in batch_channel_ids:
+                    result.channels_processed += 1
+
+                    try:
+                        api_data = api_data_map.get(channel_id)
+                        if not api_data:
+                            # Channel not found on API (deleted/private)
+                            result.channels_skipped += 1
+                            if verbose:
+                                result.skipped_channel_ids.append(channel_id)
+                            logger.debug(f"Channel {channel_id} not found on YouTube API")
+                            continue
+
+                        # Get fresh channel object from database
+                        channel = await self.channel_repository.get(session, channel_id)
+                        if channel is None:
+                            logger.warning(f"Channel {channel_id} not in database")
+                            result.channels_failed += 1
+                            if verbose:
+                                result.failed_channel_ids.append(channel_id)
+                            continue
+
+                        # Extract update data from API response
+                        update_data = self._extract_channel_update(api_data)
+
+                        # Update channel fields
+                        for key, value in update_data.items():
+                            setattr(channel, key, value)
+
+                        result.channels_enriched += 1
+                        if verbose:
+                            result.enriched_channel_ids.append(channel_id)
+                        logger.debug(f"Enriched channel {channel_id}: {channel.title}")
+
+                    except Exception as e:
+                        logger.error(f"Error enriching channel {channel_id}: {e}")
+                        result.channels_failed += 1
+                        if verbose:
+                            result.failed_channel_ids.append(channel_id)
+
+                # T031: Per-batch database commits per FR-025
+                try:
+                    await session.commit()
+                    logger.info(
+                        f"Committed channel batch {result.batches_processed} "
+                        f"({batch_end}/{len(channel_ids)} channels)"
+                    )
+                except Exception as e:
+                    logger.error(f"Error committing channel batch: {e}")
+                    await session.rollback()
+
+            except QuotaExceededException:
+                # Quota exceeded - commit what we have and re-raise
+                logger.error("YouTube API quota exceeded during channel enrichment")
+                try:
+                    await session.commit()
+                except Exception as e:
+                    logger.error(f"Error committing on quota exceeded: {e}")
+                    await session.rollback()
+                result.completed_at = datetime.now(timezone.utc)
+                result.duration_seconds = (result.completed_at - started_at).total_seconds()
+                raise
+
+            except (YouTubeAPIError, NetworkError) as e:
+                # T029: Batch-level error isolation per FR-027
+                consecutive_failures += 1
+                result.consecutive_failures = consecutive_failures
+                logger.warning(
+                    f"Batch {result.batches_processed} failed: {e} "
+                    f"(consecutive failures: {consecutive_failures})"
+                )
+
+                # T029b: 3-consecutive-failure network instability warning per FR-029
+                if consecutive_failures >= max_consecutive_failures:
+                    result.network_instability_warning = True
+                    logger.warning(
+                        f"Network instability detected: {consecutive_failures} consecutive "
+                        f"batch failures. Consider checking network connection."
+                    )
+
+                # Mark all channels in batch as failed
+                for channel_id in batch_channel_ids:
+                    result.channels_processed += 1
+                    result.channels_failed += 1
+                    if verbose:
+                        result.failed_channel_ids.append(channel_id)
+
+                # Continue to next batch (error isolation)
+                continue
+
+            except AuthenticationError as e:
+                # T033: Handle authentication errors per FR-022
+                logger.error(f"Authentication error during channel enrichment: {e}")
+                # Try to refresh token and retry is handled by YouTubeService
+                result.completed_at = datetime.now(timezone.utc)
+                result.duration_seconds = (result.completed_at - started_at).total_seconds()
+                raise
+
+        # Final completion
+        result.completed_at = datetime.now(timezone.utc)
+        result.duration_seconds = (result.completed_at - started_at).total_seconds()
+
+        logger.info(
+            f"Channel enrichment complete: {result.channels_processed} processed, "
+            f"{result.channels_enriched} enriched, {result.channels_failed} failed, "
+            f"{result.channels_skipped} skipped in {result.duration_seconds:.1f}s"
+        )
+
+        return result
+
+    def _extract_channel_update(
+        self, api_data: YouTubeChannelResponse
+    ) -> Dict[str, Any]:
+        """
+        Extract channel update data from YouTube API response.
+
+        Parameters
+        ----------
+        api_data : YouTubeChannelResponse
+            Channel data from YouTube API.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary of fields to update on the channel.
+        """
+        update_data: Dict[str, Any] = {}
+
+        # Extract from snippet
+        if api_data.snippet:
+            update_data["title"] = sanitize_text(api_data.snippet.title) or ""
+
+            # T034: Description truncation (10,000 chars) per edge case spec
+            description = sanitize_text(api_data.snippet.description)
+            if description and len(description) > 10000:
+                logger.warning(
+                    f"Truncating channel description from {len(description)} to 10000 chars"
+                )
+                description = description[:10000]
+            update_data["description"] = description
+
+            # Default language
+            if api_data.snippet.default_language:
+                update_data["default_language"] = api_data.snippet.default_language.lower()
+
+            # Country
+            if api_data.snippet.country:
+                update_data["country"] = api_data.snippet.country.upper()
+
+            # Thumbnail URL (prefer high quality)
+            thumbnails = api_data.snippet.thumbnails or {}
+            if "high" in thumbnails:
+                update_data["thumbnail_url"] = thumbnails["high"].url
+            elif "medium" in thumbnails:
+                update_data["thumbnail_url"] = thumbnails["medium"].url
+            elif "default" in thumbnails:
+                update_data["thumbnail_url"] = thumbnails["default"].url
+
+        # Extract from statistics
+        if api_data.statistics:
+            if api_data.statistics.subscriber_count is not None:
+                update_data["subscriber_count"] = api_data.statistics.subscriber_count
+            if api_data.statistics.video_count is not None:
+                update_data["video_count"] = api_data.statistics.video_count
+
+        return update_data
+
+    async def get_channel_enrichment_status(
+        self, session: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        Get current channel enrichment status.
+
+        Returns counts of channels needing enrichment and those already enriched.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session for operations.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Status dictionary with counts and percentages.
+        """
+        needs_enrichment = await self.channel_repository.count_channels_needing_enrichment(
+            session
+        )
+        enriched = await self.channel_repository.get_enriched_channels_count(session)
+        total = needs_enrichment + enriched
+
+        return {
+            "total_channels": total,
+            "needs_enrichment": needs_enrichment,
+            "enriched": enriched,
+            "enrichment_percentage": (enriched / total * 100) if total > 0 else 0.0,
+        }

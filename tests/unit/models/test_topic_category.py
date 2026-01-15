@@ -152,6 +152,10 @@ class TestTopicCategoryBase:
             "category_name": "Technology",
             "parent_topic_id": None,
             "topic_type": "youtube",
+            # Option 4 dynamic resolution fields (with defaults)
+            "wikipedia_url": None,
+            "normalized_name": None,
+            "source": "seeded",
         }
 
         assert data == expected

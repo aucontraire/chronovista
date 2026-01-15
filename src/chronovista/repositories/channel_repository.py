@@ -542,3 +542,116 @@ class ChannelRepository(
             "subscription_rate": (subscribed / total * 100) if total > 0 else 0.0,
             "discovery_rate": (watched_only / total * 100) if total > 0 else 0.0,
         }
+
+    async def get_channels_needing_enrichment(
+        self,
+        session: AsyncSession,
+        *,
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> List[ChannelDB]:
+        """
+        Get channels that need enrichment from YouTube API.
+
+        A channel needs enrichment if it has NULL subscriber_count, indicating
+        it has not been enriched with metadata from the YouTube API yet.
+        Uses the partial index idx_channels_needs_enrichment for efficient lookups.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        limit : Optional[int]
+            Maximum number of channels to return (default: None for all)
+        offset : int
+            Number of channels to skip (default: 0)
+
+        Returns
+        -------
+        List[ChannelDB]
+            List of channels needing enrichment, ordered by channel_id
+        """
+        query = (
+            select(ChannelDB)
+            .where(ChannelDB.subscriber_count.is_(None))
+            .order_by(ChannelDB.channel_id)
+            .offset(offset)
+        )
+
+        if limit is not None:
+            query = query.limit(limit)
+
+        result = await session.execute(query)
+        return list(result.scalars().all())
+
+    async def count_channels_needing_enrichment(
+        self, session: AsyncSession
+    ) -> int:
+        """
+        Count channels that need enrichment.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+
+        Returns
+        -------
+        int
+            Number of channels with NULL subscriber_count
+        """
+        result = await session.execute(
+            select(func.count())
+            .select_from(ChannelDB)
+            .where(ChannelDB.subscriber_count.is_(None))
+        )
+        return result.scalar() or 0
+
+    async def get_enriched_channels_count(self, session: AsyncSession) -> int:
+        """
+        Count channels that have been enriched.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+
+        Returns
+        -------
+        int
+            Number of channels with non-NULL subscriber_count
+        """
+        result = await session.execute(
+            select(func.count())
+            .select_from(ChannelDB)
+            .where(ChannelDB.subscriber_count.is_not(None))
+        )
+        return result.scalar() or 0
+
+    async def get_channels_by_ids(
+        self,
+        session: AsyncSession,
+        channel_ids: List[ChannelId],
+    ) -> List[ChannelDB]:
+        """
+        Get multiple channels by their IDs.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        channel_ids : List[ChannelId]
+            List of channel IDs to fetch
+
+        Returns
+        -------
+        List[ChannelDB]
+            List of channels found (may be fewer than requested if some don't exist)
+        """
+        if not channel_ids:
+            return []
+
+        result = await session.execute(
+            select(ChannelDB).where(ChannelDB.channel_id.in_(channel_ids))
+        )
+        return list(result.scalars().all())

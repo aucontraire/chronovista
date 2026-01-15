@@ -14,7 +14,7 @@ from typing import Optional, Set
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...models.channel import ChannelCreate
+from ...models.channel import ChannelCreate, ChannelUpdate
 from ...models.enums import LanguageCode
 from ...models.takeout.takeout_data import (
     TakeoutData,
@@ -111,6 +111,12 @@ class ChannelSeeder(BaseSeeder):
                 )
 
                 if existing_channel:
+                    # Update is_subscribed if not already set (preserves enriched data)
+                    if not existing_channel.is_subscribed:
+                        update_data = ChannelUpdate(is_subscribed=True)
+                        await self.channel_repo.update(
+                            session, db_obj=existing_channel, obj_in=update_data
+                        )
                     result.updated += 1
                 else:
                     await self.channel_repo.create(session, obj_in=channel_create)

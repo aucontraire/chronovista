@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from chronovista.models.channel import ChannelCreate
+from chronovista.models.channel import ChannelCreate, ChannelUpdate
 from chronovista.models.takeout.takeout_data import TakeoutData
 from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.services.seeding.base_seeder import ProgressCallback
@@ -36,6 +36,7 @@ class TestChannelSeeder:
         repo = Mock(spec=ChannelRepository)
         repo.get_by_channel_id = AsyncMock()
         repo.create = AsyncMock()
+        repo.update = AsyncMock()
         return repo
 
     @pytest.fixture
@@ -135,8 +136,9 @@ class TestChannelSeeder:
         mock_channel_repo,
     ):
         """Test seeding subscriptions with existing channels."""
-        # Mock repository to return existing channel
+        # Mock repository to return existing channel with is_subscribed=False
         mock_existing_channel = Mock()
+        mock_existing_channel.is_subscribed = False
         mock_channel_repo.get_by_channel_id.return_value = mock_existing_channel
 
         result = await channel_seeder.seed(
@@ -148,6 +150,39 @@ class TestChannelSeeder:
         assert result.created == 0
         assert result.failed == 0
         assert result.success_rate == 100.0
+
+        # Should have called update to set is_subscribed=True
+        assert mock_channel_repo.update.call_count > 0
+        # Verify the update was called with is_subscribed=True
+        update_call = mock_channel_repo.update.call_args
+        update_data = update_call.kwargs["obj_in"]
+        assert isinstance(update_data, ChannelUpdate)
+        assert update_data.is_subscribed is True
+
+    async def test_seed_existing_channels_already_subscribed(
+        self,
+        channel_seeder,
+        mock_session,
+        takeout_data_with_subscriptions,
+        mock_channel_repo,
+    ):
+        """Test that existing channels with is_subscribed=True are not updated."""
+        # Mock repository to return existing channel already subscribed
+        mock_existing_channel = Mock()
+        mock_existing_channel.is_subscribed = True  # Already subscribed
+        mock_channel_repo.get_by_channel_id.return_value = mock_existing_channel
+
+        result = await channel_seeder.seed(
+            mock_session, takeout_data_with_subscriptions
+        )
+
+        # Should still count as updated
+        assert result.updated > 0
+        assert result.created == 0
+        assert result.failed == 0
+
+        # Should NOT have called update since is_subscribed is already True
+        assert mock_channel_repo.update.call_count == 0
 
     async def test_seed_with_progress_callback(
         self,

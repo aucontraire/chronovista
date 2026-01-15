@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chronovista.db.models import TopicAlias as TopicAliasDB
 from chronovista.db.models import TopicCategory as TopicCategoryDB
 from chronovista.exceptions import YouTubeAPIError
 from chronovista.models.api_responses import YouTubeVideoCategoryResponse
@@ -44,6 +45,12 @@ class TopicSeedResult(BaseModel):
     )
     deleted: int = Field(default=0, description="Number of topics deleted (force mode)")
     failed: int = Field(default=0, description="Number of topics that failed to seed")
+    aliases_seeded: int = Field(
+        default=0, description="Number of topic aliases seeded"
+    )
+    aliases_skipped: int = Field(
+        default=0, description="Number of aliases skipped (already exist)"
+    )
     duration_seconds: float = Field(
         default=0.0, description="Duration of seeding operation"
     )
@@ -109,6 +116,11 @@ class TopicSeeder:
     All seeded topics use topic_type = TopicType.YOUTUBE to distinguish them
     from user-defined custom topics.
 
+    Option 4 Implementation (Hybrid Dynamic-Seeded):
+    - Seeds topics with wikipedia_url and normalized_name for lookup
+    - Seeds known aliases for spelling variations (Humour→Humor, etc.)
+    - Enables dynamic topic creation for unknown Wikipedia URLs at runtime
+
     Attributes
     ----------
     topic_repository : TopicCategoryRepository
@@ -123,90 +135,131 @@ class TopicSeeder:
     """
 
     # YouTube Topic Hierarchy
-    # Format: topic_id -> (category_name, parent_topic_id)
+    # Format: topic_id -> (category_name, parent_topic_id, wikipedia_slug)
     # Parent topics have None as parent_topic_id
-    YOUTUBE_TOPICS: dict[str, tuple[str, Optional[str]]] = {
+    # wikipedia_slug is the path component after /wiki/ in the Wikipedia URL
+    YOUTUBE_TOPICS: dict[str, tuple[str, Optional[str], Optional[str]]] = {
         # =================================================================
         # PARENT TOPICS (7 root categories)
+        # Format: topic_id -> (name, parent_id, wikipedia_slug)
         # =================================================================
-        "/m/04rlf": ("Music", None),
-        "/m/0bzvm2": ("Gaming", None),
-        "/m/06ntj": ("Sports", None),
-        "/m/02jjt": ("Entertainment", None),
-        "/m/019_rr": ("Lifestyle", None),
-        "/m/01k8wb": ("Knowledge", None),
-        "/m/098wr": ("Society", None),
+        "/m/04rlf": ("Music", None, "Music"),
+        "/m/0bzvm2": ("Gaming", None, "Video_game_culture"),
+        "/m/06ntj": ("Sports", None, "Sport"),
+        "/m/02jjt": ("Entertainment", None, "Entertainment"),
+        "/m/019_rr": ("Lifestyle", None, "Lifestyle_(sociology)"),
+        "/m/01k8wb": ("Knowledge", None, "Knowledge"),
+        "/m/098wr": ("Society", None, "Society"),
         # =================================================================
         # MUSIC CHILDREN (14 subcategories)
         # =================================================================
-        "/m/02lkt": ("Christian music", "/m/04rlf"),
-        "/m/0ggq0m": ("Classical music", "/m/04rlf"),
-        "/m/01lyv": ("Country music", "/m/04rlf"),
-        "/m/02mscn": ("Electronic music", "/m/04rlf"),
-        "/m/0glt670": ("Hip hop music", "/m/04rlf"),
-        "/m/05rwpb": ("Independent music", "/m/04rlf"),
-        "/m/03_d0": ("Jazz", "/m/04rlf"),
-        "/m/028sqc": ("Music of Asia", "/m/04rlf"),
-        "/m/0g293": ("Music of Latin America", "/m/04rlf"),
-        "/m/064t9": ("Pop music", "/m/04rlf"),
-        "/m/06cqb": ("Reggae", "/m/04rlf"),
-        "/m/06j6l": ("Rhythm and blues", "/m/04rlf"),
-        "/m/06by7": ("Rock music", "/m/04rlf"),
-        "/m/0dl5d": ("Soul music", "/m/04rlf"),
+        "/m/02lkt": ("Christian music", "/m/04rlf", "Christian_music"),
+        "/m/0ggq0m": ("Classical music", "/m/04rlf", "Classical_music"),
+        "/m/01lyv": ("Country music", "/m/04rlf", "Country_music"),
+        "/m/02mscn": ("Electronic music", "/m/04rlf", "Electronic_music"),
+        "/m/0glt670": ("Hip hop music", "/m/04rlf", "Hip_hop_music"),
+        "/m/05rwpb": ("Independent music", "/m/04rlf", "Independent_music"),
+        "/m/03_d0": ("Jazz", "/m/04rlf", "Jazz"),
+        "/m/028sqc": ("Music of Asia", "/m/04rlf", "Music_of_Asia"),
+        "/m/0g293": ("Music of Latin America", "/m/04rlf", "Music_of_Latin_America"),
+        "/m/064t9": ("Pop music", "/m/04rlf", "Pop_music"),
+        "/m/06cqb": ("Reggae", "/m/04rlf", "Reggae"),
+        "/m/06j6l": ("Rhythm and blues", "/m/04rlf", "Rhythm_and_blues"),
+        "/m/06by7": ("Rock music", "/m/04rlf", "Rock_music"),
+        "/m/0dl5d": ("Soul music", "/m/04rlf", "Soul_music"),
         # =================================================================
         # GAMING CHILDREN (10 subcategories)
         # =================================================================
-        "/m/0403l3g": ("Action game", "/m/0bzvm2"),
-        "/m/021bp2": ("Action-adventure game", "/m/0bzvm2"),
-        "/m/022dc6": ("Casual game", "/m/0bzvm2"),
-        "/m/03hf_rm": ("Music video game", "/m/0bzvm2"),
-        "/m/04q1x3q": ("Puzzle video game", "/m/0bzvm2"),
-        "/m/01sjng": ("Racing video game", "/m/0bzvm2"),
-        "/m/0403zg": ("Role-playing video game", "/m/0bzvm2"),
-        "/m/021bms": ("Simulation video game", "/m/0bzvm2"),
-        "/m/022lj": ("Strategy video game", "/m/0bzvm2"),
-        "/m/03npn": ("Sports game", "/m/0bzvm2"),
+        "/m/0403l3g": ("Action game", "/m/0bzvm2", "Action_game"),
+        "/m/021bp2": ("Action-adventure game", "/m/0bzvm2", "Action-adventure_game"),
+        "/m/022dc6": ("Casual game", "/m/0bzvm2", "Casual_game"),
+        "/m/03hf_rm": ("Music video game", "/m/0bzvm2", "Music_video_game"),
+        "/m/04q1x3q": ("Puzzle video game", "/m/0bzvm2", "Puzzle_video_game"),
+        "/m/01sjng": ("Racing video game", "/m/0bzvm2", "Racing_video_game"),
+        "/m/0403zg": ("Role-playing video game", "/m/0bzvm2", "Role-playing_video_game"),
+        "/m/021bms": ("Simulation video game", "/m/0bzvm2", "Simulation_video_game"),
+        "/m/022lj": ("Strategy video game", "/m/0bzvm2", "Strategy_video_game"),
+        "/m/03npn": ("Sports game", "/m/0bzvm2", "Sports_game"),
         # =================================================================
         # SPORTS CHILDREN (13 subcategories)
         # =================================================================
-        "/m/0jm_": ("American football", "/m/06ntj"),
-        "/m/018jz": ("Baseball", "/m/06ntj"),
-        "/m/018w8": ("Basketball", "/m/06ntj"),
-        "/m/01cgz": ("Boxing", "/m/06ntj"),
-        "/m/09xp_": ("Cricket", "/m/06ntj"),
-        "/m/02vx4": ("Football", "/m/06ntj"),  # Soccer
-        "/m/037hz": ("Golf", "/m/06ntj"),
-        "/m/03tmr": ("Ice hockey", "/m/06ntj"),
-        "/m/01h7lh": ("Mixed martial arts", "/m/06ntj"),
-        "/m/0410tth": ("Motorsport", "/m/06ntj"),
-        "/m/07bs0": ("Tennis", "/m/06ntj"),
-        "/m/07_53": ("Volleyball", "/m/06ntj"),
-        "/m/09_bl": ("Wrestling", "/m/06ntj"),
+        "/m/0jm_": ("American football", "/m/06ntj", "American_football"),
+        "/m/018jz": ("Baseball", "/m/06ntj", "Baseball"),
+        "/m/018w8": ("Basketball", "/m/06ntj", "Basketball"),
+        "/m/01cgz": ("Boxing", "/m/06ntj", "Boxing"),
+        "/m/09xp_": ("Cricket", "/m/06ntj", "Cricket"),
+        "/m/02vx4": ("Football", "/m/06ntj", "Association_football"),  # Soccer
+        "/m/037hz": ("Golf", "/m/06ntj", "Golf"),
+        "/m/03tmr": ("Ice hockey", "/m/06ntj", "Ice_hockey"),
+        "/m/01h7lh": ("Mixed martial arts", "/m/06ntj", "Mixed_martial_arts"),
+        "/m/0410tth": ("Motorsport", "/m/06ntj", "Motorsport"),
+        "/m/07bs0": ("Tennis", "/m/06ntj", "Tennis"),
+        "/m/07_53": ("Volleyball", "/m/06ntj", "Volleyball"),
+        "/m/09_bl": ("Wrestling", "/m/06ntj", "Wrestling"),
         # =================================================================
         # ENTERTAINMENT CHILDREN (5 subcategories)
         # =================================================================
-        "/m/09kqc": ("Humor", "/m/02jjt"),
-        "/m/02vxn": ("Movies", "/m/02jjt"),
-        "/m/05qjc": ("Performing arts", "/m/02jjt"),
-        "/m/066wd": ("Professional wrestling", "/m/02jjt"),
-        "/m/0f2f9": ("TV shows", "/m/02jjt"),
+        "/m/09kqc": ("Humor", "/m/02jjt", "Humour"),  # Note: Wikipedia uses British spelling
+        "/m/02vxn": ("Movies", "/m/02jjt", "Film"),
+        "/m/05qjc": ("Performing arts", "/m/02jjt", "Performing_arts"),
+        "/m/066wd": ("Professional wrestling", "/m/02jjt", "Professional_wrestling"),
+        "/m/0f2f9": ("TV shows", "/m/02jjt", "Television_program"),
         # =================================================================
         # LIFESTYLE CHILDREN (9 subcategories)
         # =================================================================
-        "/m/032tl": ("Fashion", "/m/019_rr"),
-        "/m/027x7n": ("Fitness", "/m/019_rr"),
-        "/m/02wbm": ("Food", "/m/019_rr"),
-        "/m/03glg": ("Hobby", "/m/019_rr"),
-        "/m/068hy": ("Pets", "/m/019_rr"),
-        "/m/041xxh": ("Physical attractiveness [Beauty]", "/m/019_rr"),
-        "/m/07c1v": ("Technology", "/m/019_rr"),
-        "/m/07bxq": ("Tourism", "/m/019_rr"),
-        "/m/0kt51": ("Vehicles", "/m/019_rr"),
+        "/m/032tl": ("Fashion", "/m/019_rr", "Fashion"),
+        "/m/027x7n": ("Fitness", "/m/019_rr", "Physical_fitness"),
+        "/m/02wbm": ("Food", "/m/019_rr", "Food"),
+        "/m/03glg": ("Hobby", "/m/019_rr", "Hobby"),
+        "/m/068hy": ("Pets", "/m/019_rr", "Pet"),
+        "/m/041xxh": ("Physical attractiveness [Beauty]", "/m/019_rr", "Physical_attractiveness"),
+        "/m/07c1v": ("Technology", "/m/019_rr", "Technology"),
+        "/m/07bxq": ("Tourism", "/m/019_rr", "Tourism"),
+        "/m/0kt51": ("Vehicles", "/m/019_rr", "Vehicle"),
         # =================================================================
         # KNOWLEDGE CHILDREN - None (leaf category)
         # =================================================================
         # SOCIETY CHILDREN - None (leaf category)
         # =================================================================
+    }
+
+    # Known aliases for spelling variations and synonyms
+    # Format: alias -> (target_topic_id, alias_type)
+    # alias_type: "spelling" (regional), "redirect" (Wikipedia redirect), "synonym"
+    KNOWN_ALIASES: dict[str, tuple[str, str]] = {
+        # British vs American spelling
+        "Humour": ("/m/09kqc", "spelling"),
+        "humour": ("/m/09kqc", "spelling"),
+        # Wikipedia article name variations
+        "Television_program": ("/m/0f2f9", "redirect"),
+        "Television_show": ("/m/0f2f9", "redirect"),
+        "TV_show": ("/m/0f2f9", "redirect"),
+        "Television_series": ("/m/0f2f9", "redirect"),
+        # Film vs Movies
+        "Film": ("/m/02vxn", "redirect"),
+        "Motion_picture": ("/m/02vxn", "redirect"),
+        # Football variants
+        "Association_football": ("/m/02vx4", "redirect"),
+        "Soccer": ("/m/02vx4", "synonym"),
+        # Pet vs Pets
+        "Pet": ("/m/068hy", "redirect"),
+        # Sport vs Sports
+        "Sport": ("/m/06ntj", "redirect"),
+        # Vehicle vs Vehicles
+        "Vehicle": ("/m/0kt51", "redirect"),
+        # Lifestyle variant
+        "Lifestyle_(sociology)": ("/m/019_rr", "redirect"),
+        # Gaming
+        "Video_game_culture": ("/m/0bzvm2", "redirect"),
+        "Video_games": ("/m/0bzvm2", "synonym"),
+        # Fitness
+        "Physical_fitness": ("/m/027x7n", "redirect"),
+        "Fitness": ("/m/027x7n", "synonym"),
+        # Physical attractiveness
+        "Physical_attractiveness": ("/m/041xxh", "redirect"),
+        "Beauty": ("/m/041xxh", "synonym"),
+        # Politics (commonly returned by YouTube but not in our hierarchy)
+        "Politics": ("/m/098wr", "synonym"),  # Map to Society parent
     }
 
     # Topic IDs for parent categories (for easy reference)
@@ -272,8 +325,10 @@ class TopicSeeder:
         logger.info("Starting YouTube topic seeding...")
 
         try:
-            # Handle force mode: delete all existing YouTube topics
+            # Handle force mode: delete all existing YouTube topics and aliases
             if force:
+                # Delete aliases first (foreign key constraint)
+                await self._delete_all_aliases(session)
                 deleted_count = await self._delete_all_youtube_topics(session)
                 result.deleted = deleted_count
                 logger.info(
@@ -284,6 +339,9 @@ class TopicSeeder:
             await self._seed_parent_topics(session, result)
             await self._seed_child_topics(session, result)
 
+            # Seed known aliases (Option 4 implementation)
+            await self._seed_aliases(session, result)
+
             # Commit all changes
             await session.commit()
 
@@ -291,8 +349,9 @@ class TopicSeeder:
 
             logger.info(
                 f"YouTube topic seeding complete: "
-                f"{result.created} created, {result.skipped} skipped, "
-                f"{result.deleted} deleted, {result.failed} failed "
+                f"{result.created} topics created, {result.skipped} skipped, "
+                f"{result.deleted} deleted, {result.failed} failed, "
+                f"{result.aliases_seeded} aliases seeded "
                 f"in {result.duration_seconds:.2f}s"
             )
 
@@ -357,16 +416,16 @@ class TopicSeeder:
             Result object to update with counts.
         """
         parent_topics = [
-            (topic_id, name, parent_id)
-            for topic_id, (name, parent_id) in self.YOUTUBE_TOPICS.items()
+            (topic_id, name, parent_id, wiki_slug)
+            for topic_id, (name, parent_id, wiki_slug) in self.YOUTUBE_TOPICS.items()
             if parent_id is None
         ]
 
         logger.info(f"Seeding {len(parent_topics)} parent topics...")
 
-        for topic_id, category_name, _ in parent_topics:
+        for topic_id, category_name, _, wiki_slug in parent_topics:
             await self._seed_single_topic(
-                session, topic_id, category_name, None, result
+                session, topic_id, category_name, None, wiki_slug, result
             )
 
         await session.flush()
@@ -387,16 +446,16 @@ class TopicSeeder:
             Result object to update with counts.
         """
         child_topics = [
-            (topic_id, name, parent_id)
-            for topic_id, (name, parent_id) in self.YOUTUBE_TOPICS.items()
+            (topic_id, name, parent_id, wiki_slug)
+            for topic_id, (name, parent_id, wiki_slug) in self.YOUTUBE_TOPICS.items()
             if parent_id is not None
         ]
 
         logger.info(f"Seeding {len(child_topics)} child topics...")
 
-        for topic_id, category_name, parent_topic_id in child_topics:
+        for topic_id, category_name, parent_topic_id, wiki_slug in child_topics:
             await self._seed_single_topic(
-                session, topic_id, category_name, parent_topic_id, result
+                session, topic_id, category_name, parent_topic_id, wiki_slug, result
             )
 
         await session.flush()
@@ -407,6 +466,7 @@ class TopicSeeder:
         topic_id: str,
         category_name: str,
         parent_topic_id: Optional[str],
+        wikipedia_slug: Optional[str],
         result: TopicSeedResult,
     ) -> None:
         """
@@ -422,6 +482,8 @@ class TopicSeeder:
             Human-readable category name.
         parent_topic_id : Optional[str]
             Parent topic ID or None for root topics.
+        wikipedia_slug : Optional[str]
+            Wikipedia article slug (path after /wiki/).
         result : TopicSeedResult
             Result object to update with counts.
         """
@@ -436,12 +498,23 @@ class TopicSeeder:
                 )
                 return
 
-            # Create the topic
+            # Build wikipedia_url from slug
+            wikipedia_url = None
+            if wikipedia_slug:
+                wikipedia_url = f"https://en.wikipedia.org/wiki/{wikipedia_slug}"
+
+            # Generate normalized_name (lowercase, no underscores, for matching)
+            normalized_name = self._normalize_name(category_name)
+
+            # Create the topic with Option 4 fields
             topic_create = TopicCategoryCreate(
                 topic_id=topic_id,
                 category_name=category_name,
                 parent_topic_id=parent_topic_id,
                 topic_type=TopicType.YOUTUBE,
+                wikipedia_url=wikipedia_url,
+                normalized_name=normalized_name,
+                source="seeded",
             )
 
             await self.topic_repository.create(session, obj_in=topic_create)
@@ -453,6 +526,106 @@ class TopicSeeder:
             error_msg = f"Failed to seed topic {topic_id} ({category_name}): {str(e)}"
             result.errors.append(error_msg)
             logger.error(error_msg)
+
+    @staticmethod
+    def _normalize_name(name: str) -> str:
+        """
+        Normalize a topic name for matching.
+
+        Converts to lowercase, replaces underscores with spaces, and strips
+        whitespace. This enables case-insensitive, format-agnostic matching.
+
+        Parameters
+        ----------
+        name : str
+            The name to normalize.
+
+        Returns
+        -------
+        str
+            Normalized name (lowercase, no underscores).
+
+        Examples
+        --------
+        >>> TopicSeeder._normalize_name("Hip_hop_music")
+        'hip hop music'
+        >>> TopicSeeder._normalize_name("TV Shows")
+        'tv shows'
+        """
+        return name.lower().replace("_", " ").strip()
+
+    async def _delete_all_aliases(self, session: AsyncSession) -> int:
+        """
+        Delete all topic aliases from the database.
+
+        This is used in force mode to clear existing aliases before re-seeding.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            SQLAlchemy async session.
+
+        Returns
+        -------
+        int
+            Number of aliases deleted.
+        """
+        alias_delete = delete(TopicAliasDB)
+        result = await session.execute(alias_delete)
+        await session.flush()
+        deleted_count = result.rowcount
+        logger.info(f"Deleted {deleted_count} existing topic aliases")
+        return deleted_count
+
+    async def _seed_aliases(
+        self,
+        session: AsyncSession,
+        result: TopicSeedResult,
+    ) -> None:
+        """
+        Seed known topic aliases for spelling variations and synonyms.
+
+        This implements Option 4's alias system for handling:
+        - British vs American spelling (Humour vs Humor)
+        - Wikipedia redirects (Television_program vs TV shows)
+        - Synonyms (Soccer vs Football)
+
+        Parameters
+        ----------
+        session : AsyncSession
+            SQLAlchemy async session.
+        result : TopicSeedResult
+            Result object to update with counts.
+        """
+        logger.info(f"Seeding {len(self.KNOWN_ALIASES)} known topic aliases...")
+
+        for alias, (topic_id, alias_type) in self.KNOWN_ALIASES.items():
+            try:
+                # Check if alias already exists
+                existing = await session.execute(
+                    select(TopicAliasDB).where(TopicAliasDB.alias == alias)
+                )
+                if existing.scalar_one_or_none():
+                    result.aliases_skipped += 1
+                    logger.debug(f"Alias already exists, skipping: {alias}")
+                    continue
+
+                # Create the alias
+                alias_record = TopicAliasDB(
+                    alias=alias,
+                    topic_id=topic_id,
+                    alias_type=alias_type,
+                )
+                session.add(alias_record)
+                result.aliases_seeded += 1
+                logger.debug(f"Created alias: {alias} -> {topic_id} ({alias_type})")
+
+            except Exception as e:
+                error_msg = f"Failed to seed alias {alias}: {str(e)}"
+                result.errors.append(error_msg)
+                logger.error(error_msg)
+
+        await session.flush()
 
     async def get_topic_count(self, session: AsyncSession) -> int:
         """
@@ -513,7 +686,9 @@ class TopicSeeder:
         return cls.get_expected_topic_count() - cls.get_parent_count()
 
     @classmethod
-    def get_topic_by_id(cls, topic_id: str) -> Optional[tuple[str, Optional[str]]]:
+    def get_topic_by_id(
+        cls, topic_id: str
+    ) -> Optional[tuple[str, Optional[str], Optional[str]]]:
         """
         Get topic information by ID.
 
@@ -524,8 +699,8 @@ class TopicSeeder:
 
         Returns
         -------
-        Optional[tuple[str, Optional[str]]]
-            Tuple of (category_name, parent_topic_id) or None if not found.
+        Optional[tuple[str, Optional[str], Optional[str]]]
+            Tuple of (category_name, parent_topic_id, wikipedia_slug) or None if not found.
         """
         return cls.YOUTUBE_TOPICS.get(topic_id)
 
@@ -546,7 +721,7 @@ class TopicSeeder:
         """
         return [
             (topic_id, name)
-            for topic_id, (name, parent_id) in cls.YOUTUBE_TOPICS.items()
+            for topic_id, (name, parent_id, _) in cls.YOUTUBE_TOPICS.items()
             if parent_id == parent_topic_id
         ]
 

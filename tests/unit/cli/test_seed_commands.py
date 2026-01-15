@@ -55,7 +55,7 @@ class TestTopicsCommandDryRun:
         mock_seeder_class.get_parent_count.return_value = 7
         mock_seeder_class.get_child_count.return_value = 51
         mock_seeder_class.PARENT_TOPIC_IDS = {"/m/04rlf"}  # Music only for simplicity
-        mock_seeder_class.get_topic_by_id.return_value = ("Music", None)
+        mock_seeder_class.get_topic_by_id.return_value = ("Music", None, "Music")
         mock_seeder_class.get_topics_by_parent.return_value = [
             ("/m/03_d0", "Jazz")
         ]

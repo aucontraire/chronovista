@@ -307,6 +307,97 @@ class AuthenticationError(ChronovistaError):
         super().__init__(message)
 
 
+class ChannelEnrichmentError(ChronovistaError):
+    """
+    Exception raised for channel-specific enrichment failures.
+
+    This exception is raised when channel enrichment fails for a specific
+    channel, such as when the channel is not found on YouTube, access is
+    forbidden, or channel data is incomplete.
+
+    Attributes
+    ----------
+    message : str
+        Human-readable error message.
+    channel_id : str | None
+        The channel ID that caused the error.
+    error_reason : str | None
+        The specific error reason (e.g., "channelNotFound", "forbidden").
+
+    Examples
+    --------
+    >>> try:
+    ...     await enrichment_service.enrich_channel(channel_id)
+    ... except ChannelEnrichmentError as e:
+    ...     if e.error_reason == "channelNotFound":
+    ...         print(f"Channel {e.channel_id} not found on YouTube")
+    """
+
+    def __init__(
+        self,
+        message: str = "Channel enrichment failed",
+        channel_id: str | None = None,
+        error_reason: str | None = None,
+    ) -> None:
+        """
+        Initialize ChannelEnrichmentError.
+
+        Parameters
+        ----------
+        message : str, optional
+            Human-readable error message (default: "Channel enrichment failed").
+        channel_id : str | None, optional
+            The channel ID that caused the error (default: None).
+        error_reason : str | None, optional
+            The specific error reason (default: None).
+        """
+        self.channel_id: str | None = channel_id
+        self.error_reason: str | None = error_reason
+        super().__init__(message)
+
+
+class LockAcquisitionError(ChronovistaError):
+    """
+    Exception raised when lock acquisition fails.
+
+    This exception is raised when another enrichment process is already
+    running and holds the advisory lock, preventing concurrent execution.
+
+    Attributes
+    ----------
+    message : str
+        Human-readable error message.
+    lock_holder_pid : int | None
+        The PID of the process holding the lock, if available.
+
+    Examples
+    --------
+    >>> try:
+    ...     await enrichment_service.acquire_lock()
+    ... except LockAcquisitionError as e:
+    ...     print(f"Lock held by PID: {e.lock_holder_pid}")
+    ...     raise typer.Exit(4)
+    """
+
+    def __init__(
+        self,
+        message: str = "Failed to acquire enrichment lock",
+        lock_holder_pid: int | None = None,
+    ) -> None:
+        """
+        Initialize LockAcquisitionError.
+
+        Parameters
+        ----------
+        message : str, optional
+            Human-readable error message (default: "Failed to acquire enrichment lock").
+        lock_holder_pid : int | None, optional
+            The PID of the process holding the lock (default: None).
+        """
+        self.lock_holder_pid: int | None = lock_holder_pid
+        super().__init__(message)
+
+
 class ValidationError(ChronovistaError):
     """
     Exception raised for data validation failures.
@@ -412,6 +503,7 @@ EXIT_CODE_SUCCESS = 0
 EXIT_CODE_GENERAL_ERROR = 1
 EXIT_CODE_INVALID_ARGS = 2
 EXIT_CODE_QUOTA_EXCEEDED = 3
-EXIT_CODE_PREREQUISITES_MISSING = 4
+EXIT_CODE_PREREQUISITES_MISSING = 4  # Also used for lock acquisition failure
 EXIT_CODE_AUTHENTICATION_FAILED = 5
+EXIT_CODE_LOCK_HELD = 4  # Alias for prerequisites - another process is running
 EXIT_CODE_INTERRUPTED = 130  # Standard Unix signal interrupt exit code

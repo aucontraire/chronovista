@@ -3,6 +3,10 @@ Playlist membership seeder - creates playlist-video relationships from takeout d
 
 This seeder handles the critical gap in playlist seeding by creating the actual
 playlist-video relationships that establish playlist membership with proper ordering.
+
+NOTE: This seeder ONLY uses real YouTube IDs from the Takeout data.
+- Videos not in the database are created as placeholders with channel_id=None
+- No fake channel IDs are ever generated
 """
 
 from __future__ import annotations
@@ -14,12 +18,9 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...models.channel import ChannelCreate
-from ...models.enums import LanguageCode
 from ...models.playlist_membership import PlaylistMembershipCreate
 from ...models.takeout.takeout_data import TakeoutData
 from ...models.video import VideoCreate
-from ...repositories.channel_repository import ChannelRepository
 from ...repositories.playlist_membership_repository import PlaylistMembershipRepository
 from ...repositories.playlist_repository import PlaylistRepository
 from ...repositories.video_repository import VideoRepository
@@ -35,6 +36,8 @@ class PlaylistMembershipSeeder(BaseSeeder):
     Creates the many-to-many relationships between playlists and videos,
     including position tracking and handling of missing videos through
     placeholder creation.
+
+    NOTE: Placeholder videos are created with channel_id=None (no fake IDs).
     """
 
     def __init__(self) -> None:
@@ -43,7 +46,6 @@ class PlaylistMembershipSeeder(BaseSeeder):
         self.membership_repo = PlaylistMembershipRepository()
         self.video_repo = VideoRepository()
         self.playlist_repo = PlaylistRepository()
-        self.channel_repo = ChannelRepository()
 
     def get_data_type(self) -> str:
         return "playlist_memberships"
@@ -206,24 +208,22 @@ class PlaylistMembershipSeeder(BaseSeeder):
         or not yet processed), we create a placeholder entry to maintain referential
         integrity while marking it as potentially deleted.
 
+        NOTE: We use channel_id=None for placeholder videos - NO fake channel IDs.
+        The channel_name_hint field can be used for future resolution via YouTube API.
+
         Args:
             session: Database session
             video_id: YouTube video ID to create placeholder for
         """
         try:
-            # Generate placeholder channel ID for unknown videos
-            channel_id = self._generate_placeholder_channel_id(video_id)
-
-            # Ensure placeholder channel exists
-            await self._ensure_placeholder_channel_exists(session, channel_id)
-
-            # Create placeholder video
+            # Create placeholder video with channel_id=None
             # NOTE: deleted_flag=False because we can't know if video is deleted
             # just from playlist membership. Only API verification can determine this.
             # See docs/takeout-data-quality.md for full explanation.
             video_create = VideoCreate(
                 video_id=video_id,
-                channel_id=channel_id,
+                channel_id=None,  # No fake channel IDs - use None
+                channel_name_hint=None,  # Unknown channel - will be resolved via API
                 title=f"[Placeholder] Video {video_id}",
                 description="Placeholder video created during playlist import - original may be deleted or private",
                 upload_date=datetime.now(timezone.utc),
@@ -236,53 +236,4 @@ class PlaylistMembershipSeeder(BaseSeeder):
 
         except Exception as e:
             logger.error(f"Failed to create placeholder video {video_id}: {e}")
-            raise
-
-    def _generate_placeholder_channel_id(self, video_id: str) -> str:
-        """
-        Generate placeholder channel ID for unknown videos.
-
-        Args:
-            video_id: Video ID to generate channel for
-
-        Returns:
-            Valid 24-character YouTube channel ID starting with 'UC'
-        """
-        hash_suffix = hashlib.md5(f"unknown_{video_id}".encode()).hexdigest()[:22]
-        return f"UC{hash_suffix}"
-
-    async def _ensure_placeholder_channel_exists(
-        self, session: AsyncSession, channel_id: str
-    ) -> None:
-        """
-        Ensure placeholder channel exists for unknown videos.
-
-        Args:
-            session: Database session
-            channel_id: Channel ID to create if missing
-        """
-        try:
-            # Check if channel already exists
-            existing_channel = await self.channel_repo.get_by_channel_id(
-                session, channel_id
-            )
-
-            if not existing_channel:
-                # Create placeholder channel
-                channel_create = ChannelCreate(
-                    channel_id=channel_id,
-                    title="[Placeholder] Unknown Channel",
-                    description="Placeholder channel created for videos found in playlists",
-                    default_language=LanguageCode.ENGLISH,
-                    country=None,
-                    subscriber_count=0,
-                    video_count=0,
-                    thumbnail_url=None,
-                )
-
-                await self.channel_repo.create(session, obj_in=channel_create)
-                logger.debug(f"Created placeholder channel {channel_id}")
-
-        except Exception as e:
-            logger.error(f"Failed to ensure placeholder channel {channel_id}: {e}")
             raise

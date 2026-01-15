@@ -1227,8 +1227,8 @@ def enrich_channels(
                 status = await service.get_channel_enrichment_status(session)
                 _render_channel_status(
                     total_channels=status["total_channels"],
-                    enriched=status["enriched_channels"],
-                    unenriched=status["unenriched_channels"],
+                    enriched=status["enriched"],
+                    unenriched=status["needs_enrichment"],
                 )
                 console.print()
 

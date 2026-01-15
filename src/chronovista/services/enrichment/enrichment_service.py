@@ -2083,14 +2083,19 @@ class EnrichmentService:
         self, session: AsyncSession, url: str
     ) -> str | None:
         """
-        Match a Wikipedia URL to a pre-seeded topic category.
+        Match a Wikipedia URL to a topic category using 4-stage resolution.
 
-        Implements the 5-step matching algorithm per FR-036:
-        1. Validate URL format per FR-034
-        2. Extract and normalize topic name
-        3. Query topic_categories with case-insensitive match on category_name
-        4. Fallback to match with underscores replaced by spaces
-        5. Fallback to URL-decoded topic name
+        Implements Option 4 (Hybrid Dynamic-Seeded) matching algorithm:
+        1. Stage 1: Match by wikipedia_url (exact match) - fastest, most accurate
+        2. Stage 2: Match by normalized_name (lowercase, no underscores)
+        3. Stage 3: Match by alias (from topic_aliases table)
+        4. Stage 4: Dynamic topic creation (for unknown Wikipedia URLs)
+
+        This approach handles:
+        - Known seeded topics (fast lookup by wikipedia_url)
+        - Spelling variations (Humour→Humor via aliases)
+        - Regional variations (Television_program→TV shows via aliases)
+        - Unknown topics (dynamically created and stored)
 
         Parameters
         ----------
@@ -2102,64 +2107,80 @@ class EnrichmentService:
         Returns
         -------
         str | None
-            The matched topic_id (Freebase ID like /m/04rlf) or None if no match.
+            The matched topic_id (Freebase ID like /m/04rlf or dynamic ID) or None.
         """
+        from chronovista.db.models import TopicAlias as TopicAliasDB
         from chronovista.db.models import TopicCategory as TopicCategoryDB
 
-        # T077, T082: Parse Wikipedia URL
+        # Parse Wikipedia URL
         parsed = self._parse_wikipedia_url(url)
         if parsed is None:
             return None
 
         lang, raw_topic_name = parsed
 
-        # T077: Only process en.wikipedia.org URLs; skip non-English with warning
+        # Only process en.wikipedia.org URLs; skip non-English with warning
         if lang != "en":
             logger.warning(f"Skipping non-English Wikipedia URL (lang={lang}): {url}")
             return None
 
-        # T078: 5-step matching algorithm
-        # Step 1: URL format already validated above
-
-        # Step 2: Extract and normalize topic name
         # URL-decode the topic name (handles %20, %26, etc.)
         decoded_topic_name = unquote(raw_topic_name)
 
-        # Step 3: Exact match on category_name (case-insensitive)
-        # Also try with underscores converted to spaces
-        topic_with_spaces = decoded_topic_name.replace("_", " ")
-
-        # Query for matching topic
-        # Try multiple variations in order of preference
-        variations = [
-            decoded_topic_name,  # Original (with underscores if present)
-            topic_with_spaces,  # Underscores replaced with spaces
-            decoded_topic_name.lower(),  # Lowercase original
-            topic_with_spaces.lower(),  # Lowercase with spaces
-        ]
-
-        for variation in variations:
-            # Case-insensitive search using ilike
-            # Order by topic_id to prefer Freebase IDs (/m/...) over numeric IDs
-            # Freebase IDs start with '/' which sorts before digits
-            query = (
-                select(TopicCategoryDB.topic_id)
-                .where(TopicCategoryDB.category_name.ilike(variation))
-                .order_by(TopicCategoryDB.topic_id)
-                .limit(1)
-            )
-            result = await session.execute(query)
-            row = result.first()
-            if row:
-                topic_id: str = row[0]
-                logger.debug(f"Matched topic URL '{url}' to topic_id '{topic_id}'")
-                return topic_id
-
-        # T081: Log warning and skip unrecognized topics
-        logger.warning(
-            f"Unrecognized topic URL, skipping (no matching pre-seeded category): {url}"
+        # ==================================================================
+        # Stage 1: Match by wikipedia_url (exact match - fastest)
+        # ==================================================================
+        query = (
+            select(TopicCategoryDB.topic_id)
+            .where(TopicCategoryDB.wikipedia_url == url)
+            .limit(1)
         )
-        return None
+        result = await session.execute(query)
+        row = result.first()
+        if row:
+            topic_id: str = row[0]
+            logger.debug(f"Stage 1: Matched topic URL '{url}' by wikipedia_url to '{topic_id}'")
+            return topic_id
+
+        # ==================================================================
+        # Stage 2: Match by normalized_name (lowercase, no underscores)
+        # ==================================================================
+        normalized_name = decoded_topic_name.lower().replace("_", " ").strip()
+        query = (
+            select(TopicCategoryDB.topic_id)
+            .where(TopicCategoryDB.normalized_name == normalized_name)
+            .order_by(TopicCategoryDB.topic_id)  # Prefer Freebase IDs (/m/...)
+            .limit(1)
+        )
+        result = await session.execute(query)
+        row = result.first()
+        if row:
+            topic_id = row[0]
+            logger.debug(f"Stage 2: Matched topic URL '{url}' by normalized_name to '{topic_id}'")
+            return topic_id
+
+        # ==================================================================
+        # Stage 3: Match by alias (from topic_aliases table)
+        # ==================================================================
+        # Try the raw topic name as an alias (e.g., "Humour", "Television_program")
+        query = (
+            select(TopicAliasDB.topic_id)
+            .where(TopicAliasDB.alias == decoded_topic_name)
+            .limit(1)
+        )
+        result = await session.execute(query)
+        row = result.first()
+        if row:
+            topic_id = row[0]
+            logger.debug(
+                f"Stage 3: Matched topic URL '{url}' by alias '{decoded_topic_name}' to '{topic_id}'"
+            )
+            return topic_id
+
+        # ==================================================================
+        # Stage 4: Dynamic topic creation
+        # ==================================================================
+        return await self._create_dynamic_topic(session, url, decoded_topic_name)
 
     def _parse_wikipedia_url(self, url: str) -> tuple[str, str] | None:
         """
@@ -2196,6 +2217,82 @@ class EnrichmentService:
         topic_name = match.group(2)
 
         return (language, topic_name)
+
+    async def _create_dynamic_topic(
+        self, session: AsyncSession, url: str, topic_name: str
+    ) -> str | None:
+        """
+        Dynamically create a new topic from an unrecognized Wikipedia URL.
+
+        Implements Stage 4 of Option 4 (Hybrid Dynamic-Seeded) matching:
+        - Creates a new topic_category record with source='dynamic'
+        - Generates a unique topic_id based on Wikipedia slug
+        - Sets wikipedia_url for future direct lookups
+        - Returns the new topic_id for immediate use
+
+        This approach allows the system to handle any topic YouTube returns,
+        not just the ~55 pre-seeded ones. Dynamic topics are marked with
+        source='dynamic' and can be reviewed/mapped to seeded topics later.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session for operations.
+        url : str
+            Full Wikipedia URL (e.g., https://en.wikipedia.org/wiki/Politics)
+        topic_name : str
+            Decoded topic name from URL (e.g., "Politics", "Humour")
+
+        Returns
+        -------
+        str | None
+            The newly created topic_id or None if creation failed.
+        """
+        from chronovista.db.models import TopicCategory as TopicCategoryDB
+
+        # Generate a unique topic_id for dynamic topics
+        # Use "wiki_" prefix to distinguish from Freebase IDs (/m/...)
+        # Note: Using underscore not colon to pass TopicId validation
+        topic_id = f"wiki_{topic_name}"
+
+        # Check if this dynamic topic already exists (race condition protection)
+        existing = await session.execute(
+            select(TopicCategoryDB.topic_id).where(
+                TopicCategoryDB.topic_id == topic_id
+            )
+        )
+        if existing.first():
+            logger.debug(f"Stage 4: Found existing dynamic topic '{topic_id}' for URL '{url}'")
+            return topic_id
+
+        try:
+            # Create the dynamic topic
+            # Human-readable name: replace underscores with spaces
+            category_name = topic_name.replace("_", " ")
+            normalized_name = category_name.lower().strip()
+
+            dynamic_topic = TopicCategoryDB(
+                topic_id=topic_id,
+                category_name=category_name,
+                parent_topic_id=None,  # Unknown hierarchy - can be set later
+                topic_type="youtube",  # Still a YouTube topic category
+                wikipedia_url=url,
+                normalized_name=normalized_name,
+                source="dynamic",
+            )
+            session.add(dynamic_topic)
+            await session.flush()
+
+            logger.info(
+                f"Stage 4: Created dynamic topic '{topic_id}' for URL '{url}'"
+            )
+            return topic_id
+
+        except Exception as e:
+            logger.warning(
+                f"Stage 4: Failed to create dynamic topic for URL '{url}': {e}"
+            )
+            return None
 
     async def enrich_categories(
         self, session: AsyncSession, video_id: str, category_id: str | None

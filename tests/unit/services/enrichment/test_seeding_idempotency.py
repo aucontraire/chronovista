@@ -67,18 +67,24 @@ class TestTopicSeederIdempotency:
         assert result.deleted == 0
 
     async def test_force_flag_deletes_all_then_creates_all(self) -> None:
-        """Test that force=True deletes all topics then creates all."""
+        """Test that force=True deletes all topics and aliases, then creates all."""
         mock_repo = AsyncMock(spec=TopicCategoryRepository)
         mock_session = AsyncMock()
 
-        # Mock deletion
+        # Mock deletion - now includes alias deletion first
+        delete_result_aliases = MagicMock()
+        delete_result_aliases.rowcount = 20  # Aliases deleted
         delete_result_child = MagicMock()
-        delete_result_child.rowcount = 51
+        delete_result_child.rowcount = 51  # Child topics deleted
         delete_result_parent = MagicMock()
-        delete_result_parent.rowcount = 7
+        delete_result_parent.rowcount = 7  # Parent topics deleted
 
         mock_session.execute = AsyncMock(
-            side_effect=[delete_result_child, delete_result_parent]
+            side_effect=[
+                delete_result_aliases,  # Alias deletion
+                delete_result_child,  # Child topic deletion
+                delete_result_parent,  # Parent topic deletion
+            ]
         )
 
         # Mock creation
@@ -477,7 +483,7 @@ class TestSC015IdempotencyVerification:
     async def test_topic_seeder_preserves_parent_child_relationships(self) -> None:
         """Test that TopicSeeder preserves parent-child relationships."""
         # All child topics should have valid parent references
-        for topic_id, (name, parent_id) in TopicSeeder.YOUTUBE_TOPICS.items():
+        for topic_id, (name, parent_id, wiki_slug) in TopicSeeder.YOUTUBE_TOPICS.items():
             if parent_id is not None:
                 # Parent must exist in the topics dict
                 assert parent_id in TopicSeeder.YOUTUBE_TOPICS

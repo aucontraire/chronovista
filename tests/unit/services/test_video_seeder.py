@@ -560,6 +560,7 @@ class TestVideoSeederEdgeCases:
         video_create = seeder._transform_entry_to_video(watch_entry)
 
         # Should generate a channel ID or handle gracefully
+        assert video_create.channel_id is not None
         assert video_create.channel_id.startswith("UC")
         assert len(video_create.channel_id) == 24
 

@@ -74,12 +74,12 @@ class TestTopicSeederConstants:
     def test_parent_topics_have_no_parent(self) -> None:
         """Test that all parent topics have parent_id=None."""
         for topic_id in TopicSeeder.PARENT_TOPIC_IDS:
-            _, parent_id = TopicSeeder.YOUTUBE_TOPICS[topic_id]
+            name, parent_id, wiki_slug = TopicSeeder.YOUTUBE_TOPICS[topic_id]
             assert parent_id is None, f"Parent topic {topic_id} should have no parent"
 
     def test_child_topics_have_valid_parent(self) -> None:
         """Test that all child topics reference valid parent IDs."""
-        for topic_id, (_, parent_id) in TopicSeeder.YOUTUBE_TOPICS.items():
+        for topic_id, (name, parent_id, wiki_slug) in TopicSeeder.YOUTUBE_TOPICS.items():
             if parent_id is not None:  # Child topic
                 assert parent_id in TopicSeeder.YOUTUBE_TOPICS, \
                     f"Child topic {topic_id} references non-existent parent {parent_id}"
@@ -88,7 +88,7 @@ class TestTopicSeederConstants:
 
     def test_no_duplicate_topic_names(self) -> None:
         """Test that topic names are unique across all topics."""
-        topic_names = [name for name, _ in TopicSeeder.YOUTUBE_TOPICS.values()]
+        topic_names = [name for name, parent_id, wiki_slug in TopicSeeder.YOUTUBE_TOPICS.values()]
         assert len(topic_names) == len(set(topic_names)), "Topic names should be unique"
 
     def test_get_topic_by_id(self) -> None:
@@ -98,12 +98,14 @@ class TestTopicSeederConstants:
         assert music_info is not None
         assert music_info[0] == "Music"
         assert music_info[1] is None  # No parent
+        assert music_info[2] == "Music"  # Wikipedia slug
 
         # Test child topic
         jazz_info = TopicSeeder.get_topic_by_id("/m/03_d0")
         assert jazz_info is not None
         assert jazz_info[0] == "Jazz"
         assert jazz_info[1] == "/m/04rlf"  # Parent is Music
+        assert jazz_info[2] == "Jazz"  # Wikipedia slug
 
         # Test non-existent topic
         invalid_info = TopicSeeder.get_topic_by_id("/m/invalid")

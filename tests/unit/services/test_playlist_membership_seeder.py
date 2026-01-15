@@ -63,9 +63,6 @@ class TestPlaylistMembershipSeederSeeding:
         seeder.video_repo.create = AsyncMock()
         seeder.playlist_repo = Mock(spec=PlaylistRepository)
         seeder.playlist_repo.get_by_playlist_id = AsyncMock()
-        seeder.channel_repo = Mock(spec=ChannelRepository)
-        seeder.channel_repo.get_by_channel_id = AsyncMock()
-        seeder.channel_repo.create = AsyncMock()
         return seeder
 
     @pytest.fixture
@@ -545,9 +542,6 @@ class TestPlaylistMembershipSeederEdgeCases:
         seeder.video_repo.get_by_video_id = AsyncMock()
         seeder.playlist_repo = Mock(spec=PlaylistRepository)
         seeder.playlist_repo.get_by_playlist_id = AsyncMock()
-        seeder.channel_repo = Mock(spec=ChannelRepository)
-        seeder.channel_repo.get_by_channel_id = AsyncMock()
-        seeder.channel_repo.create = AsyncMock()
         return seeder
 
     @pytest.fixture
@@ -723,9 +717,6 @@ class TestPlaylistMembershipSeederIntegration:
         seeder.video_repo.create = AsyncMock()
         seeder.playlist_repo = Mock(spec=PlaylistRepository)
         seeder.playlist_repo.get_by_playlist_id = AsyncMock()
-        seeder.channel_repo = Mock(spec=ChannelRepository)
-        seeder.channel_repo.get_by_channel_id = AsyncMock()
-        seeder.channel_repo.create = AsyncMock()
         return seeder
 
     @pytest.fixture

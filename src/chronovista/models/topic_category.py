@@ -17,7 +17,7 @@ from .youtube_types import TopicId
 
 
 class TopicCategoryBase(BaseModel):
-    """Base model for topic categories."""
+    """Base model for topic categories with dynamic resolution support."""
 
     topic_id: TopicId = Field(..., description="Unique topic identifier (validated)")
     category_name: str = Field(
@@ -29,6 +29,22 @@ class TopicCategoryBase(BaseModel):
     )
     topic_type: TopicType = Field(
         default=TopicType.YOUTUBE, description="Type of topic: youtube (official) or custom"
+    )
+
+    # Dynamic topic resolution fields (Option 4 implementation)
+    wikipedia_url: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        description="Full Wikipedia URL from YouTube API",
+    )
+    normalized_name: Optional[str] = Field(
+        default=None,
+        max_length=255,
+        description="Lowercase, no underscores for matching",
+    )
+    source: str = Field(
+        default="seeded",
+        description="Topic origin: 'seeded' or 'dynamic'",
     )
 
     # topic_id validation is now handled by TopicId type
@@ -45,6 +61,15 @@ class TopicCategoryBase(BaseModel):
             raise ValueError("Category name cannot exceed 255 characters")
 
         return name
+
+    @field_validator("source")
+    @classmethod
+    def validate_source(cls, v: str) -> str:
+        """Validate source field."""
+        valid_sources = {"seeded", "dynamic"}
+        if v not in valid_sources:
+            raise ValueError(f"Source must be one of: {valid_sources}")
+        return v
 
     # parent_topic_id validation is now handled by Optional[TopicId] type
 

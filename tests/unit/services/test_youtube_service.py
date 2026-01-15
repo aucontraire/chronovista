@@ -1027,7 +1027,7 @@ class TestYouTubeServiceMissingCoverage:
     async def test_get_liked_videos_no_channel_found(
         self, youtube_service, mock_service_client
     ):
-        """Test get_liked_videos when no channel found (line 366)."""
+        """Test get_liked_videos when no channel found raises YouTubeAPIError."""
         youtube_service._service = mock_service_client
 
         # Mock empty channel response
@@ -1036,9 +1036,10 @@ class TestYouTubeServiceMissingCoverage:
         mock_request.execute.return_value = mock_response
         mock_service_client.channels.return_value.list.return_value = mock_request
 
-        # Should return empty list due to exception handling
-        result = await youtube_service.get_liked_videos()
-        assert result == []
+        # Should raise YouTubeAPIError when no channel found
+        with pytest.raises(YouTubeAPIError) as exc_info:
+            await youtube_service.get_liked_videos()
+        assert "No channel found" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_get_liked_videos_no_likes_playlist(
@@ -1133,7 +1134,7 @@ class TestYouTubeServiceMissingCoverage:
     async def test_get_liked_videos_exception_handling(
         self, youtube_service, mock_service_client
     ):
-        """Test get_liked_videos exception handling (lines 404-406)."""
+        """Test get_liked_videos re-raises unexpected exceptions."""
         youtube_service._service = mock_service_client
 
         # Mock exception during channel request
@@ -1141,9 +1142,10 @@ class TestYouTubeServiceMissingCoverage:
         mock_request.execute.side_effect = Exception("Network error")
         mock_service_client.channels.return_value.list.return_value = mock_request
 
-        # Should catch exception and return empty list
-        result = await youtube_service.get_liked_videos()
-        assert result == []
+        # Should re-raise unexpected exceptions (not silently return empty list)
+        with pytest.raises(Exception) as exc_info:
+            await youtube_service.get_liked_videos()
+        assert "Network error" in str(exc_info.value)
 
     def test_close_method(self, youtube_service):
         """Test close method (line 433)."""

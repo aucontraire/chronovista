@@ -588,6 +588,7 @@ class TestValidationEdgeCases:
             comment_count=0,
         )
         assert len(min_video.video_id) == 11
+        assert min_video.channel_id is not None
         assert len(min_video.channel_id) == 24
         assert min_video.duration == 0
         assert min_video.like_count == 0
@@ -600,6 +601,7 @@ class TestValidationEdgeCases:
             view_count=2147483647,  # Large number
         )
         assert len(max_video.video_id) == 11
+        assert max_video.channel_id is not None
         assert len(max_video.channel_id) == 24
         assert max_video.duration == 86400
 

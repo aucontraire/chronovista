@@ -8,7 +8,7 @@ dry-run mode, limit parameter, shutdown handling, error isolation, and field ext
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -75,16 +75,16 @@ def make_channel_response(
         title=title,
         description=description,
         country=country,
-        default_language=default_language,
-        custom_url=custom_url,
-        published_at=datetime.now(timezone.utc),
+        defaultLanguage=default_language,
+        customUrl=custom_url,
+        publishedAt=datetime.now(timezone.utc),
     )
 
     statistics = ChannelStatisticsResponse(
-        subscriber_count=subscriber_count,
-        video_count=video_count,
-        view_count=view_count or 0,
-        hidden_subscriber_count=False,
+        subscriberCount=subscriber_count,
+        videoCount=video_count or 0,
+        viewCount=view_count or 0,
+        hiddenSubscriberCount=False,
     )
 
     return YouTubeChannelResponse(
@@ -255,7 +255,7 @@ class TestExtractChannelUpdate:
             snippet=ChannelSnippet(
                 title="Test Channel",
                 description="Test description",
-                published_at=datetime.now(timezone.utc),
+                publishedAt=datetime.now(timezone.utc),
             ),
             statistics=None,
         )
@@ -543,9 +543,10 @@ class TestChannelEnrichmentErrorHandling:
         mock_channel_repo.get_channels_needing_enrichment.return_value = [mock_channel]
         mock_channel_repo.get.return_value = None  # Channel deleted from DB
 
-        service.youtube_service.get_channel_details = AsyncMock(
-            return_value=[make_channel_response("UCghost123")]
-        )
+        mock_youtube = cast(AsyncMock, service.youtube_service)
+        mock_youtube.get_channel_details.return_value = [
+            make_channel_response("UCghost123")
+        ]
 
         result = await service.enrich_channels(mock_session, verbose=True)
 
@@ -575,12 +576,11 @@ class TestChannelEnrichmentErrorHandling:
         mock_channel_repo.get.side_effect = get_channel
 
         # Both channels found on API
-        service.youtube_service.get_channel_details = AsyncMock(
-            return_value=[
-                make_channel_response("UCfail123"),
-                make_channel_response("UCsuccess456"),
-            ]
-        )
+        mock_youtube = cast(AsyncMock, service.youtube_service)
+        mock_youtube.get_channel_details.return_value = [
+            make_channel_response("UCfail123"),
+            make_channel_response("UCsuccess456"),
+        ]
 
         result = await service.enrich_channels(mock_session)
 

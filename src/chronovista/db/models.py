@@ -346,7 +346,7 @@ class ChannelKeyword(Base):
 
 
 class TopicCategory(Base):
-    """YouTube topic classification system."""
+    """YouTube topic classification system with dynamic resolution support."""
 
     __tablename__ = "topic_categories"
 
@@ -361,6 +361,23 @@ class TopicCategory(Base):
     topic_type: Mapped[str] = mapped_column(
         String(20), default="youtube"
     )  # youtube, custom
+
+    # Dynamic topic resolution fields (Option 4 implementation)
+    wikipedia_url: Mapped[Optional[str]] = mapped_column(
+        String(500), unique=True, nullable=True
+    )  # Full Wikipedia URL from YouTube API
+    normalized_name: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True
+    )  # Lowercase, no underscores for matching
+    source: Mapped[str] = mapped_column(
+        String(20), default="seeded", nullable=False
+    )  # 'seeded' or 'dynamic'
+    last_seen_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )  # Last time seen in API response
+    occurrence_count: Mapped[int] = mapped_column(
+        Integer, default=1
+    )  # How many times seen
 
     # Timestamps
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -381,6 +398,39 @@ class TopicCategory(Base):
     )
     channel_topics: Mapped[list["ChannelTopic"]] = relationship(
         "ChannelTopic", back_populates="topic_category"
+    )
+    aliases: Mapped[list["TopicAlias"]] = relationship(
+        "TopicAlias", back_populates="topic_category", cascade="all, delete-orphan"
+    )
+
+
+class TopicAlias(Base):
+    """Alias mappings for topic name variations (spelling, redirects, synonyms)."""
+
+    __tablename__ = "topic_aliases"
+
+    # Primary key - the alias itself (e.g., "humour")
+    alias: Mapped[str] = mapped_column(String(255), primary_key=True)
+
+    # Foreign key to the canonical topic
+    topic_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("topic_categories.topic_id", ondelete="CASCADE"),
+        nullable=False
+    )
+
+    # Alias type for categorization
+    alias_type: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # 'spelling', 'redirect', 'synonym'
+
+    # Timestamps
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    # Relationship back to topic
+    topic_category: Mapped["TopicCategory"] = relationship(
+        "TopicCategory", back_populates="aliases"
     )
 
 

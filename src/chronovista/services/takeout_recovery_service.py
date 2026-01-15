@@ -9,7 +9,7 @@ with real metadata from historical takeout data.
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -256,13 +256,15 @@ class TakeoutRecoveryService:
 
                 if not options.dry_run:
                     # Build update data based on what's needed
-                    update_fields = {}
+                    update_fields: Dict[str, Any] = {}
 
                     if needs_title_update:
                         update_fields["title"] = recovered.title
 
                     if needs_channel_update:
                         # Verify the channel exists before updating FK
+                        # recovered.channel_id is guaranteed non-None here due to needs_channel_update check
+                        assert recovered.channel_id is not None
                         channel = await self.channel_repository.get(
                             session, recovered.channel_id
                         )

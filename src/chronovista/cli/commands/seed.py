@@ -164,7 +164,7 @@ async def _show_topics_dry_run(seeder: TopicSeeder) -> None:
     for parent_id in TopicSeeder.PARENT_TOPIC_IDS:
         topic_info = TopicSeeder.get_topic_by_id(parent_id)
         if topic_info:
-            category_name, _ = topic_info
+            category_name, _, _ = topic_info
             children = TopicSeeder.get_topics_by_parent(parent_id)
             parent_info.append((parent_id, category_name, len(children)))
 

@@ -18,7 +18,10 @@ from chronovista.services.seeding.channel_seeder import ChannelSeeder
 from tests.factories.id_factory import TestIds, YouTubeIdFactory
 from tests.factories.takeout_data_factory import create_takeout_data
 from tests.factories.takeout_subscription_factory import create_takeout_subscription
-from tests.factories.takeout_watch_entry_factory import create_takeout_watch_entry
+from tests.factories.takeout_watch_entry_factory import (
+    create_minimal_takeout_watch_entry,
+    create_takeout_watch_entry,
+)
 
 # CRITICAL: This line ensures async tests work with coverage
 pytestmark = pytest.mark.asyncio
@@ -203,6 +206,7 @@ class TestChannelSeeder:
         assert channel_create.channel_id == TestIds.TEST_CHANNEL_1
         assert channel_create.title == "Test Channel"
         assert channel_create.description == ""  # Not available in Takeout
+        assert channel_create.is_subscribed is True  # Subscriptions mean user is subscribed
 
     def test_transform_watch_entry_to_channel(self, channel_seeder):
         """Test transforming watch entry to ChannelCreate model."""
@@ -223,8 +227,13 @@ class TestChannelSeeder:
         assert channel_create.description == ""  # Not available in Takeout
 
     async def test_handle_missing_channel_id_in_watch_entry(self, channel_seeder):
-        """Test handling watch entry with missing channel ID."""
-        watch_entry = create_takeout_watch_entry(
+        """Test handling watch entry with missing channel ID.
+
+        Updated behavior (T017-T020): When channel_id is missing, we return None
+        instead of generating fake IDs. Videos will use channel_name_hint instead.
+        """
+        # Use minimal factory which has channel_id=None by default
+        watch_entry = create_minimal_takeout_watch_entry(
             title="Test Video",
             title_url="https://youtube.com/watch?v=abc",
             channel_name="Unknown Channel",
@@ -234,10 +243,8 @@ class TestChannelSeeder:
 
         channel_create = channel_seeder._transform_watch_entry_to_channel(watch_entry)
 
-        # Should generate a valid channel ID
-        assert channel_create.channel_id.startswith("UC")
-        assert len(channel_create.channel_id) == 24
-        assert channel_create.title == "Unknown Channel"
+        # Should return None when channel_id is missing (no fake ID generation)
+        assert channel_create is None
 
     async def test_deduplication_across_sources(
         self, channel_seeder, mock_session, mock_channel_repo

@@ -260,6 +260,7 @@ class ChannelSeeder(BaseSeeder):
             subscriber_count=None,  # Will be enriched via API
             video_count=None,  # Will be enriched via API
             thumbnail_url=None,  # Will be enriched via API
+            is_subscribed=True,  # Subscription data means user is subscribed
         )
 
     def _transform_watch_entry_to_channel(

@@ -12,6 +12,7 @@ from chronovista import __version__
 from chronovista.cli.auth_commands import auth_app
 from chronovista.cli.category_commands import category_app
 from chronovista.cli.commands.enrich import app as enrich_app
+from chronovista.cli.commands.playlist import playlist_app
 from chronovista.cli.commands.seed import seed_app
 from chronovista.cli.commands.takeout import takeout_app
 from chronovista.cli.sync_commands import sync_app
@@ -33,6 +34,7 @@ app.add_typer(
     category_app, name="categories", help="📂 Video category exploration (creator-assigned)"
 )
 app.add_typer(enrich_app, name="enrich", help="🔄 Enrich video metadata from YouTube API")
+app.add_typer(playlist_app, name="playlist", help="📋 Playlist management commands")
 app.add_typer(sync_app, name="sync", help="Data synchronization commands")
 app.add_typer(seed_app, name="seed", help="🌱 Seed reference data into the database")
 app.add_typer(tag_app, name="tags", help="🏷️ Video tag exploration and analytics")

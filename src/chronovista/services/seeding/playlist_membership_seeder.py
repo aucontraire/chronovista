@@ -171,6 +171,8 @@ class PlaylistMembershipSeeder(BaseSeeder):
 
             except Exception as e:
                 logger.error(f"Failed to process playlist {playlist.name}: {e}")
+                # Rollback transaction on failure to maintain consistency
+                await session.rollback()
                 result.failed += len(playlist.videos)
                 result.errors.append(f"Playlist {playlist.name}: {str(e)}")
 
@@ -189,14 +191,16 @@ class PlaylistMembershipSeeder(BaseSeeder):
         """
         Generate playlist ID - must match PlaylistSeeder logic.
 
+        Uses INT_ prefix for internal playlists to distinguish from real YouTube IDs.
+
         Args:
             playlist_name: Name of the playlist
 
         Returns:
-            Valid 30-34 character YouTube playlist ID starting with 'PL'
+            36-character internal playlist ID with INT_ prefix (INT_{32-char MD5 hash})
         """
-        hash_suffix = hashlib.md5(playlist_name.encode()).hexdigest()[:32]
-        return f"PL{hash_suffix}"
+        hash_suffix = hashlib.md5(playlist_name.encode()).hexdigest()  # 32 lowercase hex chars
+        return f"int_{hash_suffix}"  # lowercase to match Pydantic validator normalization
 
     async def _create_placeholder_video(
         self, session: AsyncSession, video_id: str

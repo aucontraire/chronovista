@@ -8,7 +8,7 @@ validation and serialization support.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -19,7 +19,14 @@ from .youtube_types import ChannelId, PlaylistId
 class PlaylistBase(BaseModel):
     """Base model for playlists."""
 
-    playlist_id: PlaylistId = Field(..., description="YouTube playlist ID (validated)")
+    playlist_id: PlaylistId = Field(
+        ..., description="Playlist ID (INT_ internal or PL YouTube)"
+    )
+    youtube_id: Optional[str] = Field(
+        default=None,
+        description="Real YouTube playlist ID (PL prefix only)",
+        pattern=r"^PL[A-Za-z0-9_-]{28,48}$",
+    )
     title: str = Field(..., min_length=1, max_length=255, description="Playlist title")
     description: Optional[str] = Field(default=None, description="Playlist description")
     default_language: Optional[LanguageCode] = Field(
@@ -95,6 +102,11 @@ class PlaylistUpdate(BaseModel):
     description: Optional[str] = None
     default_language: Optional[LanguageCode] = None
     privacy_status: Optional[PrivacyStatus] = None
+    youtube_id: Optional[str] = Field(
+        default=None,
+        description="Link to real YouTube playlist ID",
+        pattern=r"^PL[A-Za-z0-9_-]{28,48}$",
+    )
     video_count: Optional[int] = Field(None, ge=0)
     published_at: Optional[datetime] = None
     deleted_flag: Optional[bool] = None
@@ -191,6 +203,10 @@ class PlaylistSearchFilters(BaseModel):
     )
     updated_before: Optional[datetime] = Field(
         default=None, description="Filter by update date"
+    )
+    linked_status: Optional[Literal["linked", "unlinked", "all"]] = Field(
+        default="all",
+        description="Filter by YouTube ID link status",
     )
 
     model_config = ConfigDict(

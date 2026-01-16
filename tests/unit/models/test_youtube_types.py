@@ -22,12 +22,15 @@ from chronovista.models.youtube_types import (  # Validation functions; Type ali
     create_test_topic_id,
     create_test_user_id,
     create_test_video_id,
+    is_internal_playlist_id,
+    is_youtube_playlist_id,
     validate_caption_id,
     validate_channel_id,
     validate_playlist_id,
     validate_topic_id,
     validate_user_id,
     validate_video_id,
+    validate_youtube_id_format,
 )
 
 
@@ -61,25 +64,25 @@ class TestValidatePlaylistId:
         """Test playlist ID validation with invalid lengths."""
         # Too short
         with pytest.raises(
-            ValueError, match="PlaylistId must be 30-34 characters long"
+            ValueError, match="YouTube PlaylistId must be 30-50 chars"
         ):
             validate_playlist_id("PLshort")
 
         # Too long
-        long_id = "PL" + "x" * 35  # 37 chars
+        long_id = "PL" + "x" * 49  # 51 chars
         with pytest.raises(
-            ValueError, match="PlaylistId must be 30-34 characters long"
+            ValueError, match="YouTube PlaylistId must be 30-50 chars"
         ):
             validate_playlist_id(long_id)
 
     def test_invalid_playlist_id_prefix(self):
         """Test playlist ID validation with wrong prefix."""
-        with pytest.raises(ValueError, match='PlaylistId must start with "PL"'):
+        with pytest.raises(ValueError, match='PlaylistId must start with "INT_" or "PL"'):
             validate_playlist_id(
                 "UCdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK"
             )  # Channel ID format
 
-        with pytest.raises(ValueError, match='PlaylistId must start with "PL"'):
+        with pytest.raises(ValueError, match='PlaylistId must start with "INT_" or "PL"'):
             validate_playlist_id("XLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")  # Wrong prefix
 
     def test_invalid_playlist_id_characters(self):
@@ -693,6 +696,149 @@ class TestPydanticIntegration:
         errors = exc_info.value.errors()
         assert len(errors) == 1
         assert "playlist_id" in str(errors[0])
+
+
+class TestInternalPlaylistIdHelpers:
+    """Tests for INT_ prefix validation and helper functions (T035)."""
+
+    def test_is_internal_playlist_id_true_for_int_prefix(self):
+        """Test is_internal_playlist_id returns True for INT_ prefix."""
+        assert is_internal_playlist_id("int_f7abe60f1234567890abcdef12345678")
+        assert is_internal_playlist_id("INT_F7ABE60F1234567890ABCDEF12345678")
+        assert is_internal_playlist_id("InT_MixedCase1234567890abcdef123456")
+
+    def test_is_internal_playlist_id_false_for_pl_prefix(self):
+        """Test is_internal_playlist_id returns False for PL prefix."""
+        assert not is_internal_playlist_id("PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")
+        assert not is_internal_playlist_id("PLtest_123456_music_xxxxxxxxxx")
+
+    def test_is_internal_playlist_id_false_for_invalid(self):
+        """Test is_internal_playlist_id returns False for invalid inputs."""
+        assert not is_internal_playlist_id("")
+        assert not is_internal_playlist_id(None)
+        assert not is_internal_playlist_id(123)
+        assert not is_internal_playlist_id("random_string")
+
+    def test_is_youtube_playlist_id_true_for_pl_prefix(self):
+        """Test is_youtube_playlist_id returns True for PL prefix."""
+        assert is_youtube_playlist_id("PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")
+        assert is_youtube_playlist_id("PLtest_123456_music_xxxxxxxxxx")
+
+    def test_is_youtube_playlist_id_false_for_int_prefix(self):
+        """Test is_youtube_playlist_id returns False for INT_ prefix."""
+        assert not is_youtube_playlist_id("int_f7abe60f1234567890abcdef12345678")
+        assert not is_youtube_playlist_id("INT_F7ABE60F1234567890ABCDEF12345678")
+
+    def test_is_youtube_playlist_id_false_for_invalid(self):
+        """Test is_youtube_playlist_id returns False for invalid inputs."""
+        assert not is_youtube_playlist_id("")
+        assert not is_youtube_playlist_id(None)
+        assert not is_youtube_playlist_id(123)
+        assert not is_youtube_playlist_id("random_string")
+
+    def test_validate_youtube_id_format_accepts_valid_pl(self):
+        """Test validate_youtube_id_format accepts valid PL IDs."""
+        # Valid PL IDs (30-50 chars)
+        valid_ids = [
+            "PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK",  # 34 chars
+            "PL" + "a" * 28,  # 30 chars (minimum)
+            "PL" + "Z" * 48,  # 50 chars (maximum)
+            "PLtest_123-ABC_xyz-012_padding",  # With hyphens and underscores (30 chars)
+        ]
+        for playlist_id in valid_ids:
+            result = validate_youtube_id_format(playlist_id)
+            assert result == playlist_id
+
+    def test_validate_youtube_id_format_rejects_invalid_prefix(self):
+        """Test validate_youtube_id_format rejects wrong prefix."""
+        with pytest.raises(ValueError, match='must start with "PL"'):
+            validate_youtube_id_format("INT_f7abe60f1234567890abcdef12345678")
+
+        with pytest.raises(ValueError, match='must start with "PL"'):
+            validate_youtube_id_format("UCuAXFkgsw1L7xaCfnd5JJOw")
+
+    def test_validate_youtube_id_format_rejects_invalid_length(self):
+        """Test validate_youtube_id_format rejects wrong length."""
+        # Too short (29 chars)
+        with pytest.raises(ValueError, match="must be 30-50 chars"):
+            validate_youtube_id_format("PL" + "x" * 27)
+
+        # Too long (51 chars)
+        with pytest.raises(ValueError, match="must be 30-50 chars"):
+            validate_youtube_id_format("PL" + "x" * 49)
+
+    def test_validate_youtube_id_format_rejects_invalid_characters(self):
+        """Test validate_youtube_id_format rejects bad characters."""
+        with pytest.raises(ValueError, match="contains invalid characters"):
+            validate_youtube_id_format("PL" + "x" * 28 + "@")
+
+        with pytest.raises(ValueError, match="contains invalid characters"):
+            validate_youtube_id_format("PL" + "x" * 28 + " ")
+
+    def test_validate_playlist_id_accepts_int_prefix(self):
+        """Test PlaylistId validator accepts INT_ prefix (36 chars)."""
+        # Valid INT_ IDs
+        int_id = "int_f7abe60f1234567890abcdef12345678"
+        result = validate_playlist_id(int_id)
+        assert result == int_id
+        assert len(result) == 36
+
+    def test_validate_playlist_id_accepts_pl_prefix(self):
+        """Test PlaylistId validator accepts PL prefix (30-50 chars)."""
+        pl_id = "PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK"
+        result = validate_playlist_id(pl_id)
+        assert result == pl_id
+        assert 30 <= len(result) <= 50
+
+    def test_int_normalization_uppercase_to_lowercase(self):
+        """Test INT_ normalization: uppercase becomes lowercase."""
+        uppercase_int = "INT_F7ABE60F1234567890ABCDEF12345678"
+        result = validate_playlist_id(uppercase_int)
+        assert result == "int_f7abe60f1234567890abcdef12345678"
+        assert result.islower()
+
+    def test_pl_case_preservation(self):
+        """Test PL case preservation: mixed case stays as-is."""
+        mixed_case_pl = "PLaBc123_DeF456_GhI789_JkL012xyz"
+        result = validate_playlist_id(mixed_case_pl)
+        assert result == mixed_case_pl  # Case preserved
+
+    def test_boundary_int_35_chars_rejected(self):
+        """Test boundary: 35-char INT_ ID rejected."""
+        # INT_ (4 chars) + 31 hex chars = 35 chars (should be 36)
+        invalid_int = "INT_" + "a" * 31
+        with pytest.raises(ValueError, match="must be 36 characters"):
+            validate_playlist_id(invalid_int)
+
+    def test_boundary_pl_29_chars_rejected(self):
+        """Test boundary: 29-char PL ID rejected."""
+        invalid_pl = "PL" + "x" * 27  # 29 chars
+        with pytest.raises(ValueError, match="must be 30-50 chars"):
+            validate_playlist_id(invalid_pl)
+
+    def test_boundary_pl_51_chars_rejected(self):
+        """Test boundary: 51-char PL ID rejected."""
+        invalid_pl = "PL" + "x" * 49  # 51 chars
+        with pytest.raises(ValueError, match="must be 30-50 chars"):
+            validate_playlist_id(invalid_pl)
+
+    def test_fail_fast_validation_order_format_first(self):
+        """Test fail-fast: format checked before length."""
+        # Wrong prefix, wrong length - should fail on prefix first
+        with pytest.raises(ValueError, match='must start with "INT_" or "PL"'):
+            validate_playlist_id("XY" + "x" * 10)
+
+    def test_fail_fast_validation_order_length_second(self):
+        """Test fail-fast: length checked before characters."""
+        # Valid prefix (PL), wrong length, invalid chars - should fail on length
+        with pytest.raises(ValueError, match="must be 30-50 chars"):
+            validate_playlist_id("PL@#$%")
+
+    def test_fail_fast_validation_order_characters_last(self):
+        """Test fail-fast: characters checked last."""
+        # Valid prefix, valid length (30 chars), invalid chars
+        with pytest.raises(ValueError, match="contains invalid characters"):
+            validate_playlist_id("PL" + "x" * 27 + "@")
 
 
 class TestEdgeCases:

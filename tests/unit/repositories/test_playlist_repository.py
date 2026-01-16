@@ -772,3 +772,398 @@ class TestPlaylistRepositoryIntegration:
         assert hasattr(repository, "get_playlist_statistics")
         assert hasattr(repository, "bulk_create_playlists")
         assert hasattr(repository, "find_similar_playlists")
+
+
+class TestPlaylistRepositoryYouTubeIdMethods:
+    """Tests for youtube_id storage and repository methods (T036)."""
+
+    @pytest.fixture
+    def repository(self) -> PlaylistRepository:
+        """Create repository instance."""
+        return PlaylistRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> AsyncSession:
+        """Create mock async session."""
+        return AsyncMock(spec=AsyncSession)
+
+    @pytest.fixture
+    def sample_playlist_db(self) -> PlaylistDB:
+        """Create sample database playlist with youtube_id."""
+        return PlaylistDB(
+            playlist_id="int_f7abe60f1234567890abcdef12345678",
+            youtube_id="PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK",
+            title="Test Playlist",
+            description="Test description",
+            default_language="en",
+            privacy_status="public",
+            channel_id="UC_x5XG1OV2P6uZZ5FSM9Ttw",
+            video_count=10,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_by_youtube_id_exists(
+        self,
+        repository: PlaylistRepository,
+        mock_session: AsyncMock,
+        sample_playlist_db: PlaylistDB,
+    ):
+        """Test get_by_youtube_id returns playlist when youtube_id exists."""
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_playlist_db
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.get_by_youtube_id(
+            mock_session, "PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK"
+        )
+
+        assert result == sample_playlist_db
+        assert mock_session.execute.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_get_by_youtube_id_not_exists(
+        self, repository: PlaylistRepository, mock_session: AsyncMock
+    ):
+        """Test get_by_youtube_id returns None when youtube_id doesn't exist."""
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.get_by_youtube_id(
+            mock_session, "PLnonexistent1234567890abcdefgh"
+        )
+
+        assert result is None
+        assert mock_session.execute.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_get_by_youtube_id_invalid_format(
+        self, repository: PlaylistRepository, mock_session: AsyncMock
+    ):
+        """Test get_by_youtube_id raises ValueError for invalid youtube_id format."""
+        # INT_ prefix should be rejected (not a YouTube ID)
+        with pytest.raises(ValueError, match="Invalid YouTube ID format"):
+            await repository.get_by_youtube_id(
+                mock_session, "int_f7abe60f1234567890abcdef12345678"
+            )
+
+        # Too short
+        with pytest.raises(ValueError, match="Invalid YouTube ID format"):
+            await repository.get_by_youtube_id(mock_session, "PLshort")
+
+        # Wrong prefix
+        with pytest.raises(ValueError, match="Invalid YouTube ID format"):
+            await repository.get_by_youtube_id(
+                mock_session, "UCuAXFkgsw1L7xaCfnd5JJOw"
+            )
+
+    @pytest.mark.asyncio
+    async def test_link_youtube_id_success(
+        self,
+        repository: PlaylistRepository,
+        mock_session: AsyncMock,
+        sample_playlist_db: PlaylistDB,
+    ):
+        """Test link_youtube_id successfully links youtube_id to playlist."""
+        # Setup: playlist exists without youtube_id
+        sample_playlist_db.youtube_id = None
+
+        with (
+            patch.object(
+                repository, "get", new_callable=AsyncMock, return_value=sample_playlist_db
+            ) as mock_get,
+        ):
+            # Mock the query for existing linked playlist
+            mock_result = MagicMock()
+            mock_result.scalar_one_or_none.return_value = None
+            mock_session.execute.return_value = mock_result
+
+            result = await repository.link_youtube_id(
+                mock_session,
+                "int_f7abe60f1234567890abcdef12345678",
+                "PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK",
+            )
+
+            assert result.youtube_id == "PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK"
+            mock_session.flush.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_link_youtube_id_already_linked_no_force(
+        self, repository: PlaylistRepository, mock_session: AsyncMock
+    ):
+        """Test link_youtube_id raises exception when youtube_id already linked without force."""
+        target_playlist = PlaylistDB(
+            playlist_id="int_target123456789012345678901234",
+            youtube_id=None,
+            title="Target Playlist",
+            description="",
+            default_language="en",
+            privacy_status="private",
+            channel_id="UC_x5XG1OV2P6uZZ5FSM9Ttw",
+            video_count=5,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        existing_linked = PlaylistDB(
+            playlist_id="int_existing12345678901234567890123",
+            youtube_id="PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK",
+            title="Existing Playlist",
+            description="",
+            default_language="en",
+            privacy_status="private",
+            channel_id="UC_x5XG1OV2P6uZZ5FSM9Ttw",
+            video_count=3,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        with patch.object(
+            repository, "get", new_callable=AsyncMock, return_value=target_playlist
+        ):
+            # Mock query to find existing linked playlist
+            mock_result = MagicMock()
+            mock_result.scalar_one_or_none.return_value = existing_linked
+            mock_session.execute.return_value = mock_result
+
+            with pytest.raises(ValueError, match="already linked to playlist"):
+                await repository.link_youtube_id(
+                    mock_session,
+                    "int_target123456789012345678901234",
+                    "PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK",
+                    force=False,
+                )
+
+    @pytest.mark.asyncio
+    async def test_link_youtube_id_overwrites_with_force(
+        self, repository: PlaylistRepository, mock_session: AsyncMock
+    ):
+        """Test link_youtube_id overwrites existing link when force=True."""
+        target_playlist = PlaylistDB(
+            playlist_id="int_target123456789012345678901234",
+            youtube_id=None,
+            title="Target Playlist",
+            description="",
+            default_language="en",
+            privacy_status="private",
+            channel_id="UC_x5XG1OV2P6uZZ5FSM9Ttw",
+            video_count=5,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        existing_linked = PlaylistDB(
+            playlist_id="int_existing12345678901234567890123",
+            youtube_id="PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK",
+            title="Existing Playlist",
+            description="",
+            default_language="en",
+            privacy_status="private",
+            channel_id="UC_x5XG1OV2P6uZZ5FSM9Ttw",
+            video_count=3,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        with patch.object(
+            repository, "get", new_callable=AsyncMock, return_value=target_playlist
+        ):
+            # Mock query to find existing linked playlist
+            mock_result = MagicMock()
+            mock_result.scalar_one_or_none.return_value = existing_linked
+            mock_session.execute.return_value = mock_result
+
+            result = await repository.link_youtube_id(
+                mock_session,
+                "int_target123456789012345678901234",
+                "PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK",
+                force=True,
+            )
+
+            # Existing playlist should be unlinked
+            assert existing_linked.youtube_id is None
+            # Target playlist should be linked
+            assert result.youtube_id == "PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK"
+            assert mock_session.flush.call_count == 2  # Once for unlink, once for link
+
+    @pytest.mark.asyncio
+    async def test_link_youtube_id_playlist_not_found(
+        self, repository: PlaylistRepository, mock_session: AsyncMock
+    ):
+        """Test link_youtube_id raises ValueError when playlist doesn't exist."""
+        with patch.object(
+            repository, "get", new_callable=AsyncMock, return_value=None
+        ):
+            with pytest.raises(ValueError, match="not found"):
+                await repository.link_youtube_id(
+                    mock_session,
+                    "int_nonexistent1234567890123456789012",
+                    "PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK",
+                )
+
+    @pytest.mark.asyncio
+    async def test_unlink_youtube_id_success(
+        self,
+        repository: PlaylistRepository,
+        mock_session: AsyncMock,
+        sample_playlist_db: PlaylistDB,
+    ):
+        """Test unlink_youtube_id successfully clears youtube_id."""
+        with patch.object(
+            repository, "get", new_callable=AsyncMock, return_value=sample_playlist_db
+        ):
+            result = await repository.unlink_youtube_id(
+                mock_session, "int_f7abe60f1234567890abcdef12345678"
+            )
+
+            assert result.youtube_id is None
+            mock_session.flush.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_unlink_youtube_id_idempotent(
+        self, repository: PlaylistRepository, mock_session: AsyncMock
+    ):
+        """Test unlink_youtube_id works when youtube_id already None (idempotent)."""
+        playlist_without_link = PlaylistDB(
+            playlist_id="int_unlinked12345678901234567890123",
+            youtube_id=None,
+            title="Unlinked Playlist",
+            description="",
+            default_language="en",
+            privacy_status="private",
+            channel_id="UC_x5XG1OV2P6uZZ5FSM9Ttw",
+            video_count=2,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        with patch.object(
+            repository,
+            "get",
+            new_callable=AsyncMock,
+            return_value=playlist_without_link,
+        ):
+            result = await repository.unlink_youtube_id(
+                mock_session, "int_unlinked12345678901234567890123"
+            )
+
+            assert result.youtube_id is None
+            mock_session.flush.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_get_unlinked_playlists(
+        self, repository: PlaylistRepository, mock_session: AsyncMock
+    ):
+        """Test get_unlinked_playlists returns only playlists with youtube_id IS NULL."""
+        unlinked_playlists = [
+            PlaylistDB(
+                playlist_id=f"int_unlinked{i:032d}",
+                youtube_id=None,
+                title=f"Unlinked {i}",
+                description="",
+                default_language="en",
+                privacy_status="private",
+                channel_id="UC_x5XG1OV2P6uZZ5FSM9Ttw",
+                video_count=i,
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            )
+            for i in range(3)
+        ]
+
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = unlinked_playlists
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.get_unlinked_playlists(mock_session, limit=100)
+
+        assert len(result) == 3
+        assert all(playlist.youtube_id is None for playlist in result)
+
+    @pytest.mark.asyncio
+    async def test_get_linked_playlists(
+        self, repository: PlaylistRepository, mock_session: AsyncMock
+    ):
+        """Test get_linked_playlists returns only playlists with youtube_id IS NOT NULL."""
+        linked_playlists = [
+            PlaylistDB(
+                playlist_id=f"int_linked{i:032d}",
+                youtube_id=f"PL{'x' * 28}_{i}",
+                title=f"Linked {i}",
+                description="",
+                default_language="en",
+                privacy_status="public",
+                channel_id="UC_x5XG1OV2P6uZZ5FSM9Ttw",
+                video_count=i + 10,
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            )
+            for i in range(2)
+        ]
+
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = linked_playlists
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.get_linked_playlists(mock_session, limit=100)
+
+        assert len(result) == 2
+        assert all(playlist.youtube_id is not None for playlist in result)
+
+    @pytest.mark.asyncio
+    async def test_get_link_statistics(
+        self, repository: PlaylistRepository, mock_session: AsyncMock
+    ):
+        """Test get_link_statistics returns correct counts."""
+        # Mock total count
+        mock_total_result = MagicMock()
+        mock_total_result.scalar.return_value = 100
+
+        # Mock linked count
+        mock_linked_result = MagicMock()
+        mock_linked_result.scalar.return_value = 35
+
+        mock_session.execute.side_effect = [mock_total_result, mock_linked_result]
+
+        result = await repository.get_link_statistics(mock_session)
+
+        assert result["total_playlists"] == 100
+        assert result["linked_playlists"] == 35
+        assert result["unlinked_playlists"] == 65
+
+    @pytest.mark.asyncio
+    async def test_search_playlists_with_linked_status_filter(
+        self, repository: PlaylistRepository, mock_session: AsyncMock
+    ):
+        """Test search_playlists with linked_status filter."""
+        # Test linked filter
+        filters_linked = PlaylistSearchFilters(linked_status="linked")
+
+        mock_playlists = [MagicMock() for _ in range(2)]
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = mock_playlists
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.search_playlists(mock_session, filters_linked)
+
+        assert len(result) == 2
+        assert mock_session.execute.call_count == 1
+
+        # Test unlinked filter
+        filters_unlinked = PlaylistSearchFilters(linked_status="unlinked")
+
+        mock_session.reset_mock()
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.search_playlists(mock_session, filters_unlinked)
+
+        assert len(result) == 2
+        assert mock_session.execute.call_count == 1

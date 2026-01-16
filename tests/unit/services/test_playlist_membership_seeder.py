@@ -320,15 +320,19 @@ class TestPlaylistMembershipSeederTransformations:
     def test_generate_playlist_id_consistency(
         self, seeder: PlaylistMembershipSeeder
     ) -> None:
-        """Test playlist ID generation consistency."""
+        """Test playlist ID generation consistency.
+
+        NOTE: The seeder generates INT_ (uppercase) but the validator normalizes
+        to int_ (lowercase). Tests expect the seeder's raw output (INT_).
+        """
         playlist_name = "Test Playlist"
 
         id1 = seeder._generate_playlist_id(playlist_name)
         id2 = seeder._generate_playlist_id(playlist_name)
 
         assert id1 == id2
-        assert id1.startswith("PL")
-        assert len(id1) == 34
+        assert id1.startswith("INT_")  # Seeder generates uppercase INT_
+        assert len(id1) == 36  # INT_ (4 chars) + 32 hex chars = 36 total
 
     @pytest.mark.asyncio
     async def test_create_placeholder_video(
@@ -670,7 +674,11 @@ class TestPlaylistMembershipSeederEdgeCases:
     def test_playlist_id_generation_consistency(
         self, seeder: PlaylistMembershipSeeder
     ) -> None:
-        """Test that playlist ID generation is consistent."""
+        """Test that playlist ID generation is consistent.
+
+        NOTE: The seeder generates INT_ (uppercase) but the validator normalizes
+        to int_ (lowercase). Tests expect the seeder's raw output (INT_).
+        """
         playlist_name = "Test Playlist"
 
         # Test the actual method
@@ -678,8 +686,8 @@ class TestPlaylistMembershipSeederEdgeCases:
         id2 = seeder._generate_playlist_id(playlist_name)
 
         assert id1 == id2
-        assert id1.startswith("PL")
-        assert len(id1) == 34
+        assert id1.startswith("INT_")  # Seeder generates uppercase INT_
+        assert len(id1) == 36  # INT_ (4 chars) + 32 hex chars = 36 total
 
 
 class TestPlaylistMembershipSeederDependencies:

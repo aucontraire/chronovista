@@ -34,10 +34,29 @@ from .base_seeder import BaseSeeder, ProgressCallback, SeedResult
 logger = logging.getLogger(__name__)
 
 
-def generate_valid_playlist_id(seed: str) -> str:
-    """Generate a valid 30-34 character YouTube playlist ID starting with 'PL'."""
-    hash_suffix = hashlib.md5(seed.encode()).hexdigest()[:32]
-    return f"PL{hash_suffix}"
+def generate_internal_playlist_id(seed: str) -> str:
+    """
+    Generate internal playlist ID with INT_ prefix (36 chars total).
+
+    This function generates deterministic, idempotent playlist IDs for internally
+    created playlists (e.g., from Google Takeout imports). The INT_ prefix makes
+    these IDs immediately identifiable as internal/synthetic rather than real
+    YouTube playlist IDs.
+
+    Parameters
+    ----------
+    seed : str
+        A string to use as the seed for ID generation. Same seed always
+        produces the same ID (deterministic/idempotent).
+
+    Returns
+    -------
+    str
+        A 36-character ID in format: INT_{32-char lowercase hex MD5 hash}
+        Example: INT_5d41402abc4b2a76b9719d911017c592
+    """
+    hash_suffix = hashlib.md5(seed.encode()).hexdigest()  # 32 lowercase hex chars
+    return f"int_{hash_suffix}"  # lowercase to match Pydantic validator normalization
 
 
 def generate_user_channel_id(user_id: str) -> str:
@@ -71,13 +90,68 @@ class PlaylistSeeder(BaseSeeder):
     def get_data_type(self) -> str:
         return "playlists"
 
+    async def clear_existing_playlists(
+        self, session: AsyncSession, user_channel_id: str
+    ) -> int:
+        """
+        Clear all playlists owned by the user channel.
+
+        This is used during re-seeding to delete existing playlists before
+        importing fresh data with new INT_ IDs. Playlist memberships are
+        automatically deleted via CASCADE.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        user_channel_id : str
+            The user channel ID that owns the playlists
+
+        Returns
+        -------
+        int
+            Number of playlists deleted
+        """
+        try:
+            deleted_count = await self.playlist_repo.delete_by_channel_id(
+                session, user_channel_id
+            )
+            logger.info(
+                f"🗑️ Cleared {deleted_count} existing playlists (memberships cascaded)"
+            )
+            return deleted_count
+        except Exception as e:
+            logger.error(f"Failed to clear existing playlists: {e}")
+            raise
+
     async def seed(
         self,
         session: AsyncSession,
         takeout_data: TakeoutData,
         progress: Optional[ProgressCallback] = None,
+        clear_existing: bool = False,
     ) -> SeedResult:
-        """Seed playlists from takeout data."""
+        """
+        Seed playlists from takeout data.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        takeout_data : TakeoutData
+            Parsed takeout data
+        progress : Optional[ProgressCallback]
+            Progress callback for visual updates
+        clear_existing : bool
+            If True, delete all existing user playlists before seeding.
+            This enables re-seeding with new INT_ IDs. Memberships are
+            automatically deleted via CASCADE.
+
+        Returns
+        -------
+        SeedResult
+            Seeding result with statistics
+        """
         start_time = datetime.now()
         result = SeedResult()
 
@@ -85,11 +159,26 @@ class PlaylistSeeder(BaseSeeder):
             logger.info("📋 No playlists found in takeout data")
             return result
 
-        logger.info(f"📋 Seeding {len(takeout_data.playlists)} playlists...")
-
         # Generate user channel ID for playlist ownership
-        # NOTE: This is a fake ID because Playlist.channel_id is required (see module docstring)
         user_channel_id = generate_user_channel_id(self.user_id)
+
+        # Clear existing playlists if re-seeding
+        if clear_existing:
+            try:
+                deleted_count = await self.clear_existing_playlists(
+                    session, user_channel_id
+                )
+                logger.info(
+                    f"🔄 Re-seed mode: Cleared {deleted_count} playlists "
+                    f"(memberships cascaded automatically)"
+                )
+            except Exception as e:
+                logger.error(f"Failed to clear existing playlists during re-seed: {e}")
+                # Rollback the transaction on failure
+                await session.rollback()
+                raise
+
+        logger.info(f"📋 Seeding {len(takeout_data.playlists)} playlists...")
 
         # Ensure user channel exists (create if necessary)
         if not self._user_channel_created:
@@ -128,6 +217,8 @@ class PlaylistSeeder(BaseSeeder):
 
             except Exception as e:
                 logger.error(f"Failed to process playlist {playlist.name}: {e}")
+                # Rollback batch on failure
+                await session.rollback()
                 result.failed += 1
                 result.errors.append(f"Playlist {playlist.name}: {str(e)}")
 
@@ -149,8 +240,8 @@ class PlaylistSeeder(BaseSeeder):
         self, takeout_playlist: TakeoutPlaylist, user_channel_id: str
     ) -> PlaylistCreate:
         """Transform takeout playlist to PlaylistCreate model."""
-        # Generate valid playlist ID
-        playlist_id = generate_valid_playlist_id(takeout_playlist.name)
+        # Generate internal playlist ID with INT_ prefix
+        playlist_id = generate_internal_playlist_id(takeout_playlist.name)
 
         return PlaylistCreate(
             playlist_id=playlist_id,

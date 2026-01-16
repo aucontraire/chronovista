@@ -7,6 +7,8 @@ with sensible defaults and easy customization.
 
 from __future__ import annotations
 
+import hashlib
+import uuid
 from datetime import datetime, timezone
 from typing import Any, cast
 
@@ -29,9 +31,10 @@ class PlaylistBaseFactory(factory.Factory[PlaylistBase]):
     class Meta:
         model = PlaylistBase
 
-    playlist_id: Any = factory.LazyFunction(
-        lambda: "PLrAXtmRdnEQy3roZQD5TZuDCU5x-X4V8f"
-    )  # Use fixed valid playlist ID
+    playlist_id: Any = factory.LazyAttribute(
+        lambda obj: f"int_{hashlib.md5(str(uuid.uuid4()).encode()).hexdigest()}"
+    )  # Generate int_ prefixed internal playlist ID (36 chars total, normalized to lowercase)
+    youtube_id: Any = None  # Optional YouTube playlist ID (None by default)
     title: Any = Faker("sentence", nb_words=4)
     description: Any = Faker("text", max_nb_chars=200)
     default_language: Any = Faker("random_element", elements=["en", "es", "fr", "de", "ja"])
@@ -73,6 +76,31 @@ class PlaylistFactory(PlaylistBaseFactory):
     created_at: Any = Faker("date_time", tzinfo=timezone.utc)
     updated_at: Any = Faker("date_time", tzinfo=timezone.utc)
 
+    @classmethod
+    def with_youtube_id(cls, youtube_id: str | None = None, **kwargs: Any) -> Playlist:
+        """Create a playlist with a valid YouTube ID.
+
+        Parameters
+        ----------
+        youtube_id : str | None, optional
+            The YouTube playlist ID to use (PL-prefixed, 30-34 chars).
+            If None, generates a valid PL-prefixed ID automatically.
+        **kwargs : Any
+            Additional keyword arguments to pass to the factory.
+
+        Returns
+        -------
+        Playlist
+            A Playlist instance with youtube_id set.
+        """
+        if youtube_id is None:
+            # Generate valid PL-prefixed YouTube playlist ID (34 chars total)
+            youtube_id = f"PL{hashlib.md5(str(uuid.uuid4()).encode()).hexdigest()}"
+
+        result = cls.build(youtube_id=youtube_id, **kwargs)
+        assert isinstance(result, Playlist)
+        return result
+
 
 class PlaylistSearchFiltersFactory(factory.Factory[PlaylistSearchFilters]):
     """Factory for PlaylistSearchFilters models."""
@@ -82,8 +110,8 @@ class PlaylistSearchFiltersFactory(factory.Factory[PlaylistSearchFilters]):
 
     playlist_ids: Any = factory.LazyFunction(
         lambda: [
-            "PLrAXtmRdnEQy3roZQD5TZuDCU5x-X4V8f",
-            "PLs9ACwy3uKTOT2q_test123456789ABC",
+            generate_internal_playlist_id(),
+            generate_internal_playlist_id(),
         ]
     )
     channel_ids: Any = factory.LazyFunction(
@@ -144,6 +172,30 @@ class PlaylistStatisticsFactory(factory.Factory[PlaylistStatistics]):
     )  # 75% have descriptions
 
 
+# Helper functions for ID generation
+def generate_youtube_playlist_id() -> str:
+    """Generate a valid YouTube playlist ID (PL-prefixed, 34 chars total).
+
+    Returns
+    -------
+    str
+        A valid YouTube playlist ID with PL prefix and 32 hex characters.
+    """
+    return f"PL{hashlib.md5(str(uuid.uuid4()).encode()).hexdigest()}"
+
+
+def generate_internal_playlist_id() -> str:
+    """Generate a valid internal playlist ID (int_-prefixed, 36 chars total).
+
+    Returns
+    -------
+    str
+        A valid internal playlist ID with int_ prefix (lowercase) and 32 lowercase hex characters.
+        The lowercase prefix matches the normalization behavior of the validator.
+    """
+    return f"int_{hashlib.md5(str(uuid.uuid4()).encode()).hexdigest()}"
+
+
 # Convenience factory methods
 def create_playlist(**kwargs: Any) -> Playlist:
     """Create a Playlist with keyword arguments."""
@@ -184,13 +236,26 @@ def create_playlist_statistics(**kwargs: Any) -> PlaylistStatistics:
 class PlaylistTestData:
     """Common test data patterns for Playlist models."""
 
-    VALID_PLAYLIST_IDS = [
+    # Internal playlist IDs (int_ prefix, 36 chars - normalized to lowercase)
+    VALID_INTERNAL_PLAYLIST_IDS = [
+        "int_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+        "int_f7abe60f8c123456789abcdef0123456",
+        "int_1234567890abcdef1234567890abcdef",
+        "int_deadbeefcafebabedeadbeefcafebabe",
+        "int_0123456789abcdef0123456789abcdef",
+    ]
+
+    # YouTube playlist IDs (PL prefix, 30-50 chars)
+    VALID_YOUTUBE_PLAYLIST_IDS = [
         "PLrAXtmRdnEQy3roZQD5TZuDCU5x-X4V8f",
         "PLs9ACwy3uKTOT2q9gLKUvyqPOjLXUlAWg",
         "PL8dPuuaLjXtNlUrzyH5r6jN9ulIgZBpdo",
         "PLMYEtPqzjdeev14J_RpAU_RQKyeaROB8T",
         "PLillGF-RfqbY0pq_LLo8BSfP_iDnODx36",
     ]
+
+    # Combined valid playlist IDs (both internal and YouTube)
+    VALID_PLAYLIST_IDS = VALID_INTERNAL_PLAYLIST_IDS + VALID_YOUTUBE_PLAYLIST_IDS
 
     VALID_TITLES = [
         "Learn Python Programming",
@@ -282,9 +347,10 @@ class PlaylistTestData:
 
     @classmethod
     def valid_playlist_data(cls) -> dict[str, Any]:
-        """Get valid playlist data."""
+        """Get valid playlist data with internal ID."""
         return {
-            "playlist_id": cls.VALID_PLAYLIST_IDS[0],
+            "playlist_id": cls.VALID_INTERNAL_PLAYLIST_IDS[0],
+            "youtube_id": None,
             "title": cls.VALID_TITLES[0],
             "description": cls.VALID_DESCRIPTIONS[0],
             "default_language": cls.VALID_LANGUAGE_CODES[0],
@@ -295,18 +361,20 @@ class PlaylistTestData:
 
     @classmethod
     def minimal_playlist_data(cls) -> dict[str, Any]:
-        """Get minimal valid playlist data."""
+        """Get minimal valid playlist data with internal ID."""
         return {
-            "playlist_id": cls.VALID_PLAYLIST_IDS[1],
+            "playlist_id": cls.VALID_INTERNAL_PLAYLIST_IDS[1],
+            "youtube_id": None,
             "title": cls.VALID_TITLES[1],
             "channel_id": cls.VALID_CHANNEL_IDS[1],
         }
 
     @classmethod
     def youtube_playlist_data(cls) -> dict[str, Any]:
-        """Get typical YouTube playlist data."""
+        """Get playlist data linked to a YouTube playlist."""
         return {
-            "playlist_id": "PLrAXtmRdnEQy3roZQD5TZuDCU5x-X4V8f",
+            "playlist_id": cls.VALID_INTERNAL_PLAYLIST_IDS[0],
+            "youtube_id": cls.VALID_YOUTUBE_PLAYLIST_IDS[0],
             "title": "Learn Python Programming - Complete Course",
             "description": "Complete Python programming course from beginner to advanced level with hands-on examples.",
             "default_language": "en",
@@ -317,9 +385,10 @@ class PlaylistTestData:
 
     @classmethod
     def private_playlist_data(cls) -> dict[str, Any]:
-        """Get private playlist data."""
+        """Get private playlist data with internal ID."""
         return {
-            "playlist_id": "PLs9ACwy3uKTOT2q9gLKUvyqPOjLXUlAWg",
+            "playlist_id": cls.VALID_INTERNAL_PLAYLIST_IDS[2],
+            "youtube_id": None,
             "title": "My Private Music Collection",
             "description": "Personal music collection for private listening.",
             "default_language": "en",
@@ -332,7 +401,7 @@ class PlaylistTestData:
     def comprehensive_search_filters_data(cls) -> dict[str, Any]:
         """Get comprehensive search filters data."""
         return {
-            "playlist_ids": cls.VALID_PLAYLIST_IDS[:2],
+            "playlist_ids": cls.VALID_INTERNAL_PLAYLIST_IDS[:2],
             "channel_ids": cls.VALID_CHANNEL_IDS[:2],
             "title_query": "python",
             "description_query": "tutorial",
@@ -349,31 +418,35 @@ class PlaylistTestData:
 
     @classmethod
     def multilingual_playlists_data(cls) -> list[dict[str, Any]]:
-        """Get multilingual playlist test data."""
+        """Get multilingual playlist test data with internal IDs."""
         return [
             {
-                "playlist_id": "PLrAXtmRdnEQy3roZQD5TZuDCU5x-X4V8f",
+                "playlist_id": cls.VALID_INTERNAL_PLAYLIST_IDS[0],
+                "youtube_id": None,
                 "title": "Learn Python Programming",
                 "description": "Complete Python course",
                 "default_language": "en",
                 "privacy_status": "public",
             },
             {
-                "playlist_id": "PLs9ACwy3uKTOT2q9gLKUvyqPOjLXUlAWg",
+                "playlist_id": cls.VALID_INTERNAL_PLAYLIST_IDS[1],
+                "youtube_id": None,
                 "title": "Aprende Programación Python",
                 "description": "Curso completo de Python",
                 "default_language": "es",
                 "privacy_status": "public",
             },
             {
-                "playlist_id": "PL8dPuuaLjXtNlUrzyH5r6jN9ulIgZBpdo",
+                "playlist_id": cls.VALID_INTERNAL_PLAYLIST_IDS[2],
+                "youtube_id": None,
                 "title": "Apprendre la Programmation Python",
                 "description": "Cours complet de Python",
                 "default_language": "fr",
                 "privacy_status": "public",
             },
             {
-                "playlist_id": "PLMYEtPqzjdeev14J_RpAU_RQKyeaROB8T",
+                "playlist_id": cls.VALID_INTERNAL_PLAYLIST_IDS[3],
+                "youtube_id": None,
                 "title": "Pythonプログラミング学習",
                 "description": "Python完全コース",
                 "default_language": "ja",

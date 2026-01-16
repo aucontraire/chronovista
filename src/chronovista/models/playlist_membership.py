@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Optional
 
 from pydantic import BaseModel, Field
 
+from .youtube_types import PlaylistId, VideoId
+
 if TYPE_CHECKING:
     from .playlist import Playlist
     from .video import Video
@@ -20,16 +22,12 @@ if TYPE_CHECKING:
 class PlaylistMembershipBase(BaseModel):
     """Base playlist membership model with shared fields."""
 
-    playlist_id: str = Field(
+    playlist_id: PlaylistId = Field(
         ...,
-        min_length=30,
-        max_length=34,
-        description="YouTube playlist ID (30-34 characters, starts with 'PL')",
+        description="Playlist ID (INT_ internal 36 chars or PL YouTube 30-50 chars)",
     )
-    video_id: str = Field(
+    video_id: VideoId = Field(
         ...,
-        min_length=11,
-        max_length=20,
         description="YouTube video ID (11 characters)",
     )
     position: int = Field(

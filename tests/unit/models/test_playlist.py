@@ -77,12 +77,16 @@ class TestPlaylistBase:
         assert playlist.video_count == 0
 
     def test_factory_generates_valid_defaults(self):
-        """Test that factory generates valid models with defaults."""
+        """Test that factory generates valid models with defaults.
+
+        NOTE: Factory generates internal IDs (int_ prefix, 36 chars) by default.
+        """
         playlist = PlaylistBaseFactory.build()
 
         assert isinstance(playlist, PlaylistBase)
+        # Internal IDs are 36 chars (int_ + 32 hex), YouTube IDs are 30-50 chars
         assert len(playlist.playlist_id) >= 30
-        assert len(playlist.playlist_id) <= 34
+        assert len(playlist.playlist_id) <= 50
         assert len(playlist.title) >= 1
         assert len(playlist.title) <= 255
         assert len(playlist.channel_id) >= 20
@@ -191,6 +195,7 @@ class TestPlaylistBase:
         """Test model_dump() method for serialization."""
         playlist = PlaylistBaseFactory.build(
             playlist_id="PLrAXtmRdnEQy3roZQD5TZuDCU5x-X4V8f",
+            youtube_id=None,  # Explicitly set to None
             title="Test Playlist",
             description="Test description",
             default_language="en",
@@ -202,6 +207,7 @@ class TestPlaylistBase:
         data = playlist.model_dump()
         expected = {
             "playlist_id": "PLrAXtmRdnEQy3roZQD5TZuDCU5x-X4V8f",
+            "youtube_id": None,  # Added youtube_id field
             "title": "Test Playlist",
             "description": "Test description",
             "default_language": "en",
@@ -654,6 +660,7 @@ class TestPlaylistModelInteractions:
             "min_video_count": 5,
             "max_video_count": 100,
             "has_description": True,
+            "linked_status": "all",  # Default value for linked_status
         }
 
         assert query_params == expected

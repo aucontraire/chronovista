@@ -530,7 +530,15 @@ class Playlist(Base):
     __tablename__ = "playlists"
 
     # Primary key
-    playlist_id: Mapped[str] = mapped_column(String(34), primary_key=True)
+    playlist_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+
+    # YouTube ID linking (for real YouTube playlists)
+    youtube_id: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        unique=True,
+        nullable=True,
+        comment="Real YouTube playlist ID for linking (PL prefix, 30-50 chars)",
+    )
 
     # Playlist metadata
     title: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -584,10 +592,10 @@ class PlaylistMembership(Base):
 
     # Composite primary key
     playlist_id: Mapped[str] = mapped_column(
-        String(34), ForeignKey("playlists.playlist_id"), primary_key=True
+        String(36), ForeignKey("playlists.playlist_id", ondelete="CASCADE"), primary_key=True
     )
     video_id: Mapped[str] = mapped_column(
-        String(20), ForeignKey("videos.video_id"), primary_key=True
+        String(20), ForeignKey("videos.video_id", ondelete="CASCADE"), primary_key=True
     )
 
     # Position in playlist (critical for playlist ordering)

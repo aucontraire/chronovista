@@ -23,6 +23,7 @@ from chronovista.models.youtube_types import (  # Validation functions; Type ali
     create_test_user_id,
     create_test_video_id,
     is_internal_playlist_id,
+    is_system_playlist_id,
     is_youtube_playlist_id,
     validate_caption_id,
     validate_channel_id,
@@ -77,12 +78,12 @@ class TestValidatePlaylistId:
 
     def test_invalid_playlist_id_prefix(self):
         """Test playlist ID validation with wrong prefix."""
-        with pytest.raises(ValueError, match='PlaylistId must start with "INT_" or "PL"'):
+        with pytest.raises(ValueError, match='PlaylistId must start with "int_", "PL", or be a system ID'):
             validate_playlist_id(
                 "UCdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK"
             )  # Channel ID format
 
-        with pytest.raises(ValueError, match='PlaylistId must start with "INT_" or "PL"'):
+        with pytest.raises(ValueError, match='PlaylistId must start with "int_", "PL", or be a system ID'):
             validate_playlist_id("XLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")  # Wrong prefix
 
     def test_invalid_playlist_id_characters(self):
@@ -825,7 +826,7 @@ class TestInternalPlaylistIdHelpers:
     def test_fail_fast_validation_order_format_first(self):
         """Test fail-fast: format checked before length."""
         # Wrong prefix, wrong length - should fail on prefix first
-        with pytest.raises(ValueError, match='must start with "INT_" or "PL"'):
+        with pytest.raises(ValueError, match='must start with "int_", "PL", or be a system ID'):
             validate_playlist_id("XY" + "x" * 10)
 
     def test_fail_fast_validation_order_length_second(self):
@@ -839,6 +840,136 @@ class TestInternalPlaylistIdHelpers:
         # Valid prefix, valid length (30 chars), invalid chars
         with pytest.raises(ValueError, match="contains invalid characters"):
             validate_playlist_id("PL" + "x" * 27 + "@")
+
+
+class TestSystemPlaylistIdValidation:
+    """
+    Tests for system playlist ID validation (T080).
+
+    System playlists have special 2-character IDs that are valid YouTube playlist IDs
+    but follow different format rules than regular PL prefix playlists.
+    """
+
+    def test_validate_youtube_id_format_accepts_ll(self):
+        """Test validate_youtube_id_format accepts 'LL' (Liked Videos)."""
+        result = validate_youtube_id_format("LL")
+        assert result == "LL"
+
+    def test_validate_youtube_id_format_accepts_wl(self):
+        """Test validate_youtube_id_format accepts 'WL' (Watch Later)."""
+        result = validate_youtube_id_format("WL")
+        assert result == "WL"
+
+    def test_validate_youtube_id_format_accepts_hl(self):
+        """Test validate_youtube_id_format accepts 'HL' (Watch History)."""
+        result = validate_youtube_id_format("HL")
+        assert result == "HL"
+
+    def test_validate_youtube_id_format_rejects_lowercase_system_ids(self):
+        """Test validate_youtube_id_format rejects lowercase system IDs."""
+        # System IDs must be uppercase
+        with pytest.raises(ValueError, match='must start with "PL" or be a system ID'):
+            validate_youtube_id_format("ll")
+
+        with pytest.raises(ValueError, match='must start with "PL" or be a system ID'):
+            validate_youtube_id_format("wl")
+
+        with pytest.raises(ValueError, match='must start with "PL" or be a system ID'):
+            validate_youtube_id_format("hl")
+
+    def test_validate_youtube_id_format_rejects_other_two_char_ids(self):
+        """Test validate_youtube_id_format rejects other 2-character IDs."""
+        with pytest.raises(ValueError, match='must start with "PL" or be a system ID'):
+            validate_youtube_id_format("AB")
+
+        with pytest.raises(ValueError, match='must start with "PL" or be a system ID'):
+            validate_youtube_id_format("XY")
+
+    def test_is_youtube_playlist_id_true_for_ll(self):
+        """Test is_youtube_playlist_id returns True for 'LL'."""
+        assert is_youtube_playlist_id("LL")
+
+    def test_is_youtube_playlist_id_true_for_wl(self):
+        """Test is_youtube_playlist_id returns True for 'WL'."""
+        assert is_youtube_playlist_id("WL")
+
+    def test_is_youtube_playlist_id_true_for_hl(self):
+        """Test is_youtube_playlist_id returns True for 'HL'."""
+        assert is_youtube_playlist_id("HL")
+
+    def test_is_youtube_playlist_id_true_for_pl_prefix(self):
+        """Test is_youtube_playlist_id returns True for regular PL prefix."""
+        assert is_youtube_playlist_id("PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")
+        assert is_youtube_playlist_id("PLtest_123456_music_xxxxxxxxxx")
+
+    def test_is_youtube_playlist_id_false_for_lowercase_system_ids(self):
+        """Test is_youtube_playlist_id returns False for lowercase system IDs."""
+        assert not is_youtube_playlist_id("ll")
+        assert not is_youtube_playlist_id("wl")
+        assert not is_youtube_playlist_id("hl")
+
+    def test_is_system_playlist_id_true_for_ll(self):
+        """Test is_system_playlist_id returns True only for 'LL'."""
+        assert is_system_playlist_id("LL")
+
+    def test_is_system_playlist_id_true_for_wl(self):
+        """Test is_system_playlist_id returns True only for 'WL'."""
+        assert is_system_playlist_id("WL")
+
+    def test_is_system_playlist_id_true_for_hl(self):
+        """Test is_system_playlist_id returns True only for 'HL'."""
+        assert is_system_playlist_id("HL")
+
+    def test_is_system_playlist_id_false_for_pl_prefix(self):
+        """Test is_system_playlist_id returns False for regular PL prefix playlists."""
+        assert not is_system_playlist_id("PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")
+        assert not is_system_playlist_id("PLtest_123456_music_xxxxxxxxxx")
+
+    def test_is_system_playlist_id_false_for_int_prefix(self):
+        """Test is_system_playlist_id returns False for internal playlists."""
+        assert not is_system_playlist_id("int_f7abe60f1234567890abcdef12345678")
+        assert not is_system_playlist_id("INT_F7ABE60F1234567890ABCDEF12345678")
+
+    def test_is_system_playlist_id_false_for_lowercase(self):
+        """Test is_system_playlist_id returns False for lowercase variants."""
+        assert not is_system_playlist_id("ll")
+        assert not is_system_playlist_id("wl")
+        assert not is_system_playlist_id("hl")
+
+    def test_is_system_playlist_id_false_for_invalid(self):
+        """Test is_system_playlist_id returns False for invalid inputs."""
+        assert not is_system_playlist_id("")
+        assert not is_system_playlist_id(None)
+        assert not is_system_playlist_id(123)
+        assert not is_system_playlist_id("random_string")
+        assert not is_system_playlist_id("AB")
+        assert not is_system_playlist_id("XY")
+
+    def test_system_ids_exact_match_only(self):
+        """Test that system IDs require exact match (no prefix matching)."""
+        # LLxxx is NOT a system ID (even though it starts with LL)
+        assert not is_system_playlist_id("LLxxx")
+        assert not is_system_playlist_id("WLyyy")
+        assert not is_system_playlist_id("HLzzz")
+
+    def test_validate_youtube_id_accepts_all_system_ids(self):
+        """Test validate_youtube_id_format accepts all system playlist IDs."""
+        system_ids = ["LL", "WL", "HL"]
+        for system_id in system_ids:
+            result = validate_youtube_id_format(system_id)
+            assert result == system_id
+
+    def test_validate_youtube_id_rejects_partial_system_ids(self):
+        """Test validate_youtube_id_format rejects partial system IDs."""
+        # Single character is not valid
+        with pytest.raises(ValueError):
+            validate_youtube_id_format("L")
+
+        with pytest.raises(ValueError):
+            validate_youtube_id_format("W")
+
+        with pytest.raises(ValueError):
+            validate_youtube_id_format("H")
 
 
 class TestEdgeCases:

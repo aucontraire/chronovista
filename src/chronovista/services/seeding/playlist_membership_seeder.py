@@ -19,7 +19,7 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...models.playlist_membership import PlaylistMembershipCreate
-from ...models.takeout.takeout_data import TakeoutData
+from ...models.takeout.takeout_data import TakeoutData, TakeoutPlaylist
 from ...models.video import VideoCreate
 from ...repositories.playlist_membership_repository import PlaylistMembershipRepository
 from ...repositories.playlist_repository import PlaylistRepository
@@ -84,8 +84,8 @@ class PlaylistMembershipSeeder(BaseSeeder):
 
         for playlist in takeout_data.playlists:
             try:
-                # Generate playlist ID (must match PlaylistSeeder logic)
-                playlist_id = self._generate_playlist_id(playlist.name)
+                # Get playlist ID (must match PlaylistSeeder logic)
+                playlist_id = self._get_playlist_id(playlist)
 
                 # Verify playlist exists
                 db_playlist = await self.playlist_repo.get_by_playlist_id(
@@ -187,20 +187,24 @@ class PlaylistMembershipSeeder(BaseSeeder):
 
         return result
 
-    def _generate_playlist_id(self, playlist_name: str) -> str:
+    def _get_playlist_id(self, takeout_playlist: TakeoutPlaylist) -> str:
         """
-        Generate playlist ID - must match PlaylistSeeder logic.
+        Get playlist ID - must match PlaylistSeeder logic.
 
-        Uses INT_ prefix for internal playlists to distinguish from real YouTube IDs.
+        If TakeoutPlaylist has a youtube_id (from playlists.csv), use it.
+        Otherwise, generate an internal ID with int_ prefix.
 
         Args:
-            playlist_name: Name of the playlist
+            takeout_playlist: The takeout playlist with optional youtube_id
 
         Returns:
-            36-character internal playlist ID with INT_ prefix (INT_{32-char MD5 hash})
+            Playlist ID (either YouTube ID or internal int_ ID)
         """
-        hash_suffix = hashlib.md5(playlist_name.encode()).hexdigest()  # 32 lowercase hex chars
-        return f"int_{hash_suffix}"  # lowercase to match Pydantic validator normalization
+        if takeout_playlist.youtube_id:
+            return takeout_playlist.youtube_id
+        # Fallback: generate internal ID
+        hash_suffix = hashlib.md5(takeout_playlist.name.encode()).hexdigest()
+        return f"int_{hash_suffix}"
 
     async def _create_placeholder_video(
         self, session: AsyncSession, video_id: str

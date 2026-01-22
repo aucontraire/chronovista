@@ -12,7 +12,7 @@ from typing import Any, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .enums import LanguageCode, PrivacyStatus
+from .enums import LanguageCode, PlaylistType, PrivacyStatus
 from .youtube_types import ChannelId, PlaylistId
 
 
@@ -20,12 +20,8 @@ class PlaylistBase(BaseModel):
     """Base model for playlists."""
 
     playlist_id: PlaylistId = Field(
-        ..., description="Playlist ID (INT_ internal or PL YouTube)"
-    )
-    youtube_id: Optional[str] = Field(
-        default=None,
-        description="Real YouTube playlist ID (PL prefix only)",
-        pattern=r"^PL[A-Za-z0-9_-]{28,48}$",
+        ...,
+        description="Playlist ID - either YouTube ID (PL prefix, LL, WL, HL) or internal (int_ prefix)",
     )
     title: str = Field(..., min_length=1, max_length=255, description="Playlist title")
     description: Optional[str] = Field(default=None, description="Playlist description")
@@ -47,6 +43,12 @@ class PlaylistBase(BaseModel):
     )
     deleted_flag: bool = Field(
         default=False, description="Whether the playlist is deleted/private"
+    )
+
+    # Playlist type (for system playlist handling)
+    playlist_type: PlaylistType = Field(
+        default=PlaylistType.REGULAR,
+        description="Type of playlist: regular, liked, watch_later, history, favorites",
     )
 
     # Playlist ID validation now handled by PlaylistId custom type
@@ -102,14 +104,15 @@ class PlaylistUpdate(BaseModel):
     description: Optional[str] = None
     default_language: Optional[LanguageCode] = None
     privacy_status: Optional[PrivacyStatus] = None
-    youtube_id: Optional[str] = Field(
-        default=None,
-        description="Link to real YouTube playlist ID",
-        pattern=r"^PL[A-Za-z0-9_-]{28,48}$",
-    )
     video_count: Optional[int] = Field(None, ge=0)
     published_at: Optional[datetime] = None
     deleted_flag: Optional[bool] = None
+
+    # Playlist type (for system playlist handling)
+    playlist_type: Optional[PlaylistType] = Field(
+        default=None,
+        description="Type of playlist: regular, liked, watch_later, history, favorites",
+    )
 
     @field_validator("title")
     @classmethod

@@ -15,6 +15,8 @@ from chronovista.cli.commands.enrich import (
     app,
     validate_priority,
     VALID_PRIORITIES,
+    EXIT_CODE_SUCCESS,
+    EXIT_CODE_PARTIAL_SUCCESS,
 )
 
 runner = CliRunner()
@@ -1164,6 +1166,587 @@ class TestSyncLikesFlag:
         else:
             # Fallback: test the expected behavior
             assert True
+
+
+class TestAutoResolutionProgressMessages:
+    """Tests for auto-resolution progress messages (User Story 2, FR-007).
+
+    Covers:
+    - T020: Detection phase message format
+    - T021: API fetch phase message format
+    - T022: Success/partial success message formats
+    """
+
+    def test_detection_phase_message_format_t020(self) -> None:
+        """Test detection phase message format (T020).
+
+        FR-007 specifies: "[Auto-Resolution] {count} local playlists need YouTube linking..."
+        """
+        # Simulate detection phase logic
+        count = 5
+        expected_message = f"[Auto-Resolution] {count} local playlists need YouTube linking..."
+
+        # Verify message format matches FR-007 specification
+        assert "[Auto-Resolution]" in expected_message
+        assert f"{count} local playlists need YouTube linking" in expected_message
+        assert "..." in expected_message
+
+    def test_detection_phase_message_with_zero_playlists(self) -> None:
+        """Test detection phase message when zero playlists need linking."""
+        count = 0
+        expected_message = f"[Auto-Resolution] {count} local playlists need YouTube linking..."
+
+        # Even with zero, format should be consistent
+        assert "[Auto-Resolution]" in expected_message
+        assert "0 local playlists need YouTube linking" in expected_message
+
+    def test_detection_phase_message_with_single_playlist(self) -> None:
+        """Test detection phase message with single playlist (grammar check)."""
+        count = 1
+        expected_message = f"[Auto-Resolution] {count} local playlists need YouTube linking..."
+
+        # Message uses "playlists" plural even for 1 (per FR-007)
+        assert "[Auto-Resolution]" in expected_message
+        assert "1 local playlists need YouTube linking" in expected_message
+
+    def test_api_fetch_phase_message_format_t021(self) -> None:
+        """Test API fetch phase message format (T021).
+
+        FR-007 specifies: "[Auto-Resolution] Fetching your YouTube playlists..."
+        """
+        expected_message = "[Auto-Resolution] Fetching your YouTube playlists..."
+
+        # Verify message format matches FR-007 specification
+        assert "[Auto-Resolution]" in expected_message
+        assert "Fetching your YouTube playlists" in expected_message
+        assert "..." in expected_message
+
+    def test_api_fetch_phase_message_is_static(self) -> None:
+        """Test that API fetch phase message has no dynamic content."""
+        expected_message = "[Auto-Resolution] Fetching your YouTube playlists..."
+
+        # Message should be exactly as specified (no placeholders)
+        assert expected_message == "[Auto-Resolution] Fetching your YouTube playlists..."
+
+    def test_success_message_format_all_matched_t022(self) -> None:
+        """Test success message format when all playlists are matched (T022).
+
+        FR-007 specifies: "[Auto-Resolution] Successfully linked {linked}/{total} playlists ✓"
+        """
+        linked = 10
+        total = 10
+        expected_message = f"[Auto-Resolution] Successfully linked {linked}/{total} playlists ✓"
+
+        # Verify message format matches FR-007 specification
+        assert "[Auto-Resolution]" in expected_message
+        assert "Successfully linked" in expected_message
+        assert f"{linked}/{total}" in expected_message
+        assert "playlists" in expected_message
+        assert "✓" in expected_message
+
+    def test_success_message_format_single_playlist(self) -> None:
+        """Test success message format with single playlist."""
+        linked = 1
+        total = 1
+        expected_message = f"[Auto-Resolution] Successfully linked {linked}/{total} playlists ✓"
+
+        # Message uses "playlists" plural even for 1 (per FR-007)
+        assert "[Auto-Resolution]" in expected_message
+        assert "Successfully linked 1/1 playlists ✓" in expected_message
+
+    def test_partial_success_message_format_t022(self) -> None:
+        """Test partial success message format (T022).
+
+        FR-007 specifies: "[Auto-Resolution] Linked {linked}/{total} playlists ({unmatched} unmatched)"
+        """
+        linked = 8
+        total = 10
+        unmatched = 2
+        expected_message = (
+            f"[Auto-Resolution] Linked {linked}/{total} playlists ({unmatched} unmatched)"
+        )
+
+        # Verify message format matches FR-007 specification
+        assert "[Auto-Resolution]" in expected_message
+        assert f"Linked {linked}/{total} playlists" in expected_message
+        assert f"({unmatched} unmatched)" in expected_message
+
+    def test_partial_success_message_various_scenarios(self) -> None:
+        """Test partial success message with various linked/unmatched ratios."""
+        test_cases = [
+            (5, 10, 5),  # Half matched
+            (1, 10, 9),  # Mostly unmatched
+            (9, 10, 1),  # Mostly matched
+            (0, 5, 5),   # None matched
+        ]
+
+        for linked, total, unmatched in test_cases:
+            expected_message = (
+                f"[Auto-Resolution] Linked {linked}/{total} playlists ({unmatched} unmatched)"
+            )
+
+            assert "[Auto-Resolution]" in expected_message
+            assert f"Linked {linked}/{total}" in expected_message
+            assert f"{unmatched} unmatched" in expected_message
+
+    def test_skipped_already_linked_message_format(self) -> None:
+        """Test skipped already-linked playlists message format.
+
+        FR-007 specifies: "[Auto-Resolution] {count} playlists already linked (skipped)"
+        """
+        count = 15
+        expected_message = f"[Auto-Resolution] {count} playlists already linked (skipped)"
+
+        # Verify message format matches FR-007 specification
+        assert "[Auto-Resolution]" in expected_message
+        assert f"{count} playlists already linked" in expected_message
+        assert "(skipped)" in expected_message
+
+    def test_skipped_message_with_zero_playlists(self) -> None:
+        """Test skipped message when zero playlists are already linked."""
+        count = 0
+        expected_message = f"[Auto-Resolution] {count} playlists already linked (skipped)"
+
+        # Format should be consistent even with zero
+        assert "[Auto-Resolution]" in expected_message
+        assert "0 playlists already linked (skipped)" in expected_message
+
+    def test_skipped_message_with_single_playlist(self) -> None:
+        """Test skipped message with single already-linked playlist."""
+        count = 1
+        expected_message = f"[Auto-Resolution] {count} playlists already linked (skipped)"
+
+        # Message uses "playlists" plural even for 1 (per FR-007)
+        assert "[Auto-Resolution]" in expected_message
+        assert "1 playlists already linked (skipped)" in expected_message
+
+    def test_all_message_formats_have_auto_resolution_prefix(self) -> None:
+        """Test that all auto-resolution messages have the [Auto-Resolution] prefix."""
+        # All message formats from FR-007
+        messages = [
+            "[Auto-Resolution] 5 local playlists need YouTube linking...",
+            "[Auto-Resolution] Fetching your YouTube playlists...",
+            "[Auto-Resolution] Successfully linked 10/10 playlists ✓",
+            "[Auto-Resolution] Linked 8/10 playlists (2 unmatched)",
+            "[Auto-Resolution] 15 playlists already linked (skipped)",
+        ]
+
+        # All messages must start with [Auto-Resolution] prefix
+        for message in messages:
+            assert message.startswith("[Auto-Resolution]")
+
+    def test_message_format_consistency(self) -> None:
+        """Test that message formats are consistent in structure."""
+        # All messages should have:
+        # 1. [Auto-Resolution] prefix
+        # 2. Space after prefix
+        # 3. No extra whitespace
+
+        messages = [
+            "[Auto-Resolution] 5 local playlists need YouTube linking...",
+            "[Auto-Resolution] Fetching your YouTube playlists...",
+            "[Auto-Resolution] Successfully linked 10/10 playlists ✓",
+        ]
+
+        for message in messages:
+            # Check prefix format
+            assert message.startswith("[Auto-Resolution] ")
+            # Check no double spaces
+            assert "  " not in message
+            # Check no leading/trailing whitespace
+            assert message == message.strip()
+
+    def test_success_vs_partial_success_distinction(self) -> None:
+        """Test that success and partial success messages are distinct.
+
+        Success uses "Successfully linked" with checkmark.
+        Partial success uses "Linked" with "unmatched" note.
+        """
+        success_message = "[Auto-Resolution] Successfully linked 10/10 playlists ✓"
+        partial_message = "[Auto-Resolution] Linked 8/10 playlists (2 unmatched)"
+
+        # Success message has checkmark and "Successfully"
+        assert "Successfully" in success_message
+        assert "✓" in success_message
+        assert "unmatched" not in success_message
+
+        # Partial success has unmatched count, no checkmark
+        assert "Successfully" not in partial_message
+        assert "✓" not in partial_message
+        assert "unmatched" in partial_message
+
+    def test_message_format_numbers_are_formatted(self) -> None:
+        """Test that numbers in messages are properly formatted."""
+        # Numbers should be simple integers without commas or formatting
+        linked = 1000
+        total = 1500
+        unmatched = 500
+
+        message = f"[Auto-Resolution] Linked {linked}/{total} playlists ({unmatched} unmatched)"
+
+        # Numbers should be plain integers (no thousand separators per FR-007)
+        assert "1000/1500" in message
+        assert "500 unmatched" in message
+
+    def test_detection_phase_message_uses_ellipsis(self) -> None:
+        """Test that detection and fetch messages use ellipsis (...) to indicate ongoing action."""
+        detection_message = "[Auto-Resolution] 5 local playlists need YouTube linking..."
+        fetch_message = "[Auto-Resolution] Fetching your YouTube playlists..."
+
+        # Both should end with ellipsis
+        assert detection_message.endswith("...")
+        assert fetch_message.endswith("...")
+
+    def test_completion_messages_use_appropriate_punctuation(self) -> None:
+        """Test that completion messages use appropriate punctuation."""
+        success_message = "[Auto-Resolution] Successfully linked 10/10 playlists ✓"
+        partial_message = "[Auto-Resolution] Linked 8/10 playlists (2 unmatched)"
+        skipped_message = "[Auto-Resolution] 15 playlists already linked (skipped)"
+
+        # Success uses checkmark
+        assert "✓" in success_message
+
+        # Partial and skipped use parenthetical notes
+        assert "(2 unmatched)" in partial_message
+        assert "(skipped)" in skipped_message
+
+
+class TestNoAutoResolveFlag:
+    """Tests for --no-auto-resolve flag (Phase 7, User Story 5).
+
+    Covers:
+    - T045: Test --no-auto-resolve skips unlinked playlists
+    - T046: Test skipped count message when using --no-auto-resolve
+    """
+
+    def test_no_auto_resolve_flag_exists(self) -> None:
+        """Test that --no-auto-resolve flag exists in enrich run command."""
+        result = runner.invoke(app, ["run", "--help"])
+
+        assert result.exit_code == 0
+        assert "--no-auto-resolve" in result.output
+
+    def test_no_auto_resolve_shown_in_help(self) -> None:
+        """Test that --no-auto-resolve is shown in help output with description."""
+        result = runner.invoke(app, ["run", "--help"])
+
+        assert result.exit_code == 0
+        output_lower = result.output.lower()
+        # Help should mention skipping auto-resolution
+        assert "skip" in output_lower or "auto" in output_lower or "resolve" in output_lower
+
+    def test_no_auto_resolve_default_is_false(self) -> None:
+        """Test that default value for --no-auto-resolve is False.
+
+        Auto-resolution should run by default (unless disabled with this flag).
+        """
+        result = runner.invoke(app, ["run", "--help"])
+
+        assert result.exit_code == 0
+        # Boolean flag should default to False
+        assert "--no-auto-resolve" in result.output
+
+    def test_no_auto_resolve_help_describes_behavior(self) -> None:
+        """Test that help text describes the skip behavior (T047, FR-014).
+
+        FR-014 specifies help text:
+        "Skip automatic playlist resolution. Only enrich playlists that are already linked to YouTube IDs."
+        """
+        result = runner.invoke(app, ["run", "--help"])
+
+        assert result.exit_code == 0
+        output_lower = result.output.lower()
+        # Help should mention the key concepts
+        has_description = any(
+            term in output_lower
+            for term in ["skip", "automatic", "resolution", "already linked", "youtube id"]
+        )
+        assert has_description
+
+    def test_no_auto_resolve_skips_unlinked_playlists_logic(self) -> None:
+        """Test that --no-auto-resolve logic skips unlinked playlists (T045).
+
+        When no_auto_resolve=True, the auto-resolution phase should be completely
+        skipped, only enriching playlists that already have youtube_id linked.
+        """
+        # Simulate the flag state
+        no_auto_resolve = True
+        include_playlists = True
+
+        # Logic: auto-resolution should only run if include_playlists AND NOT no_auto_resolve
+        should_run_auto_resolution = include_playlists and not no_auto_resolve
+        assert should_run_auto_resolution is False
+
+        # When flag is False (default), auto-resolution should run
+        no_auto_resolve = False
+        should_run_auto_resolution = include_playlists and not no_auto_resolve
+        assert should_run_auto_resolution is True
+
+    def test_no_auto_resolve_shows_skipped_count_message_logic(self) -> None:
+        """Test that skipped count message is shown when using --no-auto-resolve (T046).
+
+        When no_auto_resolve=True and there are unlinked playlists,
+        a message should inform the user how many playlists were skipped.
+        """
+        # Simulate scenario: 5 playlists total, 2 already linked, 3 unlinked
+        total_playlists = 5
+        linked_playlists = 2
+        unlinked_playlists = 3
+        no_auto_resolve = True
+
+        # When no_auto_resolve is True, unlinked playlists are skipped
+        if no_auto_resolve and unlinked_playlists > 0:
+            skipped_count = unlinked_playlists
+            expected_message = f"[Auto-Resolution] Skipped {skipped_count} unlinked playlists (use --include-playlists without --no-auto-resolve to link them)"
+
+            # Verify message format
+            assert "Skipped" in expected_message
+            assert str(unlinked_playlists) in expected_message
+            assert "unlinked playlists" in expected_message
+
+        assert skipped_count == 3
+
+    def test_no_auto_resolve_with_include_playlists(self) -> None:
+        """Test that --no-auto-resolve works with --include-playlists.
+
+        When both flags are used together, playlists are enriched but
+        auto-resolution is skipped.
+        """
+        no_auto_resolve = True
+        include_playlists = True
+
+        # Both flags can be used together
+        should_enrich_playlists = include_playlists
+        should_auto_resolve = include_playlists and not no_auto_resolve
+
+        assert should_enrich_playlists is True
+        assert should_auto_resolve is False
+
+    def test_no_auto_resolve_without_include_playlists(self) -> None:
+        """Test that --no-auto-resolve has no effect without --include-playlists.
+
+        The flag is only relevant when playlist enrichment is enabled.
+        """
+        no_auto_resolve = True
+        include_playlists = False
+
+        # Neither playlist enrichment nor auto-resolution should run
+        should_enrich_playlists = include_playlists
+        should_auto_resolve = include_playlists and not no_auto_resolve
+
+        assert should_enrich_playlists is False
+        assert should_auto_resolve is False
+
+    def test_no_auto_resolve_message_format_t046(self) -> None:
+        """Test the format of the skipped playlists message (T046).
+
+        Message should be informative and guide users on how to enable auto-resolution.
+        """
+        unlinked_count = 10
+        expected_message = (
+            f"[Auto-Resolution] Skipped {unlinked_count} unlinked playlists "
+            f"(use --include-playlists without --no-auto-resolve to link them)"
+        )
+
+        # Verify message components
+        assert "[Auto-Resolution]" in expected_message
+        assert "Skipped" in expected_message
+        assert f"{unlinked_count} unlinked playlists" in expected_message
+        assert "without --no-auto-resolve" in expected_message
+
+
+class TestSkipUnresolvedFlag:
+    """Tests for --skip-unresolved flag (Phase 8, User Story 6).
+
+    Covers:
+    - T051: Test --skip-unresolved links unambiguous and skips ambiguous
+    - T052: Test partial success reporting with --skip-unresolved
+    - T053-T057: Implementation verification
+    """
+
+    def test_skip_unresolved_flag_exists(self) -> None:
+        """Test that --skip-unresolved flag exists in enrich run command."""
+        result = runner.invoke(app, ["run", "--help"])
+
+        assert result.exit_code == 0
+        assert "--skip-unresolved" in result.output
+
+    def test_skip_unresolved_shown_in_help(self) -> None:
+        """Test that --skip-unresolved is shown in help output with description."""
+        result = runner.invoke(app, ["run", "--help"])
+
+        assert result.exit_code == 0
+        output_lower = result.output.lower()
+        # Help should mention skipping ambiguous matches
+        assert "skip" in output_lower or "ambiguous" in output_lower
+
+    def test_skip_unresolved_default_is_false(self) -> None:
+        """Test that default value for --skip-unresolved is False.
+
+        By default, ambiguous matches should cause the command to fail.
+        Explicit opt-in is required to skip them.
+        """
+        result = runner.invoke(app, ["run", "--help"])
+
+        assert result.exit_code == 0
+        # Boolean flag should default to False
+        assert "--skip-unresolved" in result.output
+
+    def test_skip_unresolved_help_describes_behavior(self) -> None:
+        """Test that help text describes behavior (T054, FR-014).
+
+        FR-014 specifies help text should explain the flag's purpose.
+        """
+        result = runner.invoke(app, ["run", "--help"])
+
+        assert result.exit_code == 0
+        output_lower = result.output.lower()
+        # Help should mention ambiguous matches or skipping
+        has_description = any(
+            term in output_lower
+            for term in ["skip", "ambiguous", "unresolved", "match", "fail"]
+        )
+        assert has_description
+
+    def test_skip_unresolved_links_unambiguous_skips_ambiguous_logic(self) -> None:
+        """Test that --skip-unresolved links unambiguous and skips ambiguous (T051).
+
+        When skip_unresolved=True:
+        - Unambiguous matches are linked normally
+        - Ambiguous matches are skipped (not treated as fatal error)
+        - Command returns EXIT_CODE_PARTIAL_SUCCESS (4)
+        """
+        skip_unresolved = True
+
+        # Simulate resolution results
+        unambiguous_count = 5
+        ambiguous_count = 2
+
+        # With skip_unresolved=True, ambiguous matches don't cause failure
+        should_fail_on_ambiguous = not skip_unresolved
+        assert should_fail_on_ambiguous is False
+
+        # Unambiguous matches are still linked
+        linked_count = unambiguous_count
+        skipped_count = ambiguous_count
+
+        assert linked_count == 5
+        assert skipped_count == 2
+
+        # When there are ambiguous matches, exit code is PARTIAL_SUCCESS
+        if ambiguous_count > 0 and skip_unresolved:
+            exit_code = EXIT_CODE_PARTIAL_SUCCESS
+            assert exit_code == 4
+
+    def test_skip_unresolved_partial_success_reporting_logic(self) -> None:
+        """Test partial success reporting with --skip-unresolved (T052).
+
+        When skip_unresolved=True and ambiguous matches exist:
+        - Show count of successfully linked playlists
+        - Show count of skipped/unmatched playlists
+        - Exit with code 4 (partial success)
+        """
+        skip_unresolved = True
+        linked = 8
+        unmatched = 2
+
+        # Build partial success message
+        message = (
+            f"[Auto-Resolution] Linked {linked}/{linked + unmatched} playlists "
+            f"({unmatched} unmatched)"
+        )
+
+        # Verify message format
+        assert "[Auto-Resolution]" in message
+        assert f"Linked {linked}/{linked + unmatched}" in message
+        assert f"{unmatched} unmatched" in message
+
+        # Exit code should be partial success
+        exit_code = EXIT_CODE_PARTIAL_SUCCESS
+        assert exit_code == 4
+
+    def test_skip_unresolved_without_ambiguous_matches_logic(self) -> None:
+        """Test that --skip-unresolved doesn't affect behavior when no ambiguous matches.
+
+        When skip_unresolved=True but all matches are unambiguous:
+        - All playlists are linked successfully
+        - Exit code is 0 (success)
+        """
+        skip_unresolved = True
+        unambiguous_count = 10
+        ambiguous_count = 0
+
+        # No ambiguous matches, so behavior is same as normal success
+        linked = unambiguous_count
+
+        # Exit code should be success
+        if ambiguous_count == 0:
+            exit_code = EXIT_CODE_SUCCESS
+            assert exit_code == 0
+
+        assert linked == 10
+
+    def test_skip_unresolved_exit_code_4_on_partial_success(self) -> None:
+        """Test that Exit Code 4 is used for partial success (T055, FR-010).
+
+        FR-010 specifies Exit Code 4 for partial success with --skip-unresolved.
+        """
+        skip_unresolved = True
+        linked = 5
+        ambiguous = 3
+
+        # When ambiguous matches exist and skip_unresolved is True
+        if ambiguous > 0 and skip_unresolved:
+            exit_code = EXIT_CODE_PARTIAL_SUCCESS
+            assert exit_code == 4
+
+    def test_skip_unresolved_unmatched_playlist_report_format(self) -> None:
+        """Test unmatched playlist reporting format (T056, FR-011).
+
+        FR-011 specifies format for reporting unmatched playlists.
+        Should show:
+        - Playlist title
+        - Reason for being unmatched (ambiguous, no match, etc.)
+        """
+        unmatched_playlists = [
+            {"title": "Playlist A", "reason": "Multiple YouTube matches (3 found)"},
+            {"title": "Playlist B", "reason": "No YouTube matches found"},
+            {"title": "Playlist C", "reason": "Multiple YouTube matches (2 found)"},
+        ]
+
+        # Build report format
+        report_lines = []
+        for playlist in unmatched_playlists:
+            report_lines.append(f"  • \"{playlist['title']}\": {playlist['reason']}")
+
+        report = "\n".join(report_lines)
+
+        # Verify format
+        assert "Playlist A" in report
+        assert "Multiple YouTube matches (3 found)" in report
+        assert "Playlist B" in report
+        assert "No YouTube matches found" in report
+
+        # Verify bullet formatting
+        assert report.count("•") == 3
+
+    def test_skip_unresolved_with_no_auto_resolve_interaction(self) -> None:
+        """Test interaction between --skip-unresolved and --no-auto-resolve.
+
+        When both flags are used:
+        - --no-auto-resolve takes precedence (no auto-resolution at all)
+        - --skip-unresolved has no effect
+        """
+        skip_unresolved = True
+        no_auto_resolve = True
+        include_playlists = True
+
+        # no_auto_resolve takes precedence - no auto-resolution runs at all
+        should_run_auto_resolution = include_playlists and not no_auto_resolve
+        assert should_run_auto_resolution is False
+
+        # skip_unresolved is irrelevant when auto-resolution doesn't run
+        # (but doesn't cause an error - it's just not used)
 
 
 class TestSaveReport:

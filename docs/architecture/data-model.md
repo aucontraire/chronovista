@@ -246,26 +246,34 @@ CREATE TABLE user_subscriptions (
 
 ### playlists
 
+The `playlist_id` field serves as the single source of truth, supporting:
+- **YouTube IDs** (PL prefix, 30-50 chars): `PLdU2XMVb99xMxwMeeLWDqmyW8GFqpvgVC`
+- **Internal IDs** (int_ prefix, 36 chars): `int_5d41402abc4b2a76b9719d911017c592`
+- **System playlists**: `LL` (Liked), `WL` (Watch Later), `HL` (History)
+
+Link status is derived from the `playlist_id` prefix, not stored separately.
+
 ```sql
 CREATE TABLE playlists (
-    playlist_id VARCHAR(255) PRIMARY KEY,
+    playlist_id VARCHAR(50) PRIMARY KEY,  -- Consolidated ID (YouTube or internal)
     channel_id VARCHAR(24) REFERENCES channels(channel_id),
     title VARCHAR(255) NOT NULL,
     description TEXT,
     default_language VARCHAR(10),
     privacy_status VARCHAR(20),
-    is_user_playlist BOOLEAN DEFAULT FALSE,
-    podcast_enabled BOOLEAN DEFAULT FALSE,
+    playlist_type VARCHAR(20) DEFAULT 'regular',  -- regular, liked, watch_later, history
+    video_count INTEGER DEFAULT 0,
+    published_at TIMESTAMP,  -- From Google Takeout playlists.csv
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
-### playlist_items
+### playlist_memberships
 
 ```sql
-CREATE TABLE playlist_items (
-    playlist_id VARCHAR(255) REFERENCES playlists(playlist_id),
+CREATE TABLE playlist_memberships (
+    playlist_id VARCHAR(50) REFERENCES playlists(playlist_id),
     video_id VARCHAR(20) REFERENCES videos(video_id),
     position INTEGER NOT NULL,
     added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

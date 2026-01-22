@@ -317,22 +317,43 @@ class TestPlaylistMembershipSeederTransformations:
         """Create PlaylistMembershipSeeder instance."""
         return PlaylistMembershipSeeder()
 
-    def test_generate_playlist_id_consistency(
+    def test_get_playlist_id_without_youtube_id(
         self, seeder: PlaylistMembershipSeeder
     ) -> None:
-        """Test playlist ID generation consistency.
+        """Test playlist ID generation when no youtube_id is available.
 
-        NOTE: The seeder generates INT_ (uppercase) but the validator normalizes
-        to int_ (lowercase). Tests expect the seeder's raw output (INT_).
+        NOTE: The seeder generates int_ (lowercase) prefix for fallback.
         """
-        playlist_name = "Test Playlist"
+        playlist = create_takeout_playlist(
+            name="Test Playlist",
+            file_path=Path("/test/playlist.csv"),
+            videos=[],
+            youtube_id=None,  # No YouTube ID available
+        )
 
-        id1 = seeder._generate_playlist_id(playlist_name)
-        id2 = seeder._generate_playlist_id(playlist_name)
+        id1 = seeder._get_playlist_id(playlist)
+        id2 = seeder._get_playlist_id(playlist)
 
         assert id1 == id2
-        assert id1.startswith("INT_")  # Seeder generates uppercase INT_
-        assert len(id1) == 36  # INT_ (4 chars) + 32 hex chars = 36 total
+        assert id1.startswith("int_")  # Seeder generates lowercase int_
+        assert len(id1) == 36  # int_ (4 chars) + 32 hex chars = 36 total
+
+    def test_get_playlist_id_with_youtube_id(
+        self, seeder: PlaylistMembershipSeeder
+    ) -> None:
+        """Test playlist ID returns youtube_id when available."""
+        youtube_id = "PLdU2XMVb99xMxwMeeLWDqmyW8GFqpvgVC"
+        playlist = create_takeout_playlist(
+            name="Test Playlist",
+            file_path=Path("/test/playlist.csv"),
+            videos=[],
+            youtube_id=youtube_id,
+        )
+
+        result = seeder._get_playlist_id(playlist)
+
+        assert result == youtube_id
+        assert not result.startswith("int_")
 
     @pytest.mark.asyncio
     async def test_create_placeholder_video(
@@ -676,18 +697,22 @@ class TestPlaylistMembershipSeederEdgeCases:
     ) -> None:
         """Test that playlist ID generation is consistent.
 
-        NOTE: The seeder generates INT_ (uppercase) but the validator normalizes
-        to int_ (lowercase). Tests expect the seeder's raw output (INT_).
+        NOTE: The seeder generates int_ (lowercase) prefix when no youtube_id.
         """
-        playlist_name = "Test Playlist"
+        playlist = create_takeout_playlist(
+            name="Test Playlist",
+            file_path=Path("/test/playlist.csv"),
+            videos=[],
+            youtube_id=None,
+        )
 
         # Test the actual method
-        id1 = seeder._generate_playlist_id(playlist_name)
-        id2 = seeder._generate_playlist_id(playlist_name)
+        id1 = seeder._get_playlist_id(playlist)
+        id2 = seeder._get_playlist_id(playlist)
 
         assert id1 == id2
-        assert id1.startswith("INT_")  # Seeder generates uppercase INT_
-        assert len(id1) == 36  # INT_ (4 chars) + 32 hex chars = 36 total
+        assert id1.startswith("int_")  # Seeder generates lowercase int_
+        assert len(id1) == 36  # int_ (4 chars) + 32 hex chars = 36 total
 
 
 class TestPlaylistMembershipSeederDependencies:

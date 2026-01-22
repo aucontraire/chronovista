@@ -18,7 +18,7 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, TypedDict
 
 from ..models.takeout import (
     ChannelSummary,
@@ -37,8 +37,23 @@ from ..models.takeout import (
     ViewingPatterns,
 )
 from ..services.interfaces import TakeoutServiceInterface
+from ..services.title_normalizer import normalize_for_comparison
 
 logger = logging.getLogger(__name__)
+
+
+class PlaylistMetadata(TypedDict):
+    """
+    Metadata for a playlist extracted from playlists.csv.
+
+    Contains all available fields from the CSV for enriching TakeoutPlaylist objects.
+    """
+
+    youtube_id: str
+    title: str  # Original title from playlists.csv
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+    visibility: Optional[str]
 
 
 class TakeoutParsingError(Exception):
@@ -205,16 +220,151 @@ class TakeoutService(TakeoutServiceInterface):
         except Exception as e:
             raise TakeoutParsingError(f"Error parsing watch history: {e}")
 
+    def _parse_playlists_csv(self) -> Dict[str, PlaylistMetadata]:
+        """
+        Parse playlists.csv file(s) to build youtube_id -> PlaylistMetadata mapping.
+
+        The playlists.csv file contains a mapping of YouTube playlist IDs to titles
+        along with additional metadata like creation/update timestamps and visibility.
+
+        CSV Format:
+        Playlist ID,Add new videos to top,Playlist Title (Original),Playlist Create Timestamp,
+        Playlist Update Timestamp,Playlist Visibility,...
+        PLxxxxxx...,FALSE,Conan O'Brien,2025-12-16T18:59:14+00:00,...
+
+        Returns
+        -------
+        Dict[str, PlaylistMetadata]
+            Mapping of youtube_id to PlaylistMetadata containing:
+            - youtube_id: YouTube playlist ID
+            - title: Original title from playlists.csv
+            - created_at: Playlist creation timestamp (optional)
+            - updated_at: Playlist update timestamp (optional)
+            - visibility: Playlist visibility setting (optional)
+
+        Notes
+        -----
+        - Handles multiple playlists.csv files (playlists.csv, playlists(1).csv, etc.)
+        - Keys by youtube_id to preserve all playlists (including same-titled ones)
+        - Returns empty dict if no playlists.csv files found (graceful fallback)
+        - Gracefully handles missing/malformed timestamp data
+        """
+        playlists_dir = self.youtube_path / "playlists"
+
+        if not playlists_dir.exists():
+            return {}
+
+        # Find all playlists*.csv files (playlists.csv, playlists(1).csv, etc.)
+        # These files contain the YouTube ID mapping, NOT the video lists
+        playlist_csv_files = list(playlists_dir.glob("playlists*.csv"))
+
+        if not playlist_csv_files:
+            logger.info("📋 No playlists.csv files found - will use internal IDs")
+            return {}
+
+        logger.info(f"📋 Found {len(playlist_csv_files)} playlist mapping file(s)")
+
+        id_to_metadata: Dict[str, PlaylistMetadata] = {}
+        # Track titles with multiple IDs for informational logging
+        title_id_map: Dict[str, List[str]] = {}
+
+        for csv_file in playlist_csv_files:
+            try:
+                with open(csv_file, "r", encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
+
+                    # Expected columns: "Playlist ID", "Add new videos to top",
+                    # "Playlist Title (Original)", "Playlist Create Timestamp",
+                    # "Playlist Update Timestamp", "Playlist Visibility", ...
+                    for row in reader:
+                        youtube_id = row.get("Playlist ID", "").strip()
+                        title = row.get("Playlist Title (Original)", "").strip()
+
+                        if not youtube_id or not title:
+                            continue
+
+                        # Track titles for informational logging
+                        normalized_title = normalize_for_comparison(title)
+                        if normalized_title not in title_id_map:
+                            title_id_map[normalized_title] = []
+                        if youtube_id not in title_id_map[normalized_title]:
+                            title_id_map[normalized_title].append(youtube_id)
+
+                        # Parse timestamps gracefully
+                        created_at: Optional[datetime] = None
+                        updated_at: Optional[datetime] = None
+                        visibility: Optional[str] = None
+
+                        # Parse created_at timestamp
+                        created_at_raw = row.get("Playlist Create Timestamp", "").strip()
+                        if created_at_raw:
+                            try:
+                                created_at = datetime.fromisoformat(created_at_raw)
+                            except ValueError:
+                                logger.debug(
+                                    f"Could not parse created_at for '{title}': {created_at_raw}"
+                                )
+
+                        # Parse updated_at timestamp
+                        updated_at_raw = row.get("Playlist Update Timestamp", "").strip()
+                        if updated_at_raw:
+                            try:
+                                updated_at = datetime.fromisoformat(updated_at_raw)
+                            except ValueError:
+                                logger.debug(
+                                    f"Could not parse updated_at for '{title}': {updated_at_raw}"
+                                )
+
+                        # Parse visibility
+                        visibility_raw = row.get("Playlist Visibility", "").strip()
+                        if visibility_raw:
+                            # Normalize visibility value (Private/Public/Unlisted)
+                            visibility = visibility_raw
+
+                        id_to_metadata[youtube_id] = PlaylistMetadata(
+                            youtube_id=youtube_id,
+                            title=title,
+                            created_at=created_at,
+                            updated_at=updated_at,
+                            visibility=visibility,
+                        )
+
+                logger.info(f"   📂 Loaded {csv_file.name}")
+
+            except Exception as e:
+                logger.warning(f"⚠️  Error parsing {csv_file}: {e}")
+
+        # Log informational message about titles with multiple IDs
+        multi_id_titles = [
+            (title, ids) for title, ids in title_id_map.items() if len(ids) > 1
+        ]
+        if multi_id_titles:
+            logger.info(
+                f"📋 Found {len(multi_id_titles)} title(s) with multiple YouTube IDs "
+                "(all will be imported):"
+            )
+            for title, ids in multi_id_titles[:5]:  # Show first 5
+                logger.info(f"     '{title}' -> {len(ids)} playlists")
+            if len(multi_id_titles) > 5:
+                logger.info(f"     ... and {len(multi_id_titles) - 5} more")
+
+        logger.info(f"✅ Loaded {len(id_to_metadata)} playlist ID mappings")
+        return id_to_metadata
+
     async def parse_playlists(self) -> List[TakeoutPlaylist]:
         """
         Parse playlists from CSV files in the playlists directory.
 
-        Each playlist is stored as a separate CSV file.
+        Each playlist is stored as a separate CSV file. YouTube IDs and metadata
+        are extracted from playlists.csv (if available) using title matching.
+
+        When multiple playlists have the same title but different YouTube IDs,
+        all of them are created with the same video list from the shared CSV file.
 
         Returns
         -------
         List[TakeoutPlaylist]
-            Parsed playlists with their videos
+            Parsed playlists with their videos, youtube_ids, and metadata (when available)
         """
         playlists_dir = self.youtube_path / "playlists"
 
@@ -224,8 +374,26 @@ class TakeoutService(TakeoutServiceInterface):
 
         logger.info(f"🎵 Parsing playlists from {playlists_dir}")
 
+        # Step 1: Build YouTube ID -> metadata mapping from playlists.csv
+        id_to_metadata = self._parse_playlists_csv()
+
+        # Step 2: Build normalized_title -> list of youtube_ids mapping for matching
+        title_to_ids: Dict[str, List[str]] = {}
+        for youtube_id, metadata in id_to_metadata.items():
+            normalized_title = normalize_for_comparison(metadata["title"])
+            if normalized_title not in title_to_ids:
+                title_to_ids[normalized_title] = []
+            title_to_ids[normalized_title].append(youtube_id)
+
         playlists: List[TakeoutPlaylist] = []
-        playlist_files = list(playlists_dir.glob("*.csv"))
+        # Find video files (exclude playlists*.csv which are ID mapping files)
+        playlist_files = [
+            f for f in playlists_dir.glob("*.csv")
+            if not f.name.startswith("playlists")
+        ]
+
+        matched_count = 0
+        unmatched_names: List[str] = []
 
         for playlist_file in playlist_files:
             try:
@@ -234,7 +402,7 @@ class TakeoutService(TakeoutServiceInterface):
                 if playlist_name.endswith("-videos"):
                     playlist_name = playlist_name[:-7]  # Remove "-videos" suffix
 
-                # Parse CSV file
+                # Parse CSV file to get video list (shared across same-titled playlists)
                 videos: List[TakeoutPlaylistItem] = []
                 with open(playlist_file, "r", encoding="utf-8") as f:
                     reader = csv.DictReader(f)
@@ -249,20 +417,68 @@ class TakeoutService(TakeoutServiceInterface):
                         )
                         videos.append(video_item)
 
-                playlist = TakeoutPlaylist(
-                    name=playlist_name,
-                    file_path=playlist_file,
-                    videos=videos,
-                    video_count=0,  # Will be calculated by model validator
-                )
+                # Step 3: Find ALL matching youtube_ids for this title
+                normalized_name = normalize_for_comparison(playlist_name)
+                matching_ids = title_to_ids.get(normalized_name, [])
 
-                playlists.append(playlist)
-                logger.info(f"   📂 {playlist_name}: {len(videos)} videos")
+                if matching_ids:
+                    # Create a TakeoutPlaylist for EACH matching youtube_id
+                    for youtube_id in matching_ids:
+                        metadata = id_to_metadata[youtube_id]
+
+                        playlist = TakeoutPlaylist(
+                            name=playlist_name,
+                            file_path=playlist_file,
+                            videos=videos,  # Same video list for all
+                            video_count=0,  # Will be calculated by model validator
+                            youtube_id=youtube_id,
+                            created_at=metadata["created_at"],
+                            updated_at=metadata["updated_at"],
+                            visibility=metadata["visibility"],
+                        )
+
+                        playlists.append(playlist)
+                        matched_count += 1
+
+                        logger.info(
+                            f"   📂 {playlist_name}: {len(videos)} videos -> {youtube_id}"
+                        )
+                else:
+                    # No matching YouTube ID - create single playlist without ID
+                    unmatched_names.append(playlist_name)
+
+                    playlist = TakeoutPlaylist(
+                        name=playlist_name,
+                        file_path=playlist_file,
+                        videos=videos,
+                        video_count=0,  # Will be calculated by model validator
+                        youtube_id=None,
+                        created_at=None,
+                        updated_at=None,
+                        visibility=None,
+                    )
+
+                    playlists.append(playlist)
+                    logger.info(
+                        f"   📂 {playlist_name}: {len(videos)} videos (no YouTube ID)"
+                    )
 
             except Exception as e:
                 logger.warning(f"⚠️  Error parsing playlist {playlist_file}: {e}")
 
+        # Summary logging
         logger.info(f"✅ Parsed {len(playlists)} playlists")
+        if id_to_metadata:
+            logger.info(
+                f"   🔗 Matched {matched_count} playlists to YouTube IDs"
+            )
+            if unmatched_names and len(unmatched_names) <= 5:
+                logger.info(f"   ⚠️  Unmatched: {', '.join(unmatched_names)}")
+            elif unmatched_names:
+                logger.info(
+                    f"   ⚠️  {len(unmatched_names)} playlists without YouTube IDs"
+                )
+
         return playlists
 
     async def parse_subscriptions(self) -> List[TakeoutSubscription]:

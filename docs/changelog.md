@@ -12,14 +12,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
-## [0.1.0] - 2024-XX-XX
+## [0.8.0] - 2026-01-21
+
+### Added
+- Playlist ID Consolidation: `playlist_id` is now the single source of truth
+  - YouTube IDs (PL prefix, 30-50 chars)
+  - Internal IDs (int_ prefix, 36 chars)
+  - System playlists (LL, WL, HL)
+- Enhanced Takeout parsing extracts additional metadata from playlists.csv
+- ID-based playlist import (no title-based deduplication)
+- ABC interfaces for service layer
+- Sync command framework with SyncResult and transformers
+
+### Changed
+- Refactored CLI commands to use sync command framework
+- Link status now derived from `playlist_id` prefix
+
+### Removed
+- `youtube_id` column (consolidated into `playlist_id`)
+- `link_status` column (now derived from prefix)
+- `unresolvable_reason` column (feature removed)
+- `PlaylistLinkStatus` enum
+
+## [0.7.0] - 2026-01-16
+
+### Added
+- Channel data integrity improvements
+- Type-safe repository operations
+- Comprehensive channel enrichment
+
+## [0.6.0] - 2026-01-07
+
+### Added
+- Google Takeout database seeding
+- Playlist membership seeding with position tracking
+- Video recovery from historical takeouts
+
+## [0.5.0] - 2025-12-15
+
+### Added
+- Topic analytics with 17 specialized commands
+- Graph visualization export (DOT/JSON)
+- Interactive CLI components
+
+## [0.1.0] - 2025-10-01
 
 ### Added
 - Initial release
 - CLI interface with Typer
 - YouTube Data API integration
 - Google Takeout import and processing
-- Topic analytics with 17 specialized commands
 - Multi-language transcript support
 - PostgreSQL database with async SQLAlchemy
 - Comprehensive test suite (90%+ coverage)

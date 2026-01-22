@@ -1,11 +1,14 @@
 """
 Playlist CLI commands for chronovista.
 
-This module provides commands for managing playlist YouTube ID linking:
-- `link`: Link internal playlist to YouTube playlist ID
-- `unlink`: Remove YouTube ID link from playlist
+This module provides commands for managing playlists:
 - `list`: Display playlists with link status
 - `show`: Show detailed playlist information
+
+Note: The `link`, `unlink`, and `resolve` commands have been removed.
+Playlists are now identified directly by their YouTube ID (PL prefix) or
+internal ID (int_ prefix) in the `playlist_id` field. To link playlists
+to YouTube IDs, re-import from Takeout with playlists.csv.
 
 All commands support proper exit codes, confirmation prompts, and error handling.
 """
@@ -13,15 +16,14 @@ All commands support proper exit codes, confirmation prompts, and error handling
 from __future__ import annotations
 
 import asyncio
+import builtins
 import json
 import sys
 from enum import Enum
-from typing import Any, Dict, List, Optional
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
-from rich.prompt import Confirm
 from rich.table import Table
 
 from chronovista.cli.constants import (
@@ -30,22 +32,9 @@ from chronovista.cli.constants import (
     EXIT_SYSTEM_ERROR,
     EXIT_USER_ERROR,
 )
-from chronovista.cli.errors import (
-    ErrorCategory,
-    display_error_panel,
-    display_success_panel,
-    format_conflict_error,
-    format_not_found_error,
-    format_validation_error,
-    get_exit_code_for_category,
-)
+from chronovista.cli.errors import format_not_found_error
 from chronovista.config.database import DatabaseManager
 from chronovista.db.models import Playlist as PlaylistDB
-from chronovista.models.youtube_types import (
-    is_internal_playlist_id,
-    validate_playlist_id,
-    validate_youtube_id_format,
-)
 from chronovista.repositories.playlist_repository import PlaylistRepository
 
 console = Console()
@@ -53,6 +42,7 @@ console = Console()
 
 class OutputFormat(str, Enum):
     """Output format options for playlist commands."""
+
     TABLE = "table"
     JSON = "json"
     CSV = "csv"
@@ -60,9 +50,11 @@ class OutputFormat(str, Enum):
 
 class SortOrder(str, Enum):
     """Sort order options for playlist list command."""
+
     TITLE = "title"
     VIDEOS = "videos"
     STATUS = "status"
+
 
 # Create the playlist Typer app
 playlist_app = typer.Typer(
@@ -70,320 +62,6 @@ playlist_app = typer.Typer(
     help="Playlist management commands",
     no_args_is_help=True,
 )
-
-
-@playlist_app.command()
-def link(
-    internal_id: str = typer.Argument(
-        ...,
-        help="Internal playlist ID (INT_ prefix)",
-    ),
-    youtube_id: str = typer.Argument(
-        ...,
-        help="YouTube playlist ID (PL prefix)",
-    ),
-    force: bool = typer.Option(
-        False,
-        "--force",
-        "-f",
-        help="Overwrite existing link if YouTube ID already linked to another playlist",
-    ),
-    yes: bool = typer.Option(
-        False,
-        "--yes",
-        "-y",
-        help="Skip confirmation prompt",
-    ),
-) -> None:
-    """
-    Link internal playlist to YouTube playlist ID.
-
-    Associates a local playlist (from Takeout) with its real YouTube playlist ID.
-    This enables two-way lookup and proper attribution.
-
-    Examples:
-        chronovista playlist link INT_7f37ed8c... PLdU2XMVb99x...
-        chronovista playlist link INT_7f37ed8c... PLdU2XMVb99x... --force
-        chronovista playlist link INT_7f37ed8c... PLdU2XMVb99x... --yes
-
-    Exit Codes:
-        0: Success - playlist linked successfully
-        1: User error - invalid ID format, playlist not found, or conflict
-        2: System error - database failure
-        3: Cancelled - user cancelled operation or Ctrl+C pressed
-    """
-
-    async def link_playlist_async() -> None:
-        """Async implementation of playlist linking."""
-        repository = PlaylistRepository()
-        db_manager = DatabaseManager()
-
-        try:
-            # Step 1: Validate internal_id format (cheapest check first)
-            try:
-                validate_playlist_id(internal_id)
-                if not is_internal_playlist_id(internal_id):
-                    error_msg = format_validation_error(
-                        "internal_id",
-                        "Must be internal playlist ID",
-                        expected="INT_ prefix followed by 32 lowercase hex characters",
-                        got=internal_id,
-                    )
-                    console.print(f"[red]{error_msg}[/red]")
-                    sys.exit(EXIT_USER_ERROR)
-            except (ValueError, TypeError) as e:
-                error_msg = format_validation_error(
-                    "internal_id",
-                    str(e),
-                    expected="INT_ prefix followed by 32 lowercase hex characters",
-                    got=internal_id,
-                )
-                console.print(f"[red]{error_msg}[/red]")
-                sys.exit(EXIT_USER_ERROR)
-
-            # Step 2: Validate youtube_id format
-            try:
-                validate_youtube_id_format(youtube_id)
-            except (ValueError, TypeError) as e:
-                error_msg = format_validation_error(
-                    "youtube_id",
-                    str(e),
-                    expected="PL prefix followed by 28-48 alphanumeric characters",
-                    got=youtube_id,
-                )
-                console.print(f"[red]{error_msg}[/red]")
-                sys.exit(EXIT_USER_ERROR)
-
-            # Step 3: Check playlist existence and get details for confirmation
-            async for session in db_manager.get_session(echo=False):
-                playlist = await repository.get(session, internal_id)
-
-                if not playlist:
-                    error_msg = format_not_found_error("Playlist", internal_id)
-                    console.print(f"[red]{error_msg}[/red]")
-                    sys.exit(EXIT_USER_ERROR)
-
-                # Step 4: Check for conflicts (youtube_id already linked)
-                existing_linked = await repository.get_by_youtube_id(session, youtube_id)
-                if (
-                    existing_linked
-                    and existing_linked.playlist_id != internal_id
-                    and not force
-                ):
-                    error_msg = format_conflict_error(
-                        f'YouTube ID {youtube_id} is already linked to playlist "{existing_linked.title}" ({existing_linked.playlist_id})',
-                        hint="Use --force to update the link, or unlink from the other playlist first.",
-                    )
-                    console.print(f"[red]{error_msg}[/red]")
-                    sys.exit(EXIT_USER_ERROR)
-
-                # Step 5: Show confirmation prompt (unless --yes)
-                if not yes:
-                    # Display playlist details in a panel
-                    details = (
-                        f'[cyan]Playlist:[/cyan]   "{playlist.title}"\n'
-                        f"[cyan]Internal ID:[/cyan] {playlist.playlist_id}\n"
-                        f"[cyan]YouTube ID:[/cyan]  {youtube_id}\n"
-                        f"[cyan]Videos:[/cyan]      {playlist.video_count}"
-                    )
-
-                    console.print(
-                        Panel(
-                            details,
-                            title="Link Playlist",
-                            border_style="blue",
-                        )
-                    )
-
-                    # Ask for confirmation
-                    confirmed = Confirm.ask(
-                        "Link this playlist to the YouTube ID?", default=False
-                    )
-
-                    if not confirmed:
-                        console.print("[yellow]Operation cancelled[/yellow]")
-                        sys.exit(EXIT_CANCELLED)
-
-                # Step 6: Perform the linking
-                try:
-                    await repository.link_youtube_id(
-                        session, internal_id, youtube_id, force=force
-                    )
-                    await session.commit()
-
-                    # Step 7: Display success message
-                    success_info = (
-                        f"[dim]Internal ID:[/dim] {internal_id}\n"
-                        f"[dim]YouTube ID:[/dim]  {youtube_id}"
-                    )
-
-                    display_success_panel(
-                        f'Linked playlist "{playlist.title}"',
-                        title="Link Complete",
-                        extra_info=success_info,
-                    )
-
-                    sys.exit(EXIT_SUCCESS)
-
-                except ValueError as e:
-                    # Handle repository-level errors
-                    error_msg = format_validation_error("link_operation", str(e))
-                    console.print(f"[red]{error_msg}[/red]")
-                    sys.exit(EXIT_USER_ERROR)
-
-        except KeyboardInterrupt:
-            console.print("\n[yellow]Operation cancelled by user[/yellow]")
-            sys.exit(EXIT_CANCELLED)
-
-        except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Database error:[/red]\n{str(e)}",
-                    title="Link Failed",
-                    border_style="red",
-                )
-            )
-            sys.exit(EXIT_SYSTEM_ERROR)
-
-    # Run the async function
-    asyncio.run(link_playlist_async())
-
-
-@playlist_app.command()
-def unlink(
-    playlist_id: str = typer.Argument(
-        ...,
-        help="Internal playlist ID (INT_ prefix)",
-    ),
-    yes: bool = typer.Option(
-        False,
-        "--yes",
-        "-y",
-        help="Skip confirmation prompt",
-    ),
-) -> None:
-    """
-    Remove YouTube ID link from playlist.
-
-    Unlinks a playlist from its YouTube ID, keeping only the internal ID.
-    This does not delete the playlist, only removes the YouTube ID reference.
-
-    Examples:
-        chronovista playlist unlink INT_7f37ed8c...
-        chronovista playlist unlink INT_7f37ed8c... --yes
-
-    Exit Codes:
-        0: Success - playlist unlinked successfully or already unlinked
-        1: User error - invalid ID format or playlist not found
-        2: System error - database failure
-        3: Cancelled - user cancelled operation or Ctrl+C pressed
-    """
-
-    async def unlink_playlist_async() -> None:
-        """Async implementation of playlist unlinking."""
-        repository = PlaylistRepository()
-        db_manager = DatabaseManager()
-
-        try:
-            # Step 1: Validate playlist_id format
-            try:
-                validate_playlist_id(playlist_id)
-                if not is_internal_playlist_id(playlist_id):
-                    error_msg = format_validation_error(
-                        "playlist_id",
-                        "Must be internal playlist ID",
-                        expected="INT_ prefix followed by 32 lowercase hex characters",
-                        got=playlist_id,
-                    )
-                    console.print(f"[red]{error_msg}[/red]")
-                    sys.exit(EXIT_USER_ERROR)
-            except (ValueError, TypeError) as e:
-                error_msg = format_validation_error(
-                    "playlist_id",
-                    str(e),
-                    expected="INT_ prefix followed by 32 lowercase hex characters",
-                    got=playlist_id,
-                )
-                console.print(f"[red]{error_msg}[/red]")
-                sys.exit(EXIT_USER_ERROR)
-
-            # Step 2: Get playlist details
-            async for session in db_manager.get_session(echo=False):
-                playlist = await repository.get(session, playlist_id)
-
-                if not playlist:
-                    error_msg = format_not_found_error("Playlist", playlist_id)
-                    console.print(f"[red]{error_msg}[/red]")
-                    sys.exit(EXIT_USER_ERROR)
-
-                # Check if playlist has a YouTube ID to unlink
-                if not playlist.youtube_id:
-                    console.print(
-                        f'[yellow]Playlist "{playlist.title}" is not linked to a YouTube ID[/yellow]'
-                    )
-                    sys.exit(EXIT_SUCCESS)
-
-                # Store youtube_id for display after unlinking
-                current_youtube_id = playlist.youtube_id
-
-                # Step 3: Show confirmation prompt (unless --yes)
-                if not yes:
-                    details = (
-                        f'[cyan]Playlist:[/cyan]   "{playlist.title}"\n'
-                        f"[cyan]Internal ID:[/cyan] {playlist.playlist_id}\n"
-                        f"[cyan]Current YouTube ID:[/cyan] {playlist.youtube_id}"
-                    )
-
-                    console.print(
-                        Panel(
-                            details,
-                            title="Unlink Playlist",
-                            border_style="yellow",
-                        )
-                    )
-
-                    confirmed = Confirm.ask(
-                        "Remove the YouTube ID link from this playlist?", default=False
-                    )
-
-                    if not confirmed:
-                        console.print("[yellow]Operation cancelled[/yellow]")
-                        sys.exit(EXIT_CANCELLED)
-
-                # Step 4: Perform the unlinking
-                try:
-                    await repository.unlink_youtube_id(session, playlist_id)
-                    await session.commit()
-
-                    # Step 5: Display success message
-                    display_success_panel(
-                        f'Unlinked playlist "{playlist.title}" from YouTube ID {current_youtube_id}',
-                        title="Unlink Complete",
-                    )
-
-                    sys.exit(EXIT_SUCCESS)
-
-                except ValueError as e:
-                    error_msg = format_validation_error("unlink_operation", str(e))
-                    console.print(f"[red]{error_msg}[/red]")
-                    sys.exit(EXIT_USER_ERROR)
-
-        except KeyboardInterrupt:
-            console.print("\n[yellow]Operation cancelled by user[/yellow]")
-            sys.exit(EXIT_CANCELLED)
-
-        except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Database error:[/red]\n{str(e)}",
-                    title="Unlink Failed",
-                    border_style="red",
-                )
-            )
-            sys.exit(EXIT_SYSTEM_ERROR)
-
-    # Run the async function
-    asyncio.run(unlink_playlist_async())
 
 
 @playlist_app.command()
@@ -445,7 +123,9 @@ def list(
                 # Determine which playlists to fetch
                 if linked and unlinked:
                     # If both flags are set, show all playlists
-                    playlists = await repository.get_recent_playlists(session, limit=limit)
+                    playlists = await repository.get_recent_playlists(
+                        session, limit=limit
+                    )
                 elif linked:
                     playlists = await repository.get_linked_playlists(
                         session, skip=0, limit=limit
@@ -456,7 +136,9 @@ def list(
                     )
                 else:
                     # Default: show all playlists
-                    playlists = await repository.get_recent_playlists(session, limit=limit)
+                    playlists = await repository.get_recent_playlists(
+                        session, limit=limit
+                    )
 
                 # Get statistics for summary
                 stats = await repository.get_link_statistics(session)
@@ -467,12 +149,18 @@ def list(
                     playlists = sorted(playlists, key=lambda p: p.title.lower())
                 elif sort == SortOrder.VIDEOS:
                     # By video count (descending)
-                    playlists = sorted(playlists, key=lambda p: p.video_count, reverse=True)
+                    playlists = sorted(
+                        playlists, key=lambda p: p.video_count, reverse=True
+                    )
                 elif sort == SortOrder.STATUS:
                     # Linked first, then unlinked, then alphabetical within each group
+                    # A playlist is "linked" if playlist_id starts with "PL" or is a system ID
                     playlists = sorted(
                         playlists,
-                        key=lambda p: (p.youtube_id is None, p.title.lower())
+                        key=lambda p: (
+                            not (p.playlist_id.startswith("PL") or p.playlist_id in ("LL", "WL", "HL")),
+                            p.title.lower()
+                        )
                     )
 
                 # Format output
@@ -540,20 +228,9 @@ def show(
                 # Try to look up playlist by internal ID or YouTube ID
                 playlist = None
 
-                # Check if it's an internal ID
-                if is_internal_playlist_id(playlist_id):
-                    playlist = await repository.get_with_channel(session, playlist_id)
-                else:
-                    # Try as YouTube ID
-                    try:
-                        validate_youtube_id_format(playlist_id)
-                        playlist = await repository.get_by_youtube_id(session, playlist_id)
-                        if playlist:
-                            # Load channel relationship
-                            await session.refresh(playlist, ["channel"])
-                    except (ValueError, TypeError):
-                        # Not a valid YouTube ID format, fall through to error
-                        pass
+                # Look up playlist by ID (could be internal ID or YouTube ID)
+                # Since playlist_id is now the primary key, just look it up directly
+                playlist = await repository.get_with_channel(session, playlist_id)
 
                 if not playlist:
                     error_msg = format_not_found_error("Playlist", playlist_id)
@@ -601,10 +278,12 @@ def _truncate_id(playlist_id: str, max_length: int = 40) -> str:
     """
     if len(playlist_id) <= max_length:
         return playlist_id
-    return playlist_id[:max_length - 3] + "..."
+    return playlist_id[: max_length - 3] + "..."
 
 
-def _output_table(playlists: List[PlaylistDB], stats: Dict[str, int], limit: int) -> None:
+def _output_table(
+    playlists: builtins.list[PlaylistDB], stats: dict[str, int], limit: int
+) -> None:
     """
     Output playlists in table format.
 
@@ -628,8 +307,12 @@ def _output_table(playlists: List[PlaylistDB], stats: Dict[str, int], limit: int
         # Truncate internal ID for display
         truncated_id = _truncate_id(playlist.playlist_id)
 
-        # Status with emoji
-        status = "✅ Linked" if playlist.youtube_id else "❌ Unlinked"
+        # Status with emoji - linked if playlist_id starts with PL or is a system ID
+        is_linked = (
+            playlist.playlist_id.startswith("PL")
+            or playlist.playlist_id in ("LL", "WL", "HL")
+        )
+        status = "✅ Linked" if is_linked else "❌ Unlinked"
 
         table.add_row(
             truncated_id,
@@ -646,7 +329,7 @@ def _output_table(playlists: List[PlaylistDB], stats: Dict[str, int], limit: int
     )
 
 
-def _output_json(playlists: List[PlaylistDB], stats: Dict[str, int]) -> None:
+def _output_json(playlists: builtins.list[PlaylistDB], stats: dict[str, int]) -> None:
     """
     Output playlists in JSON format.
 
@@ -658,10 +341,12 @@ def _output_json(playlists: List[PlaylistDB], stats: Dict[str, int]) -> None:
         "playlists": [
             {
                 "playlist_id": p.playlist_id,
-                "youtube_id": p.youtube_id,
                 "title": p.title,
                 "video_count": p.video_count,
-                "linked": p.youtube_id is not None,
+                "linked": (
+                    p.playlist_id.startswith("PL")
+                    or p.playlist_id in ("LL", "WL", "HL")
+                ),
             }
             for p in playlists
         ],
@@ -675,7 +360,7 @@ def _output_json(playlists: List[PlaylistDB], stats: Dict[str, int]) -> None:
     console.print(json.dumps(output, indent=2))
 
 
-def _output_csv(playlists: List[PlaylistDB], stats: Dict[str, int]) -> None:
+def _output_csv(playlists: builtins.list[PlaylistDB], stats: dict[str, int]) -> None:
     """
     Output playlists in CSV format.
 
@@ -684,15 +369,18 @@ def _output_csv(playlists: List[PlaylistDB], stats: Dict[str, int]) -> None:
         stats: Dictionary with total/linked/unlinked counts
     """
     # CSV header
-    console.print("playlist_id,youtube_id,title,video_count,linked")
+    console.print("playlist_id,title,video_count,linked")
 
     # CSV rows
     for p in playlists:
-        youtube_id = p.youtube_id if p.youtube_id else ""
-        linked = "true" if p.youtube_id else "false"
+        is_linked = (
+            p.playlist_id.startswith("PL")
+            or p.playlist_id in ("LL", "WL", "HL")
+        )
+        linked = "true" if is_linked else "false"
         # Escape title for CSV (quote if contains comma)
         title = f'"{p.title}"' if "," in p.title else p.title
-        console.print(f"{p.playlist_id},{youtube_id},{title},{p.video_count},{linked}")
+        console.print(f"{p.playlist_id},{title},{p.video_count},{linked}")
 
     # Summary as comment
     console.print(
@@ -715,22 +403,20 @@ def _display_playlist_details(playlist: PlaylistDB) -> None:
     # Format created_at timestamp
     created_str = playlist.created_at.strftime("%Y-%m-%d %H:%M:%S")
 
+    # Determine if playlist is linked (has YouTube ID or is system playlist)
+    is_linked = (
+        playlist.playlist_id.startswith("PL")
+        or playlist.playlist_id in ("LL", "WL", "HL")
+    )
+
     # Build details string
     details_lines = [
         "Playlist Details",
         "─" * 40,
-        f"Internal ID:    {playlist.playlist_id}",
-    ]
-
-    # YouTube ID (if linked)
-    if playlist.youtube_id:
-        details_lines.append(f"YouTube ID:     {playlist.youtube_id}")
-    else:
-        details_lines.append("YouTube ID:     [dim](not linked)[/dim]")
-
-    details_lines.extend([
+        f"Playlist ID:    {playlist.playlist_id}",
+        f"Status:         {'[green]Linked[/green]' if is_linked else '[yellow]Internal[/yellow]'}",
         f"Title:          {playlist.title}",
-    ])
+    ]
 
     # Description (if present)
     if playlist.description:
@@ -742,10 +428,12 @@ def _display_playlist_details(playlist: PlaylistDB) -> None:
     else:
         details_lines.append("Description:    [dim](none)[/dim]")
 
-    details_lines.extend([
-        f"Videos:         {playlist.video_count}",
-        f"Privacy:        {playlist.privacy_status}",
-    ])
+    details_lines.extend(
+        [
+            f"Videos:         {playlist.video_count}",
+            f"Privacy:        {playlist.privacy_status}",
+        ]
+    )
 
     # Channel info (if available)
     if hasattr(playlist, "channel") and playlist.channel:
@@ -754,10 +442,12 @@ def _display_playlist_details(playlist: PlaylistDB) -> None:
     else:
         details_lines.append(f"Channel:        {playlist.channel_id}")
 
-    details_lines.extend([
-        f"Created:        {created_str}",
-        "─" * 40,
-    ])
+    details_lines.extend(
+        [
+            f"Created:        {created_str}",
+            "─" * 40,
+        ]
+    )
 
     # Print all details
     for line in details_lines:

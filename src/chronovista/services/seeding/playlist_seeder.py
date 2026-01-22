@@ -239,19 +239,73 @@ class PlaylistSeeder(BaseSeeder):
     def _transform_playlist_to_create(
         self, takeout_playlist: TakeoutPlaylist, user_channel_id: str
     ) -> PlaylistCreate:
-        """Transform takeout playlist to PlaylistCreate model."""
-        # Generate internal playlist ID with INT_ prefix
-        playlist_id = generate_internal_playlist_id(takeout_playlist.name)
+        """
+        Transform takeout playlist to PlaylistCreate model.
+
+        If the TakeoutPlaylist has a youtube_id (from playlists.csv), use it as
+        the playlist_id directly.
+
+        If no youtube_id is available, generate an internal ID with int_ prefix.
+        The link status can be derived from the playlist_id prefix:
+        - PL/LL/WL/HL prefixes indicate linked YouTube playlists
+        - int_ prefix indicates pending/internal playlists
+
+        Maps takeout visibility to privacy_status:
+        - "Private" -> PrivacyStatus.PRIVATE
+        - "Public" -> PrivacyStatus.PUBLIC
+        - "Unlisted" -> PrivacyStatus.UNLISTED
+        - None/unknown -> PrivacyStatus.PRIVATE (default)
+        """
+        # Use YouTube ID directly if available from playlists.csv
+        if takeout_playlist.youtube_id:
+            playlist_id = takeout_playlist.youtube_id
+        else:
+            # Fallback: Generate internal playlist ID with int_ prefix
+            playlist_id = generate_internal_playlist_id(takeout_playlist.name)
+
+        # Map visibility string to PrivacyStatus enum
+        privacy_status = self._map_visibility_to_privacy_status(
+            takeout_playlist.visibility
+        )
 
         return PlaylistCreate(
             playlist_id=playlist_id,
             title=takeout_playlist.name,
-            description=f"Playlist imported from Google Takeout",
+            description="Playlist imported from Google Takeout",
             channel_id=user_channel_id,
             video_count=len(takeout_playlist.videos),
             default_language=LanguageCode.ENGLISH,  # Default fallback
-            privacy_status=PrivacyStatus.PRIVATE,  # Takeout playlists are typically private
+            privacy_status=privacy_status,
+            published_at=takeout_playlist.created_at,
         )
+
+    def _map_visibility_to_privacy_status(
+        self, visibility: Optional[str]
+    ) -> PrivacyStatus:
+        """
+        Map takeout visibility string to PrivacyStatus enum.
+
+        Parameters
+        ----------
+        visibility : Optional[str]
+            Visibility string from playlists.csv ("Private", "Public", "Unlisted")
+
+        Returns
+        -------
+        PrivacyStatus
+            The corresponding privacy status enum value
+        """
+        if visibility is None:
+            return PrivacyStatus.PRIVATE
+
+        visibility_lower = visibility.lower()
+        if visibility_lower == "public":
+            return PrivacyStatus.PUBLIC
+        elif visibility_lower == "unlisted":
+            return PrivacyStatus.UNLISTED
+        else:
+            # Default to PRIVATE for "Private" or any unknown value
+            return PrivacyStatus.PRIVATE
 
     async def _ensure_user_channel_exists(
         self, session: AsyncSession, user_channel_id: str

@@ -23,17 +23,17 @@ MAJOR.MINOR.PATCH
 For pre-release versions:
 
 ```
-0.1.0-alpha.1
-0.1.0-beta.1
-0.1.0-rc.1
+0.9.0-alpha.1
+0.9.0-beta.1
+0.9.0-rc.1
 ```
 
 ## Current Status
 
-chronovista is currently in alpha (`0.x.x`), which means:
+chronovista is currently at version **0.8.0** (pre-1.0), which means:
 
 - API may change between minor versions
-- Not recommended for production use
+- Suitable for personal use and testing
 - Feedback welcome
 
 ## Version Commands
@@ -42,13 +42,13 @@ chronovista is currently in alpha (`0.x.x`), which means:
 # Show current version
 poetry version
 
-# Bump patch (0.1.0 -> 0.1.1)
+# Bump patch (0.8.0 -> 0.8.1)
 poetry version patch
 
-# Bump minor (0.1.1 -> 0.2.0)
+# Bump minor (0.8.0 -> 0.9.0)
 poetry version minor
 
-# Bump major (0.2.0 -> 1.0.0)
+# Bump major (0.9.0 -> 1.0.0)
 poetry version major
 
 # Set specific version

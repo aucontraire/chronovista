@@ -529,16 +529,8 @@ class Playlist(Base):
 
     __tablename__ = "playlists"
 
-    # Primary key
-    playlist_id: Mapped[str] = mapped_column(String(36), primary_key=True)
-
-    # YouTube ID linking (for real YouTube playlists)
-    youtube_id: Mapped[Optional[str]] = mapped_column(
-        String(50),
-        unique=True,
-        nullable=True,
-        comment="Real YouTube playlist ID for linking (PL prefix, 30-50 chars)",
-    )
+    # Primary key - either YouTube ID (PL prefix, 30-50 chars) or internal (int_ prefix, 36 chars)
+    playlist_id: Mapped[str] = mapped_column(String(50), primary_key=True)
 
     # Playlist metadata
     title: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -568,6 +560,11 @@ class Playlist(Base):
     # Status tracking (similar to Video model)
     deleted_flag: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Playlist type (for system playlist handling)
+    playlist_type: Mapped[str] = mapped_column(
+        String(20), default="regular"
+    )  # PlaylistType enum value: regular, liked, watch_later, history, favorites
+
     # Timestamps
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -592,7 +589,7 @@ class PlaylistMembership(Base):
 
     # Composite primary key
     playlist_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("playlists.playlist_id", ondelete="CASCADE"), primary_key=True
+        String(50), ForeignKey("playlists.playlist_id", ondelete="CASCADE"), primary_key=True
     )
     video_id: Mapped[str] = mapped_column(
         String(20), ForeignKey("videos.video_id", ondelete="CASCADE"), primary_key=True

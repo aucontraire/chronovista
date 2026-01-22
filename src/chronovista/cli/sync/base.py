@@ -5,18 +5,23 @@ Provides:
 - SyncResult: Pydantic model for tracking sync operation results
 - require_auth: Decorator/function for authentication checks
 - run_sync_operation: Wrapper for asyncio.run with error handling
+- Error handling for authentication, network, and database failures (Phase 9)
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
 from functools import wraps
 from typing import Any, Awaitable, Callable, Coroutine, Optional, TypeVar, cast
 
+import typer
+from googleapiclient.errors import HttpError
 from pydantic import BaseModel, Field
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from sqlalchemy.exc import SQLAlchemyError
 
 from chronovista.auth import youtube_oauth
 
@@ -25,6 +30,19 @@ T = TypeVar("T")
 
 # Module-level console for sync commands
 console = Console()
+
+# Logger for sync operations
+logger = logging.getLogger(__name__)
+
+# =============================================================================
+# Exit Codes (Phase 9 - T061-T064)
+# =============================================================================
+EXIT_SUCCESS = 0
+EXIT_USER_ERROR = 1
+EXIT_AUTH_FAILURE = 2  # T061: Authentication failure (401/403)
+EXIT_NETWORK_ERROR = 3  # T062: Network errors (ConnectionError, TimeoutError)
+EXIT_QUOTA_EXCEEDED = 3  # Quota exceeded uses same exit code as network
+EXIT_DATABASE_ERROR = 5  # T063: Database errors (SQLAlchemy failures)
 
 
 class SyncResult(BaseModel):
@@ -180,6 +198,10 @@ def run_sync_operation(
     Run an async sync operation with standardized error handling.
 
     Wraps asyncio.run() with consistent error handling and display.
+    Implements Phase 9 error handling (T061-T064) with appropriate exit codes:
+    - Exit 2: Authentication failure (401/403)
+    - Exit 3: Network errors
+    - Exit 5: Database errors
 
     Parameters
     ----------
@@ -193,6 +215,11 @@ def run_sync_operation(
     Optional[T]
         Result of the async function, or None if an error occurred.
 
+    Raises
+    ------
+    typer.Exit
+        With appropriate exit code based on error type.
+
     Examples
     --------
     >>> async def sync_data():
@@ -203,14 +230,90 @@ def run_sync_operation(
         coro = async_fn()
         # Cast to Coroutine for asyncio.run type compatibility
         return asyncio.run(cast(Coroutine[Any, Any, T], coro))
+
+    except HttpError as e:
+        # T061: Handle authentication failures (401/403)
+        status_code = e.resp.status if e.resp else 0
+
+        if status_code in (401, 403):
+            # Check if it's a quota error (403 with quota reason)
+            is_quota_error = False
+            try:
+                error_content = e.content.decode("utf-8") if e.content else ""
+                quota_reasons = {"quotaExceeded", "userRateLimitExceeded", "rateLimitExceeded", "dailyLimitExceeded"}
+                is_quota_error = any(reason in error_content for reason in quota_reasons)
+            except (UnicodeDecodeError, AttributeError):
+                pass
+
+            if is_quota_error:
+                # Quota exceeded - Exit 3
+                console.print(
+                    Panel(
+                        "[red]YouTube API quota exceeded[/red]\n"
+                        "The daily limit has been reached.\n"
+                        "Please try again after midnight Pacific Time.",
+                        title=f"{operation_name} - Quota Exceeded",
+                        border_style="red",
+                    )
+                )
+                logger.error(f"Quota exceeded during {operation_name}")
+                raise typer.Exit(EXIT_QUOTA_EXCEEDED)
+            else:
+                # Authentication error - Exit 2
+                display_auth_api_error(status_code, operation_name)
+                logger.error(f"Authentication failed (HTTP {status_code}) during {operation_name}")
+                raise typer.Exit(EXIT_AUTH_FAILURE)
+        else:
+            # Other HTTP errors
+            console.print(
+                Panel(
+                    f"[red]YouTube API error (HTTP {status_code})[/red]\n{str(e)}",
+                    title=f"{operation_name} - API Error",
+                    border_style="red",
+                )
+            )
+            logger.error(f"API error (HTTP {status_code}) during {operation_name}: {e}")
+            raise typer.Exit(EXIT_USER_ERROR)
+
+    except SQLAlchemyError as e:
+        # T063: Handle database errors - Exit 5
+        display_database_error(operation_name, str(e))
+        logger.error(f"Database error during {operation_name}: {e}")
+        raise typer.Exit(EXIT_DATABASE_ERROR)
+
+    except (ConnectionError, TimeoutError, ConnectionResetError, BrokenPipeError) as e:
+        # T062: Handle network errors - Exit 3
+        display_network_failure(type(e).__name__, operation_name, str(e))
+        logger.error(f"Network error ({type(e).__name__}) during {operation_name}: {e}")
+        raise typer.Exit(EXIT_NETWORK_ERROR)
+
+    except OSError as e:
+        # Network-related OS errors (DNS failures, socket errors)
+        if "getaddrinfo" in str(e) or "Name or service not known" in str(e):
+            display_network_failure("DNS Resolution Error", operation_name, str(e))
+            logger.error(f"DNS error during {operation_name}: {e}")
+            raise typer.Exit(EXIT_NETWORK_ERROR)
+        else:
+            # Other OS errors
+            console.print(
+                Panel(
+                    f"[red]{operation_name} failed:[/red]\n{str(e)}",
+                    title=f"{operation_name} Error",
+                    border_style="red",
+                )
+            )
+            logger.error(f"OS error during {operation_name}: {e}")
+            raise typer.Exit(EXIT_USER_ERROR)
+
     except Exception as e:
         console.print(
             Panel(
-                f"[red]❌ {operation_name} failed:[/red]\n{str(e)}",
+                f"[red]{operation_name} failed:[/red]\n{str(e)}",
                 title=f"{operation_name} Error",
                 border_style="red",
             )
         )
+        logger.error(f"Unexpected error during {operation_name}: {e}")
         return None
 
 
@@ -357,3 +460,126 @@ def display_success(message: str) -> None:
         Success message to display.
     """
     console.print(f"[green]✅ {message}[/green]")
+
+
+# =============================================================================
+# Phase 9 Error Display Functions (T061-T064)
+# =============================================================================
+
+
+def display_auth_api_error(status_code: int, command_name: str = "Command") -> None:
+    """
+    Display authentication failure error with re-auth guidance (T061, FR-019).
+
+    Shows message: "Authentication expired - please run 'chronovista auth login'"
+
+    Parameters
+    ----------
+    status_code : int
+        HTTP status code from API response (401 or 403).
+    command_name : str
+        Name of the command that encountered the error.
+    """
+    if status_code == 401:
+        error_title = "Unauthorized"
+    elif status_code == 403:
+        error_title = "Forbidden"
+    else:
+        error_title = "Authentication Error"
+
+    console.print(
+        Panel(
+            "[red]Authentication expired - please run [bold]'chronovista auth login'[/bold][/red]",
+            title=f"{command_name} - {error_title}",
+            border_style="red",
+        )
+    )
+
+
+def display_network_failure(
+    error_type: str,
+    command_name: str = "Command",
+    details: Optional[str] = None,
+) -> None:
+    """
+    Display network failure error with rollback confirmation (T062).
+
+    Parameters
+    ----------
+    error_type : str
+        Type of network error (e.g., "ConnectionError", "TimeoutError").
+    command_name : str
+        Name of the command that encountered the error.
+    details : Optional[str]
+        Additional error details.
+    """
+    message_lines = [
+        f"[red]Network error: {error_type}[/red]",
+        "",
+        "Unable to connect to YouTube API.",
+        "Any pending changes have been rolled back.",
+    ]
+
+    if details:
+        # Truncate long details
+        truncated = details[:200] + "..." if len(details) > 200 else details
+        message_lines.append(f"\nDetails: {truncated}")
+
+    message_lines.extend([
+        "",
+        "[yellow]What to try:[/yellow]",
+        "1. Check your internet connection",
+        "2. Try again in a few moments",
+    ])
+
+    console.print(
+        Panel(
+            "\n".join(message_lines),
+            title=f"{command_name} - Network Error",
+            border_style="red",
+        )
+    )
+
+
+def display_database_error(
+    command_name: str = "Command",
+    details: Optional[str] = None,
+) -> None:
+    """
+    Display database commit error with rollback confirmation (T063).
+
+    Shows message: "Database error: failed to commit - transaction rolled back"
+
+    Parameters
+    ----------
+    command_name : str
+        Name of the command that encountered the error.
+    details : Optional[str]
+        Additional error details.
+    """
+    message_lines = [
+        "[red]Database error: failed to commit - transaction rolled back[/red]",
+        "",
+        "Your data has been safely rolled back to the previous state.",
+        "No partial changes were saved.",
+    ]
+
+    if details:
+        # Truncate long details
+        truncated = details[:200] + "..." if len(details) > 200 else details
+        message_lines.append(f"\nDetails: {truncated}")
+
+    message_lines.extend([
+        "",
+        "[yellow]What to try:[/yellow]",
+        "1. Check database connectivity",
+        "2. Try the operation again",
+    ])
+
+    console.print(
+        Panel(
+            "\n".join(message_lines),
+            title=f"{command_name} - Database Error",
+            border_style="red",
+        )
+    )

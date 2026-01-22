@@ -636,3 +636,380 @@ def format_database_error(
         message += f": {details}"
 
     return format_error(ErrorCategory.DATABASE, message)
+
+
+# =============================================================================
+# Phase 9 Error Handling - Exit Codes (T061-T064)
+# =============================================================================
+
+# Exit codes per specification
+EXIT_AUTH_FAILURE = 2  # Authentication failure (401/403)
+EXIT_NETWORK_ERROR = 3  # Network errors (ConnectionError, TimeoutError)
+EXIT_DATABASE_ERROR = 5  # Database errors (SQLAlchemy failures)
+
+
+class ErrorCategory9:
+    """
+    Extended error categories for Phase 9.
+
+    Categories map to specific exit codes:
+    - AUTHENTICATION: OAuth/API authentication failures (exit code 2)
+    - NETWORK: Network connectivity failures (exit code 3)
+    - DATABASE_COMMIT: Database commit failures (exit code 5)
+    """
+
+    AUTHENTICATION = "Authentication"
+    NETWORK = "Network"
+    DATABASE_COMMIT = "Database Commit"
+
+
+# =============================================================================
+# T061: Authentication Failure Display (FR-019)
+# =============================================================================
+
+
+def display_auth_failure_error(
+    status_code: int,
+    command_name: str = "Command",
+) -> None:
+    """
+    Display authentication failure error with re-auth guidance (T061, FR-019).
+
+    Detects 401/403 from YouTube API and displays guidance message:
+    "Authentication expired - please run 'chronovista auth login'"
+
+    Parameters
+    ----------
+    status_code : int
+        HTTP status code from API response (401 or 403).
+    command_name : str
+        Name of the command that encountered the error.
+
+    Examples
+    --------
+    >>> display_auth_failure_error(401, "Playlist Sync")
+    # Displays: "Authentication expired - please run 'chronovista auth login'"
+    """
+    if status_code == 401:
+        error_type = "Unauthorized"
+        message = (
+            "Authentication expired - please run [bold]'chronovista auth login'[/bold]"
+        )
+    elif status_code == 403:
+        error_type = "Forbidden"
+        message = (
+            "Access denied - your authentication may have expired.\n"
+            "Please run [bold]'chronovista auth login'[/bold] to re-authenticate."
+        )
+    else:
+        error_type = "Authentication Error"
+        message = (
+            "Authentication failed - please run [bold]'chronovista auth login'[/bold]"
+        )
+
+    console.print(
+        Panel(
+            f"[red]{message}[/red]",
+            title=f"{command_name} - {error_type}",
+            border_style="red",
+        )
+    )
+
+
+def format_auth_failure_message(status_code: int) -> str:
+    """
+    Format authentication failure message with guidance.
+
+    Parameters
+    ----------
+    status_code : int
+        HTTP status code (401 or 403).
+
+    Returns
+    -------
+    str
+        Formatted error message with re-authentication guidance.
+
+    Examples
+    --------
+    >>> format_auth_failure_message(401)
+    "Authentication expired - please run 'chronovista auth login'"
+    """
+    return "Authentication expired - please run 'chronovista auth login'"
+
+
+# =============================================================================
+# T062: Network Failure Display
+# =============================================================================
+
+
+def display_network_error(
+    error_type: str,
+    command_name: str = "Command",
+    details: Optional[str] = None,
+) -> None:
+    """
+    Display network failure error with rollback confirmation (T062).
+
+    Handles ConnectionError, TimeoutError, and other network-related failures.
+
+    Parameters
+    ----------
+    error_type : str
+        Type of network error (e.g., "ConnectionError", "TimeoutError").
+    command_name : str
+        Name of the command that encountered the error.
+    details : Optional[str]
+        Additional error details.
+
+    Examples
+    --------
+    >>> display_network_error("ConnectionError", "Sync Playlists")
+    # Displays network error with rollback message
+    """
+    message_lines = [
+        f"[red]Network error: {error_type}[/red]",
+        "",
+        "Unable to connect to YouTube API.",
+        "Any pending changes have been rolled back.",
+    ]
+
+    if details:
+        message_lines.append(f"\nDetails: {details}")
+
+    message_lines.extend([
+        "",
+        "[yellow]What to try:[/yellow]",
+        "1. Check your internet connection",
+        "2. Try again in a few moments",
+        "3. If the problem persists, check YouTube API status",
+    ])
+
+    console.print(
+        Panel(
+            "\n".join(message_lines),
+            title=f"{command_name} - Network Error",
+            border_style="red",
+        )
+    )
+
+
+def format_network_error_message(error_type: str) -> str:
+    """
+    Format network error message.
+
+    Parameters
+    ----------
+    error_type : str
+        Type of network error.
+
+    Returns
+    -------
+    str
+        Formatted error message.
+    """
+    return f"Network error: {error_type} - transaction rolled back"
+
+
+# =============================================================================
+# T063: Database Error Display with Exit 5
+# =============================================================================
+
+
+def display_database_commit_error(
+    operation: str = "commit",
+    command_name: str = "Command",
+    details: Optional[str] = None,
+) -> None:
+    """
+    Display database commit error with rollback confirmation (T063).
+
+    Shows message: "Database error: failed to commit - transaction rolled back"
+
+    Parameters
+    ----------
+    operation : str
+        Database operation that failed (default: "commit").
+    command_name : str
+        Name of the command that encountered the error.
+    details : Optional[str]
+        Additional error details.
+
+    Examples
+    --------
+    >>> display_database_commit_error("commit", "Sync Playlists")
+    # Displays: "Database error: failed to commit - transaction rolled back"
+    """
+    message_lines = [
+        f"[red]Database error: failed to {operation} - transaction rolled back[/red]",
+    ]
+
+    if details:
+        message_lines.append(f"\nDetails: {details}")
+
+    message_lines.extend([
+        "",
+        "Your data has been safely rolled back to the previous state.",
+        "No partial changes were saved.",
+        "",
+        "[yellow]What to try:[/yellow]",
+        "1. Check database connectivity",
+        "2. Ensure sufficient disk space",
+        "3. Try the operation again",
+    ])
+
+    console.print(
+        Panel(
+            "\n".join(message_lines),
+            title=f"{command_name} - Database Error",
+            border_style="red",
+        )
+    )
+
+
+def format_database_commit_error_message() -> str:
+    """
+    Format database commit error message.
+
+    Returns
+    -------
+    str
+        Formatted error message for database commit failures.
+    """
+    return "Database error: failed to commit - transaction rolled back"
+
+
+# =============================================================================
+# T064: Transient API Failure Retry Display
+# =============================================================================
+
+
+def display_retry_message(
+    attempt: int,
+    max_retries: int,
+    delay: float,
+    error_type: str,
+) -> None:
+    """
+    Display retry message for transient API failures (T064, NFR-004).
+
+    Shows progress of exponential backoff retry attempts.
+
+    Parameters
+    ----------
+    attempt : int
+        Current retry attempt number (1-based).
+    max_retries : int
+        Maximum number of retries configured.
+    delay : float
+        Delay before next retry in seconds.
+    error_type : str
+        Type of error being retried.
+
+    Examples
+    --------
+    >>> display_retry_message(1, 3, 1.0, "500 Internal Server Error")
+    # Displays: "Retry 1/3 in 1.0s: 500 Internal Server Error"
+    """
+    console.print(
+        f"[yellow]Retry {attempt}/{max_retries} in {delay:.1f}s: {error_type}[/yellow]"
+    )
+
+
+def display_retry_exhausted_error(
+    max_retries: int,
+    error_type: str,
+    command_name: str = "Command",
+) -> None:
+    """
+    Display error when all retry attempts are exhausted (T064).
+
+    Parameters
+    ----------
+    max_retries : int
+        Maximum retries that were attempted.
+    error_type : str
+        Type of persistent error.
+    command_name : str
+        Name of the command that encountered the error.
+
+    Examples
+    --------
+    >>> display_retry_exhausted_error(3, "503 Service Unavailable", "Sync")
+    # Displays error indicating all retries failed
+    """
+    console.print(
+        Panel(
+            f"[red]API request failed after {max_retries} retries[/red]\n"
+            f"Last error: {error_type}\n"
+            "\n"
+            "[yellow]The YouTube API may be experiencing issues.[/yellow]\n"
+            "Please try again later.",
+            title=f"{command_name} - Retry Exhausted",
+            border_style="red",
+        )
+    )
+
+
+# =============================================================================
+# Error Type Detection Helpers
+# =============================================================================
+
+
+def is_auth_error(status_code: int) -> bool:
+    """
+    Check if HTTP status code indicates authentication failure.
+
+    Parameters
+    ----------
+    status_code : int
+        HTTP status code from API response.
+
+    Returns
+    -------
+    bool
+        True if the error is an authentication failure (401 or 403).
+    """
+    return status_code in (401, 403)
+
+
+def is_retryable_error(status_code: int) -> bool:
+    """
+    Check if HTTP status code indicates a retryable (transient) error.
+
+    Parameters
+    ----------
+    status_code : int
+        HTTP status code from API response.
+
+    Returns
+    -------
+    bool
+        True if the error is retryable (5xx server errors, 429 rate limit).
+    """
+    # 5xx server errors and 429 (rate limit) are retryable
+    return status_code >= 500 or status_code == 429
+
+
+def is_network_error(exception: Exception) -> bool:
+    """
+    Check if an exception is a network-related error.
+
+    Parameters
+    ----------
+    exception : Exception
+        The exception to check.
+
+    Returns
+    -------
+    bool
+        True if the exception is a network error.
+    """
+    network_error_types = (
+        ConnectionError,
+        TimeoutError,
+        ConnectionResetError,
+        BrokenPipeError,
+        OSError,  # Includes socket errors, DNS failures
+    )
+    return isinstance(exception, network_error_types)

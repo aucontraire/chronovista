@@ -100,6 +100,33 @@ chronovista tags [COMMAND]
 
 **Note:** Tags use `--tag`, `--pattern`, and `--id` options (not positional arguments) to support tags and video IDs that start with `-`.
 
+### Playlist Commands
+
+```bash
+chronovista playlist [COMMAND]
+```
+
+| Command | Description |
+|---------|-------------|
+| `list` | List playlists with link status |
+| `show <id>` | Show playlist details |
+
+**Note:** Link status is derived from the playlist ID prefix:
+- `PL` prefix or `LL`/`WL`/`HL` = Linked (YouTube playlist)
+- `int_` prefix = Unlinked (internal/local playlist)
+
+### Enrich Commands
+
+```bash
+chronovista enrich [COMMAND]
+```
+
+| Command | Description |
+|---------|-------------|
+| `run` | Enrich video metadata from YouTube API |
+| `status` | Show enrichment status |
+| `channels` | Enrich channel metadata |
+
 ### Takeout Commands
 
 ```bash
@@ -412,6 +439,107 @@ Shows all tags for a specific video.
 chronovista tags by-video --id "-2kc5xfeQEs"
 chronovista tags by-video -i "dQw4w9WgXcQ"
 ```
+
+### Playlist Management
+
+#### List Playlists
+
+```bash
+chronovista playlist list [OPTIONS]
+```
+
+Lists playlists with their link status (derived from playlist ID prefix).
+
+**Options:**
+
+- `--linked` - Show only linked playlists (YouTube IDs)
+- `--unlinked` - Show only unlinked playlists (internal IDs)
+- `--limit, -n <n>` - Maximum playlists to show (default: 50)
+- `--format [table|json|csv]` - Output format (default: table)
+- `--sort [title|videos|status]` - Sort order (default: title)
+
+**Examples:**
+
+```bash
+# List all playlists
+chronovista playlist list
+
+# List only YouTube-linked playlists
+chronovista playlist list --linked
+
+# Export as JSON
+chronovista playlist list --format json --limit 100
+```
+
+#### Show Playlist
+
+```bash
+chronovista playlist show <PLAYLIST_ID>
+```
+
+Shows detailed information about a specific playlist.
+
+Accepts both internal IDs (`int_` prefix) and YouTube IDs (`PL` prefix).
+
+**Examples:**
+
+```bash
+chronovista playlist show PLdU2XMVb99xMxwMeeLWDqmyW8GFqpvgVC
+chronovista playlist show int_7f37ed8c5d41402abc4b2a76b9719d91
+```
+
+### Enrichment
+
+#### Run Enrichment
+
+```bash
+chronovista enrich run [OPTIONS]
+```
+
+Enriches video metadata from the YouTube Data API.
+
+**Options:**
+
+- `--limit <n>` - Maximum videos to enrich
+- `--priority [high|medium|low|all]` - Priority level filter
+- `--dry-run` - Preview without making changes
+- `--include-playlists` - Also enrich playlist metadata
+- `--report <path>` - Generate JSON report
+- `--log-file <path>` - Log to file
+
+**Examples:**
+
+```bash
+# Enrich up to 1000 videos
+chronovista enrich run --limit 1000
+
+# Preview what would be enriched
+chronovista enrich run --dry-run --limit 100
+
+# Enrich with report generation
+chronovista enrich run --report ./enrichment-report.json
+```
+
+#### Enrichment Status
+
+```bash
+chronovista enrich status
+```
+
+Shows current enrichment status including counts of enriched vs. pending videos.
+
+#### Enrich Channels
+
+```bash
+chronovista enrich channels [OPTIONS]
+```
+
+Enriches channel metadata from the YouTube Data API.
+
+**Options:**
+
+- `--limit <n>` - Maximum channels to enrich
+- `--dry-run` - Preview without making changes
 
 ### Google Takeout
 

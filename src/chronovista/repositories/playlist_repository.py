@@ -22,7 +22,7 @@ from chronovista.models.playlist import (
     PlaylistStatistics,
     PlaylistUpdate,
 )
-from chronovista.models.youtube_types import PlaylistId, validate_youtube_id_format
+from chronovista.models.youtube_types import PlaylistId, is_youtube_playlist_id
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
@@ -70,41 +70,6 @@ class PlaylistRepository(
             select(PlaylistDB)
             .options(selectinload(PlaylistDB.channel))
             .where(PlaylistDB.playlist_id == playlist_id)
-        )
-        return result.scalar_one_or_none()
-
-    async def get_by_youtube_id(
-        self, session: AsyncSession, youtube_id: str
-    ) -> Optional[PlaylistDB]:
-        """
-        Get playlist by real YouTube playlist ID.
-
-        Parameters
-        ----------
-        session : AsyncSession
-            Database session.
-        youtube_id : str
-            Real YouTube playlist ID (PL prefix).
-
-        Returns
-        -------
-        Optional[PlaylistDB]
-            Playlist if found, None otherwise.
-
-        Raises
-        ------
-        ValueError
-            If youtube_id format is invalid (must start with PL).
-        """
-        # Validation order: format check first (fail-fast, cheapest operation)
-        try:
-            validate_youtube_id_format(youtube_id)
-        except (ValueError, TypeError) as e:
-            raise ValueError(f"Invalid YouTube ID format: {youtube_id}") from e
-
-        # Query for playlist with matching youtube_id
-        result = await session.execute(
-            select(PlaylistDB).where(PlaylistDB.youtube_id == youtube_id)
         )
         return result.scalar_one_or_none()
 
@@ -230,11 +195,18 @@ class PlaylistRepository(
         if filters.updated_before:
             conditions.append(PlaylistDB.updated_at <= filters.updated_before)
 
-        # Apply linked_status filter
+        # Apply linked_status filter (based on playlist_id prefix)
+        # Linked = YouTube IDs (PL prefix or system: LL, WL, HL)
+        # Unlinked = Internal IDs (int_ prefix)
         if filters.linked_status == "linked":
-            conditions.append(PlaylistDB.youtube_id.is_not(None))
+            conditions.append(
+                or_(
+                    PlaylistDB.playlist_id.startswith("PL"),
+                    PlaylistDB.playlist_id.in_(["LL", "WL", "HL"]),
+                )
+            )
         elif filters.linked_status == "unlinked":
-            conditions.append(PlaylistDB.youtube_id.is_(None))
+            conditions.append(PlaylistDB.playlist_id.startswith("int_"))
         # "all" (default) - no filter applied
 
         if conditions:
@@ -486,124 +458,11 @@ class PlaylistRepository(
         await session.flush()
         return count
 
-    async def link_youtube_id(
-        self,
-        session: AsyncSession,
-        playlist_id: str,
-        youtube_id: str,
-        force: bool = False,
-    ) -> PlaylistDB:
-        """
-        Link internal playlist to real YouTube playlist ID.
-
-        Parameters
-        ----------
-        session : AsyncSession
-            Database session.
-        playlist_id : str
-            Internal playlist ID (INT_ or existing PL prefix).
-        youtube_id : str
-            Real YouTube playlist ID to link.
-        force : bool, optional
-            If True, update existing link. Default False.
-
-        Returns
-        -------
-        PlaylistDB
-            Updated playlist with youtube_id set.
-
-        Raises
-        ------
-        ValueError
-            If playlist_id not found.
-            If youtube_id already linked to another playlist (when force=False).
-            If youtube_id format is invalid.
-
-        Notes
-        -----
-        Validation order: format -> existence -> conflict check (fail-fast).
-        Atomic operation - either succeeds fully or raises exception with no partial state.
-        """
-        # Step 1: Validate youtube_id format first (cheapest check)
-        try:
-            validate_youtube_id_format(youtube_id)
-        except (ValueError, TypeError) as e:
-            raise ValueError(f"Invalid YouTube ID format: {youtube_id}") from e
-
-        # Step 2: Check playlist exists
-        playlist = await self.get(session, playlist_id)
-        if not playlist:
-            raise ValueError(f"Playlist {playlist_id} not found")
-
-        # Step 3: Check if youtube_id is already linked to another playlist
-        existing_linked = await session.execute(
-            select(PlaylistDB).where(
-                and_(
-                    PlaylistDB.youtube_id == youtube_id,
-                    PlaylistDB.playlist_id != playlist_id,
-                )
-            )
-        )
-        existing_playlist = existing_linked.scalar_one_or_none()
-
-        if existing_playlist and not force:
-            raise ValueError(
-                f"YouTube ID {youtube_id} already linked to playlist "
-                f"{existing_playlist.playlist_id}"
-            )
-
-        # Step 4: If force=True and another playlist has this youtube_id, unlink it first
-        if existing_playlist and force:
-            existing_playlist.youtube_id = None
-            await session.flush()
-
-        # Step 5: Update the playlist with the new youtube_id
-        playlist.youtube_id = youtube_id
-        await session.flush()
-
-        return playlist
-
-    async def unlink_youtube_id(
-        self, session: AsyncSession, playlist_id: str
-    ) -> PlaylistDB:
-        """
-        Remove YouTube ID link from playlist.
-
-        Parameters
-        ----------
-        session : AsyncSession
-            Database session.
-        playlist_id : str
-            Internal playlist ID to unlink.
-
-        Returns
-        -------
-        PlaylistDB
-            Updated playlist with youtube_id set to None.
-
-        Raises
-        ------
-        ValueError
-            If playlist_id not found.
-
-        Notes
-        -----
-        Atomic operation within transaction.
-        """
-        playlist = await self.get(session, playlist_id)
-        if not playlist:
-            raise ValueError(f"Playlist {playlist_id} not found")
-
-        playlist.youtube_id = None
-        await session.flush()
-
-        return playlist
-
     async def get_unlinked_playlists(
         self, session: AsyncSession, skip: int = 0, limit: int = 100
     ) -> List[PlaylistDB]:
         """
-        Get playlists without YouTube ID link.
+        Get playlists with internal IDs (not linked to YouTube).
 
         Parameters
         ----------
@@ -617,11 +476,11 @@ class PlaylistRepository(
         Returns
         -------
         List[PlaylistDB]
-            Playlists where youtube_id is NULL, ordered by title.
+            Playlists with int_ prefix (internal IDs), ordered by title.
         """
         result = await session.execute(
             select(PlaylistDB)
-            .where(PlaylistDB.youtube_id.is_(None))
+            .where(PlaylistDB.playlist_id.startswith("int_"))
             .order_by(PlaylistDB.title)
             .offset(skip)
             .limit(limit)
@@ -632,7 +491,7 @@ class PlaylistRepository(
         self, session: AsyncSession, skip: int = 0, limit: int = 100
     ) -> List[PlaylistDB]:
         """
-        Get playlists with YouTube ID link.
+        Get playlists with YouTube IDs (linked to YouTube).
 
         Parameters
         ----------
@@ -646,11 +505,16 @@ class PlaylistRepository(
         Returns
         -------
         List[PlaylistDB]
-            Playlists where youtube_id is NOT NULL, ordered by title.
+            Playlists with PL prefix or system IDs (LL, WL, HL), ordered by title.
         """
         result = await session.execute(
             select(PlaylistDB)
-            .where(PlaylistDB.youtube_id.is_not(None))
+            .where(
+                or_(
+                    PlaylistDB.playlist_id.startswith("PL"),
+                    PlaylistDB.playlist_id.in_(["LL", "WL", "HL"]),
+                )
+            )
             .order_by(PlaylistDB.title)
             .offset(skip)
             .limit(limit)
@@ -671,8 +535,8 @@ class PlaylistRepository(
         Dict[str, int]
             Statistics with keys:
             - total_playlists: Total number of playlists
-            - linked_playlists: Playlists with youtube_id
-            - unlinked_playlists: Playlists without youtube_id
+            - linked_playlists: Playlists with YouTube IDs (PL, LL, WL, HL)
+            - unlinked_playlists: Playlists with internal IDs (int_)
         """
         # Get total count
         total_result = await session.execute(
@@ -680,10 +544,13 @@ class PlaylistRepository(
         )
         total_playlists = total_result.scalar() or 0
 
-        # Get linked count
+        # Get linked count (YouTube IDs)
         linked_result = await session.execute(
             select(func.count(PlaylistDB.playlist_id)).where(
-                PlaylistDB.youtube_id.is_not(None)
+                or_(
+                    PlaylistDB.playlist_id.startswith("PL"),
+                    PlaylistDB.playlist_id.in_(["LL", "WL", "HL"]),
+                )
             )
         )
         linked_playlists = linked_result.scalar() or 0

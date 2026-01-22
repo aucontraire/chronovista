@@ -12,7 +12,11 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from chronovista.models.enums import LanguageCode, PrivacyStatus
+from chronovista.models.enums import (
+    LanguageCode,
+    PlaylistType,
+    PrivacyStatus,
+)
 from chronovista.models.playlist import (
     Playlist,
     PlaylistBase,
@@ -195,7 +199,6 @@ class TestPlaylistBase:
         """Test model_dump() method for serialization."""
         playlist = PlaylistBaseFactory.build(
             playlist_id="PLrAXtmRdnEQy3roZQD5TZuDCU5x-X4V8f",
-            youtube_id=None,  # Explicitly set to None
             title="Test Playlist",
             description="Test description",
             default_language="en",
@@ -207,7 +210,6 @@ class TestPlaylistBase:
         data = playlist.model_dump()
         expected = {
             "playlist_id": "PLrAXtmRdnEQy3roZQD5TZuDCU5x-X4V8f",
-            "youtube_id": None,  # Added youtube_id field
             "title": "Test Playlist",
             "description": "Test description",
             "default_language": "en",
@@ -217,6 +219,8 @@ class TestPlaylistBase:
             # New fields for playlist enrichment
             "published_at": None,
             "deleted_flag": False,
+            # Playlist type for system playlist handling (T077)
+            "playlist_type": PlaylistType.REGULAR,
         }
 
         assert data == expected

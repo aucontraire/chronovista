@@ -15,11 +15,12 @@ from pydantic import BeforeValidator, Field
 
 def validate_playlist_id(v: str) -> str:
     """
-    Validate Playlist ID format (internal INT_ or YouTube PL).
+    Validate Playlist ID format (internal INT_, YouTube PL, or system playlist).
 
-    Accepts two formats:
+    Accepts three formats:
     - Internal IDs: INT_ prefix + 32 character MD5 hash (36 chars total)
     - YouTube IDs: PL prefix + 28-48 characters (30-50 chars total)
+    - System playlists: LL (Liked Videos), WL (Watch Later), HL (History)
 
     Parameters
     ----------
@@ -42,10 +43,15 @@ def validate_playlist_id(v: str) -> str:
     -----
     - INT_ IDs are normalized to lowercase before validation
     - PL IDs preserve their original case (YouTube IDs are case-sensitive)
+    - System IDs (LL, WL, HL) must be exact match (uppercase)
     - Validation order: format check -> length check -> character check (fail-fast)
     """
     if not isinstance(v, str):
         raise TypeError("PlaylistId must be a string")
+
+    # System playlist IDs (exact match, case-sensitive)
+    if v in ("LL", "WL", "HL"):
+        return v
 
     # Internal IDs: INT_ prefix + 32 char MD5 hash = 36 chars
     if v.startswith("INT_") or v.upper().startswith("INT_"):
@@ -65,7 +71,9 @@ def validate_playlist_id(v: str) -> str:
             raise ValueError(f"YouTube PlaylistId contains invalid characters: {v}")
         return v
 
-    raise ValueError(f'PlaylistId must start with "INT_" or "PL", got: {v}')
+    raise ValueError(
+        f'PlaylistId must start with "int_", "PL", or be a system ID (LL, WL, HL), got: {v}'
+    )
 
 
 def is_internal_playlist_id(playlist_id: Any) -> bool:
@@ -98,7 +106,10 @@ def is_internal_playlist_id(playlist_id: Any) -> bool:
 
 def is_youtube_playlist_id(playlist_id: Any) -> bool:
     """
-    Check if a playlist ID is a YouTube (PL) playlist ID.
+    Check if a playlist ID is a YouTube playlist ID.
+
+    Accepts both regular playlist IDs (PL prefix) and system playlist IDs
+    (LL for Liked Videos, WL for Watch Later, HL for History).
 
     Parameters
     ----------
@@ -108,11 +119,15 @@ def is_youtube_playlist_id(playlist_id: Any) -> bool:
     Returns
     -------
     bool
-        True if the playlist ID starts with "PL", False otherwise.
+        True if the playlist ID starts with a valid YouTube prefix, False otherwise.
 
     Examples
     --------
     >>> is_youtube_playlist_id("PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")
+    True
+    >>> is_youtube_playlist_id("LL")
+    True
+    >>> is_youtube_playlist_id("WL")
     True
     >>> is_youtube_playlist_id("INT_f7abe60f1234567890abcdef12345678")
     False
@@ -121,16 +136,57 @@ def is_youtube_playlist_id(playlist_id: Any) -> bool:
     """
     if not isinstance(playlist_id, str):
         return False
-    return playlist_id.startswith("PL")
+    # Check for system playlist IDs (exact match) or regular PL prefix
+    return playlist_id in ("LL", "WL", "HL") or playlist_id.startswith("PL")
+
+
+def is_system_playlist_id(playlist_id: Any) -> bool:
+    """
+    Check if a playlist ID is a YouTube system playlist ID.
+
+    System playlists have special 2-character IDs:
+    - LL: Liked Videos
+    - WL: Watch Later
+    - HL: Watch History
+
+    Parameters
+    ----------
+    playlist_id : Any
+        The playlist ID to check. Non-string values return False.
+
+    Returns
+    -------
+    bool
+        True if the playlist ID is a system playlist ID, False otherwise.
+
+    Examples
+    --------
+    >>> is_system_playlist_id("LL")
+    True
+    >>> is_system_playlist_id("WL")
+    True
+    >>> is_system_playlist_id("HL")
+    True
+    >>> is_system_playlist_id("PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")
+    False
+    """
+    if not isinstance(playlist_id, str):
+        return False
+    return playlist_id in ("LL", "WL", "HL")
 
 
 def validate_youtube_id_format(youtube_id: str) -> str:
     """
-    Validate YouTube playlist ID format only (PL prefix).
+    Validate YouTube playlist ID format.
 
-    This function validates only YouTube playlist IDs (starting with PL),
-    rejecting internal IDs. Use this when you specifically need a YouTube
-    playlist ID and not an internal one.
+    Accepts both regular playlist IDs (PL prefix) and system playlist IDs:
+    - PL: Regular playlists (30-50 characters)
+    - LL: Liked Videos (exactly 2 characters)
+    - WL: Watch Later (exactly 2 characters)
+    - HL: Watch History (exactly 2 characters)
+
+    This function validates only YouTube playlist IDs, rejecting internal IDs.
+    Use this when you specifically need a YouTube playlist ID and not an internal one.
 
     Parameters
     ----------
@@ -153,13 +209,24 @@ def validate_youtube_id_format(youtube_id: str) -> str:
     --------
     >>> validate_youtube_id_format("PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")
     'PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK'
+    >>> validate_youtube_id_format("LL")
+    'LL'
+    >>> validate_youtube_id_format("WL")
+    'WL'
     >>> validate_youtube_id_format("INT_f7abe60f...")  # Raises ValueError
     """
     if not isinstance(youtube_id, str):
         raise TypeError("YouTube PlaylistId must be a string")
 
+    # System playlist IDs (exact match)
+    if youtube_id in ("LL", "WL", "HL"):
+        return youtube_id
+
+    # Regular playlist IDs (PL prefix)
     if not youtube_id.startswith("PL"):
-        raise ValueError(f'YouTube PlaylistId must start with "PL", got: {youtube_id}')
+        raise ValueError(
+            f'YouTube PlaylistId must start with "PL" or be a system ID (LL, WL, HL), got: {youtube_id}'
+        )
 
     if not (30 <= len(youtube_id) <= 50):
         raise ValueError(
@@ -291,7 +358,7 @@ PlaylistId = Annotated[
     str,
     BeforeValidator(validate_playlist_id),
     Field(
-        description="Playlist ID: Internal (INT_ + 32-char MD5, 36 chars) or YouTube (PL prefix, 30-50 chars)"
+        description="Playlist ID: Internal (INT_ + 32-char MD5), YouTube (PL prefix, 30-50 chars), or system (LL, WL, HL)"
     ),
 ]
 

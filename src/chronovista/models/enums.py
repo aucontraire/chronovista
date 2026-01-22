@@ -60,6 +60,20 @@ class TopicType(str, Enum):
     CUSTOM = "custom"
 
 
+class PlaylistType(str, Enum):
+    """Types of YouTube playlists.
+
+    Distinguishes between regular user-created playlists and special
+    system playlists with unique API behavior.
+    """
+
+    REGULAR = "regular"
+    LIKED = "liked"  # Liked Videos playlist (LL prefix)
+    WATCH_LATER = "watch_later"  # Watch Later playlist (WL prefix)
+    HISTORY = "history"  # Watch History playlist (HL prefix)
+    FAVORITES = "favorites"  # Legacy Favorites playlist
+
+
 class LanguageCode(str, Enum):
     """BCP-47 language codes for international content.
 

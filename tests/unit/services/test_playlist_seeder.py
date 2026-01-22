@@ -33,19 +33,19 @@ class TestPlaylistSeederUtilityFunctions:
     """Tests for utility functions."""
 
     def test_generate_internal_playlist_id(self) -> None:
-        """Test internal playlist ID generation with INT_ prefix."""
+        """Test internal playlist ID generation with int_ prefix."""
         seed = "test_playlist"
         playlist_id = generate_internal_playlist_id(seed)
 
         # AC: Generated IDs satisfy SC-006 (type identifiable at glance)
-        # Note: PlaylistId validator normalizes INT_ to lowercase (int_)
-        assert playlist_id.upper().startswith("INT_")
+        # Note: PlaylistId validator generates lowercase int_ prefix
+        assert playlist_id.startswith("int_")
 
-        # AC: Total length is 36 characters (INT_ prefix + 32 hex chars)
-        assert len(playlist_id) == 36  # INT_ (4) + 32 hex chars = 36
+        # AC: Total length is 36 characters (int_ prefix + 32 hex chars)
+        assert len(playlist_id) == 36  # int_ (4) + 32 hex chars = 36
 
         # AC: All generated IDs are lowercase hex
-        hash_part = playlist_id[4:]  # Remove INT_ prefix
+        hash_part = playlist_id[4:]  # Remove int_ prefix
         assert hash_part == hash_part.lower()
         assert all(c in "0123456789abcdef" for c in hash_part)
 
@@ -58,8 +58,8 @@ class TestPlaylistSeederUtilityFunctions:
         id2 = generate_internal_playlist_id("playlist_b")
 
         assert id1 != id2
-        assert id1.upper().startswith("INT_")
-        assert id2.upper().startswith("INT_")
+        assert id1.startswith("int_")
+        assert id2.startswith("int_")
 
     # Note: generate_valid_channel_id was removed as part of T017-T020
     # The new pattern uses NULL channel_id with channel_name_hint
@@ -316,9 +316,9 @@ class TestPlaylistSeederSeeding:
         assert playlist_create.channel_id == channel_id
         assert playlist_create.description is not None
         assert "imported from Google Takeout" in playlist_create.description
-        # Updated to use INT_ prefix (36 chars: INT_ + 32 hex)
-        # Note: PlaylistId validator normalizes to lowercase (int_)
-        assert playlist_create.playlist_id.upper().startswith("INT_")
+        # Updated to use int_ prefix (36 chars: int_ + 32 hex)
+        # Note: PlaylistId validator generates lowercase int_
+        assert playlist_create.playlist_id.startswith("int_")
         assert len(playlist_create.playlist_id) == 36
 
     @pytest.mark.asyncio
@@ -626,13 +626,13 @@ class TestPlaylistSeederReseedWithCascade:
         return session
 
     def test_generate_internal_playlist_id_produces_int_prefix(self) -> None:
-        """Test generate_internal_playlist_id produces INT_ prefix (36 chars total)."""
+        """Test generate_internal_playlist_id produces int_ prefix (36 chars total)."""
         seed = "test_playlist"
         playlist_id = generate_internal_playlist_id(seed)
 
-        # Should have INT_ prefix (uppercase in generation)
-        assert playlist_id.startswith("INT_")
-        # Total length is 36 characters (INT_ = 4 chars + 32 hex chars)
+        # Should have int_ prefix (lowercase in generation)
+        assert playlist_id.startswith("int_")
+        # Total length is 36 characters (int_ = 4 chars + 32 hex chars)
         assert len(playlist_id) == 36
 
     def test_generate_internal_playlist_id_is_deterministic(self) -> None:
@@ -735,9 +735,9 @@ class TestPlaylistSeederReseedWithCascade:
             assert result.created == 1
             assert len(created_playlists) == 1
 
-            # New playlist should have INT_ prefix
+            # New playlist should have int_ prefix
             new_playlist = created_playlists[0]
-            assert new_playlist.playlist_id.upper().startswith("INT_")
+            assert new_playlist.playlist_id.startswith("int_")
             assert len(new_playlist.playlist_id) == 36
 
     @pytest.mark.asyncio
@@ -860,13 +860,13 @@ class TestPlaylistSeederReseedWithCascade:
             mock_delete.assert_called_once()
 
     def test_generate_internal_playlist_id_different_seeds_different_ids(self) -> None:
-        """Test different seeds produce different INT_ IDs."""
+        """Test different seeds produce different int_ IDs."""
         id1 = generate_internal_playlist_id("playlist_a")
         id2 = generate_internal_playlist_id("playlist_b")
 
         assert id1 != id2
-        assert id1.startswith("INT_")
-        assert id2.startswith("INT_")
+        assert id1.startswith("int_")
+        assert id2.startswith("int_")
         assert len(id1) == 36
         assert len(id2) == 36
 

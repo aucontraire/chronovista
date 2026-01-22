@@ -23,8 +23,6 @@ from chronovista.cli.sync_commands import (
     video_repository,
 )
 
-pytestmark = pytest.mark.asyncio
-
 
 class TestSyncAppCommands:
     """Test all sync app CLI commands."""
@@ -763,14 +761,21 @@ class TestProcessWatchHistoryBatchImproved:
         # The command should complete gracefully even with errors
         assert result.exit_code == 0
 
-    @patch("chronovista.cli.sync_commands.console.print")
-    def test_console_print_calls(self, mock_print, runner):
-        """Test that console.print is called in various commands."""
+    @patch("chronovista.cli.sync.base.asyncio.run")
+    @patch("chronovista.cli.sync_commands.check_authenticated")
+    def test_console_print_calls(self, mock_check_auth, mock_asyncio, runner):
+        """Test that playlists command runs without errors when properly mocked."""
+        # Mock authentication check to return False to avoid hitting the database
+        mock_check_auth.return_value = False
+
         # Test a simple command that should print
         result = runner.invoke(sync_app, ["playlists"])
 
         assert result.exit_code == 0
-        # The command should have called console.print
+        # The command should have checked authentication
+        mock_check_auth.assert_called_once()
+        # Should not have run async operation since auth check failed
+        mock_asyncio.assert_not_called()
 
     def test_history_command_help(self, runner):
         """Test history command help."""

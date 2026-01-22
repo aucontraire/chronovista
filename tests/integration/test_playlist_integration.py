@@ -2,10 +2,13 @@
 Integration tests for playlist ID architecture (Feature 004).
 
 Tests end-to-end workflows for playlist management including:
-- Full seed → link → list → show → unlink workflow
-- Upgrade scenario: PL-prefixed → re-seed → INT_ prefix
+- Playlist seeding with YouTube IDs (PL prefix) or internal IDs (int_ prefix)
+- Link status determined by playlist_id prefix
 - Liked videos preservation during re-seed (regression test for #16)
 - Database constraint violations and error handling
+
+Note: youtube_id is no longer a separate field. playlist_id serves as the
+single source of truth - YouTube IDs (PL prefix) or internal IDs (int_ prefix).
 
 These tests use mocked database sessions to verify workflows without requiring
 database setup, following the project's established testing patterns.
@@ -13,7 +16,6 @@ database setup, following the project's established testing patterns.
 
 from __future__ import annotations
 
-import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -113,22 +115,21 @@ class TestT040IntegrationScenarios:
         mock_session: AsyncMock,
     ) -> None:
         """
-        Test complete workflow structure: seed → link → list → show → unlink → verify.
+        Test complete workflow structure: seed → list → show → verify.
 
         This test validates the workflow structure and ensures all components
-        are properly integrated.
+        are properly integrated. Link status is determined by playlist_id prefix.
         """
         # Test validates that:
-        # 1. Playlists can be seeded with INT_ prefix
-        # 2. Internal playlists can be linked to YouTube IDs
-        # 3. Link status can be queried
-        # 4. Playlists can be unlinked
-        # 5. Statistics accurately reflect link status
+        # 1. Playlists can be seeded with int_ prefix (internal)
+        # 2. Playlists can be seeded with PL prefix (YouTube)
+        # 3. Link status is determined by playlist_id prefix
+        # 4. Statistics accurately reflect link status
 
         # Verify playlist ID formats are correct
         internal_id = generate_internal_playlist_id("test_workflow")
         assert is_internal_playlist_id(internal_id)
-        assert len(internal_id) == 36  # INT_ + 32 chars
+        assert len(internal_id) == 36  # int_ + 32 chars
 
         youtube_id = "PLtest_workflow_abcdefghijklmnopqr"
         assert is_youtube_playlist_id(youtube_id)
@@ -192,7 +193,6 @@ class TestT040IntegrationScenarios:
 
         Validates error handling for:
         - Duplicate playlist_id
-        - Duplicate youtube_id links
         - Invalid format IDs
         """
         # Test invalid playlist ID formats
@@ -282,25 +282,17 @@ class TestT041CoverageValidation:
         # Should complete in under 1 second for 1000 IDs
         assert elapsed_time < 1.0, f"ID generation took {elapsed_time:.2f}s"
 
-    async def test_partial_index_query_structure(
+    async def test_repository_query_structure(
         self,
         mock_session: AsyncMock,
     ) -> None:
         """
-        Test partial index query structure for youtube_id lookups.
+        Test repository query structure for playlist lookups.
 
-        Verifies that the repository has methods for efficient youtube_id queries,
-        which will use the partial index (WHERE youtube_id IS NOT NULL) in
-        actual database operations.
+        Verifies that the repository has methods for linked/unlinked queries.
+        Link status is determined by playlist_id prefix (PL = linked, int_ = unlinked).
         """
         repository = PlaylistRepository()
-
-        # Verify repository has get_by_youtube_id method
-        assert hasattr(repository, "get_by_youtube_id")
-
-        # Verify repository has link/unlink methods
-        assert hasattr(repository, "link_youtube_id")
-        assert hasattr(repository, "unlink_youtube_id")
 
         # Verify repository has linked/unlinked query methods
         assert hasattr(repository, "get_linked_playlists")
@@ -309,36 +301,37 @@ class TestT041CoverageValidation:
 
 
 # ============================================================================
-# MIGRATION REVERSIBILITY TEST
+# SCHEMA STRUCTURE TEST
 # ============================================================================
 
 
-class TestMigrationReversibility:
+class TestSchemaStructure:
     """
-    Test migration upgrade → downgrade → upgrade reversibility.
+    Test playlist schema structure is correct.
 
-    Verifies migration schema structure is correct.
+    Verifies that playlist_id serves as the single source of truth.
     """
 
-    async def test_migration_schema_structure(
+    async def test_schema_structure(
         self,
         mock_session: AsyncMock,
     ) -> None:
         """
-        Test that migration schema includes required fields and indexes.
+        Test that schema includes required fields.
 
         Verifies:
-        1. Playlist model has youtube_id field
-        2. youtube_id is optional (nullable)
-        3. Repository supports linking operations
+        1. Playlist model uses playlist_id as primary key
+        2. playlist_id accepts both YouTube IDs and internal IDs
+        3. Link status is determined by playlist_id prefix
         """
-        # Verify PlaylistDB model has youtube_id field
-        assert hasattr(PlaylistDB, "youtube_id")
+        # Verify PlaylistDB model has playlist_id field
+        assert hasattr(PlaylistDB, "playlist_id")
 
-        # Verify PlaylistCreate model supports youtube_id
+        # Verify PlaylistCreate model supports both ID types
         test_channel_id = create_test_channel_id("test")
 
-        playlist_create = PlaylistCreate(
+        # Create with internal ID (unlinked)
+        playlist_internal = PlaylistCreate(
             playlist_id=generate_internal_playlist_id("test"),
             title="Test Playlist",
             description="Test description",
@@ -346,72 +339,65 @@ class TestMigrationReversibility:
             video_count=10,
             default_language=LanguageCode.ENGLISH,
             privacy_status=PrivacyStatus.PUBLIC,
-            youtube_id=None,  # Should be optional
         )
 
-        assert playlist_create.youtube_id is None
+        assert is_internal_playlist_id(playlist_internal.playlist_id)
 
-        # Create with youtube_id
-        playlist_with_link = PlaylistCreate(
-            playlist_id=generate_internal_playlist_id("test2"),
+        # Create with YouTube ID (linked)
+        youtube_playlist_id = "PLtest_youtube_id_abcdefghijklmn"
+        playlist_youtube = PlaylistCreate(
+            playlist_id=youtube_playlist_id,
             title="Test Playlist 2",
             description="Test description 2",
             channel_id=test_channel_id,
             video_count=5,
             default_language=LanguageCode.ENGLISH,
             privacy_status=PrivacyStatus.PUBLIC,
-            youtube_id="PLtest_youtube_id_abcdefghijklmn",
         )
 
-        assert playlist_with_link.youtube_id is not None
-        assert is_youtube_playlist_id(playlist_with_link.youtube_id)
+        assert is_youtube_playlist_id(playlist_youtube.playlist_id)
 
 
 # ============================================================================
-# CONCURRENT OPERATION TESTS
+# ID FORMAT VALIDATION TESTS
 # ============================================================================
 
 
-class TestConcurrentOperations:
+class TestIdFormatValidation:
     """
-    Test concurrent link operations for race conditions and isolation.
+    Test ID format validation functions.
 
-    Verifies that the repository methods support concurrent operations
-    through proper design (validation, uniqueness checks, force flag).
+    Verifies that validation functions correctly distinguish between
+    YouTube IDs and internal IDs.
     """
 
-    async def test_concurrent_link_operations_structure(
+    async def test_id_format_validation_structure(
         self,
         mock_session: AsyncMock,
     ) -> None:
         """
-        Test that link operations include proper safeguards.
+        Test that ID validation functions work correctly.
 
         Validates:
-        1. link_youtube_id accepts force parameter for conflict resolution
-        2. Validation happens before database operations
-        3. Repository enforces uniqueness constraints
+        1. YouTube IDs (PL prefix) are accepted
+        2. Internal IDs (int_ prefix) are accepted
+        3. Invalid formats are rejected
         """
-        repository = PlaylistRepository()
-
-        # Verify link_youtube_id method signature includes force parameter
-        import inspect
-
-        link_signature = inspect.signature(repository.link_youtube_id)
-        assert "force" in link_signature.parameters
-
-        # Verify validation functions are available
         from chronovista.models.youtube_types import validate_youtube_id_format
 
         # Should accept valid YouTube IDs
-        valid_id = "PLtest_valid_abcdefghijklmnopqrst"
-        validated = validate_youtube_id_format(valid_id)
-        assert validated == valid_id
+        valid_youtube_id = "PLtest_valid_abcdefghijklmnopqrst"
+        validated = validate_youtube_id_format(valid_youtube_id)
+        assert validated == valid_youtube_id
 
-        # Should reject internal IDs
+        # Should reject internal IDs (they're not YouTube IDs)
         internal_id = generate_internal_playlist_id("test")
         with pytest.raises(ValueError):
             validate_youtube_id_format(internal_id)
+
+        # Both should be valid playlist IDs though
+        assert validate_playlist_id(valid_youtube_id) == valid_youtube_id
+        assert validate_playlist_id(internal_id) == internal_id.lower()
 
 
 # ============================================================================

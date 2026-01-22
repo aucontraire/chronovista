@@ -34,6 +34,7 @@ class TakeoutPlaylistFactory(factory.Factory[TakeoutPlaylist]):
     # Optional fields with realistic defaults
     videos: Any = factory.LazyFunction(lambda: create_batch_takeout_playlist_items(3))
     video_count = 0  # Will be calculated automatically
+    youtube_id: Any = None  # YouTube ID from playlists.csv (optional)
 
 
 class TakeoutPlaylistMinimalFactory(factory.Factory[TakeoutPlaylist]):
@@ -51,6 +52,7 @@ class TakeoutPlaylistMinimalFactory(factory.Factory[TakeoutPlaylist]):
     # Set optional fields to minimal values
     videos: Any = factory.LazyFunction(list)  # Empty list
     video_count = 0
+    youtube_id: Any = None
 
 
 class TakeoutPlaylistLargeFactory(factory.Factory[TakeoutPlaylist]):

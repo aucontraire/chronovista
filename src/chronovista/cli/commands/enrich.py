@@ -20,6 +20,7 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.prompt import Confirm
 from rich.table import Table
 
 from chronovista.exceptions import (
@@ -27,7 +28,6 @@ from chronovista.exceptions import (
     EXIT_CODE_PREREQUISITES_MISSING,
     EXIT_CODE_QUOTA_EXCEEDED,
     AuthenticationError,
-    ChannelEnrichmentError,
     GracefulShutdownException,
     NetworkError,
     PrerequisiteError,
@@ -54,6 +54,13 @@ console = Console()
 
 # Valid priority levels
 VALID_PRIORITIES = {"high", "medium", "low", "all"}
+
+# Exit codes for enrichment
+EXIT_CODE_SUCCESS = 0
+EXIT_CODE_API_ERROR = 2
+EXIT_CODE_NETWORK_ERROR = 3
+EXIT_CODE_PARTIAL_SUCCESS = 4
+EXIT_CODE_DATABASE_ERROR = 5
 
 
 def validate_priority(value: str) -> str:
@@ -216,6 +223,18 @@ def enrich_videos(
         "--include-playlists",
         help="Also enrich playlist metadata from YouTube API",
     ),
+    no_auto_resolve: bool = typer.Option(
+        False,
+        "--no-auto-resolve",
+        help="[Deprecated] Auto-resolution removed. Playlists are linked from playlists.csv during seeding.",
+        hidden=True,
+    ),
+    skip_unresolved: bool = typer.Option(
+        False,
+        "--skip-unresolved",
+        help="[Deprecated] Auto-resolution removed. This flag no longer has any effect.",
+        hidden=True,
+    ),
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
@@ -270,9 +289,12 @@ def enrich_videos(
     - all: low + videos previously marked as deleted
 
     Exit codes:
-    - 0: Success
-    - 3: YouTube API quota exceeded
-    - 4: Prerequisites missing (run seed commands first or use --auto-seed)
+    - 0: Success (all operations completed successfully)
+    - 1: Ambiguous playlist matches detected (use --skip-unresolved or resolve manually)
+    - 2: API error during playlist resolution (quota exhaustion or authentication)
+    - 3: Network error during playlist resolution or video enrichment quota exceeded
+    - 4: Partial success with --skip-unresolved or prerequisites missing
+    - 5: Database error during playlist linking
     - 130: Interrupted by user (SIGINT/SIGTERM)
 
     Examples:
@@ -281,6 +303,8 @@ def enrich_videos(
         chronovista enrich run --priority medium --dry-run
         chronovista enrich run --include-deleted
         chronovista enrich run --include-playlists
+        chronovista enrich run --include-playlists --no-auto-resolve
+        chronovista enrich run --include-playlists --skip-unresolved
         chronovista enrich run --auto-seed
         chronovista enrich run --verbose
         chronovista enrich run --refresh-topics
@@ -325,7 +349,7 @@ def enrich_videos(
         else:
             report_output_path = output
 
-    async def run_enrichment() -> EnrichmentReport:
+    async def run_enrichment() -> tuple[EnrichmentReport, bool]:
         # T093: Install shutdown handler for graceful shutdown
         shutdown = get_shutdown_handler()
         shutdown.install()
@@ -336,7 +360,10 @@ def enrich_videos(
             # T093: Uninstall shutdown handler
             shutdown.uninstall()
 
-    async def _run_enrichment_inner() -> EnrichmentReport:
+    async def _run_enrichment_inner() -> tuple[EnrichmentReport, bool]:
+        # Track partial success state for exit code (T055: Exit code 4 for partial success)
+        has_partial_success = False
+
         # Check credentials first
         youtube_service = YouTubeService()
         if not youtube_service.check_credentials():
@@ -543,6 +570,24 @@ def enrich_videos(
                         )
                         raise typer.Exit(EXIT_CODE_INTERRUPTED)
 
+                    # Note: Auto-resolution has been removed. Playlists are now linked
+                    # directly from Google Takeout's playlists.csv during seeding.
+                    # Unlinked playlists (int_ prefix) can be resolved by re-importing from Takeout.
+                    if include_playlists and not dry_run:
+                        # Check for unlinked playlists and inform user
+                        from chronovista.repositories.playlist_repository import (
+                            PlaylistRepository as PR,
+                        )
+                        temp_repo = PR()
+                        unlinked_playlists = await temp_repo.get_unlinked_playlists(session, limit=500)
+                        unlinked_count = len(unlinked_playlists)
+
+                        if unlinked_count > 0:
+                            console.print(
+                                f"[dim][Info] {unlinked_count} playlists have internal IDs (int_ prefix). "
+                                f"To link to YouTube IDs, re-import from Takeout with playlists.csv.[/dim]"
+                            )
+
                     # Run playlist enrichment if enabled
                     if include_playlists:
                         progress.update(task, description="Enriching playlists...")
@@ -742,7 +787,7 @@ def enrich_videos(
 
                     console.print(error_table)
 
-                return report
+                return report, has_partial_success
 
             finally:
                 # Release lock
@@ -753,30 +798,37 @@ def enrich_videos(
 
         from chronovista.models.enrichment_report import EnrichmentSummary
 
-        return EnrichmentReport(
-            timestamp=datetime.now(timezone.utc),
-            priority=priority,
-            summary=EnrichmentSummary(
-                videos_processed=0,
-                videos_updated=0,
-                videos_deleted=0,
-                channels_created=0,
-                tags_created=0,
-                topic_associations=0,
-                categories_assigned=0,
-                errors=0,
-                quota_used=0,
+        return (
+            EnrichmentReport(
+                timestamp=datetime.now(timezone.utc),
+                priority=priority,
+                summary=EnrichmentSummary(
+                    videos_processed=0,
+                    videos_updated=0,
+                    videos_deleted=0,
+                    channels_created=0,
+                    tags_created=0,
+                    topic_associations=0,
+                    categories_assigned=0,
+                    errors=0,
+                    quota_used=0,
+                ),
+                details=[],
             ),
-            details=[],
+            False,  # No partial success if we exit early
         )
 
     # Run the enrichment and get the report
-    report = asyncio.run(run_enrichment())
+    report, has_partial_success = asyncio.run(run_enrichment())
 
     # Save JSON report if output path specified (T056)
     if report_output_path is not None:
         _save_report(report, report_output_path)
         console.print(f"\n[green]Report saved to:[/green] {report_output_path}")
+
+    # T055: Exit with code 4 if we had partial success with --skip-unresolved (FR-010)
+    if has_partial_success:
+        raise typer.Exit(EXIT_CODE_PARTIAL_SUCCESS)
 
 
 def _format_count_with_percentage(count: int, total: int) -> str:

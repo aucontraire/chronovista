@@ -90,20 +90,18 @@ class TestTopicsCommandNormalRun:
     """Test normal 'chronovista seed topics' execution."""
 
     @patch("chronovista.cli.commands.seed.db_manager")
-    @patch("chronovista.cli.commands.seed.TopicSeeder")
+    @patch("chronovista.cli.commands.seed.container")
     def test_topics_normal_run_success(
-        self, mock_seeder_class: MagicMock, mock_db_manager: MagicMock
+        self, mock_container: MagicMock, mock_db_manager: MagicMock
     ) -> None:
         """Test successful topic seeding."""
         # Mock database session
         mock_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
-        # Mock seeder
+        # Mock seeder from container
         mock_seeder = AsyncMock()
-        mock_seeder_class.return_value = mock_seeder
-        mock_seeder_class.get_parent_count.return_value = 7
-        mock_seeder_class.get_child_count.return_value = 51
+        mock_container.create_topic_seeder.return_value = mock_seeder
 
         # Mock successful seeding result
         mock_seeder.seed.return_value = TopicSeedResult(
@@ -115,27 +113,30 @@ class TestTopicsCommandNormalRun:
             errors=[]
         )
 
-        result = runner.invoke(seed_app, ["topics"])
+        # Mock static methods through TopicSeeder class
+        with patch("chronovista.cli.commands.seed.TopicSeeder") as mock_seeder_class:
+            mock_seeder_class.get_parent_count.return_value = 7
+            mock_seeder_class.get_child_count.return_value = 51
 
-        assert result.exit_code == 0
-        assert "Topic Seeding Complete" in result.stdout
-        assert "Created 58 topic categories" in result.stdout
+            result = runner.invoke(seed_app, ["topics"])
+
+            assert result.exit_code == 0
+            assert "Topic Seeding Complete" in result.stdout
+            assert "Created 58 topic categories" in result.stdout
 
     @patch("chronovista.cli.commands.seed.db_manager")
-    @patch("chronovista.cli.commands.seed.TopicSeeder")
+    @patch("chronovista.cli.commands.seed.container")
     def test_topics_partial_success_with_errors(
-        self, mock_seeder_class: MagicMock, mock_db_manager: MagicMock
+        self, mock_container: MagicMock, mock_db_manager: MagicMock
     ) -> None:
         """Test topic seeding with some errors."""
         # Mock database session
         mock_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
-        # Mock seeder
+        # Mock seeder from container
         mock_seeder = AsyncMock()
-        mock_seeder_class.return_value = mock_seeder
-        mock_seeder_class.get_parent_count.return_value = 7
-        mock_seeder_class.get_child_count.return_value = 51
+        mock_container.create_topic_seeder.return_value = mock_seeder
 
         # Mock partial success
         mock_seeder.seed.return_value = TopicSeedResult(
@@ -147,11 +148,16 @@ class TestTopicsCommandNormalRun:
             errors=["Error 1", "Error 2", "Error 3"]
         )
 
-        result = runner.invoke(seed_app, ["topics"])
+        # Mock static methods through TopicSeeder class
+        with patch("chronovista.cli.commands.seed.TopicSeeder") as mock_seeder_class:
+            mock_seeder_class.get_parent_count.return_value = 7
+            mock_seeder_class.get_child_count.return_value = 51
 
-        assert result.exit_code == 1
-        assert "Topic seeding completed with errors" in result.stdout
-        assert "Failed: 3" in result.stdout
+            result = runner.invoke(seed_app, ["topics"])
+
+            assert result.exit_code == 1
+            assert "Topic seeding completed with errors" in result.stdout
+            assert "Failed: 3" in result.stdout
 
     @patch("chronovista.cli.commands.seed.db_manager")
     @patch("chronovista.cli.commands.seed.TopicSeeder")
@@ -173,20 +179,18 @@ class TestTopicsCommandForceFlag:
     """Test 'chronovista seed topics --force' command."""
 
     @patch("chronovista.cli.commands.seed.db_manager")
-    @patch("chronovista.cli.commands.seed.TopicSeeder")
+    @patch("chronovista.cli.commands.seed.container")
     def test_topics_force_flag_deletes_and_recreates(
-        self, mock_seeder_class: MagicMock, mock_db_manager: MagicMock
+        self, mock_container: MagicMock, mock_db_manager: MagicMock
     ) -> None:
         """Test that --force deletes existing topics and re-seeds."""
         # Mock database session
         mock_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
-        # Mock seeder
+        # Mock seeder from container
         mock_seeder = AsyncMock()
-        mock_seeder_class.return_value = mock_seeder
-        mock_seeder_class.get_parent_count.return_value = 7
-        mock_seeder_class.get_child_count.return_value = 51
+        mock_container.create_topic_seeder.return_value = mock_seeder
 
         # Mock force seeding result (deleted and created)
         mock_seeder.seed.return_value = TopicSeedResult(
@@ -198,15 +202,20 @@ class TestTopicsCommandForceFlag:
             errors=[]
         )
 
-        result = runner.invoke(seed_app, ["topics", "--force"])
+        # Mock static methods through TopicSeeder class
+        with patch("chronovista.cli.commands.seed.TopicSeeder") as mock_seeder_class:
+            mock_seeder_class.get_parent_count.return_value = 7
+            mock_seeder_class.get_child_count.return_value = 51
 
-        # Verify force=True was passed to seeder
-        mock_seeder.seed.assert_called_once()
-        call_args = mock_seeder.seed.call_args
-        assert call_args.kwargs.get("force") is True
+            result = runner.invoke(seed_app, ["topics", "--force"])
 
-        assert result.exit_code == 0
-        assert "Topics Deleted" in result.stdout or "58" in result.stdout
+            # Verify force=True was passed to seeder
+            mock_seeder.seed.assert_called_once()
+            call_args = mock_seeder.seed.call_args
+            assert call_args.kwargs.get("force") is True
+
+            assert result.exit_code == 0
+            assert "Topics Deleted" in result.stdout or "58" in result.stdout
 
 
 class TestCategoriesCommandHelp:
@@ -233,49 +242,47 @@ class TestCategoriesCommandHelp:
 class TestCategoriesCommandDryRun:
     """Test 'chronovista seed categories --dry-run' command."""
 
-    @patch("chronovista.cli.commands.seed.CategorySeeder")
+    @patch("chronovista.cli.commands.seed.container")
     def test_categories_dry_run_shows_preview(
-        self, mock_seeder_class: MagicMock
+        self, mock_container: MagicMock
     ) -> None:
         """Test that --dry-run shows what would be seeded."""
-        mock_seeder_class.get_expected_quota_cost.return_value = 7
+        # Mock CategorySeeder static method
+        with patch("chronovista.services.enrichment.seeders.CategorySeeder.get_expected_quota_cost", return_value=7):
+            result = runner.invoke(seed_app, ["categories", "--dry-run"])
 
-        result = runner.invoke(seed_app, ["categories", "--dry-run"])
+            assert result.exit_code == 0
+            assert "DRY RUN" in result.stdout
+            assert "Would fetch categories" in result.stdout
+            assert "quota cost" in result.stdout.lower()
+            assert "No changes made" in result.stdout
 
-        assert result.exit_code == 0
-        assert "DRY RUN" in result.stdout
-        assert "Would fetch categories" in result.stdout
-        assert "quota cost" in result.stdout.lower()
-        assert "No changes made" in result.stdout
-
-    @patch("chronovista.cli.commands.seed.CategorySeeder")
+    @patch("chronovista.cli.commands.seed.container")
     def test_categories_dry_run_with_custom_regions(
-        self, mock_seeder_class: MagicMock
+        self, mock_container: MagicMock
     ) -> None:
         """Test --dry-run with custom regions."""
-        mock_seeder_class.get_expected_quota_cost.return_value = 3
+        # Mock CategorySeeder static method
+        with patch("chronovista.services.enrichment.seeders.CategorySeeder.get_expected_quota_cost", return_value=3):
+            result = runner.invoke(
+                seed_app, ["categories", "--dry-run", "--regions", "US,GB,FR"]
+            )
 
-        result = runner.invoke(
-            seed_app, ["categories", "--dry-run", "--regions", "US,GB,FR"]
-        )
-
-        assert result.exit_code == 0
-        assert "US" in result.stdout
-        assert "GB" in result.stdout
-        assert "FR" in result.stdout
-        assert "3 units" in result.stdout
+            assert result.exit_code == 0
+            assert "US" in result.stdout
+            assert "GB" in result.stdout
+            assert "FR" in result.stdout
+            assert "3 units" in result.stdout
 
 
 class TestCategoriesCommandNormalRun:
     """Test normal 'chronovista seed categories' execution."""
 
     @patch("chronovista.cli.commands.seed.db_manager")
-    @patch("chronovista.cli.commands.seed.YouTubeService")
-    @patch("chronovista.cli.commands.seed.CategorySeeder")
+    @patch("chronovista.cli.commands.seed.container")
     def test_categories_normal_run_success(
         self,
-        mock_seeder_class: MagicMock,
-        mock_youtube_service: MagicMock,
+        mock_container: MagicMock,
         mock_db_manager: MagicMock,
     ) -> None:
         """Test successful category seeding."""
@@ -283,9 +290,9 @@ class TestCategoriesCommandNormalRun:
         mock_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
-        # Mock seeder
+        # Mock seeder from container
         mock_seeder = AsyncMock()
-        mock_seeder_class.return_value = mock_seeder
+        mock_container.create_category_seeder.return_value = mock_seeder
 
         # Mock successful seeding result
         mock_seeder.seed.return_value = CategorySeedResult(
@@ -306,12 +313,10 @@ class TestCategoriesCommandNormalRun:
         assert "Quota used: 7 units" in result.stdout
 
     @patch("chronovista.cli.commands.seed.db_manager")
-    @patch("chronovista.cli.commands.seed.YouTubeService")
-    @patch("chronovista.cli.commands.seed.CategorySeeder")
+    @patch("chronovista.cli.commands.seed.container")
     def test_categories_with_custom_regions(
         self,
-        mock_seeder_class: MagicMock,
-        mock_youtube_service: MagicMock,
+        mock_container: MagicMock,
         mock_db_manager: MagicMock,
     ) -> None:
         """Test category seeding with custom regions."""
@@ -319,9 +324,9 @@ class TestCategoriesCommandNormalRun:
         mock_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
-        # Mock seeder
+        # Mock seeder from container
         mock_seeder = AsyncMock()
-        mock_seeder_class.return_value = mock_seeder
+        mock_container.create_category_seeder.return_value = mock_seeder
 
         mock_seeder.seed.return_value = CategorySeedResult(
             created=25,
@@ -346,12 +351,10 @@ class TestCategoriesCommandNormalRun:
         assert result.exit_code == 0
 
     @patch("chronovista.cli.commands.seed.db_manager")
-    @patch("chronovista.cli.commands.seed.YouTubeService")
-    @patch("chronovista.cli.commands.seed.CategorySeeder")
+    @patch("chronovista.cli.commands.seed.container")
     def test_categories_api_error_handling(
         self,
-        mock_seeder_class: MagicMock,
-        mock_youtube_service: MagicMock,
+        mock_container: MagicMock,
         mock_db_manager: MagicMock,
     ) -> None:
         """Test handling of API errors."""
@@ -359,9 +362,9 @@ class TestCategoriesCommandNormalRun:
         mock_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
-        # Mock seeder to raise API error
+        # Mock seeder to raise API error from container
         mock_seeder = AsyncMock()
-        mock_seeder_class.return_value = mock_seeder
+        mock_container.create_category_seeder.return_value = mock_seeder
         mock_seeder.seed.side_effect = Exception("YouTube API quota exceeded")
 
         result = runner.invoke(seed_app, ["categories"])
@@ -371,12 +374,10 @@ class TestCategoriesCommandNormalRun:
         assert "API error" in result.stdout
 
     @patch("chronovista.cli.commands.seed.db_manager")
-    @patch("chronovista.cli.commands.seed.YouTubeService")
-    @patch("chronovista.cli.commands.seed.CategorySeeder")
+    @patch("chronovista.cli.commands.seed.container")
     def test_categories_partial_regional_failures(
         self,
-        mock_seeder_class: MagicMock,
-        mock_youtube_service: MagicMock,
+        mock_container: MagicMock,
         mock_db_manager: MagicMock,
     ) -> None:
         """Test graceful degradation with regional API failures."""
@@ -384,9 +385,9 @@ class TestCategoriesCommandNormalRun:
         mock_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
-        # Mock seeder
+        # Mock seeder from container
         mock_seeder = AsyncMock()
-        mock_seeder_class.return_value = mock_seeder
+        mock_container.create_category_seeder.return_value = mock_seeder
 
         # Mock partial success (some regions failed)
         mock_seeder.seed.return_value = CategorySeedResult(
@@ -409,12 +410,10 @@ class TestCategoriesCommandForceFlag:
     """Test 'chronovista seed categories --force' command."""
 
     @patch("chronovista.cli.commands.seed.db_manager")
-    @patch("chronovista.cli.commands.seed.YouTubeService")
-    @patch("chronovista.cli.commands.seed.CategorySeeder")
+    @patch("chronovista.cli.commands.seed.container")
     def test_categories_force_flag_deletes_and_recreates(
         self,
-        mock_seeder_class: MagicMock,
-        mock_youtube_service: MagicMock,
+        mock_container: MagicMock,
         mock_db_manager: MagicMock,
     ) -> None:
         """Test that --force deletes existing categories and re-seeds."""
@@ -422,9 +421,9 @@ class TestCategoriesCommandForceFlag:
         mock_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
-        # Mock seeder
+        # Mock seeder from container
         mock_seeder = AsyncMock()
-        mock_seeder_class.return_value = mock_seeder
+        mock_container.create_category_seeder.return_value = mock_seeder
 
         # Mock force seeding result (deleted and created)
         mock_seeder.seed.return_value = CategorySeedResult(
@@ -452,20 +451,18 @@ class TestSeedCommandOutputFormatting:
     """Test output formatting and tables."""
 
     @patch("chronovista.cli.commands.seed.db_manager")
-    @patch("chronovista.cli.commands.seed.TopicSeeder")
+    @patch("chronovista.cli.commands.seed.container")
     def test_topics_output_includes_results_table(
-        self, mock_seeder_class: MagicMock, mock_db_manager: MagicMock
+        self, mock_container: MagicMock, mock_db_manager: MagicMock
     ) -> None:
         """Test that topics command outputs formatted results table."""
         # Mock database session
         mock_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
-        # Mock seeder
+        # Mock seeder from container
         mock_seeder = AsyncMock()
-        mock_seeder_class.return_value = mock_seeder
-        mock_seeder_class.get_parent_count.return_value = 7
-        mock_seeder_class.get_child_count.return_value = 51
+        mock_container.create_topic_seeder.return_value = mock_seeder
 
         mock_seeder.seed.return_value = TopicSeedResult(
             created=58,
@@ -476,20 +473,23 @@ class TestSeedCommandOutputFormatting:
             errors=[]
         )
 
-        result = runner.invoke(seed_app, ["topics"])
+        # Mock static methods through TopicSeeder class
+        with patch("chronovista.cli.commands.seed.TopicSeeder") as mock_seeder_class:
+            mock_seeder_class.get_parent_count.return_value = 7
+            mock_seeder_class.get_child_count.return_value = 51
 
-        assert result.exit_code == 0
-        assert "Topic Seeding Results" in result.stdout
-        assert "Topics Created" in result.stdout
-        assert "Duration" in result.stdout
+            result = runner.invoke(seed_app, ["topics"])
+
+            assert result.exit_code == 0
+            assert "Topic Seeding Results" in result.stdout
+            assert "Topics Created" in result.stdout
+            assert "Duration" in result.stdout
 
     @patch("chronovista.cli.commands.seed.db_manager")
-    @patch("chronovista.cli.commands.seed.YouTubeService")
-    @patch("chronovista.cli.commands.seed.CategorySeeder")
+    @patch("chronovista.cli.commands.seed.container")
     def test_categories_output_includes_quota_info(
         self,
-        mock_seeder_class: MagicMock,
-        mock_youtube_service: MagicMock,
+        mock_container: MagicMock,
         mock_db_manager: MagicMock,
     ) -> None:
         """Test that categories command outputs quota usage."""
@@ -497,9 +497,9 @@ class TestSeedCommandOutputFormatting:
         mock_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
-        # Mock seeder
+        # Mock seeder from container
         mock_seeder = AsyncMock()
-        mock_seeder_class.return_value = mock_seeder
+        mock_container.create_category_seeder.return_value = mock_seeder
 
         mock_seeder.seed.return_value = CategorySeedResult(
             created=30,
@@ -523,55 +523,59 @@ class TestSeedCommandExitCodes:
     """Test exit code conventions."""
 
     @patch("chronovista.cli.commands.seed.db_manager")
-    @patch("chronovista.cli.commands.seed.TopicSeeder")
+    @patch("chronovista.cli.commands.seed.container")
     def test_topics_success_exit_code_0(
-        self, mock_seeder_class: MagicMock, mock_db_manager: MagicMock
+        self, mock_container: MagicMock, mock_db_manager: MagicMock
     ) -> None:
         """Test that successful seeding exits with code 0."""
         mock_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
         mock_seeder = AsyncMock()
-        mock_seeder_class.return_value = mock_seeder
-        mock_seeder_class.get_parent_count.return_value = 7
-        mock_seeder_class.get_child_count.return_value = 51
+        mock_container.create_topic_seeder.return_value = mock_seeder
 
         mock_seeder.seed.return_value = TopicSeedResult(
             created=58, skipped=0, deleted=0, failed=0, duration_seconds=2.5
         )
 
-        result = runner.invoke(seed_app, ["topics"])
-        assert result.exit_code == 0
+        # Mock static methods through TopicSeeder class
+        with patch("chronovista.cli.commands.seed.TopicSeeder") as mock_seeder_class:
+            mock_seeder_class.get_parent_count.return_value = 7
+            mock_seeder_class.get_child_count.return_value = 51
+
+            result = runner.invoke(seed_app, ["topics"])
+            assert result.exit_code == 0
 
     @patch("chronovista.cli.commands.seed.db_manager")
-    @patch("chronovista.cli.commands.seed.TopicSeeder")
+    @patch("chronovista.cli.commands.seed.container")
     def test_topics_failure_exit_code_1(
-        self, mock_seeder_class: MagicMock, mock_db_manager: MagicMock
+        self, mock_container: MagicMock, mock_db_manager: MagicMock
     ) -> None:
         """Test that seeding with errors exits with code 1."""
         mock_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
         mock_seeder = AsyncMock()
-        mock_seeder_class.return_value = mock_seeder
-        mock_seeder_class.get_parent_count.return_value = 7
-        mock_seeder_class.get_child_count.return_value = 51
+        mock_container.create_topic_seeder.return_value = mock_seeder
 
         mock_seeder.seed.return_value = TopicSeedResult(
             created=55, skipped=0, deleted=0, failed=3, duration_seconds=2.5,
             errors=["Error 1", "Error 2", "Error 3"]
         )
 
-        result = runner.invoke(seed_app, ["topics"])
-        assert result.exit_code == 1
+        # Mock static methods through TopicSeeder class
+        with patch("chronovista.cli.commands.seed.TopicSeeder") as mock_seeder_class:
+            mock_seeder_class.get_parent_count.return_value = 7
+            mock_seeder_class.get_child_count.return_value = 51
+
+            result = runner.invoke(seed_app, ["topics"])
+            assert result.exit_code == 1
 
     @patch("chronovista.cli.commands.seed.db_manager")
-    @patch("chronovista.cli.commands.seed.YouTubeService")
-    @patch("chronovista.cli.commands.seed.CategorySeeder")
+    @patch("chronovista.cli.commands.seed.container")
     def test_categories_api_error_exit_code_2(
         self,
-        mock_seeder_class: MagicMock,
-        mock_youtube_service: MagicMock,
+        mock_container: MagicMock,
         mock_db_manager: MagicMock,
     ) -> None:
         """Test that API errors exit with code 2."""
@@ -579,7 +583,7 @@ class TestSeedCommandExitCodes:
         mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
         mock_seeder = AsyncMock()
-        mock_seeder_class.return_value = mock_seeder
+        mock_container.create_category_seeder.return_value = mock_seeder
         mock_seeder.seed.side_effect = Exception("API error")
 
         result = runner.invoke(seed_app, ["categories"])

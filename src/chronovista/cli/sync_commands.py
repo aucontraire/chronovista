@@ -24,6 +24,7 @@ from chronovista.cli.sync.base import (
 )
 from chronovista.cli.sync.transformers import DataTransformers
 from chronovista.config.database import db_manager
+from chronovista.container import container
 from chronovista.db.models import Video as VideoDB
 from chronovista.models.api_responses import (
     YouTubePlaylistResponse,
@@ -34,29 +35,9 @@ from chronovista.models.channel_topic import ChannelTopicCreate
 from chronovista.models.video import VideoCreate
 from chronovista.models.video_topic import VideoTopicCreate
 from chronovista.models.youtube_types import UserId
-from chronovista.repositories.channel_repository import ChannelRepository
-from chronovista.repositories.channel_topic_repository import ChannelTopicRepository
-from chronovista.repositories.playlist_membership_repository import (
-    PlaylistMembershipRepository,
-)
-from chronovista.repositories.playlist_repository import PlaylistRepository
-from chronovista.repositories.topic_category_repository import TopicCategoryRepository
-from chronovista.repositories.user_video_repository import UserVideoRepository
-from chronovista.repositories.video_repository import VideoRepository
-from chronovista.repositories.video_topic_repository import VideoTopicRepository
 from chronovista.services import youtube_service
 
 console = Console()
-
-# Repository instances
-channel_repository = ChannelRepository()
-playlist_repository = PlaylistRepository()
-playlist_membership_repository = PlaylistMembershipRepository()
-topic_category_repository = TopicCategoryRepository()
-user_video_repository = UserVideoRepository()
-video_repository = VideoRepository()
-video_topic_repository = VideoTopicRepository()
-channel_topic_repository = ChannelTopicRepository()
 
 sync_app = typer.Typer(
     name="sync",
@@ -77,6 +58,11 @@ async def process_watch_history_batch(
         "user_videos_created": 0,
         "errors": 0,
     }
+
+    # Get repositories from container
+    channel_repository = container.create_channel_repository()
+    video_repository = container.create_video_repository()
+    user_video_repository = container.create_user_video_repository()
 
     # Process entire batch in single session to avoid foreign key issues
     async for session in db_manager.get_session():
@@ -393,6 +379,10 @@ async def _sync_playlist_items(
     """
     result = SyncResult()
 
+    # Get repositories from container
+    video_repository = container.create_video_repository()
+    playlist_membership_repository = container.create_playlist_membership_repository()
+
     for playlist in playlists:
         playlist_id = playlist.id
         snippet = playlist.snippet
@@ -523,6 +513,9 @@ def playlists(
 
         # Process playlists
         console.print("[blue]Saving playlists to database...[/blue]")
+
+        # Get repository from container
+        playlist_repository = container.create_playlist_repository()
 
         async for session in db_manager.get_session():
             for playlist_data in youtube_playlists:
@@ -665,6 +658,9 @@ def topics(
 
         display_success(f"Found {len(categories)} video categories")
 
+        # Get repository from container
+        topic_category_repository = container.create_topic_category_repository()
+
         # Process and save categories to database
         async for session in db_manager.get_session(echo=False):
             for category in categories:
@@ -745,6 +741,9 @@ def all(
             sync_results["topics"]["status"] = "running"
 
             if categories:
+                # Get repository from container
+                topic_category_repository = container.create_topic_category_repository()
+
                 async for session in db_manager.get_session(echo=False):
                     for category in categories:
                         try:
@@ -954,6 +953,9 @@ def channel(
                 f"[blue]🔍 Checking if channel matches topic ID: {topic}[/blue]"
             )
 
+            # Get repository from container
+            topic_category_repository = container.create_topic_category_repository()
+
             # Validate topic exists
             async for session in db_manager.get_session():
                 if not await topic_category_repository.exists(session, topic):
@@ -985,6 +987,11 @@ def channel(
 
         # Transform YouTube API data using DataTransformers
         channel_create = DataTransformers.extract_channel_create(channel_data)
+
+        # Get repositories from container
+        channel_repository = container.create_channel_repository()
+        channel_topic_repository = container.create_channel_topic_repository()
+        topic_category_repository = container.create_topic_category_repository()
 
         # Save to database using repository
         async for session in db_manager.get_session():
@@ -1113,6 +1120,13 @@ async def _create_videos_with_channels(
     """
     created_videos: List[VideoDB] = []
     new_channels_count = 0
+
+    # Get repositories from container
+    channel_repository = container.create_channel_repository()
+    video_repository = container.create_video_repository()
+    channel_topic_repository = container.create_channel_topic_repository()
+    topic_category_repository = container.create_topic_category_repository()
+    video_topic_repository = container.create_video_topic_repository()
 
     # Collect unique missing channel IDs
     missing_channel_ids: set[str] = set()
@@ -1396,6 +1410,9 @@ def liked(
         if topic:
             console.print(f"[blue]🔍 Filtering videos by topic ID: {topic}[/blue]")
 
+            # Get repository from container
+            topic_category_repository = container.create_topic_category_repository()
+
             # Validate topic exists
             async for session in db_manager.get_session():
                 if not await topic_category_repository.exists(session, topic):
@@ -1429,6 +1446,10 @@ def liked(
         # Categorize videos: existing vs missing from database
         console.print()
         console.print("[blue]📊 Checking database status...[/blue]")
+
+        # Get repositories from container
+        video_repository = container.create_video_repository()
+        user_video_repository = container.create_user_video_repository()
 
         existing_video_ids: List[str] = []
         missing_video_ids: List[str] = []

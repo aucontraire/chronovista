@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from typing import TYPE_CHECKING
 
 import typer
 from rich.console import Console
@@ -19,10 +20,11 @@ from rich.panel import Panel
 from rich.table import Table
 
 from chronovista.config.database import db_manager
-from chronovista.repositories.topic_category_repository import TopicCategoryRepository
-from chronovista.repositories.video_category_repository import VideoCategoryRepository
-from chronovista.services.enrichment.seeders import CategorySeeder, TopicSeeder
-from chronovista.services.youtube_service import YouTubeService
+from chronovista.container import container
+from chronovista.services.enrichment.seeders import TopicSeeder
+
+if TYPE_CHECKING:
+    from chronovista.services.enrichment.seeders import CategorySeeder
 
 console = Console()
 
@@ -63,9 +65,8 @@ def topics(
     async def seed_topics_data() -> None:
         """Async implementation of topic seeding."""
         try:
-            # Initialize seeder
-            topic_repository = TopicCategoryRepository()
-            seeder = TopicSeeder(topic_repository)
+            # Create seeder using container
+            seeder = container.create_topic_seeder()
 
             # Handle dry-run mode
             if dry_run:
@@ -228,10 +229,8 @@ def categories(
             # Parse regions
             region_list = [r.strip().upper() for r in regions.split(",")]
 
-            # Initialize services
-            category_repository = VideoCategoryRepository()
-            youtube_service = YouTubeService()
-            seeder = CategorySeeder(category_repository, youtube_service)
+            # Create seeder using container
+            seeder = container.create_category_seeder()
 
             # Handle dry-run mode
             if dry_run:
@@ -325,7 +324,9 @@ async def _show_categories_dry_run(
     seeder: CategorySeeder, region_list: list[str]
 ) -> None:
     """Show what would be seeded without making changes."""
-    expected_quota = CategorySeeder.get_expected_quota_cost(region_list)
+    from chronovista.services.enrichment.seeders import CategorySeeder as CS
+
+    expected_quota = CS.get_expected_quota_cost(region_list)
 
     # Display dry-run information
     console.print(

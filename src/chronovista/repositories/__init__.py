@@ -8,6 +8,7 @@ the Repository pattern for clean separation of domain logic and data persistence
 from .base import BaseRepository, BaseSQLAlchemyRepository, IdType
 from .channel_repository import ChannelRepository
 from .channel_topic_repository import ChannelTopicRepository
+from .playlist_membership_repository import PlaylistMembershipRepository
 from .playlist_repository import PlaylistRepository
 from .topic_category_repository import TopicCategoryRepository
 from .user_language_preference_repository import UserLanguagePreferenceRepository
@@ -25,6 +26,7 @@ __all__ = [
     "IdType",
     "ChannelRepository",
     "ChannelTopicRepository",
+    "PlaylistMembershipRepository",
     "PlaylistRepository",
     "TopicCategoryRepository",
     "UserLanguagePreferenceRepository",

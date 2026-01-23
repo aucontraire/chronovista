@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Feature 006: Dependency Injection Container
+
+Introduced a centralized Dependency Injection (DI) Container for managing service and repository lifecycles across the application.
+
+**Key Changes:**
+
+- **DI Container** (`src/chronovista/container.py`): Centralized management of service and repository instances
+- **Factory Methods**: 10 repository types with transient instance creation:
+  - `CategoryRepository`, `ChannelRepository`, `PlaylistMembershipRepository`
+  - `PlaylistRepository`, `SubscriptionRepository`, `TagRepository`
+  - `TopicRepository`, `TranscriptRepository`, `VideoRepository`, `VideoTagRepository`
+- **Singleton Services**: `YouTubeService` and `TranscriptService` via `@cached_property` for efficient reuse
+- **Wired Factory Methods**: Automatic dependency injection for:
+  - `EnrichmentService` (with YouTubeService dependency)
+  - `TopicSeeder` (with TopicRepository dependency)
+  - `CategorySeeder` (with CategoryRepository dependency)
+- **Request Scoping**: Support for future API layer with `RequestContext`, `request_scope()`, and `request_context` context variable
+- **Test Isolation**: Container reset functionality via `reset()` method for clean test state
+- **Comprehensive Tests**: 34 unit tests covering all container functionality
+- **Test Fixtures**: Mock injection support with `mock_youtube_service` and `container_reset` fixtures
+
 #### Feature 005: Playlist ID Consolidation
 
 Consolidated playlist identification into a single `playlist_id` field that serves as the canonical identifier for all playlists.
@@ -43,8 +64,17 @@ Consolidated playlist identification into a single `playlist_id` field that serv
 
 ### Changed
 
+- Refactored `enrich.py` CLI commands to use container pattern for service instantiation
+- Refactored `sync_commands.py` to use container (removed module-level instantiation anti-pattern)
+- Refactored `seed.py` CLI commands to use container pattern for seeder instantiation
+- Updated `repositories/__init__.py` to export `PlaylistMembershipRepository`
 - Refactored CLI commands to use sync command framework with SyncResult and transformers
 - Added ABC interfaces for service layer
+
+### Removed
+
+- Module-level repository instantiation from `sync_commands.py`
+- Direct 8-dependency manual wiring in CLI commands (replaced with container pattern)
 
 ### Fixed
 

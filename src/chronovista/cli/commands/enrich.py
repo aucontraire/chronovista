@@ -315,19 +315,6 @@ def enrich_videos(
     import asyncio
 
     from chronovista.config.database import db_manager
-    from chronovista.repositories.channel_repository import ChannelRepository
-    from chronovista.repositories.playlist_repository import PlaylistRepository
-    from chronovista.repositories.topic_category_repository import (
-        TopicCategoryRepository,
-    )
-    from chronovista.repositories.video_category_repository import (
-        VideoCategoryRepository,
-    )
-    from chronovista.repositories.video_repository import VideoRepository
-    from chronovista.repositories.video_tag_repository import VideoTagRepository
-    from chronovista.repositories.video_topic_repository import VideoTopicRepository
-    from chronovista.services.enrichment.enrichment_service import EnrichmentService
-    from chronovista.services.youtube_service import YouTubeService
 
     # Generate timestamp for consistent naming across log and report files
     timestamp = _generate_timestamp()
@@ -365,7 +352,9 @@ def enrich_videos(
         has_partial_success = False
 
         # Check credentials first
-        youtube_service = YouTubeService()
+        from chronovista.container import container
+
+        youtube_service = container.youtube_service
         if not youtube_service.check_credentials():
             console.print(
                 Panel(
@@ -377,26 +366,8 @@ def enrich_videos(
             )
             raise typer.Exit(EXIT_CODE_NO_CREDENTIALS)
 
-        # Initialize repositories
-        video_repo = VideoRepository()
-        channel_repo = ChannelRepository()
-        tag_repo = VideoTagRepository()
-        topic_repo = VideoTopicRepository()
-        category_repo = VideoCategoryRepository()
-        topic_cat_repo = TopicCategoryRepository()
-        playlist_repo = PlaylistRepository() if include_playlists else None
-
-        # Create enrichment service
-        service = EnrichmentService(
-            video_repository=video_repo,
-            channel_repository=channel_repo,
-            video_tag_repository=tag_repo,
-            video_topic_repository=topic_repo,
-            video_category_repository=category_repo,
-            topic_category_repository=topic_cat_repo,
-            youtube_service=youtube_service,
-            playlist_repository=playlist_repo,
-        )
+        # Create enrichment service using container
+        service = container.create_enrichment_service(include_playlists=include_playlists)
 
         async for session in db_manager.get_session(echo=False):
             # Acquire lock
@@ -424,23 +395,18 @@ def enrich_videos(
                         )
                         console.print("[cyan]Auto-seeding required data...[/cyan]")
 
-                        # Import and run seeders
-                        from chronovista.services.enrichment.seeders import (
-                            CategorySeeder,
-                            TopicSeeder,
-                        )
+                        # Import container for seeder creation
+                        from chronovista.container import container
 
                         if "topic_categories" in e.missing_tables:
-                            topic_seeder = TopicSeeder(topic_cat_repo)
+                            topic_seeder = container.create_topic_seeder()
                             topic_result = await topic_seeder.seed(session)
                             console.print(
                                 f"[green]Seeded {topic_result.created} topics[/green]"
                             )
 
                         if "video_categories" in e.missing_tables:
-                            category_seeder = CategorySeeder(
-                                category_repo, youtube_service
-                            )
+                            category_seeder = container.create_category_seeder()
                             category_result = await category_seeder.seed(session)
                             console.print(
                                 f"[green]Seeded {category_result.created} categories[/green]"
@@ -955,42 +921,11 @@ def show_status() -> None:
     import asyncio
 
     from chronovista.config.database import db_manager
-    from chronovista.repositories.channel_repository import ChannelRepository
-    from chronovista.repositories.topic_category_repository import (
-        TopicCategoryRepository,
-    )
-    from chronovista.repositories.video_category_repository import (
-        VideoCategoryRepository,
-    )
-    from chronovista.repositories.video_repository import VideoRepository
-    from chronovista.repositories.video_tag_repository import VideoTagRepository
-    from chronovista.repositories.video_topic_repository import VideoTopicRepository
-    from chronovista.services.enrichment.enrichment_service import EnrichmentService
+    from chronovista.container import container
 
     async def fetch_and_display_status() -> None:
-        # Initialize repositories (no YouTube service needed for status)
-        video_repo = VideoRepository()
-        channel_repo = ChannelRepository()
-        tag_repo = VideoTagRepository()
-        topic_repo = VideoTopicRepository()
-        category_repo = VideoCategoryRepository()
-        topic_cat_repo = TopicCategoryRepository()
-
-        # Create enrichment service with a mock YouTube service
-        # (not needed for status, but required by the constructor)
-        from unittest.mock import MagicMock
-
-        mock_youtube = MagicMock()
-
-        service = EnrichmentService(
-            video_repository=video_repo,
-            channel_repository=channel_repo,
-            video_tag_repository=tag_repo,
-            video_topic_repository=topic_repo,
-            video_category_repository=category_repo,
-            topic_category_repository=topic_cat_repo,
-            youtube_service=mock_youtube,
-        )
+        # Create enrichment service using container
+        service = container.create_enrichment_service()
 
         async for session in db_manager.get_session(echo=False):
             # Fetch status - no lock required (read-only operation)
@@ -1180,18 +1115,7 @@ def enrich_channels(
     import asyncio
 
     from chronovista.config.database import db_manager
-    from chronovista.repositories.channel_repository import ChannelRepository
-    from chronovista.repositories.topic_category_repository import (
-        TopicCategoryRepository,
-    )
-    from chronovista.repositories.video_category_repository import (
-        VideoCategoryRepository,
-    )
-    from chronovista.repositories.video_repository import VideoRepository
-    from chronovista.repositories.video_tag_repository import VideoTagRepository
-    from chronovista.repositories.video_topic_repository import VideoTopicRepository
-    from chronovista.services.enrichment.enrichment_service import EnrichmentService
-    from chronovista.services.youtube_service import YouTubeService
+    from chronovista.container import container
 
     # Generate timestamp for logging
     timestamp = _generate_timestamp()
@@ -1216,7 +1140,7 @@ def enrich_channels(
 
     async def _run_channel_enrichment_inner() -> ChannelEnrichmentResult:
         # T032: Check credentials first (FR-021)
-        youtube_service = YouTubeService()
+        youtube_service = container.youtube_service
         if not youtube_service.check_credentials():
             console.print(
                 Panel(
@@ -1228,24 +1152,8 @@ def enrich_channels(
             )
             raise typer.Exit(EXIT_CODE_NO_CREDENTIALS)
 
-        # Initialize repositories
-        video_repo = VideoRepository()
-        channel_repo = ChannelRepository()
-        tag_repo = VideoTagRepository()
-        topic_repo = VideoTopicRepository()
-        category_repo = VideoCategoryRepository()
-        topic_cat_repo = TopicCategoryRepository()
-
-        # Create enrichment service
-        service = EnrichmentService(
-            video_repository=video_repo,
-            channel_repository=channel_repo,
-            video_tag_repository=tag_repo,
-            video_topic_repository=topic_repo,
-            video_category_repository=category_repo,
-            topic_category_repository=topic_cat_repo,
-            youtube_service=youtube_service,
-        )
+        # Create enrichment service using container
+        service = container.create_enrichment_service()
 
         async for session in db_manager.get_session(echo=False):
             # T028: Acquire lock with --force support (FR-016/017/019)

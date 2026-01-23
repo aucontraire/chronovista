@@ -56,7 +56,7 @@ chronovista is a CLI application that enables users to access, store, and explor
 ## Project Status
 
 !!! success "Current Status"
-    - **1,365+ tests** with **90%+ coverage** across all modules
+    - **3,553+ tests** with **90%+ coverage** across all modules
     - **Comprehensive Pydantic models** with advanced validation and type safety
     - **Real API integration testing** with YouTube API data validation
     - **Advanced repository pattern** with async support and composite keys

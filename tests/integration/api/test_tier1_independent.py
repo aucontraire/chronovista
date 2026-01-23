@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import datetime
 
 import pytest
+from googleapiclient.errors import HttpError
 from sqlalchemy import delete
 
 from chronovista.db.models import Channel as DBChannel
@@ -31,6 +32,7 @@ from chronovista.models.enums import LanguageCode, LanguagePreferenceType
 from chronovista.models.topic_category import TopicCategoryCreate, TopicCategoryUpdate
 from chronovista.models.user_language_preference import UserLanguagePreferenceCreate
 from chronovista.repositories.base import BaseSQLAlchemyRepository
+from tests.integration.api.quota_utils import skip_if_quota_exceeded
 
 pytestmark = pytest.mark.asyncio
 
@@ -80,9 +82,13 @@ class TestChannelFromYouTubeAPI:
                     await session.rollback()
 
                 # Returns a list of YouTubeChannelResponse Pydantic models
-                api_data_list = await authenticated_youtube_service.get_channel_details(
-                    channel_id
-                )
+                try:
+                    api_data_list = await authenticated_youtube_service.get_channel_details(
+                        channel_id
+                    )
+                except HttpError as e:
+                    skip_if_quota_exceeded(e)
+                    raise
 
                 # Validate API data structure matches our expectations
                 assert len(api_data_list) > 0
@@ -193,9 +199,13 @@ class TestChannelFromYouTubeAPI:
 
         for channel_id in sample_youtube_channel_ids:
             # Returns a list of YouTubeChannelResponse Pydantic models
-            api_data_list = await authenticated_youtube_service.get_channel_details(
-                channel_id
-            )
+            try:
+                api_data_list = await authenticated_youtube_service.get_channel_details(
+                    channel_id
+                )
+            except HttpError as e:
+                skip_if_quota_exceeded(e)
+                raise
             assert len(api_data_list) > 0
             api_data = api_data_list[0]
 
@@ -252,11 +262,15 @@ class TestChannelFromYouTubeAPI:
                 ] = BaseSQLAlchemyRepository(DBChannel)
 
                 # Create initial channel - returns list of YouTubeChannelResponse
-                initial_api_data_list = (
-                    await authenticated_youtube_service.get_channel_details(
-                        base_channel_id
+                try:
+                    initial_api_data_list = (
+                        await authenticated_youtube_service.get_channel_details(
+                            base_channel_id
+                        )
                     )
-                )
+                except HttpError as e:
+                    skip_if_quota_exceeded(e)
+                    raise
                 initial_api_data = initial_api_data_list[0]
 
                 # Handle language code properly with enum
@@ -291,11 +305,15 @@ class TestChannelFromYouTubeAPI:
                 await session.commit()
 
                 # Get fresh data from API - returns list of YouTubeChannelResponse
-                fresh_api_data_list = (
-                    await authenticated_youtube_service.get_channel_details(
-                        base_channel_id
+                try:
+                    fresh_api_data_list = (
+                        await authenticated_youtube_service.get_channel_details(
+                            base_channel_id
+                        )
                     )
-                )
+                except HttpError as e:
+                    skip_if_quota_exceeded(e)
+                    raise
                 fresh_api_data = fresh_api_data_list[0]
 
                 # Create update model
@@ -387,11 +405,15 @@ class TestChannelFromYouTubeAPI:
                 ):  # Limit to 2 to avoid rate limits
                     try:
                         # Returns a list of YouTubeChannelResponse Pydantic models
-                        api_data_list = (
-                            await authenticated_youtube_service.get_channel_details(
-                                channel_id
+                        try:
+                            api_data_list = (
+                                await authenticated_youtube_service.get_channel_details(
+                                    channel_id
+                                )
                             )
-                        )
+                        except HttpError as e:
+                            skip_if_quota_exceeded(e)
+                            raise
 
                         if not api_data_list:
                             print(f"No data returned for channel {channel_id}")

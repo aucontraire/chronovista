@@ -18,7 +18,7 @@
   <a href="#installation">Installation</a> |
   <a href="#usage">Usage</a> |
   <a href="#development">Development</a> |
-  <a href="src/chronovista/docs/chronovista_PRD.md">Docs</a>
+  <a href="docs/README.md">Docs</a>
 </p>
 
 ---
@@ -278,8 +278,7 @@ See [System Architecture](src/chronovista/docs/architecture/system-architecture.
 - [x] Interactive CLI with Rich UI
 - [ ] Web dashboard
 - [ ] ML-powered insights
-- [ ] Multi-user support
-- [ ] Cloud deployment
+
 
 ## Contributing
 

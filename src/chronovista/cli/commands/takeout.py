@@ -29,9 +29,8 @@ from rich.progress import (
 from rich.table import Table
 
 from ...config.database import db_manager
+from ...container import container
 from ...models.takeout.takeout_data import TakeoutData
-from ...repositories.topic_category_repository import TopicCategoryRepository
-from ...repositories.video_topic_repository import VideoTopicRepository
 from ...services.seeding import ProgressCallback
 from ...services.takeout_seeding_service import TakeoutSeedingService
 from ...services.takeout_service import TakeoutParsingError, TakeoutService
@@ -45,10 +44,6 @@ console = Console()
 takeout_app = typer.Typer(
     name="takeout", help="📁 Explore Google Takeout data locally (no API calls)"
 )
-
-# Repository instances for topic integration
-topic_category_repository = TopicCategoryRepository()
-video_topic_repository = VideoTopicRepository()
 
 
 async def _build_video_title_lookup(takeout_service: TakeoutService) -> dict[str, str]:
@@ -134,6 +129,7 @@ def peek_data(
                 # Validate topic filter if provided
                 if topic_filter:
                     progress.update(task, description="🏷️ Validating topic filter...")
+                    topic_category_repository = container.create_topic_category_repository()
                     async for session in db_manager.get_session():
                         if not await topic_category_repository.exists(
                             session, topic_filter
@@ -699,6 +695,7 @@ async def _apply_topic_filters(
     try:
         # Validate topic filter if provided
         if topic_filter:
+            topic_category_repository = container.create_topic_category_repository()
             async for session in db_manager.get_session():
                 if not await topic_category_repository.exists(session, topic_filter):
                     console.print(

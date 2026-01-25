@@ -44,7 +44,6 @@ from chronovista.repositories.playlist_repository import PlaylistRepository
 from chronovista.services.seeding.playlist_seeder import (
     PlaylistSeeder,
     generate_internal_playlist_id,
-    generate_user_channel_id,
 )
 from tests.factories.takeout_playlist_factory import (
     TakeoutPlaylistFactory,

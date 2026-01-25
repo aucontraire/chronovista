@@ -2486,6 +2486,10 @@ class EnrichmentService:
                 if api_data.snippet and api_data.snippet.default_language:
                     playlist.default_language = api_data.snippet.default_language
 
+                # Update channel_id (link playlist to owner channel)
+                if api_data.snippet and api_data.snippet.channel_id:
+                    playlist.channel_id = api_data.snippet.channel_id
+
                 playlists_updated += 1
                 logger.debug(f"Updated playlist {playlist_id}: {playlist.title}")
 

@@ -439,8 +439,10 @@ def _display_playlist_details(playlist: PlaylistDB) -> None:
     if hasattr(playlist, "channel") and playlist.channel:
         channel_info = f"{playlist.channel_id} ({playlist.channel.title})"
         details_lines.append(f"Channel:        {channel_info}")
-    else:
+    elif playlist.channel_id:
         details_lines.append(f"Channel:        {playlist.channel_id}")
+    else:
+        details_lines.append("Channel:        (not linked - user playlist from Takeout)")
 
     details_lines.extend(
         [

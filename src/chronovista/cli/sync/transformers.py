@@ -309,7 +309,7 @@ class DataTransformers:
             description=snippet.description if snippet else None,
             default_language=default_language,
             privacy_status=privacy_status,
-            channel_id=snippet.channel_id if snippet else "",
+            channel_id=snippet.channel_id if snippet else None,
             video_count=video_count,
             published_at=published_at,
         )

@@ -31,9 +31,9 @@ class PlaylistBase(BaseModel):
     privacy_status: PrivacyStatus = Field(
         default=PrivacyStatus.PRIVATE, description="Playlist privacy setting"
     )
-    channel_id: ChannelId = Field(
-        ...,
-        description="Channel ID that owns the playlist (validated)",
+    channel_id: Optional[ChannelId] = Field(
+        default=None,
+        description="Channel ID that owns the playlist. NULL for user playlists from Takeout until linked via OAuth.",
     )
     video_count: int = Field(
         default=0, ge=0, description="Number of videos in playlist"
@@ -104,6 +104,10 @@ class PlaylistUpdate(BaseModel):
     description: Optional[str] = None
     default_language: Optional[LanguageCode] = None
     privacy_status: Optional[PrivacyStatus] = None
+    channel_id: Optional[ChannelId] = Field(
+        default=None,
+        description="Channel ID to link playlist to after OAuth authentication",
+    )
     video_count: Optional[int] = Field(None, ge=0)
     published_at: Optional[datetime] = None
     deleted_flag: Optional[bool] = None

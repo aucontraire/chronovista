@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.models.playlist import PlaylistCreate
 from chronovista.models.takeout.takeout_data import TakeoutData
-from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.repositories.playlist_repository import PlaylistRepository
 from chronovista.services.seeding.base_seeder import ProgressCallback, SeedResult
 from chronovista.services.seeding.playlist_seeder import (
@@ -81,11 +80,9 @@ class TestPlaylistSeederInitialization:
         seeder = PlaylistSeeder(mock_playlist_repo)
 
         assert seeder.playlist_repo == mock_playlist_repo
-        assert isinstance(seeder.channel_repo, ChannelRepository)
         assert seeder.user_id == "takeout_user"
         assert seeder.get_dependencies() == set()
         assert seeder.get_data_type() == "playlists"
-        assert not seeder._user_channel_created
 
     def test_initialization_custom_user(self, mock_playlist_repo: Mock) -> None:
         """Test seeder initialization with custom user ID."""
@@ -194,22 +191,15 @@ class TestPlaylistSeederSeeding:
         ):
             mock_get.return_value = None
 
-            # Mock user channel creation
-            with patch.object(
-                seeder, "_ensure_user_channel_exists", new_callable=AsyncMock
-            ) as mock_ensure:
-                mock_ensure.return_value = None  # Method doesn't return anything
+            result = await seeder.seed(mock_session, sample_takeout_data)
 
-                result = await seeder.seed(mock_session, sample_takeout_data)
+            assert result.created == 2  # Two playlists created
+            assert result.updated == 0
+            assert result.failed == 0
+            assert result.success_rate == 100.0
 
-                assert result.created == 2  # Two playlists created
-                assert result.updated == 0
-                assert result.failed == 0
-                assert result.success_rate == 100.0
-
-                # Verify playlist repository calls
-                assert mock_create.call_count == 2
-                mock_ensure.assert_called_once()
+            # Verify playlist repository calls
+            assert mock_create.call_count == 2
 
     @pytest.mark.asyncio
     async def test_seed_existing_playlists(
@@ -227,18 +217,12 @@ class TestPlaylistSeederSeeding:
         ) as mock_get:
             mock_get.return_value = mock_playlist
 
-            # Mock user channel creation
-            with patch.object(
-                seeder, "_ensure_user_channel_exists", new_callable=AsyncMock
-            ) as mock_ensure:
-                mock_ensure.return_value = None  # Method doesn't return anything
+            result = await seeder.seed(mock_session, sample_takeout_data)
 
-                result = await seeder.seed(mock_session, sample_takeout_data)
-
-                assert result.created == 0
-                assert result.updated == 2  # Two playlists updated
-                assert result.failed == 0
-                assert result.success_rate == 100.0
+            assert result.created == 0
+            assert result.updated == 2  # Two playlists updated
+            assert result.failed == 0
+            assert result.success_rate == 100.0
 
     @pytest.mark.asyncio
     async def test_seed_with_progress_callback(
@@ -260,12 +244,9 @@ class TestPlaylistSeederSeeding:
         ) as mock_get:
             mock_get.return_value = None
 
-            with patch.object(
-                seeder, "_ensure_user_channel_exists", new_callable=AsyncMock
-            ):
-                result = await seeder.seed(mock_session, sample_takeout_data, progress)
+            result = await seeder.seed(mock_session, sample_takeout_data, progress)
 
-                assert "playlists" in progress_calls
+            assert "playlists" in progress_calls
 
     @pytest.mark.asyncio
     async def test_seed_error_handling(
@@ -281,14 +262,11 @@ class TestPlaylistSeederSeeding:
         ) as mock_get:
             mock_get.side_effect = Exception("Database error")
 
-            with patch.object(
-                seeder, "_ensure_user_channel_exists", new_callable=AsyncMock
-            ):
-                result = await seeder.seed(mock_session, sample_takeout_data)
+            result = await seeder.seed(mock_session, sample_takeout_data)
 
-                assert result.failed > 0
-                assert len(result.errors) > 0
-                assert "Database error" in str(result.errors[0])
+            assert result.failed > 0
+            assert len(result.errors) > 0
+            assert "Database error" in str(result.errors[0])
 
     @pytest.mark.asyncio
     async def test_transform_playlist_to_create_model(
@@ -307,13 +285,11 @@ class TestPlaylistSeederSeeding:
             video_count=1,
         )
 
-        channel_id = TestIds.TEST_CHANNEL_1
-
-        playlist_create = seeder._transform_playlist_to_create(playlist, channel_id)
+        playlist_create = seeder._transform_playlist_to_create(playlist)
 
         assert isinstance(playlist_create, PlaylistCreate)
         assert playlist_create.title == "Test Playlist"
-        assert playlist_create.channel_id == channel_id
+        assert playlist_create.channel_id is None  # Takeout imports have None channel_id
         assert playlist_create.description is not None
         assert "imported from Google Takeout" in playlist_create.description
         # Updated to use int_ prefix (36 chars: int_ + 32 hex)
@@ -321,64 +297,8 @@ class TestPlaylistSeederSeeding:
         assert playlist_create.playlist_id.startswith("int_")
         assert len(playlist_create.playlist_id) == 36
 
-    @pytest.mark.asyncio
-    @pytest.mark.skip(
-        reason="generate_valid_channel_id removed in T017-T020. "
-        "Seeder now uses real channel IDs from YouTube API or NULL with hint."
-    )
-    async def test_ensure_user_channel_exists_first_time(
-        self, seeder: PlaylistSeeder, mock_session: AsyncMock
-    ) -> None:
-        """Test ensuring user channel creation on first call."""
-        pass  # Test skipped - helper function removed
-
-    @pytest.mark.asyncio
-    async def test_ensure_user_channel_exists_existing(
-        self, seeder: PlaylistSeeder, mock_session: AsyncMock
-    ) -> None:
-        """Test ensuring user channel when it already exists."""
-        # Mock channel repository to return existing channel
-        mock_channel = Mock()
-        mock_channel.channel_id = TestIds.TEST_CHANNEL_1
-
-        with (
-            patch.object(
-                seeder.channel_repo, "get_by_channel_id", new_callable=AsyncMock
-            ) as mock_get,
-            patch.object(
-                seeder.channel_repo, "create", new_callable=AsyncMock
-            ) as mock_create,
-        ):
-            mock_get.return_value = mock_channel
-
-            await seeder._ensure_user_channel_exists(
-                mock_session, TestIds.TEST_CHANNEL_1
-            )
-
-            mock_create.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_user_channel_creation_cached(
-        self, seeder: PlaylistSeeder, mock_session: AsyncMock
-    ) -> None:
-        """Test that user channel creation is cached via _user_channel_created flag."""
-        # First call should create channel
-        with (
-            patch.object(
-                seeder.channel_repo, "get_by_channel_id", new_callable=AsyncMock
-            ) as mock_get,
-            patch.object(
-                seeder.channel_repo, "create", new_callable=AsyncMock
-            ) as mock_create,
-        ):
-            mock_get.return_value = None
-
-            # Simulate first seeding call
-            assert not seeder._user_channel_created
-
-            # After first seeding, flag should be set
-            seeder._user_channel_created = True
-            assert seeder._user_channel_created
+    # Tests for _ensure_user_channel_exists and _user_channel_created removed
+    # These methods no longer exist after P2-9 refactoring
 
 
 class TestPlaylistSeederChannelHandling:
@@ -444,7 +364,7 @@ class TestPlaylistSeederBatchProcessing:
         """Test batch processing with large number of playlists."""
         # Create data with many playlists to trigger batch commits
         playlists = []
-        for i in range(150):  # More than batch size of 100
+        for i in range(150):  # More than batch size of 50
             playlists.append(
                 create_takeout_playlist(
                     name=f"Playlist {i}",
@@ -471,15 +391,140 @@ class TestPlaylistSeederBatchProcessing:
         ) as mock_get:
             mock_get.return_value = None
 
-            with patch.object(
-                seeder, "_ensure_user_channel_exists", new_callable=AsyncMock
-            ):
-                result = await seeder.seed(mock_session, large_data)
+            result = await seeder.seed(mock_session, large_data)
 
-                # Should have processed all playlists
-                assert result.created == 150
-                # Should have called commit multiple times for batching
-                assert mock_session.commit.call_count >= 2
+            # Should have processed all playlists
+            assert result.created == 150
+            # Should have called commit multiple times for batching (every 50 + final)
+            assert mock_session.commit.call_count >= 2
+
+
+class TestPlaylistSeederNullChannelId:
+    """Tests for NULL channel_id behavior after P2-9 refactoring."""
+
+    @pytest.fixture
+    def mock_playlist_repo(self) -> Mock:
+        """Create mock playlist repository."""
+        repo = Mock(spec=PlaylistRepository)
+        repo.get_by_playlist_id = AsyncMock()
+        repo.create = AsyncMock()
+        repo.delete_by_null_channel_id = AsyncMock()
+        return repo
+
+    @pytest.fixture
+    def seeder(self, mock_playlist_repo: Mock) -> PlaylistSeeder:
+        """Create PlaylistSeeder instance."""
+        return PlaylistSeeder(mock_playlist_repo, user_id="test_user")
+
+    @pytest.fixture
+    def mock_session(self) -> AsyncMock:
+        """Create mock database session."""
+        session = AsyncMock()
+        session.commit = AsyncMock()
+        return session
+
+    @pytest.mark.asyncio
+    async def test_playlists_created_with_null_channel_id(
+        self, seeder: PlaylistSeeder, mock_session: AsyncMock
+    ) -> None:
+        """Test that playlists from Takeout are created with channel_id=None."""
+        data = create_takeout_data(
+            takeout_path=Path("/test/takeout"),
+            subscriptions=[],
+            watch_history=[],
+            playlists=[
+                create_takeout_playlist(
+                    name="Test Playlist",
+                    file_path=Path("/test/test.csv"),
+                    videos=[],
+                    video_count=0,
+                ),
+            ],
+        )
+
+        # Track created playlists
+        created_playlists = []
+
+        async def mock_create(session: AsyncSession, obj_in: PlaylistCreate) -> Mock:
+            created_playlists.append(obj_in)
+            return Mock()
+
+        with (
+            patch.object(
+                seeder.playlist_repo, "get_by_playlist_id", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(seeder.playlist_repo, "create", new=mock_create),
+        ):
+            mock_get.return_value = None
+
+            result = await seeder.seed(mock_session, data)
+
+            # Verify playlist was created
+            assert result.created == 1
+            assert len(created_playlists) == 1
+
+            # Verify channel_id is None
+            playlist = created_playlists[0]
+            assert playlist.channel_id is None
+
+    @pytest.mark.asyncio
+    async def test_delete_by_null_channel_id_called_during_reseed(
+        self, seeder: PlaylistSeeder, mock_session: AsyncMock
+    ) -> None:
+        """Test that delete_by_null_channel_id is called during re-seed."""
+        data = create_takeout_data(
+            takeout_path=Path("/test/takeout"),
+            subscriptions=[],
+            watch_history=[],
+            playlists=[
+                create_takeout_playlist(
+                    name="Test Playlist",
+                    file_path=Path("/test/test.csv"),
+                    videos=[],
+                    video_count=0,
+                ),
+            ],
+        )
+
+        with (
+            patch.object(
+                seeder.playlist_repo, "delete_by_null_channel_id", new_callable=AsyncMock
+            ) as mock_delete,
+            patch.object(
+                seeder.playlist_repo, "get_by_playlist_id", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
+                seeder.playlist_repo, "create", new_callable=AsyncMock
+            ),
+        ):
+            mock_delete.return_value = 5
+            mock_get.return_value = None
+
+            result = await seeder.seed(mock_session, data, clear_existing=True)
+
+            # Verify delete_by_null_channel_id was called
+            mock_delete.assert_called_once_with(mock_session)
+
+            # Verify playlist was created
+            assert result.created == 1
+
+    def test_transform_sets_channel_id_to_none(
+        self, seeder: PlaylistSeeder
+    ) -> None:
+        """Test that _transform_playlist_to_create sets channel_id to None."""
+        playlist = create_takeout_playlist(
+            name="Test Playlist",
+            file_path=Path("/test/test.csv"),
+            videos=[],
+            video_count=0,
+        )
+
+        playlist_create = seeder._transform_playlist_to_create(playlist)
+
+        # Verify channel_id is None
+        assert playlist_create.channel_id is None
+        assert playlist_create.title == "Test Playlist"
+        assert playlist_create.playlist_id.startswith("int_")
 
 
 class TestPlaylistSeederEdgeCases:
@@ -515,7 +560,7 @@ class TestPlaylistSeederEdgeCases:
 
         # Should raise validation error for empty title
         with pytest.raises(ValueError, match="String should have at least 1 character"):
-            seeder._transform_playlist_to_create(playlist, TestIds.TEST_CHANNEL_1)
+            seeder._transform_playlist_to_create(playlist)
 
     @pytest.mark.asyncio
     async def test_playlist_with_no_videos(
@@ -541,13 +586,10 @@ class TestPlaylistSeederEdgeCases:
         ) as mock_get:
             mock_get.return_value = None
 
-            with patch.object(
-                seeder, "_ensure_user_channel_exists", new_callable=AsyncMock
-            ):
-                result = await seeder.seed(mock_session, data)
+            result = await seeder.seed(mock_session, data)
 
-                # Should still create the playlist
-                assert result.created == 1
+            # Should still create the playlist
+            assert result.created == 1
 
     @pytest.mark.asyncio
     async def test_invalid_playlist_data(
@@ -575,13 +617,10 @@ class TestPlaylistSeederEdgeCases:
                 ],
             )
 
-            with patch.object(
-                seeder, "_ensure_user_channel_exists", new_callable=AsyncMock
-            ):
-                result = await seeder.seed(mock_session, data)
+            result = await seeder.seed(mock_session, data)
 
-                assert result.failed > 0
-                assert "Invalid playlist data" in str(result.errors[0])
+            assert result.failed > 0
+            assert "Invalid playlist data" in str(result.errors[0])
 
     def test_special_characters_in_playlist_name(self, seeder: PlaylistSeeder) -> None:
         """Test handling of special characters in playlist names."""
@@ -592,9 +631,7 @@ class TestPlaylistSeederEdgeCases:
             video_count=0,
         )
 
-        playlist_create = seeder._transform_playlist_to_create(
-            playlist, TestIds.TEST_CHANNEL_1
-        )
+        playlist_create = seeder._transform_playlist_to_create(playlist)
 
         # Should preserve special characters
         assert playlist_create.title == "Playlist with émojis 🎵 and spëcial chars!"
@@ -609,7 +646,7 @@ class TestPlaylistSeederReseedWithCascade:
         repo = Mock(spec=PlaylistRepository)
         repo.get_by_playlist_id = AsyncMock()
         repo.create = AsyncMock()
-        repo.delete_by_channel_id = AsyncMock()
+        repo.delete_by_null_channel_id = AsyncMock()
         return repo
 
     @pytest.fixture
@@ -655,24 +692,20 @@ class TestPlaylistSeederReseedWithCascade:
         assert all(c in "0123456789abcdef" for c in hash_part)
 
     @pytest.mark.asyncio
-    async def test_clear_existing_playlists_deletes_via_cascade(
+    async def test_clear_existing_user_playlists_deletes_via_cascade(
         self, seeder: PlaylistSeeder, mock_session: AsyncMock
     ) -> None:
-        """Test re-seed deletes old playlists and memberships via CASCADE."""
-        user_channel_id = "UC1234567890123456789012"
-
-        # Mock delete_by_channel_id to return number of deleted playlists
+        """Test re-seed deletes old user playlists (NULL channel_id) and memberships via CASCADE."""
+        # Mock delete_by_null_channel_id to return number of deleted playlists
         with patch.object(
-            seeder.playlist_repo, "delete_by_channel_id", new_callable=AsyncMock
+            seeder.playlist_repo, "delete_by_null_channel_id", new_callable=AsyncMock
         ) as mock_delete:
             mock_delete.return_value = 5
 
-            deleted_count = await seeder.clear_existing_playlists(
-                mock_session, user_channel_id
-            )
+            deleted_count = await seeder.clear_existing_user_playlists(mock_session)
 
-            # Should have called delete_by_channel_id
-            mock_delete.assert_called_once_with(mock_session, user_channel_id)
+            # Should have called delete_by_null_channel_id
+            mock_delete.assert_called_once_with(mock_session)
 
             # Should return number of deleted playlists
             assert deleted_count == 5
@@ -681,7 +714,7 @@ class TestPlaylistSeederReseedWithCascade:
     async def test_seed_with_clear_existing_creates_new_int_playlists(
         self, seeder: PlaylistSeeder, mock_session: AsyncMock
     ) -> None:
-        """Test re-seed creates new playlists with INT_ prefix."""
+        """Test re-seed creates new playlists with int_ prefix and channel_id=None."""
         data = create_takeout_data(
             takeout_path=Path("/test/takeout"),
             subscriptions=[],
@@ -711,16 +744,13 @@ class TestPlaylistSeederReseedWithCascade:
         # Mock clear operation, get_by_playlist_id, and create
         with (
             patch.object(
-                seeder.playlist_repo, "delete_by_channel_id", new_callable=AsyncMock
+                seeder.playlist_repo, "delete_by_null_channel_id", new_callable=AsyncMock
             ) as mock_delete,
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", new_callable=AsyncMock
             ) as mock_get,
             patch.object(
                 seeder.playlist_repo, "create", new=mock_create
-            ),
-            patch.object(
-                seeder, "_ensure_user_channel_exists", new_callable=AsyncMock
             ),
         ):
             mock_delete.return_value = 3
@@ -735,10 +765,11 @@ class TestPlaylistSeederReseedWithCascade:
             assert result.created == 1
             assert len(created_playlists) == 1
 
-            # New playlist should have int_ prefix
+            # New playlist should have int_ prefix and NULL channel_id
             new_playlist = created_playlists[0]
             assert new_playlist.playlist_id.startswith("int_")
             assert len(new_playlist.playlist_id) == 36
+            assert new_playlist.channel_id is None  # Takeout imports have NULL channel_id
 
     @pytest.mark.asyncio
     async def test_seed_operates_within_transaction(
@@ -762,11 +793,8 @@ class TestPlaylistSeederReseedWithCascade:
         # Mock clear to fail
         with (
             patch.object(
-                seeder.playlist_repo, "delete_by_channel_id", new_callable=AsyncMock
+                seeder.playlist_repo, "delete_by_null_channel_id", new_callable=AsyncMock
             ) as mock_delete,
-            patch.object(
-                seeder, "_ensure_user_channel_exists", new_callable=AsyncMock
-            ),
             pytest.raises(Exception, match="Database error"),
         ):
             mock_delete.side_effect = Exception("Database error")
@@ -797,7 +825,7 @@ class TestPlaylistSeederReseedWithCascade:
         # First run - creates playlist
         with (
             patch.object(
-                seeder.playlist_repo, "delete_by_channel_id", new_callable=AsyncMock
+                seeder.playlist_repo, "delete_by_null_channel_id", new_callable=AsyncMock
             ) as mock_delete1,
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", new_callable=AsyncMock
@@ -805,9 +833,6 @@ class TestPlaylistSeederReseedWithCascade:
             patch.object(
                 seeder.playlist_repo, "create", new_callable=AsyncMock
             ) as mock_create1,
-            patch.object(
-                seeder, "_ensure_user_channel_exists", new_callable=AsyncMock
-            ),
         ):
             mock_delete1.return_value = 0
             mock_get1.return_value = None
@@ -818,7 +843,7 @@ class TestPlaylistSeederReseedWithCascade:
         # Second run - should work without errors
         with (
             patch.object(
-                seeder.playlist_repo, "delete_by_channel_id", new_callable=AsyncMock
+                seeder.playlist_repo, "delete_by_null_channel_id", new_callable=AsyncMock
             ) as mock_delete2,
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", new_callable=AsyncMock
@@ -826,9 +851,6 @@ class TestPlaylistSeederReseedWithCascade:
             patch.object(
                 seeder.playlist_repo, "create", new_callable=AsyncMock
             ) as mock_create2,
-            patch.object(
-                seeder, "_ensure_user_channel_exists", new_callable=AsyncMock
-            ),
         ):
             mock_delete2.return_value = 1
             mock_get2.return_value = None
@@ -841,18 +863,14 @@ class TestPlaylistSeederReseedWithCascade:
         self, seeder: PlaylistSeeder, mock_session: AsyncMock
     ) -> None:
         """Test FK cascade behavior - memberships deleted automatically."""
-        user_channel_id = "UC1234567890123456789012"
-
         # Mock delete to simulate CASCADE behavior
         # In real database, CASCADE deletes playlist_video_membership rows automatically
         with patch.object(
-            seeder.playlist_repo, "delete_by_channel_id", new_callable=AsyncMock
+            seeder.playlist_repo, "delete_by_null_channel_id", new_callable=AsyncMock
         ) as mock_delete:
             mock_delete.return_value = 10
 
-            deleted_count = await seeder.clear_existing_playlists(
-                mock_session, user_channel_id
-            )
+            deleted_count = await seeder.clear_existing_user_playlists(mock_session)
 
             # Only playlists are explicitly deleted
             # Memberships are handled by database CASCADE
@@ -892,7 +910,7 @@ class TestPlaylistSeederReseedWithCascade:
         # Mock operations
         with (
             patch.object(
-                seeder.playlist_repo, "delete_by_channel_id", new_callable=AsyncMock
+                seeder.playlist_repo, "delete_by_null_channel_id", new_callable=AsyncMock
             ) as mock_delete,
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", new_callable=AsyncMock
@@ -900,9 +918,6 @@ class TestPlaylistSeederReseedWithCascade:
             patch.object(
                 seeder.playlist_repo, "create", new_callable=AsyncMock
             ) as mock_create,
-            patch.object(
-                seeder, "_ensure_user_channel_exists", new_callable=AsyncMock
-            ),
         ):
             mock_get.return_value = None
 

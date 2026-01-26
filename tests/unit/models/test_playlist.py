@@ -93,8 +93,10 @@ class TestPlaylistBase:
         assert len(playlist.playlist_id) <= 50
         assert len(playlist.title) >= 1
         assert len(playlist.title) <= 255
-        assert len(playlist.channel_id) >= 20
-        assert len(playlist.channel_id) <= 24
+        # channel_id is now optional - check if present
+        if playlist.channel_id is not None:
+            assert len(playlist.channel_id) >= 20
+            assert len(playlist.channel_id) <= 24
         assert playlist.privacy_status in ["private", "public", "unlisted"]
         assert playlist.video_count >= 0
 

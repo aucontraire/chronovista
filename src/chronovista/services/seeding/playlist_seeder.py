@@ -1,17 +1,12 @@
 """
 Playlist seeder - creates playlists from takeout data.
 
-NOTE: This seeder currently generates a fake "user channel" ID to own playlists
-because the Playlist model requires channel_id (not nullable).
+User playlists imported from Google Takeout have channel_id=None since the user's
+YouTube channel ID is not available during offline Takeout imports. After OAuth
+authentication, the channel_id can be populated with the user's actual channel ID.
 
-TODO: Consider making Playlist.channel_id nullable to avoid fake channel IDs.
-This would align with the approach used in video_seeder.py where videos can have
+This aligns with the approach used in video_seeder.py where videos can have
 channel_id=None with channel_name_hint for future resolution.
-
-For now, we use a consistent fake ID based on user_id so:
-1. All user's playlists are grouped under one fake channel
-2. The fake channel is easily identifiable by title "[User Channel]"
-3. It can be replaced with a real channel ID if the user authenticates
 """
 
 from __future__ import annotations
@@ -23,11 +18,9 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...models.channel import ChannelCreate
 from ...models.enums import LanguageCode, PrivacyStatus
 from ...models.playlist import PlaylistCreate
 from ...models.takeout.takeout_data import TakeoutData, TakeoutPlaylist
-from ...repositories.channel_repository import ChannelRepository
 from ...repositories.playlist_repository import PlaylistRepository
 from .base_seeder import BaseSeeder, ProgressCallback, SeedResult
 
@@ -59,44 +52,26 @@ def generate_internal_playlist_id(seed: str) -> str:
     return f"int_{hash_suffix}"  # lowercase to match Pydantic validator normalization
 
 
-def generate_user_channel_id(user_id: str) -> str:
-    """
-    Generate a channel ID for the user's own playlists.
-
-    NOTE: This generates a fake channel ID because Playlist.channel_id is required.
-    The ID is based on user_id for consistency, so all user playlists are grouped.
-
-    TODO: When Playlist.channel_id becomes nullable, remove this function
-    and use channel_id=None with the user's actual channel ID from YouTube API.
-    """
-    hash_suffix = hashlib.md5(user_id.encode()).hexdigest()[:22]
-    return f"UC{hash_suffix}"
-
-
 class PlaylistSeeder(BaseSeeder):
     """Seeder for playlists from takeout data."""
 
     def __init__(
         self, playlist_repo: PlaylistRepository, user_id: str = "takeout_user"
     ):
-        super().__init__(
-            dependencies=set()
-        )  # Remove channel dependency - we'll create user channel ourselves
+        super().__init__(dependencies=set())
         self.playlist_repo = playlist_repo
-        self.channel_repo = ChannelRepository()
         self.user_id = user_id
-        self._user_channel_created = False
 
     def get_data_type(self) -> str:
         return "playlists"
 
-    async def clear_existing_playlists(
-        self, session: AsyncSession, user_channel_id: str
+    async def clear_existing_user_playlists(
+        self, session: AsyncSession
     ) -> int:
         """
-        Clear all playlists owned by the user channel.
+        Clear all user playlists (those with channel_id=NULL).
 
-        This is used during re-seeding to delete existing playlists before
+        This is used during re-seeding to delete existing user playlists before
         importing fresh data with new INT_ IDs. Playlist memberships are
         automatically deleted via CASCADE.
 
@@ -104,8 +79,6 @@ class PlaylistSeeder(BaseSeeder):
         ----------
         session : AsyncSession
             Database session
-        user_channel_id : str
-            The user channel ID that owns the playlists
 
         Returns
         -------
@@ -113,15 +86,13 @@ class PlaylistSeeder(BaseSeeder):
             Number of playlists deleted
         """
         try:
-            deleted_count = await self.playlist_repo.delete_by_channel_id(
-                session, user_channel_id
-            )
+            deleted_count = await self.playlist_repo.delete_by_null_channel_id(session)
             logger.info(
-                f"🗑️ Cleared {deleted_count} existing playlists (memberships cascaded)"
+                f"🗑️ Cleared {deleted_count} existing user playlists (memberships cascaded)"
             )
             return deleted_count
         except Exception as e:
-            logger.error(f"Failed to clear existing playlists: {e}")
+            logger.error(f"Failed to clear existing user playlists: {e}")
             raise
 
     async def seed(
@@ -159,17 +130,12 @@ class PlaylistSeeder(BaseSeeder):
             logger.info("📋 No playlists found in takeout data")
             return result
 
-        # Generate user channel ID for playlist ownership
-        user_channel_id = generate_user_channel_id(self.user_id)
-
-        # Clear existing playlists if re-seeding
+        # Clear existing user playlists if re-seeding
         if clear_existing:
             try:
-                deleted_count = await self.clear_existing_playlists(
-                    session, user_channel_id
-                )
+                deleted_count = await self.clear_existing_user_playlists(session)
                 logger.info(
-                    f"🔄 Re-seed mode: Cleared {deleted_count} playlists "
+                    f"🔄 Re-seed mode: Cleared {deleted_count} user playlists "
                     f"(memberships cascaded automatically)"
                 )
             except Exception as e:
@@ -180,17 +146,10 @@ class PlaylistSeeder(BaseSeeder):
 
         logger.info(f"📋 Seeding {len(takeout_data.playlists)} playlists...")
 
-        # Ensure user channel exists (create if necessary)
-        if not self._user_channel_created:
-            await self._ensure_user_channel_exists(session, user_channel_id)
-            self._user_channel_created = True
-
         for i, playlist in enumerate(takeout_data.playlists):
             try:
-                # Transform playlist to create model
-                playlist_create = self._transform_playlist_to_create(
-                    playlist, user_channel_id
-                )
+                # Transform playlist to create model (channel_id=None for Takeout imports)
+                playlist_create = self._transform_playlist_to_create(playlist)
 
                 # Check if playlist already exists
                 existing_playlist = await self.playlist_repo.get_by_playlist_id(
@@ -237,7 +196,7 @@ class PlaylistSeeder(BaseSeeder):
         return result
 
     def _transform_playlist_to_create(
-        self, takeout_playlist: TakeoutPlaylist, user_channel_id: str
+        self, takeout_playlist: TakeoutPlaylist
     ) -> PlaylistCreate:
         """
         Transform takeout playlist to PlaylistCreate model.
@@ -255,6 +214,10 @@ class PlaylistSeeder(BaseSeeder):
         - "Public" -> PrivacyStatus.PUBLIC
         - "Unlisted" -> PrivacyStatus.UNLISTED
         - None/unknown -> PrivacyStatus.PRIVATE (default)
+
+        Note: channel_id is set to None for Takeout imports since the user's
+        YouTube channel ID is not available during offline imports. It can be
+        populated later after OAuth authentication.
         """
         # Use YouTube ID directly if available from playlists.csv
         if takeout_playlist.youtube_id:
@@ -272,7 +235,7 @@ class PlaylistSeeder(BaseSeeder):
             playlist_id=playlist_id,
             title=takeout_playlist.name,
             description="Playlist imported from Google Takeout",
-            channel_id=user_channel_id,
+            channel_id=None,  # User's channel ID not known during Takeout import
             video_count=len(takeout_playlist.videos),
             default_language=LanguageCode.ENGLISH,  # Default fallback
             privacy_status=privacy_status,
@@ -307,38 +270,3 @@ class PlaylistSeeder(BaseSeeder):
             # Default to PRIVATE for "Private" or any unknown value
             return PrivacyStatus.PRIVATE
 
-    async def _ensure_user_channel_exists(
-        self, session: AsyncSession, user_channel_id: str
-    ) -> None:
-        """Ensure the user channel exists, creating it if necessary."""
-        try:
-            # Check if user channel already exists
-            existing_channel = await self.channel_repo.get_by_channel_id(
-                session, user_channel_id
-            )
-
-            if not existing_channel:
-                # Create user channel for playlist ownership
-                # NOTE: This is a placeholder channel - will be replaced when user authenticates
-                user_channel = ChannelCreate(
-                    channel_id=user_channel_id,
-                    title=f"[User Channel] {self.user_id}",
-                    description="Placeholder user channel for Google Takeout playlist imports. "
-                    "Will be replaced with real channel ID after YouTube API authentication.",
-                    default_language=LanguageCode.ENGLISH,
-                    country=None,
-                    subscriber_count=0,
-                    video_count=0,
-                    thumbnail_url=None,
-                )
-
-                await self.channel_repo.create(session, obj_in=user_channel)
-                logger.info(
-                    f"📺 Created user channel {user_channel_id} for playlist ownership"
-                )
-            else:
-                logger.info(f"📺 User channel {user_channel_id} already exists")
-
-        except Exception as e:
-            logger.error(f"Failed to ensure user channel exists: {e}")
-            raise

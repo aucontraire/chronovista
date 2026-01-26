@@ -544,9 +544,9 @@ class Playlist(Base):
         String(20), default="private"
     )  # private, public, unlisted
 
-    # Channel association
-    channel_id: Mapped[str] = mapped_column(
-        String(24), ForeignKey("channels.channel_id")
+    # Channel association (nullable to support system playlists)
+    channel_id: Mapped[Optional[str]] = mapped_column(
+        String(24), ForeignKey("channels.channel_id"), nullable=True
     )
 
     # Metadata
@@ -574,7 +574,7 @@ class Playlist(Base):
     )
 
     # Relationships
-    channel: Mapped["Channel"] = relationship("Channel")
+    channel: Mapped[Optional["Channel"]] = relationship("Channel")
     memberships: Mapped[list["PlaylistMembership"]] = relationship(
         "PlaylistMembership",
         back_populates="playlist",

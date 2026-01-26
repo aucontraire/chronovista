@@ -382,8 +382,11 @@ class PlaylistRepository(
         )
 
         # Group playlists by channel_id
+        # Note: All results have non-null channel_id due to the WHERE IN clause
         channel_playlists: Dict[str, List[PlaylistDB]] = {}
         for playlist in result.scalars().all():
+            if playlist.channel_id is None:
+                continue  # Skip playlists without channel_id (shouldn't happen due to query)
             if playlist.channel_id not in channel_playlists:
                 channel_playlists[playlist.channel_id] = []
             channel_playlists[playlist.channel_id].append(playlist)
@@ -452,6 +455,42 @@ class PlaylistRepository(
 
         # Delete playlists
         playlists = await self.get_by_channel_id(session, channel_id, limit=1000)
+        for playlist in playlists:
+            await session.delete(playlist)
+
+        await session.flush()
+        return count
+
+    async def delete_by_null_channel_id(self, session: AsyncSession) -> int:
+        """
+        Delete all playlists with NULL channel_id (user playlists from Takeout).
+
+        This is used during re-seeding to clear user playlists before importing
+        fresh data. Playlist memberships are automatically deleted via CASCADE.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+
+        Returns
+        -------
+        int
+            Number of playlists deleted.
+        """
+        # Get count first
+        count_result = await session.execute(
+            select(func.count(PlaylistDB.playlist_id)).where(
+                PlaylistDB.channel_id.is_(None)
+            )
+        )
+        count = count_result.scalar() or 0
+
+        # Delete playlists with NULL channel_id
+        result = await session.execute(
+            select(PlaylistDB).where(PlaylistDB.channel_id.is_(None))
+        )
+        playlists = list(result.scalars().all())
         for playlist in playlists:
             await session.delete(playlist)
 

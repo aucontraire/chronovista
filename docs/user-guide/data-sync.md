@@ -107,15 +107,46 @@ Syncs your YouTube playlists:
 chronovista sync transcripts
 ```
 
-Downloads video transcripts based on language preferences.
+Downloads video transcripts based on language preferences. Automatically fetches videos without transcripts and downloads using the youtube-transcript-api.
 
 **Options:**
 
 | Option | Description |
 |--------|-------------|
-| `--language <code>` | Specific language (BCP-47) |
-| `--limit <n>` | Maximum videos to process |
-| `--priority-cc` | Prioritize closed captions |
+| `--video-id <id>` | Sync specific video(s) (can be repeated) |
+| `--language <code>` | Preferred language code (default: en, can be repeated) |
+| `--limit <n>` | Maximum videos to process (default: 100) |
+| `--force` | Re-download existing transcripts |
+| `--dry-run` | Preview without downloading |
+
+**Examples:**
+
+```bash
+# Sync transcripts for all videos without transcripts
+chronovista sync transcripts
+
+# Preview what would be synced
+chronovista sync transcripts --dry-run
+
+# Sync specific videos
+chronovista sync transcripts --video-id VIDEO_ID_1 --video-id VIDEO_ID_2
+
+# Sync with Spanish preference, fallback to English
+chronovista sync transcripts --language es --language en
+
+# Force re-download first 50 videos
+chronovista sync transcripts --limit 50 --force
+```
+
+**What's Stored:**
+
+Transcripts are stored with full timestamp data (v0.10.0+):
+
+- `raw_transcript_data`: Complete API response with timestamps
+- `has_timestamps`: Whether timing data is available
+- `segment_count`: Number of transcript segments
+- `total_duration`: Total transcript duration in seconds
+- `source`: Where the transcript came from (youtube_transcript_api, etc.)
 
 ## Sync Strategies
 

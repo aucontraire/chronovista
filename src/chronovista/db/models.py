@@ -267,6 +267,25 @@ class VideoTranscript(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
+    # Raw transcript data with timestamps (Feature 007)
+    raw_transcript_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONB, nullable=True, comment="Complete raw API response with timestamps"
+    )
+    has_timestamps: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False,
+        comment="Whether raw data includes timing information"
+    )
+    segment_count: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, comment="Number of transcript segments"
+    )
+    total_duration: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True, comment="Total transcript duration in seconds"
+    )
+    source: Mapped[str] = mapped_column(
+        String(50), default="youtube_transcript_api", nullable=False,
+        comment="Source: youtube_transcript_api, youtube_data_api_v3, manual_upload, unknown"
+    )
+
     # Relationships
     video: Mapped["Video"] = relationship("Video", back_populates="transcripts")
 

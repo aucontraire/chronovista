@@ -12,6 +12,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.10.0] - 2026-01-27
+
+### Added
+- **Feature 007: Transcript Timestamp Preservation**
+  - 5 new columns on `video_transcripts` table:
+    - `raw_transcript_data` (JSONB): Complete API response with timestamps
+    - `has_timestamps` (BOOLEAN): Quick filter for timestamp availability
+    - `segment_count` (INTEGER): Number of transcript segments
+    - `total_duration` (FLOAT): Total transcript duration in seconds
+    - `source` (VARCHAR): Transcript source identifier
+  - 4 performance indexes for metadata queries
+- **New CLI Command: `sync transcripts`**
+  - Download transcripts for videos in your database
+  - Options: `--video-id`, `--language`, `--limit`, `--force`, `--dry-run`
+  - Automatic language fallback when preferred language unavailable
+  - Full timestamp data preserved in JSONB format
+
+### Technical
+- Repository `create_or_update` method for idempotent transcript storage
+- Performance-tested for 10,000+ transcripts (<2.5s query response)
+
 ## [0.8.0] - 2026-01-21
 
 ### Added

@@ -301,7 +301,7 @@ class EnhancedVideoTranscriptBase(VideoTranscriptBase):
             "caption_name": f"Transcript from {raw_data.source.value}",
             "source": raw_data.source,
             "source_metadata": raw_data.source_metadata,
-            "raw_transcript_data": raw_data.model_dump(),
+            "raw_transcript_data": raw_data.model_dump(mode='json'),
             "has_timestamps": len(raw_data.snippets) > 0,
             "snippet_count": raw_data.snippet_count,
             "total_duration": raw_data.total_duration,

@@ -7,6 +7,7 @@ quality indicators, and specialized queries for transcript management.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
@@ -29,6 +30,8 @@ from ..models.video_transcript import (
 )
 from ..models.youtube_types import VideoId
 from .base import BaseSQLAlchemyRepository
+
+logger = logging.getLogger(__name__)
 
 
 class VideoTranscriptRepository(
@@ -656,3 +659,311 @@ class VideoTranscriptRepository(
             # If all else fails, default to English
             # This provides a fallback for unknown language codes
             return LanguageCode.ENGLISH
+
+    def _derive_metadata(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Derive metadata columns from raw transcript data.
+
+        Parameters
+        ----------
+        raw_data : Dict[str, Any]
+            Output from RawTranscriptData.model_dump().
+
+        Returns
+        -------
+        Dict[str, Any]
+            Derived metadata: has_timestamps, segment_count,
+            total_duration, source.
+        """
+        snippets = raw_data.get("snippets", [])
+
+        # Handle None snippets gracefully (treat as empty list)
+        if snippets is None:
+            snippets = []
+            logger.debug(
+                "Snippets is None in raw_transcript_data, treating as empty list"
+            )
+
+        has_timestamps = len(snippets) > 0
+        # NOTE: Pydantic model uses 'snippet_count', but DB column is 'segment_count'.
+        # This mapping is intentional to maintain consistency between the domain
+        # model (which uses snippet terminology from youtube-transcript-api) and
+        # the database schema (which uses the more generic 'segment' terminology).
+        segment_count = len(snippets) if snippets else None
+
+        if snippets:
+            last_snippet = snippets[-1]
+            total_duration = last_snippet.get("start", 0) + last_snippet.get(
+                "duration", 0
+            )
+        else:
+            total_duration = None
+            logger.debug(
+                "Empty snippets array in raw_transcript_data, "
+                "setting has_timestamps=False, total_duration=None"
+            )
+
+        source = raw_data.get("source", "youtube_transcript_api")
+        if "source" not in raw_data:
+            logger.debug(
+                "Source field missing from raw_transcript_data, "
+                "defaulting to 'youtube_transcript_api'"
+            )
+
+        return {
+            "has_timestamps": has_timestamps,
+            "segment_count": segment_count,
+            "total_duration": total_duration,
+            "source": source,
+        }
+
+    async def create_or_update(
+        self,
+        session: AsyncSession,
+        obj_in: VideoTranscriptCreate,
+        *,
+        raw_transcript_data: Optional[Dict[str, Any]] = None,
+    ) -> VideoTranscriptDB:
+        """
+        Create or update a transcript with optional raw data.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        obj_in : VideoTranscriptCreate
+            Transcript creation data (existing schema).
+        raw_transcript_data : Optional[Dict[str, Any]]
+            Complete raw transcript response including timestamps.
+            When provided, derives: has_timestamps, segment_count,
+            total_duration, source.
+
+        Returns
+        -------
+        VideoTranscriptDB
+            The created or updated transcript record.
+        """
+        video_id = obj_in.video_id
+        language_code = obj_in.language_code
+
+        # Check for existing transcript
+        existing = await self.get_by_composite_key(session, video_id, language_code)
+
+        # Prepare base data from obj_in
+        if hasattr(obj_in, "model_dump"):
+            obj_data = obj_in.model_dump()
+        else:
+            obj_data = obj_in.dict()
+
+        # Process raw_transcript_data if provided
+        if raw_transcript_data is not None:
+            obj_data["raw_transcript_data"] = raw_transcript_data
+
+            # Derive metadata with error handling
+            try:
+                metadata = self._derive_metadata(raw_transcript_data)
+                logger.debug(
+                    "Derived metadata for video_id=%s, language_code=%s: "
+                    "has_timestamps=%s, segment_count=%s, total_duration=%s, source=%s",
+                    video_id,
+                    language_code,
+                    metadata["has_timestamps"],
+                    metadata["segment_count"],
+                    metadata["total_duration"],
+                    metadata["source"],
+                )
+            except Exception as e:
+                logger.warning(
+                    "Metadata derivation failed for video_id=%s: %s", video_id, e
+                )
+                # Fallback: Save raw data with minimal metadata
+                metadata = {
+                    "has_timestamps": False,
+                    "segment_count": None,
+                    "total_duration": None,
+                    "source": raw_transcript_data.get("source", "youtube_transcript_api"),
+                }
+
+            # Apply derived metadata to obj_data
+            obj_data.update(metadata)
+        else:
+            # When raw_transcript_data is not provided, set sensible defaults
+            # for the new metadata fields to maintain backward compatibility
+            obj_data["raw_transcript_data"] = None
+            obj_data["has_timestamps"] = True  # Assume timestamps exist by default
+            obj_data["segment_count"] = None
+            obj_data["total_duration"] = None
+            obj_data["source"] = "youtube_transcript_api"
+            logger.debug(
+                "No raw_transcript_data provided for video_id=%s, using default metadata",
+                video_id,
+            )
+
+        if existing:
+            # Update existing transcript
+            logger.info(
+                "Updating existing transcript for video_id=%s, language_code=%s",
+                video_id,
+                language_code,
+            )
+
+            # Build update dict excluding primary key fields
+            update_fields = {
+                k: v
+                for k, v in obj_data.items()
+                if k not in ("video_id", "language_code")
+            }
+
+            return await self.update(session, db_obj=existing, obj_in=update_fields)
+        else:
+            # Create new transcript
+            logger.info(
+                "Creating new transcript for video_id=%s, language_code=%s",
+                video_id,
+                language_code,
+            )
+
+            # Create database object directly since obj_data contains fields
+            # (raw_transcript_data, has_timestamps, etc.) that aren't in VideoTranscriptCreate
+            db_obj = VideoTranscriptDB(**obj_data)
+            session.add(db_obj)
+            await session.flush()
+            await session.refresh(db_obj)
+            return db_obj
+
+    async def filter_by_metadata(
+        self,
+        session: AsyncSession,
+        *,
+        has_timestamps: Optional[bool] = None,
+        min_segment_count: Optional[int] = None,
+        max_segment_count: Optional[int] = None,
+        min_duration: Optional[float] = None,
+        max_duration: Optional[float] = None,
+        source: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[VideoTranscriptDB]:
+        """
+        Filter transcripts by metadata criteria.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        has_timestamps : Optional[bool]
+            Filter by timestamp availability.
+        min_segment_count : Optional[int]
+            Minimum number of segments.
+        max_segment_count : Optional[int]
+            Maximum number of segments.
+        min_duration : Optional[float]
+            Minimum duration in seconds.
+        max_duration : Optional[float]
+            Maximum duration in seconds.
+        source : Optional[str]
+            Transcript source identifier.
+        limit : int
+            Maximum results to return (default 100).
+        offset : int
+            Results offset for pagination (default 0).
+
+        Returns
+        -------
+        List[VideoTranscriptDB]
+            Transcripts matching the criteria.
+
+        Notes
+        -----
+        - All provided filters are combined with AND logic (conjunctive)
+        - None values for filters are ignored (not applied)
+        """
+        query = select(VideoTranscriptDB)
+        conditions: List[Any] = []
+
+        # Filter by timestamp availability
+        if has_timestamps is not None:
+            conditions.append(VideoTranscriptDB.has_timestamps == has_timestamps)
+
+        # Filter by segment count range
+        if min_segment_count is not None:
+            conditions.append(VideoTranscriptDB.segment_count >= min_segment_count)
+
+        if max_segment_count is not None:
+            conditions.append(VideoTranscriptDB.segment_count <= max_segment_count)
+
+        # Filter by duration range
+        if min_duration is not None:
+            conditions.append(VideoTranscriptDB.total_duration >= min_duration)
+
+        if max_duration is not None:
+            conditions.append(VideoTranscriptDB.total_duration <= max_duration)
+
+        # Filter by source
+        if source is not None:
+            conditions.append(VideoTranscriptDB.source == source)
+
+        # Apply all conditions with AND logic
+        if conditions:
+            query = query.where(and_(*conditions))
+
+        # Apply pagination
+        query = query.offset(offset).limit(limit)
+
+        result = await session.execute(query)
+        transcripts = list(result.scalars().all())
+
+        # Log if results exceed 100 (large result set)
+        if len(transcripts) > 100:
+            logger.info(
+                "filter_by_metadata returned >100 results: count=%d, "
+                "has_timestamps=%s, min_segment_count=%s, max_segment_count=%s, "
+                "min_duration=%s, max_duration=%s, source=%s, limit=%d, offset=%d",
+                len(transcripts),
+                has_timestamps,
+                min_segment_count,
+                max_segment_count,
+                min_duration,
+                max_duration,
+                source,
+                limit,
+                offset,
+            )
+
+        return transcripts
+
+    async def get_with_timestamps(
+        self,
+        session: AsyncSession,
+        video_id: str,
+        language_code: str,
+    ) -> Optional[VideoTranscriptDB]:
+        """
+        Retrieve transcript with raw timestamp data.
+
+        Returns None if transcript exists but has_timestamps is False.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_id : str
+            YouTube video identifier.
+        language_code : str
+            BCP-47 language code.
+
+        Returns
+        -------
+        Optional[VideoTranscriptDB]
+            Transcript with timestamps if available, None otherwise.
+        """
+        transcript = await self.get_by_composite_key(session, video_id, language_code)
+
+        # Return None if transcript doesn't exist or lacks timestamps
+        if transcript is None:
+            return None
+
+        if not transcript.has_timestamps:
+            return None
+
+        return transcript

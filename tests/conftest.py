@@ -100,3 +100,11 @@ def container_reset():
     yield
     # Teardown: reset container to clear all cached singletons
     container.reset()
+
+
+def pytest_configure(config):
+    """Configure pytest markers for chronovista tests."""
+    config.addinivalue_line(
+        "markers",
+        "performance: mark test as performance test requiring database and large datasets",
+    )

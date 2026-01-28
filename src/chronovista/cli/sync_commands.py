@@ -4,7 +4,7 @@ Data synchronization CLI commands for chronovista.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import typer
 from rich.console import Console
@@ -34,8 +34,15 @@ from chronovista.models.channel import ChannelCreate
 from chronovista.models.channel_topic import ChannelTopicCreate
 from chronovista.models.video import VideoCreate
 from chronovista.models.video_topic import VideoTopicCreate
+from chronovista.models.enums import DownloadReason
+from chronovista.models.video import VideoSearchFilters
+from chronovista.models.video_transcript import VideoTranscriptCreate
 from chronovista.models.youtube_types import UserId
 from chronovista.services import youtube_service
+from chronovista.services.transcript_service import (
+    TranscriptNotFoundError,
+    TranscriptService,
+)
 
 console = Console()
 
@@ -611,17 +618,297 @@ def playlists(
     run_sync_operation(sync_playlists_data, "Playlist Sync")
 
 
-@sync_app.command()
-def transcripts() -> None:
-    """Sync transcripts for videos."""
+async def _show_transcripts_dry_run(
+    videos: List[VideoDB],
+    language_codes: List[str],
+    force: bool,
+) -> None:
+    """
+    Display preview of transcripts that would be synced without making changes.
+
+    Parameters
+    ----------
+    videos : List[VideoDB]
+        List of videos to process
+    language_codes : List[str]
+        Preferred language codes for transcripts
+    force : bool
+        Whether --force flag is set (re-download existing)
+    """
+    console.print()
     console.print(
         Panel(
-            "[yellow]Transcript sync not yet implemented[/yellow]\n"
-            "This will download transcripts for your videos.",
-            title="Sync Transcripts",
-            border_style="yellow",
+            f"[blue]Sync Preview (Dry Run)[/blue]\n"
+            f"Total videos to process: {len(videos)}\n"
+            f"Preferred languages: {', '.join(language_codes)}\n"
+            f"Force re-download: {'Yes' if force else 'No'}",
+            title="Transcript Sync Preview",
+            border_style="blue",
         )
     )
+
+    # Create preview table
+    table = Table(title=f"Preview: {len(videos)} Videos for Transcript Sync")
+    table.add_column("Title", style="cyan", max_width=40)
+    table.add_column("Video ID", style="dim", max_width=15)
+    table.add_column("Channel", style="green", max_width=20)
+    table.add_column("Duration", style="yellow", justify="right")
+
+    for video in videos[:20]:  # Show first 20
+        title = video.title or "Unknown"
+        duration_minutes = video.duration // 60 if video.duration else 0
+        duration_seconds = video.duration % 60 if video.duration else 0
+        duration_formatted = f"{duration_minutes}:{duration_seconds:02d}"
+
+        # Use channel_name_hint to avoid lazy-loading after session closes
+        channel_title = video.channel_name_hint or "Unknown"
+
+        table.add_row(
+            title[:37] + "..." if len(title) > 40 else title,
+            video.video_id[:12] + "..." if len(video.video_id) > 15 else video.video_id,
+            channel_title[:17] + "..." if len(channel_title) > 20 else channel_title,
+            duration_formatted,
+        )
+
+    if len(videos) > 20:
+        table.add_row("...", "...", "...", f"+{len(videos) - 20} more")
+
+    console.print(table)
+
+    # Footer message showing what would happen
+    console.print()
+    console.print(
+        "[yellow]This is a dry run - no transcripts will be downloaded[/yellow]"
+    )
+    console.print()
+    console.print("[blue]What would happen:[/blue]")
+    console.print(f"   [green]Attempt to download transcripts for {len(videos)} videos[/green]")
+    console.print(f"   [dim]Languages tried in order: {', '.join(language_codes)}[/dim]")
+    if force:
+        console.print(
+            "   [yellow]Existing transcripts will be re-downloaded (--force enabled)[/yellow]"
+        )
+    else:
+        console.print(
+            "   [dim]Videos with existing transcripts will be skipped[/dim]"
+        )
+    console.print()
+    console.print("[yellow]Remove --dry-run to perform actual sync[/yellow]")
+
+
+@sync_app.command()
+def transcripts(
+    limit: int = typer.Option(
+        100, "--limit", "-l", help="Maximum number of videos to process"
+    ),
+    video_id: Optional[List[str]] = typer.Option(
+        None, "--video-id", "-v", help="Sync specific video ID(s)"
+    ),
+    language: List[str] = typer.Option(
+        ["en"], "--language", help="Preferred language code(s)"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Re-download even if exists"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Preview without downloading"
+    ),
+) -> None:
+    """
+    Sync transcripts for videos in the database.
+
+    Downloads transcripts from YouTube for videos that don't have transcripts,
+    or for specific videos when --video-id is provided.
+
+    Examples:
+        chronovista sync transcripts                    # Sync up to 100 videos
+        chronovista sync transcripts --limit 50        # Sync up to 50 videos
+        chronovista sync transcripts -v dQw4w9WgXcQ   # Sync specific video
+        chronovista sync transcripts --language es    # Prefer Spanish transcripts
+        chronovista sync transcripts --force          # Re-download existing
+        chronovista sync transcripts --dry-run        # Preview without changes
+    """
+    # Check authentication using framework utility
+    if not check_authenticated():
+        display_auth_error("Transcript Sync")
+        return
+
+    async def sync_transcripts_data() -> SyncResult:
+        """Sync transcripts from YouTube."""
+        result = SyncResult()
+
+        display_progress_start(
+            "Preparing to sync video transcripts...",
+            title="Transcript Sync",
+        )
+
+        # Get repositories from container
+        video_repository = container.create_video_repository()
+        video_transcript_repository = container.create_video_transcript_repository()
+
+        # Get transcript service from container
+        transcript_service = container.transcript_service
+
+        # Determine which videos to process
+        videos_to_process: List[VideoDB] = []
+
+        async for session in db_manager.get_session():
+            if video_id:
+                # Process specific video IDs
+                console.print(f"[blue]Processing {len(video_id)} specified video(s)...[/blue]")
+                for vid in video_id:
+                    video = await video_repository.get_by_video_id(session, vid)
+                    if video:
+                        videos_to_process.append(video)
+                    else:
+                        display_warning(f"Video not found in database: {vid}")
+                        result.add_error(f"Video not found: {vid}")
+            else:
+                # Get videos without transcripts (or all if force)
+                if force:
+                    console.print(
+                        "[blue]Force mode: fetching videos (existing transcripts will be re-downloaded)...[/blue]"
+                    )
+                    videos_to_process = await video_repository.get_multi(
+                        session, skip=0, limit=limit
+                    )
+                else:
+                    console.print(
+                        "[blue]Fetching videos without transcripts...[/blue]"
+                    )
+                    # Use VideoSearchFilters to find videos without transcripts
+                    filters = VideoSearchFilters(
+                        has_transcripts=False,
+                        exclude_deleted=True,
+                    )
+                    all_videos = await video_repository.search_videos(session, filters)
+                    videos_to_process = all_videos[:limit]
+
+        if not videos_to_process:
+            display_warning(
+                "No videos to process\n"
+                "Either all videos already have transcripts or no videos found.",
+                title="Transcript Sync",
+            )
+            return result
+
+        display_success(f"Found {len(videos_to_process)} videos to process")
+
+        # Handle dry-run mode
+        if dry_run:
+            await _show_transcripts_dry_run(videos_to_process, language, force)
+            return result
+
+        # Process videos
+        console.print()
+        console.print(f"[blue]Downloading transcripts for {len(videos_to_process)} videos...[/blue]")
+
+        for idx, video in enumerate(videos_to_process, 1):
+            video_title = video.title or video.video_id
+            short_title = video_title[:40] + "..." if len(video_title) > 40 else video_title
+
+            console.print(f"[dim]({idx}/{len(videos_to_process)}) Processing: {short_title}[/dim]")
+
+            try:
+                # Check if transcript already exists (skip if not forcing)
+                if not force:
+                    async for session in db_manager.get_session():
+                        for lang in language:
+                            existing = await video_transcript_repository.get_by_composite_key(
+                                session, video.video_id, lang
+                            )
+                            if existing:
+                                console.print(f"   [dim]Skipping (transcript exists for {lang})[/dim]")
+                                result.skipped += 1
+                                break
+                        else:
+                            continue
+                        break
+                    else:
+                        # No existing transcript found, proceed with download
+                        pass
+
+                # Download transcript using TranscriptService
+                transcript = await transcript_service.get_transcript(
+                    video_id=video.video_id,
+                    language_codes=language,
+                    download_reason=DownloadReason.USER_REQUEST,
+                )
+
+                # Store transcript in database
+                async for session in db_manager.get_session():
+                    # Check if updating or creating
+                    existing = await video_transcript_repository.get_by_composite_key(
+                        session, video.video_id, transcript.language_code
+                    )
+
+                    # Create VideoTranscriptCreate object
+                    transcript_create = VideoTranscriptCreate(
+                        video_id=video.video_id,
+                        language_code=transcript.language_code,
+                        transcript_text=transcript.transcript_text,
+                        transcript_type=transcript.transcript_type,
+                        download_reason=transcript.download_reason,
+                        confidence_score=transcript.confidence_score,
+                        is_cc=transcript.is_cc,
+                        is_auto_synced=transcript.is_auto_synced,
+                        track_kind=transcript.track_kind,
+                        caption_name=transcript.caption_name,
+                    )
+
+                    # Save with raw transcript data to preserve timestamps
+                    await video_transcript_repository.create_or_update(
+                        session,
+                        transcript_create,
+                        raw_transcript_data=transcript.raw_transcript_data,
+                    )
+
+                    if existing:
+                        result.updated += 1
+                        console.print(f"   [green]Updated transcript ({transcript.language_code})[/green]")
+                    else:
+                        result.created += 1
+                        console.print(f"   [green]Downloaded transcript ({transcript.language_code})[/green]")
+
+            except TranscriptNotFoundError:
+                result.skipped += 1
+                console.print(f"   [yellow]No transcript available[/yellow]")
+
+            except Exception as e:
+                result.add_error(f"{video.video_id}: {str(e)}")
+                console.print(f"   [red]Error: {str(e)}[/red]")
+
+        # Display results
+        console.print()
+
+        # Create summary table
+        table = Table(title="Transcript Sync Summary")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Count", style="green", justify="right")
+
+        table.add_row("Created", str(result.created))
+        table.add_row("Updated", str(result.updated))
+        table.add_row("Skipped", str(result.skipped))
+        table.add_row("Failed", str(result.failed))
+        table.add_row("Total Processed", str(len(videos_to_process)))
+
+        console.print(table)
+
+        # Display final results using framework
+        extra_info = f"Processed {len(videos_to_process)} videos.\n"
+        extra_info += f"Languages: {', '.join(language)}\n"
+        extra_info += "Data flow: YouTube Transcript API -> Video Transcripts -> Database"
+
+        display_sync_results(
+            result,
+            title="Transcript Sync Complete",
+            extra_info=extra_info,
+        )
+
+        return result
+
+    # Run the async function using shared wrapper
+    run_sync_operation(sync_transcripts_data, "Transcript Sync")
 
 
 @sync_app.command()

@@ -52,6 +52,7 @@ from chronovista.repositories import (
     VideoRepository,
     VideoTagRepository,
     VideoTopicRepository,
+    VideoTranscriptRepository,
 )
 from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
@@ -334,6 +335,27 @@ class Container:
         True
         """
         return VideoCategoryRepository()
+
+    def create_video_transcript_repository(self) -> VideoTranscriptRepository:
+        """
+        Create a new VideoTranscriptRepository instance.
+
+        Returns a fresh repository instance for video transcript operations.
+        Each call creates a new instance (transient lifecycle).
+
+        Returns
+        -------
+        VideoTranscriptRepository
+            A new VideoTranscriptRepository instance for video transcript
+            CRUD operations.
+
+        Examples
+        --------
+        >>> repo = container.create_video_transcript_repository()
+        >>> isinstance(repo, VideoTranscriptRepository)
+        True
+        """
+        return VideoTranscriptRepository()
 
     # -------------------------------------------------------------------------
     # Service Factory Methods (Transient - new instance per call)

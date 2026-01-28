@@ -14,10 +14,26 @@ chronovista provides intelligent transcript management with:
 ## Quick Start
 
 ```bash
-# Sync transcripts for your videos
+# Sync transcripts for all videos without transcripts
 chronovista sync transcripts
 
-# Download specific transcript
+# Preview what would be synced (dry run)
+chronovista sync transcripts --dry-run
+
+# Sync specific video(s)
+chronovista sync transcripts --video-id VIDEO_ID
+chronovista sync transcripts --video-id ID1 --video-id ID2
+
+# Sync with language preference
+chronovista sync transcripts --language es --language en
+
+# Limit number of videos processed
+chronovista sync transcripts --limit 50
+
+# Force re-download existing transcripts
+chronovista sync transcripts --force
+
+# Download specific transcript (legacy command)
 chronovista transcripts download VIDEO_ID --language en-US
 
 # List available languages
@@ -247,12 +263,57 @@ Transcripts are stored with rich metadata:
 | `track_kind` | standard, ASR, forced |
 | `downloaded_at` | Download timestamp |
 
+**Timestamp Data (v0.10.0+):**
+
+| Field | Description |
+|-------|-------------|
+| `raw_transcript_data` | Complete API response with timestamps (JSONB) |
+| `has_timestamps` | Whether timing data is available |
+| `segment_count` | Number of transcript segments |
+| `total_duration` | Total transcript duration in seconds |
+| `source` | Transcript source (youtube_transcript_api, manual_upload, etc.) |
+
+The `raw_transcript_data` field contains the complete response from youtube-transcript-api, including:
+
+```json
+{
+  "video_id": "abc123",
+  "language_code": "en",
+  "language_name": "English",
+  "snippets": [
+    {"text": "Hello world", "start": 0.0, "duration": 2.5},
+    {"text": "This is a transcript", "start": 2.5, "duration": 3.0}
+  ],
+  "metadata": {
+    "is_generated": true,
+    "transcript_count": 150
+  }
+}
+```
+
+### Querying by Metadata
+
+Filter transcripts by their characteristics:
+
+```bash
+# Find long transcripts (future CLI feature)
+# Videos with >100 segments or >10 minutes duration
+
+# Via SQL for advanced queries
+SELECT video_id, segment_count, total_duration
+FROM video_transcripts
+WHERE has_timestamps = true
+  AND segment_count > 100
+ORDER BY total_duration DESC;
+```
+
 ### Storage Considerations
 
 For large libraries:
 
-- Average transcript: 5-20 KB
-- 10,000 videos: ~100-200 MB
+- Average transcript: 5-20 KB (text only)
+- With raw_transcript_data: 20-100 KB per transcript
+- 10,000 videos: ~200-500 MB
 - With multiple languages: 2-3x storage
 
 ## Export

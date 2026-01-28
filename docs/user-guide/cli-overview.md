@@ -213,6 +213,38 @@ chronovista sync topics
 
 Populates the database with YouTube's 32 standard topic categories.
 
+#### Sync Transcripts
+
+```bash
+chronovista sync transcripts [OPTIONS]
+```
+
+Downloads transcripts for videos in your database with full timestamp preservation.
+
+**Options:**
+
+- `--video-id <id>` - Sync specific video(s) (can be repeated)
+- `--language <code>` - Preferred language code (default: en, can be repeated)
+- `--limit <n>` - Maximum videos to process (default: 100)
+- `--force` - Re-download existing transcripts
+- `--dry-run` - Preview without downloading
+
+**Examples:**
+
+```bash
+# Preview what would be synced
+chronovista sync transcripts --dry-run
+
+# Sync transcripts for all videos without transcripts
+chronovista sync transcripts
+
+# Sync specific videos
+chronovista sync transcripts --video-id VIDEO_ID
+
+# Sync with language preference
+chronovista sync transcripts --language es --language en --limit 50
+```
+
 ### Topic Analytics
 
 #### List Topics

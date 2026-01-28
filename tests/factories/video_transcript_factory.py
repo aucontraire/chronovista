@@ -108,6 +108,27 @@ class VideoTranscriptFactory(factory.Factory[VideoTranscript]):
     downloaded_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 12, 15, 16, 30, 0, tzinfo=timezone.utc)
     )
+    # Feature 007: Raw transcript data with timestamps
+    raw_transcript_data: Any = factory.LazyFunction(
+        lambda: {
+            "video_id": "3tmd-ClpJxA",
+            "language_code": "es",
+            "language_name": "Spanish",
+            "snippets": [
+                {"text": "Hola y bienvenidos al Late Show", "start": 0.0, "duration": 2.5},
+                {"text": "con Stephen Colbert.", "start": 2.5, "duration": 1.8},
+                {"text": "Esta noche tenemos grandes momentos de comedia.", "start": 4.3, "duration": 3.2},
+            ],
+            "is_generated": False,
+            "is_translatable": True,
+            "source": "youtube_transcript_api",
+            "retrieved_at": "2023-12-15T16:30:00Z",
+        }
+    )
+    has_timestamps: Any = factory.LazyFunction(lambda: True)
+    segment_count: Any = factory.LazyFunction(lambda: 3)
+    total_duration: Any = factory.LazyFunction(lambda: 7.5)
+    source: Any = factory.LazyFunction(lambda: "youtube_transcript_api")
 
 
 class VideoTranscriptWithQualityFactory(factory.Factory[VideoTranscriptWithQuality]):

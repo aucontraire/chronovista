@@ -9,6 +9,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Feature 007: Transcript Timestamp Preservation
+
+Persist raw transcript data with timestamps to enable future timestamp-based navigation features.
+
+**Database Changes:**
+
+- **5 New Columns** on `video_transcripts` table:
+  - `raw_transcript_data` (JSONB): Complete API response with timestamps and segments
+  - `has_timestamps` (BOOLEAN, default true): Quick filter for timestamp availability
+  - `segment_count` (INTEGER): Number of transcript segments
+  - `total_duration` (FLOAT): Total transcript duration in seconds
+  - `source` (VARCHAR(50)): Transcript source identifier (youtube_transcript_api, manual_upload, etc.)
+- **4 Performance Indexes**:
+  - Partial index on `has_timestamps` for fast filtering
+  - B-tree indexes on `segment_count`, `total_duration`, `source`
+
+**New CLI Command: `sync transcripts`**
+
+Download and store transcripts for videos in your database:
+
+```bash
+# Sync transcripts for all videos without transcripts
+chronovista sync transcripts
+
+# Sync specific video(s)
+chronovista sync transcripts --video-id VIDEO_ID
+chronovista sync transcripts --video-id ID1 --video-id ID2
+
+# Preview without downloading
+chronovista sync transcripts --dry-run
+
+# Limit number of videos processed
+chronovista sync transcripts --limit 50
+
+# Specify language preference (fallback to available)
+chronovista sync transcripts --language es --language en
+
+# Force re-download existing transcripts
+chronovista sync transcripts --force
+```
+
+**Technical Details:**
+
+- Transcripts stored with full timestamp data for each segment
+- Automatic language fallback when preferred language unavailable
+- Integration with youtube-transcript-api v1.2.2+
+- Feature 007 data populated via `VideoTranscriptRepository.create_or_update()`
+
 #### Feature 006: Dependency Injection Container
 
 Introduced a centralized Dependency Injection (DI) Container for managing service and repository lifecycles across the application.

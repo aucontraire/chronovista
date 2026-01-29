@@ -7,7 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_No changes yet._
+
+## [0.11.0] - 2026-01-29
+
 ### Added
+
+#### Feature 008: Transcript Segment Table
+
+Added a dedicated `transcript_segments` table for precise timestamp-based transcript queries and navigation.
+
+**Database Changes:**
+
+- **New Table**: `transcript_segments` with columns:
+  - `id` (BIGINT, primary key)
+  - `video_id` (VARCHAR(20), FK to video_transcripts)
+  - `language_code` (VARCHAR(20), FK to video_transcripts)
+  - `text` (TEXT): Segment text content
+  - `start_time` (FLOAT): Segment start time in seconds
+  - `duration` (FLOAT): Segment duration in seconds
+  - `end_time` (FLOAT): Computed end time for range queries
+  - `sequence_number` (INTEGER): Order within transcript
+  - `has_correction` (BOOLEAN): Indicates manual corrections
+- **Performance Indexes**:
+  - Composite index on `(video_id, language_code, start_time)` for timestamp lookups
+  - Index on `end_time` for range queries
+- **Backfill Migration**: Automatically populates segments from existing `raw_transcript_data`
+
+**New CLI Commands: Timestamp-Based Queries**
+
+Query transcript segments by timestamp to find what was said at specific moments:
+
+```bash
+# Get segment at specific timestamp
+chronovista transcript segment VIDEO_ID 5:00
+chronovista transcript segment VIDEO_ID 5:00 --format json
+
+# Get context around timestamp (default: 30s window)
+chronovista transcript context VIDEO_ID 5:00
+chronovista transcript context VIDEO_ID 5:00 --window 60
+
+# Get segments in time range
+chronovista transcript range VIDEO_ID 1:00 5:00
+chronovista transcript range VIDEO_ID 0:00 10:00 --format srt
+```
+
+**Technical Details:**
+
+- Segments auto-created when syncing transcripts via `sync transcripts` command
+- Repository-level integration: `VideoTranscriptRepository.create_or_update()` automatically creates segments from `raw_transcript_data`
+- Idempotent segment creation: existing segments deleted before inserting new ones
+- Supports flexible timestamp formats: `MM:SS`, `HH:MM:SS`, `MM:SS.ms`, or raw seconds
 
 #### Feature 007: Transcript Timestamp Preservation
 

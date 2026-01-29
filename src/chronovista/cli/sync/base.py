@@ -229,7 +229,20 @@ def run_sync_operation(
     try:
         coro = async_fn()
         # Cast to Coroutine for asyncio.run type compatibility
-        return asyncio.run(cast(Coroutine[Any, Any, T], coro))
+        coro_typed = cast(Coroutine[Any, Any, T], coro)
+
+        # Check if we're already in an async context (e.g., pytest-asyncio tests)
+        try:
+            loop = asyncio.get_running_loop()
+            # Event loop is already running, use nest_asyncio pattern
+            # Create a new thread to run the coroutine
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, coro_typed)
+                return future.result()
+        except RuntimeError:
+            # No running event loop, use asyncio.run normally
+            return asyncio.run(coro_typed)
 
     except HttpError as e:
         # T061: Handle authentication failures (401/403)

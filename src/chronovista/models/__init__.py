@@ -166,6 +166,12 @@ from .video_transcript import (
     VideoTranscriptUpdate,
     VideoTranscriptWithQuality,
 )
+from .transcript_segment import (
+    TranscriptSegmentBase,
+    TranscriptSegmentCreate,
+    TranscriptSegment,
+    TranscriptSegmentResponse,
+)
 
 __all__ = [
     # YouTube API Response Models (FR-005, FR-006, FR-007)
@@ -227,6 +233,11 @@ __all__ = [
     "VideoTranscriptBase",
     "VideoTranscriptWithQuality",
     "TranscriptSearchFilters",
+    # Transcript Segments
+    "TranscriptSegmentBase",
+    "TranscriptSegmentCreate",
+    "TranscriptSegment",
+    "TranscriptSegmentResponse",
     # User Videos
     "UserVideo",
     "UserVideoCreate",

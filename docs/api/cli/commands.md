@@ -44,3 +44,10 @@ Command-line interface modules.
     options:
       show_root_heading: true
       show_source: true
+
+## Transcript Commands
+
+::: chronovista.cli.transcript_commands
+    options:
+      show_root_heading: true
+      show_source: true

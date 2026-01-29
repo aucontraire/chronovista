@@ -18,6 +18,7 @@ from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ..db.models import TranscriptSegment as TranscriptSegmentDB
 from ..db.models import Video as VideoDB
 from ..db.models import VideoTranscript as VideoTranscriptDB
 from ..models.enums import DownloadReason, LanguageCode, TrackKind, TranscriptType
@@ -814,7 +815,7 @@ class VideoTranscriptRepository(
                 if k not in ("video_id", "language_code")
             }
 
-            return await self.update(session, db_obj=existing, obj_in=update_fields)
+            db_obj = await self.update(session, db_obj=existing, obj_in=update_fields)
         else:
             # Create new transcript
             logger.info(
@@ -829,7 +830,167 @@ class VideoTranscriptRepository(
             session.add(db_obj)
             await session.flush()
             await session.refresh(db_obj)
-            return db_obj
+
+        # Create segments from raw_transcript_data if provided
+        if raw_transcript_data is not None:
+            await self._create_segments_from_raw_data(
+                session, video_id, language_code, raw_transcript_data
+            )
+
+        return db_obj
+
+    async def _create_segments_from_raw_data(
+        self,
+        session: AsyncSession,
+        video_id: str,
+        language_code: str,
+        raw_data: Dict[str, Any],
+    ) -> int:
+        """
+        Create transcript segments from raw transcript data.
+
+        Implements idempotent segment creation: deletes existing segments
+        before inserting new ones. This mirrors the backfill migration logic.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_id : str
+            YouTube video ID.
+        language_code : str
+            BCP-47 language code.
+        raw_data : Dict[str, Any]
+            Raw transcript data containing snippets array.
+
+        Returns
+        -------
+        int
+            Number of segments created.
+
+        Notes
+        -----
+        Malformed snippets are logged and skipped, not failed.
+        This follows the same error handling as the backfill migration
+        (FR-MIG-15-19).
+        """
+        snippets = raw_data.get("snippets", [])
+
+        # Skip if snippets is not a list or is empty
+        if not isinstance(snippets, list):
+            logger.warning(
+                "Skipping segment creation for %s/%s: snippets is not a list",
+                video_id,
+                language_code,
+            )
+            return 0
+
+        if not snippets:
+            logger.debug(
+                "No snippets to process for %s/%s",
+                video_id,
+                language_code,
+            )
+            # Delete any existing segments (idempotent)
+            await session.execute(
+                delete(TranscriptSegmentDB).where(
+                    and_(
+                        TranscriptSegmentDB.video_id == video_id,
+                        TranscriptSegmentDB.language_code == language_code,
+                    )
+                )
+            )
+            return 0
+
+        # Delete existing segments for idempotent operation
+        delete_result = await session.execute(
+            delete(TranscriptSegmentDB).where(
+                and_(
+                    TranscriptSegmentDB.video_id == video_id,
+                    TranscriptSegmentDB.language_code == language_code,
+                )
+            )
+        )
+        deleted_count = delete_result.rowcount
+        if deleted_count > 0:
+            logger.debug(
+                "Deleted %d existing segments for %s/%s before recreating",
+                deleted_count,
+                video_id,
+                language_code,
+            )
+
+        # Create segments from snippets
+        segment_count = 0
+        snippet_errors = 0
+
+        for seq, snippet in enumerate(snippets):
+            try:
+                # Validate required fields
+                text_content = snippet.get("text")
+                start = snippet.get("start")
+                duration_val = snippet.get("duration")
+
+                if text_content is None or start is None or duration_val is None:
+                    logger.warning(
+                        "Skipping snippet %d in %s/%s: "
+                        "missing required field (text/start/duration)",
+                        seq,
+                        video_id,
+                        language_code,
+                    )
+                    snippet_errors += 1
+                    continue
+
+                # Type conversion with error handling
+                start_time = float(start)
+                duration = float(duration_val)
+                end_time = start_time + duration
+
+                # Create segment
+                segment = TranscriptSegmentDB(
+                    video_id=video_id,
+                    language_code=language_code,
+                    text=text_content,
+                    start_time=start_time,
+                    duration=duration,
+                    end_time=end_time,
+                    sequence_number=seq,
+                    has_correction=False,
+                )
+                session.add(segment)
+                segment_count += 1
+
+            except (TypeError, ValueError) as e:
+                logger.warning(
+                    "Skipping snippet %d in %s/%s: type conversion error: %s",
+                    seq,
+                    video_id,
+                    language_code,
+                    e,
+                )
+                snippet_errors += 1
+                continue
+
+        await session.flush()
+
+        if snippet_errors > 0:
+            logger.info(
+                "Created %d segments for %s/%s (%d snippets skipped)",
+                segment_count,
+                video_id,
+                language_code,
+                snippet_errors,
+            )
+        else:
+            logger.debug(
+                "Created %d segments for %s/%s",
+                segment_count,
+                video_id,
+                language_code,
+            )
+
+        return segment_count
 
     async def filter_by_metadata(
         self,

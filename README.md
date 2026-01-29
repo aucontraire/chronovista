@@ -7,7 +7,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-AGPL--3.0-green.svg" alt="License: AGPL-3.0">
-  <img src="https://img.shields.io/badge/tests-3,553+-brightgreen.svg" alt="Tests: 3,553+">
+  <img src="https://img.shields.io/badge/tests-3,776+-brightgreen.svg" alt="Tests: 3,776+">
   <img src="https://img.shields.io/badge/coverage-90%2B-brightgreen.svg" alt="Coverage: 90%+">
   <img src="https://img.shields.io/badge/code%20style-black-000000.svg" alt="Code style: black">
 </p>
@@ -46,6 +46,7 @@ chronovista sync all
 |----------|-------------|
 | **Privacy-First** | All data stored locally in PostgreSQL - no cloud sync, complete data ownership |
 | **Multi-Language** | Smart transcript management with language preferences (fluent, learning, curious) |
+| **Transcript Queries** | Timestamp-based transcript search - find what was said at any moment |
 | **Channel Analytics** | Subscription tracking, keyword extraction, topic analysis |
 | **Topic Intelligence** | 17 CLI commands for content discovery, trends, and engagement scoring |
 | **Google Takeout** | Import complete YouTube history including deleted videos |
@@ -126,6 +127,15 @@ chronovista sync playlists    # Playlists
 chronovista sync transcripts  # Video transcripts
 chronovista sync topics       # Topic categories
 chronovista sync all          # Everything
+```
+
+### Transcript Queries
+
+```bash
+chronovista transcript segment VIDEO_ID 5:00      # Get segment at timestamp
+chronovista transcript context VIDEO_ID 5:00      # Get 30s context window
+chronovista transcript range VIDEO_ID 1:00 5:00   # Get segments in range
+chronovista transcript range VIDEO_ID 0:00 10:00 --format srt  # SRT export
 ```
 
 ### Topic Analytics
@@ -276,6 +286,7 @@ See [System Architecture](src/chronovista/docs/architecture/system-architecture.
 - [x] Topic Analytics (17 CLI commands)
 - [x] Graph Visualization (DOT/JSON export)
 - [x] Interactive CLI with Rich UI
+- [x] Timestamp-based transcript queries
 - [ ] Web dashboard
 - [ ] ML-powered insights
 

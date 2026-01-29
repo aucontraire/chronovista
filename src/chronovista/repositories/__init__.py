@@ -11,6 +11,7 @@ from .channel_topic_repository import ChannelTopicRepository
 from .playlist_membership_repository import PlaylistMembershipRepository
 from .playlist_repository import PlaylistRepository
 from .topic_category_repository import TopicCategoryRepository
+from .transcript_segment_repository import TranscriptSegmentRepository
 from .user_language_preference_repository import UserLanguagePreferenceRepository
 from .user_video_repository import UserVideoRepository
 from .video_category_repository import VideoCategoryRepository
@@ -29,6 +30,7 @@ __all__ = [
     "PlaylistMembershipRepository",
     "PlaylistRepository",
     "TopicCategoryRepository",
+    "TranscriptSegmentRepository",
     "UserLanguagePreferenceRepository",
     "UserVideoRepository",
     "VideoCategoryRepository",

@@ -12,6 +12,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.11.0] - 2026-01-29
+
+### Added
+- **Feature 008: Transcript Segment Table (Phase 2)**
+  - New `transcript_segments` table for timestamp-based transcript queries
+  - Each segment stores: text, start_time, duration, end_time, sequence_number
+  - Composite foreign key to video_transcripts (video_id, language_code)
+  - Automatic segment creation when syncing transcripts
+  - Idempotent backfill migration for existing transcripts
+- **New CLI Commands: `transcript segment/context/range`**
+  - `transcript segment <video_id> <timestamp>` - Get segment at specific time
+  - `transcript context <video_id> <timestamp> --window 30` - Get segments around a timestamp
+  - `transcript range <video_id> <start> <end>` - Get all segments in time range
+  - Multiple output formats: human-readable, JSON, SRT
+  - Half-open interval semantics for precise timestamp queries
+- **Timestamp Format Support**
+  - Flexible input: `1:30`, `01:30`, `1:30.5`, `90` (seconds)
+  - Formatted output: `4:57`, `1:30:45` for hours
+
+### Technical
+- TranscriptSegmentRepository with optimized timestamp queries
+- Repository `create_or_update` now auto-creates segments from raw_transcript_data
+- 9 new unit tests for segment creation
+- Integration tests for CLI transcript commands
+- Performance indexes on start_time and end_time columns
+
 ## [0.10.0] - 2026-01-27
 
 ### Added

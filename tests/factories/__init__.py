@@ -132,6 +132,19 @@ from .video_topic_factory import (
     create_video_topic_statistics,
     create_video_topic_update,
 )
+from .transcript_segment_factory import (
+    TranscriptSegmentBaseFactory,
+    TranscriptSegmentCreateFactory,
+    TranscriptSegmentFactory,
+    TranscriptSegmentResponseFactory,
+    TranscriptSegmentTestData,
+    create_batch_transcript_segments,
+    create_corrected_transcript_segment,
+    create_transcript_segment,
+    create_transcript_segment_base,
+    create_transcript_segment_create,
+    create_transcript_segment_response,
+)
 
 __all__ = [
     # VideoTag factories
@@ -250,4 +263,16 @@ __all__ = [
     "create_takeout_watch_entry_with_time",
     "create_tech_takeout_watch_entry",
     "create_batch_takeout_watch_entries",
+    # TranscriptSegment factories
+    "TranscriptSegmentBaseFactory",
+    "TranscriptSegmentCreateFactory",
+    "TranscriptSegmentFactory",
+    "TranscriptSegmentResponseFactory",
+    "TranscriptSegmentTestData",
+    "create_transcript_segment",
+    "create_transcript_segment_base",
+    "create_transcript_segment_create",
+    "create_transcript_segment_response",
+    "create_batch_transcript_segments",
+    "create_corrected_transcript_segment",
 ]

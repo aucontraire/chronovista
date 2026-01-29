@@ -932,6 +932,11 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
             mock_session.flush.return_value = None
             mock_session.refresh.return_value = None
 
+            # Mock execute for segment deletion (returns result with rowcount)
+            mock_execute_result = MagicMock()
+            mock_execute_result.rowcount = 0
+            mock_session.execute.return_value = mock_execute_result
+
             result = await repository.create_or_update(
                 mock_session,
                 sample_transcript_create_with_raw_data,
@@ -943,9 +948,10 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
                 mock_session, "dQw4w9WgXcQ", "en"
             )
 
-            # Verify session.add was called with a VideoTranscriptDB object
-            mock_session.add.assert_called_once()
-            added_transcript = mock_session.add.call_args[0][0]
+            # Verify session.add was called (transcript + segments)
+            # First add is transcript, subsequent adds are segments
+            assert mock_session.add.call_count >= 1
+            added_transcript = mock_session.add.call_args_list[0][0][0]
 
             # Verify derived metadata was applied
             assert added_transcript.has_timestamps is True
@@ -955,7 +961,8 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
             assert added_transcript.raw_transcript_data == sample_raw_transcript_data
 
             # Verify flush and refresh were called
-            mock_session.flush.assert_called_once()
+            # flush is called twice: once for transcript, once for segments
+            mock_session.flush.assert_called()
             mock_session.refresh.assert_called_once()
 
     @pytest.mark.asyncio
@@ -1006,6 +1013,11 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
             mock_session.flush.return_value = None
             mock_session.refresh.return_value = None
 
+            # Mock execute for segment deletion (returns result with rowcount)
+            mock_execute_result = MagicMock()
+            mock_execute_result.rowcount = 0
+            mock_session.execute.return_value = mock_execute_result
+
             result = await repository.create_or_update(
                 mock_session,
                 sample_transcript_create_with_raw_data,
@@ -1024,9 +1036,9 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
             assert existing_transcript.source == "youtube_transcript_api", "Should update source"
             assert existing_transcript.raw_transcript_data == sample_raw_transcript_data, "Should replace raw data"
 
-            # Verify session operations
-            mock_session.add.assert_called_once_with(existing_transcript)
-            mock_session.flush.assert_called_once()
+            # Verify session operations (transcript + segments)
+            assert mock_session.add.call_count >= 1  # At least transcript, plus segments
+            mock_session.flush.assert_called()  # Multiple flushes (transcript + segments)
             mock_session.refresh.assert_called_once_with(existing_transcript)
 
     @pytest.mark.asyncio
@@ -1629,15 +1641,20 @@ class TestVideoTranscriptRepositorySourceTracking:
             mock_session.flush.return_value = None
             mock_session.refresh.return_value = None
 
+            # Mock execute for segment deletion (returns result with rowcount)
+            mock_execute_result = MagicMock()
+            mock_execute_result.rowcount = 0
+            mock_session.execute.return_value = mock_execute_result
+
             await repository.create_or_update(
                 mock_session,
                 transcript_create,
                 raw_transcript_data=sample_raw_data_with_source,
             )
 
-            # Verify session.add was called
-            mock_session.add.assert_called_once()
-            added_transcript = mock_session.add.call_args[0][0]
+            # Verify session.add was called (transcript + segments)
+            assert mock_session.add.call_count >= 1
+            added_transcript = mock_session.add.call_args_list[0][0][0]
 
             # T049 verification: source should be extracted from raw_data
             assert added_transcript.source == "youtube_data_api_v3", (
@@ -1789,15 +1806,20 @@ class TestVideoTranscriptRepositorySourceTracking:
             mock_session.flush.return_value = None
             mock_session.refresh.return_value = None
 
+            # Mock execute for segment deletion (returns result with rowcount)
+            mock_execute_result = MagicMock()
+            mock_execute_result.rowcount = 0
+            mock_session.execute.return_value = mock_execute_result
+
             await repository.create_or_update(
                 mock_session,
                 transcript_create,
                 raw_transcript_data=sample_raw_data_without_source,
             )
 
-            # Verify session.add was called
-            mock_session.add.assert_called_once()
-            added_transcript = mock_session.add.call_args[0][0]
+            # Verify session.add was called (transcript + segments)
+            assert mock_session.add.call_count >= 1
+            added_transcript = mock_session.add.call_args_list[0][0][0]
 
             # T051 verification: source should default to "youtube_transcript_api"
             assert added_transcript.source == "youtube_transcript_api", (
@@ -1808,3 +1830,328 @@ class TestVideoTranscriptRepositorySourceTracking:
             assert added_transcript.has_timestamps is True
             assert added_transcript.segment_count == 1
             assert added_transcript.total_duration == 2.0
+
+
+class TestSegmentCreationInCreateOrUpdate:
+    """Tests for automatic segment creation when saving transcripts.
+
+    Feature 008: Transcript Segment Table - Phase 2
+    When create_or_update is called with raw_transcript_data, segments should
+    be automatically created in the transcript_segments table.
+    """
+
+    @pytest.fixture
+    def repository(self) -> VideoTranscriptRepository:
+        """Create repository instance for testing."""
+        return VideoTranscriptRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> AsyncMock:
+        """Create mock async session with execute support."""
+        session = AsyncMock(spec=AsyncSession)
+        # Mock execute to return a result with rowcount
+        mock_result = MagicMock()
+        mock_result.rowcount = 0
+        session.execute.return_value = mock_result
+        return session
+
+    @pytest.fixture
+    def sample_raw_transcript_data(self) -> Dict[str, Any]:
+        """Sample raw transcript data with timestamps."""
+        return {
+            "video_id": "dQw4w9WgXcQ",
+            "language_code": "en",
+            "language_name": "English",
+            "snippets": [
+                {"text": "Never gonna give you up", "start": 0.0, "duration": 2.5},
+                {"text": "Never gonna let you down", "start": 2.5, "duration": 2.3},
+                {"text": "Never gonna run around", "start": 4.8, "duration": 3.0},
+            ],
+            "is_generated": False,
+            "source": "youtube_transcript_api",
+        }
+
+    @pytest.fixture
+    def sample_transcript_create(self) -> VideoTranscriptCreate:
+        """Create sample transcript creation object."""
+        return VideoTranscriptCreate(
+            video_id="dQw4w9WgXcQ",
+            language_code=LanguageCode.ENGLISH,
+            transcript_text="Never gonna give you up Never gonna let you down",
+            transcript_type=TranscriptType.MANUAL,
+            download_reason=DownloadReason.USER_REQUEST,
+            confidence_score=0.95,
+            is_cc=True,
+            is_auto_synced=False,
+            track_kind=TrackKind.STANDARD,
+            caption_name="English (CC)",
+        )
+
+    @pytest.mark.asyncio
+    async def test_create_segments_from_raw_data_creates_segments(
+        self,
+        repository: VideoTranscriptRepository,
+        mock_session: AsyncMock,
+        sample_raw_transcript_data: Dict[str, Any],
+    ) -> None:
+        """Test that _create_segments_from_raw_data creates segment records."""
+        # Call the private method directly
+        count = await repository._create_segments_from_raw_data(
+            mock_session,
+            "dQw4w9WgXcQ",
+            "en",
+            sample_raw_transcript_data,
+        )
+
+        # Verify 3 segments were created
+        assert count == 3, f"Expected 3 segments, got {count}"
+
+        # Verify session.execute was called for DELETE
+        assert mock_session.execute.call_count >= 1, "Should call execute for DELETE"
+
+        # Verify session.add was called 3 times (once per segment)
+        assert mock_session.add.call_count == 3, (
+            f"Expected 3 add calls, got {mock_session.add.call_count}"
+        )
+
+        # Verify session.flush was called
+        mock_session.flush.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_create_segments_from_raw_data_segment_fields(
+        self,
+        repository: VideoTranscriptRepository,
+        mock_session: AsyncMock,
+        sample_raw_transcript_data: Dict[str, Any],
+    ) -> None:
+        """Test that segments are created with correct field values."""
+        from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
+
+        await repository._create_segments_from_raw_data(
+            mock_session,
+            "dQw4w9WgXcQ",
+            "en",
+            sample_raw_transcript_data,
+        )
+
+        # Get the first segment that was added
+        first_add_call = mock_session.add.call_args_list[0]
+        segment = first_add_call[0][0]
+
+        # Verify it's a TranscriptSegmentDB instance
+        assert isinstance(segment, TranscriptSegmentDB)
+
+        # Verify field values for first segment
+        assert segment.video_id == "dQw4w9WgXcQ"
+        assert segment.language_code == "en"
+        assert segment.text == "Never gonna give you up"
+        assert segment.start_time == 0.0
+        assert segment.duration == 2.5
+        assert segment.end_time == 2.5  # start + duration
+        assert segment.sequence_number == 0
+        assert segment.has_correction is False
+
+    @pytest.mark.asyncio
+    async def test_create_segments_deletes_existing_first(
+        self,
+        repository: VideoTranscriptRepository,
+        mock_session: AsyncMock,
+        sample_raw_transcript_data: Dict[str, Any],
+    ) -> None:
+        """Test that existing segments are deleted before creating new ones (idempotent)."""
+        # Mock execute to show some rows were deleted
+        mock_result = MagicMock()
+        mock_result.rowcount = 5  # Simulate 5 existing segments deleted
+        mock_session.execute.return_value = mock_result
+
+        await repository._create_segments_from_raw_data(
+            mock_session,
+            "dQw4w9WgXcQ",
+            "en",
+            sample_raw_transcript_data,
+        )
+
+        # Verify execute was called (for DELETE)
+        assert mock_session.execute.call_count >= 1
+
+    @pytest.mark.asyncio
+    async def test_create_segments_empty_snippets(
+        self,
+        repository: VideoTranscriptRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Test handling of empty snippets array."""
+        raw_data: Dict[str, Any] = {
+            "video_id": "dQw4w9WgXcQ",
+            "language_code": "en",
+            "snippets": [],
+            "source": "youtube_transcript_api",
+        }
+
+        count = await repository._create_segments_from_raw_data(
+            mock_session,
+            "dQw4w9WgXcQ",
+            "en",
+            raw_data,
+        )
+
+        # Should return 0 when no snippets
+        assert count == 0
+
+        # Should still call execute to delete any existing segments
+        mock_session.execute.assert_called_once()
+
+        # Should not add any segments
+        mock_session.add.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_create_segments_invalid_snippets_type(
+        self,
+        repository: VideoTranscriptRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Test handling when snippets is not a list."""
+        raw_data: Dict[str, Any] = {
+            "video_id": "dQw4w9WgXcQ",
+            "language_code": "en",
+            "snippets": "not a list",  # Invalid type
+            "source": "youtube_transcript_api",
+        }
+
+        count = await repository._create_segments_from_raw_data(
+            mock_session,
+            "dQw4w9WgXcQ",
+            "en",
+            raw_data,
+        )
+
+        # Should return 0 and not crash
+        assert count == 0
+
+        # Should not call execute or add
+        mock_session.execute.assert_not_called()
+        mock_session.add.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_create_segments_skips_malformed_snippets(
+        self,
+        repository: VideoTranscriptRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Test that malformed snippets are skipped without failing."""
+        raw_data: Dict[str, Any] = {
+            "video_id": "dQw4w9WgXcQ",
+            "language_code": "en",
+            "snippets": [
+                {"text": "Valid snippet", "start": 0.0, "duration": 2.5},
+                {"text": "Missing start", "duration": 2.0},  # Missing 'start'
+                {"start": 5.0, "duration": 2.0},  # Missing 'text'
+                {"text": "Missing duration", "start": 10.0},  # Missing 'duration'
+                {"text": "Another valid", "start": 15.0, "duration": 3.0},
+            ],
+            "source": "youtube_transcript_api",
+        }
+
+        count = await repository._create_segments_from_raw_data(
+            mock_session,
+            "dQw4w9WgXcQ",
+            "en",
+            raw_data,
+        )
+
+        # Should only create 2 valid segments
+        assert count == 2, f"Expected 2 valid segments, got {count}"
+
+        # Verify only 2 add calls
+        assert mock_session.add.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_create_segments_handles_type_conversion_errors(
+        self,
+        repository: VideoTranscriptRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Test that type conversion errors in snippets are handled gracefully."""
+        raw_data: Dict[str, Any] = {
+            "video_id": "dQw4w9WgXcQ",
+            "language_code": "en",
+            "snippets": [
+                {"text": "Valid snippet", "start": 0.0, "duration": 2.5},
+                {"text": "Invalid start", "start": "not a number", "duration": 2.0},
+                {"text": "Valid second", "start": 5.0, "duration": 3.0},
+            ],
+            "source": "youtube_transcript_api",
+        }
+
+        count = await repository._create_segments_from_raw_data(
+            mock_session,
+            "dQw4w9WgXcQ",
+            "en",
+            raw_data,
+        )
+
+        # Should only create 2 valid segments
+        assert count == 2
+
+    @pytest.mark.asyncio
+    async def test_create_or_update_calls_create_segments(
+        self,
+        repository: VideoTranscriptRepository,
+        mock_session: AsyncMock,
+        sample_transcript_create: VideoTranscriptCreate,
+        sample_raw_transcript_data: Dict[str, Any],
+    ) -> None:
+        """Test that create_or_update calls _create_segments_from_raw_data."""
+        # Mock get_by_composite_key to return None (new transcript)
+        with patch.object(
+            repository, "get_by_composite_key", new_callable=AsyncMock
+        ) as mock_get:
+            mock_get.return_value = None
+
+            # Mock _create_segments_from_raw_data
+            with patch.object(
+                repository, "_create_segments_from_raw_data", new_callable=AsyncMock
+            ) as mock_create_segments:
+                mock_create_segments.return_value = 3
+
+                await repository.create_or_update(
+                    mock_session,
+                    sample_transcript_create,
+                    raw_transcript_data=sample_raw_transcript_data,
+                )
+
+                # Verify _create_segments_from_raw_data was called
+                mock_create_segments.assert_called_once_with(
+                    mock_session,
+                    "dQw4w9WgXcQ",
+                    "en",
+                    sample_raw_transcript_data,
+                )
+
+    @pytest.mark.asyncio
+    async def test_create_or_update_skips_segments_without_raw_data(
+        self,
+        repository: VideoTranscriptRepository,
+        mock_session: AsyncMock,
+        sample_transcript_create: VideoTranscriptCreate,
+    ) -> None:
+        """Test that create_or_update doesn't create segments without raw_transcript_data."""
+        # Mock get_by_composite_key to return None (new transcript)
+        with patch.object(
+            repository, "get_by_composite_key", new_callable=AsyncMock
+        ) as mock_get:
+            mock_get.return_value = None
+
+            # Mock _create_segments_from_raw_data
+            with patch.object(
+                repository, "_create_segments_from_raw_data", new_callable=AsyncMock
+            ) as mock_create_segments:
+                # Call WITHOUT raw_transcript_data
+                await repository.create_or_update(
+                    mock_session,
+                    sample_transcript_create,
+                    # No raw_transcript_data
+                )
+
+                # Verify _create_segments_from_raw_data was NOT called
+                mock_create_segments.assert_not_called()

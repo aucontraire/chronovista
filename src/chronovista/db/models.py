@@ -13,9 +13,11 @@ from typing import Any, Dict, List, Optional, Union
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     String,
     Text,
@@ -288,6 +290,58 @@ class VideoTranscript(Base):
 
     # Relationships
     video: Mapped["Video"] = relationship("Video", back_populates="transcripts")
+    segments: Mapped[list["TranscriptSegment"]] = relationship(
+        "TranscriptSegment",
+        back_populates="transcript",
+        order_by="TranscriptSegment.sequence_number",
+        cascade="all, delete-orphan",
+    )
+
+
+class TranscriptSegment(Base):
+    """Individual timed text segment from a video transcript."""
+
+    __tablename__ = "transcript_segments"
+
+    # Primary key
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # Composite foreign key columns
+    video_id: Mapped[str] = mapped_column(String(20), nullable=False)
+    language_code: Mapped[str] = mapped_column(String(10), nullable=False)
+
+    # Segment content
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    corrected_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    has_correction: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Timing information
+    start_time: Mapped[float] = mapped_column(Float, nullable=False)
+    duration: Mapped[float] = mapped_column(Float, nullable=False)
+    end_time: Mapped[float] = mapped_column(Float, nullable=False)
+    sequence_number: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Timestamps
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    # Composite foreign key constraint and CHECK constraints
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["video_id", "language_code"],
+            ["video_transcripts.video_id", "video_transcripts.language_code"],
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("start_time >= 0", name="chk_segment_start_time_non_negative"),
+        CheckConstraint("duration >= 0", name="chk_segment_duration_non_negative"),
+        CheckConstraint("sequence_number >= 0", name="chk_segment_sequence_non_negative"),
+    )
+
+    # Relationship
+    transcript: Mapped["VideoTranscript"] = relationship(
+        "VideoTranscript", back_populates="segments"
+    )
 
 
 class VideoTag(Base):
@@ -644,10 +698,12 @@ __all__ = [
     "Video",
     "UserLanguagePreference",
     "VideoTranscript",
+    "TranscriptSegment",
     "VideoTag",
     "VideoLocalization",
     "ChannelKeyword",
     "TopicCategory",
+    "TopicAlias",
     "VideoTopic",
     "ChannelTopic",
     "UserVideo",

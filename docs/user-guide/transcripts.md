@@ -219,6 +219,70 @@ chronovista transcripts show VIDEO_ID --language en-US
 chronovista transcripts show VIDEO_ID > transcript.txt
 ```
 
+## Timestamp-Based Queries (v0.11.0+)
+
+Query transcript segments by timestamp to find what was said at specific moments in a video.
+
+### Get Segment at Timestamp
+
+```bash
+# Get the segment containing timestamp 5:00
+chronovista transcript segment VIDEO_ID 5:00
+
+# Output formats: human (default), json, srt
+chronovista transcript segment VIDEO_ID 5:00 --format json
+
+# Specify language (default: en)
+chronovista transcript segment VIDEO_ID 5:00 --language es
+```
+
+### Get Context Around Timestamp
+
+```bash
+# Get segments within 30 seconds of timestamp (default)
+chronovista transcript context VIDEO_ID 5:00
+
+# Custom window size (60 seconds before and after)
+chronovista transcript context VIDEO_ID 5:00 --window 60
+```
+
+### Get Segments in Time Range
+
+```bash
+# Get all segments from 1:00 to 5:00
+chronovista transcript range VIDEO_ID 1:00 5:00
+
+# Export as SRT subtitle format
+chronovista transcript range VIDEO_ID 0:00 10:00 --format srt
+
+# Export as JSON
+chronovista transcript range VIDEO_ID 0:00 10:00 --format json
+```
+
+### Timestamp Format Support
+
+The CLI accepts flexible timestamp formats:
+
+| Format | Example | Seconds |
+|--------|---------|---------|
+| `MM:SS` | `5:30` | 330 |
+| `HH:MM:SS` | `1:05:30` | 3930 |
+| `MM:SS.ms` | `5:30.5` | 330.5 |
+| Seconds | `330` | 330 |
+
+### Understanding Segment Data
+
+YouTube transcripts are stored as small overlapping segments (typically 2-5 seconds each). The `>>` marker in segment text indicates speaker changes:
+
+```
+#152 [4:55-5:00] march and see what's going to be popping
+#153 [4:57-5:02] up on walls, on posters, you know,
+#154 [5:00-5:03] across social media and all that. Um
+#155 [5:02-5:04] >> megaphones.
+```
+
+Note: YouTube's UI combines multiple segments for display, but chronovista preserves the original segment boundaries for precise timestamp queries.
+
 ## Filtering and Search
 
 ### Filter by Properties

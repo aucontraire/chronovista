@@ -18,6 +18,7 @@ from chronovista.cli.commands.takeout import takeout_app
 from chronovista.cli.sync_commands import sync_app
 from chronovista.cli.tag_commands import tag_app
 from chronovista.cli.topic_commands import topic_app
+from chronovista.cli.transcript_commands import transcript_app
 
 console = Console()
 
@@ -42,6 +43,7 @@ app.add_typer(
     takeout_app, name="takeout", help="📁 Explore Google Takeout data locally"
 )
 app.add_typer(topic_app, name="topics", help="📂 Topic exploration and analytics")
+app.add_typer(transcript_app, name="transcript", help="📝 Query transcript segments by timestamp")
 
 
 @app.command()

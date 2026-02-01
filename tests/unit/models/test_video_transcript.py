@@ -48,7 +48,7 @@ class TestVideoTranscriptBaseFactory:
 
         assert isinstance(transcript, VideoTranscriptBase)
         assert transcript.video_id == "dQw4w9WgXcQ"
-        assert transcript.language_code == "en-us"  # Should be lowercase
+        assert transcript.language_code == "en-US"  # Properly cased LanguageCode enum value
         assert "Never gonna give you up" in transcript.transcript_text
         assert transcript.transcript_type == TranscriptType.AUTO
         assert transcript.download_reason == DownloadReason.USER_REQUEST
@@ -72,7 +72,7 @@ class TestVideoTranscriptBaseFactory:
         )
 
         assert custom_transcript.video_id == "dQw4w9WgXcQ"
-        assert custom_transcript.language_code == "es-mx"  # Should be lowercase
+        assert custom_transcript.language_code == "es-MX"  # Properly cased LanguageCode enum value
         assert (
             custom_transcript.transcript_text
             == "Hola mundo, este es un texto personalizado."
@@ -98,9 +98,14 @@ class TestVideoTranscriptBaseFactory:
         "valid_language_code", VideoTranscriptTestData.VALID_LANGUAGE_CODES
     )
     def test_video_transcript_base_valid_language_codes(self, valid_language_code):
-        """Test VideoTranscriptBase with valid language codes."""
+        """Test VideoTranscriptBase with valid language codes.
+
+        Language codes are now normalized via resolve_language_code() which maps them
+        to LanguageCode enum values with proper casing (e.g., 'en-US', not 'en-us').
+        """
         transcript = VideoTranscriptBaseFactory.build(language_code=valid_language_code)
-        assert transcript.language_code == valid_language_code.lower()
+        # Language codes are preserved with proper casing from LanguageCode enum
+        assert transcript.language_code == valid_language_code
 
     @pytest.mark.parametrize(
         "invalid_language_code", VideoTranscriptTestData.INVALID_LANGUAGE_CODES
@@ -203,7 +208,7 @@ class TestVideoTranscriptBaseFactory:
 
         assert isinstance(data, dict)
         assert data["video_id"] == "dQw4w9WgXcQ"
-        assert data["language_code"] == "en-us"
+        assert data["language_code"] == "en-US"  # Properly cased LanguageCode enum value
         assert data["transcript_type"] == "auto"  # Enum value
         assert data["download_reason"] == "user_request"  # Enum value
 
@@ -224,7 +229,7 @@ class TestVideoTranscriptBaseFactory:
 
         transcript = VideoTranscriptBase.model_validate(data)
         assert transcript.video_id == "dQw4w9WgXcQ"
-        assert transcript.language_code == "fr-ca"  # Should be lowercase
+        assert transcript.language_code == "fr-CA"  # Properly cased LanguageCode enum value
         assert transcript.transcript_type == TranscriptType.MANUAL
         assert transcript.confidence_score == 0.88
 
@@ -237,7 +242,7 @@ class TestVideoTranscriptBaseFactory:
         )
 
         assert transcript.video_id == "dQw4w9WgXcQ"
-        assert transcript.language_code == "de-at"
+        assert transcript.language_code == "de-AT"  # Properly cased LanguageCode enum value
         assert transcript.transcript_text == "Guten Tag! Das ist ein Test."
 
 
@@ -357,8 +362,8 @@ class TestVideoTranscriptFactory:
         transcript = VideoTranscript.model_validate(transcript_data)
         assert transcript.video_id == "dQw4w9WgXcQ"
         assert (
-            transcript.language_code == "it-it"
-        )  # Language code normalized to lowercase
+            transcript.language_code == "it-IT"
+        )  # Properly cased LanguageCode enum value
         assert transcript.transcript_type == TranscriptType.MANUAL
         assert transcript.downloaded_at is not None
 
@@ -621,11 +626,11 @@ class TestValidationEdgeCases:
         )
         assert transcript2.transcript_text == "Test content"  # Should be trimmed
 
-        # Test language_code validator - enum requires exact case
+        # Test language_code validator - enum preserves proper case via resolve_language_code
         transcript3 = VideoTranscriptBaseFactory.build(language_code="en-US")
         assert (
-            transcript3.language_code == "en-us"
-        )  # Language code normalized to lowercase
+            transcript3.language_code == "en-US"
+        )  # Properly cased LanguageCode enum value
 
     def test_enum_validation(self):
         """Test enum validation for transcript types, download reasons, and track kinds."""
@@ -683,19 +688,19 @@ class TestValidationEdgeCases:
 
     def test_multilingual_content(self):
         """Test multilingual transcript content scenarios."""
-        # English transcript
+        # English transcript - properly cased LanguageCode enum values
         english = VideoTranscriptBaseFactory.build(
             language_code="en-US",
             transcript_text="Hello everyone, welcome to our English tutorial!",
         )
-        assert english.language_code == "en-us"
+        assert english.language_code == "en-US"
 
         # Spanish transcript
         spanish = VideoTranscriptBaseFactory.build(
             language_code="es-MX",
             transcript_text="¡Hola a todos, bienvenidos a nuestro tutorial en español!",
         )
-        assert spanish.language_code == "es-mx"
+        assert spanish.language_code == "es-MX"
 
         # Japanese transcript
         japanese = VideoTranscriptBaseFactory.build(

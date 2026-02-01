@@ -142,13 +142,21 @@ class TestSyncTranscriptsDryRun:
 
         # Setup repository mocks
         mock_video_repo = AsyncMock()
+        mock_user_lang_pref_repo = AsyncMock()
         mock_container.create_video_repository.return_value = mock_video_repo
+        mock_container.create_user_language_preference_repository.return_value = (
+            mock_user_lang_pref_repo
+        )
+
+        # Mock user preferences to return empty list (no preferences configured)
+        mock_user_lang_pref_repo.get_user_preferences = AsyncMock(return_value=[])
 
         # Setup database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
+            mock_session,
+            mock_session,
         ]
 
         # Mock repository to return videos without transcripts
@@ -186,13 +194,21 @@ class TestSyncTranscriptsDryRun:
 
         # Setup repository mocks
         mock_video_repo = AsyncMock()
+        mock_user_lang_pref_repo = AsyncMock()
         mock_container.create_video_repository.return_value = mock_video_repo
+        mock_container.create_user_language_preference_repository.return_value = (
+            mock_user_lang_pref_repo
+        )
+
+        # Mock user preferences to return empty list
+        mock_user_lang_pref_repo.get_user_preferences = AsyncMock(return_value=[])
 
         # Setup database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
+            mock_session,
+            mock_session,
         ]
 
         # Mock repository to return videos
@@ -221,17 +237,25 @@ class TestSyncTranscriptsDryRun:
 
         # Setup repository mocks
         mock_video_repo = AsyncMock()
+        mock_user_lang_pref_repo = AsyncMock()
         mock_container.create_video_repository.return_value = mock_video_repo
+        mock_container.create_user_language_preference_repository.return_value = (
+            mock_user_lang_pref_repo
+        )
+
+        # Mock user preferences to return empty list
+        mock_user_lang_pref_repo.get_user_preferences = AsyncMock(return_value=[])
 
         # Setup database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
+            mock_session,
+            mock_session,
         ]
 
-        # Mock repository
-        mock_video_repo.search_videos = AsyncMock(return_value=mock_video_db_list)
+        # Mock repository - use get_multi for force mode
+        mock_video_repo.get_multi = AsyncMock(return_value=mock_video_db_list)
 
         # Execute command with dry-run and force
         result = runner.invoke(app, ["sync", "transcripts", "--dry-run", "--force"])
@@ -260,7 +284,18 @@ class TestSyncTranscriptsVideoIdFilter:
 
         # Setup repository mocks
         mock_video_repo = AsyncMock()
+        mock_video_transcript_repo = AsyncMock()
+        mock_user_lang_pref_repo = AsyncMock()
         mock_container.create_video_repository.return_value = mock_video_repo
+        mock_container.create_video_transcript_repository.return_value = (
+            mock_video_transcript_repo
+        )
+        mock_container.create_user_language_preference_repository.return_value = (
+            mock_user_lang_pref_repo
+        )
+
+        # Mock user preferences to return empty list
+        mock_user_lang_pref_repo.get_user_preferences = AsyncMock(return_value=[])
 
         # Setup database session
         mock_session = AsyncMock()
@@ -268,10 +303,16 @@ class TestSyncTranscriptsVideoIdFilter:
         mock_db_manager.get_session.return_value.__aiter__.return_value = [
             mock_session,
             mock_session,
+            mock_session,
+            mock_session,
         ]
 
         # Mock repository to return specific video
         mock_video_repo.get_by_video_id = AsyncMock(return_value=mock_video_db)
+
+        # Mock transcript repository
+        mock_video_transcript_repo.get_by_composite_key = AsyncMock(return_value=None)
+        mock_video_transcript_repo.create_or_update = AsyncMock()
 
         # Mock transcript service
         mock_transcript_service = AsyncMock()
@@ -301,12 +342,26 @@ class TestSyncTranscriptsVideoIdFilter:
 
         # Setup repository mocks
         mock_video_repo = AsyncMock()
+        mock_video_transcript_repo = AsyncMock()
+        mock_user_lang_pref_repo = AsyncMock()
         mock_container.create_video_repository.return_value = mock_video_repo
+        mock_container.create_video_transcript_repository.return_value = (
+            mock_video_transcript_repo
+        )
+        mock_container.create_user_language_preference_repository.return_value = (
+            mock_user_lang_pref_repo
+        )
+
+        # Mock user preferences to return empty list
+        mock_user_lang_pref_repo.get_user_preferences = AsyncMock(return_value=[])
 
         # Setup database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [
+            mock_session,
+            mock_session,
+            mock_session,
             mock_session,
             mock_session,
         ]
@@ -324,6 +379,10 @@ class TestSyncTranscriptsVideoIdFilter:
 
         # Mock repository to return videos
         mock_video_repo.get_by_video_id = AsyncMock(side_effect=[video1, video2])
+
+        # Mock transcript repository
+        mock_video_transcript_repo.get_by_composite_key = AsyncMock(return_value=None)
+        mock_video_transcript_repo.create_or_update = AsyncMock()
 
         # Mock transcript service
         mock_transcript_service = AsyncMock()
@@ -418,15 +477,24 @@ class TestSyncTranscriptsDownload:
         # Setup repository mocks
         mock_video_repo = AsyncMock()
         mock_video_transcript_repo = AsyncMock()
+        mock_user_lang_pref_repo = AsyncMock()
         mock_container.create_video_repository.return_value = mock_video_repo
         mock_container.create_video_transcript_repository.return_value = (
             mock_video_transcript_repo
         )
+        mock_container.create_user_language_preference_repository.return_value = (
+            mock_user_lang_pref_repo
+        )
+
+        # Mock user preferences to return empty list
+        mock_user_lang_pref_repo.get_user_preferences = AsyncMock(return_value=[])
 
         # Setup database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [
+            mock_session,
+            mock_session,
             mock_session,
             mock_session,
             mock_session,
@@ -591,15 +659,24 @@ class TestSyncTranscriptsErrorHandling:
         # Setup repository mocks
         mock_video_repo = AsyncMock()
         mock_video_transcript_repo = AsyncMock()
+        mock_user_lang_pref_repo = AsyncMock()
         mock_container.create_video_repository.return_value = mock_video_repo
         mock_container.create_video_transcript_repository.return_value = (
             mock_video_transcript_repo
         )
+        mock_container.create_user_language_preference_repository.return_value = (
+            mock_user_lang_pref_repo
+        )
+
+        # Mock user preferences to return empty list
+        mock_user_lang_pref_repo.get_user_preferences = AsyncMock(return_value=[])
 
         # Setup database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [
+            mock_session,
+            mock_session,
             mock_session,
             mock_session,
         ]
@@ -735,15 +812,24 @@ class TestSyncTranscriptsFlags:
         # Setup repository mocks
         mock_video_repo = AsyncMock()
         mock_video_transcript_repo = AsyncMock()
+        mock_user_lang_pref_repo = AsyncMock()
         mock_container.create_video_repository.return_value = mock_video_repo
         mock_container.create_video_transcript_repository.return_value = (
             mock_video_transcript_repo
         )
+        mock_container.create_user_language_preference_repository.return_value = (
+            mock_user_lang_pref_repo
+        )
+
+        # Mock user preferences to return empty list
+        mock_user_lang_pref_repo.get_user_preferences = AsyncMock(return_value=[])
 
         # Setup database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [
+            mock_session,
+            mock_session,
             mock_session,
             mock_session,
             mock_session,
@@ -790,15 +876,23 @@ class TestSyncTranscriptsFlags:
         # Setup repository mocks
         mock_video_repo = AsyncMock()
         mock_video_transcript_repo = AsyncMock()
+        mock_user_lang_pref_repo = AsyncMock()
         mock_container.create_video_repository.return_value = mock_video_repo
         mock_container.create_video_transcript_repository.return_value = (
             mock_video_transcript_repo
         )
+        mock_container.create_user_language_preference_repository.return_value = (
+            mock_user_lang_pref_repo
+        )
+
+        # Mock user preferences to return empty list
+        mock_user_lang_pref_repo.get_user_preferences = AsyncMock(return_value=[])
 
         # Setup database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [
+            mock_session,
             mock_session,
             mock_session,
             mock_session,
@@ -844,13 +938,25 @@ class TestSyncTranscriptsNoVideosToProcess:
 
         # Setup repository mocks
         mock_video_repo = AsyncMock()
+        mock_video_transcript_repo = AsyncMock()
+        mock_user_lang_pref_repo = AsyncMock()
         mock_container.create_video_repository.return_value = mock_video_repo
+        mock_container.create_video_transcript_repository.return_value = (
+            mock_video_transcript_repo
+        )
+        mock_container.create_user_language_preference_repository.return_value = (
+            mock_user_lang_pref_repo
+        )
+
+        # Mock user preferences to return empty list
+        mock_user_lang_pref_repo.get_user_preferences = AsyncMock(return_value=[])
 
         # Setup database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
+            mock_session,
+            mock_session,
         ]
 
         # Mock repository to return empty list (all videos have transcripts)
@@ -888,15 +994,24 @@ class TestSyncTranscriptsSummaryTable:
         # Setup repository mocks
         mock_video_repo = AsyncMock()
         mock_video_transcript_repo = AsyncMock()
+        mock_user_lang_pref_repo = AsyncMock()
         mock_container.create_video_repository.return_value = mock_video_repo
         mock_container.create_video_transcript_repository.return_value = (
             mock_video_transcript_repo
         )
+        mock_container.create_user_language_preference_repository.return_value = (
+            mock_user_lang_pref_repo
+        )
+
+        # Mock user preferences to return empty list
+        mock_user_lang_pref_repo.get_user_preferences = AsyncMock(return_value=[])
 
         # Setup database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
         mock_db_manager.get_session.return_value.__aiter__.return_value = [
+            mock_session,
+            mock_session,
             mock_session,
             mock_session,
             mock_session,

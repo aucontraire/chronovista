@@ -397,7 +397,7 @@ class TestVideoTranscriptValidators:
 
     def test_language_code_validation_empty(self):
         """Test language code validation with empty values."""
-        with pytest.raises(ValidationError, match="Input should be 'en', 'en-US'"):
+        with pytest.raises(ValidationError, match="Language code cannot be empty"):
             VideoTranscriptCreate(
                 video_id="dQw4w9WgXcQ",
                 language_code="",  # type: ignore[arg-type] # Testing validation error

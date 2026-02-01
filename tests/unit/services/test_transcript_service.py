@@ -453,7 +453,8 @@ class TestTranscriptServiceThirdPartyAPI:
         )
 
         assert isinstance(result, RawTranscriptData)
-        assert result.language_code == LanguageCode.ENGLISH
+        # With the language code fix, en-US correctly maps to ENGLISH_US, not just ENGLISH
+        assert result.language_code == LanguageCode.ENGLISH_US
         mock_api_instance.list.assert_called_once_with(sample_video_id)
         # Should have called find_transcript twice: first for ["fr", "de"], then for ["en"]
         assert mock_transcript_list.find_transcript.call_count >= 1
@@ -1068,3 +1069,90 @@ class TestTranscriptServiceEdgeCases:
             for msg in log_calls
         )
         assert any("Successfully downloaded transcript" in msg for msg in log_calls)
+
+
+class TestResolveLanguageCode:
+    """Tests for language code resolution to prevent transcript language mismatch bugs."""
+
+    @pytest.fixture
+    def service(self):
+        """Create TranscriptService for testing."""
+        return TranscriptService()
+
+    def test_resolve_exact_match(self, service):
+        """Test exact match for language codes like 'es-MX'."""
+        # Test that regional variants are preserved, not incorrectly mapped to base
+        result = service._resolve_language_code("es-MX")
+        assert result == LanguageCode.SPANISH_MX
+        assert result.value == "es-MX"
+
+    def test_resolve_lowercase_regional(self, service):
+        """Test that lowercase regional codes are resolved correctly."""
+        # This was the original bug - 'es-mx' should map to 'es-MX', not 'en'
+        result = service._resolve_language_code("es-mx")
+        assert result == LanguageCode.SPANISH_MX
+        assert result.value == "es-MX"
+
+    def test_resolve_uppercase_regional(self, service):
+        """Test uppercase regional codes are handled."""
+        result = service._resolve_language_code("ES-MX")
+        assert result == LanguageCode.SPANISH_MX
+
+    def test_resolve_english_variants(self, service):
+        """Test English variants are preserved."""
+        assert service._resolve_language_code("en") == LanguageCode.ENGLISH
+        assert service._resolve_language_code("en-US") == LanguageCode.ENGLISH_US
+        assert service._resolve_language_code("en-GB") == LanguageCode.ENGLISH_GB
+
+    def test_resolve_base_language(self, service):
+        """Test base language codes."""
+        assert service._resolve_language_code("es") == LanguageCode.SPANISH
+        assert service._resolve_language_code("fr") == LanguageCode.FRENCH
+        assert service._resolve_language_code("de") == LanguageCode.GERMAN
+
+    def test_resolve_latin_american_spanish(self, service):
+        """Test es-419 Latin American Spanish is preserved."""
+        result = service._resolve_language_code("es-419")
+        assert result == LanguageCode.SPANISH_419
+
+    def test_resolve_unknown_falls_back_to_base(self, service):
+        """Test that unknown regional variants fall back to base language."""
+        # es-XX (unknown region) should fall back to 'es'
+        result = service._resolve_language_code("es-XX")
+        assert result == LanguageCode.SPANISH
+
+    def test_resolve_completely_unknown(self, service):
+        """Test that completely unknown codes fall back to English."""
+        result = service._resolve_language_code("xyz")
+        assert result == LanguageCode.ENGLISH
+
+    def test_resolve_empty_string(self, service):
+        """Test empty string falls back to English."""
+        result = service._resolve_language_code("")
+        assert result == LanguageCode.ENGLISH
+
+    def test_resolve_chinese_variants(self, service):
+        """Test Chinese simplified and traditional are preserved."""
+        assert service._resolve_language_code("zh-CN") == LanguageCode.CHINESE_SIMPLIFIED
+        assert service._resolve_language_code("zh-TW") == LanguageCode.CHINESE_TRADITIONAL
+
+    def test_resolve_portuguese_variants(self, service):
+        """Test Portuguese variants are preserved."""
+        assert service._resolve_language_code("pt-BR") == LanguageCode.PORTUGUESE_BR
+        assert service._resolve_language_code("pt-PT") == LanguageCode.PORTUGUESE_PT
+
+    @patch("chronovista.services.transcript_service.logger")
+    def test_resolve_logs_warning_for_unknown(self, mock_logger, service):
+        """Test that a warning is logged when falling back to English from non-English code."""
+        service._resolve_language_code("unknown-lang")
+        mock_logger.warning.assert_called_once()
+        warning_msg = mock_logger.warning.call_args[0][0]
+        assert "Could not resolve language code" in warning_msg
+        assert "unknown-lang" in warning_msg
+
+    @patch("chronovista.services.transcript_service.logger")
+    def test_resolve_no_warning_for_english_fallback(self, mock_logger, service):
+        """Test that no warning is logged when input is already English-like."""
+        service._resolve_language_code("en-XX")  # Unknown English variant
+        # Should not log a warning since it's English-like
+        mock_logger.warning.assert_not_called()

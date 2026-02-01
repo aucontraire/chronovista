@@ -47,6 +47,7 @@ from chronovista.repositories import (
     ChannelTopicRepository,
     PlaylistRepository,
     TopicCategoryRepository,
+    UserLanguagePreferenceRepository,
     UserVideoRepository,
     VideoCategoryRepository,
     VideoRepository,
@@ -356,6 +357,29 @@ class Container:
         True
         """
         return VideoTranscriptRepository()
+
+    def create_user_language_preference_repository(
+        self,
+    ) -> UserLanguagePreferenceRepository:
+        """
+        Create a new UserLanguagePreferenceRepository instance.
+
+        Returns a fresh repository instance for user language preference operations.
+        Each call creates a new instance (transient lifecycle).
+
+        Returns
+        -------
+        UserLanguagePreferenceRepository
+            A new UserLanguagePreferenceRepository instance for user language
+            preference CRUD operations.
+
+        Examples
+        --------
+        >>> repo = container.create_user_language_preference_repository()
+        >>> isinstance(repo, UserLanguagePreferenceRepository)
+        True
+        """
+        return UserLanguagePreferenceRepository()
 
     # -------------------------------------------------------------------------
     # Service Factory Methods (Transient - new instance per call)

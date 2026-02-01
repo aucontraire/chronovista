@@ -792,35 +792,17 @@ class TestLanguageAddCommand:
         self, runner: CliRunner
     ) -> None:
         """T048 [P] [US5]: Add command adds language at end of priority list."""
-        # Setup: User has 2 fluent languages (priority 1, 2)
-        existing_fluent = [
-            UserLanguagePreference(
-                user_id=DEFAULT_USER_ID,
-                language_code=LanguageCode.ENGLISH,
-                preference_type=LanguagePreferenceType.FLUENT,
-                priority=1,
-                auto_download_transcripts=True,
-                learning_goal=None,
-                created_at=datetime.now(timezone.utc),
-            ),
-            UserLanguagePreference(
-                user_id=DEFAULT_USER_ID,
-                language_code=LanguageCode.SPANISH,
-                preference_type=LanguagePreferenceType.FLUENT,
-                priority=2,
-                auto_download_transcripts=True,
-                learning_goal=None,
-                created_at=datetime.now(timezone.utc),
-            ),
-        ]
+        # Mock _check_language_exists to return None (language doesn't exist)
+        with patch(
+            "chronovista.cli.language_commands._check_language_exists"
+        ) as mock_check:
+            mock_check.return_value = None
 
-        with patch("chronovista.cli.language_commands._get_preferences") as mock_get:
-            mock_get.return_value = existing_fluent
-
+            # Mock _add_language_preference to return priority 3 (end of list)
             with patch(
-                "chronovista.cli.language_commands._save_preferences"
-            ) as mock_save:
-                mock_save.return_value = None
+                "chronovista.cli.language_commands._add_language_preference"
+            ) as mock_add:
+                mock_add.return_value = (3, True)  # (priority, auto_download)
 
                 # Add Italian as fluent (should get priority 3)
                 result = runner.invoke(
@@ -831,79 +813,56 @@ class TestLanguageAddCommand:
                 assert "it" in result.stdout.lower()
                 assert "Italian" in result.stdout
                 assert "Priority: 3" in result.stdout
+                # Verify _add_language_preference was called
+                assert mock_add.called
 
     def test_add_command_with_priority_inserts_and_shifts_others(
         self, runner: CliRunner
     ) -> None:
         """T049 [P] [US5]: Add --priority inserts at specified position and shifts others."""
-        # Setup: User has 3 fluent languages (priority 1, 2, 3)
-        existing_fluent = [
-            UserLanguagePreference(
-                user_id=DEFAULT_USER_ID,
-                language_code=LanguageCode.ENGLISH,
-                preference_type=LanguagePreferenceType.FLUENT,
-                priority=1,
-                auto_download_transcripts=True,
-                learning_goal=None,
-                created_at=datetime.now(timezone.utc),
-            ),
-            UserLanguagePreference(
-                user_id=DEFAULT_USER_ID,
-                language_code=LanguageCode.SPANISH,
-                preference_type=LanguagePreferenceType.FLUENT,
-                priority=2,
-                auto_download_transcripts=True,
-                learning_goal=None,
-                created_at=datetime.now(timezone.utc),
-            ),
-            UserLanguagePreference(
-                user_id=DEFAULT_USER_ID,
-                language_code=LanguageCode.FRENCH,
-                preference_type=LanguagePreferenceType.FLUENT,
-                priority=3,
-                auto_download_transcripts=True,
-                learning_goal=None,
-                created_at=datetime.now(timezone.utc),
-            ),
-        ]
+        # Mock _check_language_exists to return None (language doesn't exist)
+        with patch(
+            "chronovista.cli.language_commands._check_language_exists"
+        ) as mock_check:
+            mock_check.return_value = None
 
-        with patch("chronovista.cli.language_commands._get_preferences") as mock_get:
-            mock_get.return_value = existing_fluent
-
+            # Mock _add_language_preference to return priority 1 (requested position)
             with patch(
-                "chronovista.cli.language_commands._shift_priorities"
-            ) as mock_shift:
-                mock_shift.return_value = None
+                "chronovista.cli.language_commands._add_language_preference"
+            ) as mock_add:
+                mock_add.return_value = (1, True)  # (priority, auto_download)
 
-                with patch(
-                    "chronovista.cli.language_commands._save_preferences"
-                ) as mock_save:
-                    mock_save.return_value = None
+                # Add German as fluent at priority 1 (should shift others)
+                result = runner.invoke(
+                    app,
+                    ["languages", "add", "de", "--type", "fluent", "--priority", "1"],
+                )
 
-                    # Add German as fluent at priority 1 (should shift others)
-                    result = runner.invoke(
-                        app,
-                        ["languages", "add", "de", "--type", "fluent", "--priority", "1"],
-                    )
-
-                    assert result.exit_code == 0
-                    assert "de" in result.stdout.lower()
-                    assert "German" in result.stdout
-                    assert "Priority: 1" in result.stdout
-                    # Verify shift was called
-                    assert mock_shift.called
+                assert result.exit_code == 0
+                assert "de" in result.stdout.lower()
+                assert "German" in result.stdout
+                assert "Priority: 1" in result.stdout
+                # Verify _add_language_preference was called with priority parameter
+                assert mock_add.called
+                # Verify priority was passed to the function
+                call_args = mock_add.call_args
+                assert call_args[0][3] == 1  # priority argument is the 4th positional arg
 
     def test_add_command_with_goal_stores_learning_goal(
         self, runner: CliRunner
     ) -> None:
         """T050 [P] [US5]: Add --goal stores learning goal for learning type."""
-        with patch("chronovista.cli.language_commands._get_preferences") as mock_get:
-            mock_get.return_value = []
+        # Mock _check_language_exists to return None (language doesn't exist)
+        with patch(
+            "chronovista.cli.language_commands._check_language_exists"
+        ) as mock_check:
+            mock_check.return_value = None
 
+            # Mock _add_language_preference to return priority 1 and auto_download=True
             with patch(
-                "chronovista.cli.language_commands._save_preferences"
-            ) as mock_save:
-                mock_save.return_value = None
+                "chronovista.cli.language_commands._add_language_preference"
+            ) as mock_add:
+                mock_add.return_value = (1, True)  # (priority, auto_download)
 
                 # Add Italian as learning with goal
                 result = runner.invoke(
@@ -923,8 +882,11 @@ class TestLanguageAddCommand:
                 assert "it" in result.stdout.lower()
                 assert "Italian" in result.stdout
                 assert "LEARNING" in result.stdout
-                # Verify save was called with the preference
-                assert mock_save.called
+                # Verify _add_language_preference was called with the goal
+                assert mock_add.called
+                # Verify learning_goal was passed to the function
+                call_args = mock_add.call_args
+                assert call_args[0][4] == "B2 by December"  # learning_goal is the 5th positional arg
 
     def test_add_command_existing_language_shows_error_with_guidance(
         self, runner: CliRunner

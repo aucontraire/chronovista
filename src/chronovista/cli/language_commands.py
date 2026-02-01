@@ -63,7 +63,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 import typer
-import yaml  # type: ignore[import-untyped]
+import yaml
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -1937,6 +1937,89 @@ async def _shift_priorities(
 # -------------------------------------------------------------------------
 
 
+async def _add_language_preference(
+    user_id: str,
+    validated_code: LanguageCode,
+    preference_type: LanguagePreferenceType,
+    priority: Optional[int],
+    learning_goal: Optional[str],
+) -> tuple[int, bool]:
+    """
+    Add a language preference with proper priority handling.
+
+    This consolidated async function handles all database operations in a single
+    event loop to avoid asyncio loop conflicts when shifting priorities.
+
+    Parameters
+    ----------
+    user_id : str
+        The user identifier.
+    validated_code : LanguageCode
+        Validated language code enum.
+    preference_type : LanguagePreferenceType
+        Type of preference to add.
+    priority : Optional[int]
+        Requested priority position, None to append.
+    learning_goal : Optional[str]
+        Learning goal for learning type preferences.
+
+    Returns
+    -------
+    tuple[int, bool]
+        Tuple of (calculated_priority, auto_download).
+    """
+    repo = UserLanguagePreferenceRepository()
+
+    async for session in db_manager.get_session():
+        # Get existing preferences
+        all_prefs = await repo.get_user_preferences(session, user_id)
+
+        # Calculate priority
+        same_type = [p for p in all_prefs if p.preference_type == preference_type.value]
+        if priority is not None:
+            calculated_priority = priority
+        elif not same_type:
+            calculated_priority = 1
+        else:
+            calculated_priority = max(p.priority for p in same_type) + 1
+
+        # Shift existing priorities if inserting at specific position
+        if priority is not None:
+            prefs_of_type = await repo.get_preferences_by_type(
+                session, user_id, preference_type
+            )
+            for pref in prefs_of_type:
+                if pref.priority >= priority:
+                    await repo.update_priority(
+                        session, user_id, pref.language_code, pref.priority + 1
+                    )
+
+        # Determine auto-download based on type
+        auto_download = preference_type in (
+            LanguagePreferenceType.FLUENT,
+            LanguagePreferenceType.LEARNING,
+        )
+
+        # Create the new preference
+        new_pref = UserLanguagePreferenceCreate(
+            user_id=user_id,
+            language_code=validated_code,
+            preference_type=preference_type,
+            priority=calculated_priority,
+            auto_download_transcripts=auto_download,
+            learning_goal=learning_goal,
+        )
+
+        # Save the new preference
+        await repo.save_preferences(session, user_id, [new_pref])
+        await session.commit()
+
+        return (calculated_priority, auto_download)
+
+    # Fallback return (should not reach here)
+    return (1, False)
+
+
 @language_app.command()
 def add(
     language: str = typer.Argument(..., help="BCP-47 language code"),
@@ -2001,23 +2084,7 @@ def add(
             )
             raise typer.Exit(2)
 
-        # 3. Get existing preferences
-        all_prefs = asyncio.run(_get_preferences(DEFAULT_USER_ID))
-
-        # 4. Calculate priority
-        calculated_priority = _calculate_priority(all_prefs, preference_type, priority)
-
-        # 5. Shift existing priorities if inserting at specific position
-        if priority is not None:
-            asyncio.run(_shift_priorities(DEFAULT_USER_ID, preference_type, priority))
-
-        # 6. Determine auto-download based on type
-        auto_download = preference_type in (
-            LanguagePreferenceType.FLUENT,
-            LanguagePreferenceType.LEARNING,
-        )
-
-        # 7. Validate goal is only for learning type
+        # 3. Validate goal is only for learning type
         learning_goal = None
         if goal:
             if preference_type == LanguagePreferenceType.LEARNING:
@@ -2027,57 +2094,18 @@ def add(
                     "[yellow]Warning: --goal is only applicable for learning type. Ignoring.[/yellow]"
                 )
 
-        # 8. Create and save preference
-        pref = UserLanguagePreferenceCreate(
-            user_id=DEFAULT_USER_ID,
-            language_code=validated_code,
-            preference_type=preference_type,
-            priority=calculated_priority,
-            auto_download_transcripts=auto_download,
-            learning_goal=learning_goal,
+        # 4. Add the preference with all operations in a single async call
+        calculated_priority, auto_download = asyncio.run(
+            _add_language_preference(
+                DEFAULT_USER_ID,
+                validated_code,
+                preference_type,
+                priority,
+                learning_goal,
+            )
         )
 
-        # Save using existing _save_preferences pattern
-        prefs_dict: Dict[LanguagePreferenceType, List[str]] = {
-            LanguagePreferenceType.FLUENT: [],
-            LanguagePreferenceType.LEARNING: [],
-            LanguagePreferenceType.CURIOUS: [],
-            LanguagePreferenceType.EXCLUDE: [],
-        }
-
-        # Add existing prefs
-        for existing_pref in all_prefs:
-            ptype = LanguagePreferenceType(existing_pref.preference_type)
-            pref_code = (
-                existing_pref.language_code
-                if isinstance(existing_pref.language_code, str)
-                else existing_pref.language_code.value
-            )
-            prefs_dict[ptype].append(pref_code)
-
-        # Add new pref
-        prefs_dict[preference_type].append(validated_code.value)
-
-        # Build goals dict
-        goals_dict: Dict[str, str] = {}
-        for existing_pref in all_prefs:
-            if (
-                existing_pref.preference_type == LanguagePreferenceType.LEARNING.value
-                and existing_pref.learning_goal
-            ):
-                pref_code = (
-                    existing_pref.language_code
-                    if isinstance(existing_pref.language_code, str)
-                    else existing_pref.language_code.value
-                )
-                goals_dict[pref_code] = existing_pref.learning_goal
-
-        if learning_goal:
-            goals_dict[validated_code.value] = learning_goal
-
-        asyncio.run(_save_preferences(DEFAULT_USER_ID, prefs_dict, goals_dict))
-
-        # 9. Show success message
+        # 5. Show success message
         display_name = get_language_display_name(validated_code.value)
         console.print()
         console.print(

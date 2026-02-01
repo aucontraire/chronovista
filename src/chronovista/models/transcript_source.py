@@ -19,6 +19,60 @@ from .enums import LanguageCode
 from .youtube_types import CaptionId, VideoId
 
 
+def resolve_language_code(language_code_str: str) -> LanguageCode:
+    """
+    Resolve a language code string to a LanguageCode enum.
+
+    Handles various formats and casing issues with BCP-47 codes.
+    Falls back to base language if regional variant not found.
+
+    Parameters
+    ----------
+    language_code_str : str
+        Language code from API response (e.g., 'es-MX', 'en', 'zh-Hans')
+
+    Returns
+    -------
+    LanguageCode
+        Resolved language code enum value
+    """
+    if not language_code_str:
+        return LanguageCode.ENGLISH
+
+    # Try exact match first (handles correctly cased codes like 'en-US')
+    try:
+        return LanguageCode(language_code_str)
+    except ValueError:
+        pass
+
+    # Try lowercase match (handles 'EN-US' -> 'en-us')
+    try:
+        return LanguageCode(language_code_str.lower())
+    except ValueError:
+        pass
+
+    # Try with normalized casing (lowercase language, uppercase region)
+    # e.g., 'es-mx' -> 'es-MX', 'EN-us' -> 'en-US'
+    if "-" in language_code_str:
+        parts = language_code_str.split("-")
+        if len(parts) == 2:
+            normalized = f"{parts[0].lower()}-{parts[1].upper()}"
+            try:
+                return LanguageCode(normalized)
+            except ValueError:
+                pass
+
+    # Try base language fallback (e.g., 'es-419' -> 'es')
+    base_language = language_code_str.split("-")[0].lower()
+    try:
+        return LanguageCode(base_language)
+    except ValueError:
+        pass
+
+    # Return English as last resort
+    return LanguageCode.ENGLISH
+
+
 class TranscriptSource(str, Enum):
     """Sources for transcript data."""
 
@@ -115,12 +169,8 @@ class YouTubeTranscriptApiResponse(BaseModel):
 
     def to_raw_transcript_data(self) -> RawTranscriptData:
         """Convert to unified RawTranscriptData format."""
-        # Convert language code string to enum
-        try:
-            lang_code = LanguageCode(self.language_code.lower())
-        except ValueError:
-            # Fallback to English if language code not supported
-            lang_code = LanguageCode.ENGLISH
+        # Convert language code string to enum using centralized resolver
+        lang_code = resolve_language_code(self.language_code)
 
         # Convert snippet dictionaries to TranscriptSnippet objects
         transcript_snippets = [
@@ -181,11 +231,8 @@ class YouTubeDataApiCaptionFile(BaseModel):
 
     def to_raw_transcript_data(self) -> RawTranscriptData:
         """Convert to unified RawTranscriptData format."""
-        # Convert language code to enum
-        try:
-            lang_code = LanguageCode(self.metadata.language.lower())
-        except ValueError:
-            lang_code = LanguageCode.ENGLISH
+        # Convert language code to enum using centralized resolver
+        lang_code = resolve_language_code(self.metadata.language)
 
         return RawTranscriptData(
             video_id=self.video_id,

@@ -36,15 +36,54 @@ from chronovista.models.video import VideoCreate
 from chronovista.models.video_topic import VideoTopicCreate
 from chronovista.models.enums import DownloadReason
 from chronovista.models.video import VideoSearchFilters
+from chronovista.models.transcript_source import resolve_language_code
 from chronovista.models.video_transcript import VideoTranscriptCreate
+from chronovista.models.user_language_preference import UserLanguagePreference
 from chronovista.models.youtube_types import UserId
 from chronovista.services import youtube_service
+from chronovista.services.preference_aware_transcript_filter import (
+    DownloadPlan,
+    PreferenceAwareTranscriptFilter,
+)
 from chronovista.services.transcript_service import (
     TranscriptNotFoundError,
     TranscriptService,
 )
 
 console = Console()
+
+
+def display_translation_pairing_info(download_plan: DownloadPlan) -> None:
+    """
+    Display translation pairing information for learning languages.
+
+    Shows which learning languages will be paired with translations
+    to the user's top fluent language, and which ones will only
+    download the original due to translation unavailability.
+
+    Parameters
+    ----------
+    download_plan : DownloadPlan
+        The download plan containing learning pairs information
+    """
+    if not download_plan.learning_pairs:
+        return
+
+    console.print()
+    console.print("[blue]Learning Language Translation Pairing:[/blue]")
+
+    for original_lang, translation_target in download_plan.learning_pairs:
+        if translation_target:
+            console.print(
+                f"   [green]{original_lang}[/green] -> "
+                f"[cyan]{translation_target}[/cyan] (translation available)"
+            )
+        else:
+            console.print(
+                f"   [yellow]{original_lang}[/yellow] -> "
+                f"[dim](no translation available, original only)[/dim]"
+            )
+
 
 sync_app = typer.Typer(
     name="sync",
@@ -734,7 +773,7 @@ def transcripts(
         return
 
     async def sync_transcripts_data() -> SyncResult:
-        """Sync transcripts from YouTube."""
+        """Sync transcripts from YouTube with preference-aware filtering."""
         result = SyncResult()
 
         display_progress_start(
@@ -745,9 +784,56 @@ def transcripts(
         # Get repositories from container
         video_repository = container.create_video_repository()
         video_transcript_repository = container.create_video_transcript_repository()
+        user_language_pref_repository = (
+            container.create_user_language_preference_repository()
+        )
 
         # Get transcript service from container
         transcript_service = container.transcript_service
+
+        # Create preference filter
+        transcript_filter = PreferenceAwareTranscriptFilter()
+
+        # Load user preferences (use "default" as user_id for now)
+        user_preferences: List[UserLanguagePreference] = []
+        using_preferences = False
+        language_override = len(language) > 0 and language != ["en"]
+
+        async for session in db_manager.get_session():
+            prefs_db = await user_language_pref_repository.get_user_preferences(
+                session, UserId("default_user")
+            )
+            # Convert DB models to Pydantic models
+            user_preferences = [
+                UserLanguagePreference.model_validate(p, from_attributes=True)
+                for p in prefs_db
+            ]
+
+        # Determine if we should use preferences or the --language flag
+        if language_override:
+            # User explicitly provided --language flag, use that
+            console.print(
+                f"[blue]Using --language flag: {', '.join(language)}[/blue]"
+            )
+            using_preferences = False
+        elif user_preferences:
+            # Use configured preferences
+            console.print("[blue]Using configured language preferences[/blue]")
+            using_preferences = True
+        else:
+            # No preferences configured and no --language override
+            console.print()
+            console.print(
+                Panel(
+                    "[yellow]Language Preferences Not Configured[/yellow]\n\n"
+                    "chronovista now supports intelligent transcript management.\n"
+                    "Configure your languages with: [bold]chronovista languages set[/bold]\n\n"
+                    "[dim]Using fallback: English (en)[/dim]",
+                    title="Tip",
+                    border_style="yellow",
+                )
+            )
+            console.print()
 
         # Determine which videos to process
         videos_to_process: List[VideoDB] = []
@@ -755,7 +841,9 @@ def transcripts(
         async for session in db_manager.get_session():
             if video_id:
                 # Process specific video IDs
-                console.print(f"[blue]Processing {len(video_id)} specified video(s)...[/blue]")
+                console.print(
+                    f"[blue]Processing {len(video_id)} specified video(s)...[/blue]"
+                )
                 for vid in video_id:
                     video = await video_repository.get_by_video_id(session, vid)
                     if video:
@@ -767,7 +855,8 @@ def transcripts(
                 # Get videos without transcripts (or all if force)
                 if force:
                     console.print(
-                        "[blue]Force mode: fetching videos (existing transcripts will be re-downloaded)...[/blue]"
+                        "[blue]Force mode: fetching videos (existing transcripts "
+                        "will be re-downloaded)...[/blue]"
                     )
                     videos_to_process = await video_repository.get_multi(
                         session, skip=0, limit=limit
@@ -801,78 +890,183 @@ def transcripts(
 
         # Process videos
         console.print()
-        console.print(f"[blue]Downloading transcripts for {len(videos_to_process)} videos...[/blue]")
+        console.print(
+            f"[blue]Downloading transcripts for {len(videos_to_process)} videos...[/blue]"
+        )
 
         for idx, video in enumerate(videos_to_process, 1):
             video_title = video.title or video.video_id
-            short_title = video_title[:40] + "..." if len(video_title) > 40 else video_title
+            short_title = (
+                video_title[:40] + "..." if len(video_title) > 40 else video_title
+            )
 
-            console.print(f"[dim]({idx}/{len(videos_to_process)}) Processing: {short_title}[/dim]")
+            console.print(
+                f"[dim]({idx}/{len(videos_to_process)}) Processing: {short_title}[/dim]"
+            )
 
             try:
+                # Determine languages to download based on preferences or flag
+                languages_to_download: List[str] = []
+                download_plan: Optional[DownloadPlan] = None
+
+                if using_preferences and user_preferences:
+                    # Get available transcript languages for this video
+                    available_languages = await transcript_service.get_available_languages(
+                        video.video_id
+                    )
+                    available_codes = [
+                        lang["language_code"] for lang in available_languages
+                    ]
+
+                    if available_codes:
+                        # Create download plan based on preferences
+                        download_plan = transcript_filter.create_download_plan(
+                            available_codes, user_preferences
+                        )
+
+                        # Display matching status
+                        console.print(
+                            f"   [dim]Available: {', '.join(available_codes)}[/dim]"
+                        )
+
+                        # Build list of languages to download
+                        for lang in download_plan.fluent_downloads:
+                            languages_to_download.append(lang)
+                            console.print(
+                                f"   [green]\u2713 {lang} (FLUENT)[/green] - downloading"
+                            )
+
+                        for original, translation in download_plan.learning_pairs:
+                            if original not in languages_to_download:
+                                languages_to_download.append(original)
+                                console.print(
+                                    f"   [green]\u2713 {original} (LEARNING)[/green] "
+                                    "- downloading original"
+                                )
+                            if translation and translation not in languages_to_download:
+                                languages_to_download.append(translation)
+                                console.print(
+                                    f"   [green]\u2713 {original}\u2192{translation} "
+                                    "(LEARNING)[/green] - downloading translation"
+                                )
+
+                        for lang in download_plan.skipped_curious:
+                            console.print(
+                                f"   [dim]\u25cb {lang} (CURIOUS)[/dim] - "
+                                "skipped (on-demand)"
+                            )
+
+                        for lang in download_plan.blocked_excluded:
+                            console.print(
+                                f"   [red]\u2715 {lang} (EXCLUDE)[/red] - skipped"
+                            )
+
+                        if not languages_to_download:
+                            console.print(
+                                "   [yellow]No transcripts matched preferences[/yellow]"
+                            )
+                            result.skipped += 1
+                            continue
+                    else:
+                        console.print(
+                            "   [yellow]No transcripts available[/yellow]"
+                        )
+                        result.skipped += 1
+                        continue
+                else:
+                    # Use --language flag or default
+                    languages_to_download = list(language)
+
                 # Check if transcript already exists (skip if not forcing)
                 if not force:
+                    skip_video = False
                     async for session in db_manager.get_session():
-                        for lang in language:
-                            existing = await video_transcript_repository.get_by_composite_key(
-                                session, video.video_id, lang
+                        for lang in languages_to_download:
+                            existing = (
+                                await video_transcript_repository.get_by_composite_key(
+                                    session, video.video_id, lang
+                                )
                             )
                             if existing:
-                                console.print(f"   [dim]Skipping (transcript exists for {lang})[/dim]")
+                                console.print(
+                                    f"   [dim]Skipping (transcript exists for {lang})[/dim]"
+                                )
                                 result.skipped += 1
+                                skip_video = True
                                 break
-                        else:
-                            continue
-                        break
-                    else:
-                        # No existing transcript found, proceed with download
-                        pass
+                    if skip_video:
+                        continue
 
-                # Download transcript using TranscriptService
-                transcript = await transcript_service.get_transcript(
-                    video_id=video.video_id,
-                    language_codes=language,
-                    download_reason=DownloadReason.USER_REQUEST,
-                )
+                # Download transcripts for each language in the download list
+                for lang_code in languages_to_download:
+                    try:
+                        # Download transcript using TranscriptService
+                        transcript = await transcript_service.get_transcript(
+                            video_id=video.video_id,
+                            language_codes=[lang_code],
+                            download_reason=DownloadReason.USER_REQUEST,
+                        )
 
-                # Store transcript in database
-                async for session in db_manager.get_session():
-                    # Check if updating or creating
-                    existing = await video_transcript_repository.get_by_composite_key(
-                        session, video.video_id, transcript.language_code
-                    )
+                        # Store transcript in database
+                        async for session in db_manager.get_session():
+                            # Check if updating or creating
+                            existing = (
+                                await video_transcript_repository.get_by_composite_key(
+                                    session, video.video_id, transcript.language_code
+                                )
+                            )
 
-                    # Create VideoTranscriptCreate object
-                    transcript_create = VideoTranscriptCreate(
-                        video_id=video.video_id,
-                        language_code=transcript.language_code,
-                        transcript_text=transcript.transcript_text,
-                        transcript_type=transcript.transcript_type,
-                        download_reason=transcript.download_reason,
-                        confidence_score=transcript.confidence_score,
-                        is_cc=transcript.is_cc,
-                        is_auto_synced=transcript.is_auto_synced,
-                        track_kind=transcript.track_kind,
-                        caption_name=transcript.caption_name,
-                    )
+                            # Create VideoTranscriptCreate object
+                            # Resolve language code to proper LanguageCode enum
+                            # (handles lowercase codes from youtube-transcript-api)
+                            resolved_lang_code = resolve_language_code(
+                                transcript.language_code
+                            )
+                            transcript_create = VideoTranscriptCreate(
+                                video_id=video.video_id,
+                                language_code=resolved_lang_code,
+                                transcript_text=transcript.transcript_text,
+                                transcript_type=transcript.transcript_type,
+                                download_reason=transcript.download_reason,
+                                confidence_score=transcript.confidence_score,
+                                is_cc=transcript.is_cc,
+                                is_auto_synced=transcript.is_auto_synced,
+                                track_kind=transcript.track_kind,
+                                caption_name=transcript.caption_name,
+                            )
 
-                    # Save with raw transcript data to preserve timestamps
-                    await video_transcript_repository.create_or_update(
-                        session,
-                        transcript_create,
-                        raw_transcript_data=transcript.raw_transcript_data,
-                    )
+                            # Save with raw transcript data to preserve timestamps
+                            await video_transcript_repository.create_or_update(
+                                session,
+                                transcript_create,
+                                raw_transcript_data=transcript.raw_transcript_data,
+                            )
 
-                    if existing:
-                        result.updated += 1
-                        console.print(f"   [green]Updated transcript ({transcript.language_code})[/green]")
-                    else:
-                        result.created += 1
-                        console.print(f"   [green]Downloaded transcript ({transcript.language_code})[/green]")
+                            if existing:
+                                result.updated += 1
+                                console.print(
+                                    f"   [green]Updated transcript "
+                                    f"({transcript.language_code})[/green]"
+                                )
+                            else:
+                                result.created += 1
+                                console.print(
+                                    f"   [green]Downloaded transcript "
+                                    f"({transcript.language_code})[/green]"
+                                )
+
+                    except TranscriptNotFoundError:
+                        console.print(
+                            f"   [yellow]No transcript available for {lang_code}[/yellow]"
+                        )
+
+                    except Exception as e:
+                        result.add_error(f"{video.video_id} ({lang_code}): {str(e)}")
+                        console.print(f"   [red]Error ({lang_code}): {str(e)}[/red]")
 
             except TranscriptNotFoundError:
                 result.skipped += 1
-                console.print(f"   [yellow]No transcript available[/yellow]")
+                console.print("   [yellow]No transcript available[/yellow]")
 
             except Exception as e:
                 result.add_error(f"{video.video_id}: {str(e)}")
@@ -895,9 +1089,18 @@ def transcripts(
         console.print(table)
 
         # Display final results using framework
-        extra_info = f"Processed {len(videos_to_process)} videos.\n"
-        extra_info += f"Languages: {', '.join(language)}\n"
-        extra_info += "Data flow: YouTube Transcript API -> Video Transcripts -> Database"
+        if using_preferences:
+            extra_info = f"Processed {len(videos_to_process)} videos.\n"
+            extra_info += "Mode: Using language preferences\n"
+            extra_info += (
+                "Data flow: YouTube Transcript API -> Video Transcripts -> Database"
+            )
+        else:
+            extra_info = f"Processed {len(videos_to_process)} videos.\n"
+            extra_info += f"Languages: {', '.join(language)}\n"
+            extra_info += (
+                "Data flow: YouTube Transcript API -> Video Transcripts -> Database"
+            )
 
         display_sync_results(
             result,

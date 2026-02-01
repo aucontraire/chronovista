@@ -28,6 +28,7 @@ from ..models.transcript_source import (
     RawTranscriptData,
     TranscriptSnippet,
     TranscriptSource,
+    resolve_language_code,
 )
 from ..models.video_transcript import EnhancedVideoTranscriptBase
 from ..models.youtube_types import VideoId
@@ -299,10 +300,8 @@ class TranscriptService(TranscriptServiceInterface):
             )
 
         # Determine language code enum
-        try:
-            lang_code = LanguageCode(used_language.lower())
-        except (ValueError, AttributeError):
-            lang_code = LanguageCode.ENGLISH
+        # Try exact match first, then lowercase, then base language fallback
+        lang_code = self._resolve_language_code(used_language)
 
         raw_data = RawTranscriptData(
             video_id=video_id,
@@ -381,12 +380,9 @@ class TranscriptService(TranscriptServiceInterface):
             # Parse SRT content into our format
             snippets = self._parse_srt_content(caption_content)
 
-            # Determine language code enum
-            caption_lang = snippet.language.lower() if snippet else "en"
-            try:
-                lang_code = LanguageCode(caption_lang)
-            except ValueError:
-                lang_code = LanguageCode.ENGLISH
+            # Determine language code enum using centralized resolver
+            caption_lang = snippet.language if snippet else "en"
+            lang_code = self._resolve_language_code(caption_lang)
 
             # Create RawTranscriptData
             raw_data = RawTranscriptData(
@@ -497,6 +493,34 @@ class TranscriptService(TranscriptServiceInterface):
         total_seconds = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000.0
         return total_seconds
 
+    def _resolve_language_code(self, language_code_str: str) -> LanguageCode:
+        """
+        Resolve a language code string to a LanguageCode enum.
+
+        Delegates to the shared resolve_language_code function but adds logging
+        when fallback to English is used.
+
+        Parameters
+        ----------
+        language_code_str : str
+            Language code from API response (e.g., 'es-MX', 'en', 'zh-Hans')
+
+        Returns
+        -------
+        LanguageCode
+            Resolved language code enum value
+        """
+        result = resolve_language_code(language_code_str)
+
+        # Log warning if we fell back to English from a non-English code
+        if result == LanguageCode.ENGLISH and language_code_str and not language_code_str.lower().startswith("en"):
+            logger.warning(
+                f"Could not resolve language code '{language_code_str}' to LanguageCode enum, "
+                f"falling back to ENGLISH. Consider adding this language code to the enum."
+            )
+
+        return result
+
     def _create_mock_transcript(
         self, video_id: VideoId, language_code: str, download_reason: DownloadReason
     ) -> EnhancedVideoTranscriptBase:
@@ -515,11 +539,8 @@ class TranscriptService(TranscriptServiceInterface):
             TranscriptSnippet(text="Video ID: " + video_id, start=9.0, duration=2.0),
         ]
 
-        # Determine language code enum
-        try:
-            lang_code = LanguageCode(language_code.lower())
-        except ValueError:
-            lang_code = LanguageCode.ENGLISH
+        # Determine language code enum using the centralized resolver
+        lang_code = self._resolve_language_code(language_code)
 
         mock_raw_data = RawTranscriptData(
             video_id=video_id,

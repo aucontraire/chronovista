@@ -51,24 +51,41 @@ class VideoTranscriptBase(BaseModel):
         default=None, max_length=255, description="Caption track name or description"
     )
 
-    @field_validator("language_code")
+    @field_validator("language_code", mode="before")
     @classmethod
-    def validate_language_code(cls, v: str) -> str:
-        """Validate BCP-47 language code format."""
-        if not v:
+    def validate_language_code(cls, v: Any) -> Any:
+        """Validate and normalize BCP-47 language code format.
+
+        This validator runs before enum coercion to handle various input formats
+        including lowercase strings from external APIs.
+        """
+        from .transcript_source import resolve_language_code
+
+        if v is None or v == "":
             raise ValueError("Language code cannot be empty")
 
-        # Basic BCP-47 validation (language[-Script][-Region])
-        parts = v.split("-")
-        if len(parts) < 1 or len(parts) > 3:
-            raise ValueError("Invalid BCP-47 language code format")
+        # If already a LanguageCode enum, return as-is
+        if isinstance(v, LanguageCode):
+            return v
 
-        # Language code should be 2-3 characters
-        language = parts[0]
-        if len(language) < 2 or len(language) > 3:
-            raise ValueError("Language code must be 2-3 characters")
+        # Convert string to proper LanguageCode enum
+        if isinstance(v, str):
+            # Basic BCP-47 validation
+            parts = v.split("-")
+            if len(parts) < 1 or len(parts) > 3:
+                raise ValueError("Invalid BCP-47 language code format")
 
-        return v.lower()
+            # Language code should be 2-3 characters
+            language = parts[0]
+            if len(language) < 2 or len(language) > 3:
+                raise ValueError("Language code must be 2-3 characters")
+
+            # Use resolve_language_code to handle casing normalization
+            # and map to valid LanguageCode enum values
+            return resolve_language_code(v)
+
+        # For any other type, return as-is and let enum validation handle it
+        return v
 
     # Note: video_id validation is now handled by VideoId type
 

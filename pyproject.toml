@@ -57,6 +57,7 @@ pre-commit = "^3.4.0"
 coverage = "^7.3.0"
 hypothesis = "^6.80.0"
 factory-boy = "^3.3.0"
+types-pyyaml = "^6.0.12.20250915"
 
 [tool.poetry.group.nlp]
 optional = true

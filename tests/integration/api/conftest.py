@@ -28,6 +28,11 @@ from chronovista.repositories.video_transcript_repository import (
 )
 from chronovista.services.youtube_service import YouTubeService
 
+# FastAPI test client imports
+from httpx import ASGITransport, AsyncClient
+
+from chronovista.api.main import app
+
 
 async def check_database_availability(engine) -> bool:
     """
@@ -292,6 +297,24 @@ def user_video_repository() -> UserVideoRepository:
 def test_user_id() -> str:
     """Provide consistent test user ID for integration tests."""
     return "integration_test_user"
+
+
+@pytest.fixture
+async def async_client() -> AsyncClient:
+    """
+    Create async test client for FastAPI testing.
+
+    Uses httpx AsyncClient with ASGITransport to test FastAPI
+    endpoints without starting an actual server.
+
+    Yields
+    ------
+    AsyncClient
+        An async HTTP client for making test requests.
+    """
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
 
 
 @pytest.fixture

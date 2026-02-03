@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from chronovista.api.deps import get_db, require_auth
 from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.search import SearchResponse, SearchResultSegment
+from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import TranscriptSegment as SegmentDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as TranscriptDB
@@ -95,9 +96,9 @@ async def search_segments(
     # Split query into terms for multi-word search (implicit AND)
     query_terms = query_text.split()
 
-    # Build base query with joins
+    # Build base query with joins (including Channel for eager loading)
     query = (
-        select(SegmentDB, TranscriptDB, VideoDB)
+        select(SegmentDB, TranscriptDB, VideoDB, ChannelDB)
         .join(
             TranscriptDB,
             and_(
@@ -106,6 +107,7 @@ async def search_segments(
             ),
         )
         .join(VideoDB, SegmentDB.video_id == VideoDB.video_id)
+        .outerjoin(ChannelDB, VideoDB.channel_id == ChannelDB.channel_id)
         .where(VideoDB.deleted_flag.is_(False))
     )
 
@@ -137,7 +139,7 @@ async def search_segments(
 
     # Build response items with context
     items: List[SearchResultSegment] = []
-    for segment, transcript, video in rows:
+    for segment, transcript, video, channel in rows:
         # Get adjacent segments for context
         context_before: Optional[str] = None
         context_after: Optional[str] = None
@@ -183,7 +185,7 @@ async def search_segments(
                 segment_id=segment.id,
                 video_id=segment.video_id,
                 video_title=video.title,
-                channel_title=video.channel.title if video.channel else None,
+                channel_title=channel.title if channel else None,
                 language_code=segment.language_code,
                 text=segment.text,
                 start_time=segment.start_time,

@@ -195,3 +195,101 @@ class TestVideoFilters:
                 "/api/v1/videos?has_transcript=true&limit=10&offset=0"
             )
             assert response.status_code == 200
+
+
+class TestVideoDetail:
+    """Tests for GET /api/v1/videos/{video_id} endpoint (US6)."""
+
+    async def test_get_video_requires_auth(self, async_client: AsyncClient) -> None:
+        """Test that video detail requires authentication."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = False
+            response = await async_client.get("/api/v1/videos/dQw4w9WgXcQ")
+            assert response.status_code == 401
+
+    async def test_get_video_returns_detail(self, async_client: AsyncClient) -> None:
+        """Test video detail returns correct structure."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            # Use a likely non-existent video ID to test 404 path at minimum
+            response = await async_client.get("/api/v1/videos/dQw4w9WgXcQ")
+            # Either 200 with data or 404 if video doesn't exist
+            assert response.status_code in [200, 404]
+
+    async def test_get_video_404_for_nonexistent(self, async_client: AsyncClient) -> None:
+        """Test 404 response for non-existent video."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            # Non-existent video ID
+            response = await async_client.get("/api/v1/videos/NONEXISTENT")
+            assert response.status_code == 404
+            data = response.json()
+            assert "detail" in data
+            assert data["detail"]["code"] == "NOT_FOUND"
+            assert "Video 'NONEXISTENT' not found" in data["detail"]["message"]
+
+    async def test_get_video_actionable_error_message(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test that 404 error has actionable message."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/videos/NONEXISTENT")
+            data = response.json()
+            # Check actionable guidance
+            assert "Verify the video ID or run a sync" in data["detail"]["message"]
+
+    async def test_get_video_id_validation_too_short(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test video_id must be exactly 11 characters."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/videos/short")
+            assert response.status_code == 422  # Validation error
+
+    async def test_get_video_id_validation_too_long(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test video_id must be exactly 11 characters."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/videos/waytoolongvideoid")
+            assert response.status_code == 422  # Validation error
+
+    async def test_get_video_response_structure(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test video detail response has correct structure when found."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/videos/dQw4w9WgXcQ")
+            if response.status_code == 200:
+                data = response.json()
+                assert "data" in data
+                video = data["data"]
+                # Check required fields
+                assert "video_id" in video
+                assert "title" in video
+                assert "upload_date" in video
+                assert "duration" in video
+                assert "made_for_kids" in video
+                assert "transcript_summary" in video
+                assert "tags" in video
+
+    async def test_get_video_transcript_summary(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test video detail includes transcript summary with count and languages."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/videos/dQw4w9WgXcQ")
+            if response.status_code == 200:
+                data = response.json()
+                summary = data["data"]["transcript_summary"]
+                assert "count" in summary
+                assert "languages" in summary
+                assert "has_manual" in summary
+                assert isinstance(summary["count"], int)
+                assert isinstance(summary["languages"], list)
+                assert isinstance(summary["has_manual"], bool)

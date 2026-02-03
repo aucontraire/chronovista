@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -14,6 +14,8 @@ from chronovista.api.deps import get_db, require_auth
 from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.videos import (
     TranscriptSummary,
+    VideoDetail,
+    VideoDetailResponse,
     VideoListItem,
     VideoListResponse,
 )
@@ -170,3 +172,84 @@ async def list_videos(
     )
 
     return VideoListResponse(data=items, pagination=pagination)
+
+
+@router.get("/videos/{video_id}", response_model=VideoDetailResponse)
+async def get_video(
+    video_id: str = Path(
+        ...,
+        min_length=11,
+        max_length=11,
+        description="YouTube video ID (11 characters)",
+        example="dQw4w9WgXcQ",
+    ),
+    session: AsyncSession = Depends(get_db),
+) -> VideoDetailResponse:
+    """
+    Get video details by ID.
+
+    Returns full video metadata including transcript summary.
+
+    Parameters
+    ----------
+    video_id : str
+        YouTube video ID (11 characters).
+    session : AsyncSession
+        Database session from dependency.
+
+    Returns
+    -------
+    VideoDetailResponse
+        Full video details with transcript summary.
+
+    Raises
+    ------
+    HTTPException
+        404 if video not found.
+    """
+    # Query video with relationships
+    query = (
+        select(VideoDB)
+        .where(VideoDB.video_id == video_id)
+        .where(VideoDB.deleted_flag.is_(False))
+        .options(selectinload(VideoDB.transcripts))
+        .options(selectinload(VideoDB.channel))
+        .options(selectinload(VideoDB.tags))
+    )
+
+    result = await session.execute(query)
+    video = result.scalar_one_or_none()
+
+    if not video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "NOT_FOUND",
+                "message": f"Video '{video_id}' not found. Verify the video ID or run a sync.",
+            },
+        )
+
+    # Build response
+    transcript_summary = build_transcript_summary(list(video.transcripts))
+    channel_title = video.channel.title if video.channel else None
+    tags = [tag.tag for tag in video.tags] if video.tags else []
+
+    detail = VideoDetail(
+        video_id=video.video_id,
+        title=video.title,
+        description=video.description,
+        channel_id=video.channel_id,
+        channel_title=channel_title,
+        upload_date=video.upload_date,
+        duration=video.duration,
+        view_count=video.view_count,
+        like_count=video.like_count,
+        comment_count=video.comment_count,
+        tags=tags,
+        category_id=video.category_id,
+        default_language=video.default_language,
+        made_for_kids=video.made_for_kids,
+        transcript_summary=transcript_summary,
+    )
+
+    return VideoDetailResponse(data=detail)

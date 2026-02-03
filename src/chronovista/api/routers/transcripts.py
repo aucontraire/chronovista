@@ -100,7 +100,8 @@ async def get_transcript_languages(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "code": "NOT_FOUND",
-                "message": f"Video '{video_id}' not found.",
+                "message": f"Video '{video_id}' not found. "
+                "Verify the video ID or run: chronovista sync videos",
             },
         )
 
@@ -180,7 +181,9 @@ async def get_transcript(
                     "code": "NOT_FOUND",
                     "message": (
                         f"No transcript found for video '{video_id}' "
-                        f"in language '{language}'."
+                        f"in language '{language}'. "
+                        "Check available languages at: "
+                        f"GET /api/v1/videos/{video_id}/transcript/languages"
                     ),
                 },
             )
@@ -188,7 +191,8 @@ async def get_transcript(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "code": "NOT_FOUND",
-                "message": f"No transcripts available for video '{video_id}'.",
+                "message": f"No transcripts available for video '{video_id}'. "
+                "Run: chronovista sync transcripts --video-id " + video_id,
             },
         )
 

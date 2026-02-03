@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import asyncio
+from collections.abc import AsyncGenerator
 from typing import Any, Awaitable, Callable, Dict, Generator
 
 import pytest
@@ -32,6 +33,7 @@ from chronovista.services.youtube_service import YouTubeService
 from httpx import ASGITransport, AsyncClient
 
 from chronovista.api.main import app
+from chronovista.api.deps import get_db
 
 
 async def check_database_availability(engine) -> bool:
@@ -300,21 +302,51 @@ def test_user_id() -> str:
 
 
 @pytest.fixture
-async def async_client() -> AsyncClient:
+async def async_client(
+    integration_db_engine,
+    integration_session_factory,
+) -> AsyncGenerator[AsyncClient, None]:
     """
-    Create async test client for FastAPI testing.
+    Create async test client for FastAPI testing with overridden DB dependency.
 
     Uses httpx AsyncClient with ASGITransport to test FastAPI
-    endpoints without starting an actual server.
+    endpoints without starting an actual server. Overrides the get_db
+    dependency to use the test-scoped database session to avoid event
+    loop issues with the app's db_manager.
+
+    Parameters
+    ----------
+    integration_db_engine : AsyncEngine
+        The test database engine.
+    integration_session_factory : async_sessionmaker
+        The test session factory.
 
     Yields
     ------
     AsyncClient
         An async HTTP client for making test requests.
     """
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
+    # Create a test-scoped session generator that overrides the app's get_db
+    async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
+        async with integration_session_factory() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    # Override the dependency
+    app.dependency_overrides[get_db] = override_get_db
+
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
+    finally:
+        # Clean up the override and dispose the engine
+        app.dependency_overrides.clear()
+        await integration_db_engine.dispose()
 
 
 @pytest.fixture

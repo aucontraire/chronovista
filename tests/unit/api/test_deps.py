@@ -1,4 +1,5 @@
 """Unit tests for API dependencies."""
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -54,7 +55,7 @@ class TestGetDb:
 
         async def mock_get_session():
             raise ConnectionError("Database unavailable")
-            yield  # Unreachable, but needed for async generator syntax
+            yield  # type: ignore[unreachable]  # Unreachable, but needed for async generator syntax
 
         with patch("chronovista.api.deps.db_manager") as mock_db:
             mock_db.get_session = mock_get_session
@@ -75,8 +76,8 @@ class TestRequireAuth:
             mock_oauth.is_authenticated.return_value = True
 
             # Should not raise
-            result = await require_auth()
-            assert result is None
+            await require_auth()
+            # Function returns None, no assertion needed
 
     async def test_require_auth_raises_401_when_not_authenticated(self) -> None:
         """Test require_auth raises HTTPException when not authenticated."""
@@ -89,8 +90,9 @@ class TestRequireAuth:
                 await require_auth()
 
             assert exc_info.value.status_code == 401
-            assert exc_info.value.detail["code"] == "NOT_AUTHENTICATED"
-            assert "chronovista auth login" in exc_info.value.detail["message"]
+            detail = cast(dict[str, Any], exc_info.value.detail)
+            assert detail["code"] == "NOT_AUTHENTICATED"
+            assert "chronovista auth login" in detail["message"]
 
     async def test_require_auth_checks_oauth_service(self) -> None:
         """Test require_auth calls is_authenticated on oauth service."""
@@ -115,10 +117,10 @@ class TestRequireAuth:
                 await require_auth()
 
             # Verify error structure
-            assert isinstance(exc_info.value.detail, dict)
-            assert "code" in exc_info.value.detail
-            assert "message" in exc_info.value.detail
-            assert exc_info.value.detail["code"] == "NOT_AUTHENTICATED"
+            detail = cast(dict[str, Any], exc_info.value.detail)
+            assert "code" in detail
+            assert "message" in detail
+            assert detail["code"] == "NOT_AUTHENTICATED"
 
     async def test_require_auth_multiple_calls_when_authenticated(self) -> None:
         """Test require_auth can be called multiple times when authenticated."""

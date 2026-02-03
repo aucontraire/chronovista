@@ -40,7 +40,7 @@ class TestPaginationMeta:
         from chronovista.api.schemas.responses import PaginationMeta
 
         with pytest.raises(ValidationError) as exc_info:
-            PaginationMeta(total=100, limit=20)  # Missing offset and has_more
+            PaginationMeta(total=100, limit=20)  # type: ignore[call-arg]  # Missing offset and has_more
 
         errors = exc_info.value.errors()
         assert len(errors) == 2
@@ -54,7 +54,7 @@ class TestPaginationMeta:
         # String instead of int should fail with strict=True
         with pytest.raises(ValidationError):
             PaginationMeta(
-                total="100",  # Should be int
+                total="100",  # type: ignore[arg-type]  # Should be int
                 limit=20,
                 offset=0,
                 has_more=True,
@@ -96,7 +96,7 @@ class TestApiError:
         from chronovista.api.schemas.responses import ApiError
 
         with pytest.raises(ValidationError) as exc_info:
-            ApiError(code="NOT_FOUND")  # Missing message
+            ApiError(code="NOT_FOUND")  # type: ignore[call-arg]  # Missing message
 
         errors = exc_info.value.errors()
         assert len(errors) == 1
@@ -109,7 +109,7 @@ class TestApiError:
         # Integer instead of string should fail with strict=True
         with pytest.raises(ValidationError):
             ApiError(
-                code=404,  # Should be string
+                code=404,  # type: ignore[arg-type]  # Should be string
                 message="Not found",
             )
 
@@ -174,7 +174,7 @@ class TestApiResponse:
         from chronovista.api.schemas.responses import ApiResponse
 
         with pytest.raises(ValidationError) as exc_info:
-            ApiResponse()  # Missing data
+            ApiResponse()  # type: ignore[call-arg]  # Missing data
 
         errors = exc_info.value.errors()
         assert len(errors) == 1
@@ -218,7 +218,7 @@ class TestErrorResponse:
         from chronovista.api.schemas.responses import ErrorResponse
 
         with pytest.raises(ValidationError) as exc_info:
-            ErrorResponse()  # Missing error
+            ErrorResponse()  # type: ignore[call-arg]  # Missing error
 
         errors = exc_info.value.errors()
         assert len(errors) == 1
@@ -230,7 +230,7 @@ class TestErrorResponse:
 
         # String instead of ApiError should fail with strict=True
         with pytest.raises(ValidationError):
-            ErrorResponse(error="error message")  # Should be ApiError instance
+            ErrorResponse(error="error message")  # type: ignore[arg-type]  # Should be ApiError instance
 
 
 class TestSchemaIntegration:

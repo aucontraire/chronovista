@@ -218,7 +218,7 @@ class TestHealthEndpointDatabaseFailure:
         # Mock db_manager to raise exception
         async def mock_get_session():
             raise ConnectionError("Database unavailable")
-            yield  # Unreachable
+            yield  # type: ignore[unreachable]  # Unreachable
 
         with patch("chronovista.api.routers.health.db_manager") as mock_db:
             mock_db.get_session = mock_get_session
@@ -233,7 +233,7 @@ class TestHealthEndpointDatabaseFailure:
         # Mock db_manager to raise exception
         async def mock_get_session():
             raise ConnectionError("Database unavailable")
-            yield
+            yield  # type: ignore[unreachable]
 
         with patch("chronovista.api.routers.health.db_manager") as mock_db:
             mock_db.get_session = mock_get_session
@@ -250,7 +250,7 @@ class TestHealthEndpointDatabaseFailure:
         # Mock db_manager to raise exception
         async def mock_get_session():
             raise ConnectionError("Database unavailable")
-            yield
+            yield  # type: ignore[unreachable]
 
         with patch("chronovista.api.routers.health.db_manager") as mock_db:
             mock_db.get_session = mock_get_session
@@ -267,7 +267,7 @@ class TestHealthEndpointDatabaseFailure:
         # Mock db_manager to raise exception
         async def mock_get_session():
             raise ConnectionError("Database unavailable")
-            yield
+            yield  # type: ignore[unreachable]
 
         with patch("chronovista.api.routers.health.db_manager") as mock_db:
             mock_db.get_session = mock_get_session

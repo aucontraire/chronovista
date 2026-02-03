@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from chronovista.api.routers import health
+from chronovista.api.routers import health, videos
 
 
 @asynccontextmanager
@@ -25,3 +25,4 @@ app = FastAPI(
 
 # Mount routers under /api/v1 prefix (FR-028 versioning)
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
+app.include_router(videos.router, prefix="/api/v1", tags=["videos"])

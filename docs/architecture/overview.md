@@ -16,8 +16,8 @@ chronovista is a personal YouTube data analytics platform that provides comprehe
 |                           chronovista                                   |
 |                                                                         |
 |  +---------------+  +---------------+  +---------------+               |
-|  |  CLI Layer    |  | Service Layer |  |  Repository   |               |
-|  |  (Typer)      |  |               |  |    Layer      |               |
+|  |  CLI Layer    |  |  REST API     |  |  Repository   |               |
+|  |  (Typer)      |  |  (FastAPI)    |  |    Layer      |               |
 |  +-------+-------+  +-------+-------+  +-------+-------+               |
 |          |                  |                  |                        |
 |          v                  v                  v                        |
@@ -45,6 +45,7 @@ Clear separation between layers:
 | Layer | Responsibility | Technology |
 |-------|----------------|------------|
 | CLI | User interaction | Typer, Rich |
+| REST API | HTTP interface | FastAPI, Pydantic |
 | Service | Business logic | Python async |
 | Repository | Data access | SQLAlchemy |
 | Database | Persistence | PostgreSQL |
@@ -86,6 +87,16 @@ Typer-based command-line interface:
 - Rich formatting and progress bars
 - Command groups (auth, sync, topics, takeout)
 - Error handling and user feedback
+
+### REST API Layer
+
+FastAPI-based HTTP interface:
+
+- 11 versioned endpoints under `/api/v1/`
+- OAuth integration with CLI token cache
+- OpenAPI documentation (Swagger, ReDoc)
+- Pydantic V2 response schemas
+- Pagination and error handling
 
 ### Service Layer
 
@@ -156,6 +167,24 @@ PostgreSQL with async SQLAlchemy:
            |
            v
 5. Database: Store historical data
+```
+
+### REST API Request
+
+```
+1. Client: GET /api/v1/videos
+           |
+           v
+2. FastAPI: Validate auth, parse params
+           |
+           v
+3. Dependencies: Get DB session, verify OAuth
+           |
+           v
+4. Repository: Query with filters
+           |
+           v
+5. Response: Serialize with Pydantic
 ```
 
 ## Key Patterns

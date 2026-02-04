@@ -296,7 +296,7 @@ class TestConflictHandling:
             response2 = await async_client.post("/api/v1/sync/videos")
             assert response2.status_code == 409
             data = response2.json()
-            assert data["detail"]["code"] == "SYNC_IN_PROGRESS"
+            assert data["error"]["code"] == "CONFLICT"
 
             # Cleanup
             sync_manager.complete_operation(success=True)
@@ -319,8 +319,8 @@ class TestConflictHandling:
             data = response2.json()
 
             # Check that details include current operation info
-            assert "details" in data["detail"]
-            details = data["detail"]["details"]
+            assert "details" in data["error"]
+            details = data["error"]["details"]
             assert "operation_id" in details
             assert details["operation_id"] == first_operation_id
             assert "operation_type" in details
@@ -346,7 +346,7 @@ class TestConflictHandling:
             data = response.json()
 
             # Verify message is helpful
-            message = data["detail"]["message"]
+            message = data["error"]["message"]
             assert "in progress" in message.lower()
             assert "wait" in message.lower() or "check status" in message.lower()
 
@@ -536,7 +536,7 @@ class TestTranscriptSyncRequestValidation:
             assert response.status_code == 422
             data = response.json()
             # Check that error mentions empty video IDs
-            assert "detail" in data
+            assert "error" in data
 
     async def test_whitespace_only_video_ids_are_rejected(
         self, async_client: AsyncClient

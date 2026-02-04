@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -21,6 +21,7 @@ from chronovista.api.schemas.videos import (
 )
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript
+from chronovista.exceptions import NotFoundError
 
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -204,8 +205,8 @@ async def get_video(
 
     Raises
     ------
-    HTTPException
-        404 if video not found.
+    NotFoundError
+        If video not found (404).
     """
     # Query video with relationships
     query = (
@@ -221,12 +222,10 @@ async def get_video(
     video = result.scalar_one_or_none()
 
     if not video:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "code": "NOT_FOUND",
-                "message": f"Video '{video_id}' not found. Verify the video ID or run a sync.",
-            },
+        raise NotFoundError(
+            resource_type="Video",
+            identifier=video_id,
+            hint="Verify the video ID or run: chronovista sync videos",
         )
 
     # Build response

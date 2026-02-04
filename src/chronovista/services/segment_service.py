@@ -11,10 +11,8 @@ from __future__ import annotations
 import json
 import re
 from enum import Enum
-from typing import TYPE_CHECKING, Optional, Sequence
-
-if TYPE_CHECKING:
-    from chronovista.models.transcript_segment import TranscriptSegment
+from typing import Optional, Sequence
+from chronovista.models.transcript_segment import TranscriptSegment
 
 
 class OutputFormat(str, Enum):

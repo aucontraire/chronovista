@@ -65,7 +65,7 @@ class TestSearchSegments:
             response = await async_client.get("/api/v1/search/segments?q=%20%20")
             assert response.status_code == 400  # Bad request for empty query
             data = response.json()
-            assert data["detail"]["code"] == "VALIDATION_ERROR"
+            assert data["error"]["code"] == "BAD_REQUEST"
 
     async def test_search_empty_results(self, async_client: AsyncClient) -> None:
         """Test empty results for non-matching query."""

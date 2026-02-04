@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +19,7 @@ from chronovista.api.schemas.transcripts import (
 from chronovista.db.models import TranscriptSegment as SegmentDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as TranscriptDB
+from chronovista.exceptions import NotFoundError
 
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -86,8 +87,8 @@ async def get_transcript_languages(
 
     Raises
     ------
-    HTTPException
-        404 if video not found.
+    NotFoundError
+        If video not found (404).
     """
     # Check video exists
     video_result = await session.execute(
@@ -96,13 +97,10 @@ async def get_transcript_languages(
         .where(VideoDB.deleted_flag.is_(False))
     )
     if not video_result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "code": "NOT_FOUND",
-                "message": f"Video '{video_id}' not found. "
-                "Verify the video ID or run: chronovista sync videos",
-            },
+        raise NotFoundError(
+            resource_type="Video",
+            identifier=video_id,
+            hint="Verify the video ID or run: chronovista sync videos",
         )
 
     # Get transcripts
@@ -156,8 +154,8 @@ async def get_transcript(
 
     Raises
     ------
-    HTTPException
-        404 if transcript not found.
+    NotFoundError
+        If transcript not found (404).
     """
     # Build query
     query = select(TranscriptDB).where(TranscriptDB.video_id == video_id)
@@ -175,25 +173,15 @@ async def get_transcript(
 
     if not transcript:
         if language:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={
-                    "code": "NOT_FOUND",
-                    "message": (
-                        f"No transcript found for video '{video_id}' "
-                        f"in language '{language}'. "
-                        "Check available languages at: "
-                        f"GET /api/v1/videos/{video_id}/transcript/languages"
-                    ),
-                },
+            raise NotFoundError(
+                resource_type="Transcript",
+                identifier=f"{video_id}/{language}",
+                hint=f"Check available languages at: GET /api/v1/videos/{video_id}/transcript/languages",
             )
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "code": "NOT_FOUND",
-                "message": f"No transcripts available for video '{video_id}'. "
-                "Run: chronovista sync transcripts --video-id " + video_id,
-            },
+        raise NotFoundError(
+            resource_type="Transcript",
+            identifier=video_id,
+            hint=f"Run: chronovista sync transcripts --video-id {video_id}",
         )
 
     return TranscriptResponse(

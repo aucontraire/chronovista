@@ -2,7 +2,7 @@
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +13,7 @@ from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import TranscriptSegment as SegmentDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as TranscriptDB
+from chronovista.exceptions import BadRequestError
 
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -79,18 +80,15 @@ async def search_segments(
 
     Raises
     ------
-    HTTPException
-        400 if search query is empty after stripping whitespace.
+    BadRequestError
+        If search query is empty after stripping whitespace (400).
     """
     # Validate and clean query
     query_text = q.strip()
     if not query_text:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": "VALIDATION_ERROR",
-                "message": "Search query cannot be empty",
-            },
+        raise BadRequestError(
+            message="Search query cannot be empty",
+            details={"field": "q", "constraint": "non_empty"},
         )
 
     # Split query into terms for multi-word search (implicit AND)

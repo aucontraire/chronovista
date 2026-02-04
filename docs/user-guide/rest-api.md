@@ -60,7 +60,7 @@ If not authenticated, protected endpoints return:
 
 ```json
 {
-  "detail": {
+  "error": {
     "code": "NOT_AUTHENTICATED",
     "message": "Not authenticated. Run: chronovista auth login"
   }
@@ -115,9 +115,13 @@ All responses use a consistent envelope structure.
 
 ```json
 {
-  "detail": {
+  "error": {
     "code": "NOT_FOUND",
-    "message": "Video 'xyz789' not found. Verify the video ID or run a sync."
+    "message": "Video 'xyz789' not found. Verify the video ID or run a sync.",
+    "details": {
+      "resource_type": "Video",
+      "identifier": "xyz789"
+    }
   }
 }
 ```
@@ -129,7 +133,10 @@ All responses use a consistent envelope structure.
 | `NOT_AUTHENTICATED` | 401 | OAuth token missing or invalid |
 | `NOT_FOUND` | 404 | Resource not found |
 | `VALIDATION_ERROR` | 400 | Invalid request parameters |
+| `BAD_REQUEST` | 400 | Invalid request parameters |
+| `MUTUALLY_EXCLUSIVE` | 400 | Both linked and unlinked filters set to true |
 | `SYNC_IN_PROGRESS` | 409 | Another sync operation is running |
+| `CONFLICT` | 409 | Resource conflict (e.g., sync in progress) |
 | `INVALID_LANGUAGE_CODE` | 400 | Invalid BCP-47 language code |
 | `INVALID_PREFERENCE_TYPE` | 400 | Invalid preference type |
 
@@ -262,6 +269,321 @@ GET /api/v1/videos/{video_id}
   }
 }
 ```
+
+---
+
+### Channels
+
+#### List Channels
+
+Get paginated list of channels sorted by video count.
+
+```
+GET /api/v1/channels
+```
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `has_videos` | boolean | Filter to channels with videos | - |
+| `limit` | integer | Items per page (1-100) | 20 |
+| `offset` | integer | Pagination offset | 0 |
+
+##### Response
+
+```json
+{
+  "data": [
+    {
+      "channel_id": "UCuAXFkgsw1L7xaCfnd5JJOw",
+      "title": "Rick Astley",
+      "description": "Official channel...",
+      "subscriber_count": 5000000,
+      "video_count": 150,
+      "thumbnail_url": "https://yt3.ggpht.com/..."
+    }
+  ],
+  "pagination": {
+    "total": 50,
+    "limit": 20,
+    "offset": 0,
+    "has_more": true
+  }
+}
+```
+
+#### Get Channel Details
+
+Get full details for a specific channel.
+
+```
+GET /api/v1/channels/{channel_id}
+```
+
+##### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `channel_id` | string | YouTube channel ID (24 characters) |
+
+##### Response
+
+```json
+{
+  "data": {
+    "channel_id": "UCuAXFkgsw1L7xaCfnd5JJOw",
+    "title": "Rick Astley",
+    "description": "Official channel for Rick Astley...",
+    "subscriber_count": 5000000,
+    "video_count": 150,
+    "thumbnail_url": "https://yt3.ggpht.com/...",
+    "custom_url": "@RickAstley",
+    "published_at": "2006-09-23T00:00:00Z"
+  }
+}
+```
+
+#### Get Channel Videos
+
+Get paginated list of videos from a specific channel.
+
+```
+GET /api/v1/channels/{channel_id}/videos
+```
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `limit` | integer | Items per page (1-100) | 20 |
+| `offset` | integer | Pagination offset | 0 |
+
+##### Response
+
+Returns the same format as the videos list endpoint, filtered to the specified channel.
+
+---
+
+### Playlists
+
+#### List Playlists
+
+Get paginated list of playlists sorted by last updated.
+
+```
+GET /api/v1/playlists
+```
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `linked` | boolean | Filter to YouTube-linked playlists (PL/LL/WL/HL prefix) | - |
+| `unlinked` | boolean | Filter to internal playlists (int_ prefix) | - |
+| `limit` | integer | Items per page (1-100) | 20 |
+| `offset` | integer | Pagination offset | 0 |
+
+!!! warning "Mutually Exclusive Filters"
+    Setting both `linked=true` and `unlinked=true` returns a 400 Bad Request error.
+
+##### Response
+
+```json
+{
+  "data": [
+    {
+      "playlist_id": "PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf",
+      "title": "My Favorites",
+      "description": "Collection of favorite videos",
+      "video_count": 42,
+      "privacy_status": "private",
+      "is_linked": true
+    }
+  ],
+  "pagination": {
+    "total": 15,
+    "limit": 20,
+    "offset": 0,
+    "has_more": false
+  }
+}
+```
+
+#### Get Playlist Details
+
+Get full details for a specific playlist.
+
+```
+GET /api/v1/playlists/{playlist_id}
+```
+
+##### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `playlist_id` | string | Playlist ID (YouTube: PL/LL/WL/HL prefix, Internal: int_ prefix) |
+
+##### Response
+
+```json
+{
+  "data": {
+    "playlist_id": "PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf",
+    "title": "My Favorites",
+    "description": "Collection of favorite videos",
+    "video_count": 42,
+    "privacy_status": "private",
+    "is_linked": true,
+    "channel_id": "UCuAXFkgsw1L7xaCfnd5JJOw",
+    "published_at": "2020-01-15T10:30:00Z"
+  }
+}
+```
+
+#### Get Playlist Videos
+
+Get paginated list of videos in a playlist with position ordering preserved.
+
+```
+GET /api/v1/playlists/{playlist_id}/videos
+```
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `limit` | integer | Items per page (1-100) | 20 |
+| `offset` | integer | Pagination offset | 0 |
+
+##### Response
+
+```json
+{
+  "data": [
+    {
+      "video_id": "dQw4w9WgXcQ",
+      "title": "Rick Astley - Never Gonna Give You Up",
+      "position": 0,
+      "channel_title": "Rick Astley",
+      "upload_date": "2009-10-25T06:57:33Z",
+      "duration": 213
+    }
+  ],
+  "pagination": {
+    "total": 42,
+    "limit": 20,
+    "offset": 0,
+    "has_more": true
+  }
+}
+```
+
+---
+
+### Topics
+
+Topics are YouTube's Knowledge Graph classifications for video content.
+
+#### List Topics
+
+Get all topics with aggregated video and channel counts, sorted by video count.
+
+```
+GET /api/v1/topics
+```
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `limit` | integer | Items per page (1-100) | 20 |
+| `offset` | integer | Pagination offset | 0 |
+
+##### Response
+
+```json
+{
+  "data": [
+    {
+      "topic_id": "/m/098wr",
+      "name": "Society",
+      "video_count": 27099,
+      "channel_count": 156
+    },
+    {
+      "topic_id": "/m/04rlf",
+      "name": "Music",
+      "video_count": 2736,
+      "channel_count": 89
+    }
+  ],
+  "pagination": {
+    "total": 62,
+    "limit": 20,
+    "offset": 0,
+    "has_more": true
+  }
+}
+```
+
+#### Get Topic Details
+
+Get full details for a specific topic.
+
+```
+GET /api/v1/topics/{topic_id}
+```
+
+##### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `topic_id` | string | Topic ID (Knowledge Graph format like `/m/098wr` or alphanumeric like `wiki_Military`) |
+
+!!! note "Topic IDs with Slashes"
+    Topic IDs containing slashes (e.g., `/m/098wr`) are supported directly in the URL path without encoding.
+
+##### Response
+
+```json
+{
+  "data": {
+    "topic_id": "/m/098wr",
+    "name": "Society",
+    "video_count": 27099,
+    "channel_count": 156,
+    "parent_topic_id": null,
+    "topic_type": "youtube",
+    "wikipedia_url": "https://en.wikipedia.org/wiki/Society",
+    "normalized_name": "society",
+    "source": "seeded",
+    "created_at": "2026-01-25T14:31:31Z"
+  }
+}
+```
+
+#### Get Topic Videos
+
+Get paginated list of videos classified with a specific topic.
+
+```
+GET /api/v1/topics/{topic_id}/videos
+```
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `limit` | integer | Items per page (1-100) | 20 |
+| `offset` | integer | Pagination offset | 0 |
+
+!!! note "Topic IDs with Slashes for Videos Endpoint"
+    For topic IDs with slashes (e.g., `/m/098wr`), you can use the ID directly: `/api/v1/topics//m/098wr/videos`
+
+##### Response
+
+Returns the same format as the videos list endpoint, filtered to videos with the specified topic.
 
 ---
 
@@ -741,6 +1063,69 @@ curl -X POST http://localhost:8000/api/v1/sync/transcripts \
 
 ```bash
 curl http://localhost:8000/api/v1/sync/status
+```
+
+#### List Channels
+
+```bash
+# All channels
+curl http://localhost:8000/api/v1/channels
+
+# Only channels with videos
+curl "http://localhost:8000/api/v1/channels?has_videos=true"
+```
+
+#### Get Channel Details
+
+```bash
+curl http://localhost:8000/api/v1/channels/UCuAXFkgsw1L7xaCfnd5JJOw
+```
+
+#### Get Channel Videos
+
+```bash
+curl http://localhost:8000/api/v1/channels/UCuAXFkgsw1L7xaCfnd5JJOw/videos
+```
+
+#### List Playlists
+
+```bash
+# All playlists
+curl http://localhost:8000/api/v1/playlists
+
+# Only YouTube-linked playlists
+curl "http://localhost:8000/api/v1/playlists?linked=true"
+
+# Only internal playlists
+curl "http://localhost:8000/api/v1/playlists?unlinked=true"
+```
+
+#### Get Playlist Videos
+
+```bash
+curl http://localhost:8000/api/v1/playlists/PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf/videos
+```
+
+#### List Topics
+
+```bash
+curl http://localhost:8000/api/v1/topics
+```
+
+#### Get Topic Details
+
+```bash
+# Topic with slash in ID
+curl http://localhost:8000/api/v1/topics//m/098wr
+
+# Topic with alphanumeric ID
+curl http://localhost:8000/api/v1/topics/wiki_Military
+```
+
+#### Get Topic Videos
+
+```bash
+curl http://localhost:8000/api/v1/topics//m/098wr/videos
 ```
 
 ### Using Python

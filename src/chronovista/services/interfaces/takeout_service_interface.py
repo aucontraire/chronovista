@@ -10,7 +10,7 @@ This interface defines the contract for Takeout data parsing, enabling:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, List
+from typing import List
 
 from ...models.takeout import (
     ContentGap,

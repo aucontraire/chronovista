@@ -8,6 +8,10 @@ and validation errors.
 
 from __future__ import annotations
 
+from typing import Any
+
+from chronovista.api.schemas.responses import ApiError, ErrorCode
+
 
 class ChronovistaError(Exception):
     """Base exception for all chronovista errors."""
@@ -496,6 +500,235 @@ class RepositoryError(ChronovistaError):
         self.entity_type: str | None = entity_type
         self.original_error: Exception | None = original_error
         super().__init__(message)
+
+
+# =============================================================================
+# API Layer Exceptions
+# =============================================================================
+
+
+class APIError(ChronovistaError):
+    """Base exception for API layer errors.
+
+    This exception provides a standardized way to return HTTP errors from
+    the API layer with machine-readable error codes and detailed context.
+
+    Attributes
+    ----------
+    status_code : int
+        HTTP status code for the error response (default: 500).
+    error_code : ErrorCode
+        Machine-readable error code for API consumers.
+    message : str
+        Human-readable error message.
+    details : dict[str, Any] | None
+        Additional error context (e.g., resource_type, identifier).
+
+    Examples
+    --------
+    >>> raise APIError(message="Something went wrong", details={"context": "example"})
+    """
+
+    status_code: int = 500
+    _error_code_value: str = "INTERNAL_ERROR"
+
+    def __init__(
+        self,
+        message: str,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        """
+        Initialize APIError.
+
+        Parameters
+        ----------
+        message : str
+            Human-readable error message.
+        details : dict[str, Any] | None, optional
+            Additional error context (default: None).
+        """
+        self.message = message
+        self.details = details
+        super().__init__(message)
+
+    @property
+    def error_code(self) -> ErrorCode:
+        """Get the error code as an ErrorCode enum."""
+        from chronovista.api.schemas.responses import ErrorCode
+
+        return ErrorCode(self._error_code_value)
+
+    def to_api_error(self) -> ApiError:
+        """Convert to API response schema.
+
+        Returns
+        -------
+        ApiError
+            Pydantic model suitable for JSON serialization.
+        """
+        from chronovista.api.schemas.responses import ApiError
+
+        return ApiError(
+            code=self.error_code.value,
+            message=self.message,
+            details=self.details,
+        )
+
+
+class NotFoundError(APIError):
+    """Resource not found (404).
+
+    This exception is raised when a requested resource does not exist
+    in the database.
+
+    Attributes
+    ----------
+    status_code : int
+        Always 404 for this exception.
+    error_code : ErrorCode
+        Always NOT_FOUND for this exception.
+    resource_type : str
+        The type of resource that was not found (e.g., "Channel", "Video").
+    identifier : str
+        The identifier used to look up the resource.
+
+    Examples
+    --------
+    >>> raise NotFoundError(
+    ...     resource_type="Channel",
+    ...     identifier="UCxyz123456789",
+    ...     hint="Verify the channel ID or run a sync."
+    ... )
+    """
+
+    status_code: int = 404
+    _error_code_value: str = "NOT_FOUND"
+
+    def __init__(
+        self,
+        resource_type: str,
+        identifier: str,
+        hint: str | None = None,
+    ) -> None:
+        """
+        Initialize NotFoundError.
+
+        Parameters
+        ----------
+        resource_type : str
+            The type of resource that was not found (e.g., "Channel", "Video").
+        identifier : str
+            The identifier used to look up the resource.
+        hint : str | None, optional
+            Additional hint for the user (default: None).
+        """
+        self.resource_type = resource_type
+        self.identifier = identifier
+        message = f"{resource_type} '{identifier}' not found"
+        if hint:
+            message += f". {hint}"
+        super().__init__(
+            message=message,
+            details={"resource_type": resource_type, "identifier": identifier},
+        )
+
+
+class BadRequestError(APIError):
+    """Invalid request parameters (400).
+
+    This exception is raised when the request contains invalid parameters
+    that cannot be processed.
+
+    Attributes
+    ----------
+    status_code : int
+        Always 400 for this exception.
+    error_code : ErrorCode
+        Either BAD_REQUEST or MUTUALLY_EXCLUSIVE.
+
+    Examples
+    --------
+    >>> raise BadRequestError(
+    ...     message="Cannot specify both 'linked=true' and 'unlinked=true'.",
+    ...     details={"field": "linked,unlinked", "constraint": "mutually_exclusive"}
+    ... )
+    """
+
+    status_code: int = 400
+    _error_code_value: str = "BAD_REQUEST"
+
+    def __init__(
+        self,
+        message: str,
+        details: dict[str, Any] | None = None,
+        *,
+        mutually_exclusive: bool = False,
+    ) -> None:
+        """
+        Initialize BadRequestError.
+
+        Parameters
+        ----------
+        message : str
+            Human-readable error message.
+        details : dict[str, Any] | None, optional
+            Additional error context (default: None).
+        mutually_exclusive : bool, optional
+            If True, uses MUTUALLY_EXCLUSIVE error code (default: False).
+        """
+        if mutually_exclusive:
+            self._error_code_value = "MUTUALLY_EXCLUSIVE"
+        super().__init__(message=message, details=details)
+
+
+class APIValidationError(APIError):
+    """Request validation failed (422).
+
+    This exception is raised when Pydantic validation fails on the request
+    body or when custom validation logic fails.
+
+    Attributes
+    ----------
+    status_code : int
+        Always 422 for this exception.
+    error_code : ErrorCode
+        Always VALIDATION_ERROR for this exception.
+
+    Examples
+    --------
+    >>> raise APIValidationError(
+    ...     message="Request validation failed",
+    ...     details={"errors": [{"loc": ["body", "title"], "msg": "field required"}]}
+    ... )
+    """
+
+    status_code: int = 422
+    _error_code_value: str = "VALIDATION_ERROR"
+
+
+class ConflictError(APIError):
+    """Resource conflict (409).
+
+    This exception is raised when the request would create a conflict
+    with existing data (e.g., duplicate resource creation).
+
+    Attributes
+    ----------
+    status_code : int
+        Always 409 for this exception.
+    error_code : ErrorCode
+        Always CONFLICT for this exception.
+
+    Examples
+    --------
+    >>> raise ConflictError(
+    ...     message="Channel already exists",
+    ...     details={"channel_id": "UCxyz123456789"}
+    ... )
+    """
+
+    status_code: int = 409
+    _error_code_value: str = "CONFLICT"
 
 
 # Exit codes for CLI integration

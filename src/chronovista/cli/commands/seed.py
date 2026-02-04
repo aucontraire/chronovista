@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from typing import TYPE_CHECKING
 
 import typer
 from rich.console import Console
@@ -23,8 +22,7 @@ from chronovista.config.database import db_manager
 from chronovista.container import container
 from chronovista.services.enrichment.seeders import TopicSeeder
 
-if TYPE_CHECKING:
-    from chronovista.services.enrichment.seeders import CategorySeeder
+from chronovista.services.enrichment.seeders import CategorySeeder
 
 console = Console()
 

@@ -224,9 +224,10 @@ class TestVideoDetail:
             response = await async_client.get("/api/v1/videos/NONEXISTENT")
             assert response.status_code == 404
             data = response.json()
-            assert "detail" in data
-            assert data["detail"]["code"] == "NOT_FOUND"
-            assert "Video 'NONEXISTENT' not found" in data["detail"]["message"]
+            assert "error" in data
+            assert data["error"]["code"] == "NOT_FOUND"
+            assert "Video" in data["error"]["message"]
+            assert "NONEXISTENT" in data["error"]["message"]
 
     async def test_get_video_actionable_error_message(
         self, async_client: AsyncClient
@@ -236,8 +237,8 @@ class TestVideoDetail:
             mock_oauth.is_authenticated.return_value = True
             response = await async_client.get("/api/v1/videos/NONEXISTENT")
             data = response.json()
-            # Check actionable guidance
-            assert "Verify the video ID or run a sync" in data["detail"]["message"]
+            # Check actionable guidance (hint is appended to message)
+            assert "sync" in data["error"]["message"].lower()
 
     async def test_get_video_id_validation_too_short(
         self, async_client: AsyncClient

@@ -15,7 +15,6 @@ import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

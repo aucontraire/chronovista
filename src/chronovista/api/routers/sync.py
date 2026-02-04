@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, status
 
 from chronovista.api.deps import require_auth
 from chronovista.api.schemas.sync import (
@@ -19,6 +19,7 @@ from chronovista.api.schemas.sync import (
     TranscriptSyncRequest,
 )
 from chronovista.api.services.sync_manager import sync_manager
+from chronovista.exceptions import ConflictError
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -99,35 +100,30 @@ async def trigger_sync(
 
     Raises
     ------
-    HTTPException
-        401 if not authenticated.
-        409 if sync already in progress.
+    ConflictError
+        If sync already in progress (409).
     """
     # Check if sync already running
     if sync_manager.is_sync_running():
         current_status = sync_manager.get_current_status()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "SYNC_IN_PROGRESS",
-                "message": (
-                    f"Sync already in progress "
-                    f"(operation: {current_status.operation_id}). "
-                    "Wait for completion or check status."
+        raise ConflictError(
+            message=(
+                f"Sync already in progress "
+                f"(operation: {current_status.operation_id}). "
+                "Wait for completion or check status."
+            ),
+            details={
+                "operation_id": current_status.operation_id,
+                "operation_type": (
+                    current_status.operation_type.value
+                    if current_status.operation_type
+                    else None
                 ),
-                "details": {
-                    "operation_id": current_status.operation_id,
-                    "operation_type": (
-                        current_status.operation_type.value
-                        if current_status.operation_type
-                        else None
-                    ),
-                    "started_at": (
-                        current_status.started_at.isoformat()
-                        if current_status.started_at
-                        else None
-                    ),
-                },
+                "started_at": (
+                    current_status.started_at.isoformat()
+                    if current_status.started_at
+                    else None
+                ),
             },
         )
 
@@ -139,12 +135,9 @@ async def trigger_sync(
         return SyncStartedResponse(data=started)
     except ValueError as e:
         # Should not happen if is_sync_running check passes, but handle anyway
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "SYNC_IN_PROGRESS",
-                "message": str(e),
-            },
+        raise ConflictError(
+            message=str(e),
+            details={"reason": "concurrent_sync"},
         )
 
 
@@ -192,10 +185,9 @@ async def get_sync_status() -> SyncStatusResponse:
         - started_at: When operation started
         - completed_at: When operation completed
 
-    Raises
-    ------
-    HTTPException
-        401 if not authenticated.
+    Notes
+    -----
+    Requires authentication (handled by router dependency).
     """
     sync_status = sync_manager.get_current_status()
     return SyncStatusResponse(data=sync_status)

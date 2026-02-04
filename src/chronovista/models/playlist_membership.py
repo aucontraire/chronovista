@@ -8,15 +8,14 @@ and metadata from Google Takeout data.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
 from .youtube_types import PlaylistId, VideoId
 
-if TYPE_CHECKING:
-    from .playlist import Playlist
-    from .video import Video
+from .playlist import Playlist
+from .video import Video
 
 
 class PlaylistMembershipBase(BaseModel):

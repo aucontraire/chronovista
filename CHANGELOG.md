@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.14.0] - 2026-02-04
+
+### Added
+- REST API endpoints for channels: list, detail, videos-by-channel (`/api/v1/channels`)
+- REST API endpoints for playlists: list, detail, videos-by-playlist (`/api/v1/playlists`)
+- REST API endpoints for topics: list, detail, videos-by-topic (`/api/v1/topics`)
+- Standardized error handling with ErrorCode enum and centralized exception handlers
+- Support for topic IDs with slashes (e.g., `/m/098wr`) using path converter
+
+### Changed
+- Retrofitted existing F010 endpoints (videos, transcripts, search, preferences, sync) to use typed exceptions
+- All 20 API endpoints now return consistent ErrorResponse format
+
+### Fixed
+- Topic IDs containing slashes now work correctly in URL paths
+- Removed orphaned YouTube category IDs from topic_categories table (they belong in video_categories)
+
 ## [0.13.0] - 2026-02-03
 
 ### Added

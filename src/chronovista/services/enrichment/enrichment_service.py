@@ -17,7 +17,7 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import unquote
 
 from pydantic import BaseModel, Field
@@ -45,19 +45,18 @@ from chronovista.models.enrichment_report import (
 )
 from chronovista.services.enrichment.shutdown_handler import get_shutdown_handler
 
-if TYPE_CHECKING:
-    from chronovista.repositories.channel_repository import ChannelRepository
-    from chronovista.repositories.playlist_repository import PlaylistRepository
-    from chronovista.repositories.topic_category_repository import (
-        TopicCategoryRepository,
-    )
-    from chronovista.repositories.video_category_repository import (
-        VideoCategoryRepository,
-    )
-    from chronovista.repositories.video_repository import VideoRepository
-    from chronovista.repositories.video_tag_repository import VideoTagRepository
-    from chronovista.repositories.video_topic_repository import VideoTopicRepository
-    from chronovista.services.youtube_service import YouTubeService
+from chronovista.repositories.channel_repository import ChannelRepository
+from chronovista.repositories.playlist_repository import PlaylistRepository
+from chronovista.repositories.topic_category_repository import (
+    TopicCategoryRepository,
+)
+from chronovista.repositories.video_category_repository import (
+    VideoCategoryRepository,
+)
+from chronovista.repositories.video_repository import VideoRepository
+from chronovista.repositories.video_tag_repository import VideoTagRepository
+from chronovista.repositories.video_topic_repository import VideoTopicRepository
+from chronovista.services.youtube_service import YouTubeService
 
 logger = logging.getLogger(__name__)
 

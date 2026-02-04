@@ -211,8 +211,8 @@ class TestUpdateLanguagePreferences:
             )
             assert response.status_code == 400
             data = response.json()
-            assert data["detail"]["code"] == "INVALID_LANGUAGE_CODE"
-            assert "invalid-code" in data["detail"]["message"]
+            assert data["error"]["code"] == "BAD_REQUEST"
+            assert "invalid-code" in data["error"]["message"]
 
     async def test_update_preferences_invalid_preference_type(
         self, async_client: AsyncClient
@@ -231,8 +231,8 @@ class TestUpdateLanguagePreferences:
             )
             assert response.status_code == 400
             data = response.json()
-            assert data["detail"]["code"] == "INVALID_PREFERENCE_TYPE"
-            assert "invalid_type" in data["detail"]["message"]
+            assert data["error"]["code"] == "BAD_REQUEST"
+            assert "invalid_type" in data["error"]["message"]
 
     async def test_update_preferences_valid_types(
         self, async_client: AsyncClient

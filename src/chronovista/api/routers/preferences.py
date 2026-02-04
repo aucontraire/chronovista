@@ -2,7 +2,7 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.deps import get_db, require_auth
@@ -13,6 +13,7 @@ from chronovista.api.schemas.preferences import (
     LanguagePreferenceUpdate,
 )
 from chronovista.container import container
+from chronovista.exceptions import BadRequestError
 from chronovista.models.enums import LanguageCode, LanguagePreferenceType
 from chronovista.models.user_language_preference import UserLanguagePreferenceCreate
 
@@ -85,13 +86,10 @@ async def update_language_preferences(
         if not validate_language_code(p.language_code)
     ]
     if invalid_codes:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": "INVALID_LANGUAGE_CODE",
-                "message": f"Invalid language codes: {', '.join(invalid_codes)}. "
-                "See LanguageCode enum for valid codes.",
-            },
+        raise BadRequestError(
+            message=f"Invalid language codes: {', '.join(invalid_codes)}. "
+            "See LanguageCode enum for valid codes.",
+            details={"field": "language_code", "invalid_values": invalid_codes},
         )
 
     # Validate all preference types
@@ -101,13 +99,10 @@ async def update_language_preferences(
         if not validate_preference_type(p.preference_type)
     ]
     if invalid_types:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": "INVALID_PREFERENCE_TYPE",
-                "message": f"Invalid preference types: {', '.join(invalid_types)}. "
-                "Valid types: fluent, learning, curious, exclude.",
-            },
+        raise BadRequestError(
+            message=f"Invalid preference types: {', '.join(invalid_types)}. "
+            "Valid types: fluent, learning, curious, exclude.",
+            details={"field": "preference_type", "invalid_values": invalid_types},
         )
 
     # Handle duplicates - last occurrence wins

@@ -9,7 +9,18 @@ from fastapi import FastAPI, Request
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
-from chronovista.api.routers import health, preferences, search, sync, transcripts, videos
+from chronovista.api.exception_handlers import register_exception_handlers
+from chronovista.api.routers import (
+    channels,
+    health,
+    playlists,
+    preferences,
+    search,
+    sync,
+    topics,
+    transcripts,
+    videos,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +46,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Register centralized exception handlers for consistent error responses
+register_exception_handlers(app)
 
 
 def _is_sensitive_path(path: str) -> bool:
@@ -123,6 +137,9 @@ async def log_requests(
 
 # Mount routers under /api/v1 prefix (FR-028 versioning)
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
+app.include_router(channels.router, prefix="/api/v1", tags=["channels"])
+app.include_router(playlists.router, prefix="/api/v1", tags=["playlists"])
+app.include_router(topics.router, prefix="/api/v1", tags=["topics"])
 app.include_router(videos.router, prefix="/api/v1", tags=["videos"])
 app.include_router(transcripts.router, prefix="/api/v1", tags=["transcripts"])
 app.include_router(search.router, prefix="/api/v1", tags=["search"])

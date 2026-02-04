@@ -165,6 +165,16 @@ chronovista export [COMMAND]
 | `channels` | Export channel data |
 | `watch-history` | Export watch history |
 
+### API Commands
+
+```bash
+chronovista api [COMMAND]
+```
+
+| Command | Description |
+|---------|-------------|
+| `start` | Start the REST API server |
+
 ## Detailed Command Reference
 
 ### Authentication
@@ -188,6 +198,41 @@ chronovista auth status
 ```
 
 Shows current authentication status and token expiration.
+
+### API Server
+
+#### Start Server
+
+```bash
+chronovista api start [OPTIONS]
+```
+
+Starts the FastAPI REST API server for programmatic access to your data.
+
+**Options:**
+
+- `--host <host>` - Host to bind to (default: 127.0.0.1)
+- `--port <port>` - Port to listen on (default: 8000)
+- `--reload` - Enable auto-reload for development
+
+**Examples:**
+
+```bash
+# Start with defaults
+chronovista api start
+
+# Start on specific port
+chronovista api start --port 8765
+
+# Development mode with auto-reload
+chronovista api start --reload
+```
+
+**Notes:**
+
+- Requires prior authentication via `chronovista auth login`
+- Interactive API documentation available at `http://localhost:<port>/docs`
+- OpenAPI specification at `http://localhost:<port>/openapi.json`
 
 ### Synchronization
 
@@ -736,6 +781,23 @@ chronovista tags by-video --id "dQw4w9WgXcQ"
 chronovista tags by-video --id "-2kc5xfeQEs"  # Video ID starting with -
 ```
 
+### REST API Workflow
+
+```bash
+# 1. Authenticate (same as CLI)
+chronovista auth login
+
+# 2. Start API server
+chronovista api start --port 8765
+
+# 3. Access via HTTP
+curl http://localhost:8765/api/v1/health
+curl http://localhost:8765/api/v1/videos?limit=10
+
+# 4. View interactive docs
+open http://localhost:8765/docs
+```
+
 ## Exit Codes
 
 | Code | Meaning |
@@ -753,3 +815,4 @@ chronovista tags by-video --id "-2kc5xfeQEs"  # Video ID starting with -
 - [Data Synchronization](data-sync.md)
 - [Topic Analytics](topic-analytics.md)
 - [Google Takeout](google-takeout.md)
+- [REST API](rest-api.md)

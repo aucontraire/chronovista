@@ -52,6 +52,7 @@ chronovista sync all
 | **Google Takeout** | Import complete YouTube history including deleted videos |
 | **Export Options** | CSV/JSON export with language-aware filtering |
 | **Write Operations** | Create playlists, like videos, subscribe to channels |
+| **REST API** | FastAPI server with 11 endpoints for programmatic access |
 
 ## Installation
 
@@ -183,6 +184,22 @@ chronovista sync all  # Enriches with current API data
 ```
 </details>
 
+### REST API
+
+Start the REST API server for programmatic access:
+
+```bash
+chronovista api start --port 8765    # Start server
+
+# Example requests (requires prior auth login)
+curl http://localhost:8765/api/v1/health
+curl http://localhost:8765/api/v1/videos?limit=10
+curl "http://localhost:8765/api/v1/search/segments?q=keyword"
+
+# Interactive API docs
+open http://localhost:8765/docs
+```
+
 ## Development
 
 ```bash
@@ -265,6 +282,7 @@ poetry install
 
 ```
 chronovista/
+├── api/          # FastAPI REST API (routers, schemas, deps)
 ├── cli/          # Typer CLI commands
 ├── services/     # Business logic (rate-limited API, retry logic)
 ├── repositories/ # Async data access with composite keys
@@ -287,6 +305,7 @@ See [System Architecture](src/chronovista/docs/architecture/system-architecture.
 - [x] Graph Visualization (DOT/JSON export)
 - [x] Interactive CLI with Rich UI
 - [x] Timestamp-based transcript queries
+- [x] REST API (11 endpoints)
 - [ ] Web dashboard
 - [ ] ML-powered insights
 

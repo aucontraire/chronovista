@@ -11,6 +11,7 @@ from rich.panel import Panel
 from chronovista import __version__
 from chronovista.cli.auth_commands import auth_app
 from chronovista.cli.category_commands import category_app
+from chronovista.cli.commands.api import api_app
 from chronovista.cli.commands.enrich import app as enrich_app
 from chronovista.cli.commands.playlist import playlist_app
 from chronovista.cli.commands.seed import seed_app
@@ -31,6 +32,7 @@ app = typer.Typer(
 )
 
 # Add subcommands
+app.add_typer(api_app, name="api", help="API server management")
 app.add_typer(auth_app, name="auth", help="Authentication commands")
 app.add_typer(
     category_app, name="categories", help="📂 Video category exploration (creator-assigned)"

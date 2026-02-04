@@ -279,3 +279,6 @@ cache/
 # Performance profiling output
 *.prof
 *.pstats
+
+# Feature specifications (local development artifacts)
+specs/

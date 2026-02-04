@@ -51,6 +51,12 @@ chronovista is a CLI application that enables users to access, store, and explor
 
     Language-aware export to CSV, JSON with filtering by channel and language
 
+-   :material-api:{ .lg .middle } **REST API**
+
+    ---
+
+    FastAPI-powered REST API with 11 endpoints for programmatic access to videos, transcripts, and search
+
 </div>
 
 ## Project Status
@@ -99,11 +105,31 @@ chronovista is a CLI application that enables users to access, store, and explor
     chronovista takeout seed /path/to/your/takeout --dry-run
     ```
 
+=== "REST API"
+
+    ```bash
+    # Start the API server
+    chronovista api start --port 8765
+
+    # Health check (no auth)
+    curl http://localhost:8765/api/v1/health
+
+    # List videos (requires auth - shares CLI OAuth)
+    curl http://localhost:8765/api/v1/videos?limit=10
+
+    # Search transcripts
+    curl "http://localhost:8765/api/v1/search/segments?q=keyword"
+
+    # Interactive API docs
+    open http://localhost:8765/docs
+    ```
+
 ## Architecture Highlights
 
 chronovista implements a sophisticated **layered architecture** with modern Python patterns:
 
 - **CLI Layer** - Typer-based interface with rich formatting and comprehensive error handling
+- **REST API Layer** - FastAPI server with OAuth integration and OpenAPI documentation
 - **Service Layer** - Rate-limited YouTube API integration with retry logic and batch processing
 - **Repository Layer** - Advanced async repository pattern with composite keys and quality scoring
 - **Data Layer** - Comprehensive Pydantic models with custom validators and type safety
@@ -126,6 +152,7 @@ chronovista implements a sophisticated **layered architecture** with modern Pyth
 |-------|--------------|
 | Language | Python 3.11+ |
 | CLI Framework | Typer, Rich |
+| API Framework | FastAPI, uvicorn |
 | Database | PostgreSQL (async), SQLAlchemy, Alembic |
 | Data Validation | Pydantic V2 |
 | API Integration | google-api-python-client, google-auth |

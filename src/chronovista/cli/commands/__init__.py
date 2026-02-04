@@ -2,4 +2,4 @@
 
 from __future__ import annotations
 
-__all__ = ["enrich", "seed", "takeout"]
+__all__ = ["api", "enrich", "seed", "takeout"]

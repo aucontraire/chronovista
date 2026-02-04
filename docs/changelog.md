@@ -12,6 +12,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.12.0] - 2026-02-03
+
+### Added
+- **Feature 010: FastAPI REST API Foundation**
+  - RESTful API server via `chronovista api start` command
+  - 11 endpoints covering videos, transcripts, search, preferences, and sync
+  - Key endpoints:
+    - `GET /api/v1/health` - Health check (no auth required)
+    - `GET /api/v1/videos` - List videos with pagination and filtering
+    - `GET /api/v1/videos/{video_id}` - Get video details
+    - `GET /api/v1/videos/{video_id}/transcript` - Get full transcript
+    - `GET /api/v1/videos/{video_id}/transcript/segments` - Paginated segments
+    - `GET /api/v1/search/segments` - Full-text transcript search with context
+    - `GET/PUT /api/v1/preferences/languages` - Language preferences
+    - `POST /api/v1/sync/{operation}` - Trigger sync operations
+  - OAuth integration - shares CLI authentication
+  - OpenAPI documentation at `/docs` (Swagger UI) and `/redoc`
+  - Pydantic V2 response schemas with pagination
+  - CORS support for frontend development
+
+### Technical
+- FastAPI with async SQLAlchemy integration
+- Token-based auth via CLI OAuth cache
+- 207 integration tests for API endpoints
+- Comprehensive error handling with standard error schema
+
 ## [0.11.0] - 2026-01-29
 
 ### Added

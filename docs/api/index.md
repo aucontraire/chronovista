@@ -6,6 +6,49 @@ Comprehensive API documentation for chronovista.
 
 This section contains detailed API documentation for all chronovista modules, generated from source code docstrings.
 
+## REST API
+
+chronovista provides a RESTful HTTP API for programmatic access.
+
+### Starting the Server
+
+```bash
+chronovista api start --port 8000
+```
+
+### Base URL
+
+```
+http://localhost:8000/api/v1/
+```
+
+### Authentication
+
+All endpoints except `/health` require authentication. The API shares OAuth tokens with the CLI.
+
+### Endpoints Overview
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check (no auth) |
+| `/videos` | GET | List videos |
+| `/videos/{id}` | GET | Get video details |
+| `/videos/{id}/transcript` | GET | Get transcript |
+| `/videos/{id}/transcript/segments` | GET | Paginated segments |
+| `/videos/{id}/transcript/languages` | GET | Available languages |
+| `/search/segments` | GET | Search transcripts |
+| `/preferences/languages` | GET, PUT | Language preferences |
+| `/sync/{operation}` | POST | Trigger sync |
+| `/sync/status` | GET | Sync status |
+
+### Interactive Documentation
+
+- Swagger UI: `/docs`
+- ReDoc: `/redoc`
+- OpenAPI JSON: `/openapi.json`
+
+For detailed usage, see [REST API User Guide](../user-guide/rest-api.md).
+
 ## Module Structure
 
 ```

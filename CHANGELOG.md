@@ -9,6 +9,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.13.0] - 2026-02-03
+
+### Added
+
+#### Feature 010: FastAPI REST API Foundation
+
+A complete RESTful API server for programmatic access to chronovista data.
+
+**New CLI Command: `api start`**
+
+Start the REST API server:
+
+```bash
+chronovista api start                # Start on default port 8000
+chronovista api start --port 8765    # Custom port
+chronovista api start --reload       # Development mode
+```
+
+**11 API Endpoints:**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/health` | GET | Health check (no auth required) |
+| `/api/v1/videos` | GET | List videos with pagination and filtering |
+| `/api/v1/videos/{video_id}` | GET | Get video details |
+| `/api/v1/videos/{video_id}/transcript/languages` | GET | List available transcript languages |
+| `/api/v1/videos/{video_id}/transcript` | GET | Get full transcript |
+| `/api/v1/videos/{video_id}/transcript/segments` | GET | Get transcript segments (paginated) |
+| `/api/v1/search/segments` | GET | Full-text search across transcripts |
+| `/api/v1/preferences/languages` | GET | Get language preferences |
+| `/api/v1/preferences/languages` | PUT | Update language preferences |
+| `/api/v1/sync/{operation}` | POST | Trigger sync operation |
+| `/api/v1/sync/status` | GET | Get sync status |
+
+**Key Features:**
+
+- **Shared Authentication**: API uses CLI's OAuth tokens - authenticate once with `chronovista auth login`
+- **Interactive Documentation**: Swagger UI at `/docs`, ReDoc at `/redoc`
+- **OpenAPI Specification**: Available at `/openapi.json`
+- **Full-text Search**: Search across all transcripts with before/after context
+- **Pagination**: All list endpoints support `limit` and `offset` parameters
+- **CORS Support**: Configurable for frontend development
+
+**Technical Details:**
+
+- FastAPI with async SQLAlchemy integration
+- Pydantic V2 response schemas with strict validation
+- Token-based auth via CLI OAuth cache
+- Comprehensive error handling with standard error schema
+- 207 integration tests for API endpoints
+
 ## [0.11.0] - 2026-01-29
 
 ### Added

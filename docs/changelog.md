@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
-## [0.12.0] - 2026-02-03
+## [0.13.0] - 2026-02-03
 
 ### Added
 - **Feature 010: FastAPI REST API Foundation**

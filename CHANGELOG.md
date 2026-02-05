@@ -9,6 +9,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.15.0] - 2026-02-05
+
+### Added
+
+#### Feature 012: Content Classification APIs
+
+REST API endpoints for browsing YouTube categories and video tags, completing the "classification trifecta" alongside Topics (Feature 011).
+
+**6 New API Endpoints:**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/categories` | GET | List categories sorted by video count |
+| `/api/v1/categories/{category_id}` | GET | Get category details |
+| `/api/v1/categories/{category_id}/videos` | GET | List videos in category |
+| `/api/v1/tags` | GET | List tags sorted by video count |
+| `/api/v1/tags/{tag}` | GET | Get tag details |
+| `/api/v1/tags/{tag}/videos` | GET | List videos with tag |
+
+**Key Features:**
+
+- **Categories**: YouTube's 32 predefined content categories (Music, Gaming, Education, etc.)
+- **Tags**: 139,763 unique creator-defined keywords
+- **Sorting**: Categories and tags sorted by video_count descending
+- **Pagination**: Standard limit (1-100) and offset parameters
+- **URL Encoding**: Tags with special characters supported (spaces, hashtags)
+- **Consistent Errors**: 404 for invalid IDs, 422 for validation errors
+
+**Example Usage:**
+
+```bash
+# List top categories
+curl http://localhost:8000/api/v1/categories
+
+# Get videos in Music category
+curl http://localhost:8000/api/v1/categories/10/videos
+
+# List popular tags
+curl http://localhost:8000/api/v1/tags
+
+# Get videos with a specific tag (URL-encoded space)
+curl "http://localhost:8000/api/v1/tags/hip%20hop/videos"
+```
+
+**Technical Details:**
+
+- 33 new integration tests (13 category + 20 tag tests)
+- Pydantic V2 response schemas with strict validation
+- mypy strict compliance (0 errors)
+- Video listings exclude deleted videos and sort by upload_date descending
+
 ## [0.14.0] - 2026-02-04
 
 ### Added

@@ -283,11 +283,11 @@ class TestGetCategory:
             response = await async_client.get("/api/v1/categories/nonexistent_category_xyz")
             assert response.status_code == 404
             data = response.json()
-            assert "error" in data
-            assert data["error"]["code"] == "NOT_FOUND"
-            assert "Category" in data["error"]["message"]
+            # RFC 7807 format: code is at top level
+            assert data["code"] == "NOT_FOUND"
+            assert "Category" in data["detail"]
             # Check for actionable hint
-            assert "Verify the category ID" in data["error"]["message"]
+            assert "Verify the category ID" in data["detail"]
 
 
 class TestGetCategoryVideos:
@@ -545,6 +545,7 @@ class TestCategoryAuthRequirements:
             response = await async_client.get("/api/v1/categories")
             assert response.status_code == 401
             data = response.json()
+            # Auth errors still use old format (HTTPException detail dict)
             assert data["detail"]["code"] == "NOT_AUTHENTICATED"
 
     async def test_get_category_requires_auth(
@@ -556,6 +557,7 @@ class TestCategoryAuthRequirements:
             response = await async_client.get("/api/v1/categories/10")
             assert response.status_code == 401
             data = response.json()
+            # Auth errors still use old format (HTTPException detail dict)
             assert data["detail"]["code"] == "NOT_AUTHENTICATED"
 
     async def test_get_category_videos_requires_auth(
@@ -567,4 +569,5 @@ class TestCategoryAuthRequirements:
             response = await async_client.get("/api/v1/categories/10/videos")
             assert response.status_code == 401
             data = response.json()
+            # Auth errors still use old format (HTTPException detail dict)
             assert data["detail"]["code"] == "NOT_AUTHENTICATED"

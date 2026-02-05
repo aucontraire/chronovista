@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from chronovista.api.deps import get_db, require_auth
+from chronovista.api.routers.responses import GET_ITEM_ERRORS, LIST_ERRORS
 from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.videos import (
     TranscriptSummary,
@@ -54,7 +55,7 @@ def build_transcript_summary(transcripts: List[VideoTranscript]) -> TranscriptSu
     )
 
 
-@router.get("/videos", response_model=VideoListResponse)
+@router.get("/videos", response_model=VideoListResponse, responses=LIST_ERRORS)
 async def list_videos(
     session: AsyncSession = Depends(get_db),
     channel_id: Optional[str] = Query(
@@ -175,7 +176,7 @@ async def list_videos(
     return VideoListResponse(data=items, pagination=pagination)
 
 
-@router.get("/videos/{video_id}", response_model=VideoDetailResponse)
+@router.get("/videos/{video_id}", response_model=VideoDetailResponse, responses=GET_ITEM_ERRORS)
 async def get_video(
     video_id: str = Path(
         ...,

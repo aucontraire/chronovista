@@ -44,6 +44,7 @@ class TestGetLanguagePreferences:
             response = await async_client.get("/api/v1/preferences/languages")
             assert response.status_code == 401
             data = response.json()
+            # Auth errors still use old format (HTTPException detail dict)
             assert data["detail"]["code"] == "NOT_AUTHENTICATED"
 
     async def test_get_preferences_returns_list_structure(
@@ -159,6 +160,7 @@ class TestUpdateLanguagePreferences:
             )
             assert response.status_code == 401
             data = response.json()
+            # Auth errors still use old format (HTTPException detail dict)
             assert data["detail"]["code"] == "NOT_AUTHENTICATED"
 
     async def test_update_preferences_empty_list(
@@ -211,8 +213,9 @@ class TestUpdateLanguagePreferences:
             )
             assert response.status_code == 400
             data = response.json()
-            assert data["error"]["code"] == "BAD_REQUEST"
-            assert "invalid-code" in data["error"]["message"]
+            # RFC 7807 format: code is at top level
+            assert data["code"] == "BAD_REQUEST"
+            assert "invalid-code" in data["detail"]
 
     async def test_update_preferences_invalid_preference_type(
         self, async_client: AsyncClient
@@ -231,8 +234,9 @@ class TestUpdateLanguagePreferences:
             )
             assert response.status_code == 400
             data = response.json()
-            assert data["error"]["code"] == "BAD_REQUEST"
-            assert "invalid_type" in data["error"]["message"]
+            # RFC 7807 format: code is at top level
+            assert data["code"] == "BAD_REQUEST"
+            assert "invalid_type" in data["detail"]
 
     async def test_update_preferences_valid_types(
         self, async_client: AsyncClient

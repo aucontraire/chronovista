@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 
 from chronovista import __version__
+from chronovista.api.routers.responses import HEALTH_ERRORS
 from chronovista.api.schemas.responses import ApiResponse
 from chronovista.auth import youtube_oauth
 from chronovista.config.database import db_manager
@@ -47,7 +48,7 @@ class HealthResponse(ApiResponse[HealthStatus]):
 router = APIRouter()
 
 
-@router.get("/health", response_model=HealthResponse)
+@router.get("/health", response_model=HealthResponse, responses=HEALTH_ERRORS)
 async def health_check() -> HealthResponse:
     """
     Health check endpoint - no authentication required.

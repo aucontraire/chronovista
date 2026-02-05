@@ -4,6 +4,12 @@ This module provides a centralized export of all API schemas for convenient
 imports throughout the application.
 """
 
+from chronovista.api.schemas.categories import (
+    CategoryDetail,
+    CategoryDetailResponse,
+    CategoryListItem,
+    CategoryListResponse,
+)
 from chronovista.api.schemas.channels import (
     ChannelDetail,
     ChannelDetailResponse,
@@ -25,6 +31,12 @@ from chronovista.api.schemas.responses import (
     ErrorResponse,
     PaginationMeta,
 )
+from chronovista.api.schemas.tags import (
+    TagDetail,
+    TagDetailResponse,
+    TagListItem,
+    TagListResponse,
+)
 from chronovista.api.schemas.topics import (
     TopicDetail,
     TopicDetailResponse,
@@ -40,6 +52,11 @@ from chronovista.api.schemas.videos import (
 )
 
 __all__ = [
+    # Categories
+    "CategoryDetail",
+    "CategoryDetailResponse",
+    "CategoryListItem",
+    "CategoryListResponse",
     # Channels
     "ChannelDetail",
     "ChannelDetailResponse",
@@ -58,6 +75,11 @@ __all__ = [
     "ErrorCode",
     "ErrorResponse",
     "PaginationMeta",
+    # Tags
+    "TagDetail",
+    "TagDetailResponse",
+    "TagListItem",
+    "TagListResponse",
     # Topics
     "TopicDetail",
     "TopicDetailResponse",

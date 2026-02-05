@@ -36,6 +36,21 @@ All endpoints except `/health` require authentication. The API shares OAuth toke
 | `/videos/{id}/transcript` | GET | Get transcript |
 | `/videos/{id}/transcript/segments` | GET | Paginated segments |
 | `/videos/{id}/transcript/languages` | GET | Available languages |
+| `/channels` | GET | List channels |
+| `/channels/{id}` | GET | Get channel details |
+| `/channels/{id}/videos` | GET | Videos by channel |
+| `/playlists` | GET | List playlists |
+| `/playlists/{id}` | GET | Get playlist details |
+| `/playlists/{id}/videos` | GET | Videos in playlist |
+| `/topics` | GET | List topics |
+| `/topics/{id}` | GET | Get topic details |
+| `/topics/{id}/videos` | GET | Videos by topic |
+| `/categories` | GET | List categories |
+| `/categories/{id}` | GET | Get category details |
+| `/categories/{id}/videos` | GET | Videos in category |
+| `/tags` | GET | List tags |
+| `/tags/{tag}` | GET | Get tag details |
+| `/tags/{tag}/videos` | GET | Videos with tag |
 | `/search/segments` | GET | Search transcripts |
 | `/preferences/languages` | GET, PUT | Language preferences |
 | `/sync/{operation}` | POST | Trigger sync |

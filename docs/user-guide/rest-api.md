@@ -587,6 +587,219 @@ Returns the same format as the videos list endpoint, filtered to videos with the
 
 ---
 
+### Categories
+
+YouTube's 31 predefined content categories (e.g., "Music", "Gaming", "Education").
+
+#### List Categories
+
+Get all categories sorted by video count (most popular first).
+
+```
+GET /api/v1/categories
+```
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `limit` | integer | Items per page (1-100) | 20 |
+| `offset` | integer | Pagination offset | 0 |
+
+##### Response
+
+```json
+{
+  "data": [
+    {
+      "category_id": "25",
+      "name": "News & Politics",
+      "assignable": true,
+      "video_count": 19063
+    },
+    {
+      "category_id": "24",
+      "name": "Entertainment",
+      "assignable": true,
+      "video_count": 6871
+    }
+  ],
+  "pagination": {
+    "total": 32,
+    "limit": 20,
+    "offset": 0,
+    "has_more": true
+  }
+}
+```
+
+##### Field Descriptions
+
+| Field | Description |
+|-------|-------------|
+| `category_id` | YouTube's numeric category ID (as string) |
+| `name` | Human-readable category name |
+| `assignable` | Whether videos can be assigned to this category (some like "Movies" are YouTube-managed only) |
+| `video_count` | Number of videos in your library with this category |
+
+#### Get Category Details
+
+Get full details for a specific category.
+
+```
+GET /api/v1/categories/{category_id}
+```
+
+##### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `category_id` | string | YouTube category ID (numeric string like "10", "25") |
+
+##### Response
+
+```json
+{
+  "data": {
+    "category_id": "25",
+    "name": "News & Politics",
+    "assignable": true,
+    "video_count": 19063,
+    "created_at": "2026-01-25T14:31:39Z"
+  }
+}
+```
+
+#### Get Category Videos
+
+Get paginated list of videos in a specific category.
+
+```
+GET /api/v1/categories/{category_id}/videos
+```
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `limit` | integer | Items per page (1-100) | 20 |
+| `offset` | integer | Pagination offset | 0 |
+
+##### Response
+
+Returns the same format as the videos list endpoint, filtered to videos in the specified category, sorted by upload date (most recent first).
+
+---
+
+### Tags
+
+Free-form keywords associated with videos by their creators.
+
+#### List Tags
+
+Get all tags sorted by video count (most popular first).
+
+```
+GET /api/v1/tags
+```
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `limit` | integer | Items per page (1-100) | 20 |
+| `offset` | integer | Pagination offset | 0 |
+
+##### Response
+
+```json
+{
+  "data": [
+    {
+      "tag": "politics",
+      "video_count": 5392
+    },
+    {
+      "tag": "news",
+      "video_count": 5371
+    },
+    {
+      "tag": "comedy",
+      "video_count": 1860
+    }
+  ],
+  "pagination": {
+    "total": 139763,
+    "limit": 20,
+    "offset": 0,
+    "has_more": true
+  }
+}
+```
+
+!!! note "Case Sensitivity"
+    Tags are case-sensitive. "Politics" and "politics" are treated as separate tags.
+
+#### Get Tag Details
+
+Get details for a specific tag.
+
+```
+GET /api/v1/tags/{tag}
+```
+
+##### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `tag` | string | Tag name (URL-encoded if contains special characters) |
+
+##### URL Encoding
+
+Tags with special characters must be URL-encoded:
+
+| Character | Encoded |
+|-----------|---------|
+| Space | `%20` |
+| Hash (#) | `%23` |
+| Forward slash (/) | `%2F` |
+
+Examples:
+- `hip hop` → `/api/v1/tags/hip%20hop`
+- `#music` → `/api/v1/tags/%23music`
+
+##### Response
+
+```json
+{
+  "data": {
+    "tag": "hip hop",
+    "video_count": 25
+  }
+}
+```
+
+#### Get Tag Videos
+
+Get paginated list of videos with a specific tag.
+
+```
+GET /api/v1/tags/{tag}/videos
+```
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `limit` | integer | Items per page (1-100) | 20 |
+| `offset` | integer | Pagination offset | 0 |
+
+##### Response
+
+Returns the same format as the videos list endpoint, filtered to videos with the specified tag, sorted by upload date (most recent first).
+
+---
+
 ### Transcripts
 
 #### List Available Languages
@@ -1126,6 +1339,54 @@ curl http://localhost:8000/api/v1/topics/wiki_Military
 
 ```bash
 curl http://localhost:8000/api/v1/topics//m/098wr/videos
+```
+
+#### List Categories
+
+```bash
+# All categories sorted by video count
+curl http://localhost:8000/api/v1/categories
+
+# With pagination
+curl "http://localhost:8000/api/v1/categories?limit=10&offset=10"
+```
+
+#### Get Category Details
+
+```bash
+curl http://localhost:8000/api/v1/categories/25
+```
+
+#### Get Category Videos
+
+```bash
+curl http://localhost:8000/api/v1/categories/25/videos
+```
+
+#### List Tags
+
+```bash
+# All tags sorted by video count
+curl http://localhost:8000/api/v1/tags
+
+# With pagination
+curl "http://localhost:8000/api/v1/tags?limit=50&offset=100"
+```
+
+#### Get Tag Details
+
+```bash
+# Simple tag
+curl http://localhost:8000/api/v1/tags/politics
+
+# Tag with space (URL-encoded)
+curl "http://localhost:8000/api/v1/tags/hip%20hop"
+```
+
+#### Get Tag Videos
+
+```bash
+curl http://localhost:8000/api/v1/tags/news/videos
 ```
 
 ### Using Python

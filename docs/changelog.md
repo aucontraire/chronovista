@@ -12,6 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.15.0] - 2026-02-05
+
+### Added
+- **Feature 012: Content Classification APIs**
+  - REST API endpoints for categories: list, detail, videos-by-category (`/api/v1/categories`)
+  - REST API endpoints for tags: list, detail, videos-by-tag (`/api/v1/tags`)
+  - Categories sorted by video_count descending (32 YouTube predefined categories)
+  - Tags sorted by video_count descending (139,763 unique tags)
+  - Full pagination support with limit (1-100), offset parameters
+  - Proper 404 handling for invalid category IDs and nonexistent tags
+  - URL-encoded special characters in tags supported (e.g., spaces, hashtags)
+  - Completes the "classification trifecta" with Topics (F011), Categories, and Tags
+
+### Technical
+- 33 new integration tests for category and tag endpoints
+- Pydantic V2 response schemas with strict mode
+- mypy strict compliance (0 errors)
+
 ## [0.14.0] - 2026-02-04
 
 ### Added

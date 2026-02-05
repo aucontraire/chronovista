@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.deps import get_db, require_auth
+from chronovista.api.routers.responses import LIST_ERRORS, UPDATE_ERRORS
 from chronovista.api.schemas.preferences import (
     LanguagePreferenceItem,
     LanguagePreferencesResponse,
@@ -42,7 +43,7 @@ def validate_preference_type(pref_type: str) -> bool:
         return False
 
 
-@router.get("/preferences/languages", response_model=LanguagePreferencesResponse)
+@router.get("/preferences/languages", response_model=LanguagePreferencesResponse, responses=LIST_ERRORS)
 async def get_language_preferences(
     session: AsyncSession = Depends(get_db),
 ) -> LanguagePreferencesResponse:
@@ -68,7 +69,7 @@ async def get_language_preferences(
     return LanguagePreferencesResponse(data=items)
 
 
-@router.put("/preferences/languages", response_model=LanguagePreferencesResponse)
+@router.put("/preferences/languages", response_model=LanguagePreferencesResponse, responses=UPDATE_ERRORS)
 async def update_language_preferences(
     request: LanguagePreferencesUpdateRequest,
     session: AsyncSession = Depends(get_db),

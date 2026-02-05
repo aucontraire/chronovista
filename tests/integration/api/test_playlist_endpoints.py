@@ -153,11 +153,9 @@ class TestPlaylistMutuallyExclusiveFilters:
             )
             assert response.status_code == 400
             data = response.json()
-            # Typed exceptions use ErrorResponse format with "error" wrapper
-            assert data["error"]["code"] == "MUTUALLY_EXCLUSIVE"
-            assert "mutually exclusive" in data["error"]["message"].lower()
-            assert data["error"]["details"]["field"] == "linked,unlinked"
-            assert data["error"]["details"]["constraint"] == "mutually_exclusive"
+            # RFC 7807 format: code is at top level
+            assert data["code"] == "MUTUALLY_EXCLUSIVE"
+            assert "mutually exclusive" in data["detail"].lower()
 
     async def test_linked_true_unlinked_false_is_valid(
         self, async_client: AsyncClient
@@ -203,9 +201,9 @@ class TestPlaylistDetail:
             response = await async_client.get("/api/v1/playlists/PLnonexistent123456789012345")
             assert response.status_code == 404
             data = response.json()
-            # Typed exceptions use ErrorResponse format with "error" wrapper
-            assert data["error"]["code"] == "NOT_FOUND"
-            assert "Playlist" in data["error"]["message"]
+            # RFC 7807 format: code is at top level
+            assert data["code"] == "NOT_FOUND"
+            assert "Playlist" in data["detail"]
 
     async def test_get_playlist_actionable_error_message(
         self, async_client: AsyncClient
@@ -215,8 +213,8 @@ class TestPlaylistDetail:
             mock_oauth.is_authenticated.return_value = True
             response = await async_client.get("/api/v1/playlists/PLnonexistent123456789012345")
             data = response.json()
-            # Check actionable guidance
-            assert "Verify the playlist ID or run a sync" in data["error"]["message"]
+            # RFC 7807 format: Check actionable guidance in detail field
+            assert "Verify the playlist ID or run a sync" in data["detail"]
 
     async def test_get_playlist_accepts_youtube_id(
         self, async_client: AsyncClient
@@ -279,7 +277,8 @@ class TestPlaylistVideos:
             )
             assert response.status_code == 404
             data = response.json()
-            assert data["error"]["code"] == "NOT_FOUND"
+            # RFC 7807 format: code is at top level
+            assert data["code"] == "NOT_FOUND"
 
     async def test_get_playlist_videos_returns_paginated_response(
         self, async_client: AsyncClient

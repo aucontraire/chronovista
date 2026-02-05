@@ -301,9 +301,9 @@ class TestTagDetail:
             response = await async_client.get("/api/v1/tags/nonexistent_tag_xyz_12345")
             assert response.status_code == 404
             data = response.json()
-            assert "error" in data
-            assert data["error"]["code"] == "NOT_FOUND"
-            assert "Tag" in data["error"]["message"]
+            # RFC 7807 format: code is at top level
+            assert data["code"] == "NOT_FOUND"
+            assert "Tag" in data["detail"]
 
     async def test_get_empty_tag_returns_404(
         self, async_client: AsyncClient
@@ -392,7 +392,8 @@ class TestTagVideos:
             )
             assert response.status_code == 404
             data = response.json()
-            assert data["error"]["code"] == "NOT_FOUND"
+            # RFC 7807 format: code is at top level
+            assert data["code"] == "NOT_FOUND"
 
     async def test_get_tag_videos_returns_paginated_list(
         self,

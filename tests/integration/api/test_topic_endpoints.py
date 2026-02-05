@@ -360,9 +360,9 @@ class TestTopicDetail:
             response = await async_client.get("/api/v1/topics/nonexistent_topic_xyz")
             assert response.status_code == 404
             data = response.json()
-            assert "error" in data
-            assert data["error"]["code"] == "NOT_FOUND"
-            assert "Topic" in data["error"]["message"]
+            # RFC 7807 format: code is at top level
+            assert data["code"] == "NOT_FOUND"
+            assert "Topic" in data["detail"]
 
     async def test_get_topic_actionable_error_message(
         self, async_client: AsyncClient
@@ -372,8 +372,8 @@ class TestTopicDetail:
             mock_oauth.is_authenticated.return_value = True
             response = await async_client.get("/api/v1/topics/nonexistent_topic")
             data = response.json()
-            # Check actionable guidance
-            assert "Verify the topic ID" in data["error"]["message"]
+            # RFC 7807 format: Check actionable guidance in detail field
+            assert "Verify the topic ID" in data["detail"]
 
     async def test_get_topic_with_alphanumeric_id(
         self,
@@ -440,7 +440,8 @@ class TestTopicVideos:
             )
             assert response.status_code == 404
             data = response.json()
-            assert data["error"]["code"] == "NOT_FOUND"
+            # RFC 7807 format: code is at top level
+            assert data["code"] == "NOT_FOUND"
 
     async def test_get_topic_videos_returns_paginated_response(
         self,
@@ -623,6 +624,7 @@ class TestTopicAuthRequirements:
             response = await async_client.get("/api/v1/topics")
             assert response.status_code == 401
             data = response.json()
+            # Auth errors still use old format (HTTPException detail dict)
             assert data["detail"]["code"] == "NOT_AUTHENTICATED"
 
     async def test_get_topic_requires_auth(
@@ -634,6 +636,7 @@ class TestTopicAuthRequirements:
             response = await async_client.get("/api/v1/topics/gaming")
             assert response.status_code == 401
             data = response.json()
+            # Auth errors still use old format (HTTPException detail dict)
             assert data["detail"]["code"] == "NOT_AUTHENTICATED"
 
     async def test_get_topic_videos_requires_auth(
@@ -645,4 +648,5 @@ class TestTopicAuthRequirements:
             response = await async_client.get("/api/v1/topics/gaming/videos")
             assert response.status_code == 401
             data = response.json()
+            # Auth errors still use old format (HTTPException detail dict)
             assert data["detail"]["code"] == "NOT_AUTHENTICATED"

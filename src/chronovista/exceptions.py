@@ -10,7 +10,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from chronovista.api.schemas.responses import ApiError, ErrorCode
+from chronovista.api.schemas.responses import (
+    ApiError,
+    ERROR_TITLES,
+    ErrorCode,
+    get_error_type_uri,
+)
 
 
 class ChronovistaError(Exception):
@@ -574,6 +579,44 @@ class APIError(ChronovistaError):
             details=self.details,
         )
 
+    def to_problem_detail(self, instance: str, request_id: str) -> dict[str, Any]:
+        """Convert to RFC 7807 Problem Detail dictionary.
+
+        Creates a dictionary suitable for use with ProblemDetail or
+        ProblemJSONResponse for RFC 7807 compliant error responses.
+
+        Parameters
+        ----------
+        instance : str
+            URI reference of the specific occurrence (e.g., "/api/v1/videos/xyz123").
+        request_id : str
+            Unique request identifier for correlation and debugging.
+
+        Returns
+        -------
+        dict[str, Any]
+            Dictionary with RFC 7807 fields suitable for ProblemDetail model.
+
+        Examples
+        --------
+        >>> error = NotFoundError(resource_type="Video", identifier="xyz123")
+        >>> problem = error.to_problem_detail(
+        ...     instance="/api/v1/videos/xyz123",
+        ...     request_id="550e8400-e29b-41d4-a716-446655440000"
+        ... )
+        >>> problem["type"]
+        'https://api.chronovista.com/errors/NOT_FOUND'
+        """
+        return {
+            "type": get_error_type_uri(self.error_code),
+            "title": ERROR_TITLES.get(self.error_code, "Error"),
+            "status": self.status_code,
+            "detail": self.message,
+            "instance": instance,
+            "code": self.error_code.value,
+            "request_id": request_id,
+        }
+
 
 class NotFoundError(APIError):
     """Resource not found (404).
@@ -729,6 +772,106 @@ class ConflictError(APIError):
 
     status_code: int = 409
     _error_code_value: str = "CONFLICT"
+
+
+class AuthorizationError(APIError):
+    """Authorization denied (403).
+
+    This exception is raised when the authenticated user does not have
+    sufficient permissions to perform the requested operation.
+
+    Attributes
+    ----------
+    status_code : int
+        Always 403 for this exception.
+    error_code : ErrorCode
+        Always NOT_AUTHORIZED for this exception.
+
+    Examples
+    --------
+    >>> raise AuthorizationError(
+    ...     message="Insufficient permissions for this operation",
+    ...     details={"required_scope": "admin"}
+    ... )
+    """
+
+    status_code: int = 403
+    _error_code_value: str = "NOT_AUTHORIZED"
+
+
+class RateLimitError(APIError):
+    """Rate limit exceeded (429).
+
+    This exception is raised when the client has exceeded the allowed
+    rate of requests. The optional retry_after attribute indicates how
+    many seconds the client should wait before retrying.
+
+    Attributes
+    ----------
+    status_code : int
+        Always 429 for this exception.
+    error_code : ErrorCode
+        Always RATE_LIMITED for this exception.
+    retry_after : int | None
+        Number of seconds to wait before retrying, if available.
+
+    Examples
+    --------
+    >>> raise RateLimitError(
+    ...     message="API rate limit exceeded. Please retry after 60 seconds.",
+    ...     retry_after=60
+    ... )
+    """
+
+    status_code: int = 429
+    _error_code_value: str = "RATE_LIMITED"
+
+    def __init__(
+        self,
+        message: str,
+        details: dict[str, Any] | None = None,
+        retry_after: int | None = None,
+    ) -> None:
+        """
+        Initialize RateLimitError.
+
+        Parameters
+        ----------
+        message : str
+            Human-readable error message.
+        details : dict[str, Any] | None, optional
+            Additional error context (default: None).
+        retry_after : int | None, optional
+            Number of seconds to wait before retrying (default: None).
+        """
+        self.retry_after = retry_after
+        super().__init__(message=message, details=details)
+
+
+class ExternalServiceError(APIError):
+    """External service unavailable (502).
+
+    This exception is raised when an external service (e.g., YouTube API)
+    fails to respond or returns an error that prevents the operation
+    from completing.
+
+    Attributes
+    ----------
+    status_code : int
+        Always 502 for this exception.
+    error_code : ErrorCode
+        Always EXTERNAL_SERVICE_ERROR for this exception.
+
+    Examples
+    --------
+    >>> raise ExternalServiceError(
+    ...     message="External service unavailable",
+    ...     details={"service": "YouTube API", "reason": "timeout"}
+    ... )
+    """
+
+    status_code: int = 502
+    _error_code_value: str = "EXTERNAL_SERVICE_ERROR"
 
 
 # Exit codes for CLI integration

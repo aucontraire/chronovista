@@ -224,10 +224,10 @@ class TestVideoDetail:
             response = await async_client.get("/api/v1/videos/NONEXISTENT")
             assert response.status_code == 404
             data = response.json()
-            assert "error" in data
-            assert data["error"]["code"] == "NOT_FOUND"
-            assert "Video" in data["error"]["message"]
-            assert "NONEXISTENT" in data["error"]["message"]
+            # RFC 7807 format: code is at top level
+            assert data["code"] == "NOT_FOUND"
+            assert "Video" in data["detail"]
+            assert "NONEXISTENT" in data["detail"]
 
     async def test_get_video_actionable_error_message(
         self, async_client: AsyncClient
@@ -237,8 +237,8 @@ class TestVideoDetail:
             mock_oauth.is_authenticated.return_value = True
             response = await async_client.get("/api/v1/videos/NONEXISTENT")
             data = response.json()
-            # Check actionable guidance (hint is appended to message)
-            assert "sync" in data["error"]["message"].lower()
+            # RFC 7807 format: Check actionable guidance in detail field
+            assert "sync" in data["detail"].lower()
 
     async def test_get_video_id_validation_too_short(
         self, async_client: AsyncClient

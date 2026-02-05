@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from chronovista.api.deps import get_db, require_auth
+from chronovista.api.routers.responses import GET_ITEM_ERRORS, LIST_ERRORS
 from chronovista.api.schemas.playlists import (
     PlaylistDetail,
     PlaylistDetailResponse,
@@ -59,7 +60,7 @@ def build_transcript_summary(transcripts: List[VideoTranscript]) -> TranscriptSu
     )
 
 
-@router.get("/playlists", response_model=PlaylistListResponse)
+@router.get("/playlists", response_model=PlaylistListResponse, responses=LIST_ERRORS)
 async def list_playlists(
     session: AsyncSession = Depends(get_db),
     linked: Optional[bool] = Query(
@@ -163,7 +164,7 @@ async def list_playlists(
     return PlaylistListResponse(data=items, pagination=pagination)
 
 
-@router.get("/playlists/{playlist_id}", response_model=PlaylistDetailResponse)
+@router.get("/playlists/{playlist_id}", response_model=PlaylistDetailResponse, responses=GET_ITEM_ERRORS)
 async def get_playlist(
     playlist_id: str = Path(
         ...,
@@ -216,7 +217,9 @@ async def get_playlist(
 
 
 @router.get(
-    "/playlists/{playlist_id}/videos", response_model=PlaylistVideoListResponse
+    "/playlists/{playlist_id}/videos",
+    response_model=PlaylistVideoListResponse,
+    responses=GET_ITEM_ERRORS,
 )
 async def get_playlist_videos(
     playlist_id: str = Path(

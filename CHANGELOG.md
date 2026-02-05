@@ -9,6 +9,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.16.0] - 2026-02-05
+
+### Added
+
+#### Feature 013: RFC 7807 API Response Standardization
+
+**BREAKING CHANGE**: All API error responses now use the RFC 7807 Problem Details format.
+
+This feature standardizes error responses across all API endpoints, providing a consistent, machine-readable format that enables better error handling and debugging.
+
+**Key Changes:**
+
+| Aspect | Before | After |
+|--------|--------|-------|
+| Content-Type | `application/json` | `application/problem+json` |
+| Response Structure | Custom nested format | RFC 7807 flat structure |
+| Request Correlation | None | `X-Request-ID` header |
+
+**New Error Response Format:**
+
+```json
+{
+  "type": "https://api.chronovista.com/errors/NOT_FOUND",
+  "title": "Resource Not Found",
+  "status": 404,
+  "detail": "Video 'xyz' not found",
+  "instance": "/api/v1/videos/xyz",
+  "code": "NOT_FOUND",
+  "request_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**Request ID Correlation:**
+
+- Every response includes an `X-Request-ID` header
+- Clients can provide their own correlation ID (echoed in response)
+- Server generates UUID v4 if no client ID provided
+- Request ID included in both headers and error response body
+
+**Supported Error Codes:**
+
+- `NOT_FOUND` (404)
+- `BAD_REQUEST` (400)
+- `VALIDATION_ERROR` (422) - includes field-level `errors` array
+- `NOT_AUTHENTICATED` (401)
+- `NOT_AUTHORIZED` (403)
+- `CONFLICT` (409)
+- `RATE_LIMITED` (429) - includes `Retry-After` header
+- `INTERNAL_ERROR` (500)
+- `DATABASE_ERROR` (500)
+- `EXTERNAL_SERVICE_ERROR` (502)
+- `SERVICE_UNAVAILABLE` (503)
+
+**Migration Required:**
+
+Clients must update error parsing logic. See [Migration Guide](src/chronovista/docs/api/rfc7807-migration.md) for before/after examples and client integration snippets.
+
+**Documentation:**
+
+- [API Error Responses](src/chronovista/docs/api/error-responses.md) - Complete RFC 7807 reference
+- [Migration Guide](src/chronovista/docs/api/rfc7807-migration.md) - Client migration guide
+
 ## [0.15.0] - 2026-02-05
 
 ### Added

@@ -12,6 +12,12 @@ from typing import Optional
 from fastapi import APIRouter, Body, Depends, status
 
 from chronovista.api.deps import require_auth
+from chronovista.api.routers.responses import (
+    CONFLICT_RESPONSE,
+    LIST_ERRORS,
+    UNAUTHORIZED_RESPONSE,
+    VALIDATION_ERROR_RESPONSE,
+)
 from chronovista.api.schemas.sync import (
     SyncOperationType,
     SyncStartedResponse,
@@ -33,37 +39,9 @@ router = APIRouter(dependencies=[Depends(require_auth)])
             "description": "Sync operation started successfully",
             "model": SyncStartedResponse,
         },
-        401: {
-            "description": "Not authenticated",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "detail": {
-                            "code": "NOT_AUTHENTICATED",
-                            "message": "Not authenticated. Run: chronovista auth login",
-                        }
-                    }
-                }
-            },
-        },
-        409: {
-            "description": "Sync operation already in progress",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "detail": {
-                            "code": "SYNC_IN_PROGRESS",
-                            "message": "Sync already in progress. Wait for completion or check status.",
-                            "details": {
-                                "operation_id": "subscriptions_20260203T143052Z_a7b3c9",
-                                "operation_type": "subscriptions",
-                                "started_at": "2026-02-03T14:30:52Z",
-                            },
-                        }
-                    }
-                }
-            },
-        },
+        **UNAUTHORIZED_RESPONSE,
+        **VALIDATION_ERROR_RESPONSE,
+        **CONFLICT_RESPONSE,
     },
 )
 async def trigger_sync(
@@ -144,25 +122,7 @@ async def trigger_sync(
 @router.get(
     "/sync/status",
     response_model=SyncStatusResponse,
-    responses={
-        200: {
-            "description": "Current sync status",
-            "model": SyncStatusResponse,
-        },
-        401: {
-            "description": "Not authenticated",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "detail": {
-                            "code": "NOT_AUTHENTICATED",
-                            "message": "Not authenticated. Run: chronovista auth login",
-                        }
-                    }
-                }
-            },
-        },
-    },
+    responses=LIST_ERRORS,
 )
 async def get_sync_status() -> SyncStatusResponse:
     """

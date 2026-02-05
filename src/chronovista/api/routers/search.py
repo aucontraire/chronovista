@@ -7,6 +7,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.deps import get_db, require_auth
+from chronovista.api.routers.responses import LIST_ERRORS
 from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.search import SearchResponse, SearchResultSegment
 from chronovista.db.models import Channel as ChannelDB
@@ -39,7 +40,7 @@ def count_query_matches(text: str, query_terms: List[str]) -> int:
     return sum(1 for term in query_terms if term.lower() in text_lower)
 
 
-@router.get("/search/segments", response_model=SearchResponse)
+@router.get("/search/segments", response_model=SearchResponse, responses=LIST_ERRORS)
 async def search_segments(
     q: str = Query(
         ..., min_length=2, max_length=500, description="Search query (2-500 characters)"

@@ -126,7 +126,16 @@ async with session_factory() as session:
 
 ## Error Handling
 
-All APIs use typed exceptions:
+The API uses [RFC 7807 Problem Details](https://www.rfc-editor.org/rfc/rfc7807) for all error responses:
+
+- [Error Responses](error-responses.md) - Complete RFC 7807 format reference
+- [Migration Guide](rfc7807-migration.md) - Migrating from legacy error format
+
+All error responses include:
+
+- `Content-Type: application/problem+json`
+- `X-Request-ID` header for request correlation
+- Structured error body with `type`, `title`, `status`, `detail`, `code`, and `request_id`
 
 ```python
 from chronovista.exceptions import (

@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from chronovista.api.deps import get_db, require_auth
+from chronovista.api.routers.responses import GET_ITEM_ERRORS, LIST_ERRORS
 from chronovista.api.schemas.channels import (
     ChannelDetail,
     ChannelDetailResponse,
@@ -65,7 +66,7 @@ def _build_transcript_summary(transcripts: List[VideoTranscript]) -> TranscriptS
     )
 
 
-@router.get("/channels", response_model=ChannelListResponse)
+@router.get("/channels", response_model=ChannelListResponse, responses=LIST_ERRORS)
 async def list_channels(
     limit: int = Query(default=20, ge=1, le=100, description="Items per page"),
     offset: int = Query(default=0, ge=0, description="Number of items to skip"),
@@ -151,7 +152,7 @@ async def list_channels(
     )
 
 
-@router.get("/channels/{channel_id}", response_model=ChannelDetailResponse)
+@router.get("/channels/{channel_id}", response_model=ChannelDetailResponse, responses=GET_ITEM_ERRORS)
 async def get_channel(
     channel_id: str = Path(
         ...,
@@ -215,7 +216,7 @@ async def get_channel(
     return ChannelDetailResponse(data=detail)
 
 
-@router.get("/channels/{channel_id}/videos", response_model=VideoListResponse)
+@router.get("/channels/{channel_id}/videos", response_model=VideoListResponse, responses=GET_ITEM_ERRORS)
 async def get_channel_videos(
     channel_id: str = Path(
         ...,

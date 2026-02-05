@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from chronovista.api.deps import get_db, require_auth
+from chronovista.api.routers.responses import GET_ITEM_ERRORS, LIST_ERRORS
 from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.topics import (
     TopicDetail,
@@ -34,7 +35,7 @@ from chronovista.exceptions import NotFoundError
 router = APIRouter(dependencies=[Depends(require_auth)])
 
 
-@router.get("/topics", response_model=TopicListResponse)
+@router.get("/topics", response_model=TopicListResponse, responses=LIST_ERRORS)
 async def list_topics(
     session: AsyncSession = Depends(get_db),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
@@ -125,7 +126,7 @@ async def list_topics(
 
 # IMPORTANT: This endpoint MUST be defined before the detail endpoint below
 # because /topics/{topic_id:path} would otherwise greedily match this URL pattern.
-@router.get("/topics/{topic_id}/videos", response_model=VideoListResponse)
+@router.get("/topics/{topic_id}/videos", response_model=VideoListResponse, responses=GET_ITEM_ERRORS)
 async def get_topic_videos(
     topic_id: str = Path(
         ...,
@@ -273,7 +274,8 @@ async def get_topic_videos(
                     }
                 }
             },
-        }
+        },
+        **GET_ITEM_ERRORS,
     },
 )
 async def get_topic(

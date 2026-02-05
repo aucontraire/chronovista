@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.deps import get_db, require_auth
+from chronovista.api.routers.responses import GET_ITEM_ERRORS, LIST_ERRORS
 from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.transcripts import (
     SegmentListResponse,
@@ -65,6 +66,7 @@ def get_language_name(code: str) -> str:
 @router.get(
     "/videos/{video_id}/transcript/languages",
     response_model=TranscriptLanguagesResponse,
+    responses=GET_ITEM_ERRORS,
 )
 async def get_transcript_languages(
     video_id: str = Path(..., min_length=11, max_length=11),
@@ -127,7 +129,7 @@ async def get_transcript_languages(
     return TranscriptLanguagesResponse(data=languages)
 
 
-@router.get("/videos/{video_id}/transcript", response_model=TranscriptResponse)
+@router.get("/videos/{video_id}/transcript", response_model=TranscriptResponse, responses=GET_ITEM_ERRORS)
 async def get_transcript(
     video_id: str = Path(..., min_length=11, max_length=11),
     language: Optional[str] = Query(
@@ -197,7 +199,9 @@ async def get_transcript(
 
 
 @router.get(
-    "/videos/{video_id}/transcript/segments", response_model=SegmentListResponse
+    "/videos/{video_id}/transcript/segments",
+    response_model=SegmentListResponse,
+    responses=LIST_ERRORS,
 )
 async def get_transcript_segments(
     video_id: str = Path(..., min_length=11, max_length=11),

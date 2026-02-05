@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from chronovista.api.deps import get_db, require_auth
+from chronovista.api.routers.responses import GET_ITEM_ERRORS, LIST_ERRORS
 from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.tags import (
     TagDetail,
@@ -33,7 +34,7 @@ from chronovista.exceptions import NotFoundError
 router = APIRouter(dependencies=[Depends(require_auth)])
 
 
-@router.get("/tags", response_model=TagListResponse)
+@router.get("/tags", response_model=TagListResponse, responses=LIST_ERRORS)
 async def list_tags(
     session: AsyncSession = Depends(get_db),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
@@ -104,7 +105,7 @@ async def list_tags(
 
 # IMPORTANT: This endpoint MUST be defined before the detail endpoint below
 # to ensure correct URL matching, following the same pattern as topics router.
-@router.get("/tags/{tag}/videos", response_model=VideoListResponse)
+@router.get("/tags/{tag}/videos", response_model=VideoListResponse, responses=GET_ITEM_ERRORS)
 async def get_tag_videos(
     tag: str = Path(
         ...,
@@ -229,7 +230,7 @@ async def get_tag_videos(
     return VideoListResponse(data=items, pagination=pagination)
 
 
-@router.get("/tags/{tag}", response_model=TagDetailResponse)
+@router.get("/tags/{tag}", response_model=TagDetailResponse, responses=GET_ITEM_ERRORS)
 async def get_tag(
     tag: str = Path(
         ...,

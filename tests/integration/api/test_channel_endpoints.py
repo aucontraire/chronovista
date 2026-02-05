@@ -445,10 +445,9 @@ class TestChannelDetail:
             )
             assert response.status_code == 404
             data = response.json()
-            # Typed exceptions use ErrorResponse format with "error" wrapper
-            assert "error" in data
-            assert data["error"]["code"] == "NOT_FOUND"
-            assert "Channel" in data["error"]["message"]
+            # RFC 7807 format: code is at top level
+            assert data["code"] == "NOT_FOUND"
+            assert "Channel" in data["detail"]
 
     async def test_get_channel_actionable_error_message(
         self, async_client: AsyncClient
@@ -460,8 +459,8 @@ class TestChannelDetail:
                 "/api/v1/channels/UC0000000000000000000000"
             )
             data = response.json()
-            # Check for actionable guidance in message
-            assert "Verify the channel ID or run a sync" in data["error"]["message"]
+            # RFC 7807 format: Check for actionable guidance in detail field
+            assert "Verify the channel ID or run a sync" in data["detail"]
 
     async def test_get_channel_id_validation_too_short(
         self, async_client: AsyncClient
@@ -536,7 +535,8 @@ class TestChannelVideos:
             )
             assert response.status_code == 404
             data = response.json()
-            assert data["error"]["code"] == "NOT_FOUND"
+            # RFC 7807 format: code is at top level
+            assert data["code"] == "NOT_FOUND"
 
     async def test_get_channel_videos_pagination(
         self,

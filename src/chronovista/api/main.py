@@ -10,6 +10,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
 from chronovista.api.exception_handlers import register_exception_handlers
+from chronovista.api.middleware import RequestIdFilter, RequestIdMiddleware, get_request_id
 from chronovista.api.routers import (
     categories,
     channels,
@@ -49,8 +50,22 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Register Request ID middleware early in the chain
+# This ensures request ID is available throughout request processing
+# Note: Middleware is applied in reverse order of registration,
+# so this will execute first (before log_requests middleware)
+app.add_middleware(RequestIdMiddleware)
+
 # Register centralized exception handlers for consistent error responses
 register_exception_handlers(app)
+
+# Configure logging to include request_id in all log records
+# Add the filter to the root logger so all handlers inherit it
+_request_id_filter = RequestIdFilter()
+for handler in logging.root.handlers:
+    handler.addFilter(_request_id_filter)
+# Also add to the API logger specifically
+logging.getLogger("chronovista.api").addFilter(_request_id_filter)
 
 
 def _is_sensitive_path(path: str) -> bool:
@@ -79,13 +94,16 @@ async def log_requests(
     """
     Middleware to log incoming requests and outgoing responses.
 
-    Logs request method, path, and client IP at INFO level.
+    Logs request method, path, client IP, and request ID at INFO level.
     Logs response status code and timing with appropriate log level:
     - INFO for 2xx/3xx responses
     - WARNING for 4xx responses
     - ERROR for 5xx responses
 
     Sensitive endpoints (auth, oauth, token) are logged without details.
+
+    Note: This middleware runs after RequestIdMiddleware, so request_id
+    is available via get_request_id() or request.state.request_id.
     """
     start_time = time.perf_counter()
 
@@ -93,12 +111,19 @@ async def log_requests(
     method = request.method
     path = request.url.path
     client_ip = _get_client_ip(request)
+    request_id = get_request_id()
 
     # Log incoming request (skip details for sensitive paths)
     if _is_sensitive_path(path):
-        logger.info("Request: %s [sensitive endpoint] from %s", method, client_ip)
+        logger.info(
+            "Request: %s [sensitive endpoint] from %s [%s]",
+            method, client_ip, request_id
+        )
     else:
-        logger.info("Request: %s %s from %s", method, path, client_ip)
+        logger.info(
+            "Request: %s %s from %s [%s]",
+            method, path, client_ip, request_id
+        )
 
     # Process the request
     response = await call_next(request)
@@ -119,19 +144,21 @@ async def log_requests(
     if _is_sensitive_path(path):
         logger.log(
             log_level,
-            "Response: %s [sensitive endpoint] - %d (%.3fs)",
+            "Response: %s [sensitive endpoint] - %d (%.3fs) [%s]",
             method,
             status_code,
             duration,
+            request_id,
         )
     else:
         logger.log(
             log_level,
-            "Response: %s %s - %d (%.3fs)",
+            "Response: %s %s - %d (%.3fs) [%s]",
             method,
             path,
             status_code,
             duration,
+            request_id,
         )
 
     return response

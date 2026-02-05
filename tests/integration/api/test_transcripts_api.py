@@ -62,9 +62,8 @@ class TestTranscriptLanguages:
             )
             assert response.status_code == 404
             data = response.json()
-            # 404 errors should use the new ErrorResponse format
-            assert "error" in data
-            assert data["error"]["code"] == "NOT_FOUND"
+            # RFC 7807 format: code is at top level
+            assert data["code"] == "NOT_FOUND"
 
     async def test_get_languages_video_id_validation(
         self, async_client: AsyncClient
@@ -124,9 +123,8 @@ class TestTranscriptFull:
             response = await async_client.get("/api/v1/videos/NONEXISTENT/transcript")
             assert response.status_code == 404
             data = response.json()
-            # 404 errors should use the new ErrorResponse format
-            assert "error" in data
-            assert data["error"]["code"] == "NOT_FOUND"
+            # RFC 7807 format: code is at top level
+            assert data["code"] == "NOT_FOUND"
 
     async def test_get_transcript_404_for_missing_language(
         self, async_client: AsyncClient

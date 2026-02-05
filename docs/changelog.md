@@ -12,6 +12,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.16.0] - 2026-02-05
+
+### Added
+- **Feature 013: RFC 7807 API Response Standardization**
+  - All error responses now follow [RFC 7807 Problem Details](https://www.rfc-editor.org/rfc/rfc7807) format
+  - New `Content-Type: application/problem+json` for all error responses
+  - `X-Request-ID` header on all responses for request correlation and debugging
+  - Client-provided request IDs are echoed back; server generates UUID v4 if not provided
+  - Structured error response with fields: `type`, `title`, `status`, `detail`, `instance`, `code`, `request_id`
+  - Validation errors (422) include `errors` array with field-level details
+  - OpenAPI schema now exposes `ProblemDetail`, `ValidationProblemDetail`, and `FieldError` schemas
+
+### Changed
+- **BREAKING**: Error response format changed from `{"error": {"code": "...", "message": "..."}}` to RFC 7807 flat structure
+- All 20+ API endpoints now include `X-Request-ID` header in responses
+- Error responses use `application/problem+json` instead of `application/json`
+
+### Technical
+- New `RequestIdMiddleware` for async-safe request ID propagation via `contextvars`
+- New exception classes: `AuthorizationError`, `RateLimitError`, `ExternalServiceError`
+- Shared OpenAPI response definitions in `src/chronovista/api/routers/responses.py`
+- 44 new tests for RFC 7807 compliance
+- Full mypy strict compliance maintained
+
+### Documentation
+- [Error Responses Reference](api/error-responses.md) - Complete RFC 7807 format documentation
+- [Migration Guide](api/rfc7807-migration.md) - Guide for updating clients to new error format
+
 ## [0.15.0] - 2026-02-05
 
 ### Added

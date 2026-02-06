@@ -222,6 +222,27 @@ make db-upgrade        # Run migrations
 make db-revision       # Create migration
 ```
 
+### Frontend Development
+
+The project includes a React frontend for web-based video browsing.
+
+```bash
+# Start both backend and frontend
+make dev
+
+# Or start individually
+make dev-backend  # Port 8765
+make dev-frontend # Port 8766
+```
+
+After modifying backend Pydantic models, regenerate the API client:
+
+```bash
+make generate-api
+```
+
+See [`frontend/README.md`](frontend/README.md) for detailed frontend documentation.
+
 <details>
 <summary>All Makefile Commands</summary>
 
@@ -305,9 +326,10 @@ See [System Architecture](src/chronovista/docs/architecture/system-architecture.
 - [x] Graph Visualization (DOT/JSON export)
 - [x] Interactive CLI with Rich UI
 - [x] Timestamp-based transcript queries
-- [x] REST API (11 endpoints)
-- [ ] Web dashboard
+- [x] REST API (20+ endpoints)
+- [x] Web frontend (React + Vite)
 - [ ] ML-powered insights
+- [ ] Video search and filtering UI
 
 
 ## Contributing

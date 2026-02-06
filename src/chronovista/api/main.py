@@ -1,12 +1,14 @@
 """FastAPI application for chronovista API."""
 
 import logging
+import os
 import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from starlette.middleware.base import RequestResponseEndpoint
+from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import Response
 
 from chronovista.api.exception_handlers import register_exception_handlers
@@ -48,6 +50,24 @@ app = FastAPI(
     description="RESTful API for accessing YouTube video metadata, transcripts, and preferences",
     version="1.0.0",
     lifespan=lifespan,
+)
+
+# CORS configuration for frontend development
+# Get frontend port from environment variable with default
+_frontend_port = os.getenv("CHRONOVISTA_FRONTEND_PORT", "8766")
+
+# CORS origins for development (localhost and 127.0.0.1)
+_cors_origins = [
+    f"http://localhost:{_frontend_port}",
+    f"http://127.0.0.1:{_frontend_port}",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Register Request ID middleware early in the chain

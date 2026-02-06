@@ -9,6 +9,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.18.0] - 2026-02-06
+
+### Added
+
+#### Feature 015: Navigation Shell & Application Layout
+
+A persistent navigation shell with sidebar, header, and client-side routing for the React frontend.
+
+**Navigation Features:**
+
+- **Persistent Sidebar**: Left navigation bar visible on all pages with icons for Videos, Search, and Channels
+- **Active State Highlighting**: Current page indicated with `bg-slate-800`, white text, and 3px blue left border
+- **Client-Side Routing**: React Router v6 with `createBrowserRouter` for instant page transitions
+- **Browser History Support**: Back/forward buttons work correctly; page refresh preserves route
+- **Bookmarkable URLs**: Direct URL access to `/videos`, `/search`, `/channels`
+- **404 Page**: Invalid routes show "Page Not Found" with link back to Videos
+- **Root Redirect**: `/` redirects to `/videos`
+
+**Responsive Design:**
+
+| Breakpoint | Sidebar Width | Display |
+|------------|---------------|---------|
+| ≥1024px | 240px | Icons + labels |
+| <1024px | 64px | Icons only + tooltips on hover |
+
+**Accessibility (WCAG 2.1 AA):**
+
+- `<nav aria-label="Main navigation">` landmark
+- `aria-current="page"` on active nav item
+- `aria-hidden="true"` on decorative icons
+- 44×44px minimum touch targets
+- Keyboard navigation (Tab/Shift+Tab)
+- Visible focus ring (`ring-2 ring-blue-500`)
+
+**Error Handling:**
+
+- Error boundary wraps page content
+- Fallback UI with error message, "Try Again" button, and link to `/videos`
+- Navigation shell remains functional during page errors
+
+**New Components:**
+
+| Component | Path | Purpose |
+|-----------|------|---------|
+| `AppShell` | `components/layout/AppShell.tsx` | CSS Grid layout wrapper |
+| `Sidebar` | `components/layout/Sidebar.tsx` | Navigation sidebar |
+| `Header` | `components/layout/Header.tsx` | App header with "Chronovista" title |
+| `NavItem` | `components/layout/NavItem.tsx` | Navigation link with active state |
+| `ErrorBoundary` | `components/ErrorBoundary.tsx` | Error boundary with fallback UI |
+| `VideoIcon` | `components/icons/VideoIcon.tsx` | SVG icon component |
+| `SearchIcon` | `components/icons/SearchIcon.tsx` | SVG icon component |
+| `ChannelIcon` | `components/icons/ChannelIcon.tsx` | SVG icon component |
+
+**New Pages:**
+
+| Page | Route | Status |
+|------|-------|--------|
+| Search | `/search` | Placeholder ("Coming Soon") |
+| Channels | `/channels` | Placeholder ("Coming Soon") |
+| NotFound | `/*` | 404 error page |
+
+**Visual Design:**
+
+- Sidebar: `bg-slate-900`
+- Active nav: `bg-slate-800`, `text-white`, `border-l-[3px] border-blue-500`
+- Inactive nav: `text-slate-400`, hover: `bg-slate-800/50`
+- Header: `bg-white`, 64px height, `border-b border-slate-200`
+- Content area: `bg-slate-50`
+
+**Technical Details:**
+
+- React Router v6.22.0 with `createBrowserRouter` API
+- CSS Grid layout: `grid-cols-[auto_1fr]`
+- `RouterProvider` wraps `QueryClientProvider`
+- Route configuration in `frontend/src/router/index.tsx`
+- Existing video list functionality preserved at `/videos`
+
 ## [0.17.0] - 2026-02-05
 
 ### Added

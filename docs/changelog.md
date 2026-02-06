@@ -12,6 +12,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.18.0] - 2026-02-06
+
+### Added
+- **Feature 015: Navigation Shell & Application Layout**
+  - Persistent sidebar navigation with Videos, Search, and Channels links
+  - Active state highlighting with distinct visual styling
+  - Client-side routing using React Router v6 (`createBrowserRouter`)
+  - Browser history support (back/forward buttons work correctly)
+  - Bookmarkable URLs for all routes (`/videos`, `/search`, `/channels`)
+  - 404 page for invalid routes with navigation back to Videos
+  - Root path (`/`) redirects to `/videos`
+  - Responsive sidebar: 240px with labels at ≥1024px, 64px icons-only below
+  - Tooltips on sidebar icons at smaller screen sizes
+  - Error boundary for graceful page error handling
+
+### Components
+- `AppShell` - CSS Grid layout wrapper with sidebar + content area
+- `Sidebar` - Navigation sidebar with `<nav aria-label="Main navigation">`
+- `Header` - App header with "Chronovista" title
+- `NavItem` - Navigation link with `aria-current="page"` for active state
+- `ErrorBoundary` - Error boundary with fallback UI
+- Icon components: `VideoIcon`, `SearchIcon`, `ChannelIcon`
+- Placeholder pages: `SearchPage`, `ChannelsPage`, `NotFoundPage`
+
+### Accessibility
+- WCAG 2.1 AA compliant focus indicators
+- 44×44px minimum touch targets
+- Keyboard navigation (Tab/Shift+Tab)
+- Proper ARIA attributes on all navigation elements
+
+### Technical
+- React Router v6.22.0 with `createBrowserRouter` API
+- CSS Grid layout: `grid-cols-[auto_1fr]`
+- Inline SVG icons (no external dependencies)
+- Existing video list functionality preserved at `/videos`
+
 ## [0.17.0] - 2026-02-05
 
 ### Added

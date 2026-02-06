@@ -282,6 +282,7 @@ cache/
 
 # Feature specifications (local development artifacts)
 specs/
+src/chronovista/docs/
 
 # Frontend generated files (Orval)
 frontend/src/api/*.ts

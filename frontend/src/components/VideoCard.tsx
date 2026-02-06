@@ -2,6 +2,9 @@
  * VideoCard component displays a single video item in the list.
  */
 
+import { Link } from "react-router-dom";
+
+import { cardPatterns, colorTokens } from "../styles";
 import type { VideoListItem } from "../types/video";
 
 interface VideoCardProps {
@@ -103,24 +106,27 @@ export function VideoCard({ video }: VideoCardProps) {
   } = video;
 
   return (
-    <article
-      className="bg-white rounded-xl shadow-md border border-gray-100 p-5 hover:shadow-xl hover:border-gray-200 transition-all duration-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2"
-      tabIndex={0}
-      role="article"
-      aria-label={`Video: ${title}`}
+    <Link
+      to={`/videos/${video.video_id}`}
+      className="block no-underline text-inherit focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-xl"
     >
+      <article
+        className={`${cardPatterns.base} ${cardPatterns.hover} ${cardPatterns.transition} p-5`}
+        role="article"
+        aria-label={`Video: ${title}`}
+      >
       {/* Video Title */}
-      <h3 className="text-lg font-semibold text-gray-900 line-clamp-2 mb-2">
+      <h3 className={`text-lg font-semibold text-${colorTokens.text.primary} line-clamp-2 mb-2`}>
         {title}
       </h3>
 
       {/* Channel Name */}
-      <p className="text-sm text-gray-600 mb-3">
+      <p className={`text-sm text-${colorTokens.text.secondary} mb-3`}>
         {channel_title ?? "Unknown Channel"}
       </p>
 
       {/* Video Metadata Row */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+      <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-${colorTokens.text.tertiary}`}>
         {/* Duration Badge */}
         <span className="inline-flex items-center bg-gray-100 px-2 py-0.5 rounded font-mono text-xs">
           {formatDuration(duration)}
@@ -137,18 +143,18 @@ export function VideoCard({ video }: VideoCardProps) {
 
       {/* Transcript Info */}
       {transcript_summary.count > 0 && (
-        <div className="mt-3 pt-3 border-t border-gray-100">
+        <div className={`mt-3 pt-3 border-t border-${colorTokens.border}`}>
           <div className="flex items-center gap-2 text-sm">
             <span
               className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
                 transcript_summary.has_manual
-                  ? "bg-green-100 text-green-800"
-                  : "bg-blue-100 text-blue-800"
+                  ? `bg-${colorTokens.status.success.bg} text-${colorTokens.status.success.text}`
+                  : `bg-${colorTokens.status.info.bg} text-${colorTokens.status.info.text}`
               }`}
             >
               {transcript_summary.has_manual ? "Manual CC" : "Auto CC"}
             </span>
-            <span className="text-gray-500">
+            <span className={`text-${colorTokens.text.tertiary}`}>
               {transcript_summary.count} transcript
               {transcript_summary.count !== 1 ? "s" : ""}
               {transcript_summary.languages.length > 0 && (
@@ -161,6 +167,7 @@ export function VideoCard({ video }: VideoCardProps) {
           </div>
         </div>
       )}
-    </article>
+      </article>
+    </Link>
   );
 }

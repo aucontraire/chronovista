@@ -9,6 +9,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.19.0] - 2026-02-06
+
+### Added
+
+#### Feature 016: Video Detail Page with Transcript Display
+
+A dedicated video detail page with comprehensive metadata display and multi-language transcript support.
+
+**Video Detail Features:**
+
+- **Browser Tab Title**: Shows "Channel Name - Video Title" for easy tab identification
+- **Absolute Date Display**: Upload dates shown as "Jan 15, 2024" instead of relative "1 week ago"
+- **Full Language Codes**: Transcript language selector shows full BCP-47 codes (e.g., "EN-gb" vs "EN") to distinguish variants
+- **Video Metadata**: Title, channel, upload date, duration, view count, like count, description, tags
+- **Watch on YouTube**: External link button with proper `target="_blank"` and `rel="noopener noreferrer"`
+- **Back Navigation**: Consistent "Back to Videos" links
+
+**Transcript Panel Features:**
+
+- **Collapsible Panel**: Expand/collapse with CSS-only 200ms animation
+- **Language Selector**: WAI-ARIA tabs pattern with keyboard navigation (Arrow keys, Home/End)
+- **Quality Indicators**: Checkmark (✓) badge for manual/CC transcripts
+- **View Mode Toggle**: Switch between Segments and Full Text views
+- **Infinite Scroll**: Virtualized segments with 50 initial + 25 subsequent batch loading
+- **Debounced Language Switch**: 150ms debounce with request cancellation
+
+**Accessibility (WCAG 2.1 AA):**
+
+- `prefers-reduced-motion` support for expand/collapse animation
+- `aria-expanded`, `aria-controls` on toggle button
+- `role="tablist"` and `role="tab"` for language selector
+- `aria-live="polite"` announcements for language changes
+- Visible focus indicators on all interactive elements
+
+**New Components:**
+
+| Component | Path | Purpose |
+|-----------|------|---------|
+| `VideoDetailPage` | `pages/VideoDetailPage.tsx` | Main detail page |
+| `TranscriptPanel` | `components/transcript/TranscriptPanel.tsx` | Collapsible transcript container |
+| `LanguageSelector` | `components/transcript/LanguageSelector.tsx` | Language tab selector |
+| `ViewModeToggle` | `components/transcript/ViewModeToggle.tsx` | Segments/Full Text toggle |
+| `TranscriptSegments` | `components/transcript/TranscriptSegments.tsx` | Virtualized segment list |
+| `TranscriptFullText` | `components/transcript/TranscriptFullText.tsx` | Continuous prose view |
+
+**New Hooks:**
+
+| Hook | Purpose |
+|------|---------|
+| `useVideoDetail` | Fetch video metadata |
+| `useTranscriptLanguages` | Fetch available transcript languages |
+| `useTranscript` | Fetch full transcript text |
+| `useTranscriptSegments` | Infinite scroll for transcript segments |
+| `usePrefersReducedMotion` | Detect reduced motion preference |
+
+**New Route:**
+
+- `/videos/:videoId` - Video detail page with transcript panel
+
+**Technical Details:**
+
+- React Router v6 dynamic route with `useParams`
+- TanStack Query v5 with `useInfiniteQuery` for segments
+- `@tanstack/react-virtual` v3.10+ for windowed virtualization
+- Design tokens extracted to `frontend/src/styles/tokens.ts`
+- 255 passing tests (24 new tests for this feature)
+
 ## [0.18.0] - 2026-02-06
 
 ### Added

@@ -12,6 +12,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.17.0] - 2026-02-05
+
+### Added
+- **Feature 014: Frontend Foundation with Vite + React**
+  - Modern React 19 frontend for web-based video browsing
+  - Vite 6.x build tool with hot module replacement
+  - TypeScript 5.x in strict mode for type safety
+  - Tailwind CSS 4.x for utility-first styling
+  - TanStack Query v5 for async state management with infinite scroll
+  - Orval 7.x for OpenAPI to TypeScript client generation
+  - New Makefile targets: `make dev` (both servers), `make generate-api` (TypeScript types)
+  - Video list view with loading skeletons, error states, empty state
+  - CORS middleware for FastAPI backend
+  - Extractable architecture via `git subtree split -P frontend`
+
+### Technical
+- Frontend runs on port 8766, backend on port 8765
+- Auto-generated TypeScript types from OpenAPI specification
+- Intersection Observer for 80% scroll trigger (infinite scroll)
+- Environment-configurable API base URL for deployment flexibility
+
+### Documentation
+- [Frontend README](../frontend/README.md) - Setup, tech stack, extraction guide
+- Frontend quick start: `cd frontend && npm install && make dev`
+
 ## [0.16.0] - 2026-02-05
 
 ### Added

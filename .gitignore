@@ -282,3 +282,12 @@ cache/
 
 # Feature specifications (local development artifacts)
 specs/
+
+# Frontend generated files (Orval)
+frontend/src/api/*.ts
+!frontend/src/api/config.ts
+
+# Frontend dependencies and build
+frontend/node_modules/
+frontend/dist/
+frontend/build/

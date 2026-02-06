@@ -7,9 +7,13 @@ Complete installation guide for chronovista.
 | Requirement | Minimum | Recommended |
 |-------------|---------|-------------|
 | Python | 3.11 | 3.12 |
+| Node.js (frontend) | 20.x LTS | 22.x LTS |
 | Memory | 2GB | 4GB+ |
 | Storage | 1GB | 10GB+ (for transcripts) |
 | Database | PostgreSQL 13 / MySQL 8 | PostgreSQL 15 |
+
+!!! note "Node.js for Frontend"
+    Node.js is only required if you want to use the web frontend. The CLI works without Node.js.
 
 ## Python Version Management
 
@@ -250,6 +254,69 @@ make install-dev
 make install-nlp
 make install-db
 ```
+
+## Frontend Setup (Optional)
+
+The web frontend provides a browser-based interface for browsing your video library.
+
+### Prerequisites
+
+- Node.js 22.x LTS or 20.x LTS
+- npm 10.x or higher
+
+### Install Node.js
+
+=== "macOS"
+
+    ```bash
+    # Using Homebrew
+    brew install node@22
+
+    # Or using nvm
+    nvm install 22
+    nvm use 22
+    ```
+
+=== "Linux"
+
+    ```bash
+    # Using nvm (recommended)
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+    source ~/.bashrc
+    nvm install 22
+    nvm use 22
+    ```
+
+### Install Frontend Dependencies
+
+```bash
+cd frontend
+npm install
+cd ..
+```
+
+### Start Development Servers
+
+```bash
+# Start both backend and frontend
+make dev
+
+# Or start individually
+make dev-backend  # Port 8765
+make dev-frontend # Port 8766
+```
+
+Open http://localhost:8766 to access the web interface.
+
+### Regenerate API Client
+
+After modifying backend Pydantic models:
+
+```bash
+make generate-api
+```
+
+See [`frontend/README.md`](../frontend/README.md) for detailed frontend documentation.
 
 ## Next Steps
 

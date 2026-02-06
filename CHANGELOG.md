@@ -9,6 +9,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.17.0] - 2026-02-05
+
+### Added
+
+#### Feature 014: Frontend Foundation with Vite + React
+
+A modern React-based web frontend for browsing your video library, built with clean separation patterns for future extraction.
+
+**Tech Stack:**
+
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| Vite | 6.x | Build tool and dev server |
+| React | 19.x | UI framework |
+| TypeScript | 5.x | Type-safe JavaScript (strict mode) |
+| Tailwind CSS | 4.x | Utility-first styling |
+| TanStack Query | 5.x | Async state management |
+| Orval | 7.x | OpenAPI to TypeScript client generation |
+
+**New Makefile Targets:**
+
+```bash
+make dev            # Start both backend (8765) and frontend (8766)
+make dev-backend    # Backend only
+make dev-frontend   # Frontend only
+make generate-api   # Regenerate TypeScript client from OpenAPI
+```
+
+**Key Features:**
+
+- **Video List View**: Browse videos with infinite scroll pagination (25 items/page)
+- **Auto-Generated Types**: TypeScript types from FastAPI's OpenAPI spec via Orval
+- **State Components**: Loading skeletons, contextual error messages, empty state guidance
+- **CORS Support**: Backend accepts requests from frontend dev server
+- **Extractable Architecture**: `git subtree split -P frontend` produces standalone repo
+
+**Frontend Structure:**
+
+```
+frontend/
+├── src/
+│   ├── api/          # API configuration
+│   ├── components/   # VideoCard, LoadingState, ErrorState, EmptyState
+│   ├── hooks/        # useVideos with infinite scroll
+│   ├── pages/        # HomePage
+│   └── types/        # TypeScript interfaces
+├── vite.config.ts    # Vite + Tailwind v4 plugin
+└── orval.config.ts   # API client generation
+```
+
+**Environment Variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CHRONOVISTA_API_PORT` | 8765 | Backend API port |
+| `CHRONOVISTA_FRONTEND_PORT` | 8766 | Frontend dev server port |
+| `VITE_API_BASE_URL` | `http://localhost:8765/api/v1` | API base URL for frontend |
+
+**Prerequisites:**
+
+- Node.js 22.x LTS or 20.x LTS (22.x recommended for Orval compatibility)
+- npm 10.x or higher
+
+**Quick Start:**
+
+```bash
+cd frontend && npm install
+make dev              # Starts both servers
+open http://localhost:8766
+```
+
+See [`frontend/README.md`](frontend/README.md) for detailed documentation.
+
 ## [0.16.0] - 2026-02-05
 
 ### Added

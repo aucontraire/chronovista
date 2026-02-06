@@ -1,5 +1,5 @@
 # Makefile for chronovista development (Poetry-based)
-.PHONY: help install install-dev clean test test-cov test-unit test-integration test-integration-reset lint format type-check quality pre-commit run build docs docs-serve docs-build docs-deploy
+.PHONY: help install install-dev clean test test-cov test-unit test-integration test-integration-reset lint format type-check quality pre-commit run build docs docs-serve docs-build docs-deploy dev dev-backend dev-frontend generate-api
 
 # Default target
 help:
@@ -33,6 +33,13 @@ help:
 	@echo "  run            - Run the CLI application"
 	@echo "  build          - Build the package"
 	@echo "  shell          - Enter Poetry shell"
+	@echo "  dev            - Start backend (8765) and frontend (8766) dev servers"
+	@echo "  dev-backend    - Start backend dev server only (port 8765)"
+	@echo "  dev-frontend   - Start frontend dev server only (port 8766)"
+	@echo ""
+	@echo "Frontend API Generation:"
+	@echo "  generate-api   - Export OpenAPI spec and generate TypeScript client"
+	@echo "                   (requires backend running on port 8765)"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  docs-serve     - Serve documentation locally (http://localhost:8000)"
@@ -452,3 +459,46 @@ deps-lock:
 export-requirements:
 	$(POETRY) export -f requirements.txt --output requirements.txt
 	$(POETRY) export -f requirements.txt --with dev --output requirements-dev.txt
+
+# =============================================================================
+# Frontend Development (Feature 014)
+# =============================================================================
+
+# Frontend API Generation
+# NOTE: Requires backend to be running on port 8765 before execution
+# Start with: make dev-backend (in separate terminal) OR make dev
+generate-api:
+	@echo "Exporting OpenAPI spec..."
+	@echo "NOTE: Backend must be running on port 8765"
+	curl -s http://localhost:8765/openapi.json > contracts/openapi.json
+	@echo "Generating TypeScript client..."
+	cd frontend && npm run generate-api
+	@echo "API client generated successfully!"
+
+# Development Servers
+# Starts both backend (8765) and frontend (8766) with hot reload
+# Press Ctrl+C to stop both servers gracefully
+dev:
+	@echo "Starting backend and frontend development servers..."
+	@echo "Backend: http://localhost:8765"
+	@echo "Frontend: http://localhost:8766"
+	@echo "Press Ctrl+C to stop both servers"
+	@trap 'kill 0' EXIT; \
+	$(MAKE) dev-backend & \
+	$(MAKE) dev-frontend & \
+	wait
+
+# Backend development server (port 8765)
+# Supports hot reload via uvicorn --reload
+dev-backend:
+	CHRONOVISTA_API_PORT=8765 $(POETRY_RUN) uvicorn chronovista.api.main:app --host localhost --port 8765 --reload
+
+# Frontend development server (port 8766)
+# Uses Vite dev server with hot module replacement
+dev-frontend:
+	cd frontend && npm run dev
+
+# Verification Commands (for manual testing)
+# - TypeScript type check: cd frontend && npm run typecheck
+# - Hot reload: Modify a .tsx file and observe browser auto-refresh
+# - Graceful shutdown: Press Ctrl+C when running 'make dev'

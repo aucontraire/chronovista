@@ -9,6 +9,7 @@ import { ChannelsPage } from "../pages/ChannelsPage";
 import { HomePage } from "../pages/HomePage";
 import { NotFoundPage } from "../pages/NotFoundPage";
 import { SearchPage } from "../pages/SearchPage";
+import { VideoDetailPage } from "../pages/VideoDetailPage";
 
 /**
  * Router configuration with AppShell as the root layout.
@@ -16,6 +17,7 @@ import { SearchPage } from "../pages/SearchPage";
  * Routes:
  * - / redirects to /videos
  * - /videos displays the HomePage (video list)
+ * - /videos/:videoId displays the VideoDetailPage (FR-001)
  * - /search displays the SearchPage placeholder
  * - /channels displays the ChannelsPage placeholder
  * - * catches all other routes and shows NotFoundPage
@@ -32,6 +34,10 @@ export const router = createBrowserRouter([
       {
         path: "videos",
         element: <HomePage />,
+      },
+      {
+        path: "videos/:videoId",
+        element: <VideoDetailPage />,
       },
       {
         path: "search",

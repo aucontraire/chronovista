@@ -12,6 +12,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.19.0] - 2026-02-06
+
+### Added
+- **Feature 016: Video Detail Page with Transcript Display**
+  - Dedicated video detail page at `/videos/:videoId` route
+  - Browser tab title shows "Channel Name - Video Title"
+  - Absolute date display (e.g., "Jan 15, 2024") instead of relative time
+  - Full BCP-47 language codes in transcript selector (e.g., "EN-gb" vs "EN")
+  - Collapsible transcript panel with expand/collapse animation
+  - WAI-ARIA tabs pattern for language selection with keyboard navigation
+  - Quality indicators (checkmarks) for manual/CC transcripts
+  - View mode toggle between Segments and Full Text views
+  - Infinite scroll with virtualized segments (50 initial + 25 subsequent batches)
+  - 150ms debounced language switching with request cancellation
+  - `prefers-reduced-motion` support for animations
+
+### Components
+- `VideoDetailPage` - Main detail page with video metadata
+- `TranscriptPanel` - Collapsible transcript container
+- `LanguageSelector` - Language tab selector with ARIA attributes
+- `ViewModeToggle` - Segments/Full Text toggle
+- `TranscriptSegments` - Virtualized segment list with infinite scroll
+- `TranscriptFullText` - Continuous prose view
+
+### Hooks
+- `useVideoDetail` - Fetch video metadata
+- `useTranscriptLanguages` - Fetch available transcript languages
+- `useTranscript` - Fetch full transcript text
+- `useTranscriptSegments` - Infinite scroll for transcript segments
+- `usePrefersReducedMotion` - Detect reduced motion preference
+
+### Accessibility
+- WCAG 2.1 AA compliant focus indicators
+- `aria-expanded`, `aria-controls` on toggle buttons
+- `role="tablist"` and `role="tab"` for language selector
+- `aria-live="polite"` announcements for language changes
+- Keyboard navigation (Arrow keys, Home/End, Tab)
+
+### Technical
+- React Router v6 dynamic route with `useParams`
+- TanStack Query v5 with `useInfiniteQuery`
+- `@tanstack/react-virtual` v3.10+ for windowed virtualization
+- Design tokens in `frontend/src/styles/tokens.ts`
+- 255 passing frontend tests
+
 ## [0.18.0] - 2026-02-06
 
 ### Added

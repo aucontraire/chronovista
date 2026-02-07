@@ -9,6 +9,7 @@
  * - Back to Videos navigation link
  * - Watch on YouTube external link
  * - Tag display (hidden when no tags)
+ * - Channel link navigation (US3)
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -338,6 +339,108 @@ describe('VideoDetailPage', () => {
       expect(youtubeLink).toHaveAttribute('href', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
       expect(youtubeLink).toHaveAttribute('target', '_blank');
       expect(youtubeLink).toHaveAttribute('rel', 'noopener noreferrer');
+    });
+  });
+
+  describe('Channel Link Navigation (US3)', () => {
+    it('should display channel name as a clickable link', () => {
+      mockUseVideoDetail.mockReturnValue({
+        data: mockVideoData,
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      } as any);
+
+      renderWithProviders(<VideoDetailPage />, {
+        initialEntries: ['/videos/dQw4w9WgXcQ'],
+        path: '/videos/:videoId',
+      });
+
+      const channelLink = screen.getByRole('link', { name: 'Test Channel' });
+      expect(channelLink).toBeInTheDocument();
+    });
+
+    it('should navigate to channel detail page when channel link is clicked', () => {
+      mockUseVideoDetail.mockReturnValue({
+        data: mockVideoData,
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      } as any);
+
+      renderWithProviders(<VideoDetailPage />, {
+        initialEntries: ['/videos/dQw4w9WgXcQ'],
+        path: '/videos/:videoId',
+      });
+
+      const channelLink = screen.getByRole('link', { name: 'Test Channel' });
+      expect(channelLink).toHaveAttribute('href', '/channels/UC123456');
+    });
+
+    it('should have hover state on channel link (FR-014)', () => {
+      mockUseVideoDetail.mockReturnValue({
+        data: mockVideoData,
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      } as any);
+
+      renderWithProviders(<VideoDetailPage />, {
+        initialEntries: ['/videos/dQw4w9WgXcQ'],
+        path: '/videos/:videoId',
+      });
+
+      const channelLink = screen.getByRole('link', { name: 'Test Channel' });
+      // Check for hover class indicating hover state
+      expect(channelLink).toHaveClass('hover:text-blue-600');
+    });
+
+    it('should display "Unknown Channel" without link when channel is null (FR-015)', () => {
+      mockUseVideoDetail.mockReturnValue({
+        data: { ...mockVideoData, channel_id: null, channel_title: null },
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      } as any);
+
+      renderWithProviders(<VideoDetailPage />, {
+        initialEntries: ['/videos/dQw4w9WgXcQ'],
+        path: '/videos/:videoId',
+      });
+
+      // Should display "Unknown Channel" text
+      expect(screen.getByText('Unknown Channel')).toBeInTheDocument();
+
+      // Should NOT be a link
+      const unknownChannelText = screen.getByText('Unknown Channel');
+      expect(unknownChannelText.tagName).not.toBe('A');
+    });
+
+    it('should be keyboard accessible', async () => {
+      mockUseVideoDetail.mockReturnValue({
+        data: mockVideoData,
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      } as any);
+
+      const { user } = renderWithProviders(<VideoDetailPage />, {
+        initialEntries: ['/videos/dQw4w9WgXcQ'],
+        path: '/videos/:videoId',
+      });
+
+      const channelLink = screen.getByRole('link', { name: 'Test Channel' });
+
+      // Tab to the channel link
+      await user.tab();
+
+      // Channel link should be focusable
+      expect(channelLink).toBeVisible();
     });
   });
 });

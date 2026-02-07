@@ -6,10 +6,14 @@ import type { ApiErrorType } from "../types/video";
 import { isApiError } from "../api/config";
 
 interface ErrorStateProps {
-  /** The error that occurred */
-  error: unknown;
-  /** Callback to retry the failed operation */
-  onRetry: () => void;
+  /** The error that occurred (alternative to message) */
+  error?: unknown;
+  /** Simple error message string (alternative to error object) */
+  message?: string;
+  /** Optional title for the error (defaults based on error type) */
+  title?: string;
+  /** Callback to retry the failed operation (optional) */
+  onRetry?: () => void;
 }
 
 /**
@@ -24,9 +28,19 @@ const errorMessages: Record<ApiErrorType, string> = {
 };
 
 /**
- * Gets a user-friendly error message from an error.
+ * Gets a user-friendly error message from an error or returns provided message.
  */
-function getErrorMessage(error: unknown): string {
+function getErrorMessage(error: unknown | undefined, providedMessage?: string): string {
+  // If message is explicitly provided, use it
+  if (providedMessage) {
+    return providedMessage;
+  }
+
+  // If no error object, use default
+  if (!error) {
+    return errorMessages.unknown;
+  }
+
   if (isApiError(error)) {
     return errorMessages[error.type];
   }
@@ -48,7 +62,11 @@ function getErrorMessage(error: unknown): string {
 /**
  * Gets the error type from an error.
  */
-function getErrorType(error: unknown): ApiErrorType {
+function getErrorType(error: unknown | undefined): ApiErrorType {
+  if (!error) {
+    return "unknown";
+  }
+
   if (isApiError(error)) {
     return error.type;
   }
@@ -67,10 +85,25 @@ function getErrorType(error: unknown): ApiErrorType {
 
 /**
  * ErrorState displays error messages with appropriate styling and retry button.
+ * Supports both error object and simple message string interfaces.
  */
-export function ErrorState({ error, onRetry }: ErrorStateProps) {
-  const message = getErrorMessage(error);
+export function ErrorState({ error, message: providedMessage, title, onRetry }: ErrorStateProps) {
+  const message = getErrorMessage(error, providedMessage);
   const errorType = getErrorType(error);
+
+  // Use provided title or generate from error type
+  const errorTitle = title || (() => {
+    switch (errorType) {
+      case "network":
+        return "Connection Error";
+      case "timeout":
+        return "Timeout Error";
+      case "server":
+        return "Server Error";
+      default:
+        return "Error";
+    }
+  })();
 
   return (
     <div
@@ -98,38 +131,37 @@ export function ErrorState({ error, onRetry }: ErrorStateProps) {
 
       {/* Error Type Label */}
       <p className="text-sm font-semibold text-red-800 uppercase tracking-wider mb-2">
-        {errorType === "network" && "Connection Error"}
-        {errorType === "timeout" && "Timeout Error"}
-        {errorType === "server" && "Server Error"}
-        {errorType === "unknown" && "Error"}
+        {errorTitle}
       </p>
 
       {/* Error Message */}
       <p className="text-red-700 mb-8 max-w-md mx-auto">{message}</p>
 
-      {/* Retry Button */}
-      <button
-        type="button"
-        onClick={onRetry}
-        className="inline-flex items-center px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all duration-200"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          strokeWidth={1.5}
-          stroke="currentColor"
-          className="w-5 h-5 mr-2"
-          aria-hidden="true"
+      {/* Retry Button - only shown if onRetry callback provided */}
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="inline-flex items-center px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all duration-200"
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"
-          />
-        </svg>
-        Try Again
-      </button>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+            stroke="currentColor"
+            className="w-5 h-5 mr-2"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"
+            />
+          </svg>
+          Try Again
+        </button>
+      )}
     </div>
   );
 }

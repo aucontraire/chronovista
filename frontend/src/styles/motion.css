@@ -1,0 +1,140 @@
+/**
+ * Reduced motion CSS utilities.
+ *
+ * FR-023: Respects user's motion preferences for accessibility.
+ * When users have "prefers-reduced-motion: reduce" enabled in their OS settings,
+ * all animations and transitions are disabled or significantly reduced.
+ *
+ * This improves accessibility for users with:
+ * - Vestibular disorders
+ * - Motion sensitivity
+ * - Epilepsy
+ * - Attention disorders
+ *
+ * Usage: This file is imported in index.css and applies globally.
+ */
+
+@media (prefers-reduced-motion: reduce) {
+  /**
+   * Disable all animations and transitions by default.
+   * This is the nuclear option that ensures complete motion reduction.
+   */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /**
+   * Remove transform transitions that can trigger motion sensitivity.
+   * Instant state changes are preferred over animated transforms.
+   */
+  * {
+    transform: none !important;
+  }
+
+  /**
+   * Disable smooth scrolling.
+   * Jump immediately to scroll targets instead of animating.
+   */
+  html {
+    scroll-behavior: auto !important;
+  }
+
+  /**
+   * Disable fade effects on loading states.
+   * Content should appear instantly instead of fading in.
+   */
+  [data-loading="true"],
+  [aria-busy="true"] {
+    opacity: 1 !important;
+  }
+
+  /**
+   * Disable carousel/slider autoplay and transitions.
+   * Users can navigate manually without motion.
+   */
+  [data-carousel],
+  [data-slider] {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  /**
+   * Disable parallax scrolling effects.
+   * Content should move 1:1 with scroll position.
+   */
+  [data-parallax] {
+    transform: none !important;
+    position: static !important;
+  }
+
+  /**
+   * Disable skeleton loading animations.
+   * Show static loading placeholders instead.
+   */
+  [data-skeleton],
+  .skeleton {
+    animation: none !important;
+    background: linear-gradient(90deg, #f0f0f0 0%, #f0f0f0 100%) !important;
+  }
+}
+
+/**
+ * Safe animation class for essential animations.
+ * Use this class on elements that MUST animate even with reduced motion.
+ * Only use for critical user feedback (e.g., success/error indicators).
+ *
+ * Example: <div class="motion-safe:animate-pulse">
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .motion-safe\:animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  .motion-safe\:animate-spin {
+    animation: spin 1s linear infinite;
+  }
+
+  .motion-safe\:animate-bounce {
+    animation: bounce 1s infinite;
+  }
+}
+
+/**
+ * Keyframes for safe animations.
+ * These are only used when prefers-reduced-motion is not set to reduce.
+ */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(-25%);
+    animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+  }
+  50% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+}

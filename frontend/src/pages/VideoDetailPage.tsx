@@ -335,6 +335,7 @@ export function VideoDetailPage() {
     video_id,
     title,
     description,
+    channel_id,
     channel_title,
     upload_date,
     duration,
@@ -378,10 +379,17 @@ export function VideoDetailPage() {
           {title}
         </h1>
 
-        {/* Channel Name (FR-002) */}
-        <p className="text-lg text-gray-600 mb-4">
-          {channel_title ?? "Unknown Channel"}
-        </p>
+        {/* Channel Name (FR-002, FR-012, FR-013, FR-014, FR-015) */}
+        {channel_id && channel_title ? (
+          <Link
+            to={`/channels/${channel_id}`}
+            className="text-lg text-blue-500 hover:text-blue-600 hover:underline transition-colors mb-4 inline-block focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded"
+          >
+            {channel_title}
+          </Link>
+        ) : (
+          <p className="text-lg text-gray-600 mb-4">Unknown Channel</p>
+        )}
 
         {/* Video Metadata Row (FR-002) */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-gray-500 mb-6">

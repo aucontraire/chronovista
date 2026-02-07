@@ -9,6 +9,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.20.0] - 2026-02-06
+
+### Added
+
+#### Feature 017: Channel Navigation & Discovery
+
+Frontend feature enabling users to browse channels, view channel details with subscription status and videos, and navigate from video detail to channel pages.
+
+**User Story 1: Browse All Channels (MVP)**
+
+- Channels list page at `/channels` route
+- Channel cards displaying thumbnail, name, and video count (in database)
+- Infinite scroll pagination with Intersection Observer
+- Loading skeletons during data fetch
+- Empty state when no channels exist
+- Channels sorted by video count (descending, from API)
+
+**User Story 2: View Channel Details**
+
+- Channel detail page at `/channels/:channelId` route
+- Channel header with thumbnail, name, description
+- Metadata display: subscriber count, video count (from YouTube), country
+- Subscription status badge ("Subscribed" / "Not Subscribed")
+- Videos section with infinite scroll
+- Graceful handling of missing metadata (placeholders, fallback text)
+- 404 page for non-existent channels with navigation options
+
+**User Story 3: Navigate from Video to Channel**
+
+- Channel name in video detail is now a clickable link
+- Hover state indicating clickability
+- "Unknown Channel" fallback for null channels
+
+**New Components:**
+
+| Component | Path | Purpose |
+|-----------|------|---------|
+| `ChannelCard` | `components/ChannelCard.tsx` | Channel card for list display |
+| `VideoGrid` | `components/VideoGrid.tsx` | Reusable video grid (extracted from VideoList) |
+| `ChannelDetailPage` | `pages/ChannelDetailPage.tsx` | Channel detail view |
+
+**New Hooks:**
+
+| Hook | Purpose |
+|------|---------|
+| `useChannels` | Channels list with infinite scroll |
+| `useChannelDetail` | Single channel fetch with 404 handling |
+| `useChannelVideos` | Channel videos with infinite scroll |
+
+**Infrastructure:**
+
+- **TanStack Query**: Retry configuration (3 attempts, exponential backoff for 5xx/network errors)
+- **Scroll Restoration**: Preserves position on back navigation via React Router
+- **Reduced Motion**: CSS support for `prefers-reduced-motion` preference
+- **WCAG 2.1 AA**: Contrast-compliant color tokens for subscription status
+- **Browser Support**: Browserslist config for Chrome/Firefox/Edge 100+, Safari 15.4+
+
+**Accessibility (WCAG 2.1 AA):**
+
+- Keyboard navigation for all interactive elements
+- ARIA labels on channel cards and navigation elements
+- Focus management on page navigation
+- Visible focus indicators
+- Screen reader announcements for loading states
+
+**Edge Cases Handled:**
+
+- EC-001: Missing thumbnail → placeholder image
+- EC-002: Missing description → "No description available"
+- EC-003: Channel with 0 videos → empty state message
+- EC-004: Missing metadata → hide unavailable fields
+- EC-005: Non-existent channel → 404 page with navigation
+- EC-006: Long channel names → truncation with ellipsis
+- EC-007: Infinite scroll timeout → inline error with retry
+- EC-008: Partial page load → independent retry for videos section
+
+**Technical Details:**
+
+- React Router v6 dynamic routes
+- TanStack Query v5 with `useInfiniteQuery`
+- Tailwind CSS 4.x with custom color tokens
+- TypeScript strict mode (0 errors)
+- 393 passing tests
+
 ## [0.19.0] - 2026-02-06
 
 ### Added

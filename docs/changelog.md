@@ -12,6 +12,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.20.0] - 2026-02-06
+
+### Added
+- **Feature 017: Channel Navigation & Discovery**
+  - Channels list page at `/channels` with infinite scroll pagination
+  - Channel cards displaying thumbnail, name, and video count
+  - Channel detail page at `/channels/:channelId` with full metadata
+  - Subscription status badge ("Subscribed" / "Not Subscribed")
+  - Videos section with infinite scroll on channel detail
+  - Clickable channel link in video detail page
+  - Graceful handling of missing metadata (placeholders, fallback text)
+  - 404 page for non-existent channels with navigation options
+  - TanStack Query retry configuration (3 attempts, exponential backoff)
+  - Scroll restoration for back navigation
+  - Reduced motion CSS support (`prefers-reduced-motion`)
+  - WCAG 2.1 AA contrast-compliant color tokens
+  - Browserslist config (Chrome/Firefox/Edge 100+, Safari 15.4+)
+
+### Components
+- `ChannelCard` - Channel card with thumbnail, name, video count
+- `VideoGrid` - Reusable video grid extracted from VideoList
+- `ChannelDetailPage` - Full channel detail view
+
+### Hooks
+- `useChannels` - Channels list with infinite scroll
+- `useChannelDetail` - Single channel fetch with 404 handling
+- `useChannelVideos` - Channel videos with infinite scroll
+
+### Accessibility
+- Keyboard navigation for all interactive elements
+- ARIA labels on channel cards and navigation
+- Focus management on page navigation
+- Screen reader announcements for loading states
+
+### Technical
+- React Router v6 dynamic routes
+- TanStack Query v5 with `useInfiniteQuery`
+- Tailwind CSS 4.x custom color tokens
+- 393 passing frontend tests
+
 ## [0.19.0] - 2026-02-06
 
 ### Added

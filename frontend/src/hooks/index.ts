@@ -2,6 +2,9 @@
  * Hook exports for Chronovista frontend.
  */
 
+export { useChannelDetail } from "./useChannelDetail";
+export { useChannels } from "./useChannels";
+export { useChannelVideos } from "./useChannelVideos";
 export { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 export { useTranscript } from "./useTranscript";
 export { useTranscriptLanguages } from "./useTranscriptLanguages";

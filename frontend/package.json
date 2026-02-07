@@ -36,5 +36,11 @@
     "typescript": "^5.7.0",
     "vite": "^6.0.0",
     "vitest": "^4.0.18"
-  }
+  },
+  "browserslist": [
+    "Chrome >= 100",
+    "Firefox >= 100",
+    "Safari >= 15.4",
+    "Edge >= 100"
+  ]
 }

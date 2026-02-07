@@ -21,3 +21,10 @@ export type {
   TranscriptSegment,
   TranscriptType,
 } from "./transcript";
+
+export type {
+  ChannelDetail,
+  ChannelDetailResponse,
+  ChannelListItem,
+  ChannelListResponse,
+} from "./channel";

@@ -79,6 +79,20 @@ export function ChannelDetailPage() {
     }
   }, [channelLoading]);
 
+  // Update document title with channel name
+  useEffect(() => {
+    if (channel?.title) {
+      document.title = `${channel.title} - ChronoVista`;
+    } else {
+      document.title = "Channel Details - ChronoVista";
+    }
+
+    // Cleanup: reset to default on unmount
+    return () => {
+      document.title = "ChronoVista";
+    };
+  }, [channel?.title]);
+
   // Loading state
   if (channelLoading) {
     return (

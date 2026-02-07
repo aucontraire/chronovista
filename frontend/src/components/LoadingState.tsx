@@ -51,6 +51,7 @@ export function LoadingState({ count = 3 }: LoadingStateProps) {
       className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
       role="status"
       aria-label="Loading videos"
+      aria-live="polite"
       aria-busy="true"
     >
       {Array.from({ length: count }, (_, index) => (

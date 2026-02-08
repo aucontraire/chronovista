@@ -30,4 +30,6 @@ class SearchResultSegment(BaseModel):
 class SearchResponse(ApiResponse[List[SearchResultSegment]]):
     """Response for segment search endpoint."""
 
-    pass
+    model_config = ConfigDict(strict=True)
+
+    available_languages: List[str]  # All unique languages in full result set

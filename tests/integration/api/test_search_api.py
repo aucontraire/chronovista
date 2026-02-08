@@ -384,3 +384,17 @@ class TestSearchEdgeCases:
             data = response.json()
             assert data["data"] == []
             assert data["pagination"]["has_more"] is False
+
+    async def test_search_available_languages(self, async_client: AsyncClient) -> None:
+        """Test that available_languages field contains all languages from full result set."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/search/segments?q=test")
+            assert response.status_code == 200
+            data = response.json()
+            # available_languages field should exist
+            assert "available_languages" in data
+            assert isinstance(data["available_languages"], list)
+            # All language codes should be strings
+            for lang in data["available_languages"]:
+                assert isinstance(lang, str)

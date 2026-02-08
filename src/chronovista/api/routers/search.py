@@ -115,13 +115,40 @@ async def search_segments(
         escaped_term = term.replace("%", r"\%").replace("_", r"\_")
         query = query.where(SegmentDB.text.ilike(f"%{escaped_term}%"))
 
-    # Apply optional filters
+    # Apply optional video filter (affects both available_languages and results)
     if video_id:
         query = query.where(SegmentDB.video_id == video_id)
-    if language:
-        query = query.where(SegmentDB.language_code == language)
 
-    # Get total count
+    # Build a FRESH query specifically for extracting available languages
+    # This avoids any potential issues from the complex joined base query
+    # Only query transcript_segments directly to get ACTUAL language codes in results
+    lang_base_query = (
+        select(SegmentDB.language_code)
+        .join(VideoDB, SegmentDB.video_id == VideoDB.video_id)
+        .where(VideoDB.deleted_flag.is_(False))
+    )
+
+    # Apply the same text search filters
+    for term in query_terms:
+        escaped_term = term.replace("%", r"\%").replace("_", r"\_")
+        lang_base_query = lang_base_query.where(SegmentDB.text.ilike(f"%{escaped_term}%"))
+
+    # Apply optional video filter
+    if video_id:
+        lang_base_query = lang_base_query.where(SegmentDB.video_id == video_id)
+
+    # Get distinct languages from matching segments
+    languages_query = lang_base_query.distinct()
+    languages_result = await session.execute(languages_query)
+    available_languages = sorted([lang for (lang,) in languages_result.all()])
+
+    # Apply language filter AFTER computing available_languages
+    if language:
+        # Case-insensitive comparison to handle BCP-47 casing variations
+        # (e.g., "en-US" vs "en-us" vs "EN-US")
+        query = query.where(func.lower(SegmentDB.language_code) == func.lower(language))
+
+    # Get total count from filtered result set
     count_query = select(func.count()).select_from(query.subquery())
     total_result = await session.execute(count_query)
     total = total_result.scalar() or 0
@@ -203,4 +230,8 @@ async def search_segments(
         has_more=(offset + limit) < total,
     )
 
-    return SearchResponse(data=items, pagination=pagination)
+    return SearchResponse(
+        data=items,
+        pagination=pagination,
+        available_languages=available_languages,
+    )

@@ -33,6 +33,8 @@ export function createTestQueryClient(): QueryClient {
   });
 }
 
+import { useLocation } from 'react-router-dom';
+
 /**
  * Props for AllProviders wrapper component.
  */
@@ -41,6 +43,46 @@ interface AllProvidersProps {
   queryClient?: QueryClient;
   initialEntries?: string[];
   path?: string;
+}
+
+// Global variable to track current location in tests
+let currentTestLocation: { pathname: string; search: string; hash: string } = {
+  pathname: '/',
+  search: '',
+  hash: '',
+};
+
+/**
+ * Component that tracks location changes for test assertions.
+ */
+function LocationTracker() {
+  const location = useLocation();
+
+  // Update global location tracker
+  currentTestLocation = {
+    pathname: location.pathname,
+    search: location.search,
+    hash: location.hash,
+  };
+
+  // Also sync to window.location for backwards compatibility
+  // Note: This is a mock/simulation since MemoryRouter doesn't actually change window.location
+  if (typeof window !== 'undefined') {
+    // Create a mock location object
+    Object.defineProperty(window, 'location', {
+      value: {
+        ...window.location,
+        pathname: location.pathname,
+        search: location.search,
+        hash: location.hash,
+        href: `${location.pathname}${location.search}${location.hash}`,
+      },
+      writable: true,
+      configurable: true,
+    });
+  }
+
+  return null;
 }
 
 /**
@@ -55,6 +97,7 @@ function AllProviders({
   return (
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={initialEntries}>
+        <LocationTracker />
         <Routes>
           <Route path={path} element={<>{children}</>} />
         </Routes>
@@ -109,6 +152,14 @@ export function renderWithProviders(
     queryClient: testQueryClient,
     user: userEvent.setup(),
   };
+}
+
+/**
+ * Get the current location from MemoryRouter (for test assertions).
+ * This is updated by the LocationTracker component inside AllProviders.
+ */
+export function getTestLocation() {
+  return currentTestLocation;
 }
 
 /**

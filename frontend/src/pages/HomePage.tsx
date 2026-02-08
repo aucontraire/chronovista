@@ -2,6 +2,8 @@
  * HomePage component - main landing page with video list.
  */
 
+import { useEffect } from "react";
+
 import { VideoList } from "../components/VideoList";
 
 /**
@@ -10,6 +12,14 @@ import { VideoList } from "../components/VideoList";
  * the header, sidebar, and main content area.
  */
 export function HomePage() {
+  // Set page title
+  useEffect(() => {
+    document.title = "Videos - ChronoVista";
+    return () => {
+      document.title = "ChronoVista";
+    };
+  }, []);
+
   return (
     <div className="p-6 lg:p-8">
       {/* Page Header */}

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 if TYPE_CHECKING:
     from youtube_transcript_api import FetchedTranscript, YouTubeTranscriptApi
@@ -493,9 +493,9 @@ class TranscriptService(TranscriptServiceInterface):
         total_seconds = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000.0
         return total_seconds
 
-    def _resolve_language_code(self, language_code_str: str) -> LanguageCode:
+    def _resolve_language_code(self, language_code_str: str) -> Union[LanguageCode, str]:
         """
-        Resolve a language code string to a LanguageCode enum.
+        Resolve a language code string to a LanguageCode enum or normalized string.
 
         Delegates to the shared resolve_language_code function but adds logging
         when fallback to English is used.
@@ -507,8 +507,8 @@ class TranscriptService(TranscriptServiceInterface):
 
         Returns
         -------
-        LanguageCode
-            Resolved language code enum value
+        Union[LanguageCode, str]
+            LanguageCode enum value if known, otherwise normalized string code
         """
         result = resolve_language_code(language_code_str)
 

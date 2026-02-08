@@ -80,7 +80,7 @@ async function fetchSegments(
   signal?: AbortSignal
 ): Promise<SegmentListResponse> {
   const params = new URLSearchParams({
-    language_code: languageCode,
+    language: languageCode, // Backend expects 'language', not 'language_code'
     offset: pageParam.offset.toString(),
     limit: pageParam.limit.toString(),
   });

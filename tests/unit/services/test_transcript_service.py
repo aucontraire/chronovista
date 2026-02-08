@@ -553,8 +553,9 @@ class TestTranscriptServiceThirdPartyAPI:
         )
 
         assert isinstance(result, RawTranscriptData)
-        # Should fall back to ENGLISH when invalid language code
-        assert result.language_code == LanguageCode.ENGLISH
+        # Unknown language codes are now preserved as normalized strings
+        # "invalid-code" -> "invalid-CODE" (normalized BCP-47 format)
+        assert result.language_code == "invalid-CODE"
 
     @patch("chronovista.services.transcript_service.YouTubeTranscriptApi")
     async def test_get_transcript_from_third_party_api_no_metadata(
@@ -648,16 +649,21 @@ class TestTranscriptServiceMockTranscript:
         assert isinstance(result, EnhancedVideoTranscriptBase)
         assert result.video_id == sample_video_id
 
-    def test_create_mock_transcript_with_invalid_language(
+    def test_create_mock_transcript_with_unknown_regional_code(
         self, service, sample_video_id
     ):
-        """Test mock transcript creation with invalid language code."""
+        """Test mock transcript creation with unknown but valid regional code.
+
+        Regional codes not in the LanguageCode enum should be preserved as strings.
+        """
         result = service._create_mock_transcript(
-            sample_video_id, "invalid-code", DownloadReason.USER_REQUEST
+            sample_video_id, "en-ZZ", DownloadReason.USER_REQUEST  # Unknown region
         )
 
         assert isinstance(result, EnhancedVideoTranscriptBase)
         assert result.video_id == sample_video_id
+        # Unknown regional code should be preserved as normalized string
+        assert result.language_code == "en-ZZ"
 
 
 class TestTranscriptServiceGetAvailableLanguages:
@@ -1115,16 +1121,16 @@ class TestResolveLanguageCode:
         result = service._resolve_language_code("es-419")
         assert result == LanguageCode.SPANISH_419
 
-    def test_resolve_unknown_falls_back_to_base(self, service):
-        """Test that unknown regional variants fall back to base language."""
-        # es-XX (unknown region) should fall back to 'es'
+    def test_resolve_unknown_regional_preserves_code(self, service):
+        """Test that unknown regional variants are preserved as strings."""
+        # es-XX (unknown region) should be preserved as 'es-XX'
         result = service._resolve_language_code("es-XX")
-        assert result == LanguageCode.SPANISH
+        assert result == "es-XX"  # Preserved as normalized string
 
-    def test_resolve_completely_unknown(self, service):
-        """Test that completely unknown codes fall back to English."""
+    def test_resolve_completely_unknown_preserves_code(self, service):
+        """Test that completely unknown codes are preserved as strings."""
         result = service._resolve_language_code("xyz")
-        assert result == LanguageCode.ENGLISH
+        assert result == "xyz"  # Preserved as-is
 
     def test_resolve_empty_string(self, service):
         """Test empty string falls back to English."""
@@ -1142,13 +1148,13 @@ class TestResolveLanguageCode:
         assert service._resolve_language_code("pt-PT") == LanguageCode.PORTUGUESE_PT
 
     @patch("chronovista.services.transcript_service.logger")
-    def test_resolve_logs_warning_for_unknown(self, mock_logger, service):
-        """Test that a warning is logged when falling back to English from non-English code."""
-        service._resolve_language_code("unknown-lang")
-        mock_logger.warning.assert_called_once()
-        warning_msg = mock_logger.warning.call_args[0][0]
-        assert "Could not resolve language code" in warning_msg
-        assert "unknown-lang" in warning_msg
+    def test_resolve_unknown_no_warning_when_preserved(self, mock_logger, service):
+        """Test that no warning is logged when unknown codes are preserved as strings."""
+        # Unknown codes are now preserved, so no fallback warning is logged
+        result = service._resolve_language_code("unknown-lang")
+        # Should be preserved as normalized string
+        assert result == "unknown-LANG"  # Normalized: lowercase base + uppercase region
+        mock_logger.warning.assert_not_called()
 
     @patch("chronovista.services.transcript_service.logger")
     def test_resolve_no_warning_for_english_fallback(self, mock_logger, service):

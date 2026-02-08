@@ -28,3 +28,15 @@ export type {
   ChannelListItem,
   ChannelListResponse,
 } from "./channel";
+
+export type {
+  PaginationMeta,
+  SearchFilters,
+  SearchParams,
+  SearchResponse,
+  SearchResultSegment,
+  SearchType,
+  SearchTypeOption,
+} from "./search";
+
+export { DEFAULT_SEARCH_FILTERS, SEARCH_TYPE_OPTIONS } from "./search";

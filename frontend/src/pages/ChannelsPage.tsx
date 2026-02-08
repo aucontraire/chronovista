@@ -2,6 +2,8 @@
  * ChannelsPage component displays the list of channels with all states.
  */
 
+import { useEffect } from "react";
+
 import { ChannelCard } from "../components/ChannelCard";
 import { useChannels } from "../hooks/useChannels";
 
@@ -161,6 +163,14 @@ export function ChannelsPage() {
     retry,
     loadMoreRef,
   } = useChannels();
+
+  // Set page title
+  useEffect(() => {
+    document.title = "Channels - ChronoVista";
+    return () => {
+      document.title = "ChronoVista";
+    };
+  }, []);
 
   // Initial loading state
   if (isLoading) {

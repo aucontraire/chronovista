@@ -747,7 +747,7 @@ class TestUserLanguagePreferenceIndependent:
                     with pytest.raises(Exception):  # Any validation error
                         UserLanguagePreferenceCreate(
                             user_id=unique_user_id,
-                            language_code=invalid_code,  # type: ignore[arg-type] # Intentionally testing invalid input
+                            language_code=invalid_code,  # Intentionally testing invalid input
                             preference_type=LanguagePreferenceType.CURIOUS,
                             priority=1,
                         )

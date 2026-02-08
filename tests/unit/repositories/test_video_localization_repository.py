@@ -315,7 +315,7 @@ class TestVideoLocalizationRepository:
         # Arrange
         new_localization = VideoLocalizationDB(
             video_id=sample_localization_create.video_id,
-            language_code=sample_localization_create.language_code.value,
+            language_code=sample_localization_create.language_code,
             localized_title=sample_localization_create.localized_title,
             localized_description=sample_localization_create.localized_description,
             created_at=datetime.now(timezone.utc),
@@ -352,7 +352,7 @@ class TestVideoLocalizationRepository:
         # Arrange
         existing_localization = VideoLocalizationDB(
             video_id=sample_localization_create.video_id,
-            language_code=sample_localization_create.language_code.value,
+            language_code=sample_localization_create.language_code,
             localized_title="Old Title",
             localized_description="Old Description",
             created_at=datetime.now(timezone.utc),
@@ -360,7 +360,7 @@ class TestVideoLocalizationRepository:
 
         updated_localization = VideoLocalizationDB(
             video_id=sample_localization_create.video_id,
-            language_code=sample_localization_create.language_code.value,
+            language_code=sample_localization_create.language_code,
             localized_title=sample_localization_create.localized_title,
             localized_description=sample_localization_create.localized_description,
             created_at=datetime.now(timezone.utc),

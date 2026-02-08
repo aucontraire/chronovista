@@ -21,9 +21,9 @@ class VideoTranscriptBase(BaseModel):
     """Base model for video transcripts."""
 
     video_id: VideoId = Field(..., description="YouTube video ID (validated)")
-    language_code: LanguageCode = Field(
+    language_code: Union[LanguageCode, str] = Field(
         ...,
-        description="BCP-47 language code (e.g., 'en-US', 'it-IT')",
+        description="BCP-47 language code (e.g., 'en-US', 'it-IT'). Can be enum or string for regional variants.",
     )
     transcript_text: str = Field(
         ..., min_length=1, description="Full transcript text content"
@@ -75,10 +75,12 @@ class VideoTranscriptBase(BaseModel):
             if len(parts) < 1 or len(parts) > 3:
                 raise ValueError("Invalid BCP-47 language code format")
 
-            # Language code should be 2-3 characters
+            # Language code should be 2-3 letters (not numbers)
             language = parts[0]
             if len(language) < 2 or len(language) > 3:
                 raise ValueError("Language code must be 2-3 characters")
+            if not language.isalpha():
+                raise ValueError("Language code must contain only letters")
 
             # Use resolve_language_code to handle casing normalization
             # and map to valid LanguageCode enum values
@@ -354,7 +356,7 @@ class TranscriptSourceComparison(BaseModel):
     """Model for comparing transcripts from different sources for the same video."""
 
     video_id: VideoId = Field(..., description="YouTube video ID (validated)")
-    language_code: LanguageCode
+    language_code: Union[LanguageCode, str]
     primary_source: TranscriptSource = Field(
         ..., description="Primary transcript source"
     )

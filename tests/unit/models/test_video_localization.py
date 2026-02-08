@@ -72,8 +72,8 @@ class TestVideoLocalizationBase:
         assert isinstance(localization, VideoLocalizationBase)
         assert len(localization.video_id) >= 8
         assert len(localization.video_id) <= 20
-        assert len(localization.language_code.value) >= 2
-        assert len(localization.language_code.value) <= 10
+        assert len(localization.language_code) >= 2
+        assert len(localization.language_code) <= 10
         assert len(localization.localized_title) >= 1
 
     @pytest.mark.parametrize(
@@ -521,7 +521,7 @@ class TestVideoLocalizationModelInteractions:
 
         for input_enum, expected_value in test_cases:
             localization = VideoLocalizationBaseFactory.build(language_code=input_enum)
-            assert localization.language_code.value == expected_value
+            assert localization.language_code == expected_value
 
     def test_multilingual_content_handling(self):
         """Test handling of various multilingual content."""

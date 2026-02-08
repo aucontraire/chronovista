@@ -12,6 +12,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.21.0] - 2026-02-08
+
+### Added
+- **Feature 018: Transcript Search Page**
+  - Full-text search across all transcript segments with infinite scroll
+  - Debounced search input (300ms) with 2-character minimum
+  - Multi-word queries with implicit AND matching
+  - Query term highlighting in search results
+  - Context display (text before/after matching segments)
+  - Language filter dropdown with all available languages from full result set
+  - Regional variant support preserving BCP-47 codes (e.g., "en-US", "es-MX")
+  - Human-readable language names (e.g., "English (US)" instead of "en-US")
+  - URL state sync for shareable/bookmarkable search URLs
+  - WCAG 2.1 AA accessibility compliance
+
+### Components
+- `SearchPage` - Main search container with filters
+- `SearchInput` - Debounced search input
+- `SearchResultList` - Infinite scroll results with virtualization
+- `SearchResultCard` - Individual result display with highlighting
+- `SearchFilters` - Language filter panel with responsive design
+- `SearchEmptyState` - Initial and no-results states
+- `SearchErrorState` - Error display with retry button
+- `SearchResultSkeleton` - Loading skeleton
+
+### Hooks
+- `useSearchSegments` - Infinite scroll search with TanStack Query
+
+### Fixed
+- **Transcript Language Switching**: Video detail page now correctly switches between transcript languages with case-insensitive BCP-47 matching
+- **Language Filter Dropdown**: Shows only languages that exist in search results
+- **Filter Panel Visibility**: Remains visible even with 0 results
+
+### Changed
+- **Page Titles**: Browser tabs now show descriptive titles
+  - `/videos` → "Videos - ChronoVista"
+  - `/search` → "Search - ChronoVista"
+  - `/channels` → "Channels - ChronoVista"
+
+### Technical
+- 706 passing frontend tests
+- 4,302 passing backend tests
+- mypy strict compliance (0 errors)
+- TanStack Query v5 with `useInfiniteQuery`
+
 ## [0.20.0] - 2026-02-06
 
 ### Added

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -19,12 +19,13 @@ from .enums import LanguageCode
 from .youtube_types import CaptionId, VideoId
 
 
-def resolve_language_code(language_code_str: str) -> LanguageCode:
+def resolve_language_code(language_code_str: str) -> Union[LanguageCode, str]:
     """
-    Resolve a language code string to a LanguageCode enum.
+    Resolve a language code string to a LanguageCode enum or normalized string.
 
     Handles various formats and casing issues with BCP-47 codes.
-    Falls back to base language if regional variant not found.
+    Regional variants (en-US, es-MX, etc.) are PRESERVED, not normalized
+    to base codes, to maintain regional context for users.
 
     Parameters
     ----------
@@ -33,8 +34,16 @@ def resolve_language_code(language_code_str: str) -> LanguageCode:
 
     Returns
     -------
-    LanguageCode
-        Resolved language code enum value
+    Union[LanguageCode, str]
+        LanguageCode enum value if known, otherwise the normalized string code.
+        Regional codes are preserved (e.g., 'en-US' stays 'en-US', not 'en').
+
+    Note
+    ----
+    This function preserves ALL regional codes. If the code exists in the
+    LanguageCode enum, it returns the enum. Otherwise, it returns the
+    normalized string with proper BCP-47 casing (e.g., 'en-IN', 'fr-BE').
+    This ensures regional information is never lost.
     """
     if not language_code_str:
         return LanguageCode.ENGLISH
@@ -45,7 +54,7 @@ def resolve_language_code(language_code_str: str) -> LanguageCode:
     except ValueError:
         pass
 
-    # Try lowercase match (handles 'EN-US' -> 'en-us')
+    # Try lowercase match (handles some edge cases)
     try:
         return LanguageCode(language_code_str.lower())
     except ValueError:
@@ -60,17 +69,19 @@ def resolve_language_code(language_code_str: str) -> LanguageCode:
             try:
                 return LanguageCode(normalized)
             except ValueError:
-                pass
+                # Return the normalized string to preserve regional code
+                return normalized
 
-    # Try base language fallback (e.g., 'es-419' -> 'es')
-    base_language = language_code_str.split("-")[0].lower()
+    # For base language codes (no region), try to match enum
+    base_language = language_code_str.lower()
     try:
         return LanguageCode(base_language)
     except ValueError:
         pass
 
-    # Return English as last resort
-    return LanguageCode.ENGLISH
+    # Return the original code (normalized) to preserve any regional info
+    # This ensures unknown codes like 'fil' (Filipino) are kept as-is
+    return language_code_str.lower()
 
 
 class TranscriptSource(str, Enum):
@@ -111,7 +122,9 @@ class RawTranscriptData(BaseModel):
     """Raw transcript data from external APIs before processing."""
 
     video_id: VideoId = Field(..., description="YouTube video ID (validated)")
-    language_code: LanguageCode = Field(..., description="BCP-47 language code")
+    language_code: Union[LanguageCode, str] = Field(
+        ..., description="BCP-47 language code (enum or string for regional variants)"
+    )
     language_name: Optional[str] = Field(
         None, description="Human-readable language name"
     )
@@ -260,7 +273,7 @@ class TranscriptComparison(BaseModel):
     """Model for comparing transcripts from different sources."""
 
     video_id: VideoId = Field(..., description="YouTube video ID (validated)")
-    language_code: LanguageCode
+    language_code: Union[LanguageCode, str]
     primary_transcript: RawTranscriptData
     secondary_transcript: RawTranscriptData
     comparison_metrics: Dict[str, Any] = Field(default_factory=dict)
@@ -285,8 +298,8 @@ class TranscriptSearchFilters(BaseModel):
     """Filters for searching transcript data."""
 
     video_ids: Optional[List[VideoId]] = Field(None, description="Filter by video IDs")
-    language_codes: Optional[List[LanguageCode]] = Field(
-        None, description="Filter by languages"
+    language_codes: Optional[List[Union[LanguageCode, str]]] = Field(
+        None, description="Filter by languages (enum or string for regional variants)"
     )
     sources: Optional[List[TranscriptSource]] = Field(
         None, description="Filter by sources"

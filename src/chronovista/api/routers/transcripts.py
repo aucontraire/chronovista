@@ -30,37 +30,41 @@ def get_language_name(code: str) -> str:
     """
     Get human-readable language name from code.
 
+    BCP-47 language codes are case-insensitive per RFC 5646.
+    This function performs case-insensitive lookup to ensure robust matching.
+
     Parameters
     ----------
     code : str
-        BCP-47 language code.
+        BCP-47 language code (case-insensitive).
 
     Returns
     -------
     str
         Human-readable language name, or the code itself if unknown.
     """
+    # Lowercase lookup dictionary for case-insensitive matching
     names = {
         "en": "English",
-        "en-US": "English (US)",
-        "en-GB": "English (UK)",
+        "en-us": "English (US)",
+        "en-gb": "English (UK)",
         "es": "Spanish",
-        "es-ES": "Spanish (Spain)",
-        "es-MX": "Spanish (Mexico)",
+        "es-es": "Spanish (Spain)",
+        "es-mx": "Spanish (Mexico)",
         "fr": "French",
         "de": "German",
         "it": "Italian",
         "pt": "Portuguese",
-        "pt-BR": "Portuguese (Brazil)",
-        "zh-CN": "Chinese (Simplified)",
-        "zh-TW": "Chinese (Traditional)",
+        "pt-br": "Portuguese (Brazil)",
+        "zh-cn": "Chinese (Simplified)",
+        "zh-tw": "Chinese (Traditional)",
         "ja": "Japanese",
         "ko": "Korean",
         "ru": "Russian",
         "ar": "Arabic",
         "hi": "Hindi",
     }
-    return names.get(code, code)
+    return names.get(code.lower(), code)
 
 
 @router.get(
@@ -163,7 +167,8 @@ async def get_transcript(
     query = select(TranscriptDB).where(TranscriptDB.video_id == video_id)
 
     if language:
-        query = query.where(TranscriptDB.language_code == language)
+        # Case-insensitive match for BCP-47 language codes (RFC 5646)
+        query = query.where(func.lower(TranscriptDB.language_code) == language.lower())
     else:
         # Default selection: prefer manual/CC, then by download date
         query = query.order_by(
@@ -262,11 +267,11 @@ async def get_transcript_segments(
             )
         language = transcript.language_code
 
-    # Build segments query
+    # Build segments query - case-insensitive language match (RFC 5646)
     query = (
         select(SegmentDB)
         .where(SegmentDB.video_id == video_id)
-        .where(SegmentDB.language_code == language)
+        .where(func.lower(SegmentDB.language_code) == language.lower())
     )
 
     # Apply time filters

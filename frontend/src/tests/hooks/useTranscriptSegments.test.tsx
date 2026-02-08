@@ -104,7 +104,7 @@ describe("useTranscriptSegments", () => {
       expect(result.current.totalCount).toBe(150);
       expect(result.current.hasNextPage).toBe(true);
       expect(apiConfig.apiFetch).toHaveBeenCalledWith(
-        "/videos/dQw4w9WgXcQ/transcript/segments?language_code=en&offset=0&limit=50",
+        "/videos/dQw4w9WgXcQ/transcript/segments?language=en&offset=0&limit=50",
         expect.objectContaining({ signal: expect.any(AbortSignal) })
       );
     });
@@ -163,7 +163,7 @@ describe("useTranscriptSegments", () => {
       );
 
       expect(apiConfig.apiFetch).toHaveBeenCalledWith(
-        "/videos/test-2/transcript/segments?language_code=en&offset=50&limit=25",
+        "/videos/test-2/transcript/segments?language=en&offset=50&limit=25",
         expect.objectContaining({ signal: expect.any(AbortSignal) })
       );
     });
@@ -450,7 +450,7 @@ describe("useTranscriptSegments", () => {
       await waitFor(
         () => {
           expect(apiConfig.apiFetch).toHaveBeenCalledWith(
-            "/videos/test-video-5/transcript/segments?language_code=es&offset=0&limit=50",
+            "/videos/test-video-5/transcript/segments?language=es&offset=0&limit=50",
             expect.objectContaining({ signal: expect.any(AbortSignal) })
           );
         },

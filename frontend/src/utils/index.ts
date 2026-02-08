@@ -3,3 +3,4 @@
  */
 
 export { formatTimestamp } from "./formatTimestamp";
+export { formatDate } from "./formatters";

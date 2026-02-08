@@ -9,6 +9,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.21.0] - 2026-02-08
+
+### Added
+
+#### Feature 018: Transcript Search Page
+
+Full-text search across all transcript segments with language filtering and infinite scroll.
+
+**Search Features:**
+
+- **Search Input**: Debounced text input (300ms) with 2-character minimum
+- **Multi-Word Queries**: Implicit AND matching for multiple search terms
+- **Infinite Scroll**: Load more results automatically as user scrolls
+- **Result Highlighting**: Query terms highlighted in search results
+- **Context Display**: Shows text before and after matching segments
+
+**Language Filter:**
+
+- **Available Languages Dropdown**: Shows all languages in full result set (not just loaded results)
+- **Regional Variant Support**: Preserves BCP-47 regional codes (e.g., "en-US", "es-MX") for dialect context
+- **Case-Insensitive Matching**: Language filter works regardless of case variations
+- **Human-Readable Names**: Displays "English (US)" instead of raw "en-US" codes
+
+**URL State Sync:**
+
+- **Shareable URLs**: Query and language filter synced to URL parameters (`?q=search&language=en`)
+- **Browser History**: Back/forward navigation restores search state
+- **Bookmarkable**: Direct links to specific searches work correctly
+
+**Accessibility (WCAG 2.1 AA):**
+
+- Skip link to search results
+- ARIA live region for search status announcements
+- `aria-busy` on results region during loading
+- Semantic landmark structure (header, main, complementary)
+- Keyboard navigation support
+
+**New Components:**
+
+| Component | Path | Purpose |
+|-----------|------|---------|
+| `SearchPage` | `pages/SearchPage.tsx` | Main search container |
+| `SearchInput` | `components/SearchInput.tsx` | Debounced search input |
+| `SearchResultList` | `components/SearchResultList.tsx` | Infinite scroll results |
+| `SearchResultCard` | `components/SearchResultCard.tsx` | Individual result display |
+| `SearchFilters` | `components/SearchFilters.tsx` | Language filter panel |
+| `SearchEmptyState` | `components/SearchEmptyState.tsx` | Initial/no-results states |
+| `SearchErrorState` | `components/SearchErrorState.tsx` | Error display with retry |
+| `SearchResultSkeleton` | `components/SearchResultSkeleton.tsx` | Loading skeleton |
+
+**New Hook:**
+
+| Hook | Purpose |
+|------|---------|
+| `useSearchSegments` | Infinite scroll search with TanStack Query |
+
+**Backend Enhancements:**
+
+- Added `available_languages` field to search API response
+- Case-insensitive language filtering with `func.lower()`
+- Optimized language extraction query for accurate dropdown population
+
+### Fixed
+
+- **Transcript Language Switching**: Video detail page now correctly switches between transcript languages
+  - Backend: Added case-insensitive matching for BCP-47 language codes (RFC 5646 compliant)
+  - Frontend: Fixed query parameter name mismatch (`language_code` → `language`)
+- **Language Filter Dropdown**: Now shows only languages that actually exist in search results
+- **Filter Panel Visibility**: Language filter panel remains visible even with 0 results
+
+### Changed
+
+- **Page Titles**: Browser tabs now show descriptive titles for easier navigation
+  - `/videos` → "Videos - ChronoVista"
+  - `/search` → "Search - ChronoVista"
+  - `/channels` → "Channels - ChronoVista"
+
+### Technical
+
+- 706 passing frontend tests
+- 4,302 passing backend tests
+- mypy strict compliance (0 errors)
+- TanStack Query v5 with `useInfiniteQuery` for search pagination
+
 ## [0.20.0] - 2026-02-06
 
 ### Added

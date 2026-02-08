@@ -358,10 +358,10 @@ class TestUserLanguagePreferenceValidators:
 
     def test_language_code_validation_empty(self):
         """Test language code validation with empty values."""
-        with pytest.raises(ValidationError, match="Input should be 'en', 'en-US'"):
+        with pytest.raises(ValidationError, match="Language code cannot be empty"):
             UserLanguagePreferenceCreate(
                 user_id="test_user",
-                language_code="",  # type: ignore[arg-type] # Testing validation error
+                language_code="",  # Testing validation error
                 preference_type=LanguagePreferenceType.FLUENT,
                 priority=1,
             )
@@ -400,7 +400,7 @@ class TestVideoTranscriptValidators:
         with pytest.raises(ValidationError, match="Language code cannot be empty"):
             VideoTranscriptCreate(
                 video_id="dQw4w9WgXcQ",
-                language_code="",  # type: ignore[arg-type] # Testing validation error
+                language_code="",  # Testing validation error
                 transcript_text="Test transcript",
                 transcript_type=TranscriptType.AUTO,
                 download_reason=DownloadReason.USER_REQUEST,

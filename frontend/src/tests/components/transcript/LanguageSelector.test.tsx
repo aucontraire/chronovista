@@ -19,21 +19,29 @@ describe("LanguageSelector", () => {
       language_code: "en",
       language_name: "English",
       transcript_type: "manual",
+      is_translatable: true,
+      downloaded_at: "2023-01-01T00:00:00Z",
     },
     {
       language_code: "en-GB",
       language_name: "English (UK)",
       transcript_type: "manual",
+      is_translatable: true,
+      downloaded_at: "2023-01-01T00:00:00Z",
     },
     {
       language_code: "pt-BR",
       language_name: "Portuguese (Brazil)",
       transcript_type: "auto_generated",
+      is_translatable: false,
+      downloaded_at: "2023-01-01T00:00:00Z",
     },
     {
       language_code: "es",
       language_name: "Spanish",
       transcript_type: "auto_generated",
+      is_translatable: false,
+      downloaded_at: "2023-01-01T00:00:00Z",
     },
   ];
 
@@ -70,8 +78,8 @@ describe("LanguageSelector", () => {
 
     it("distinguishes between en and en-GB with different labels", () => {
       const twoEnglishVariants: TranscriptLanguage[] = [
-        { language_code: "en", language_name: "English", transcript_type: "manual" },
-        { language_code: "en-GB", language_name: "English (UK)", transcript_type: "manual" },
+        { language_code: "en", language_name: "English", transcript_type: "manual", is_translatable: true, downloaded_at: "2023-01-01T00:00:00Z" },
+        { language_code: "en-GB", language_name: "English (UK)", transcript_type: "manual", is_translatable: true, downloaded_at: "2023-01-01T00:00:00Z" },
       ];
 
       render(
@@ -109,8 +117,8 @@ describe("LanguageSelector", () => {
       const tabs = screen.getAllByRole("tab");
 
       // Manual transcripts (en, en-GB) should have checkmark (✓ = &#10003;)
-      expect(tabs[0].textContent).toContain("✓"); // en
-      expect(tabs[1].textContent).toContain("✓"); // en-GB
+      expect(tabs[0]?.textContent).toContain("✓"); // en
+      expect(tabs[1]?.textContent).toContain("✓"); // en-GB
     });
 
     it("does not show checkmark for auto-generated transcripts", () => {
@@ -125,8 +133,8 @@ describe("LanguageSelector", () => {
       const tabs = screen.getAllByRole("tab");
 
       // Auto-generated transcripts (pt-BR, es) should NOT have checkmark
-      expect(tabs[2].textContent).not.toContain("✓"); // pt-BR
-      expect(tabs[3].textContent).not.toContain("✓"); // es
+      expect(tabs[2]?.textContent).not.toContain("✓"); // pt-BR
+      expect(tabs[3]?.textContent).not.toContain("✓"); // es
     });
   });
 
@@ -160,7 +168,10 @@ describe("LanguageSelector", () => {
       );
 
       const tabs = screen.getAllByRole("tab");
-      fireEvent.click(tabs[1]); // Click en-GB tab
+      const enGbTab = tabs[1];
+      if (enGbTab) {
+        fireEvent.click(enGbTab); // Click en-GB tab
+      }
 
       // Fast-forward through debounce
       await vi.advanceTimersByTimeAsync(200);

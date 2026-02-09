@@ -18,8 +18,10 @@ import { useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { LoadingState } from "../components/LoadingState";
+import { PlaylistMembershipList } from "../components/PlaylistMembershipList";
 import { TranscriptPanel } from "../components/transcript";
 import { useVideoDetail } from "../hooks/useVideoDetail";
+import { useVideoPlaylists } from "../hooks/useVideoPlaylists";
 import { CONTRAST_SAFE_COLORS } from "../styles/tokens";
 
 /** Default page title when no video is loaded */
@@ -226,6 +228,9 @@ export function VideoDetailPage() {
   const { data: video, isLoading, isError, error: _error, refetch } = useVideoDetail(
     videoId ?? ""
   );
+
+  // Fetch playlists containing this video (T026)
+  const { playlists: containingPlaylists } = useVideoPlaylists(videoId ?? "");
 
   // Set browser tab title to "Channel - Video Title" when video loads
   useEffect(() => {
@@ -496,6 +501,11 @@ export function VideoDetailPage() {
 
       {/* Transcript Panel */}
       <TranscriptPanel videoId={video_id} />
+
+      {/* Playlist Membership Section (T026, T027) */}
+      {containingPlaylists.length > 0 && (
+        <PlaylistMembershipList playlists={containingPlaylists} />
+      )}
 
       {/* Back to Videos Link */}
       <div className="mt-6">

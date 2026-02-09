@@ -111,7 +111,9 @@ describe("useSearchSegments", () => {
       });
 
       const callArgs = vi.mocked(apiFetch).mock.calls[0];
-      expect(callArgs[0]).toContain("language=en");
+      if (callArgs) {
+        expect(callArgs[0]).toContain("language=en");
+      }
     });
   });
 
@@ -129,9 +131,11 @@ describe("useSearchSegments", () => {
       });
 
       const callArgs = vi.mocked(apiFetch).mock.calls[0];
-      const options = callArgs[1];
-      expect(options).toHaveProperty("signal");
-      expect(options?.signal).toBeInstanceOf(AbortSignal);
+      if (callArgs) {
+        const options = callArgs[1];
+        expect(options).toHaveProperty("signal");
+        expect(options?.signal).toBeInstanceOf(AbortSignal);
+      }
     });
 
     it("should handle query change by updating queryKey", async () => {
@@ -322,8 +326,13 @@ describe("useSearchSegments", () => {
 
   describe("Pagination", () => {
     it("should handle pagination correctly", async () => {
+      const firstSegment = mockResponse.data[0];
+      if (!firstSegment) {
+        throw new Error("Mock data missing first segment");
+      }
+
       const page1Response: SearchResponse = {
-        data: [mockResponse.data[0]],
+        data: [firstSegment],
         pagination: {
           total: 2,
           limit: 1,
@@ -334,7 +343,7 @@ describe("useSearchSegments", () => {
       };
 
       const page2Response: SearchResponse = {
-        data: [{ ...mockResponse.data[0], segment_id: 2, text: "Second segment" }],
+        data: [{ ...firstSegment, segment_id: 2, text: "Second segment" }],
         pagination: {
           total: 2,
           limit: 1,
@@ -414,7 +423,10 @@ describe("useSearchSegments", () => {
       // Should show ALL languages from full result set, not just from loaded segments
       expect(result.current.availableLanguages).toEqual(["en", "es"]);
       // Loaded segments only have English
-      expect(result.current.segments[0].language_code).toBe("en");
+      const firstSegment = result.current.segments[0];
+      if (firstSegment) {
+        expect(firstSegment.language_code).toBe("en");
+      }
     });
   });
 

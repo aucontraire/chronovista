@@ -40,3 +40,20 @@ export type {
 } from "./search";
 
 export { DEFAULT_SEARCH_FILTERS, SEARCH_TYPE_OPTIONS } from "./search";
+
+export type {
+  PaginationMeta as PlaylistPaginationMeta,
+  PlaylistDetail,
+  PlaylistDetailResponse,
+  PlaylistFilterType,
+  PlaylistListItem,
+  PlaylistListResponse,
+  PlaylistPrivacyStatus,
+  PlaylistSortField,
+  PlaylistSortOption,
+  PlaylistVideoItem,
+  PlaylistVideoListResponse,
+  SortOrder,
+  VideoPlaylistMembership,
+  VideoPlaylistsResponse,
+} from "./playlist";

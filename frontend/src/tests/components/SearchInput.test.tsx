@@ -101,7 +101,9 @@ describe("SearchInput", () => {
         const calls = onChange.mock.calls;
         if (calls.length > 0) {
           const lastCall = calls[calls.length - 1];
-          expect(lastCall[0]).toHaveLength(500);
+          if (lastCall) {
+            expect(lastCall[0]).toHaveLength(500);
+          }
         }
       });
 

@@ -19,10 +19,15 @@ from chronovista.api.schemas.videos import (
     VideoDetailResponse,
     VideoListItem,
     VideoListResponse,
+    VideoPlaylistMembership,
+    VideoPlaylistsResponse,
 )
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript
 from chronovista.exceptions import NotFoundError
+from chronovista.repositories.playlist_membership_repository import (
+    PlaylistMembershipRepository,
+)
 
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -253,3 +258,96 @@ async def get_video(
     )
 
     return VideoDetailResponse(data=detail)
+
+
+def _is_playlist_linked(playlist_id: str) -> bool:
+    """
+    Determine if a playlist is linked to YouTube.
+
+    Parameters
+    ----------
+    playlist_id : str
+        The playlist ID to check.
+
+    Returns
+    -------
+    bool
+        True if playlist is YouTube-linked, False otherwise.
+    """
+    return playlist_id.startswith(("PL", "LL", "WL", "HL"))
+
+
+@router.get(
+    "/videos/{video_id}/playlists",
+    response_model=VideoPlaylistsResponse,
+    responses=GET_ITEM_ERRORS,
+)
+async def get_video_playlists(
+    video_id: str = Path(
+        ...,
+        min_length=11,
+        max_length=11,
+        description="YouTube video ID (11 characters)",
+        example="dQw4w9WgXcQ",
+    ),
+    session: AsyncSession = Depends(get_db),
+) -> VideoPlaylistsResponse:
+    """
+    Get all playlists containing a specific video.
+
+    Returns a list of playlists that include this video, along with
+    the video's position in each playlist.
+
+    Parameters
+    ----------
+    video_id : str
+        YouTube video ID (11 characters).
+    session : AsyncSession
+        Database session from dependency.
+
+    Returns
+    -------
+    VideoPlaylistsResponse
+        List of playlists containing the video with position info.
+
+    Raises
+    ------
+    NotFoundError
+        If video not found (404).
+    """
+    # Verify video exists
+    video_query = (
+        select(VideoDB)
+        .where(VideoDB.video_id == video_id)
+        .where(VideoDB.deleted_flag.is_(False))
+    )
+    video_result = await session.execute(video_query)
+    video = video_result.scalar_one_or_none()
+
+    if not video:
+        raise NotFoundError(
+            resource_type="Video",
+            identifier=video_id,
+            hint="Verify the video ID or run: chronovista sync videos",
+        )
+
+    # Get all playlist memberships for this video
+    membership_repo = PlaylistMembershipRepository()
+    memberships = await membership_repo.get_video_playlists(session, video_id)
+
+    # Transform to response schema
+    playlist_memberships: List[VideoPlaylistMembership] = []
+    for membership in memberships:
+        playlist = membership.playlist
+        if playlist and not playlist.deleted_flag:
+            playlist_memberships.append(
+                VideoPlaylistMembership(
+                    playlist_id=playlist.playlist_id,
+                    title=playlist.title,
+                    position=membership.position,
+                    is_linked=_is_playlist_linked(playlist.playlist_id),
+                    privacy_status=playlist.privacy_status,
+                )
+            )
+
+    return VideoPlaylistsResponse(data=playlist_memberships)

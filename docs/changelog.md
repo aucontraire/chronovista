@@ -12,6 +12,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.22.0] - 2026-02-09
+
+### Added
+- **Feature 019: Playlist Navigation & Discovery**
+  - Paginated playlist grid at `/playlists` with infinite scroll
+  - Filter tabs: All, YouTube-Linked, Local
+  - Sort dropdown: Title (A-Z/Z-A), Date Added (Newest/Oldest), Video Count (Most/Least)
+  - Playlist detail page at `/playlists/:playlistId` with video list
+  - Privacy badge (Public/Private/Unlisted) and type badge (YouTube/Local)
+  - Description truncation with "Show more/less" toggle
+  - Deleted video indicators in playlist video lists
+  - "View on YouTube" link for linked playlists
+  - "In Playlists" section on video detail page
+  - `GET /videos/{video_id}/playlists` endpoint
+  - Sort parameters added to playlist list endpoint
+
+### Components
+- `PlaylistsPage` - Playlist grid with filters and sorting
+- `PlaylistDetailPage` - Playlist detail with video list
+- `PlaylistCard` - Playlist card with metadata
+- `PlaylistVideoCard` - Video card with position badge
+- `PlaylistFilterTabs` - Filter tab selector
+- `PlaylistSortDropdown` - Sort option selector
+- `PrivacyBadge` - Privacy status indicator
+- `PlaylistTypeBadge` - YouTube/Local type indicator
+- `PlaylistMembershipList` - Video-to-playlist chips
+
+### Hooks
+- `usePlaylists` - Playlist list with infinite scroll, filter, and sort
+- `usePlaylistDetail` - Single playlist fetch
+- `usePlaylistVideos` - Playlist videos with infinite scroll
+- `useVideoPlaylists` - Playlists containing a video
+
+### Technical
+- 896 passing frontend tests
+- 0 TypeScript errors
+- URL state sync for filters and sort options
+
 ## [0.21.0] - 2026-02-08
 
 ### Added

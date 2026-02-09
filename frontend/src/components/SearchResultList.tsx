@@ -65,7 +65,7 @@ interface SearchResultListProps {
 export function SearchResultList({
   results,
   queryTerms,
-  isLoading = false,
+  isLoading: _isLoading = false,
   isFetchingNextPage = false,
   hasNextPage = false,
   fetchNextPage,

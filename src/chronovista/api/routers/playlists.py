@@ -7,6 +7,7 @@ and video listing with position ordering.
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Path, Query
@@ -32,6 +33,21 @@ from chronovista.exceptions import BadRequestError, NotFoundError
 
 
 router = APIRouter(dependencies=[Depends(require_auth)])
+
+
+class PlaylistSortField(str, Enum):
+    """Valid fields for sorting playlists."""
+
+    TITLE = "title"
+    CREATED_AT = "created_at"
+    VIDEO_COUNT = "video_count"
+
+
+class SortOrder(str, Enum):
+    """Sort order direction."""
+
+    ASC = "asc"
+    DESC = "desc"
 
 
 def build_transcript_summary(transcripts: List[VideoTranscript]) -> TranscriptSummary:
@@ -71,10 +87,18 @@ async def list_playlists(
         None,
         description="Filter for internal playlists (int_ prefix)",
     ),
+    sort_by: PlaylistSortField = Query(
+        PlaylistSortField.CREATED_AT,
+        description="Field to sort by (title, created_at, video_count)",
+    ),
+    sort_order: SortOrder = Query(
+        SortOrder.DESC,
+        description="Sort order (asc or desc)",
+    ),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
 ) -> PlaylistListResponse:
-    """List playlists with pagination and filters.
+    """List playlists with pagination, filters, and sorting.
 
     Supports filtering by linked/unlinked status. These filters are
     mutually exclusive - if both are set to True, a 400 error is returned.
@@ -87,6 +111,10 @@ async def list_playlists(
         Filter for YouTube-linked playlists (PL/LL/WL/HL prefix).
     unlinked : Optional[bool]
         Filter for internal playlists (int_ prefix).
+    sort_by : PlaylistSortField
+        Field to sort by: title, created_at, or video_count (default: created_at).
+    sort_order : SortOrder
+        Sort direction: asc or desc (default: desc).
     limit : int
         Items per page (1-100, default 20).
     offset : int
@@ -143,8 +171,22 @@ async def list_playlists(
     total_result = await session.execute(count_query)
     total = total_result.scalar() or 0
 
-    # Apply pagination and ordering (updated_at DESC per spec)
-    query = query.order_by(PlaylistDB.updated_at.desc()).offset(offset).limit(limit)
+    # Map sort field to database column
+    sort_column_map = {
+        PlaylistSortField.TITLE: PlaylistDB.title,
+        PlaylistSortField.CREATED_AT: PlaylistDB.created_at,
+        PlaylistSortField.VIDEO_COUNT: PlaylistDB.video_count,
+    }
+    sort_column = sort_column_map[sort_by]
+
+    # Apply sort order
+    if sort_order == SortOrder.ASC:
+        order_clause = sort_column.asc()
+    else:
+        order_clause = sort_column.desc()
+
+    # Apply ordering and pagination
+    query = query.order_by(order_clause).offset(offset).limit(limit)
 
     # Execute query
     result = await session.execute(query)

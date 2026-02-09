@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.22.0] - 2026-02-09
+
+### Added
+
+#### Feature 019: Playlist Navigation & Discovery
+
+Browse and navigate playlists with filtering, sorting, and video-to-playlist discovery.
+
+**Playlist Browsing (User Story 1 - P1):**
+- Paginated grid of playlists at `/playlists` route
+- Filter tabs: All, YouTube-Linked, Local
+- Sort dropdown: Title (A-Z/Z-A), Date Added (Newest/Oldest), Video Count (Most/Least)
+- Infinite scroll with 25 playlists per page
+- Loading skeleton, empty state, and error state with retry
+- Privacy badge (Public/Private/Unlisted) and type badge (YouTube/Local)
+
+**Playlist Details (User Story 2 - P2):**
+- Playlist detail page at `/playlists/:playlistId`
+- Header with title, description, video count, privacy, published date
+- Description truncation with "Show more/less" toggle
+- Ordered video list with position badges (#1, #2, etc.)
+- Deleted video indicators (opacity + strikethrough)
+- "View on YouTube" link for linked playlists
+- Back navigation and 404 handling
+
+**Video-to-Playlist Navigation (User Story 3 - P3):**
+- "In Playlists" section on video detail page
+- Clickable playlist chips linking to playlist details
+- Conditional rendering (hidden when video is in no playlists)
+
+**Backend:**
+- `GET /videos/{video_id}/playlists` endpoint
+- Sort parameters (`sort_by`, `sort_order`) added to playlist list endpoint
+
+**Testing:**
+- 140+ new tests for playlist components, hooks, and pages
+- Fixed TypeScript errors in existing test files
+
 ## [0.21.0] - 2026-02-08
 
 ### Added

@@ -15,6 +15,8 @@ import { ChannelDetailPage } from "../pages/ChannelDetailPage";
 import { ChannelsPage } from "../pages/ChannelsPage";
 import { HomePage } from "../pages/HomePage";
 import { NotFoundPage } from "../pages/NotFoundPage";
+import { PlaylistDetailPage } from "../pages/PlaylistDetailPage";
+import { PlaylistsPage } from "../pages/PlaylistsPage";
 import { SearchPage } from "../pages/SearchPage";
 import { VideoDetailPage } from "../pages/VideoDetailPage";
 
@@ -44,6 +46,9 @@ function RootLayout() {
  * - /videos/:videoId displays the VideoDetailPage (FR-001)
  * - /search displays the SearchPage placeholder
  * - /channels displays the ChannelsPage placeholder
+ * - /channels/:channelId displays the ChannelDetailPage
+ * - /playlists displays the PlaylistsPage (grid view with filters)
+ * - /playlists/:playlistId displays the PlaylistDetailPage
  * - * catches all other routes and shows NotFoundPage
  *
  * FR-021: Scroll restoration enabled for all routes via ScrollRestoration component.
@@ -76,6 +81,14 @@ export const router = createBrowserRouter([
       {
         path: "channels/:channelId",
         element: <ChannelDetailPage />,
+      },
+      {
+        path: "playlists",
+        element: <PlaylistsPage />,
+      },
+      {
+        path: "playlists/:playlistId",
+        element: <PlaylistDetailPage />,
       },
       {
         path: "*",

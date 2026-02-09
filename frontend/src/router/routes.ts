@@ -4,7 +4,12 @@
 
 import type React from "react";
 
-import { ChannelIcon, SearchIcon, VideoIcon } from "../components/icons";
+import {
+  ChannelIcon,
+  PlaylistIcon,
+  SearchIcon,
+  VideoIcon,
+} from "../components/icons";
 
 /**
  * NavRoute defines a navigable route in the application.
@@ -41,5 +46,11 @@ export const navRoutes: NavRoute[] = [
     label: "Channels",
     tooltip: "Manage your channel subscriptions",
     icon: ChannelIcon,
+  },
+  {
+    path: "/playlists",
+    label: "Playlists",
+    tooltip: "Browse your playlists",
+    icon: PlaylistIcon,
   },
 ];

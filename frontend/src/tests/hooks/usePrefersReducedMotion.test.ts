@@ -165,8 +165,8 @@ describe("usePrefersReducedMotion", () => {
     expect(result.current).toBe(false);
 
     // Simulate media query change event
-    if (changeHandler) {
-      changeHandler({ matches: true } as MediaQueryListEvent);
+    if (changeHandler !== null) {
+      (changeHandler as (event: MediaQueryListEvent) => void)({ matches: true } as MediaQueryListEvent);
     }
 
     rerender();

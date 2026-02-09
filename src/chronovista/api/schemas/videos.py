@@ -65,3 +65,23 @@ class VideoDetailResponse(ApiResponse[VideoDetail]):
     """Response for video detail endpoint."""
 
     pass
+
+
+class VideoPlaylistMembership(BaseModel):
+    """Playlist membership info for a specific video."""
+
+    model_config = ConfigDict(strict=True, from_attributes=True)
+
+    playlist_id: str  # YouTube playlist ID
+    title: str  # Playlist title
+    position: int  # Video position in playlist (0-indexed)
+    is_linked: bool  # Whether playlist is YouTube-linked
+    privacy_status: str  # Playlist privacy status
+
+
+class VideoPlaylistsResponse(BaseModel):
+    """Response wrapper for video's playlists."""
+
+    model_config = ConfigDict(strict=True)
+
+    data: List[VideoPlaylistMembership]

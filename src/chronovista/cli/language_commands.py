@@ -77,6 +77,7 @@ from ..models.user_language_preference import (
 from ..repositories.user_language_preference_repository import (
     UserLanguagePreferenceRepository,
 )
+from ..utils.fuzzy import find_similar
 
 # -------------------------------------------------------------------------
 # Terminal Detection and Configuration (T086-T087)
@@ -292,50 +293,6 @@ LANGUAGE_NAMES: dict[str, str] = {
 # -------------------------------------------------------------------------
 
 
-def _levenshtein_distance(s1: str, s2: str) -> int:
-    """
-    Calculate Levenshtein distance between two strings.
-
-    The Levenshtein distance is the minimum number of single-character edits
-    (insertions, deletions, or substitutions) required to change one string
-    into the other.
-
-    Parameters
-    ----------
-    s1 : str
-        First string.
-    s2 : str
-        Second string.
-
-    Returns
-    -------
-    int
-        The Levenshtein distance between the two strings.
-
-    Examples
-    --------
-    >>> _levenshtein_distance("en", "es")
-    1
-    >>> _levenshtein_distance("fr", "de")
-    2
-    """
-    if len(s1) < len(s2):
-        return _levenshtein_distance(s2, s1)
-    if len(s2) == 0:
-        return len(s1)
-
-    previous_row: List[int] = list(range(len(s2) + 1))
-    for i, c1 in enumerate(s1):
-        current_row: List[int] = [i + 1]
-        for j, c2 in enumerate(s2):
-            insertions = previous_row[j + 1] + 1
-            deletions = current_row[j] + 1
-            substitutions = previous_row[j] + (c1 != c2)
-            current_row.append(min(insertions, deletions, substitutions))
-        previous_row = current_row
-    return previous_row[-1]
-
-
 def parse_language_input(input_str: str) -> List[str]:
     """
     Parse comma-separated language codes with whitespace handling.
@@ -507,19 +464,15 @@ def suggest_similar_codes(invalid_code: str, max_suggestions: int = 3) -> List[s
     if not invalid_code:
         return []
 
-    normalized = invalid_code.strip().lower()
-    suggestions: List[tuple[int, str]] = []
-
-    for lang_code in LanguageCode:
-        distance = _levenshtein_distance(normalized, lang_code.value.lower())
-        if distance <= 2:  # Threshold of 2
-            suggestions.append((distance, lang_code.value))
-
-    # Sort by distance, then alphabetically
-    suggestions.sort(key=lambda x: (x[0], x[1]))
-
-    # Return up to max_suggestions codes
-    return [code for _, code in suggestions[:max_suggestions]]
+    # Use find_similar from utils.fuzzy for Levenshtein-based matching
+    candidates = [lang_code.value for lang_code in LanguageCode]
+    return find_similar(
+        invalid_code.strip(),
+        candidates,
+        max_distance=2,
+        limit=max_suggestions,
+        case_sensitive=False,
+    )
 
 
 def get_language_display_name(code: str) -> str:

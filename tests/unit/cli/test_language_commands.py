@@ -23,7 +23,6 @@ from chronovista.cli.language_commands import (
     _get_preferences,
     _get_terminal_width,
     _is_tty,
-    _levenshtein_distance,
     _truncate_text,
     detect_system_locale,
     get_language_display_name,
@@ -385,40 +384,6 @@ class TestGetLanguageDisplayName:
             # Should either have a mapped name or return the code itself
             assert result is not None
             assert len(result) > 0
-
-
-# -------------------------------------------------------------------------
-# Test: _levenshtein_distance (internal helper)
-# -------------------------------------------------------------------------
-
-
-class TestLevenshteinDistance:
-    """Tests for _levenshtein_distance() internal function."""
-
-    def test_identical_strings(self) -> None:
-        """Test distance of identical strings is 0."""
-        assert _levenshtein_distance("en", "en") == 0
-
-    def test_single_substitution(self) -> None:
-        """Test single character substitution."""
-        assert _levenshtein_distance("en", "es") == 1
-
-    def test_single_insertion(self) -> None:
-        """Test single character insertion."""
-        assert _levenshtein_distance("en", "enn") == 1
-
-    def test_single_deletion(self) -> None:
-        """Test single character deletion."""
-        assert _levenshtein_distance("en", "e") == 1
-
-    def test_empty_string(self) -> None:
-        """Test distance to empty string is length of other string."""
-        assert _levenshtein_distance("en", "") == 2
-        assert _levenshtein_distance("", "en") == 2
-
-    def test_completely_different(self) -> None:
-        """Test distance of completely different strings."""
-        assert _levenshtein_distance("abc", "xyz") == 3
 
 
 # -------------------------------------------------------------------------

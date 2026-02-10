@@ -38,6 +38,8 @@ describe("VideoDetailPage", () => {
     comment_count: 2500,
     tags: ["coding", "tutorial"],
     category_id: "28",
+    category_name: "Science & Technology",
+    topics: [],
     default_language: "en",
     made_for_kids: false,
     transcript_summary: {

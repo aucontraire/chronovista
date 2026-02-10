@@ -3,15 +3,28 @@
  */
 
 import { useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { VideoList } from "../components/VideoList";
+import { VideoFilters } from "../components/VideoFilters";
+import { useVideos } from "../hooks/useVideos";
 
 /**
- * HomePage displays the main video list.
+ * HomePage displays the main video list with filters.
  * This component is rendered within the AppShell layout which provides
  * the header, sidebar, and main content area.
  */
 export function HomePage() {
+  const [searchParams] = useSearchParams();
+
+  // Read filter state from URL
+  const tags = searchParams.getAll('tag');
+  const category = searchParams.get('category');
+  const topicIds = searchParams.getAll('topic_id');
+
+  // Get total count for filters display (using the same hook with filters)
+  const { total } = useVideos({ tags, category, topicIds });
+
   // Set page title
   useEffect(() => {
     document.title = "Videos - ChronoVista";
@@ -30,12 +43,20 @@ export function HomePage() {
         </p>
       </div>
 
+      {/* Video Filters */}
+      <section aria-labelledby="filters-heading" className="mb-6">
+        <h3 id="filters-heading" className="sr-only">
+          Video Filters
+        </h3>
+        <VideoFilters videoCount={total} />
+      </section>
+
       {/* Video List */}
       <section aria-labelledby="videos-heading">
         <h3 id="videos-heading" className="sr-only">
-          My Videos
+          Filtered Videos
         </h3>
-        <VideoList />
+        <VideoList tags={tags} category={category} topicIds={topicIds} />
       </section>
     </div>
   );

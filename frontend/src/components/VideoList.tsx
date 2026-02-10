@@ -97,11 +97,20 @@ function AllLoadedMessage({ total }: AllLoadedMessageProps) {
   );
 }
 
+interface VideoListProps {
+  /** Filter by tags (OR logic) */
+  tags?: string[];
+  /** Filter by category ID */
+  category?: string | null;
+  /** Filter by topic IDs (OR logic) */
+  topicIds?: string[];
+}
+
 /**
  * VideoList displays videos with loading, error, and empty states.
  * Includes infinite scroll with Intersection Observer and fallback Load More button.
  */
-export function VideoList() {
+export function VideoList({ tags = [], category = null, topicIds = [] }: VideoListProps = {}) {
   const {
     videos,
     total,
@@ -114,7 +123,7 @@ export function VideoList() {
     fetchNextPage,
     retry,
     loadMoreRef,
-  } = useVideos();
+  } = useVideos({ tags, category, topicIds });
 
   // Initial loading state
   if (isLoading) {

@@ -20,6 +20,7 @@ from chronovista.api.routers import (
     playlists,
     preferences,
     search,
+    sidebar,
     sync,
     tags,
     topics,
@@ -196,3 +197,4 @@ app.include_router(transcripts.router, prefix="/api/v1", tags=["transcripts"])
 app.include_router(search.router, prefix="/api/v1", tags=["search"])
 app.include_router(preferences.router, prefix="/api/v1", tags=["preferences"])
 app.include_router(sync.router, prefix="/api/v1", tags=["sync"])
+app.include_router(sidebar.router, prefix="/api/v1", tags=["sidebar"])

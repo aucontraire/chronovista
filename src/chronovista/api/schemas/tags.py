@@ -7,7 +7,7 @@ response wrappers. Tags are aggregated from the video_tags junction table.
 
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -47,12 +47,17 @@ class TagListResponse(BaseModel):
     """Response wrapper for tag list endpoint.
 
     Follows standard API response format with data and pagination.
+    Includes optional fuzzy suggestions when no exact matches found.
     """
 
     model_config = ConfigDict(strict=True)
 
     data: List[TagListItem]
     pagination: PaginationMeta
+    suggestions: Optional[List[str]] = Field(
+        None,
+        description="Fuzzy match suggestions when no exact matches found (max 3)",
+    )
 
 
 class TagDetailResponse(BaseModel):

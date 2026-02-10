@@ -9,6 +9,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.23.0] - 2026-02-10
+
+### Added
+
+#### Feature 020: Video Classification Filters
+
+Filter and browse videos by tags, topics, and categories with accessible UI components and fuzzy search suggestions.
+
+**Tag Autocomplete (T029, T049b):**
+- ARIA combobox pattern with role="combobox", aria-expanded, aria-autocomplete="list"
+- Debounced search (300ms) using useTags hook
+- Maximum tag limit validation (10 tags)
+- Keyboard navigation (Arrow Up/Down, Enter, Escape, Tab, Home/End)
+- Filter pills with remove buttons
+- **Fuzzy "Did you mean?" suggestions** when no exact matches found
+- Levenshtein distance algorithm for typo correction (max distance: 2)
+- Backend returns up to 10 suggestions; frontend shows first 3 unselected
+
+**Topic Combobox:**
+- Hierarchical topic selection with parent/child relationships
+- ARIA combobox with listbox pattern
+
+**Category Dropdown:**
+- YouTube's 32 predefined categories
+- Simple select dropdown with ARIA attributes
+
+**Backend Enhancements:**
+- Rate limiting for tag autocomplete (50 req/min)
+- Fuzzy suggestion query with length-based filtering for performance
+- Database index on video_tags(tag) for fast autocomplete
+- New `suggestions` field in TagListResponse schema
+
+**New Utility Module:**
+- `src/chronovista/utils/fuzzy.py` with `levenshtein_distance()` and `find_similar()`
+- Modularized from language_commands.py for reuse across codebase
+
+**Testing:**
+- 24 unit tests for fuzzy matching utilities
+- Frontend component tests with accessibility validation
+- Error handling and retry button tests
+
+### Technical
+- 927 passing frontend tests
+- mypy strict compliance (0 errors)
+- WCAG 2.1 AA accessibility compliance
+
 ## [0.22.0] - 2026-02-09
 
 ### Added

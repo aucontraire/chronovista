@@ -16,6 +16,19 @@ export interface TranscriptSummary {
 }
 
 /**
+ * Summary of a topic associated with a video.
+ * Provides minimal topic information for video list displays.
+ */
+export interface TopicSummary {
+  /** YouTube topic ID (/m/xxx format) */
+  topic_id: string;
+  /** Human-readable topic name */
+  name: string;
+  /** Hierarchy path (e.g., "Arts > Music") - null for top-level */
+  parent_path: string | null;
+}
+
+/**
  * Video item as returned by the list API endpoint.
  */
 export interface VideoListItem {
@@ -35,6 +48,14 @@ export interface VideoListItem {
   view_count: number | null;
   /** Transcript availability summary */
   transcript_summary: TranscriptSummary;
+  /** Video tags */
+  tags: string[];
+  /** YouTube category ID */
+  category_id: string | null;
+  /** Human-readable category name */
+  category_name: string | null;
+  /** Associated topics with hierarchy */
+  topics: TopicSummary[];
 }
 
 /**
@@ -65,6 +86,10 @@ export interface VideoDetail {
   tags: string[];
   /** YouTube category ID */
   category_id: string | null;
+  /** Human-readable category name */
+  category_name: string | null;
+  /** Associated topics with hierarchy */
+  topics: TopicSummary[];
   /** BCP-47 language code for default language */
   default_language: string | null;
   /** COPPA compliance flag */

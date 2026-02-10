@@ -1,0 +1,75 @@
+{
+  "filters": {
+    "tags": {
+      "label": "Tags",
+      "searchPlaceholder": "Type to search tags...",
+      "maxReachedPlaceholder": "Maximum tags reached",
+      "count": "({current}/{max})",
+      "noResults": "No tags found matching \"{query}\"",
+      "errorLoading": "Error loading tags. Please try again.",
+      "description": "Type to search for tags. Use arrow keys to navigate suggestions, Enter to select, Escape to close."
+    },
+    "category": {
+      "label": "Category",
+      "allCategories": "All Categories",
+      "errorLoading": "Error loading categories. Please try again.",
+      "description": "Select a category to filter videos. Use arrow keys to navigate options, Enter or Space to select, Escape to close."
+    },
+    "topics": {
+      "label": "Topics",
+      "searchPlaceholder": "Type to search topics...",
+      "maxReachedPlaceholder": "Maximum topics reached",
+      "count": "({current}/{max})",
+      "startTyping": "Start typing to search topics",
+      "noResults": "No topics found matching \"{query}\"",
+      "errorLoading": "Error loading topics. Please try again.",
+      "description": "Type to search for topics. Topics are organized hierarchically. Use arrow keys to navigate, Enter to select, Escape to close. Type any letter to jump to topics starting with that letter.",
+      "videoCount": "{count} video",
+      "videoCount_plural": "{count} videos"
+    },
+    "activeFilters": {
+      "title": "Active Filters",
+      "titleWithCount": "Active Filters ({count})",
+      "clearAll": "Clear All",
+      "noActiveFilters": "No active filters. Select tags, categories, or topics to filter videos.",
+      "ariaLabel": "Active filters"
+    },
+    "videoCount": {
+      "showing": "Showing {count} video",
+      "showing_plural": "Showing {count} videos"
+    },
+    "warnings": {
+      "maxTotalReached": "Maximum filter limit reached ({max}). Remove filters to add more.",
+      "maxTagsReached": "Maximum tag limit reached ({max}). Remove tags to add more.",
+      "maxTopicsReached": "Maximum topic limit reached ({max}). Remove topics to add more.",
+      "approachingLimit": "Approaching filter limits ({current}/{max} total).",
+      "warningPrefix": "Warning:"
+    }
+  },
+  "aria": {
+    "filterPanel": "Video filter panel",
+    "selectedTags": "Selected tags",
+    "selectedTopics": "Selected topics",
+    "removeTag": "Remove tag {tag}",
+    "removeCategory": "Remove category filter",
+    "removeTopic": "Remove topic {topic}",
+    "removeFilter": "Remove {type} filter: {label}",
+    "clearAllFilters": "Clear all active filters",
+    "tagsFound": "{count} tag found",
+    "tagsFound_plural": "{count} tags found",
+    "tagsSelected": "{count} tag selected",
+    "tagsSelected_plural": "{count} tags selected",
+    "topicsFound": "{count} topic found",
+    "topicsFound_plural": "{count} topics found",
+    "topicsSelected": "{count} topic selected",
+    "topicsSelected_plural": "{count} topics selected",
+    "categoryDropdownOpened": "Category dropdown opened, {count} options available",
+    "categoryFilterApplied": "Category filter applied: {name}",
+    "searchingTopics": "Searching for topics starting with {query}",
+    "selected": "Selected"
+  },
+  "common": {
+    "loading": "Loading...",
+    "unknown": "Unknown"
+  }
+}

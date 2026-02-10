@@ -17,8 +17,8 @@
 import { useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { ClassificationSection } from "../components/ClassificationSection";
 import { LoadingState } from "../components/LoadingState";
-import { PlaylistMembershipList } from "../components/PlaylistMembershipList";
 import { TranscriptPanel } from "../components/transcript";
 import { useVideoDetail } from "../hooks/useVideoDetail";
 import { useVideoPlaylists } from "../hooks/useVideoPlaylists";
@@ -347,6 +347,9 @@ export function VideoDetailPage() {
     view_count,
     like_count,
     tags,
+    category_id,
+    category_name,
+    topics = [],
   } = video;
 
   const youtubeUrl = `https://www.youtube.com/watch?v=${video_id}`;
@@ -469,25 +472,6 @@ export function VideoDetailPage() {
           </span>
         </div>
 
-        {/* Tags Section (FR-003) - Hide if no tags per edge case */}
-        {tags.length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-2">
-              Tags
-            </h2>
-            <div className="flex flex-wrap gap-2">
-              {tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Description Section (FR-002) */}
         <div className="border-t border-gray-100 pt-6">
           <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">
@@ -499,13 +483,19 @@ export function VideoDetailPage() {
         </div>
       </article>
 
+      {/* Classification Section (T038-T042, T067-T070) */}
+      <div className="mt-6">
+        <ClassificationSection
+          tags={tags}
+          categoryId={category_id}
+          categoryName={category_name}
+          topics={topics}
+          playlists={containingPlaylists}
+        />
+      </div>
+
       {/* Transcript Panel */}
       <TranscriptPanel videoId={video_id} />
-
-      {/* Playlist Membership Section (T026, T027) */}
-      {containingPlaylists.length > 0 && (
-        <PlaylistMembershipList playlists={containingPlaylists} />
-      )}
 
       {/* Back to Videos Link */}
       <div className="mt-6">

@@ -3,9 +3,11 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
-from chronovista.api.schemas.responses import ApiResponse
+from chronovista.api.schemas.filters import FilterWarning
+from chronovista.api.schemas.responses import ApiResponse, PaginationMeta
+from chronovista.api.schemas.topics import TopicSummary
 
 
 class TranscriptSummary(BaseModel):
@@ -19,7 +21,37 @@ class TranscriptSummary(BaseModel):
 
 
 class VideoListItem(BaseModel):
-    """Video summary for list view."""
+    """Video summary for list view.
+
+    Extended with classification fields for filter display (Feature 020).
+
+    Attributes
+    ----------
+    video_id : str
+        11-character YouTube video ID.
+    title : str
+        Video title.
+    channel_id : str | None
+        24-character channel ID (null for orphaned videos).
+    channel_title : str | None
+        Channel name for display.
+    upload_date : datetime
+        Video upload date.
+    duration : int
+        Video duration in seconds.
+    view_count : int | None
+        View count if available.
+    transcript_summary : TranscriptSummary
+        Summary of available transcripts.
+    tags : List[str]
+        Video tags from YouTube.
+    category_id : str | None
+        YouTube category ID.
+    category_name : str | None
+        Human-readable category name.
+    topics : List[TopicSummary]
+        Associated topics with hierarchy info.
+    """
 
     model_config = ConfigDict(strict=True, from_attributes=True)
 
@@ -32,6 +64,14 @@ class VideoListItem(BaseModel):
     view_count: Optional[int]
     transcript_summary: TranscriptSummary
 
+    # Classification fields (Feature 020 - Video Classification Filters)
+    tags: List[str] = Field(default_factory=list, description="Video tags")
+    category_id: Optional[str] = Field(None, description="YouTube category ID")
+    category_name: Optional[str] = Field(None, description="Human-readable category")
+    topics: List["TopicSummary"] = Field(
+        default_factory=list, description="Associated topics"
+    )
+
 
 class VideoListResponse(ApiResponse[List[VideoListItem]]):
     """Response for video list endpoint."""
@@ -39,8 +79,37 @@ class VideoListResponse(ApiResponse[List[VideoListItem]]):
     pass
 
 
+class VideoListResponseWithWarnings(BaseModel):
+    """Response for video list endpoint with optional warnings (FR-049, FR-050).
+
+    Used when some filter values are invalid but the request can still return
+    partial results. Includes a warnings array indicating which filters failed.
+
+    Attributes
+    ----------
+    data : List[VideoListItem]
+        The list of videos matching the valid filters.
+    pagination : PaginationMeta
+        Pagination metadata.
+    warnings : List[FilterWarning]
+        Warnings for invalid filter values that were ignored.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    data: List[VideoListItem]
+    pagination: PaginationMeta
+    warnings: List[FilterWarning] = Field(
+        default_factory=list,
+        description="Warnings for invalid filter values that were ignored",
+    )
+
+
 class VideoDetail(BaseModel):
-    """Full video details."""
+    """Full video details.
+
+    Includes classification data (tags, category, topics) for display.
+    """
 
     model_config = ConfigDict(strict=True, from_attributes=True)
 
@@ -56,9 +125,11 @@ class VideoDetail(BaseModel):
     comment_count: Optional[int]
     tags: List[str]
     category_id: Optional[str]
+    category_name: Optional[str]  # Human-readable category name
     default_language: Optional[str]
     made_for_kids: bool
     transcript_summary: TranscriptSummary
+    topics: List[TopicSummary] = Field(default_factory=list)  # Associated topics
 
 
 class VideoDetailResponse(ApiResponse[VideoDetail]):
@@ -85,3 +156,15 @@ class VideoPlaylistsResponse(BaseModel):
     model_config = ConfigDict(strict=True)
 
     data: List[VideoPlaylistMembership]
+
+
+# Rebuild models to resolve forward references
+# This is required for Pydantic V2 with TYPE_CHECKING imports
+def _rebuild_models() -> None:
+    """Rebuild models after all imports are resolved."""
+    from chronovista.api.schemas.topics import TopicSummary
+
+    VideoListItem.model_rebuild()
+
+
+_rebuild_models()

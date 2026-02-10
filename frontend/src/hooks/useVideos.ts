@@ -18,26 +18,17 @@ const DEFAULT_LIMIT = 25;
  */
 const INTERSECTION_THRESHOLD = 0.8;
 
-/**
- * Fetches a page of videos from the API.
- */
-async function fetchVideos(
-  offset: number,
-  limit: number
-): Promise<VideoListResponse> {
-  const params = new URLSearchParams({
-    offset: offset.toString(),
-    limit: limit.toString(),
-  });
-
-  return apiFetch<VideoListResponse>(`/videos?${params.toString()}`);
-}
-
 interface UseVideosOptions {
   /** Number of videos per page (default: 25) */
   limit?: number;
   /** Whether to enable the query (default: true) */
   enabled?: boolean;
+  /** Filter by tags (OR logic) */
+  tags?: string[];
+  /** Filter by category ID */
+  category?: string | null;
+  /** Filter by topic IDs (OR logic) */
+  topicIds?: string[];
 }
 
 interface UseVideosReturn {
@@ -84,7 +75,13 @@ interface UseVideosReturn {
  * ```
  */
 export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
-  const { limit = DEFAULT_LIMIT, enabled = true } = options;
+  const {
+    limit = DEFAULT_LIMIT,
+    enabled = true,
+    tags = [],
+    category = null,
+    topicIds = []
+  } = options;
 
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
@@ -98,9 +95,19 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
     fetchNextPage,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["videos", limit],
-    queryFn: async ({ pageParam }) => {
-      return fetchVideos(pageParam, limit);
+    queryKey: ["videos", { limit, tags, category, topicIds }],
+    queryFn: async ({ pageParam, signal }) => {
+      const params = new URLSearchParams({
+        offset: pageParam.toString(),
+        limit: limit.toString(),
+      });
+
+      // Add filter parameters
+      tags.forEach(tag => params.append('tag', tag));
+      if (category) params.set('category', category);
+      topicIds.forEach(id => params.append('topic_id', id));
+
+      return apiFetch<VideoListResponse>(`/videos?${params.toString()}`, { signal });
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {
@@ -112,6 +119,8 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
     enabled,
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes (was cacheTime in v4)
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 8000),
   });
 
   // Flatten all pages into a single array

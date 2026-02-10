@@ -50,6 +50,8 @@ export function Sidebar() {
         "flex flex-col",
         // Padding for visual spacing
         "py-4",
+        // Add spacing between sections
+        "space-y-6",
       ].join(" ")}
     >
       {/* Navigation items */}

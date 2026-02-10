@@ -37,6 +37,8 @@ describe("useVideoDetail", () => {
     comment_count: 1500,
     tags: ["music", "test", "video"],
     category_id: "10",
+    category_name: "Music",
+    topics: [],
     default_language: "en",
     made_for_kids: false,
     transcript_summary: {

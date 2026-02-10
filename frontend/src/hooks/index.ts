@@ -2,10 +2,13 @@
  * Hook exports for Chronovista frontend.
  */
 
+export { useCategories, type Category } from "./useCategories";
 export { useChannelDetail } from "./useChannelDetail";
 export { useChannels } from "./useChannels";
 export { useDebounce } from "./useDebounce";
 export { useChannelVideos } from "./useChannelVideos";
+export { useTags } from "./useTags";
+export { useTopics } from "./useTopics";
 export { usePlaylistDetail } from "./usePlaylistDetail";
 export { usePlaylistVideos } from "./usePlaylistVideos";
 export { usePlaylists } from "./usePlaylists";

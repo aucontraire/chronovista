@@ -7,8 +7,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-AGPL--3.0-green.svg" alt="License: AGPL-3.0">
-  <img src="https://img.shields.io/badge/tests-3,776+-brightgreen.svg" alt="Tests: 3,776+">
-  <img src="https://img.shields.io/badge/coverage-90%2B-brightgreen.svg" alt="Coverage: 90%+">
+  <img src="https://img.shields.io/badge/tests-5,473+-brightgreen.svg" alt="Tests: 5,473+">
+  <img src="https://img.shields.io/badge/coverage-72%25-brightgreen.svg" alt="Coverage: 72%">
   <img src="https://img.shields.io/badge/code%20style-black-000000.svg" alt="Code style: black">
 </p>
 
@@ -52,7 +52,8 @@ chronovista sync all
 | **Google Takeout** | Import complete YouTube history including deleted videos |
 | **Export Options** | CSV/JSON export with language-aware filtering |
 | **Write Operations** | Create playlists, like videos, subscribe to channels |
-| **REST API** | FastAPI server with 11 endpoints for programmatic access |
+| **REST API** | FastAPI server with 20+ endpoints for programmatic access |
+| **Video Filtering** | Filter by tags, topics, categories with fuzzy search suggestions |
 
 ## Installation
 
@@ -328,8 +329,8 @@ See [System Architecture](src/chronovista/docs/architecture/system-architecture.
 - [x] Timestamp-based transcript queries
 - [x] REST API (20+ endpoints)
 - [x] Web frontend (React + Vite)
+- [x] Video search and filtering UI
 - [ ] ML-powered insights
-- [ ] Video search and filtering UI
 
 
 ## Contributing

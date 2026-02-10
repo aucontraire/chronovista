@@ -12,6 +12,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.23.0] - 2026-02-10
+
+### Added
+- **Feature 020: Video Classification Filters**
+  - Tag autocomplete with ARIA combobox pattern and keyboard navigation
+  - Fuzzy "Did you mean?" suggestions for typo correction (Levenshtein distance ≤2)
+  - Topic combobox with hierarchical parent/child relationships
+  - Category dropdown for YouTube's 32 predefined categories
+  - Filter pills with accessible remove buttons
+  - Rate limiting for tag autocomplete (50 req/min)
+  - Database index on video_tags(tag) for fast autocomplete
+  - New `suggestions` field in TagListResponse for fuzzy matches
+
+### Components
+- `TagAutocomplete` - Accessible tag search with fuzzy suggestions
+- `TopicCombobox` - Hierarchical topic selector
+- `CategoryDropdown` - Category filter dropdown
+- `ClassificationSection` - Combined classification filters
+- `FilterPills` - Active filter display with remove buttons
+
+### Hooks
+- `useTags` - Tag autocomplete with debounced search and suggestions
+
+### Technical
+- New utility module: `src/chronovista/utils/fuzzy.py`
+- `levenshtein_distance()` and `find_similar()` functions
+- 24 unit tests for fuzzy matching
+- 927 passing frontend tests
+- WCAG 2.1 AA accessibility compliance
+
 ## [0.22.0] - 2026-02-09
 
 ### Added

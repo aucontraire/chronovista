@@ -57,3 +57,15 @@ export type {
   VideoPlaylistMembership,
   VideoPlaylistsResponse,
 } from "./playlist";
+
+export type {
+  FilterType,
+  FilterWarning,
+  FilterWarningCode,
+  ProblemDetails,
+  SidebarCategory,
+  TopicHierarchyItem,
+  VideoFilters,
+} from "./filters";
+
+export { FILTER_COLORS, FILTER_LIMITS, TIMEOUT_CONFIG } from "./filters";

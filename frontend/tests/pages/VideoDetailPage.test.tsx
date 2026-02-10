@@ -153,7 +153,7 @@ describe('VideoDetailPage', () => {
       expect(screen.getByText('example')).toBeInTheDocument();
     });
 
-    it('should hide tags section when no tags present', () => {
+    it('should show "None" for tags when no tags present', () => {
       mockUseVideoDetail.mockReturnValue({
         data: { ...mockVideoData, tags: [] },
         isLoading: false,
@@ -167,7 +167,11 @@ describe('VideoDetailPage', () => {
         path: '/videos/:videoId',
       });
 
-      expect(screen.queryByText('Tags')).not.toBeInTheDocument();
+      // Tags label should still be visible
+      expect(screen.getByText('Tags')).toBeInTheDocument();
+      // Should show "None" in the tags subsection
+      const tagsSection = screen.getByText('Tags').closest('div');
+      expect(tagsSection?.querySelector('.text-gray-400')).toHaveTextContent('None');
     });
 
     it('should render TranscriptPanel with correct videoId', () => {

@@ -26,6 +26,7 @@ from chronovista.api.schemas.channels import (
     ChannelListResponse,
 )
 from chronovista.api.schemas.responses import PaginationMeta
+from chronovista.api.schemas.topics import TopicSummary
 from chronovista.api.schemas.videos import (
     TranscriptSummary,
     VideoListItem,
@@ -33,6 +34,7 @@ from chronovista.api.schemas.videos import (
 )
 from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import Video as VideoDB
+from chronovista.db.models import VideoCategory, VideoTag, VideoTopic, TopicCategory
 from chronovista.db.models import VideoTranscript
 from chronovista.exceptions import NotFoundError
 
@@ -273,6 +275,9 @@ async def get_channel_videos(
         .where(VideoDB.deleted_flag.is_(False))
         .options(selectinload(VideoDB.transcripts))
         .options(selectinload(VideoDB.channel))
+        .options(selectinload(VideoDB.category))
+        .options(selectinload(VideoDB.tags))
+        .options(selectinload(VideoDB.video_topics).selectinload(VideoTopic.topic_category))
     )
 
     # Count total before pagination
@@ -293,6 +298,18 @@ async def get_channel_videos(
         transcript_summary = _build_transcript_summary(list(video.transcripts))
         channel_title = video.channel.title if video.channel else None
 
+        # Build classification fields
+        category_name = video.category.name if video.category else None
+        tags = [tag.tag for tag in video.tags] if video.tags else []
+        topics = [
+            TopicSummary(
+                topic_id=vt.topic_category.topic_id,
+                name=vt.topic_category.category_name,
+                parent_path=None,  # TODO: Compute hierarchy path if needed
+            )
+            for vt in video.video_topics
+        ] if video.video_topics else []
+
         items.append(
             VideoListItem(
                 video_id=video.video_id,
@@ -303,6 +320,10 @@ async def get_channel_videos(
                 duration=video.duration,
                 view_count=video.view_count,
                 transcript_summary=transcript_summary,
+                category_id=video.category_id,
+                category_name=category_name,
+                tags=tags,
+                topics=topics,
             )
         )
 

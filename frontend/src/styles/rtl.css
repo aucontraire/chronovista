@@ -1,0 +1,140 @@
+/**
+ * RTL (Right-to-Left) Layout Support
+ *
+ * T096: Implements RTL layout support for languages like Arabic and Hebrew.
+ *
+ * Features:
+ * - Uses CSS logical properties (start/end vs left/right)
+ * - Automatic layout reversal with dir="rtl"
+ * - Icon and text alignment adjustments
+ * - Proper spacing for RTL languages
+ *
+ * Usage:
+ * - Add dir="rtl" to <html> or container element
+ * - Use logical properties: ps-*, pe-*, ms-*, me-* instead of pl-*, pr-*, ml-*, mr-*
+ * - Use flex-row-reverse utilities for RTL layouts
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Logical_Properties
+ */
+
+/**
+ * RTL-aware flex direction utilities.
+ * Automatically reverses flex direction in RTL mode.
+ */
+[dir="rtl"] .rtl\:flex-row-reverse {
+  flex-direction: row-reverse;
+}
+
+[dir="rtl"] .rtl\:space-x-reverse > :not([hidden]) ~ :not([hidden]) {
+  --tw-space-x-reverse: 1;
+}
+
+/**
+ * RTL-aware text alignment.
+ * Mirrors text alignment in RTL mode.
+ */
+[dir="rtl"] .rtl\:text-right {
+  text-align: right;
+}
+
+[dir="rtl"] .rtl\:text-left {
+  text-align: left;
+}
+
+/**
+ * RTL-aware icon rotation.
+ * Flips directional icons (arrows, chevrons) in RTL mode.
+ */
+[dir="rtl"] .rtl\:rotate-180 {
+  transform: rotate(180deg);
+}
+
+/**
+ * RTL-aware positioning.
+ * Swaps left/right positioning in RTL mode.
+ */
+[dir="rtl"] .rtl\:left-auto {
+  left: auto;
+}
+
+[dir="rtl"] .rtl\:right-0 {
+  right: 0;
+}
+
+/**
+ * RTL utility classes for Tailwind integration.
+ * These classes automatically adapt to RTL mode when dir="rtl" is set.
+ */
+
+/* Logical padding utilities (preferred over pl-/pr-) */
+.ps-0 { padding-inline-start: 0; }
+.ps-1 { padding-inline-start: 0.25rem; }
+.ps-2 { padding-inline-start: 0.5rem; }
+.ps-3 { padding-inline-start: 0.75rem; }
+.ps-4 { padding-inline-start: 1rem; }
+.ps-5 { padding-inline-start: 1.25rem; }
+.ps-6 { padding-inline-start: 1.5rem; }
+.ps-8 { padding-inline-start: 2rem; }
+
+.pe-0 { padding-inline-end: 0; }
+.pe-1 { padding-inline-end: 0.25rem; }
+.pe-2 { padding-inline-end: 0.5rem; }
+.pe-3 { padding-inline-end: 0.75rem; }
+.pe-4 { padding-inline-end: 1rem; }
+.pe-5 { padding-inline-end: 1.25rem; }
+.pe-6 { padding-inline-end: 1.5rem; }
+.pe-8 { padding-inline-end: 2rem; }
+
+/* Logical margin utilities (preferred over ml-/mr-) */
+.ms-0 { margin-inline-start: 0; }
+.ms-1 { margin-inline-start: 0.25rem; }
+.ms-2 { margin-inline-start: 0.5rem; }
+.ms-3 { margin-inline-start: 0.75rem; }
+.ms-4 { margin-inline-start: 1rem; }
+.ms-auto { margin-inline-start: auto; }
+
+.me-0 { margin-inline-end: 0; }
+.me-1 { margin-inline-end: 0.25rem; }
+.me-2 { margin-inline-end: 0.5rem; }
+.me-3 { margin-inline-end: 0.75rem; }
+.me-4 { margin-inline-end: 1rem; }
+.me-auto { margin-inline-end: auto; }
+
+/* Negative margins */
+.-ms-1 { margin-inline-start: -0.25rem; }
+.-ms-2 { margin-inline-start: -0.5rem; }
+.-ms-3 { margin-inline-start: -0.75rem; }
+
+.-me-1 { margin-inline-end: -0.25rem; }
+.-me-2 { margin-inline-end: -0.5rem; }
+.-me-3 { margin-inline-end: -0.75rem; }
+
+/* Logical border utilities */
+.border-s { border-inline-start-width: 1px; }
+.border-e { border-inline-end-width: 1px; }
+.border-s-0 { border-inline-start-width: 0; }
+.border-e-0 { border-inline-end-width: 0; }
+
+/* Logical positioning utilities */
+.start-0 { inset-inline-start: 0; }
+.end-0 { inset-inline-end: 0; }
+.start-auto { inset-inline-start: auto; }
+.end-auto { inset-inline-end: auto; }
+
+/* Responsive variants for logical properties */
+@media (min-width: 640px) {
+  .sm\:ps-4 { padding-inline-start: 1rem; }
+  .sm\:pe-4 { padding-inline-end: 1rem; }
+  .sm\:ms-2 { margin-inline-start: 0.5rem; }
+  .sm\:me-2 { margin-inline-end: 0.5rem; }
+}
+
+@media (min-width: 768px) {
+  .md\:ps-6 { padding-inline-start: 1.5rem; }
+  .md\:pe-6 { padding-inline-end: 1.5rem; }
+}
+
+@media (min-width: 1024px) {
+  .lg\:ps-8 { padding-inline-start: 2rem; }
+  .lg\:pe-8 { padding-inline-end: 2rem; }
+}

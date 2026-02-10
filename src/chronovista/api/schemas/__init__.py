@@ -16,6 +16,15 @@ from chronovista.api.schemas.channels import (
     ChannelListItem,
     ChannelListResponse,
 )
+from chronovista.api.schemas.filters import (
+    ErrorTypeURI,
+    FILTER_LIMITS,
+    FilterType,
+    FilterWarning,
+    FilterWarningCode,
+    ProblemDetails,
+    VideoFilterParams,
+)
 from chronovista.api.schemas.playlists import (
     PlaylistDetail,
     PlaylistDetailResponse,
@@ -62,6 +71,14 @@ __all__ = [
     "ChannelDetailResponse",
     "ChannelListItem",
     "ChannelListResponse",
+    # Filters (Feature 020)
+    "ErrorTypeURI",
+    "FILTER_LIMITS",
+    "FilterType",
+    "FilterWarning",
+    "FilterWarningCode",
+    "ProblemDetails",
+    "VideoFilterParams",
     # Playlists
     "PlaylistDetail",
     "PlaylistDetailResponse",

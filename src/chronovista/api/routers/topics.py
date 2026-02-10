@@ -11,7 +11,7 @@ requests to /topics/{topic_id}/videos.
 
 from __future__ import annotations
 
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy import func, select
@@ -24,6 +24,8 @@ from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.topics import (
     TopicDetail,
     TopicDetailResponse,
+    TopicHierarchyItem,
+    TopicHierarchyResponse,
     TopicListItem,
     TopicListResponse,
 )
@@ -124,6 +126,128 @@ async def list_topics(
     return TopicListResponse(data=items, pagination=pagination)
 
 
+@router.get("/topics/hierarchy", response_model=TopicHierarchyResponse, responses=LIST_ERRORS)
+async def get_topic_hierarchy(
+    session: AsyncSession = Depends(get_db),
+    min_video_count: int = Query(
+        0,
+        ge=0,
+        description="Minimum video count to include topic (filter out rarely-used topics)",
+    ),
+    include_empty: bool = Query(
+        False,
+        description="Include topics with zero videos",
+    ),
+) -> TopicHierarchyResponse:
+    """
+    Get topics with hierarchy information.
+
+    Returns all topics with pre-computed hierarchy paths for use in
+    hierarchical combobox UI. Topics are ordered by depth first, then
+    alphabetically within each level.
+
+    Parameters
+    ----------
+    session : AsyncSession
+        Database session from dependency.
+    min_video_count : int
+        Minimum video count to include topic (default 0).
+    include_empty : bool
+        Include topics with zero videos (default False).
+
+    Returns
+    -------
+    TopicHierarchyResponse
+        Flattened topic list with hierarchy information.
+    """
+    # Subquery for video count
+    video_count_subq = (
+        select(func.count(VideoTopic.video_id))
+        .where(VideoTopic.topic_id == TopicCategory.topic_id)
+        .correlate(TopicCategory)
+        .scalar_subquery()
+    )
+
+    # Build query with video counts
+    query = select(
+        TopicCategory.topic_id,
+        TopicCategory.category_name.label("name"),
+        TopicCategory.parent_topic_id,
+        video_count_subq.label("video_count"),
+    )
+
+    # Apply filters
+    if not include_empty:
+        query = query.where(video_count_subq > 0)
+    if min_video_count > 0:
+        query = query.where(video_count_subq >= min_video_count)
+
+    # Order by name for consistent output
+    query = query.order_by(TopicCategory.category_name)
+
+    # Execute query
+    result = await session.execute(query)
+    rows = result.all()
+
+    # Build topic lookup for parent path computation
+    topic_map: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        topic_map[row.topic_id] = {
+            "topic_id": row.topic_id,
+            "name": row.name,
+            "parent_topic_id": row.parent_topic_id,
+            "video_count": row.video_count or 0,
+        }
+
+    def compute_depth_path_and_sort_key(
+        topic_id: str,
+    ) -> tuple[int, Optional[str], List[str]]:
+        """Compute depth, parent path, and hierarchical sort key for a topic."""
+        depth = 0
+        path_parts: List[str] = []
+        current = topic_map.get(topic_id)
+        if not current:
+            return 0, None, []
+
+        parent_id = current.get("parent_topic_id")
+        while parent_id and parent_id in topic_map:
+            parent = topic_map[parent_id]
+            path_parts.insert(0, parent["name"])
+            parent_id = parent.get("parent_topic_id")
+            depth += 1
+
+        parent_path = " > ".join(path_parts) if path_parts else None
+
+        # Build sort key: full hierarchical path as list for proper ordering
+        # e.g., "Music" -> ["Music"], "Christian music" -> ["Music", "Christian music"]
+        sort_key = path_parts + [current["name"]]
+
+        return depth, parent_path, sort_key
+
+    # Build hierarchy items with computed depth and parent paths
+    items: List[TopicHierarchyItem] = []
+    sort_keys: dict[str, List[str]] = {}
+    for row in rows:
+        depth, parent_path, sort_key = compute_depth_path_and_sort_key(row.topic_id)
+        sort_keys[row.topic_id] = sort_key
+        items.append(
+            TopicHierarchyItem(
+                topic_id=row.topic_id,
+                name=row.name,
+                parent_topic_id=row.parent_topic_id,
+                parent_path=parent_path,
+                depth=depth,
+                video_count=row.video_count or 0,
+            )
+        )
+
+    # Sort hierarchically: children appear immediately after their parent
+    # e.g., Music, Christian music, Classical music, ..., Sports, American football
+    items.sort(key=lambda x: [s.lower() for s in sort_keys.get(x.topic_id, [x.name])])
+
+    return TopicHierarchyResponse(data=items)
+
+
 # IMPORTANT: This endpoint MUST be defined before the detail endpoint below
 # because /topics/{topic_id:path} would otherwise greedily match this URL pattern.
 @router.get("/topics/{topic_id}/videos", response_model=VideoListResponse, responses=GET_ITEM_ERRORS)
@@ -185,6 +309,8 @@ async def get_topic_videos(
         .where(Video.deleted_flag.is_(False))
         .options(selectinload(Video.transcripts))
         .options(selectinload(Video.channel))
+        .options(selectinload(Video.tags))
+        .options(selectinload(Video.category))
     )
 
     # Get total count (before pagination)
@@ -226,6 +352,13 @@ async def get_topic_videos(
 
         channel_title = video.channel.title if video.channel else None
 
+        # Extract tags (may be empty if not loaded)
+        video_tags = [t.tag for t in video.tags] if video.tags else []
+
+        # Extract category info (may be None if not loaded)
+        category_id_val = video.category_id
+        category_name = video.category.name if video.category else None
+
         items.append(
             VideoListItem(
                 video_id=video.video_id,
@@ -236,6 +369,10 @@ async def get_topic_videos(
                 duration=video.duration,
                 view_count=video.view_count,
                 transcript_summary=transcript_summary,
+                tags=video_tags,
+                category_id=category_id_val,
+                category_name=category_name,
+                topics=[],  # Not loading topics in this endpoint
             )
         )
 

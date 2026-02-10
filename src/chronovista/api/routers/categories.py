@@ -25,8 +25,9 @@ from chronovista.api.schemas.categories import (
     CategoryListResponse,
 )
 from chronovista.api.schemas.responses import PaginationMeta
+from chronovista.api.schemas.topics import TopicSummary
 from chronovista.api.schemas.videos import VideoListItem, VideoListResponse, TranscriptSummary
-from chronovista.db.models import Video, VideoCategory
+from chronovista.db.models import Video, VideoCategory, VideoTag, VideoTopic, TopicCategory
 from chronovista.exceptions import NotFoundError
 
 
@@ -173,6 +174,9 @@ async def get_category_videos(
         .where(Video.deleted_flag.is_(False))
         .options(selectinload(Video.transcripts))
         .options(selectinload(Video.channel))
+        .options(selectinload(Video.category))
+        .options(selectinload(Video.tags))
+        .options(selectinload(Video.video_topics).selectinload(VideoTopic.topic_category))
     )
 
     # Get total count (before pagination)
@@ -210,6 +214,18 @@ async def get_category_videos(
 
         channel_title = video.channel.title if video.channel else None
 
+        # Build classification fields
+        category_name = video.category.name if video.category else None
+        tags = [tag.tag for tag in video.tags] if video.tags else []
+        topics = [
+            TopicSummary(
+                topic_id=vt.topic_category.topic_id,
+                name=vt.topic_category.category_name,
+                parent_path=None,  # TODO: Compute hierarchy path if needed
+            )
+            for vt in video.video_topics
+        ] if video.video_topics else []
+
         items.append(
             VideoListItem(
                 video_id=video.video_id,
@@ -220,6 +236,10 @@ async def get_category_videos(
                 duration=video.duration,
                 view_count=video.view_count,
                 transcript_summary=transcript_summary,
+                category_id=video.category_id,
+                category_name=category_name,
+                tags=tags,
+                topics=topics,
             )
         )
 

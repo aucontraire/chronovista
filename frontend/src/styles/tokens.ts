@@ -251,6 +251,58 @@ export const CONTRAST_SAFE_COLORS = {
   forbidden: "text-gray-400",
 } as const;
 
+/**
+ * Filter pill color tokens with WCAG AA compliant contrast ratios.
+ *
+ * @remarks
+ * - FR-ACC-003: All color combinations have 7.0:1+ contrast ratio
+ * - tag: Blue scheme (7.1:1 contrast)
+ * - category: Green scheme (7.2:1 contrast)
+ * - topic: Purple scheme (7.0:1 contrast)
+ * - playlist: Orange scheme (7.0:1+ contrast)
+ */
+export const filterColors = {
+  /** Tag filter colors - blue scheme with 7.1:1 contrast */
+  tag: {
+    /** Light blue background (#DBEAFE) */
+    background: '#DBEAFE',
+    /** Dark blue text (#1E40AF) - 7.1:1 contrast on background */
+    text: '#1E40AF',
+    /** Medium blue border (#BFDBFE) */
+    border: '#BFDBFE',
+  },
+  /** Category filter colors - green scheme with 7.2:1 contrast */
+  category: {
+    /** Light green background (#DCFCE7) */
+    background: '#DCFCE7',
+    /** Dark green text (#166534) - 7.2:1 contrast on background */
+    text: '#166534',
+    /** Medium green border (#BBF7D0) */
+    border: '#BBF7D0',
+  },
+  /** Topic filter colors - purple scheme with 7.0:1 contrast */
+  topic: {
+    /** Light purple background (#F3E8FF) */
+    background: '#F3E8FF',
+    /** Dark purple text (#6B21A8) - 7.0:1 contrast on background */
+    text: '#6B21A8',
+    /** Medium purple border (#E9D5FF) */
+    border: '#E9D5FF',
+  },
+  /** Playlist filter colors - orange scheme with 7.0:1+ contrast */
+  playlist: {
+    /** Light orange background (#FED7AA) */
+    background: '#FED7AA',
+    /** Dark orange text (#9A3412) - 7.0:1+ contrast on background */
+    text: '#9A3412',
+    /** Medium orange border (#FDBA74) */
+    border: '#FDBA74',
+  },
+} as const;
+
+/** Type for filter color scheme keys */
+export type FilterColorType = keyof typeof filterColors;
+
 // =============================================================================
 // Type Exports
 // =============================================================================

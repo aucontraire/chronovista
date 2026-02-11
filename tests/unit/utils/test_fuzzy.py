@@ -7,6 +7,8 @@ utilities used throughout chronovista for "Did you mean?" suggestions.
 
 from __future__ import annotations
 
+from collections.abc import Generator
+
 import pytest
 
 from chronovista.utils.fuzzy import find_similar, levenshtein_distance
@@ -169,7 +171,7 @@ class TestFindSimilar:
 
     def test_generator_input(self) -> None:
         """Test that generator input works."""
-        def candidate_gen() -> str:
+        def candidate_gen() -> Generator[str, None, None]:
             yield from ["en", "es", "fr"]
 
         result = find_similar("en", candidate_gen())

@@ -24,7 +24,7 @@
 
 import { useEffect } from 'react';
 import { SEARCH_CONFIG } from '../config/search';
-import { SEARCH_TYPE_OPTIONS } from '../types/search';
+import { SEARCH_TYPE_OPTIONS, type EnabledSearchTypes, type SearchType } from '../types/search';
 
 interface SearchFiltersProps {
   /** Available language codes from search results (BCP-47) */
@@ -33,8 +33,12 @@ interface SearchFiltersProps {
   selectedLanguage: string;
   /** Callback when language selection changes */
   onLanguageChange: (language: string) => void;
-  /** Total number of search results (for displaying count on Transcripts) */
+  /** Total number of transcript search results */
   totalResults: number;
+  /** Total number of title search results */
+  titleCount?: number;
+  /** Total number of description search results */
+  descriptionCount?: number;
   /** Whether the user is on a mobile device */
   isMobile?: boolean;
   /** Whether the user is on a tablet device */
@@ -43,6 +47,10 @@ interface SearchFiltersProps {
   isOpen?: boolean;
   /** Callback when the filter panel should close (mobile/tablet only) */
   onClose?: () => void;
+  /** Which search types are currently enabled */
+  enabledTypes: EnabledSearchTypes;
+  /** Callback when a search type is toggled */
+  onToggleType: (type: keyof EnabledSearchTypes) => void;
 }
 
 /**
@@ -159,15 +167,26 @@ function getLanguageDisplayName(code: string): string {
  * />
  * ```
  */
+// Helper to map SearchType to EnabledSearchTypes key
+const TYPE_KEY_MAP: Partial<Record<SearchType, keyof EnabledSearchTypes>> = {
+  'transcripts': 'transcripts',
+  'video_titles': 'titles',
+  'video_descriptions': 'descriptions',
+};
+
 export function SearchFilters({
   availableLanguages,
   selectedLanguage,
   onLanguageChange,
   totalResults,
+  titleCount = 0,
+  descriptionCount = 0,
   isMobile = false,
   isTablet = false,
   isOpen = true,
   onClose,
+  enabledTypes,
+  onToggleType,
 }: SearchFiltersProps) {
   // Preserve regional variants (e.g., "en-US", "en-GB") as separate options
   // This shows users the specific language context (lingo, slang, spelling)
@@ -249,16 +268,29 @@ export function SearchFilters({
         </h3>
         <div className="space-y-2">
           {SEARCH_TYPE_OPTIONS.map((option) => {
-            const isTranscripts = option.type === 'transcripts';
-            const displayLabel = isTranscripts
-              ? `${option.label} (${totalResults})`
+            const typeKey = TYPE_KEY_MAP[option.type];
+            const isChecked = typeKey ? enabledTypes[typeKey] : false;
+            // FR-011: At-least-one enforcement
+            // If this is the only enabled type, disable the checkbox to prevent unchecking
+            const isOnlyEnabled = typeKey && isChecked &&
+              Object.values(enabledTypes).filter(Boolean).length === 1;
+
+            // Show result count for all enabled & checked types
+            const countMap: Record<string, number> = {
+              'transcripts': totalResults,
+              'video_titles': titleCount,
+              'video_descriptions': descriptionCount,
+            };
+            const count = countMap[option.type];
+            const displayLabel = isChecked && count !== undefined && count > 0
+              ? `${option.label} (${count})`
               : option.label;
 
             return (
               <label
                 key={option.type}
                 className={`flex items-center gap-3 p-2 rounded-lg transition-colors ${
-                  option.enabled
+                  option.enabled && !isOnlyEnabled
                     ? 'hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer'
                     : 'opacity-50 cursor-not-allowed'
                 }`}
@@ -266,28 +298,27 @@ export function SearchFilters({
                 <input
                   type="checkbox"
                   id={`search-type-${option.type}`}
-                  checked={isTranscripts}
-                  disabled={!option.enabled}
+                  checked={isChecked}
+                  disabled={!option.enabled || isOnlyEnabled}
                   aria-label={`${option.label} search type`}
                   className="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed"
-                  readOnly
+                  onChange={() => {
+                    if (typeKey && option.enabled) {
+                      onToggleType(typeKey);
+                    }
+                  }}
                 />
                 <span className="flex-1 text-sm text-gray-900 dark:text-gray-100">
                   {displayLabel}
                 </span>
-                {!option.enabled && (
-                  <span className="text-xs text-gray-500 dark:text-gray-400 italic">
-                    Coming Soon
-                  </span>
-                )}
               </label>
             );
           })}
         </div>
       </div>
 
-      {/* Language Filter Section */}
-      {availableLanguages.length > 0 && (
+      {/* Language Filter Section - FR-014: Only show when transcripts enabled */}
+      {enabledTypes.transcripts && availableLanguages.length > 0 && (
         <div>
           <label
             htmlFor="language-filter"

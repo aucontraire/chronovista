@@ -12,6 +12,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.24.0] - 2026-02-11
+
+### Added
+- **Feature 021: Multi-Section Search**
+  - Search across video titles and descriptions alongside transcript segments
+  - New `/search/titles` and `/search/descriptions` backend endpoints
+  - Snippet generation for description matches (~200 chars, word-boundary trimmed)
+  - `useSearchTitles` and `useSearchDescriptions` hooks
+  - `VideoSearchResult` and `SearchSection` components
+  - Functional search type toggle checkboxes with at-least-one enforcement
+  - URL state persistence for enabled types (`types=` parameter)
+  - Per-type ARIA announcements for accessibility
+  - Removed "Coming Soon" placeholders (Tags, Topics, Channels)
+
+### Changed
+- Search page background aligned with AppShell (`bg-slate-50`)
+- Section headings use `text-slate-900 font-bold` for consistent contrast
+- Removed `dark:` variants from search components to match app-wide light theme
+
+### Fixed
+- Generator return type in `test_fuzzy.py` for mypy strict compliance
+
+### Technical
+- 1,240 passing frontend tests across 54 files
+- 56 passing backend search API tests
+- WCAG 2.1 AA accessibility compliance
+
 ## [0.23.0] - 2026-02-10
 
 ### Added

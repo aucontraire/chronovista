@@ -398,3 +398,293 @@ class TestSearchEdgeCases:
             # All language codes should be strings
             for lang in data["available_languages"]:
                 assert isinstance(lang, str)
+
+
+class TestSearchTitles:
+    """Tests for GET /api/v1/search/titles endpoint."""
+
+    async def test_title_search_requires_auth(self, async_client: AsyncClient) -> None:
+        """Test that title search requires authentication."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = False
+            response = await async_client.get("/api/v1/search/titles?q=test")
+            assert response.status_code == 401
+
+    async def test_title_search_returns_response_structure(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test title search returns correct response structure."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/search/titles?q=test")
+            assert response.status_code == 200
+            data = response.json()
+            assert "data" in data
+            assert "total_count" in data
+            assert isinstance(data["data"], list)
+            assert isinstance(data["total_count"], int)
+
+    async def test_title_search_requires_query(self, async_client: AsyncClient) -> None:
+        """Test that title search requires q parameter."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/search/titles")
+            assert response.status_code == 422  # Missing required parameter
+
+    async def test_title_search_query_min_length(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test query must be at least 2 characters."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/search/titles?q=a")
+            assert response.status_code == 422
+
+    async def test_title_search_query_max_length(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test query must be at most 500 characters."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            long_query = "a" * 501
+            response = await async_client.get(f"/api/v1/search/titles?q={long_query}")
+            assert response.status_code == 422
+
+    async def test_title_search_empty_after_trim(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test query cannot be empty after stripping whitespace."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/search/titles?q=%20%20")
+            assert response.status_code == 400  # Bad request for empty query
+            data = response.json()
+            assert data["code"] == "BAD_REQUEST"
+
+    async def test_title_search_empty_results(self, async_client: AsyncClient) -> None:
+        """Test empty results for non-matching query."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(
+                "/api/v1/search/titles?q=xyznonexistentquery123"
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["data"] == []
+            assert data["total_count"] == 0
+
+    async def test_title_search_default_limit(self, async_client: AsyncClient) -> None:
+        """Test default limit returns at most 50 results."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/search/titles?q=the")
+            assert response.status_code == 200
+            data = response.json()
+            # Default limit is 50, so should return at most 50 results
+            assert len(data["data"]) <= 50
+
+    async def test_title_search_custom_limit(self, async_client: AsyncClient) -> None:
+        """Test custom limit parameter."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/search/titles?q=the&limit=5")
+            assert response.status_code == 200
+            data = response.json()
+            # Should return at most 5 results
+            assert len(data["data"]) <= 5
+
+    async def test_title_search_limit_validation(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test limit validation (min 1, max 50)."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            # Test limit = 0
+            response = await async_client.get("/api/v1/search/titles?q=test&limit=0")
+            assert response.status_code == 422
+            # Test limit = 51
+            response = await async_client.get("/api/v1/search/titles?q=test&limit=51")
+            assert response.status_code == 422
+
+    async def test_title_search_result_fields(self, async_client: AsyncClient) -> None:
+        """Test title search result item fields."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/search/titles?q=the")
+            assert response.status_code == 200
+            data = response.json()
+            if data["data"]:
+                result = data["data"][0]
+                # Check required fields
+                assert "video_id" in result
+                assert "title" in result
+                assert "channel_title" in result
+                assert "upload_date" in result
+                # Types
+                assert isinstance(result["video_id"], str)
+                assert isinstance(result["title"], str)
+                # channel_title may be None
+                if result["channel_title"] is not None:
+                    assert isinstance(result["channel_title"], str)
+                assert isinstance(result["upload_date"], str)
+
+    async def test_title_search_special_characters(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test special SQL characters are properly escaped."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            # Test with SQL wildcard characters
+            response = await async_client.get("/api/v1/search/titles?q=test%25query")
+            assert response.status_code == 200
+            # Should not cause SQL errors
+
+
+class TestSearchDescriptions:
+    """Tests for GET /api/v1/search/descriptions endpoint."""
+
+    async def test_description_search_requires_auth(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test that description search requires authentication."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = False
+            response = await async_client.get("/api/v1/search/descriptions?q=test")
+            assert response.status_code == 401
+
+    async def test_description_search_returns_response_structure(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test description search returns correct response structure."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/search/descriptions?q=test")
+            assert response.status_code == 200
+            data = response.json()
+            assert "data" in data
+            assert "total_count" in data
+            assert isinstance(data["data"], list)
+            assert isinstance(data["total_count"], int)
+
+    async def test_description_search_requires_query(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test that description search requires q parameter."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/search/descriptions")
+            assert response.status_code == 422  # Missing required parameter
+
+    async def test_description_search_query_min_length(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test query must be at least 2 characters."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/search/descriptions?q=a")
+            assert response.status_code == 422
+
+    async def test_description_search_empty_after_trim(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test query cannot be empty after stripping whitespace."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/search/descriptions?q=%20%20")
+            assert response.status_code == 400  # Bad request for empty query
+            data = response.json()
+            assert data["code"] == "BAD_REQUEST"
+
+    async def test_description_search_empty_results(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test empty results for non-matching query."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(
+                "/api/v1/search/descriptions?q=xyznonexistentquery123"
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["data"] == []
+            assert data["total_count"] == 0
+
+    async def test_description_search_default_limit(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test default limit returns at most 50 results."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/search/descriptions?q=the")
+            assert response.status_code == 200
+            data = response.json()
+            # Default limit is 50, so should return at most 50 results
+            assert len(data["data"]) <= 50
+
+    async def test_description_search_custom_limit(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test custom limit parameter."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(
+                "/api/v1/search/descriptions?q=the&limit=5"
+            )
+            assert response.status_code == 200
+            data = response.json()
+            # Should return at most 5 results
+            assert len(data["data"]) <= 5
+
+    async def test_description_search_result_fields(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test description search result item fields."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/search/descriptions?q=the")
+            assert response.status_code == 200
+            data = response.json()
+            if data["data"]:
+                result = data["data"][0]
+                # Check required fields
+                assert "video_id" in result
+                assert "title" in result
+                assert "channel_title" in result
+                assert "upload_date" in result
+                assert "snippet" in result
+                # Types
+                assert isinstance(result["video_id"], str)
+                assert isinstance(result["title"], str)
+                # channel_title may be None
+                if result["channel_title"] is not None:
+                    assert isinstance(result["channel_title"], str)
+                assert isinstance(result["upload_date"], str)
+                assert isinstance(result["snippet"], str)
+
+    async def test_description_search_snippet_present(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test snippet is a non-empty string when results exist."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/search/descriptions?q=the")
+            assert response.status_code == 200
+            data = response.json()
+            if data["data"]:
+                result = data["data"][0]
+                assert "snippet" in result
+                assert isinstance(result["snippet"], str)
+                assert len(result["snippet"]) > 0
+
+    async def test_description_search_special_characters(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Test special SQL characters are properly escaped."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            # Test with SQL wildcard characters
+            response = await async_client.get(
+                "/api/v1/search/descriptions?q=test%25query"
+            )
+            assert response.status_code == 200
+            # Should not cause SQL errors

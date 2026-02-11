@@ -70,7 +70,7 @@ describe("SearchInput", () => {
           />
         );
 
-        const input = screen.getByRole("searchbox", { name: /search transcripts/i });
+        const input = screen.getByRole("searchbox", { name: /search videos/i });
         expect(input).toHaveClass("border-yellow-500");
       });
     });
@@ -91,7 +91,7 @@ describe("SearchInput", () => {
           />
         );
 
-        const input = screen.getByRole("searchbox", { name: /search transcripts/i });
+        const input = screen.getByRole("searchbox", { name: /search videos/i });
 
         // Simulate pasting a long string
         await user.click(input);
@@ -156,7 +156,7 @@ describe("SearchInput", () => {
           />
         );
 
-        const input = screen.getByRole("searchbox", { name: /search transcripts/i });
+        const input = screen.getByRole("searchbox", { name: /search videos/i });
         expect(input).toHaveClass("border-red-500");
       });
     });
@@ -175,7 +175,7 @@ describe("SearchInput", () => {
           />
         );
 
-        const input = screen.getByRole("searchbox", { name: /search transcripts/i });
+        const input = screen.getByRole("searchbox", { name: /search videos/i });
         await user.clear(input);
 
         expect(onChange).toHaveBeenCalled();
@@ -214,8 +214,8 @@ describe("SearchInput", () => {
         />
       );
 
-      const input = screen.getByRole("searchbox", { name: /search transcripts/i });
-      expect(input).toHaveAttribute("aria-label", "Search transcripts");
+      const input = screen.getByRole("searchbox", { name: /search videos/i });
+      expect(input).toHaveAttribute("aria-label", "Search videos");
     });
 
     it("should associate hint with input using aria-describedby when showing hint", () => {
@@ -230,7 +230,7 @@ describe("SearchInput", () => {
         />
       );
 
-      const input = screen.getByRole("searchbox", { name: /search transcripts/i });
+      const input = screen.getByRole("searchbox", { name: /search videos/i });
       expect(input).toHaveAttribute("aria-describedby", "search-hint");
 
       const hint = screen.getByText("Enter at least 2 characters");

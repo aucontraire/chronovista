@@ -88,8 +88,8 @@ export function SearchInput({
           type="search"
           value={value}
           onChange={handleChange}
-          placeholder="Search transcripts..."
-          aria-label="Search transcripts"
+          placeholder="Search videos..."
+          aria-label="Search videos"
           aria-describedby="search-hint"
           aria-controls="search-results"
           aria-invalid={isInvalid}

@@ -7,9 +7,16 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.deps import get_db, require_auth
-from chronovista.api.routers.responses import LIST_ERRORS
+from chronovista.api.routers.responses import LIST_ERRORS, BAD_REQUEST_RESPONSE, UNAUTHORIZED_RESPONSE, INTERNAL_ERROR_RESPONSE
 from chronovista.api.schemas.responses import PaginationMeta
-from chronovista.api.schemas.search import SearchResponse, SearchResultSegment
+from chronovista.api.schemas.search import (
+    SearchResponse,
+    SearchResultSegment,
+    TitleSearchResponse,
+    TitleSearchResult,
+    DescriptionSearchResponse,
+    DescriptionSearchResult,
+)
 from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import TranscriptSegment as SegmentDB
 from chronovista.db.models import Video as VideoDB
@@ -18,6 +25,8 @@ from chronovista.exceptions import BadRequestError
 
 
 router = APIRouter(dependencies=[Depends(require_auth)])
+
+SEARCH_ERRORS = {**BAD_REQUEST_RESPONSE, **UNAUTHORIZED_RESPONSE, **INTERNAL_ERROR_RESPONSE}
 
 
 def count_query_matches(text: str, query_terms: List[str]) -> int:
@@ -235,3 +244,233 @@ async def search_segments(
         pagination=pagination,
         available_languages=available_languages,
     )
+
+
+@router.get("/search/titles", response_model=TitleSearchResponse, responses=SEARCH_ERRORS)
+async def search_titles(
+    q: str = Query(
+        ..., min_length=2, max_length=500, description="Search query (2-500 characters)"
+    ),
+    limit: int = Query(50, ge=1, le=50, description="Maximum results (1-50, default 50)"),
+    session: AsyncSession = Depends(get_db),
+) -> TitleSearchResponse:
+    """
+    Search video titles.
+
+    Uses case-insensitive substring matching (ILIKE) with implicit AND
+    for multi-word queries. Returns results ordered by upload date (newest first),
+    capped at the specified limit. Excludes deleted videos.
+
+    Parameters
+    ----------
+    q : str
+        Search query string (2-500 characters).
+    limit : int
+        Maximum number of results to return (1-50, default 50).
+    session : AsyncSession
+        Database session from dependency.
+
+    Returns
+    -------
+    TitleSearchResponse
+        Title search results with total count.
+
+    Raises
+    ------
+    BadRequestError
+        If search query is empty after stripping whitespace (400).
+    """
+    query_text = q.strip()
+    if not query_text:
+        raise BadRequestError(
+            message="Search query cannot be empty",
+            details={"field": "q", "constraint": "non_empty"},
+        )
+
+    query_terms = query_text.split()
+
+    # Build conditions for reuse (count + results)
+    conditions = [VideoDB.deleted_flag.is_(False)]
+    for term in query_terms:
+        escaped_term = term.replace("%", r"\%").replace("_", r"\_")
+        conditions.append(VideoDB.title.ilike(f"%{escaped_term}%"))
+
+    # Get total count
+    count_query = select(func.count()).select_from(
+        select(VideoDB.video_id).where(*conditions).subquery()
+    )
+    total_result = await session.execute(count_query)
+    total_count = total_result.scalar() or 0
+
+    # Build results query with channel join, ordering, and limit
+    results_query = (
+        select(VideoDB.video_id, VideoDB.title, ChannelDB.title.label("channel_title"), VideoDB.upload_date)
+        .outerjoin(ChannelDB, VideoDB.channel_id == ChannelDB.channel_id)
+        .where(*conditions)
+        .order_by(VideoDB.upload_date.desc())
+        .limit(limit)
+    )
+    result = await session.execute(results_query)
+    rows = result.all()
+
+    items = [
+        TitleSearchResult(
+            video_id=row.video_id,
+            title=row.title,
+            channel_title=row.channel_title,
+            upload_date=row.upload_date,
+        )
+        for row in rows
+    ]
+
+    return TitleSearchResponse(data=items, total_count=total_count)
+
+
+def _generate_snippet(description: str, query_terms: list[str], target_length: int = 200) -> str:
+    """
+    Generate a snippet from a description centered around the first match.
+
+    Parameters
+    ----------
+    description : str
+        The full description text.
+    query_terms : list[str]
+        Query terms to find in the description.
+    target_length : int
+        Approximate target snippet length (default 200).
+
+    Returns
+    -------
+    str
+        Snippet with ellipsis indicators if truncated.
+    """
+    if len(description) <= target_length:
+        return description
+
+    # Find the position of the first matching term (case-insensitive)
+    desc_lower = description.lower()
+    first_pos = len(description)  # Default to end if no match found
+    for term in query_terms:
+        pos = desc_lower.find(term.lower())
+        if pos != -1 and pos < first_pos:
+            first_pos = pos
+
+    # Calculate window centered around the match
+    half_window = target_length // 2
+    start = max(0, first_pos - half_window)
+    end = min(len(description), first_pos + len(query_terms[0]) + half_window)
+
+    # Adjust to word boundaries
+    if start > 0:
+        # Find next space after start
+        space_pos = description.find(" ", start)
+        if space_pos != -1 and space_pos < first_pos:
+            start = space_pos + 1
+
+    if end < len(description):
+        # Find previous space before end
+        space_pos = description.rfind(" ", start, end)
+        if space_pos != -1 and space_pos > first_pos:
+            end = space_pos
+
+    snippet = description[start:end]
+
+    # Add ellipsis
+    if start > 0:
+        snippet = "..." + snippet
+    if end < len(description):
+        snippet = snippet + "..."
+
+    return snippet
+
+
+@router.get("/search/descriptions", response_model=DescriptionSearchResponse, responses=SEARCH_ERRORS)
+async def search_descriptions(
+    q: str = Query(
+        ..., min_length=2, max_length=500, description="Search query (2-500 characters)"
+    ),
+    limit: int = Query(50, ge=1, le=50, description="Maximum results (1-50, default 50)"),
+    session: AsyncSession = Depends(get_db),
+) -> DescriptionSearchResponse:
+    """
+    Search video descriptions.
+
+    Uses case-insensitive substring matching (ILIKE) with implicit AND
+    for multi-word queries. Returns results with a ~200 character snippet
+    centered around the first match location. Results ordered by upload date
+    (newest first), capped at the specified limit. Excludes deleted videos
+    and videos with null descriptions.
+
+    Parameters
+    ----------
+    q : str
+        Search query string (2-500 characters).
+    limit : int
+        Maximum number of results to return (1-50, default 50).
+    session : AsyncSession
+        Database session from dependency.
+
+    Returns
+    -------
+    DescriptionSearchResponse
+        Description search results with snippets and total count.
+
+    Raises
+    ------
+    BadRequestError
+        If search query is empty after stripping whitespace (400).
+    """
+    query_text = q.strip()
+    if not query_text:
+        raise BadRequestError(
+            message="Search query cannot be empty",
+            details={"field": "q", "constraint": "non_empty"},
+        )
+
+    query_terms = query_text.split()
+
+    # Build conditions for reuse
+    conditions = [
+        VideoDB.deleted_flag.is_(False),
+        VideoDB.description.isnot(None),
+    ]
+    for term in query_terms:
+        escaped_term = term.replace("%", r"\%").replace("_", r"\_")
+        conditions.append(VideoDB.description.ilike(f"%{escaped_term}%"))
+
+    # Get total count
+    count_query = select(func.count()).select_from(
+        select(VideoDB.video_id).where(*conditions).subquery()
+    )
+    total_result = await session.execute(count_query)
+    total_count = total_result.scalar() or 0
+
+    # Build results query with channel join
+    results_query = (
+        select(
+            VideoDB.video_id,
+            VideoDB.title,
+            VideoDB.description,
+            ChannelDB.title.label("channel_title"),
+            VideoDB.upload_date,
+        )
+        .outerjoin(ChannelDB, VideoDB.channel_id == ChannelDB.channel_id)
+        .where(*conditions)
+        .order_by(VideoDB.upload_date.desc())
+        .limit(limit)
+    )
+    result = await session.execute(results_query)
+    rows = result.all()
+
+    items = [
+        DescriptionSearchResult(
+            video_id=row.video_id,
+            title=row.title,
+            channel_title=row.channel_title,
+            upload_date=row.upload_date,
+            snippet=_generate_snippet(row.description, query_terms),
+        )
+        for row in rows
+    ]
+
+    return DescriptionSearchResponse(data=items, total_count=total_count)

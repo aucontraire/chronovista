@@ -16,12 +16,32 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { useSearchSegments } from "../hooks/useSearchSegments";
+import { useSearchTitles } from "../hooks/useSearchTitles";
+import { useSearchDescriptions } from "../hooks/useSearchDescriptions";
 import { SearchInput } from "../components/SearchInput";
 import { SearchResultList } from "../components/SearchResultList";
 import { SearchEmptyState } from "../components/SearchEmptyState";
-import { SearchErrorState } from "../components/SearchErrorState";
-import { SearchResultSkeleton } from "../components/SearchResultSkeleton";
 import { SearchFilters } from "../components/SearchFilters";
+import { SearchSection } from "../components/SearchSection";
+import { VideoSearchResult } from "../components/VideoSearchResult";
+import type { EnabledSearchTypes } from "../types/search";
+
+/**
+ * Parse enabled types from URL parameter.
+ * Format: types=titles,descriptions,transcripts (comma-separated)
+ * If not present, default to all three enabled.
+ */
+function parseEnabledTypes(typesParam: string | null): EnabledSearchTypes {
+  if (!typesParam) {
+    return { titles: true, descriptions: true, transcripts: true };
+  }
+  const parts = typesParam.split(',');
+  return {
+    titles: parts.includes('titles'),
+    descriptions: parts.includes('descriptions'),
+    transcripts: parts.includes('transcripts'),
+  };
+}
 
 export function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -29,10 +49,12 @@ export function SearchPage() {
   // Initialize state from URL params (FR-012: URL state restoration)
   const initialQuery = searchParams.get("q") || "";
   const initialLanguage = searchParams.get("language") || "";
+  const initialTypes = parseEnabledTypes(searchParams.get("types"));
 
   const [query, setQuery] = useState(initialQuery);
   const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
   const [selectedLanguage, setSelectedLanguage] = useState(initialLanguage);
+  const [enabledTypes, setEnabledTypes] = useState<EnabledSearchTypes>(initialTypes);
   const mainContentRef = useRef<HTMLElement>(null);
 
   // Set page title
@@ -58,7 +80,43 @@ export function SearchPage() {
     language: selectedLanguage || null,
   });
 
+  const {
+    data: titleResults,
+    totalCount: titleTotalCount,
+    isLoading: isTitleLoading,
+    isError: isTitleError,
+    error: titleError,
+    refetch: refetchTitles,
+  } = useSearchTitles({
+    query: debouncedQuery,
+    enabled: enabledTypes.titles,
+  });
+
+  const {
+    data: descriptionResults,
+    totalCount: descriptionTotalCount,
+    isLoading: isDescriptionLoading,
+    isError: isDescriptionError,
+    error: descriptionError,
+    refetch: refetchDescriptions,
+  } = useSearchDescriptions({
+    query: debouncedQuery,
+    enabled: enabledTypes.descriptions,
+  });
+
   const queryTerms = debouncedQuery.trim().split(/\s+/).filter(Boolean);
+
+  // Toggle handler with at-least-one enforcement
+  const handleToggleType = (type: keyof EnabledSearchTypes) => {
+    setEnabledTypes(prev => {
+      const next = { ...prev, [type]: !prev[type] };
+      // Enforce at-least-one: if all would be false, don't change
+      if (!next.titles && !next.descriptions && !next.transcripts) {
+        return prev;
+      }
+      return next;
+    });
+  };
 
   // FR-011: Sync search state to URL parameters
   useEffect(() => {
@@ -72,6 +130,16 @@ export function SearchPage() {
       params.set("language", selectedLanguage);
     }
 
+    // Add types param only if not all enabled (default state)
+    const allEnabled = enabledTypes.titles && enabledTypes.descriptions && enabledTypes.transcripts;
+    if (!allEnabled) {
+      const types = [];
+      if (enabledTypes.titles) types.push('titles');
+      if (enabledTypes.descriptions) types.push('descriptions');
+      if (enabledTypes.transcripts) types.push('transcripts');
+      params.set("types", types.join(','));
+    }
+
     // Only update URL if params changed (replace: true prevents history entries)
     const newSearch = params.toString();
     const currentSearch = searchParams.toString();
@@ -79,32 +147,66 @@ export function SearchPage() {
     if (newSearch !== currentSearch) {
       setSearchParams(params, { replace: true });
     }
-  }, [debouncedQuery, selectedLanguage, searchParams, setSearchParams]);
+  }, [debouncedQuery, selectedLanguage, enabledTypes, searchParams, setSearchParams]);
 
-  // T049: ARIA live region announcements (FR-026)
+  // T049: ARIA live region announcements (FR-026) - Only count enabled types
   const announceText = useMemo(() => {
     if (!debouncedQuery) {
       return "";
     }
 
-    if (isLoading && !isFetchingNextPage) {
+    const anyLoading =
+      (enabledTypes.transcripts && isLoading && !isFetchingNextPage) ||
+      (enabledTypes.titles && isTitleLoading) ||
+      (enabledTypes.descriptions && isDescriptionLoading);
+
+    if (anyLoading) {
       return "Searching...";
     }
 
-    if (isError) {
+    const allEnabledErrored =
+      (enabledTypes.transcripts ? isError : true) &&
+      (enabledTypes.titles ? isTitleError : true) &&
+      (enabledTypes.descriptions ? isDescriptionError : true);
+
+    if (allEnabledErrored) {
       return "Search failed. Please try again.";
     }
 
-    if (segments.length === 0 && !isLoading) {
+    const transcriptEmpty = !enabledTypes.transcripts || segments.length === 0;
+    const titleEmpty = !enabledTypes.titles || titleTotalCount === 0;
+    const descriptionEmpty = !enabledTypes.descriptions || descriptionTotalCount === 0;
+
+    if (transcriptEmpty && titleEmpty && descriptionEmpty && !anyLoading) {
       return `No results found for '${debouncedQuery}'`;
     }
 
-    if (segments.length > 0 && !isLoading) {
-      return `Found ${total ?? segments.length} results for '${debouncedQuery}'`;
+    if (!anyLoading && (segments.length > 0 || titleTotalCount > 0 || descriptionTotalCount > 0)) {
+      const transcriptCount = enabledTypes.transcripts ? (total ?? segments.length) : 0;
+      const titleCount = enabledTypes.titles ? titleTotalCount : 0;
+      const descriptionCount = enabledTypes.descriptions ? descriptionTotalCount : 0;
+
+      // FR-018: Combined per-type announcement
+      const parts: string[] = [];
+      if (enabledTypes.titles && titleCount > 0) parts.push(`${titleCount} title`);
+      if (enabledTypes.descriptions && descriptionCount > 0) parts.push(`${descriptionCount} description`);
+      if (enabledTypes.transcripts && transcriptCount > 0) parts.push(`${transcriptCount} transcript`);
+
+      if (parts.length === 0) {
+        return `No results found for '${debouncedQuery}'`;
+      }
+
+      const matchText = parts.length === 1
+        ? parts[0]
+        : parts.length === 2
+          ? `${parts[0]} and ${parts[1]}`
+          : `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
+
+      return `Found ${matchText} matches for '${debouncedQuery}'`;
     }
 
     return "";
-  }, [debouncedQuery, isLoading, isError, segments.length, total, isFetchingNextPage]);
+  }, [debouncedQuery, isLoading, isError, segments.length, total, isFetchingNextPage, isTitleLoading, titleTotalCount, isTitleError, isDescriptionLoading, descriptionTotalCount, isDescriptionError, enabledTypes]);
 
   const renderContent = () => {
     if (!debouncedQuery) {
@@ -119,89 +221,136 @@ export function SearchPage() {
       );
     }
 
-    if (isLoading) {
-      return <SearchResultSkeleton />;
-    }
+    // Check if ALL enabled sections are done and ALL returned zero results
+    const titleEmpty = !enabledTypes.titles || (!isTitleLoading && !isTitleError && titleTotalCount === 0);
+    const descEmpty = !enabledTypes.descriptions || (!isDescriptionLoading && !isDescriptionError && descriptionTotalCount === 0);
+    const transcriptEmpty = !enabledTypes.transcripts || (!isLoading && !isError && segments.length === 0);
+    const anyStillLoading =
+      (enabledTypes.titles && isTitleLoading) ||
+      (enabledTypes.descriptions && isDescriptionLoading) ||
+      (enabledTypes.transcripts && isLoading && !isFetchingNextPage);
+    const allSectionsEmpty = titleEmpty && descEmpty && transcriptEmpty && !anyStillLoading;
 
-    if (isError) {
-      // T056: Extract status from ApiError for authentication detection (EC-011-EC-016)
-      const apiError = error as { status?: number } | undefined;
-      const errorStatus = apiError?.status;
-      const errorProps = {
-        message: error instanceof Error
-          ? error.message
-          : "Something went wrong. Please try again.",
-        onRetry: () => fetchNextPage(),
-        error,
-        // Only include status if it's defined (exactOptionalPropertyTypes compliance)
-        ...(errorStatus !== undefined && { status: errorStatus }),
-      };
-      return <SearchErrorState {...errorProps} />;
-    }
-
-    if (segments.length === 0) {
-      // CRITICAL FIX: Show filter panel even when no results, so users can change/clear filters
+    if (allSectionsEmpty) {
+      // Show no-results with filter panel (same as existing no-results state)
       return (
         <div className="space-y-6">
-          {/* Desktop: Show filters in sidebar layout */}
           <div className="lg:grid lg:grid-cols-[280px_1fr] lg:gap-6">
-            {/* Filter Panel - Desktop (permanent sidebar) - T052: complementary landmark */}
             <div className="hidden lg:block lg:sticky lg:top-4 lg:self-start">
               <SearchFilters
                 availableLanguages={availableLanguages}
                 selectedLanguage={selectedLanguage}
                 onLanguageChange={setSelectedLanguage}
-                totalResults={total ?? 0}
+                totalResults={0}
+                titleCount={0}
+                descriptionCount={0}
+                enabledTypes={enabledTypes}
+                onToggleType={handleToggleType}
               />
             </div>
-
-            {/* Empty State */}
             <div>
               <SearchEmptyState mode="no-results" query={debouncedQuery} />
             </div>
           </div>
-
-          {/* TODO: Mobile/Tablet filter trigger button will be added in future iteration */}
-          {/* For now, filters are only available on desktop (lg:) breakpoint */}
         </div>
       );
     }
 
+    // Render stacked sections layout
     return (
       <div className="space-y-6">
-        {/* Desktop: Show filters in sidebar layout */}
         <div className="lg:grid lg:grid-cols-[280px_1fr] lg:gap-6">
-          {/* Filter Panel - Desktop (permanent sidebar) - T052: complementary landmark */}
+          {/* Filter Panel - Desktop sidebar */}
           <div className="hidden lg:block lg:sticky lg:top-4 lg:self-start">
             <SearchFilters
               availableLanguages={availableLanguages}
               selectedLanguage={selectedLanguage}
               onLanguageChange={setSelectedLanguage}
               totalResults={total ?? 0}
+              titleCount={titleTotalCount}
+              descriptionCount={descriptionTotalCount}
+              enabledTypes={enabledTypes}
+              onToggleType={handleToggleType}
             />
           </div>
 
-          {/* Search Results */}
-          <div>
-            <SearchResultList
-              results={segments}
-              queryTerms={queryTerms}
-              isLoading={isLoading}
-              isFetchingNextPage={isFetchingNextPage}
-              hasNextPage={hasNextPage}
-              fetchNextPage={fetchNextPage}
-            />
+          {/* Stacked search sections - only render enabled types */}
+          <div className="space-y-6">
+            {/* Video Titles section (top) */}
+            {enabledTypes.titles && (
+              <SearchSection
+                title="Video Titles"
+                totalCount={titleTotalCount}
+                displayedCount={titleResults.length}
+                isLoading={isTitleLoading}
+                error={isTitleError ? titleError : null}
+                onRetry={refetchTitles}
+                loadingText="Searching titles..."
+              >
+                <div className="space-y-3">
+                  {titleResults.map((result) => (
+                    <VideoSearchResult
+                      key={result.video_id}
+                      result={result}
+                      queryTerms={queryTerms}
+                    />
+                  ))}
+                </div>
+              </SearchSection>
+            )}
+
+            {/* Descriptions section (middle) */}
+            {enabledTypes.descriptions && (
+              <SearchSection
+                title="Descriptions"
+                totalCount={descriptionTotalCount}
+                displayedCount={descriptionResults.length}
+                isLoading={isDescriptionLoading}
+                error={isDescriptionError ? descriptionError : null}
+                onRetry={refetchDescriptions}
+                loadingText="Searching descriptions..."
+              >
+                <div className="space-y-3">
+                  {descriptionResults.map((result) => (
+                    <VideoSearchResult
+                      key={result.video_id}
+                      result={result}
+                      queryTerms={queryTerms}
+                    />
+                  ))}
+                </div>
+              </SearchSection>
+            )}
+
+            {/* Transcripts section (bottom) - uses existing SearchResultList */}
+            {enabledTypes.transcripts && (
+              <SearchSection
+                title="Transcripts"
+                totalCount={total ?? 0}
+                displayedCount={segments.length}
+                isLoading={isLoading && !isFetchingNextPage}
+                error={isError ? error : null}
+                onRetry={() => fetchNextPage()}
+                loadingText="Searching transcripts..."
+              >
+                <SearchResultList
+                  results={segments}
+                  queryTerms={queryTerms}
+                  isLoading={isLoading}
+                  isFetchingNextPage={isFetchingNextPage}
+                  hasNextPage={hasNextPage}
+                  fetchNextPage={fetchNextPage}
+                />
+              </SearchSection>
+            )}
           </div>
         </div>
-
-        {/* TODO: Mobile/Tablet filter trigger button will be added in future iteration */}
-        {/* For now, filters are only available on desktop (lg:) breakpoint */}
       </div>
     );
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div>
       {/* T053: Skip link (FR-029) - WCAG 2.4.1 Bypass Blocks */}
       <a
         href="#main-content"

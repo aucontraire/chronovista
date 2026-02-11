@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.24.0] - 2026-02-11
+
+### Added
+
+#### Feature 021: Multi-Section Search
+
+Search across video titles and descriptions alongside transcript segments, with stacked sectioned layout, parallel independent loading, and toggle checkboxes.
+
+**Title & Description Search:**
+- New `/search/titles` and `/search/descriptions` backend endpoints with ILIKE pattern matching
+- Snippet generation (~200 chars centered around first match, word-boundary trimmed)
+- `useSearchTitles` and `useSearchDescriptions` TanStack Query hooks
+- `VideoSearchResult` component for title/description result cards with highlighted matches
+- `SearchSection` reusable wrapper with header count display, loading spinner, and inline error with retry
+
+**Search Type Toggles:**
+- Functional checkboxes for Transcripts, Video Titles, and Descriptions
+- At-least-one enforcement (last remaining checkbox becomes disabled)
+- URL state persistence via `types=` parameter (comma-separated)
+- Per-type ARIA announcement: "Found 3 title, 12 description, and 847 transcript matches"
+
+**UI Polish:**
+- Removed "Coming Soon" placeholders for Tags, Topics, Channels (handled by Videos page faceted filters)
+- Updated search placeholder and hero text for multi-section context
+- Result counts displayed on all three filter checkboxes
+- Consistent `bg-slate-50` background matching other pages
+
+### Changed
+- Search page background aligned with AppShell (`bg-slate-50` instead of `bg-gray-50`)
+- Section headings use `text-slate-900 font-bold` for consistent contrast
+- Removed `dark:` color variants from search components to match app-wide light theme
+
+### Fixed
+- Generator return type in `tests/unit/utils/test_fuzzy.py` (mypy strict compliance)
+
 ## [0.23.0] - 2026-02-10
 
 ### Added

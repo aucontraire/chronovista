@@ -67,11 +67,11 @@ describe('SearchInput', () => {
       expect(input).toHaveAttribute('type', 'search');
     });
 
-    it('should render with placeholder "Search transcripts..."', () => {
+    it('should render with placeholder "Search videos..."', () => {
       renderWithProviders(<SearchInput value="" onChange={mockOnChange} onDebouncedChange={mockOnDebouncedChange} />);
 
       const input = screen.getByRole('searchbox');
-      expect(input).toHaveAttribute('placeholder', 'Search transcripts...');
+      expect(input).toHaveAttribute('placeholder', 'Search videos...');
     });
 
     it('should display the current value', () => {

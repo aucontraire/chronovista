@@ -9,9 +9,8 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
     ports:
       - "5434:5432"
-    # Use tmpfs for disposable in-memory storage - no persistence!
-    tmpfs:
-      - /var/lib/postgresql/data:rw,noexec,nosuid,size=1g
+    # Persistent storage for PostgreSQL data
+    # Data survives container restarts and Docker Desktop updates
     # Add some optimizations for development (not production!)
     command: >
       postgres
@@ -28,6 +27,7 @@ services:
       -c log_min_messages=warning
       -c log_line_prefix='%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
     volumes:
+      - chronovista-pgdata:/var/lib/postgresql/data
       # Mount init scripts if needed
       - ./scripts/init-dev-db.sql:/docker-entrypoint-initdb.d/init-dev-db.sql:ro
     healthcheck:
@@ -63,5 +63,6 @@ networks:
   chronovista-dev:
     driver: bridge
 
-# No persistent volumes defined - everything is disposable!
-# This ensures we start fresh every time
+volumes:
+  chronovista-pgdata:
+    driver: local

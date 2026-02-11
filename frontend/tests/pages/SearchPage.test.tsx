@@ -85,7 +85,28 @@ function createMockSearchResponse(
       offset: 0,
       has_more: false,
     },
+    available_languages: ["en"],
     ...overrides,
+  };
+}
+
+/**
+ * Factory for title search responses.
+ */
+function createMockTitleResponse() {
+  return {
+    data: [],
+    total_count: 0,
+  };
+}
+
+/**
+ * Factory for description search responses.
+ */
+function createMockDescriptionResponse() {
+  return {
+    data: [],
+    total_count: 0,
   };
 }
 
@@ -93,6 +114,18 @@ describe("SearchPage Integration Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockApiFetch.mockReset();
+
+    // Default mock implementation: return appropriate response based on URL
+    mockApiFetch.mockImplementation(async (url: string) => {
+      if (url.includes('/search/titles')) {
+        return createMockTitleResponse();
+      }
+      if (url.includes('/search/descriptions')) {
+        return createMockDescriptionResponse();
+      }
+      // Default: return segment search response
+      return createMockSearchResponse();
+    });
   });
 
   describe("Initial State (FR-020)", () => {
@@ -101,10 +134,10 @@ describe("SearchPage Integration Tests", () => {
 
       // Verify hero section is displayed
       expect(
-        screen.getByText("Search across video transcripts")
+        screen.getByText("Search your video library")
       ).toBeInTheDocument();
       expect(
-        screen.getByText("Enter keywords to find specific moments in videos")
+        screen.getByText("Search across titles, descriptions, and transcripts")
       ).toBeInTheDocument();
 
       // Verify example chips are displayed
@@ -156,19 +189,19 @@ describe("SearchPage Integration Tests", () => {
         expect(mockApiFetch).toHaveBeenCalled();
       });
 
-      // Verify loading skeleton is displayed
-      expect(screen.getByLabelText(/loading search results/i)).toBeInTheDocument();
-
-      // Verify skeleton cards are present (aria-hidden, so we check the container)
-      const skeletonContainer = screen.getByRole("status");
-      expect(skeletonContainer).toHaveAttribute("aria-live", "polite");
-      expect(skeletonContainer).toHaveAttribute(
-        "aria-label",
-        "Loading search results"
-      );
-
-      // Verify screen reader text
+      // Verify loading skeleton is displayed (now inside SearchSection with "Transcripts" heading)
       expect(screen.getByText("Searching transcripts...")).toBeInTheDocument();
+
+      // Verify skeleton cards are present (role="status" with aria-live="polite")
+      const skeletonContainers = screen.getAllByRole("status");
+      // Should have at least one loading status element
+      expect(skeletonContainers.length).toBeGreaterThan(0);
+
+      // At least one should have aria-live polite
+      const loadingStatus = skeletonContainers.find(
+        el => el.getAttribute("aria-live") === "polite"
+      );
+      expect(loadingStatus).toBeInTheDocument();
     });
 
     it("should set aria-busy=true on results container during initial load", async () => {
@@ -191,6 +224,7 @@ describe("SearchPage Integration Tests", () => {
       });
 
       // Results container should have aria-busy during initial load
+      // Note: aria-busy is set based on transcript loading state only
       const resultsContainer = screen.getByRole("region", {
         name: /search results/i,
       });
@@ -201,7 +235,19 @@ describe("SearchPage Integration Tests", () => {
   describe("Successful Search (FR-003, FR-004)", () => {
     it("should display search results when query is entered and search completes", async () => {
       const mockResponse = createMockSearchResponse();
-      mockApiFetch.mockResolvedValueOnce(mockResponse);
+      // Override default mock to return results for segments
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
 
       const { user } = renderWithProviders(<SearchPage />);
 
@@ -234,20 +280,31 @@ describe("SearchPage Integration Tests", () => {
       expect(screen.getByText("Advanced React Patterns")).toBeInTheDocument();
       expect(screen.getByText("Frontend Masters")).toBeInTheDocument();
 
-      // Verify API was called with correct parameters
+      // Verify API was called with correct parameters for segments endpoint
       expect(mockApiFetch).toHaveBeenCalledWith(
-        expect.stringContaining("q=machine"),
+        expect.stringContaining("/search/segments"),
         expect.any(Object)
       );
       expect(mockApiFetch).toHaveBeenCalledWith(
-        expect.stringContaining("learning"),
+        expect.stringMatching(/q=machine.*learning|q=machine\+learning/),
         expect.any(Object)
       );
     });
 
     it("should highlight query terms in results (FR-004)", async () => {
       const mockResponse = createMockSearchResponse();
-      mockApiFetch.mockResolvedValueOnce(mockResponse);
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
 
       const { user } = renderWithProviders(<SearchPage />);
 
@@ -274,7 +331,18 @@ describe("SearchPage Integration Tests", () => {
 
     it("should display video metadata correctly (FR-003)", async () => {
       const mockResponse = createMockSearchResponse();
-      mockApiFetch.mockResolvedValueOnce(mockResponse);
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
 
       const { user } = renderWithProviders(<SearchPage />);
 
@@ -326,7 +394,18 @@ describe("SearchPage Integration Tests", () => {
           has_more: false,
         },
       });
-      mockApiFetch.mockResolvedValueOnce(mockResponse);
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
 
       const { user } = renderWithProviders(<SearchPage />);
 
@@ -345,7 +424,18 @@ describe("SearchPage Integration Tests", () => {
 
     it("should clear aria-busy after results load", async () => {
       const mockResponse = createMockSearchResponse();
-      mockApiFetch.mockResolvedValueOnce(mockResponse);
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
 
       const { user } = renderWithProviders(<SearchPage />);
 
@@ -370,16 +460,26 @@ describe("SearchPage Integration Tests", () => {
 
   describe("No Results State (FR-015)", () => {
     it("should show no-results state when search returns empty array", async () => {
-      const mockResponse = createMockSearchResponse({
-        data: [],
-        pagination: {
-          total: 0,
-          limit: 20,
-          offset: 0,
-          has_more: false,
-        },
+      // All three endpoints return empty results
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return createMockSearchResponse({
+            data: [],
+            pagination: { total: 0, limit: 20, offset: 0, has_more: false },
+            available_languages: [],
+          });
+        }
+        if (url.includes('/search/titles')) {
+          return { data: [], total_count: 0 };
+        }
+        if (url.includes('/search/descriptions')) {
+          return { data: [], total_count: 0 };
+        }
+        return createMockSearchResponse({
+          data: [],
+          pagination: { total: 0, limit: 20, offset: 0, has_more: false },
+        });
       });
-      mockApiFetch.mockResolvedValueOnce(mockResponse);
 
       const { user } = renderWithProviders(<SearchPage />);
 
@@ -392,10 +492,12 @@ describe("SearchPage Integration Tests", () => {
         expect(mockApiFetch).toHaveBeenCalled();
       });
 
-      // Verify no-results state is displayed
-      expect(
-        screen.getByText("No transcripts match your search")
-      ).toBeInTheDocument();
+      // Verify no-results state is displayed (now shows generic message)
+      await waitFor(() => {
+        expect(
+          screen.getByText("No results match your search")
+        ).toBeInTheDocument();
+      });
       expect(
         screen.getByText("Try different keywords or check your spelling.")
       ).toBeInTheDocument();
@@ -406,16 +508,26 @@ describe("SearchPage Integration Tests", () => {
     });
 
     it("should have role=status with aria-live=polite for no-results state", async () => {
-      const mockResponse = createMockSearchResponse({
-        data: [],
-        pagination: {
-          total: 0,
-          limit: 20,
-          offset: 0,
-          has_more: false,
-        },
+      // All three endpoints return empty results
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return createMockSearchResponse({
+            data: [],
+            pagination: { total: 0, limit: 20, offset: 0, has_more: false },
+            available_languages: [],
+          });
+        }
+        if (url.includes('/search/titles')) {
+          return { data: [], total_count: 0 };
+        }
+        if (url.includes('/search/descriptions')) {
+          return { data: [], total_count: 0 };
+        }
+        return createMockSearchResponse({
+          data: [],
+          pagination: { total: 0, limit: 20, offset: 0, has_more: false },
+        });
       });
-      mockApiFetch.mockResolvedValueOnce(mockResponse);
 
       const { user } = renderWithProviders(<SearchPage />);
 
@@ -426,7 +538,7 @@ describe("SearchPage Integration Tests", () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText("No transcripts match your search")
+          screen.getByText("No results match your search")
         ).toBeInTheDocument();
       });
 
@@ -443,7 +555,8 @@ describe("SearchPage Integration Tests", () => {
         status: undefined,
       };
 
-      mockApiFetch.mockRejectedValueOnce(mockError);
+      // All three endpoints fail
+      mockApiFetch.mockRejectedValue(mockError);
 
       const { user } = renderWithProviders(<SearchPage />);
 
@@ -456,16 +569,25 @@ describe("SearchPage Integration Tests", () => {
         expect(mockApiFetch).toHaveBeenCalled();
       });
 
-      // Verify error state is displayed
+      // Verify error state is displayed (now per-section error messages)
+      // Each section shows its own error: "Failed to load {section} results."
+      await waitFor(() => {
+        expect(
+          screen.getByText(/Failed to load transcripts results/)
+        ).toBeInTheDocument();
+      });
+
+      // Should also show errors for the other sections
       expect(
-        screen.getByText("Error loading search results")
+        screen.getByText(/Failed to load video titles results/)
       ).toBeInTheDocument();
       expect(
-        screen.getByText(/something went wrong/i)
+        screen.getByText(/Failed to load descriptions results/)
       ).toBeInTheDocument();
 
-      // Verify retry button is present
-      expect(screen.getByRole("button", { name: /retry search/i })).toBeInTheDocument();
+      // Verify retry buttons are present (one per failed section)
+      const retryButtons = screen.getAllByRole("button", { name: /retry/i });
+      expect(retryButtons.length).toBeGreaterThan(0);
     });
 
     it("should retry search when retry button is clicked", async () => {
@@ -475,11 +597,30 @@ describe("SearchPage Integration Tests", () => {
         status: undefined,
       };
 
-      // First call fails
-      mockApiFetch.mockRejectedValueOnce(mockError);
-      // Second call succeeds
       const mockResponse = createMockSearchResponse();
-      mockApiFetch.mockResolvedValueOnce(mockResponse);
+
+      // Setup: First 3 calls (initial) fail for all endpoints
+      // After retry is clicked, the transcripts endpoint succeeds
+      let segmentCallCount = 0;
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          segmentCallCount++;
+          // First call fails, second call (after retry) succeeds
+          if (segmentCallCount === 1) {
+            throw mockError;
+          }
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          // Always fail (we're only retrying transcripts)
+          throw mockError;
+        }
+        if (url.includes('/search/descriptions')) {
+          // Always fail (we're only retrying transcripts)
+          throw mockError;
+        }
+        return mockResponse;
+      });
 
       const { user } = renderWithProviders(<SearchPage />);
 
@@ -490,23 +631,34 @@ describe("SearchPage Integration Tests", () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText("Error loading search results")
+          screen.getByText(/Failed to load transcripts results/)
         ).toBeInTheDocument();
       });
 
-      // Click retry button
-      const retryButton = screen.getByRole("button", { name: /retry search/i });
-      await user.click(retryButton);
+      // Click retry button (from transcripts section - should be first in DOM)
+      const retryButtons = screen.getAllByRole("button", { name: /retry/i });
+      // Find the transcripts retry button
+      const transcriptsRetry = retryButtons.find(btn => {
+        const section = btn.closest('section');
+        return section?.textContent?.includes('Transcripts');
+      });
+      expect(transcriptsRetry).toBeDefined();
+      await user.click(transcriptsRetry!);
 
-      // Wait for successful results
+      // Wait for successful results in transcripts section
       await waitFor(() => {
         expect(
           screen.getByText("Introduction to Machine Learning")
         ).toBeInTheDocument();
       });
 
-      // Verify API was called twice (initial + retry)
-      expect(mockApiFetch).toHaveBeenCalledTimes(2);
+      // Verify the transcript endpoint was called twice (initial + retry)
+      expect(segmentCallCount).toBe(2);
+
+      // Other sections should still show errors
+      expect(
+        screen.getByText(/Failed to load video titles results/)
+      ).toBeInTheDocument();
     });
 
     it("should have role=alert with aria-live=assertive for error state", async () => {
@@ -516,7 +668,8 @@ describe("SearchPage Integration Tests", () => {
         status: 500,
       };
 
-      mockApiFetch.mockRejectedValueOnce(mockError);
+      // All endpoints fail
+      mockApiFetch.mockRejectedValue(mockError);
 
       const { user } = renderWithProviders(<SearchPage />);
 
@@ -527,19 +680,37 @@ describe("SearchPage Integration Tests", () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText("Error loading search results")
+          screen.getByText(/Failed to load transcripts results/)
         ).toBeInTheDocument();
       });
 
-      const errorState = screen.getByRole("alert");
-      expect(errorState).toHaveAttribute("aria-live", "assertive");
+      // All section errors have role="alert" with aria-live="assertive"
+      const errorStates = screen.getAllByRole("alert");
+      expect(errorStates.length).toBeGreaterThan(0);
+
+      // Check that at least one has aria-live assertive
+      const hasAssertiveLive = errorStates.some(
+        el => el.getAttribute("aria-live") === "assertive"
+      );
+      expect(hasAssertiveLive).toBe(true);
     });
   });
 
   describe("Example Chip Interaction (FR-020)", () => {
     it("should trigger search when example chip is clicked", async () => {
       const mockResponse = createMockSearchResponse();
-      mockApiFetch.mockResolvedValueOnce(mockResponse);
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
 
       const { user } = renderWithProviders(<SearchPage />);
 
@@ -563,9 +734,9 @@ describe("SearchPage Integration Tests", () => {
       const searchInput = screen.getByRole("searchbox");
       expect(searchInput).toHaveValue("machine learning");
 
-      // Verify API was called
+      // Verify API was called (at least for segments endpoint)
       expect(mockApiFetch).toHaveBeenCalledWith(
-        expect.stringContaining("q=machine"),
+        expect.stringContaining("/search/segments"),
         expect.any(Object)
       );
     });
@@ -601,7 +772,18 @@ describe("SearchPage Integration Tests", () => {
   describe("Debounce Behavior (FR-002)", () => {
     it("should debounce search input and only call API after 300ms of inactivity", async () => {
       const mockResponse = createMockSearchResponse();
-      mockApiFetch.mockResolvedValue(mockResponse);
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
 
       const { user } = renderWithProviders(<SearchPage />);
 
@@ -616,9 +798,24 @@ describe("SearchPage Integration Tests", () => {
       // Wait for debounce to complete
       await waitForDebounce();
 
+      // All three hooks fire once after debounce (3 calls total)
       await waitFor(() => {
-        expect(mockApiFetch).toHaveBeenCalledTimes(1);
+        expect(mockApiFetch).toHaveBeenCalled();
       });
+
+      // Verify all 3 endpoints were called
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringContaining("/search/segments"),
+        expect.any(Object)
+      );
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringContaining("/search/titles"),
+        expect.any(Object)
+      );
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringContaining("/search/descriptions"),
+        expect.any(Object)
+      );
     });
 
     it("should cancel previous search when query changes before debounce completes", async () => {
@@ -642,9 +839,18 @@ describe("SearchPage Integration Tests", () => {
         ],
       });
 
-      mockApiFetch
-        .mockResolvedValueOnce(mockResponse1)
-        .mockResolvedValueOnce(mockResponse2);
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse2;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse2;
+      });
 
       const { user } = renderWithProviders(<SearchPage />);
 
@@ -669,7 +875,7 @@ describe("SearchPage Integration Tests", () => {
         expect(mockApiFetch).toHaveBeenCalled();
       });
 
-      // Should only call API once with the latest query
+      // Should call API with the latest query
       // TanStack Query handles cancellation automatically
       expect(mockApiFetch).toHaveBeenCalledWith(
         expect.stringContaining("q=second"),
@@ -687,7 +893,7 @@ describe("SearchPage Integration Tests", () => {
 
       await waitForDebounce();
 
-      // Should not call API with too-short query
+      // Should not call API with too-short query (hooks are disabled)
       expect(mockApiFetch).not.toHaveBeenCalled();
 
       // Should show validation message
@@ -696,8 +902,19 @@ describe("SearchPage Integration Tests", () => {
 
     it("should return to initial state when query is cleared (EC-010)", async () => {
       const mockResponse = createMockSearchResponse();
-      // Use mockResolvedValue (not Once) to handle potential refetches
-      mockApiFetch.mockResolvedValue(mockResponse);
+      // Use mockImplementation to handle all endpoint calls
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
 
       const { user } = renderWithProviders(<SearchPage />);
 
@@ -716,10 +933,10 @@ describe("SearchPage Integration Tests", () => {
       // Clear the query
       await user.clear(searchInput);
 
-      // Should return to initial hero state immediately (query hook is disabled when query is empty)
+      // Should return to initial hero state immediately (query hooks are disabled when query is empty)
       await waitFor(() => {
         expect(
-          screen.getByText("Search across video transcripts")
+          screen.getByText("Search your video library")
         ).toBeInTheDocument();
       }, { timeout: 3000 });
 
@@ -757,13 +974,24 @@ describe("SearchPage Integration Tests", () => {
       const searchInput = screen.getByRole("searchbox");
 
       // Verify ARIA attributes
-      expect(searchInput).toHaveAttribute("aria-label", "Search transcripts");
+      expect(searchInput).toHaveAttribute("aria-label", "Search videos");
       expect(searchInput).toHaveAttribute("aria-controls", "search-results");
     });
 
     it("should announce search status via aria-live region (FR-026)", async () => {
       const mockResponse = createMockSearchResponse();
-      mockApiFetch.mockResolvedValueOnce(mockResponse);
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
 
       const { user } = renderWithProviders(<SearchPage />);
 
@@ -809,7 +1037,18 @@ describe("SearchPage Integration Tests", () => {
   describe("URL State Sync (FR-011, FR-012) - User Story 6", () => {
     it("should update URL when query changes", async () => {
       const mockResponse = createMockSearchResponse();
-      mockApiFetch.mockResolvedValueOnce(mockResponse);
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
 
       const { user } = renderWithProviders(<SearchPage />, {
         initialEntries: ["/search"],
@@ -864,10 +1103,8 @@ describe("SearchPage Integration Tests", () => {
             video_upload_date: "2024-01-15T12:00:00Z",
           },
         ],
+        available_languages: ["en", "es"],
       });
-
-      // Add available_languages field to the response
-      (mockResponseMultiLang as any).available_languages = ["en", "es"];
 
       const mockResponseEnglishOnly = createMockSearchResponse({
         data: [
@@ -886,12 +1123,36 @@ describe("SearchPage Integration Tests", () => {
             video_upload_date: "2024-01-15T12:00:00Z",
           },
         ],
+        available_languages: ["en"],
       });
 
-      // First call returns multi-language results, second call returns filtered results
-      mockApiFetch
-        .mockResolvedValueOnce(mockResponseMultiLang)
-        .mockResolvedValueOnce(mockResponseEnglishOnly);
+      let callCount = 0;
+      mockApiFetch.mockImplementation(async (url: string) => {
+        callCount++;
+        // First batch of calls (initial search)
+        if (callCount <= 3) {
+          if (url.includes('/search/segments')) {
+            return mockResponseMultiLang;
+          }
+          if (url.includes('/search/titles')) {
+            return createMockTitleResponse();
+          }
+          if (url.includes('/search/descriptions')) {
+            return createMockDescriptionResponse();
+          }
+        }
+        // Second batch (after language filter change)
+        if (url.includes('/search/segments')) {
+          return mockResponseEnglishOnly;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponseMultiLang;
+      });
 
       const { user } = renderWithProviders(<SearchPage />, {
         initialEntries: ["/search"],
@@ -911,7 +1172,8 @@ describe("SearchPage Integration Tests", () => {
       expect(screen.getByText("Spanish Video")).toBeInTheDocument();
 
       // Now select a language filter
-      // Note: Filter panel is hidden on small screens with "hidden lg:block"
+      // Note: Language filter only visible when transcripts enabled
+      // Filter panel is hidden on small screens with "hidden lg:block"
       // We need to query for the select element even when hidden because tests run in small viewport
       const languageFilter = document.getElementById('language-filter') as HTMLSelectElement;
       expect(languageFilter).not.toBeNull();
@@ -919,7 +1181,7 @@ describe("SearchPage Integration Tests", () => {
 
       // Wait for the filtered results to load (new API call with language param)
       await waitFor(() => {
-        expect(mockApiFetch).toHaveBeenCalledTimes(2);
+        expect(callCount).toBeGreaterThan(3);
       }, { timeout: 3000 });
 
       // Verify URL was updated with language parameter
@@ -930,7 +1192,18 @@ describe("SearchPage Integration Tests", () => {
 
     it("should clear URL params when search is cleared", async () => {
       const mockResponse = createMockSearchResponse();
-      mockApiFetch.mockResolvedValueOnce(mockResponse);
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
 
       const { user } = renderWithProviders(<SearchPage />, {
         initialEntries: ["/search"],
@@ -955,7 +1228,18 @@ describe("SearchPage Integration Tests", () => {
 
     it("should restore search state from URL params on page load (FR-012)", async () => {
       const mockResponse = createMockSearchResponse();
-      mockApiFetch.mockResolvedValueOnce(mockResponse);
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
 
       renderWithProviders(<SearchPage />, {
         initialEntries: ["/search?q=machine+learning"],
@@ -983,7 +1267,18 @@ describe("SearchPage Integration Tests", () => {
 
     it("should restore both query and language from URL params", async () => {
       const mockResponse = createMockSearchResponse();
-      mockApiFetch.mockResolvedValue(mockResponse);
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
 
       renderWithProviders(<SearchPage />, {
         initialEntries: ["/search?q=test&language=en"],
@@ -1000,20 +1295,31 @@ describe("SearchPage Integration Tests", () => {
       const searchInput = screen.getByRole("searchbox");
       expect(searchInput).toHaveValue("test");
 
-      // Verify API was called with correct parameters
+      // Verify API was called with correct parameters (only segments endpoint respects language)
       expect(mockApiFetch).toHaveBeenCalledWith(
-        expect.stringMatching(/q=test/),
+        expect.stringMatching(/\/search\/segments.*q=test/),
         expect.any(Object)
       );
       expect(mockApiFetch).toHaveBeenCalledWith(
-        expect.stringMatching(/language=en/),
+        expect.stringMatching(/\/search\/segments.*language=en/),
         expect.any(Object)
       );
     });
 
     it("should handle refreshing page with URL params", async () => {
       const mockResponse = createMockSearchResponse();
-      mockApiFetch.mockResolvedValueOnce(mockResponse);
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
 
       const { rerender } = renderWithProviders(<SearchPage />, {
         initialEntries: ["/search?q=react+hooks"],
@@ -1036,7 +1342,18 @@ describe("SearchPage Integration Tests", () => {
 
     it("should handle browser back/forward navigation", async () => {
       const mockResponse = createMockSearchResponse();
-      mockApiFetch.mockResolvedValue(mockResponse);
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
 
       const { user } = renderWithProviders(<SearchPage />, {
         initialEntries: ["/search"],
@@ -1058,7 +1375,9 @@ describe("SearchPage Integration Tests", () => {
       await waitForDebounce();
 
       await waitFor(() => {
-        expect(mockApiFetch).toHaveBeenCalledTimes(2);
+        // After 2 searches, expect at least 6 calls (3 endpoints × 2 searches)
+        const callCount = mockApiFetch.mock.calls.length;
+        expect(callCount).toBeGreaterThanOrEqual(6);
       });
 
       // Verify current query is in URL
@@ -1083,13 +1402,24 @@ describe("SearchPage Integration Tests", () => {
 
       // Should show initial state
       expect(
-        screen.getByText("Search across video transcripts")
+        screen.getByText("Search your video library")
       ).toBeInTheDocument();
     });
 
     it("should handle rapid typing without excessive API calls (EC-008)", async () => {
       const mockResponse = createMockSearchResponse();
-      mockApiFetch.mockResolvedValue(mockResponse);
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
 
       const { user } = renderWithProviders(<SearchPage />);
 
@@ -1105,8 +1435,24 @@ describe("SearchPage Integration Tests", () => {
         expect(mockApiFetch).toHaveBeenCalled();
       });
 
-      // Should only call API once despite many keystrokes
-      expect(mockApiFetch).toHaveBeenCalledTimes(1);
+      // Should call API once per endpoint (3 total) despite many keystrokes
+      // All three hooks fire after debounce completes
+      expect(mockApiFetch).toHaveBeenCalledTimes(3);
+
+      // Verify each endpoint was called exactly once
+      const segmentCalls = mockApiFetch.mock.calls.filter(call =>
+        call[0].includes('/search/segments')
+      );
+      const titleCalls = mockApiFetch.mock.calls.filter(call =>
+        call[0].includes('/search/titles')
+      );
+      const descriptionCalls = mockApiFetch.mock.calls.filter(call =>
+        call[0].includes('/search/descriptions')
+      );
+
+      expect(segmentCalls).toHaveLength(1);
+      expect(titleCalls).toHaveLength(1);
+      expect(descriptionCalls).toHaveLength(1);
     });
 
     it("should preserve query in input during loading state", async () => {

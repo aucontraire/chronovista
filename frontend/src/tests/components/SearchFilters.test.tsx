@@ -8,9 +8,17 @@
  * - Search type checkboxes
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { SearchFilters } from "../../components/SearchFilters";
+import type { EnabledSearchTypes } from "../../types/search";
+
+// Default enabled types for testing
+const defaultEnabledTypes: EnabledSearchTypes = {
+  titles: true,
+  descriptions: true,
+  transcripts: true,
+};
 
 describe("SearchFilters", () => {
   describe("Language consolidation", () => {
@@ -25,6 +33,8 @@ describe("SearchFilters", () => {
           selectedLanguage=""
           onLanguageChange={() => {}}
           totalResults={0}
+          enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
         />
       );
 
@@ -51,6 +61,8 @@ describe("SearchFilters", () => {
           selectedLanguage=""
           onLanguageChange={() => {}}
           totalResults={0}
+          enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
         />
       );
 
@@ -68,6 +80,8 @@ describe("SearchFilters", () => {
           selectedLanguage=""
           onLanguageChange={() => {}}
           totalResults={0}
+          enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
         />
       );
 
@@ -95,6 +109,8 @@ describe("SearchFilters", () => {
           selectedLanguage="fr"
           onLanguageChange={() => {}}
           totalResults={0}
+          enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
         />
       );
 
@@ -110,6 +126,8 @@ describe("SearchFilters", () => {
           selectedLanguage=""
           onLanguageChange={() => {}}
           totalResults={47}
+          enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
         />
       );
 
@@ -119,13 +137,15 @@ describe("SearchFilters", () => {
   });
 
   describe("Search type checkboxes", () => {
-    it("should show Transcripts as enabled and checked", () => {
+    it("should show all three enabled types as checked", () => {
       render(
         <SearchFilters
           availableLanguages={["en"]}
           selectedLanguage=""
           onLanguageChange={() => {}}
           totalResults={10}
+          enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
         />
       );
 
@@ -133,26 +153,34 @@ describe("SearchFilters", () => {
       expect(transcriptsCheckbox).toBeInTheDocument();
       expect(transcriptsCheckbox.checked).toBe(true);
       expect(transcriptsCheckbox.disabled).toBe(false);
+
+      const titlesCheckbox = screen.getByLabelText("Video Titles search type") as HTMLInputElement;
+      expect(titlesCheckbox.checked).toBe(true);
+      expect(titlesCheckbox.disabled).toBe(false);
+
+      const descriptionsCheckbox = screen.getByLabelText("Descriptions search type") as HTMLInputElement;
+      expect(descriptionsCheckbox.checked).toBe(true);
+      expect(descriptionsCheckbox.disabled).toBe(false);
     });
 
-    it("should show other search types as disabled with Coming Soon badge", () => {
+    it("should only render the three functional search types", () => {
       render(
         <SearchFilters
           availableLanguages={["en"]}
           selectedLanguage=""
           onLanguageChange={() => {}}
           totalResults={10}
+          enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
         />
       );
 
-      // Check for "Coming Soon" badges (should be multiple)
-      const comingSoonBadges = screen.getAllByText("Coming Soon");
-      expect(comingSoonBadges.length).toBeGreaterThan(0);
+      // No "Coming Soon" placeholders
+      expect(screen.queryByText("Coming Soon")).not.toBeInTheDocument();
 
-      // Check that other checkboxes are disabled
-      const videoTitlesCheckbox = screen.getByLabelText("Video Titles search type") as HTMLInputElement;
-      expect(videoTitlesCheckbox.disabled).toBe(true);
-      expect(videoTitlesCheckbox.checked).toBe(false);
+      // Only three checkboxes rendered
+      const checkboxes = screen.getAllByRole("checkbox");
+      expect(checkboxes).toHaveLength(3);
     });
   });
 });

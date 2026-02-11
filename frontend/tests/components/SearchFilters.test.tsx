@@ -37,6 +37,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import { renderWithProviders } from '../test-utils';
 import { SearchFilters } from '../../src/components/SearchFilters';
+import type { EnabledSearchTypes } from '../../src/types/search';
+
+// Default enabled types for testing
+const defaultEnabledTypes: EnabledSearchTypes = {
+  titles: true,
+  descriptions: true,
+  transcripts: true,
+};
 
 describe('SearchFilters', () => {
   const mockOnLanguageChange = vi.fn();
@@ -54,7 +62,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       const dropdown = screen.getByRole('combobox', { name: /language filter/i });
@@ -68,7 +78,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       const dropdown = screen.getByRole('combobox');
@@ -83,7 +95,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       expect(screen.getByRole('option', { name: /english/i })).toBeInTheDocument();
@@ -98,7 +112,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       // Language dropdown should not be rendered when no languages available
@@ -116,7 +132,9 @@ describe('SearchFilters', () => {
           selectedLanguage="en"
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       const dropdown = screen.getByRole('combobox');
@@ -132,7 +150,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       const dropdown = screen.getByRole('combobox');
@@ -147,7 +167,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       const dropdown = screen.getByRole('combobox', { name: /language filter/i });
@@ -161,7 +183,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       const dropdown = screen.getByRole('combobox');
@@ -177,7 +201,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       const dropdown = screen.getByRole('combobox');
@@ -194,7 +220,9 @@ describe('SearchFilters', () => {
           selectedLanguage="en"
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       const dropdown = screen.getByRole('combobox');
@@ -211,7 +239,9 @@ describe('SearchFilters', () => {
           selectedLanguage="en"
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       const dropdown = screen.getByRole('combobox');
@@ -229,7 +259,9 @@ describe('SearchFilters', () => {
           selectedLanguage="en"
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       const dropdown = screen.getByRole('combobox');
@@ -248,7 +280,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       expect(screen.getByRole('option', { name: /english/i })).toBeInTheDocument();
@@ -268,7 +302,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       expect(screen.getByRole('option', { name: /english/i })).toBeInTheDocument();
@@ -283,7 +319,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       // Should match the base language
@@ -300,7 +338,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       // Tab to the first focusable element (Transcripts checkbox)
@@ -317,7 +357,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       const dropdown = screen.getByRole('combobox');
@@ -337,7 +379,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       expect(screen.getByRole('option', { name: /english/i })).toBeInTheDocument();
@@ -350,7 +394,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       expect(screen.getByRole('option', { name: /german/i })).toBeInTheDocument();
@@ -363,7 +409,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       const dropdown = screen.getByRole('combobox');
@@ -375,7 +423,9 @@ describe('SearchFilters', () => {
           selectedLanguage="en"
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       expect(dropdown).toHaveValue('en');
@@ -388,7 +438,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       const dropdown = screen.getByRole('combobox');
@@ -401,7 +453,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       expect(dropdown).toHaveFocus();
@@ -416,7 +470,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       // Should deduplicate
@@ -431,7 +487,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       const options = screen.getAllByRole('option');
@@ -458,7 +516,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       const dropdown = screen.getByRole('combobox');
@@ -478,7 +538,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       // Check if there's a semantic container
@@ -492,7 +554,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       // Should have either a visible label or aria-label
@@ -513,7 +577,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       const transcriptsCheckbox = screen.getByRole('checkbox', { name: /transcripts/i });
@@ -529,7 +595,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={47}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       // Should show "Transcripts (47)"
@@ -543,73 +611,38 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
-      // Should show "Transcripts (0)"
-      expect(screen.getByText(/transcripts \(0\)/i)).toBeInTheDocument();
+      // When count is 0, label shows without count (no "(0)" badge)
+      expect(screen.queryByText(/transcripts \(0\)/i)).not.toBeInTheDocument();
+      expect(screen.getByRole('checkbox', { name: /transcripts/i })).toBeInTheDocument();
     });
 
-    it('should render other search types with "Coming Soon" labels', () => {
+    it('should render only the three functional search types', () => {
       renderWithProviders(
         <SearchFilters
           availableLanguages={['en', 'es']}
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
-      // Check for "Coming Soon" text (should appear 5 times for disabled types)
-      const comingSoonElements = screen.getAllByText(/coming soon/i);
-      expect(comingSoonElements.length).toBe(5); // 5 disabled types
+      // All three functional search types are present and enabled
+      expect(screen.getByRole('checkbox', { name: /transcripts/i })).toBeEnabled();
+      expect(screen.getByRole('checkbox', { name: /video titles/i })).toBeEnabled();
+      expect(screen.getByRole('checkbox', { name: /descriptions/i })).toBeEnabled();
 
-      // Verify specific search types are present (matching SEARCH_TYPE_OPTIONS)
-      expect(screen.getByText(/video titles/i)).toBeInTheDocument();
-      expect(screen.getByText(/descriptions/i)).toBeInTheDocument();
-      expect(screen.getByText(/channels/i)).toBeInTheDocument();
-      expect(screen.getByText(/tags/i)).toBeInTheDocument();
-      expect(screen.getByText(/topics/i)).toBeInTheDocument();
-    });
-
-    it('should disable checkboxes for "Coming Soon" search types', () => {
-      renderWithProviders(
-        <SearchFilters
-          availableLanguages={['en', 'es']}
-          selectedLanguage=""
-          onLanguageChange={mockOnLanguageChange}
-          totalResults={0}
-        />
-      );
-
-      const videoTitlesCheckbox = screen.getByRole('checkbox', { name: /video titles/i });
-      const descriptionsCheckbox = screen.getByRole('checkbox', { name: /descriptions/i });
-      const channelsCheckbox = screen.getByRole('checkbox', { name: /channels/i });
-      const tagsCheckbox = screen.getByRole('checkbox', { name: /tags/i });
-      const topicsCheckbox = screen.getByRole('checkbox', { name: /topics/i });
-
-      expect(videoTitlesCheckbox).toBeDisabled();
-      expect(descriptionsCheckbox).toBeDisabled();
-      expect(channelsCheckbox).toBeDisabled();
-      expect(tagsCheckbox).toBeDisabled();
-      expect(topicsCheckbox).toBeDisabled();
-    });
-
-    it('should have reduced opacity for disabled search types', () => {
-      renderWithProviders(
-        <SearchFilters
-          availableLanguages={['en', 'es']}
-          selectedLanguage=""
-          onLanguageChange={mockOnLanguageChange}
-          totalResults={0}
-        />
-      );
-
-      const videoTitlesCheckbox = screen.getByRole('checkbox', { name: /video titles/i });
-      const parentElement = videoTitlesCheckbox.closest('label');
-
-      // Check for opacity-50 class (Tailwind)
-      expect(parentElement?.className).toMatch(/opacity-50/);
+      // No "Coming Soon" placeholders
+      expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('checkbox', { name: /channels/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('checkbox', { name: /tags/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('checkbox', { name: /topics/i })).not.toBeInTheDocument();
     });
 
     it('should have ARIA attributes for accessibility', () => {
@@ -619,7 +652,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       const transcriptsCheckbox = screen.getByRole('checkbox', { name: /transcripts/i });
@@ -636,7 +671,9 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
-        />
+        enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          />
       );
 
       // Desktop: permanent sidebar (no close button)
@@ -654,6 +691,8 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
+          enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
           isTablet={true}
           isOpen={true}
           onClose={mockOnClose}
@@ -672,6 +711,8 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
+          enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
           isMobile={true}
           isOpen={true}
           onClose={mockOnClose}
@@ -690,6 +731,8 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
+          enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
           isTablet={true}
           isOpen={true}
           onClose={mockOnClose}
@@ -709,6 +752,8 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
+          enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
           isMobile={true}
           isOpen={true}
           onClose={mockOnClose}
@@ -745,6 +790,8 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
+          enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
           isTablet={true}
           isOpen={true}
           onClose={mockOnClose}
@@ -767,6 +814,8 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
+          enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
           isTablet={true}
           isOpen={true}
           onClose={mockOnClose}
@@ -786,6 +835,8 @@ describe('SearchFilters', () => {
           selectedLanguage=""
           onLanguageChange={mockOnLanguageChange}
           totalResults={0}
+          enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
           isTablet={true}
           isOpen={true}
           onClose={mockOnClose}

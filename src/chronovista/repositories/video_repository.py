@@ -375,12 +375,14 @@ class VideoRepository(
 
         # Text search in title
         if filters.title_query:
-            conditions.append(VideoDB.title.ilike(f"%{filters.title_query}%"))
+            escaped_title = filters.title_query.replace("%", r"\%").replace("_", r"\_")
+            conditions.append(VideoDB.title.ilike(f"%{escaped_title}%"))
 
         # Text search in description
         if filters.description_query:
+            escaped_desc = filters.description_query.replace("%", r"\%").replace("_", r"\_")
             conditions.append(
-                VideoDB.description.ilike(f"%{filters.description_query}%")
+                VideoDB.description.ilike(f"%{escaped_desc}%")
             )
 
         # Language filters

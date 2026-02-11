@@ -33,3 +33,44 @@ class SearchResponse(ApiResponse[List[SearchResultSegment]]):
     model_config = ConfigDict(strict=True)
 
     available_languages: List[str]  # All unique languages in full result set
+
+
+class TitleSearchResult(BaseModel):
+    """Search result from matching video titles."""
+
+    model_config = ConfigDict(strict=True)
+
+    video_id: str
+    title: str
+    channel_title: Optional[str]
+    upload_date: datetime
+
+
+class TitleSearchResponse(BaseModel):
+    """Response for title search endpoint."""
+
+    model_config = ConfigDict(strict=True)
+
+    data: List[TitleSearchResult]
+    total_count: int
+
+
+class DescriptionSearchResult(BaseModel):
+    """Search result from matching video descriptions with snippet."""
+
+    model_config = ConfigDict(strict=True)
+
+    video_id: str
+    title: str
+    channel_title: Optional[str]
+    upload_date: datetime
+    snippet: str
+
+
+class DescriptionSearchResponse(BaseModel):
+    """Response for description search endpoint."""
+
+    model_config = ConfigDict(strict=True)
+
+    data: List[DescriptionSearchResult]
+    total_count: int

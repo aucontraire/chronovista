@@ -25,6 +25,18 @@ export const SEARCH_CONFIG = {
 
   // Mobile filter panel auto-close delay (milliseconds)
   FILTER_PANEL_AUTO_CLOSE_DELAY: 500,
+
+  // Title/Description search configuration (Feature 021)
+  TITLE_SEARCH_LIMIT: 50,
+  DESCRIPTION_SEARCH_LIMIT: 50,
+  SNIPPET_ELLIPSIS: '...',
+
+  // API endpoint paths for new search types
+  TITLE_SEARCH_ENDPOINT: '/search/titles',
+  DESCRIPTION_SEARCH_ENDPOINT: '/search/descriptions',
+
+  // Stale time for title/description queries (2 minutes, consistent with segments)
+  SEARCH_STALE_TIME: 2 * 60 * 1000,
 } as const;
 
 // Type for the config

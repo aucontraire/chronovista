@@ -78,17 +78,72 @@ export interface SearchResponse {
 }
 
 /**
- * Available search types.
- * Phase 1: Only "transcripts" is functional.
- * Future phases will enable additional types.
+ * A single video matching a title search query.
+ */
+export interface TitleSearchResult {
+  /** YouTube video ID */
+  video_id: string;
+  /** Full video title */
+  title: string;
+  /** Channel name (null if channel not synced) */
+  channel_title: string | null;
+  /** ISO 8601 datetime string of video upload date */
+  upload_date: string;
+}
+
+/**
+ * API response for title search endpoint.
+ */
+export interface TitleSearchResponse {
+  /** Array of matching videos */
+  data: TitleSearchResult[];
+  /** Total number of matching videos (may exceed displayed count) */
+  total_count: number;
+}
+
+/**
+ * A single video matching a description search query with snippet.
+ */
+export interface DescriptionSearchResult {
+  /** YouTube video ID */
+  video_id: string;
+  /** Full video title */
+  title: string;
+  /** Channel name (null if channel not synced) */
+  channel_title: string | null;
+  /** ISO 8601 datetime string of video upload date */
+  upload_date: string;
+  /** ~200 character excerpt centered around first match */
+  snippet: string;
+}
+
+/**
+ * API response for description search endpoint.
+ */
+export interface DescriptionSearchResponse {
+  /** Array of matching videos */
+  data: DescriptionSearchResult[];
+  /** Total number of matching videos (may exceed displayed count) */
+  total_count: number;
+}
+
+/**
+ * Tracks which search types are currently enabled.
+ */
+export type EnabledSearchTypes = {
+  titles: boolean;
+  descriptions: boolean;
+  transcripts: boolean;
+};
+
+/**
+ * Available search types for text-based content search.
+ * Tag/topic/channel discovery is handled by the Videos page faceted filters.
  */
 export type SearchType =
   | 'transcripts'
   | 'video_titles'
-  | 'video_descriptions'
-  | 'channels'
-  | 'tags'
-  | 'topics';
+  | 'video_descriptions';
 
 /**
  * Search type metadata for filter panel display.
@@ -112,11 +167,8 @@ export interface SearchTypeOption {
  */
 export const SEARCH_TYPE_OPTIONS: SearchTypeOption[] = [
   { type: 'transcripts', label: 'Transcripts', enabled: true },
-  { type: 'video_titles', label: 'Video Titles', enabled: false },
-  { type: 'video_descriptions', label: 'Descriptions', enabled: false },
-  { type: 'channels', label: 'Channels', enabled: false },
-  { type: 'tags', label: 'Tags', enabled: false },
-  { type: 'topics', label: 'Topics', enabled: false },
+  { type: 'video_titles', label: 'Video Titles', enabled: true },
+  { type: 'video_descriptions', label: 'Descriptions', enabled: true },
 ];
 
 /**
@@ -139,7 +191,7 @@ export interface SearchFilters {
 export const DEFAULT_SEARCH_FILTERS: SearchFilters = {
   query: '',
   language: null,
-  enabledTypes: ['transcripts'],
+  enabledTypes: ['transcripts', 'video_titles', 'video_descriptions'],
 };
 
 /**

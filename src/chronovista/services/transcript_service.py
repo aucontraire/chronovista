@@ -58,19 +58,21 @@ class TranscriptServiceUnavailableError(TranscriptServiceError):
 class TranscriptService(TranscriptServiceInterface):
     """Service for downloading and processing YouTube transcripts."""
 
-    def __init__(self, enable_mock_fallback: bool = True):
+    def __init__(self, enable_mock_fallback: bool = False):
         """
         Initialize the transcript service.
 
         Args:
-            enable_mock_fallback: Whether to use mock data when API is unavailable
+            enable_mock_fallback: Whether to use mock data when API is unavailable.
+                Defaults to False so failed downloads don't create placeholder
+                records. Set to True only in tests.
         """
         self.enable_mock_fallback = enable_mock_fallback
         self._api_available = TRANSCRIPT_API_AVAILABLE
 
         if not self._api_available:
             logger.warning(
-                "youtube-transcript-api not available - using mock fallback only"
+                "youtube-transcript-api not available - transcript downloads will fail"
             )
 
     async def get_transcript(

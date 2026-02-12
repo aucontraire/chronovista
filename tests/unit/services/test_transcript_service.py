@@ -63,7 +63,7 @@ class TestTranscriptServiceInitialization:
             "chronovista.services.transcript_service.TRANSCRIPT_API_AVAILABLE", True
         ):
             service = TranscriptService()
-            assert service.enable_mock_fallback is True
+            assert service.enable_mock_fallback is False
             assert service._api_available is True
 
     def test_init_with_api_unavailable(self):
@@ -73,10 +73,10 @@ class TestTranscriptServiceInitialization:
         ):
             with patch("chronovista.services.transcript_service.logger") as mock_logger:
                 service = TranscriptService()
-                assert service.enable_mock_fallback is True
+                assert service.enable_mock_fallback is False
                 assert service._api_available is False
                 mock_logger.warning.assert_called_once_with(
-                    "youtube-transcript-api not available - using mock fallback only"
+                    "youtube-transcript-api not available - transcript downloads will fail"
                 )
 
     def test_init_with_mock_fallback_disabled(self):

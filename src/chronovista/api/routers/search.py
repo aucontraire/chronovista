@@ -3,7 +3,7 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.deps import get_db, require_auth
@@ -27,6 +27,13 @@ from chronovista.exceptions import BadRequestError
 router = APIRouter(dependencies=[Depends(require_auth)])
 
 SEARCH_ERRORS = {**BAD_REQUEST_RESPONSE, **UNAUTHORIZED_RESPONSE, **INTERNAL_ERROR_RESPONSE}
+
+
+def _display_text(seg: "SegmentDB") -> str:
+    """Return corrected text if available, otherwise original."""
+    if seg.has_correction and seg.corrected_text:
+        return seg.corrected_text
+    return seg.text
 
 
 def count_query_matches(text: str, query_terms: List[str]) -> int:
@@ -120,9 +127,15 @@ async def search_segments(
     )
 
     # Apply ILIKE filter for each term (implicit AND)
+    # Search both original text and corrected text so corrections are findable
     for term in query_terms:
         escaped_term = term.replace("%", r"\%").replace("_", r"\_")
-        query = query.where(SegmentDB.text.ilike(f"%{escaped_term}%"))
+        query = query.where(
+            or_(
+                SegmentDB.text.ilike(f"%{escaped_term}%"),
+                SegmentDB.corrected_text.ilike(f"%{escaped_term}%"),
+            )
+        )
 
     # Apply optional video filter (affects both available_languages and results)
     if video_id:
@@ -137,10 +150,15 @@ async def search_segments(
         .where(VideoDB.deleted_flag.is_(False))
     )
 
-    # Apply the same text search filters
+    # Apply the same text search filters (both original and corrected text)
     for term in query_terms:
         escaped_term = term.replace("%", r"\%").replace("_", r"\_")
-        lang_base_query = lang_base_query.where(SegmentDB.text.ilike(f"%{escaped_term}%"))
+        lang_base_query = lang_base_query.where(
+            or_(
+                SegmentDB.text.ilike(f"%{escaped_term}%"),
+                SegmentDB.corrected_text.ilike(f"%{escaped_term}%"),
+            )
+        )
 
     # Apply optional video filter
     if video_id:
@@ -191,11 +209,8 @@ async def search_segments(
         prev_result = await session.execute(prev_query)
         prev_segment = prev_result.scalar_one_or_none()
         if prev_segment:
-            context_before = (
-                prev_segment.text[:200]
-                if len(prev_segment.text) > 200
-                else prev_segment.text
-            )
+            prev_text = _display_text(prev_segment)
+            context_before = prev_text[:200] if len(prev_text) > 200 else prev_text
 
         # Next segment
         next_query = (
@@ -209,11 +224,8 @@ async def search_segments(
         next_result = await session.execute(next_query)
         next_segment = next_result.scalar_one_or_none()
         if next_segment:
-            context_after = (
-                next_segment.text[:200]
-                if len(next_segment.text) > 200
-                else next_segment.text
-            )
+            next_text = _display_text(next_segment)
+            context_after = next_text[:200] if len(next_text) > 200 else next_text
 
         items.append(
             SearchResultSegment(
@@ -222,12 +234,12 @@ async def search_segments(
                 video_title=video.title,
                 channel_title=channel.title if channel else None,
                 language_code=segment.language_code,
-                text=segment.text,
+                text=_display_text(segment),
                 start_time=segment.start_time,
                 end_time=segment.end_time,
                 context_before=context_before,
                 context_after=context_after,
-                match_count=count_query_matches(segment.text, query_terms),
+                match_count=count_query_matches(_display_text(segment), query_terms),
                 video_upload_date=video.upload_date,
             )
         )

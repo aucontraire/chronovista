@@ -294,7 +294,7 @@ async def get_transcript_segments(
     items = [
         TranscriptSegment(
             id=seg.id,
-            text=seg.text,
+            text=seg.corrected_text if seg.has_correction and seg.corrected_text else seg.text,
             start_time=seg.start_time,
             end_time=seg.end_time,
             duration=seg.duration,

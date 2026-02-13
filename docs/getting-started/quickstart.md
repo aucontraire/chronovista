@@ -117,13 +117,17 @@ chronovista topics chart
 For complete historical data, import your Google Takeout:
 
 1. Go to [Google Takeout](https://takeout.google.com/)
-2. Select **YouTube and YouTube Music**
-3. Download and extract the archive
-4. Import to chronovista:
+2. Deselect all, then check **YouTube and YouTube Music**
+3. Click **"HTML format"** and change **history** to **JSON** (chronovista cannot import HTML)
+4. If you're a content creator, click **"All YouTube data included"** and uncheck **videos** (avoids downloading your uploaded files)
+5. Download and extract the archive
+6. Import to chronovista:
 
 ```bash
 chronovista takeout seed /path/to/your/takeout --progress
 ```
+
+See the [Google Takeout Guide](../user-guide/google-takeout.md) for the full walkthrough with screenshots.
 
 ## Verify Everything Works
 

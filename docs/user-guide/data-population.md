@@ -46,9 +46,12 @@ chronovista takeout seed /path/to/takeout --progress
 
 !!! tip "Get Your Takeout"
     1. Go to [Google Takeout](https://takeout.google.com/)
-    2. Select **YouTube and YouTube Music** only
-    3. Choose your preferred export format
-    4. Download and extract the archive
+    2. Deselect all, then check **YouTube and YouTube Music**
+    3. Change **history** format from HTML to **JSON** (required)
+    4. If you're a content creator, uncheck **videos** to skip downloading uploaded files
+    5. Download and extract the archive
+
+    See the [Google Takeout Guide](google-takeout.md#step-2-change-history-format-to-json) for full details.
 
 ### Step 4: Sync All Data
 

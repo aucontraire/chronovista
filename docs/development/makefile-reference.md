@@ -143,6 +143,8 @@ Always use `make dev-migrate` and `make dev-revision` when working with the Dock
 | `make docs-build` | Build static documentation site |
 | `make docs-deploy` | Deploy docs to GitHub Pages using mike |
 | `make docs-clean` | Remove the built documentation site |
+| `make docs` | Alias for `docs-serve` |
+| `make serve-docs` | Alias for `docs-serve` |
 
 ## CI/CD
 

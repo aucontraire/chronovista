@@ -313,7 +313,7 @@ After modifying backend Pydantic models:
 make generate-api
 ```
 
-See [`frontend/README.md`](../frontend/README.md) for detailed frontend documentation.
+See [`frontend/README.md`](../../frontend/README.md) for detailed frontend documentation.
 
 ## Next Steps
 

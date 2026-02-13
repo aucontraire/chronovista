@@ -30,6 +30,14 @@ import { ViewModeToggle, type ViewMode } from "./ViewModeToggle";
 interface TranscriptPanelProps {
   /** The YouTube video ID to fetch transcript languages for */
   videoId: string;
+  /** BCP-47 language code for deep link auto-selection */
+  initialLanguage?: string | undefined;
+  /** Segment ID to scroll to */
+  targetSegmentId?: number | undefined;
+  /** Timestamp fallback for scroll */
+  targetTimestamp?: number | undefined;
+  /** Callback when deep link navigation completes */
+  onDeepLinkComplete?: (() => void) | undefined;
 }
 
 /**
@@ -140,7 +148,13 @@ function ChevronIcon({ isExpanded }: { isExpanded: boolean }) {
  * <TranscriptPanel videoId="dQw4w9WgXcQ" />
  * ```
  */
-export function TranscriptPanel({ videoId }: TranscriptPanelProps) {
+export function TranscriptPanel({
+  videoId,
+  initialLanguage,
+  targetSegmentId,
+  targetTimestamp,
+  onDeepLinkComplete,
+}: TranscriptPanelProps) {
   const {
     data: languages,
     isLoading,
@@ -148,14 +162,18 @@ export function TranscriptPanel({ videoId }: TranscriptPanelProps) {
     error,
   } = useTranscriptLanguages(videoId);
 
-  // Expand/collapse state
-  const [isExpanded, setIsExpanded] = useState(false);
+  // Auto-expand when deep link parameters are present (FR-003)
+  const hasDeepLinkParams = initialLanguage !== undefined || targetSegmentId !== undefined || targetTimestamp !== undefined;
+  const [isExpanded, setIsExpanded] = useState(hasDeepLinkParams);
 
   // Session-scoped language persistence (FR-014)
   const [selectedLanguage, setSelectedLanguage] = useState<string>("");
 
   // View mode state for segments vs full text display (FR-016a-c)
   const [viewMode, setViewMode] = useState<ViewMode>("segments");
+
+  // Language fallback notice when deep link language is unavailable (FR-012)
+  const [languageFallbackNotice, setLanguageFallbackNotice] = useState<string>("");
 
   // Refs for focus management (NFR-A01, NFR-A02)
   const toggleButtonRef = useRef<HTMLButtonElement>(null);
@@ -171,13 +189,32 @@ export function TranscriptPanel({ videoId }: TranscriptPanelProps) {
   // Initialize selected language when languages load
   useEffect(() => {
     if (languages && languages.length > 0 && !selectedLanguage) {
-      // Default to first language
-      const firstLanguage = languages[0];
-      if (firstLanguage) {
-        setSelectedLanguage(firstLanguage.language_code);
+      if (initialLanguage && languages.some(l => l.language_code === initialLanguage)) {
+        // Deep link language available — use it (FR-004)
+        setSelectedLanguage(initialLanguage);
+      } else {
+        // Default to first language
+        const firstLanguage = languages[0];
+        if (firstLanguage) {
+          setSelectedLanguage(firstLanguage.language_code);
+
+          // Show fallback notice if initialLanguage was requested but unavailable (FR-012)
+          if (initialLanguage) {
+            setLanguageFallbackNotice(
+              `Requested language '${initialLanguage}' is not available. Showing ${firstLanguage.language_name} instead.`
+            );
+          }
+        }
       }
     }
-  }, [languages, selectedLanguage]);
+  }, [languages, selectedLanguage, initialLanguage]);
+
+  // Force segments view mode when deep link navigation targets are present (FR-016)
+  useEffect(() => {
+    if (targetSegmentId !== undefined || targetTimestamp !== undefined) {
+      setViewMode("segments");
+    }
+  }, [targetSegmentId, targetTimestamp]);
 
   /**
    * Handles expand/collapse toggle.
@@ -221,6 +258,8 @@ export function TranscriptPanel({ videoId }: TranscriptPanelProps) {
    */
   const handleLanguageChange = useCallback((code: string) => {
     setSelectedLanguage(code);
+    // Auto-dismiss language fallback notice on manual language change (FR-012)
+    setLanguageFallbackNotice("");
   }, []);
 
   /**
@@ -392,6 +431,17 @@ export function TranscriptPanel({ videoId }: TranscriptPanelProps) {
             />
           </div>
 
+          {/* Language fallback notice (FR-012) */}
+          {languageFallbackNotice && (
+            <div
+              className="mb-3 px-3 py-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded"
+              role="status"
+              aria-live="polite"
+            >
+              {languageFallbackNotice}
+            </div>
+          )}
+
           {/* Transcript content with view mode toggle */}
           {selectedLanguage && (
             <>
@@ -415,6 +465,10 @@ export function TranscriptPanel({ videoId }: TranscriptPanelProps) {
                     videoId={videoId}
                     languageCode={selectedLanguage}
                     onScrollPositionReset={handleScrollReset}
+                    targetSegmentId={targetSegmentId}
+                    targetTimestamp={targetTimestamp}
+                    onDeepLinkComplete={onDeepLinkComplete}
+                    isExpanded={isExpanded}
                   />
                 ) : (
                   <TranscriptFullText

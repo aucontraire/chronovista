@@ -80,8 +80,8 @@ export function SearchResult({ segment, queryTerms }: SearchResultProps) {
   // Handle null channel title
   const displayChannelTitle = channel_title ?? "Unknown Channel";
 
-  // Generate video URL with timestamp parameter (FR-005)
-  const videoUrlWithTimestamp = `/videos/${video_id}?t=${Math.floor(start_time)}`;
+  // Generate deep link URL with language, segment, and timestamp (FR-005, Feature 022 FR-001)
+  const videoDeepLinkUrl = `/videos/${video_id}?lang=${language_code}&seg=${segment_id}&t=${Math.floor(start_time)}`;
 
   return (
     <article
@@ -94,7 +94,7 @@ export function SearchResult({ segment, queryTerms }: SearchResultProps) {
           {/* T058: Video title truncated to 2 lines (FR-022) */}
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex-1 line-clamp-2">
             <Link
-              to={`/videos/${video_id}`}
+              to={videoDeepLinkUrl}
               className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 rounded"
             >
               {video_title}
@@ -115,7 +115,7 @@ export function SearchResult({ segment, queryTerms }: SearchResultProps) {
           <time dateTime={video_upload_date} className="shrink-0">{formatDate(video_upload_date)}</time>
           <span className="shrink-0">•</span>
           <Link
-            to={videoUrlWithTimestamp}
+            to={videoDeepLinkUrl}
             className="font-mono hover:text-blue-600 dark:hover:text-blue-400 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 rounded shrink-0"
             aria-label={`Jump to ${timestampRange} in video`}
           >

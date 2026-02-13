@@ -263,7 +263,7 @@ describe('SearchResult', () => {
         );
 
         const link = screen.getByRole('link', { name: /Introduction to Machine Learning/i });
-        expect(link).toHaveAttribute('href', '/videos/abc123def45');
+        expect(link).toHaveAttribute('href', '/videos/abc123def45?lang=en&seg=1&t=154');
       });
 
       it('should have proper href attribute for video title link', () => {
@@ -335,7 +335,7 @@ describe('SearchResult', () => {
           link.getAttribute('href')?.includes('t=')
         );
 
-        expect(timestampLink).toHaveAttribute('href', '/videos/abc123def45?t=154');
+        expect(timestampLink).toHaveAttribute('href', '/videos/abc123def45?lang=en&seg=1&t=154');
       });
 
       it('should floor fractional seconds in timestamp parameter', () => {
@@ -371,7 +371,7 @@ describe('SearchResult', () => {
           link.getAttribute('href')?.includes('t=')
         );
 
-        expect(timestampLink).toHaveAttribute('href', '/videos/abc123def45?t=0');
+        expect(timestampLink).toHaveAttribute('href', '/videos/abc123def45?lang=en&seg=1&t=0');
       });
 
       it('should be keyboard accessible via Tab', async () => {
@@ -383,10 +383,7 @@ describe('SearchResult', () => {
         await user.tab(); // First link (video title)
         await user.tab(); // Second link (timestamp)
 
-        const timestampLinks = screen.getAllByRole('link');
-        const timestampLink = timestampLinks.find((link) =>
-          link.getAttribute('href')?.includes('t=')
-        );
+        const timestampLink = screen.getByRole('link', { name: /Jump to/ });
 
         expect(timestampLink).toHaveFocus();
       });
@@ -400,10 +397,7 @@ describe('SearchResult', () => {
         await user.tab(); // Video title
         await user.tab(); // Timestamp link
 
-        const timestampLinks = screen.getAllByRole('link');
-        const timestampLink = timestampLinks.find((link) =>
-          link.getAttribute('href')?.includes('t=')
-        );
+        const timestampLink = screen.getByRole('link', { name: /Jump to/ });
 
         expect(timestampLink).toHaveFocus();
 
@@ -416,13 +410,10 @@ describe('SearchResult', () => {
           <SearchResult segment={mockSegment} queryTerms={mockQueryTerms} />
         );
 
-        const timestampLinks = screen.getAllByRole('link');
-        const timestampLink = timestampLinks.find((link) =>
-          link.getAttribute('href')?.includes('t=')
-        );
+        const timestampLink = screen.getByRole('link', { name: /Jump to/ });
 
         const href = timestampLink?.getAttribute('href');
-        expect(href).toMatch(/^\/videos\/[a-zA-Z0-9_-]+\?t=\d+$/);
+        expect(href).toMatch(/^\/videos\/[a-zA-Z0-9_-]+\?lang=[a-z-]+&seg=\d+&t=\d+$/);
       });
 
       it('should have accessible label for timestamp link', () => {
@@ -430,14 +421,11 @@ describe('SearchResult', () => {
           <SearchResult segment={mockSegment} queryTerms={mockQueryTerms} />
         );
 
-        const timestampLinks = screen.getAllByRole('link');
-        const timestampLink = timestampLinks.find((link) =>
-          link.getAttribute('href')?.includes('t=')
-        );
+        const timestampLink = screen.getByRole('link', { name: /Jump to/ });
 
-        // Link should have accessible text (the timestamp range)
+        // Link should have accessible name from aria-label
         expect(timestampLink).toHaveAccessibleName();
-        expect(timestampLink?.textContent).toMatch(/\d+:\d+.*\d+:\d+/);
+        expect(timestampLink).toHaveAccessibleName(/Jump to.*in video/);
       });
     });
 

@@ -15,10 +15,11 @@
  * @module components/transcript/TranscriptSegments
  */
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 import { useTranscriptSegments } from "../../hooks/useTranscriptSegments";
+import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { formatTimestamp } from "../../utils/formatTimestamp";
 import {
   INFINITE_SCROLL_CONFIG,
@@ -38,22 +39,43 @@ export interface TranscriptSegmentsProps {
   languageCode: string;
   /** Callback when scroll position resets (e.g., on view mode change) */
   onScrollPositionReset?: () => void;
+  /** Segment ID to scroll to and highlight (FR-005) */
+  targetSegmentId?: number | undefined;
+  /** Timestamp fallback for scroll in seconds (FR-006) */
+  targetTimestamp?: number | undefined;
+  /** Callback when deep link navigation completes (FR-011) */
+  onDeepLinkComplete?: (() => void) | undefined;
+  /** Whether the parent panel is expanded (for deep link abort on collapse) */
+  isExpanded?: boolean | undefined;
 }
 
 /**
  * SegmentItem component renders a single transcript segment.
+ *
+ * Supports optional highlight state for deep link navigation (FR-008, FR-009, FR-015).
  */
 function SegmentItem({
   segment,
   isVirtualized,
+  isHighlighted,
+  highlightTransitionClass,
 }: {
   segment: TranscriptSegment;
   isVirtualized: boolean;
+  isHighlighted?: boolean;
+  highlightTransitionClass?: string;
 }) {
+  // Highlight styles: yellow background with left border indicator (FR-008)
+  const highlightClasses = isHighlighted
+    ? "bg-yellow-100 border-l-4 border-yellow-400"
+    : "border-l-4 border-transparent";
+
   return (
     <div
-      className={`flex gap-4 py-2 ${isVirtualized ? "px-2" : ""}`}
+      className={`flex gap-4 py-2 ${isVirtualized ? "px-2" : ""} ${highlightClasses} ${highlightTransitionClass ?? ""}`}
       data-segment-id={segment.id}
+      // FR-015: Make highlighted segment focusable for programmatic focus
+      tabIndex={isHighlighted ? -1 : undefined}
     >
       {/* Timestamp - left side (NFR-A17, NFR-A18: text-gray-600 for 7.0:1 contrast) */}
       <span
@@ -158,10 +180,14 @@ function VirtualizedSegmentList({
   segments,
   containerRef,
   onScroll,
+  highlightedSegmentId,
+  highlightTransitionClass,
 }: {
   segments: TranscriptSegment[];
   containerRef: React.RefObject<HTMLDivElement | null>;
   onScroll: () => void;
+  highlightedSegmentId: number | null;
+  highlightTransitionClass: string;
 }) {
   const virtualizer = useVirtualizer({
     count: segments.length,
@@ -185,6 +211,8 @@ function VirtualizedSegmentList({
         const segment = segments[virtualItem.index];
         if (!segment) return null;
 
+        const isHighlighted = segment.id === highlightedSegmentId;
+
         return (
           <div
             key={virtualItem.key}
@@ -197,7 +225,12 @@ function VirtualizedSegmentList({
               transform: `translateY(${virtualItem.start}px)`,
             }}
           >
-            <SegmentItem segment={segment} isVirtualized={true} />
+            <SegmentItem
+              segment={segment}
+              isVirtualized={true}
+              isHighlighted={isHighlighted}
+              highlightTransitionClass={isHighlighted ? highlightTransitionClass : ""}
+            />
           </div>
         );
       })}
@@ -208,14 +241,65 @@ function VirtualizedSegmentList({
 /**
  * StandardSegmentList component for rendering segments without virtualization.
  */
-function StandardSegmentList({ segments }: { segments: TranscriptSegment[] }) {
+function StandardSegmentList({
+  segments,
+  highlightedSegmentId,
+  highlightTransitionClass,
+}: {
+  segments: TranscriptSegment[];
+  highlightedSegmentId: number | null;
+  highlightTransitionClass: string;
+}) {
   return (
     <>
-      {segments.map((segment) => (
-        <SegmentItem key={segment.id} segment={segment} isVirtualized={false} />
-      ))}
+      {segments.map((segment) => {
+        const isHighlighted = segment.id === highlightedSegmentId;
+        return (
+          <SegmentItem
+            key={segment.id}
+            segment={segment}
+            isVirtualized={false}
+            isHighlighted={isHighlighted}
+            highlightTransitionClass={isHighlighted ? highlightTransitionClass : ""}
+          />
+        );
+      })}
     </>
   );
+}
+
+/**
+ * Finds the index of the segment nearest to the target timestamp.
+ * Returns the index of the segment with the smallest absolute start_time difference.
+ *
+ * @param segments - Array of transcript segments
+ * @param targetTimestamp - Target timestamp in seconds
+ * @returns Index of nearest segment, or null if no segments available
+ */
+function findNearestSegmentByTimestamp(
+  segments: TranscriptSegment[],
+  targetTimestamp: number
+): number | null {
+  if (segments.length === 0) return null;
+
+  let nearestIndex = 0;
+  const firstSegment = segments[0];
+  if (!firstSegment) return null;
+
+  let smallestDiff = Math.abs(firstSegment.start_time - targetTimestamp);
+
+  for (let i = 1; i < segments.length; i++) {
+    const segment = segments[i];
+    if (!segment) continue;
+
+    const diff = Math.abs(segment.start_time - targetTimestamp);
+    if (diff < smallestDiff) {
+      smallestDiff = diff;
+      nearestIndex = i;
+    }
+  }
+
+  return nearestIndex;
 }
 
 /**
@@ -246,10 +330,35 @@ export function TranscriptSegments({
   videoId,
   languageCode,
   onScrollPositionReset,
+  targetSegmentId,
+  targetTimestamp,
+  onDeepLinkComplete,
+  isExpanded = true,
 }: TranscriptSegmentsProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const previousLanguageRef = useRef<string>(languageCode);
+
+  // Deep link highlight state (FR-008)
+  const [highlightedSegmentId, setHighlightedSegmentId] = useState<number | null>(null);
+
+  // Screen reader announcement for deep link navigation (FR-010)
+  const [deepLinkAnnouncement, setDeepLinkAnnouncement] = useState("");
+
+  // Track whether deep link scroll has been completed to prevent re-triggering
+  const deepLinkCompletedRef = useRef(false);
+
+  // Track fetch-until-found iteration count for deep link navigation (FR-006)
+  const fetchIterationRef = useRef(0);
+
+  // Track whether a targeted deep link seek has been attempted
+  const deepLinkSeekAttemptedRef = useRef(false);
+
+  // Track whether a targeted seek is currently in-flight
+  const [deepLinkSeeking, setDeepLinkSeeking] = useState(false);
+
+  // Reduced motion preference for highlight animation (FR-009)
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   const {
     segments,
@@ -260,10 +369,16 @@ export function TranscriptSegments({
     // error is available but not displayed; we use isError for conditional rendering
     fetchNextPage,
     retry,
+    seekToTimestamp,
   } = useTranscriptSegments(videoId, languageCode);
 
   // Determine if virtualization should be used (NFR-P12)
   const useVirtualization = segments.length > VIRTUALIZATION_CONFIG.threshold;
+
+  // Highlight transition: fade-out unless reduced motion (FR-009)
+  const highlightTransitionClass = prefersReducedMotion
+    ? ""
+    : "transition-all duration-1000 ease-out";
 
   // Reset scroll position when language changes (FR-016a-c)
   useEffect(() => {
@@ -275,6 +390,149 @@ export function TranscriptSegments({
       previousLanguageRef.current = languageCode;
     }
   }, [languageCode, onScrollPositionReset]);
+
+  /**
+   * Handles the deep link scroll, highlight, focus, and cleanup sequence.
+   *
+   * Flow: scroll to element -> highlight -> announce -> focus -> clear after 3s
+   * (FR-005, FR-008, FR-010, FR-011, FR-015)
+   */
+  const handleDeepLinkScroll = useCallback(
+    (targetIndex: number | null) => {
+      if (deepLinkCompletedRef.current) return;
+      deepLinkCompletedRef.current = true;
+
+      if (targetIndex === null || segments.length === 0) {
+        // No valid target -- clean up immediately
+        onDeepLinkComplete?.();
+        return;
+      }
+
+      const targetSegment = segments[targetIndex];
+      if (!targetSegment) {
+        onDeepLinkComplete?.();
+        return;
+      }
+
+      const segmentId = targetSegment.id;
+
+      // For virtualized lists, the target element may not exist in the DOM yet
+      // because @tanstack/react-virtual only renders visible items. Pre-scroll
+      // the container to the approximate position so the virtualizer renders
+      // segments near the target, then refine with scrollIntoView.
+      if (useVirtualization && containerRef.current) {
+        containerRef.current.scrollTop =
+          targetIndex * VIRTUALIZATION_CONFIG.estimatedHeight;
+      }
+
+      // Scroll to target using querySelector + scrollIntoView (FR-005, FR-013)
+      // Use a longer delay for virtualized lists to allow re-render after pre-scroll
+      const scrollDelay = useVirtualization ? 150 : 50;
+      setTimeout(() => {
+        const el = containerRef.current?.querySelector(
+          `[data-segment-id="${segmentId}"]`
+        );
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, scrollDelay);
+
+      // Set highlight after scroll starts (FR-008)
+      setHighlightedSegmentId(segmentId);
+
+      // Screen reader announcement (FR-010)
+      setDeepLinkAnnouncement(
+        `Navigated to matched transcript segment at ${formatTimestamp(targetSegment.start_time)}`
+      );
+
+      // Focus management (FR-015) -- focus the highlighted element after scroll settles
+      setTimeout(() => {
+        const el = containerRef.current?.querySelector(
+          `[data-segment-id="${segmentId}"]`
+        ) as HTMLElement | null;
+        el?.focus();
+      }, 250);
+
+      // Clear highlight after 3 seconds (FR-008, FR-009)
+      setTimeout(() => {
+        setHighlightedSegmentId(null);
+        setDeepLinkAnnouncement("");
+        onDeepLinkComplete?.(); // FR-011: triggers URL cleanup
+      }, 3000);
+    },
+    [segments, useVirtualization, onDeepLinkComplete]
+  );
+
+  // Deep link scroll-to-segment with targeted seek and timestamp fallback (FR-005, FR-006, FR-007, FR-013)
+  useEffect(() => {
+    // Skip if already completed or still loading initial batch
+    if (deepLinkCompletedRef.current || isLoading) return;
+    // Skip if no deep link target at all
+    if (!targetSegmentId && targetTimestamp == null) return;
+    // Skip if no segments loaded yet
+    if (segments.length === 0) return;
+    // Skip if currently fetching a page — wait for it to complete
+    if (isFetchingNextPage) return;
+    // Skip if a targeted seek is in-flight — wait for it to complete
+    if (deepLinkSeeking) return;
+
+    // Step 1: Try to find by segment ID (if provided)
+    if (targetSegmentId) {
+      const targetIndex = segments.findIndex((s) => s.id === targetSegmentId);
+
+      if (targetIndex !== -1) {
+        // Found the segment — scroll to it
+        handleDeepLinkScroll(targetIndex);
+        return;
+      }
+
+      // Segment not found — try a few sequential pages first (FR-006)
+      if (hasNextPage && fetchIterationRef.current < 3) {
+        fetchIterationRef.current += 1;
+        fetchNextPage();
+        return;
+      }
+
+      // After 3 sequential pages, jump directly to the estimated position.
+      // This avoids fetching 20+ pages sequentially for segments deep in long transcripts.
+      // Only attempt seek when there are more pages available on the backend.
+      if (!deepLinkSeekAttemptedRef.current && targetTimestamp != null && hasNextPage) {
+        deepLinkSeekAttemptedRef.current = true;
+        setDeepLinkSeeking(true);
+
+        seekToTimestamp(targetTimestamp).finally(() => {
+          setDeepLinkSeeking(false);
+        });
+        return;
+      }
+
+      // Seek completed or skipped — fall through to timestamp fallback
+    }
+
+    // Step 2: Timestamp fallback (FR-007)
+    // Reached when: segment ID not found after seek, or only timestamp provided
+    if (targetTimestamp != null) {
+      const nearestIndex = findNearestSegmentByTimestamp(segments, targetTimestamp);
+      if (nearestIndex !== null) {
+        handleDeepLinkScroll(nearestIndex);
+        return;
+      }
+    }
+
+    // Step 3: No valid target — clean up
+    handleDeepLinkScroll(null);
+  }, [segments, targetSegmentId, targetTimestamp, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage, handleDeepLinkScroll, deepLinkSeeking, seekToTimestamp]);
+
+  // Abort deep link on panel collapse (T017 — edge case from spec.md)
+  useEffect(() => {
+    if (!isExpanded && highlightedSegmentId !== null) {
+      // Panel collapsed while highlight is active — abort immediately
+      setHighlightedSegmentId(null);
+      setDeepLinkAnnouncement("");
+      deepLinkCompletedRef.current = true;
+      onDeepLinkComplete?.();
+    }
+  }, [isExpanded, highlightedSegmentId, onDeepLinkComplete]);
 
   // Intersection Observer for infinite scroll (FR-020c)
   useEffect(() => {
@@ -427,9 +685,15 @@ export function TranscriptSegments({
           segments={segments}
           containerRef={containerRef}
           onScroll={handleScroll}
+          highlightedSegmentId={highlightedSegmentId}
+          highlightTransitionClass={highlightTransitionClass}
         />
       ) : (
-        <StandardSegmentList segments={segments} />
+        <StandardSegmentList
+          segments={segments}
+          highlightedSegmentId={highlightedSegmentId}
+          highlightTransitionClass={highlightTransitionClass}
+        />
       )}
 
       {/* Loading indicator for infinite scroll (FR-020d) */}
@@ -461,6 +725,18 @@ export function TranscriptSegments({
           className="h-1"
           aria-hidden="true"
         />
+      )}
+
+      {/* Deep link navigation announcement for screen readers (FR-010) */}
+      {deepLinkAnnouncement && (
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="sr-only"
+        >
+          {deepLinkAnnouncement}
+        </div>
       )}
     </div>
   );

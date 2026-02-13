@@ -20,6 +20,7 @@ import { Link, useParams } from "react-router-dom";
 import { ClassificationSection } from "../components/ClassificationSection";
 import { LoadingState } from "../components/LoadingState";
 import { TranscriptPanel } from "../components/transcript";
+import { useDeepLinkParams } from "../hooks/useDeepLinkParams";
 import { useVideoDetail } from "../hooks/useVideoDetail";
 import { useVideoPlaylists } from "../hooks/useVideoPlaylists";
 import { CONTRAST_SAFE_COLORS } from "../styles/tokens";
@@ -224,6 +225,7 @@ function RefreshIcon({ className }: { className?: string }) {
  */
 export function VideoDetailPage() {
   const { videoId } = useParams<{ videoId: string }>();
+  const { lang, segmentId, timestamp, clearDeepLinkParams } = useDeepLinkParams();
   // Note: error is destructured but not displayed directly per FR-027 (unified error message)
   const { data: video, isLoading, isError, error: _error, refetch } = useVideoDetail(
     videoId ?? ""
@@ -495,7 +497,13 @@ export function VideoDetailPage() {
       </div>
 
       {/* Transcript Panel */}
-      <TranscriptPanel videoId={video_id} />
+      <TranscriptPanel
+        videoId={video_id}
+        initialLanguage={lang ?? undefined}
+        targetSegmentId={segmentId ?? undefined}
+        targetTimestamp={timestamp ?? undefined}
+        onDeepLinkComplete={clearDeepLinkParams}
+      />
 
       {/* Back to Videos Link */}
       <div className="mt-6">

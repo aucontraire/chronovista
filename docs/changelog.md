@@ -12,6 +12,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.25.0] - 2026-02-12
+
+### Added
+- **Feature 022: Search-to-Transcript Deep Link Navigation**
+  - Click search results to navigate directly to matched transcript segments
+  - Deep link URL parameters: `lang`, `seg`, `t` for language, segment ID, and timestamp
+  - `useDeepLinkParams` hook for extraction, validation, and cleanup
+  - Automatic scroll-to-segment with `scrollIntoView` centering
+  - Timestamp-based nearest-segment fallback when segment ID not yet loaded
+  - Backend `start_time` filter for precise single-API-call seeking into long transcripts
+  - Virtualization-aware pre-scroll for transcripts with 500+ segments
+  - 3-second yellow highlight with fade-out animation on target segment
+  - Reduced motion support (instant highlight without transition)
+  - Screen reader announcement and programmatic focus on navigation
+  - Auto-expand transcript panel on deep link arrival
+  - Language fallback notice when requested language unavailable
+  - URL cleanup via `history.replaceState` to avoid scroll-to-top
+
+### Fixed
+- Transcript panel scroll-to-top on URL cleanup (replaced `setSearchParams` with `history.replaceState`)
+- Deep link accuracy for long transcripts (replaced offset estimation with backend `start_time` filter)
+
+### Technical
+- 1,403 passing frontend tests across 59 files
+- Deep link test suite: 52 tests covering scroll, highlight, fallback, and edge cases
+
 ## [0.24.0] - 2026-02-11
 
 ### Added

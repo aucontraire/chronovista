@@ -105,22 +105,27 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting Started:
-      - Quick Start: getting-started/quickstart.md
+      - Prerequisites: getting-started/prerequisites.md
+      - YouTube API Setup: getting-started/youtube-api-setup.md
       - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
       - Configuration: getting-started/configuration.md
   - User Guide:
       - CLI Overview: user-guide/cli-overview.md
       - Authentication: user-guide/authentication.md
+      - Data Population: user-guide/data-population.md
       - Data Synchronization: user-guide/data-sync.md
       - Google Takeout: user-guide/google-takeout.md
       - Topic Analytics: user-guide/topic-analytics.md
       - Transcripts: user-guide/transcripts.md
       - Exporting Data: user-guide/exporting.md
+      - REST API: user-guide/rest-api.md
   - Architecture:
       - Overview: architecture/overview.md
       - System Design: architecture/system-design.md
       - Data Model: architecture/data-model.md
       - API Integration: architecture/api-integration.md
+      - Frontend Architecture: architecture/frontend-architecture.md
   - API Reference:
       - Overview: api/index.md
       - Models:
@@ -143,6 +148,8 @@ nav:
       - Setup: development/setup.md
       - Testing: development/testing.md
       - Database: development/database.md
+      - Frontend Development: development/frontend-development.md
+      - Makefile Reference: development/makefile-reference.md
       - Type Checking: development/type-checking.md
       - Code Style: development/code-style.md
       - Documentation: development/documentation.md
@@ -150,6 +157,8 @@ nav:
       - Overview: maintaining/index.md
       - Release Process: maintaining/release-process.md
       - Versioning: maintaining/versioning.md
+  - Troubleshooting: troubleshooting.md
+  - Glossary: glossary.md
   - Contributing: contributing.md
   - Changelog: changelog.md
 

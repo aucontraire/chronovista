@@ -6,6 +6,9 @@ Guide to authenticating chronovista with your YouTube account.
 
 chronovista uses OAuth 2.0 to securely access your YouTube data. This grants the application permission to read your watch history, playlists, subscriptions, and other account data.
 
+!!! tip "First-time setup?"
+    Before authenticating, you must configure your Google Cloud project with an OAuth consent screen and credentials. See [YouTube API Setup](../getting-started/youtube-api-setup.md) for the full walkthrough.
+
 ## Quick Start
 
 ```bash
@@ -27,11 +30,7 @@ chronovista auth logout
 chronovista auth login
 ```
 
-This command:
-
-1. Opens your default browser
-2. Redirects to Google's OAuth consent page
-3. Starts a local callback server on port 8080
+This command opens your default browser to Google's OAuth consent page.
 
 ### Step 2: Grant Permissions
 
@@ -48,14 +47,21 @@ In your browser, you'll see Google's consent screen:
     - View your YouTube playlists and subscriptions
     - View your YouTube watch history
 
-### Step 3: Callback
+### Step 3: Copy the Callback URL
 
-After granting permission:
+After granting permission, Google redirects your browser to a `localhost` URL. This URL contains the authorization code.
 
-1. Google redirects to `http://localhost:8080/auth/callback`
-2. chronovista receives the authorization code
-3. The code is exchanged for access tokens
-4. Tokens are securely stored locally
+**You must copy the full URL from your browser's address bar and paste it back into the terminal:**
+
+```
+📋 After authorizing, copy the full callback URL and paste it here:
+Callback URL: http://localhost:8080/auth/callback?state=abc123&code=4/...
+```
+
+!!! note "Manual Paste Required"
+    chronovista does not automatically intercept the callback. Copy the entire URL from your browser (starting with `http://localhost:8080/auth/callback?...`) and paste it into the terminal prompt.
+
+After pasting, chronovista exchanges the authorization code for access and refresh tokens, which are stored locally.
 
 ### Step 4: Verification
 
@@ -75,18 +81,19 @@ Scopes: youtube.readonly
 
 ## Credential Storage
 
-OAuth tokens are stored securely in your home directory:
+OAuth tokens are stored in the `DATA_DIR` directory (defaults to `./data` relative to the project root):
 
 ```
-~/.chronovista/
-└── credentials/
-    └── youtube_token.json
+data/
+└── youtube_token.json
 ```
+
+The exact path is controlled by the `DATA_DIR` environment variable in your `.env` file. By default it is `./data`.
 
 !!! warning "Security"
-    - Tokens are stored locally on your machine
+    - Tokens are stored locally on your machine with restricted permissions (`chmod 600`)
     - Never share your credential files
-    - The token file is excluded from version control
+    - The `data/` directory is excluded from version control via `.gitignore`
 
 ## Token Management
 
@@ -178,11 +185,11 @@ If you get "Invalid credentials" errors:
 
 ### Consent Screen Not Appearing
 
-If redirected to an error page:
+If redirected to an error page instead of the consent screen:
 
-1. Check that your OAuth consent screen is configured
-2. Verify the application is in "Testing" or "Production" mode
-3. Add your email as a test user if in Testing mode
+1. Ensure you have configured the OAuth consent screen in Google Cloud Console (see [YouTube API Setup](../getting-started/youtube-api-setup.md#step-3-configure-the-oauth-consent-screen))
+2. Verify the application is in "Testing" mode
+3. Add your Google account email as a test user in the consent screen settings
 
 ## Security Best Practices
 

@@ -321,7 +321,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Environment-configurable API base URL for deployment flexibility
 
 ### Documentation
-- [Frontend README](../frontend/README.md) - Setup, tech stack, extraction guide
+- [Frontend README](../../frontend/README.md) - Setup, tech stack, extraction guide
 - Frontend quick start: `cd frontend && npm install && make dev`
 
 ## [0.16.0] - 2026-02-05

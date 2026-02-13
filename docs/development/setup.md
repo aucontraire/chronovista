@@ -6,8 +6,11 @@ Complete guide to setting up the development environment.
 
 - Python 3.11 or higher
 - Poetry
-- Docker (for database)
+- Docker (with Docker Compose — **required** for the development database)
 - Git
+- Node.js 22.x LTS (optional, for the web frontend)
+
+See [Prerequisites](../getting-started/prerequisites.md) for installation instructions.
 
 ## Quick Setup
 
@@ -19,6 +22,9 @@ cd chronovista
 # Run automated setup
 ./scripts/dev_setup.sh
 ```
+
+!!! warning "About `dev_setup.sh`"
+    The setup script assumes you have `pyenv` installed and uses Python 3.12.2. If you use a different Python version manager or a different Python version, follow the [Manual Setup](#manual-setup) instead.
 
 ## Manual Setup
 
@@ -55,14 +61,30 @@ make dev-migrate
 poetry run pre-commit install
 ```
 
-### 5. Verify Setup
+### 5. Configure Environment
+
+```bash
+cp .env.example .env
+# Edit .env with your YouTube API credentials
+# Set DEVELOPMENT_MODE=true to use the Docker dev database
+```
+
+See [YouTube API Setup](../getting-started/youtube-api-setup.md) for obtaining credentials.
+
+### 6. Verify Setup
 
 ```bash
 # Check environment
 make info
 
-# Run tests
-make test
+# Check database is running
+make dev-db-status
+
+# Run tests (unit tests don't require database)
+make test-fast
+
+# Run full test suite with coverage
+make test-cov
 ```
 
 ## IDE Configuration
@@ -141,3 +163,5 @@ poetry run mypy --install-types
 - [Testing](testing.md) - Run the test suite
 - [Database](database.md) - Database development
 - [Code Style](code-style.md) - Formatting standards
+- [Frontend Development](frontend-development.md) - Frontend setup and testing
+- [Makefile Reference](makefile-reference.md) - All available make targets

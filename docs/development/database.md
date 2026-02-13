@@ -42,9 +42,17 @@ postgresql://dev_user:dev_password@localhost:5434/chronovista_dev
 
 ## Migrations
 
-### Alembic Setup
+### Alembic Configuration
 
-chronovista uses Alembic for database migrations.
+The project has **two** Alembic configuration files:
+
+| Config File | Used by | Target Database |
+|-------------|---------|-----------------|
+| `alembic.ini` | `make db-upgrade`, `make db-revision` | Production/local (`DATABASE_URL`, port 5432) |
+| `alembic-dev.ini` | `make dev-migrate`, `make dev-revision` | Docker dev (`DATABASE_DEV_URL`, port 5434) |
+
+!!! warning "Use the correct config"
+    When working with the Docker development database, always use `make dev-migrate` and `make dev-revision` (which use `alembic-dev.ini`). Using `make db-upgrade` would target the production database URL instead.
 
 ### Running Migrations
 

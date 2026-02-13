@@ -30,10 +30,10 @@
 git clone https://github.com/chronovista/chronovista.git
 cd chronovista && poetry install
 
-# Setup database
-docker run --name chronovista-db -e POSTGRES_PASSWORD=dev -p 5432:5432 -d postgres:15
-cp .env.example .env  # Edit with your YouTube API credentials
-poetry run alembic upgrade head
+# Setup database (Docker Compose, port 5434)
+make dev-db-up
+cp .env.example .env  # Add YouTube API credentials, set DEVELOPMENT_MODE=true
+make dev-migrate
 
 # Authenticate and sync
 chronovista auth login
@@ -61,8 +61,8 @@ chronovista sync all
 
 - Python 3.11+
 - [Poetry](https://python-poetry.org/)
-- PostgreSQL (or MySQL)
-- [YouTube Data API credentials](https://console.cloud.google.com/)
+- Docker (with Compose, for the development database)
+- [YouTube Data API credentials](https://console.cloud.google.com/) (API key + OAuth client)
 
 ### Install
 
@@ -75,12 +75,14 @@ poetry install
 ### Database Setup
 
 ```bash
-# PostgreSQL with Docker (recommended)
-docker run --name chronovista-db -e POSTGRES_PASSWORD=dev -p 5432:5432 -d postgres:15
+# Start development database (Docker Compose, port 5434)
+make dev-db-up
 
-# Configure
-cp .env.example .env  # Add your YouTube API credentials
-poetry run alembic upgrade head
+# Configure environment
+cp .env.example .env  # Add YouTube API credentials, set DEVELOPMENT_MODE=true
+
+# Run migrations
+make dev-migrate
 ```
 
 <details>

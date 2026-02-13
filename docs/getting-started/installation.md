@@ -150,19 +150,13 @@ The development database runs on port 5434 to avoid conflicts with local Postgre
 
 ## YouTube API Setup
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select existing
-3. Enable YouTube Data API v3:
-   - Navigate to "APIs & Services" > "Library"
-   - Search for "YouTube Data API v3"
-   - Click "Enable"
-4. Create OAuth 2.0 credentials:
-   - Navigate to "APIs & Services" > "Credentials"
-   - Click "Create Credentials" > "OAuth client ID"
-   - Select "Desktop application"
-   - Download the credentials JSON
-5. Configure redirect URI:
-   - Add `http://localhost:8080/auth/callback`
+See the dedicated [YouTube API Setup](youtube-api-setup.md) guide for the complete walkthrough, including:
+
+- Creating a Google Cloud project
+- Configuring the OAuth consent screen (required before creating credentials)
+- Creating an API key
+- Creating OAuth 2.0 credentials
+- Adding yourself as a test user
 
 ## Environment Configuration
 
@@ -172,7 +166,7 @@ Create your `.env` file:
 cp .env.example .env
 ```
 
-Edit with your settings:
+Edit with your credentials (see [YouTube API Setup](youtube-api-setup.md) for how to obtain these):
 
 ```env
 # YouTube API Configuration
@@ -180,15 +174,18 @@ YOUTUBE_API_KEY=your_api_key
 YOUTUBE_CLIENT_ID=your_client_id
 YOUTUBE_CLIENT_SECRET=your_client_secret
 
-# Database Configuration
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/chronovista
+# Use development database (Docker Compose on port 5434)
+DEVELOPMENT_MODE=true
 
-# Security
+# Security (generate a random string for production use)
 SECRET_KEY=your_secure_random_key
-
-# Optional: Logging
-LOG_LEVEL=INFO
 ```
+
+!!! important "Credentials come from environment variables"
+    chronovista reads `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET` from your `.env` file. It does **not** use the `client_secret.json` file that Google Cloud Console offers for download. See [YouTube API Setup](youtube-api-setup.md#step-6-add-credentials-to-env) for details.
+
+!!! note "Database URLs"
+    The `.env.example` has pre-configured database URLs. When using the Docker Compose development database, set `DEVELOPMENT_MODE=true` to use `DATABASE_DEV_URL` (port 5434). The `DATABASE_URL` (port 5432) is for a local or production PostgreSQL instance.
 
 ## Verifying Installation
 
@@ -316,7 +313,7 @@ After modifying backend Pydantic models:
 make generate-api
 ```
 
-See [`frontend/README.md`](../frontend/README.md) for detailed frontend documentation.
+See [`frontend/README.md`](../../frontend/README.md) for detailed frontend documentation.
 
 ## Next Steps
 

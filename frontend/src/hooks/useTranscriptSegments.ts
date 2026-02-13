@@ -62,6 +62,8 @@ export interface UseTranscriptSegmentsResult {
   retry: () => void;
   /** Function to cancel in-flight requests (for language switching) */
   cancelRequests: () => void;
+  /** Seek to load segments around a target timestamp (for deep link jumps) */
+  seekToTimestamp: (targetTimestamp: number) => Promise<boolean>;
 }
 
 /**
@@ -235,6 +237,65 @@ export function useTranscriptSegments(
     query.refetch();
   }, [query]);
 
+  // Seek to load segments around a target timestamp using the backend's
+  // start_time filter. Makes a single API call with start_time parameter
+  // instead of guessing the offset — the database index on
+  // (video_id, language_code, start_time) handles the lookup efficiently.
+  // Returns true if data was fetched successfully.
+  const seekToTimestamp = useCallback(
+    async (targetTimestamp: number): Promise<boolean> => {
+      try {
+        // Subtract a small buffer so the target segment is within the window,
+        // not right at the edge (accounts for segment duration overlap).
+        const startTime = Math.max(0, targetTimestamp - 5);
+
+        const params = new URLSearchParams({
+          language: languageCode,
+          start_time: startTime.toString(),
+          offset: "0",
+          limit: "100",
+        });
+
+        const endpoint = `/videos/${videoId}/transcript/segments?${params.toString()}`;
+
+        const timeoutController = new AbortController();
+        const timeoutId = setTimeout(() => timeoutController.abort(), 5000);
+
+        try {
+          const data = await apiFetch<SegmentListResponse>(endpoint, {
+            signal: timeoutController.signal,
+          });
+          clearTimeout(timeoutId);
+
+          if (data.data.length === 0) return false;
+
+          // Inject the fetched page into the infinite query cache
+          const qKey = segmentsQueryKey(videoId, languageCode);
+          queryClient.setQueryData<InfiniteData<SegmentListResponse, PageParam>>(
+            qKey,
+            (old) => {
+              if (!old) return undefined;
+              return {
+                pages: [...old.pages, data],
+                pageParams: [
+                  ...old.pageParams,
+                  { offset: data.pagination.offset, limit: data.pagination.limit },
+                ],
+              };
+            }
+          );
+          return true;
+        } catch {
+          clearTimeout(timeoutId);
+          return false;
+        }
+      } catch {
+        return false;
+      }
+    },
+    [videoId, languageCode, queryClient]
+  );
+
   return {
     segments,
     totalCount,
@@ -246,5 +307,6 @@ export function useTranscriptSegments(
     fetchNextPage: query.fetchNextPage,
     retry,
     cancelRequests,
+    seekToTimestamp,
   };
 }

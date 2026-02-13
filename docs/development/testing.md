@@ -133,29 +133,29 @@ Integration tests follow dependency tiers:
 | 3 | Video, VideoStatistics | Channel |
 | 4 | VideoTranscript, VideoTag, UserVideo | Video |
 
+### Integration Test Setup Checklist
+
+Before running integration tests, ensure all prerequisites are met:
+
+- [ ] Docker is running (`docker ps`)
+- [ ] Development database is up (`make dev-db-up`)
+- [ ] Full setup has been run (`make dev-full-setup`) — this creates both the dev and integration test databases
+- [ ] YouTube API authentication is complete (`poetry run chronovista auth login`)
+
 ### Running Integration Tests
 
 ```bash
-# Setup integration database
+# One-time setup (creates dev + integration databases, runs migrations)
 make dev-full-setup
+
+# Authenticate (one-time, tokens persist)
+poetry run chronovista auth login
 
 # Run integration tests
 make test-integration
 
-# Reset integration database
+# Reset integration database if needed
 make test-integration-reset
-```
-
-### Authentication Required
-
-Integration tests require YouTube API auth:
-
-```bash
-# Authenticate first
-poetry run chronovista auth login
-
-# Then run tests
-make test-integration
 ```
 
 ## Coverage
@@ -284,8 +284,19 @@ poetry run pytest --pdb tests/unit/test_video.py
 poetry run pytest -s tests/unit/test_video.py
 ```
 
+## Frontend Tests
+
+The frontend has 1,400+ tests using vitest and React Testing Library. See [Frontend Development](frontend-development.md) for details.
+
+```bash
+cd frontend
+npm test              # Run all tests
+npm run test:coverage # Run with coverage report
+```
+
 ## See Also
 
 - [Setup](setup.md) - Development environment
 - [Database](database.md) - Test database setup
 - [Code Style](code-style.md) - Test code style
+- [Frontend Development](frontend-development.md) - Frontend testing

@@ -22,29 +22,48 @@ Google Takeout is Google's data export service that lets you download a complete
 ### Step 1: Request Export
 
 1. Go to [Google Takeout](https://takeout.google.com/)
-2. Click "Deselect all"
-3. Scroll down and select **YouTube and YouTube Music**
-4. Click "All YouTube data included" to customize:
-   - History (required)
-   - Playlists (required)
-   - Subscriptions (required)
-   - Comments (optional)
-   - Liked videos (optional)
+2. Click **"Deselect all"** to start clean
+3. Scroll down and check **YouTube and YouTube Music**
 
-### Step 2: Configure Export
+### Step 2: Change History Format to JSON
 
-Choose export settings:
+!!! danger "Critical: Change the format to JSON"
+    The default export format for watch history is **HTML**, which chronovista cannot import. You must change it to **JSON**.
+
+1. Under "YouTube and YouTube Music", click the **"HTML format"** button
+2. Find the **history** row
+3. Change the dropdown from **HTML** to **JSON**
+4. Click **OK**
+
+### Step 3: Customize Data Selection
+
+Click **"All YouTube data included"** to choose what to export:
+
+| Data type | Recommended | Notes |
+|-----------|-------------|-------|
+| **history** | Required | Your watch and search history (must be JSON format) |
+| **playlists** | Required | All your playlists with video relationships |
+| **subscriptions** | Required | Channel subscriptions with dates |
+| channels | Recommended | Channel metadata |
+| video metadata | Recommended | Metadata for videos you interacted with |
+| comments | Optional | Your comments on videos |
+| **videos** | **Uncheck if you're a content creator** | Downloads all your uploaded video files |
+
+!!! warning "Content Creators: Uncheck 'videos'"
+    The **videos** option downloads the actual video files you have uploaded to YouTube. If you are a content creator, this can be hundreds of gigabytes. Uncheck **videos** unless you specifically want to download your uploaded content. chronovista does not need video files — it only needs the metadata.
+
+### Step 4: Configure Export Settings
 
 | Setting | Recommended |
 |---------|-------------|
-| Format | JSON (preferred) or HTML |
-| Frequency | One-time |
+| Frequency | Export once |
+| File type | .zip |
 | File size | Largest available (50GB) |
 
-### Step 3: Download
+### Step 5: Download
 
-1. Click "Create export"
-2. Wait for email notification (can take hours for large accounts)
+1. Click **"Create export"**
+2. Wait for email notification (can take minutes to hours depending on account size)
 3. Download the archive
 4. Extract to a local folder
 
@@ -233,6 +252,67 @@ Benefits of combined data:
 - Historical data from Takeout (deleted videos, old metadata)
 - Complete timeline reconstruction with relationship integrity
 - Queryable database for advanced analytics
+
+## Managing Multiple Takeout Exports
+
+If you download Takeout exports periodically, you can keep them organized and use the `recover` command to process them all at once.
+
+### Recommended Directory Structure
+
+Append the export date to each extracted directory name using `YYYY-MM-DD` format:
+
+```
+takeout/
+├── YouTube and YouTube Music/              # Most recent (no date)
+├── YouTube and YouTube Music 2025-08-13/
+├── YouTube and YouTube Music 2025-09-14/
+├── YouTube and YouTube Music 2025-11-17/
+├── YouTube and YouTube Music 2025-12-15/
+├── YouTube and YouTube Music 2026-01-01/
+└── YouTube and YouTube Music 2026-01-27/
+```
+
+Each subdirectory should contain the standard Takeout structure (`history/`, `playlists/`, etc.).
+
+!!! important "Date Format Required"
+    The `recover` command uses a `YYYY-MM-DD` date pattern in the directory name to identify and sort historical exports. Directories without a recognizable date in their name will be skipped.
+
+### Seeding vs. Recovering
+
+| Command | Purpose | Input |
+|---------|---------|-------|
+| `takeout seed` | Import **one** Takeout export | Path to a single export directory |
+| `takeout recover` | Process **multiple** historical exports at once | Path to a base directory containing dated subdirectories |
+
+### Using the Recover Command
+
+The `recover` command scans a base directory for all date-suffixed subdirectories, sorts them oldest-first, and processes them so that **newer metadata overwrites older**:
+
+```bash
+# Preview what would be recovered
+chronovista takeout recover --takeout-dir ./takeout --dry-run
+
+# Run recovery across all historical exports
+chronovista takeout recover --takeout-dir ./takeout
+```
+
+### Workflow for Periodic Exports
+
+1. Download a new Takeout export from [Google Takeout](https://takeout.google.com/)
+2. Extract it and rename the directory with today's date:
+   ```bash
+   # After extracting, rename with the date
+   mv "YouTube and YouTube Music" "YouTube and YouTube Music 2026-02-13"
+   ```
+3. Move it into your `takeout/` directory alongside previous exports
+4. Seed the new export:
+   ```bash
+   chronovista takeout seed ./takeout/"YouTube and YouTube Music 2026-02-13"
+   ```
+5. Or recover from all exports at once:
+   ```bash
+   chronovista takeout recover --takeout-dir ./takeout
+   ```
 
 ## Data Quality Notes
 

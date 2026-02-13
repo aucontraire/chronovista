@@ -31,51 +31,66 @@ Or use the Makefile target:
 make install-docs
 ```
 
-## Directory Structure
+## Site Map
 
-```
-docs/
-|-- index.md                     # Homepage
-|-- getting-started/             # Installation & setup
-|   |-- quickstart.md
-|   |-- installation.md
-|   |-- configuration.md
-|-- user-guide/                  # Usage documentation
-|   |-- cli-overview.md
-|   |-- authentication.md
-|   |-- data-sync.md
-|   |-- google-takeout.md
-|   |-- topic-analytics.md
-|   |-- transcripts.md
-|   |-- exporting.md
-|-- architecture/                # System design
-|   |-- overview.md
-|   |-- system-design.md
-|   |-- data-model.md
-|   |-- api-integration.md
-|-- api/                         # API reference (auto-generated)
-|   |-- index.md
-|   |-- models/
-|   |-- repositories/
-|   |-- services/
-|   |-- cli/
-|-- development/                 # Contributing guide
-|   |-- index.md
-|   |-- setup.md
-|   |-- testing.md
-|   |-- database.md
-|   |-- type-checking.md
-|   |-- code-style.md
-|   |-- documentation.md
-|-- maintaining/                 # Maintainer guide
-|   |-- index.md
-|   |-- release-process.md
-|   |-- versioning.md
-|-- assets/                      # Images, logos
-|-- stylesheets/                 # Custom CSS
-|-- contributing.md              # Contribution guidelines
-|-- changelog.md                 # Version history
-```
+### Getting Started
+
+- [Prerequisites](getting-started/prerequisites.md) - Python, Poetry, Docker, Node.js, Google Cloud account
+- [YouTube API Setup](getting-started/youtube-api-setup.md) - Google Cloud project, OAuth consent screen, API key, credentials
+- [Installation](getting-started/installation.md) - Install chronovista from source
+- [Quick Start](getting-started/quickstart.md) - Get running in minutes with a smoke test
+- [Configuration](getting-started/configuration.md) - All environment variables and config options
+
+### User Guide
+
+- [CLI Overview](user-guide/cli-overview.md) - Complete CLI command reference
+- [Authentication](user-guide/authentication.md) - OAuth 2.0 flow and token management
+- [Data Population](user-guide/data-population.md) - Recommended sync order (topics, takeout, sync, transcripts)
+- [Data Synchronization](user-guide/data-sync.md) - Sync commands, strategies, rate limiting
+- [Google Takeout](user-guide/google-takeout.md) - Import historical YouTube data
+- [Topic Analytics](user-guide/topic-analytics.md) - 17 topic commands for content discovery
+- [Transcripts](user-guide/transcripts.md) - Multi-language transcript management
+- [Exporting Data](user-guide/exporting.md) - CSV/JSON export with filtering
+- [REST API](user-guide/rest-api.md) - FastAPI endpoints and usage examples
+
+### Architecture
+
+- [Overview](architecture/overview.md) - High-level system architecture
+- [System Design](architecture/system-design.md) - Service layer, rate limiting, error handling
+- [Data Model](architecture/data-model.md) - Database schema, ER diagram, indexes
+- [API Integration](architecture/api-integration.md) - YouTube API integration details
+- [Frontend Architecture](architecture/frontend-architecture.md) - React components, routing, state management
+
+### API Reference
+
+- [Overview](api/index.md) - Auto-generated API reference
+- Models: [Channel](api/models/channel.md), [Video](api/models/video.md), [Transcript](api/models/transcript.md), [Topic](api/models/topic.md)
+- Repositories: [Base](api/repositories/base.md), [Channel](api/repositories/channel.md), [Video](api/repositories/video.md)
+- Services: [YouTube](api/services/youtube.md), [Takeout](api/services/takeout.md), [Transcript](api/services/transcript.md)
+- CLI: [Commands](api/cli/commands.md)
+
+### Development
+
+- [Setup](development/setup.md) - Development environment setup
+- [Testing](development/testing.md) - Backend test suite (pytest, Hypothesis, factories)
+- [Database](development/database.md) - Docker dev database, migrations, pgAdmin
+- [Frontend Development](development/frontend-development.md) - Frontend tests (vitest), scripts, patterns
+- [Makefile Reference](development/makefile-reference.md) - All 67 Makefile targets
+- [Type Checking](development/type-checking.md) - mypy strict mode guide
+- [Code Style](development/code-style.md) - Black, isort, ruff conventions
+- [Documentation](development/documentation.md) - Writing and building docs
+
+### Maintaining
+
+- [Release Process](maintaining/release-process.md) - How to cut a release
+- [Versioning](maintaining/versioning.md) - Versioning policy
+
+### Reference
+
+- [Troubleshooting](troubleshooting.md) - Common issues and fixes across all subsystems
+- [Glossary](glossary.md) - Project-specific terminology
+- [Contributing](contributing.md) - Contribution guidelines
+- [Changelog](changelog.md) - Version history
 
 ## Available Commands
 

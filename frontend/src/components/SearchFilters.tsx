@@ -51,6 +51,10 @@ interface SearchFiltersProps {
   enabledTypes: EnabledSearchTypes;
   /** Callback when a search type is toggled */
   onToggleType: (type: keyof EnabledSearchTypes) => void;
+  /** Whether to include unavailable content (T031, FR-021) */
+  includeUnavailable?: boolean;
+  /** Callback when include unavailable is toggled */
+  onToggleIncludeUnavailable?: () => void;
 }
 
 /**
@@ -187,6 +191,8 @@ export function SearchFilters({
   onClose,
   enabledTypes,
   onToggleType,
+  includeUnavailable = false,
+  onToggleIncludeUnavailable,
 }: SearchFiltersProps) {
   // Preserve regional variants (e.g., "en-US", "en-GB") as separate options
   // This shows users the specific language context (lingo, slang, spelling)
@@ -340,6 +346,24 @@ export function SearchFilters({
               </option>
             ))}
           </select>
+        </div>
+      )}
+
+      {/* T031: Include Unavailable Content Toggle (FR-021, NFR-003) */}
+      {onToggleIncludeUnavailable && (
+        <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+          <label className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors">
+            <input
+              type="checkbox"
+              checked={includeUnavailable}
+              onChange={onToggleIncludeUnavailable}
+              className="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              aria-label="Include unavailable content"
+            />
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              Show unavailable content
+            </span>
+          </label>
         </div>
       )}
     </>

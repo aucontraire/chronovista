@@ -29,6 +29,8 @@ interface UseVideosOptions {
   category?: string | null;
   /** Filter by topic IDs (OR logic) */
   topicIds?: string[];
+  /** Include unavailable content (T031, FR-021) */
+  includeUnavailable?: boolean;
 }
 
 interface UseVideosReturn {
@@ -80,7 +82,8 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
     enabled = true,
     tags = [],
     category = null,
-    topicIds = []
+    topicIds = [],
+    includeUnavailable = false
   } = options;
 
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -95,7 +98,7 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
     fetchNextPage,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["videos", { limit, tags, category, topicIds }],
+    queryKey: ["videos", { limit, tags, category, topicIds, includeUnavailable }],
     queryFn: async ({ pageParam, signal }) => {
       const params = new URLSearchParams({
         offset: pageParam.toString(),
@@ -106,6 +109,11 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
       tags.forEach(tag => params.append('tag', tag));
       if (category) params.set('category', category);
       topicIds.forEach(id => params.append('topic_id', id));
+
+      // T031: Add include_unavailable parameter (FR-021)
+      if (includeUnavailable) {
+        params.set('include_unavailable', 'true');
+      }
 
       return apiFetch<VideoListResponse>(`/videos?${params.toString()}`, { signal });
     },

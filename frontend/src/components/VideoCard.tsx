@@ -6,6 +6,8 @@ import { Link } from "react-router-dom";
 
 import { cardPatterns, colorTokens } from "../styles";
 import type { VideoListItem } from "../types/video";
+import { AvailabilityBadge } from "./AvailabilityBadge";
+import { isVideoUnavailable } from "../utils/availability";
 
 interface VideoCardProps {
   /** Video data to display */
@@ -94,6 +96,7 @@ function formatViewCount(count: number | null): string {
 /**
  * VideoCard displays video metadata in a card format.
  * Includes title, channel, duration, upload date, and transcript info.
+ * Shows unavailability indicators when content is not available (Feature 023, FR-021).
  */
 export function VideoCard({ video }: VideoCardProps) {
   const {
@@ -103,7 +106,13 @@ export function VideoCard({ video }: VideoCardProps) {
     duration,
     view_count,
     transcript_summary,
+    availability_status,
   } = video;
+
+  // Determine if video is unavailable
+  const isUnavailable = isVideoUnavailable(availability_status);
+  const cardOpacity = isUnavailable ? "opacity-50" : "";
+  const titleDecoration = isUnavailable ? "line-through" : "";
 
   return (
     <Link
@@ -111,14 +120,17 @@ export function VideoCard({ video }: VideoCardProps) {
       className="block no-underline text-inherit focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-xl"
     >
       <article
-        className={`${cardPatterns.base} ${cardPatterns.hover} ${cardPatterns.transition} p-5`}
+        className={`${cardPatterns.base} ${cardPatterns.hover} ${cardPatterns.transition} p-5 ${cardOpacity}`}
         role="article"
-        aria-label={`Video: ${title}`}
+        aria-label={isUnavailable ? `Unavailable video` : `Video: ${title}`}
       >
-      {/* Video Title */}
-      <h3 className={`text-lg font-semibold text-${colorTokens.text.primary} line-clamp-2 mb-2`}>
-        {title}
-      </h3>
+      {/* Video Title with Availability Badge */}
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <h3 className={`text-lg font-semibold text-${colorTokens.text.primary} line-clamp-2 flex-1 ${titleDecoration}`}>
+          {isUnavailable ? "Unavailable Video" : title}
+        </h3>
+        <AvailabilityBadge status={availability_status} className="flex-shrink-0" />
+      </div>
 
       {/* Channel Name */}
       <p className={`text-sm text-${colorTokens.text.secondary} mb-3`}>

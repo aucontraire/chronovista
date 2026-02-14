@@ -124,7 +124,7 @@ class PlaylistVideoListItem(BaseModel):
     """Video item in playlist context with position.
 
     Extends video information with playlist-specific position
-    and includes deleted_flag to preserve position integrity.
+    and includes availability_status to preserve position integrity.
     """
 
     model_config = ConfigDict(strict=True, from_attributes=True)
@@ -143,9 +143,9 @@ class PlaylistVideoListItem(BaseModel):
 
     # Playlist-specific fields
     position: int = Field(..., description="Position in playlist (0-indexed)")
-    deleted_flag: bool = Field(
-        False,
-        description="Whether video was deleted from YouTube (included to preserve position integrity)",
+    availability_status: str = Field(
+        ...,
+        description="Video availability status (included to preserve position integrity)",
     )
 
 

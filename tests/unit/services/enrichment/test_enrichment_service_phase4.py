@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.api_responses import YouTubeVideoResponse
 from chronovista.models.enrichment_report import EnrichmentReport, EnrichmentSummary
 from chronovista.services.enrichment.enrichment_service import (
@@ -332,7 +333,7 @@ class TestEnrichVideos:
         mock_video = MagicMock()
         mock_video.video_id = "deleted123"
         mock_video.title = "[Placeholder] Video deleted123"
-        mock_video.deleted_flag = False
+        mock_video.availability_status = AvailabilityStatus.AVAILABLE
 
         with patch.object(
             service, "_get_videos_for_enrichment", new_callable=AsyncMock
@@ -346,7 +347,7 @@ class TestEnrichVideos:
             report = await service.enrich_videos(mock_session, check_prerequisites=False)
 
             assert report.summary.videos_deleted == 1
-            assert mock_video.deleted_flag is True
+            assert mock_video.availability_status == AvailabilityStatus.UNAVAILABLE
 
     async def test_enrich_updates_video(
         self, service: EnrichmentService, mock_session: AsyncMock

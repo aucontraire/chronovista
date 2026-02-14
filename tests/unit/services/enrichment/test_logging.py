@@ -475,7 +475,7 @@ class TestEnrichmentServiceLogging:
         mock_video = MagicMock()
         mock_video.video_id = "test_vid"
         mock_video.title = "[Placeholder] Video test_vid"
-        mock_video.deleted_flag = False
+        mock_video.availability_status = "available"
 
         with patch.object(
             enrichment_service,

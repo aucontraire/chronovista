@@ -44,6 +44,9 @@ export interface SearchResultSegment {
 
   /** ISO 8601 datetime string of video upload date */
   video_upload_date: string;
+
+  /** Availability status of the video */
+  availability_status: string;
 }
 
 /**
@@ -89,6 +92,8 @@ export interface TitleSearchResult {
   channel_title: string | null;
   /** ISO 8601 datetime string of video upload date */
   upload_date: string;
+  /** Content availability status (Feature 023) */
+  availability_status: string;
 }
 
 /**
@@ -115,6 +120,8 @@ export interface DescriptionSearchResult {
   upload_date: string;
   /** ~200 character excerpt centered around first match */
   snippet: string;
+  /** Content availability status (Feature 023) */
+  availability_status: string;
 }
 
 /**

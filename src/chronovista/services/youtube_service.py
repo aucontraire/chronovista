@@ -339,8 +339,15 @@ class YouTubeService(YouTubeServiceInterface):
         response = request.execute()
 
         if not response.get("items"):
+            # Return empty list when no channels found — the caller (enrichment
+            # service) handles per-channel "not found" detection via multi-cycle
+            # unavailability confirmation.  Raising here would short-circuit
+            # the entire batch and prevent individual channel detection.
+            if isinstance(channel_id, list):
+                return []
+            # Single-channel lookup still raises for backward compatibility
             raise YouTubeAPIError(
-                message=f"Channels {channel_ids_str} not found",
+                message=f"Channel {channel_ids_str} not found",
                 status_code=HTTP_NOT_FOUND,
                 error_reason="channelNotFound",
             )

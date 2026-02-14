@@ -550,7 +550,7 @@ class TestStatusQueryPerformance:
 
         Efficiency indicators:
         1. Uses COUNT aggregation (returns scalar)
-        2. Filters on indexed columns (deleted_flag, title patterns)
+        2. Filters on indexed columns (availability_status, title patterns)
         3. Does not load full objects
         """
         mock_session = AsyncMock()

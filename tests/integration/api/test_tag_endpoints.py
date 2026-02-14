@@ -463,7 +463,7 @@ class TestTagVideos:
         async_client: AsyncClient,
         integration_session_factory,
     ) -> None:
-        """Test tag videos excludes videos with deleted_flag=true (T037)."""
+        """Test tag videos excludes videos with availability_status=unavailable (T037)."""
         # Create test data
         async with integration_session_factory() as session:
             await session.execute(delete(VideoTag))
@@ -486,7 +486,7 @@ class TestTagVideos:
                 title="Active Video",
                 upload_date=datetime.now(timezone.utc),
                 duration=300,
-                deleted_flag=False,
+                availability_status="available",
             )
             session.add(video_active)
 
@@ -497,7 +497,7 @@ class TestTagVideos:
                 title="Deleted Video",
                 upload_date=datetime.now(timezone.utc),
                 duration=300,
-                deleted_flag=True,
+                availability_status="unavailable",
             )
             session.add(video_deleted)
             await session.flush()

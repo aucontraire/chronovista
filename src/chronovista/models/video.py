@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .enums import LanguageCode
+from .enums import AvailabilityStatus, LanguageCode
 from .youtube_types import ChannelId, VideoId
 
 
@@ -74,9 +74,22 @@ class VideoBase(BaseModel):
         default=None, ge=0, description="Number of comments"
     )
 
-    # Status tracking
-    deleted_flag: bool = Field(
-        default=False, description="Whether video is marked as deleted"
+    # Availability and recovery tracking
+    availability_status: AvailabilityStatus = Field(
+        default=AvailabilityStatus.AVAILABLE,
+        description="Current availability status on YouTube",
+    )
+    alternative_url: Optional[str] = Field(
+        default=None, description="URL to alternative source"
+    )
+    recovered_at: Optional[datetime] = Field(
+        default=None, description="When content was recovered"
+    )
+    recovery_source: Optional[str] = Field(
+        default=None, description="Source of recovery information"
+    )
+    unavailability_first_detected: Optional[datetime] = Field(
+        default=None, description="When unavailability was first detected"
     )
 
     @field_validator("video_id")
@@ -156,7 +169,11 @@ class VideoUpdate(BaseModel):
     like_count: Optional[int] = Field(default=None, ge=0)
     view_count: Optional[int] = Field(default=None, ge=0)
     comment_count: Optional[int] = Field(default=None, ge=0)
-    deleted_flag: Optional[bool] = None
+    availability_status: Optional[AvailabilityStatus] = None
+    alternative_url: Optional[str] = None
+    recovered_at: Optional[datetime] = None
+    recovery_source: Optional[str] = None
+    unavailability_first_detected: Optional[datetime] = None
 
     @field_validator("title")
     @classmethod

@@ -12,6 +12,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.26.0] - 2026-02-13
+
+### Added
+- **Feature 023: Deleted Content Visibility**
+  - Replaced boolean `deleted_flag` on videos with 7-value `availability_status` enum (available, unavailable, private, deleted, terminated, copyright, tos_violation)
+  - Added `availability_status` and recovery tracking columns to channels table
+  - Three-step atomic Alembic migration: add columns → backfill → drop `deleted_flag` (fully reversible)
+  - Multi-cycle unavailability detection for videos (`enrich run`) and channels (`enrich channels`)
+  - Two-cycle confirmation prevents false positives from transient API errors
+  - Automatic restoration when previously unavailable content reappears in API
+  - Recovery metadata: `recovered_at`, `recovery_source`, `unavailability_first_detected`
+  - `include_unavailable` query parameter on 14 list/search endpoints
+  - `PATCH /api/v1/videos/{video_id}/alternative-url` endpoint
+  - `UnavailabilityBanner` component with status-specific messages for 12 statuses (6 video + 6 channel)
+  - `AvailabilityBadge` component for list view status indicators
+  - Alternative URL input form on unavailable video detail pages
+  - "Include unavailable content" toggle on Videos and Search pages
+  - Muted styling for unavailable items in list views
+  - WCAG 2.1 AA accessibility on all new components
+
+### Components
+- `UnavailabilityBanner` - Status-specific banner with ARIA `role="status"` and `aria-live="polite"`
+- `AvailabilityBadge` - Colored status badge for list items
+- `AlternativeUrlForm` - URL input for unavailable video detail pages
+
+### Fixed
+- Playlist video list 500 error from `.value` on string `availability_status`
+- Search results showing all videos as "Unavailable" due to missing `availability_status` in search schemas
+- Channel enrichment skipping deleted channels due to batch-level exception handling
+
+### Technical
+- 4,447 passing backend tests
+- 1,300+ passing frontend tests
+- 273 `deleted_flag` references replaced across 44 files
+- mypy strict compliance (0 errors)
+- TypeScript strict mode (0 errors)
+
 ## [0.25.0] - 2026-02-12
 
 ### Added

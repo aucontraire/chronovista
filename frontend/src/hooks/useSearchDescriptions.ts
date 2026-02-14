@@ -20,6 +20,8 @@ export interface UseSearchDescriptionsOptions {
   query: string;
   /** Whether the descriptions search type is enabled */
   enabled?: boolean;
+  /** Include unavailable content (T031, FR-021) */
+  includeUnavailable?: boolean;
 }
 
 /**
@@ -83,14 +85,21 @@ export interface UseSearchDescriptionsResult {
 export function useSearchDescriptions({
   query,
   enabled = true,
+  includeUnavailable = false,
 }: UseSearchDescriptionsOptions): UseSearchDescriptionsResult {
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ["search", "descriptions", query],
+    queryKey: ["search", "descriptions", query, includeUnavailable],
     queryFn: async ({ signal }) => {
       const params = new URLSearchParams({
         q: query,
         limit: String(SEARCH_CONFIG.DESCRIPTION_SEARCH_LIMIT),
       });
+
+      // T031: Add include_unavailable parameter (FR-021)
+      if (includeUnavailable) {
+        params.set("include_unavailable", "true");
+      }
+
       return apiFetch<DescriptionSearchResponse>(
         `${SEARCH_CONFIG.DESCRIPTION_SEARCH_ENDPOINT}?${params}`,
         { signal }

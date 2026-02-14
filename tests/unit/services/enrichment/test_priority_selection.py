@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from chronovista.models.enums import AvailabilityStatus
 from chronovista.services.enrichment.enrichment_service import (
     EnrichmentService,
     VIDEO_PLACEHOLDER_PREFIX,
@@ -57,14 +58,14 @@ class TestPriorityTierSelectionLogic:
         high_priority_video.video_id = "high_vid_001"
         high_priority_video.title = "[Placeholder] Video high_vid_001"
         high_priority_video.channel_id = "UCplaceholder01234567890"
-        high_priority_video.deleted_flag = False
+        high_priority_video.availability_status = AvailabilityStatus.AVAILABLE
 
         # MEDIUM-only: placeholder title but real channel
         medium_priority_video = MagicMock()
         medium_priority_video.video_id = "medium_vid_01"
         medium_priority_video.title = "[Placeholder] Video medium_vid_01"
         medium_priority_video.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
-        medium_priority_video.deleted_flag = False
+        medium_priority_video.availability_status = AvailabilityStatus.AVAILABLE
 
         mock_result = MagicMock()
         mock_scalars = MagicMock()
@@ -93,7 +94,7 @@ class TestPriorityTierSelectionLogic:
         high_priority_video.video_id = "high_vid_002"
         high_priority_video.title = "[Placeholder] Video high_vid_002"
         high_priority_video.channel_id = "UCplaceholder01234567890"
-        high_priority_video.deleted_flag = False
+        high_priority_video.availability_status = AvailabilityStatus.AVAILABLE
         high_priority_video.duration = 0
         high_priority_video.view_count = None
         high_priority_video.description = ""
@@ -103,7 +104,7 @@ class TestPriorityTierSelectionLogic:
         medium_priority_video.video_id = "medium_vid_02"
         medium_priority_video.title = "[Placeholder] Video medium_vid_02"
         medium_priority_video.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
-        medium_priority_video.deleted_flag = False
+        medium_priority_video.availability_status = AvailabilityStatus.AVAILABLE
         medium_priority_video.duration = 180
         medium_priority_video.view_count = 1000
         medium_priority_video.description = "A description"
@@ -113,7 +114,7 @@ class TestPriorityTierSelectionLogic:
         low_priority_video.video_id = "low_vid_00001"
         low_priority_video.title = "Real Video Title"
         low_priority_video.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
-        low_priority_video.deleted_flag = False
+        low_priority_video.availability_status = AvailabilityStatus.AVAILABLE
         low_priority_video.duration = 0
         low_priority_video.view_count = None
         low_priority_video.description = ""
@@ -146,7 +147,7 @@ class TestPriorityTierSelectionLogic:
         low_priority_video.video_id = "low_vid_00002"
         low_priority_video.title = "Real Video Title"
         low_priority_video.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
-        low_priority_video.deleted_flag = False
+        low_priority_video.availability_status = AvailabilityStatus.AVAILABLE
         low_priority_video.duration = 0
 
         # Deleted video (only in ALL with include_deleted=True)
@@ -154,7 +155,7 @@ class TestPriorityTierSelectionLogic:
         deleted_video.video_id = "deleted_vid1"
         deleted_video.title = "Deleted Video"
         deleted_video.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
-        deleted_video.deleted_flag = True
+        deleted_video.availability_status = AvailabilityStatus.UNAVAILABLE
         deleted_video.duration = 120
 
         mock_result = MagicMock()
@@ -247,7 +248,7 @@ class TestHighPriorityTier:
         high_video.video_id = "dQw4w9WgXcQ"
         high_video.title = "[Placeholder] Video dQw4w9WgXcQ"
         high_video.channel_id = "[Placeholder] Unknown Channel"
-        high_video.deleted_flag = False
+        high_video.availability_status = AvailabilityStatus.AVAILABLE
 
         mock_result = MagicMock()
         mock_scalars = MagicMock()
@@ -275,7 +276,7 @@ class TestHighPriorityTier:
         video.video_id = "abc123XYZ_-"
         video.title = "Real Video Title - Not a Placeholder"
         video.channel_id = "[Placeholder] Unknown Channel"
-        video.deleted_flag = False
+        video.availability_status = AvailabilityStatus.AVAILABLE
 
         mock_result = MagicMock()
         mock_scalars = MagicMock()
@@ -302,7 +303,7 @@ class TestHighPriorityTier:
         video.video_id = "test12345AB"
         video.title = "[Placeholder] Video test12345AB"
         video.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"  # Real channel ID
-        video.deleted_flag = False
+        video.availability_status = AvailabilityStatus.AVAILABLE
 
         mock_result = MagicMock()
         mock_scalars = MagicMock()
@@ -356,7 +357,7 @@ class TestMediumPriorityTier:
         high_video.video_id = "highprio1234"
         high_video.title = "[Placeholder] Video highprio1234"
         high_video.channel_id = "[Unknown Channel] UCtest123"
-        high_video.deleted_flag = False
+        high_video.availability_status = AvailabilityStatus.AVAILABLE
 
         mock_result = MagicMock()
         mock_scalars = MagicMock()
@@ -383,7 +384,7 @@ class TestMediumPriorityTier:
         medium_video.video_id = "medprio12345"
         medium_video.title = "[Placeholder] Video medprio12345"
         medium_video.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"  # Real channel
-        medium_video.deleted_flag = False
+        medium_video.availability_status = AvailabilityStatus.AVAILABLE
 
         mock_result = MagicMock()
         mock_scalars = MagicMock()
@@ -410,7 +411,7 @@ class TestMediumPriorityTier:
         real_title_video.video_id = "realvid12345"
         real_title_video.title = "A Real Video Title"
         real_title_video.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
-        real_title_video.deleted_flag = False
+        real_title_video.availability_status = AvailabilityStatus.AVAILABLE
 
         mock_result = MagicMock()
         mock_scalars = MagicMock()
@@ -461,7 +462,7 @@ class TestLowPriorityTier:
         medium_video.video_id = "medvideo1234"
         medium_video.title = "[Placeholder] Video medvideo1234"
         medium_video.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
-        medium_video.deleted_flag = False
+        medium_video.availability_status = AvailabilityStatus.AVAILABLE
         medium_video.duration = 180
         medium_video.view_count = 1000
         medium_video.description = "Has description"
@@ -491,7 +492,7 @@ class TestLowPriorityTier:
         missing_duration_video.video_id = "missdur12345"
         missing_duration_video.title = "Real Video Title"
         missing_duration_video.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
-        missing_duration_video.deleted_flag = False
+        missing_duration_video.availability_status = AvailabilityStatus.AVAILABLE
         missing_duration_video.duration = 0  # Missing duration
         missing_duration_video.view_count = 1000
         missing_duration_video.description = "Has description"
@@ -521,7 +522,7 @@ class TestLowPriorityTier:
         missing_views_video.video_id = "missview1234"
         missing_views_video.title = "Real Video Title"
         missing_views_video.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
-        missing_views_video.deleted_flag = False
+        missing_views_video.availability_status = AvailabilityStatus.AVAILABLE
         missing_views_video.duration = 180
         missing_views_video.view_count = None  # Missing view count
         missing_views_video.description = "Has description"
@@ -551,7 +552,7 @@ class TestLowPriorityTier:
         missing_desc_video.video_id = "missdesc1234"
         missing_desc_video.title = "Real Video Title"
         missing_desc_video.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
-        missing_desc_video.deleted_flag = False
+        missing_desc_video.availability_status = AvailabilityStatus.AVAILABLE
         missing_desc_video.duration = 180
         missing_desc_video.view_count = 1000
         missing_desc_video.description = ""  # Empty description
@@ -581,7 +582,7 @@ class TestLowPriorityTier:
         enriched_video.video_id = "enrichedVid1"
         enriched_video.title = "Fully Enriched Video"
         enriched_video.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
-        enriched_video.deleted_flag = False
+        enriched_video.availability_status = AvailabilityStatus.AVAILABLE
         enriched_video.duration = 300
         enriched_video.view_count = 50000
         enriched_video.description = "A fully enriched video description"
@@ -636,7 +637,7 @@ class TestAllPriorityTier:
         low_video.video_id = "lowprio12345"
         low_video.title = "Real Title - Missing Data"
         low_video.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
-        low_video.deleted_flag = False
+        low_video.availability_status = AvailabilityStatus.AVAILABLE
         low_video.duration = 0  # Missing
         low_video.view_count = None
 
@@ -665,7 +666,7 @@ class TestAllPriorityTier:
         deleted_video.video_id = "deleted12345"
         deleted_video.title = "Previously Deleted Video"
         deleted_video.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
-        deleted_video.deleted_flag = True
+        deleted_video.availability_status = AvailabilityStatus.UNAVAILABLE
         deleted_video.duration = 180
         deleted_video.view_count = 1000
 
@@ -682,7 +683,7 @@ class TestAllPriorityTier:
         # Deleted videos should be included when include_deleted=True
         assert len(result) == 1
         assert result[0].video_id == "deleted12345"
-        assert result[0].deleted_flag is True
+        assert result[0].availability_status == AvailabilityStatus.UNAVAILABLE
 
     async def test_all_respects_include_deleted_false(
         self, service: EnrichmentService
@@ -695,7 +696,7 @@ class TestAllPriorityTier:
         deleted_video.video_id = "deleted67890"
         deleted_video.title = "Deleted Video"
         deleted_video.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
-        deleted_video.deleted_flag = True
+        deleted_video.availability_status = AvailabilityStatus.UNAVAILABLE
 
         mock_result = MagicMock()
         mock_scalars = MagicMock()
@@ -778,7 +779,7 @@ class TestPriorityLimitInteraction:
                 video_id=f"video{i:05d}",
                 title=f"[Placeholder] Video video{i:05d}",
                 channel_id="UCplaceholder01234567890",
-                deleted_flag=False,
+                availability_status=AvailabilityStatus.AVAILABLE,
             )
             for i in range(10)
         ]

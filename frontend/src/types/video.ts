@@ -56,6 +56,8 @@ export interface VideoListItem {
   category_name: string | null;
   /** Associated topics with hierarchy */
   topics: TopicSummary[];
+  /** Content availability status */
+  availability_status: string;
 }
 
 /**
@@ -96,6 +98,10 @@ export interface VideoDetail {
   made_for_kids: boolean;
   /** Transcript availability summary */
   transcript_summary: TranscriptSummary;
+  /** Content availability status */
+  availability_status: string;
+  /** Alternative URL for deleted/unavailable content */
+  alternative_url: string | null;
 }
 
 /**

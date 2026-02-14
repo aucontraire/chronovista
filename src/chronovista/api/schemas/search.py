@@ -25,6 +25,7 @@ class SearchResultSegment(BaseModel):
     context_after: Optional[str]  # Next segment text (up to 200 chars)
     match_count: int  # Number of query terms matched
     video_upload_date: datetime  # For client-side grouping
+    availability_status: str = "available"
 
 
 class SearchResponse(ApiResponse[List[SearchResultSegment]]):
@@ -44,6 +45,7 @@ class TitleSearchResult(BaseModel):
     title: str
     channel_title: Optional[str]
     upload_date: datetime
+    availability_status: str = "available"
 
 
 class TitleSearchResponse(BaseModel):
@@ -65,6 +67,7 @@ class DescriptionSearchResult(BaseModel):
     channel_title: Optional[str]
     upload_date: datetime
     snippet: str
+    availability_status: str = "available"
 
 
 class DescriptionSearchResponse(BaseModel):

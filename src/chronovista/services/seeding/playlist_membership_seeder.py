@@ -18,6 +18,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ...models.enums import AvailabilityStatus
 from ...models.playlist_membership import PlaylistMembershipCreate
 from ...models.takeout.takeout_data import TakeoutData, TakeoutPlaylist
 from ...models.video import VideoCreate
@@ -225,7 +226,7 @@ class PlaylistMembershipSeeder(BaseSeeder):
         """
         try:
             # Create placeholder video with channel_id=None
-            # NOTE: deleted_flag=False because we can't know if video is deleted
+            # NOTE: availability_status=AVAILABLE because we can't know if video is unavailable
             # just from playlist membership. Only API verification can determine this.
             # See docs/takeout-data-quality.md for full explanation.
             video_create = VideoCreate(
@@ -237,7 +238,7 @@ class PlaylistMembershipSeeder(BaseSeeder):
                 upload_date=datetime.now(timezone.utc),
                 duration=0,
                 made_for_kids=False,
-                deleted_flag=False,  # Only set True after API verification - see docs
+                availability_status=AvailabilityStatus.AVAILABLE,  # Only set to non-AVAILABLE after API verification - see docs
             )
 
             await self.video_repo.create(session, obj_in=video_create)

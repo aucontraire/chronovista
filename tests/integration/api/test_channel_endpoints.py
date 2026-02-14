@@ -111,7 +111,7 @@ async def sample_channel_with_videos(
                 duration=300 + (i * 60),
                 view_count=1000 * (i + 1),
                 made_for_kids=False,
-                deleted_flag=False,
+                availability_status="available",
             )
 
             # Check if video already exists

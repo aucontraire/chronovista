@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config.database import db_manager
 from ..db.models import Channel, TopicCategory, UserVideo, Video, VideoTopic
+from ..models.enums import AvailabilityStatus
 from ..models.topic_analytics import (
     TopicAnalyticsSummary,
     TopicDiscoveryAnalysis,
@@ -1968,7 +1969,7 @@ class TopicAnalyticsService:
                 .join(Video, VideoTopic.video_id == Video.video_id)
                 .where(
                     and_(
-                        Video.deleted_flag.is_(False),
+                        Video.availability_status == AvailabilityStatus.AVAILABLE,
                         Video.like_count.is_not(None),
                         Video.view_count.is_not(None),
                         Video.view_count > 0,  # Avoid division by zero
@@ -2076,7 +2077,7 @@ class TopicAnalyticsService:
                 .where(
                     and_(
                         VideoTopic.topic_id == topic_id,
-                        Video.deleted_flag.is_(False),
+                        Video.availability_status == AvailabilityStatus.AVAILABLE,
                         Video.like_count.is_not(None),
                         Video.view_count.is_not(None),
                         Video.view_count > 0,

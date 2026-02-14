@@ -34,7 +34,7 @@ from chronovista.models.channel import ChannelCreate
 from chronovista.models.channel_topic import ChannelTopicCreate
 from chronovista.models.video import VideoCreate
 from chronovista.models.video_topic import VideoTopicCreate
-from chronovista.models.enums import DownloadReason
+from chronovista.models.enums import AvailabilityStatus, DownloadReason
 from chronovista.models.video import VideoSearchFilters
 from chronovista.models.transcript_source import resolve_language_code
 from chronovista.models.video_transcript import VideoTranscriptCreate
@@ -145,7 +145,7 @@ async def process_watch_history_batch(
                         duration=0,  # We don't have duration from Takeout
                         made_for_kids=False,
                         self_declared_made_for_kids=False,
-                        deleted_flag=False,
+                        availability_status=AvailabilityStatus.AVAILABLE,
                     )
                     await video_repository.create_or_update(session, video_data)
                     results["videos_created"] += 1
@@ -1695,7 +1695,7 @@ async def _create_videos_with_channels(
                 like_count=statistics.like_count if statistics else None,
                 view_count=statistics.view_count if statistics else None,
                 comment_count=statistics.comment_count if statistics else None,
-                deleted_flag=False,
+                availability_status=AvailabilityStatus.AVAILABLE,
             )
 
             # Now save the video

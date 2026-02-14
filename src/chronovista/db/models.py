@@ -55,6 +55,18 @@ class Channel(Base):
     # Subscription status
     is_subscribed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    # Status tracking
+    availability_status: Mapped[str] = mapped_column(String(20), default="available")
+    recovered_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    recovery_source: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True, default=None
+    )
+    unavailability_first_detected: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+
     # Timestamps
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -169,7 +181,19 @@ class Video(Base):
     comment_count: Mapped[Optional[int]] = mapped_column(Integer)
 
     # Status tracking
-    deleted_flag: Mapped[bool] = mapped_column(Boolean, default=False)
+    availability_status: Mapped[str] = mapped_column(String(20), default="available")
+    alternative_url: Mapped[Optional[str]] = mapped_column(
+        String(500), nullable=True, default=None
+    )
+    recovered_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    recovery_source: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True, default=None
+    )
+    unavailability_first_detected: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
 
     # Timestamps
     created_at: Mapped[datetime.datetime] = mapped_column(

@@ -9,6 +9,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.26.0] - 2026-02-13
+
+### Added
+
+#### Feature 023: Deleted Content Visibility
+
+Replace the boolean `deleted_flag` on videos with a rich `availability_status` enum, add availability tracking to channels, and surface unavailable content with informational banners instead of hiding it.
+
+**Database Migration:**
+- New `availability_status` column on videos (VARCHAR(20), default `'available'`) replacing `deleted_flag`
+- New `availability_status` column on channels with recovery tracking columns
+- Three-step atomic migration: add columns → backfill from `deleted_flag` → drop `deleted_flag`
+- Fully reversible via `alembic downgrade`
+- Btree indexes on `videos.availability_status` and `channels.availability_status`
+- Playlist `deleted_flag` intentionally unchanged (R8 scope decision)
+
+**Availability Status Enum (7 values):**
+- `available`, `unavailable`, `private`, `deleted`, `terminated`, `copyright`, `tos_violation`
+
+**Multi-Cycle Unavailability Detection:**
+- Videos not found during `enrich run` get `pending_confirmation` on first cycle, confirmed `unavailable` on second
+- Channels not found during `enrich channels` follow the same two-cycle confirmation pattern
+- Automatic restoration when previously unavailable content reappears in API responses
+- Recovery metadata tracking: `recovered_at`, `recovery_source`
+
+**API Changes:**
+- Video and channel detail endpoints now return unavailable records with `availability_status` (instead of 404)
+- `include_unavailable` query parameter added to 14 list/search endpoints across 8 routers
+- `availability_status` field added to all video/channel list item and search result schemas
+- New `PATCH /api/v1/videos/{video_id}/alternative-url` endpoint for setting alternative URLs on unavailable videos
+
+**Frontend:**
+- `UnavailabilityBanner` component with status-specific messages, icons, and colors for 6 video + 6 channel statuses
+- `AvailabilityBadge` component for status indicators in list views
+- Alternative URL input form on unavailable video detail pages
+- "Include unavailable content" toggle on Videos page and Search page
+- Muted styling (opacity + strikethrough) for unavailable items in lists
+- WCAG 2.1 AA accessibility: `role="status"`, `aria-live="polite"`, keyboard-operable toggles, visible focus indicators
+
+### Fixed
+- Playlist video list 500 error: removed `.value` call on string `availability_status` from DB
+- Search results incorrectly showing all videos as "Unavailable": added missing `availability_status` field to search schemas and queries
+- Channel enrichment not detecting deleted channels: `get_channel_details` now returns empty list for batch lookups instead of raising exception that short-circuited per-channel detection
+
+### Technical
+- 4,447 passing backend tests
+- 1,300+ passing frontend tests
+- 273 `deleted_flag` references replaced across 44 files
+- mypy strict compliance (0 errors)
+- TypeScript strict mode (0 errors)
+
 ## [0.25.0] - 2026-02-12
 
 ### Added

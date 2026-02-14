@@ -32,6 +32,7 @@ from chronovista.api.schemas.topics import (
 from chronovista.api.schemas.videos import VideoListItem, VideoListResponse
 from chronovista.db.models import ChannelTopic, TopicCategory, Video, VideoTopic
 from chronovista.exceptions import NotFoundError
+from chronovista.models.enums import AvailabilityStatus
 
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -259,6 +260,10 @@ async def get_topic_videos(
         "(e.g., %2Fm%2F019_rr) for this endpoint.",
         examples=["gaming", "%2Fm%2F019_rr"],
     ),
+    include_unavailable: bool = Query(
+        False,
+        description="Include unavailable records in results",
+    ),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     session: AsyncSession = Depends(get_db),
@@ -306,12 +311,15 @@ async def get_topic_videos(
         select(Video)
         .join(VideoTopic, Video.video_id == VideoTopic.video_id)
         .where(VideoTopic.topic_id == topic_id)
-        .where(Video.deleted_flag.is_(False))
         .options(selectinload(Video.transcripts))
         .options(selectinload(Video.channel))
         .options(selectinload(Video.tags))
         .options(selectinload(Video.category))
     )
+
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        query = query.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
 
     # Get total count (before pagination)
     count_query = (
@@ -319,8 +327,10 @@ async def get_topic_videos(
         .select_from(Video)
         .join(VideoTopic, Video.video_id == VideoTopic.video_id)
         .where(VideoTopic.topic_id == topic_id)
-        .where(Video.deleted_flag.is_(False))
     )
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        count_query = count_query.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
     total_result = await session.execute(count_query)
     total = total_result.scalar() or 0
 
@@ -373,6 +383,7 @@ async def get_topic_videos(
                 category_id=category_id_val,
                 category_name=category_name,
                 topics=[],  # Not loading topics in this endpoint
+                availability_status=video.availability_status,
             )
         )
 

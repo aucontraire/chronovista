@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from chronovista.db.models import Channel
 from chronovista.db.models import Video as VideoDB
+from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.video import (
     VideoCreate,
     VideoSearchFilters,
@@ -117,7 +118,7 @@ class VideoRepository(
         """
         result = await session.execute(
             select(VideoDB)
-            .where(VideoDB.deleted_flag.is_(False))
+            .where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
             .order_by(VideoDB.upload_date.desc())
             .offset(skip)
             .limit(limit)
@@ -153,7 +154,7 @@ class VideoRepository(
         result = await session.execute(
             select(VideoDB)
             .where(
-                and_(VideoDB.channel_id == channel_id, VideoDB.deleted_flag.is_(False))
+                and_(VideoDB.channel_id == channel_id, VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
             )
             .order_by(VideoDB.upload_date.desc())
             .offset(skip)
@@ -188,7 +189,7 @@ class VideoRepository(
                         VideoDB.default_language == language_normalized,
                         VideoDB.default_audio_language == language_normalized,
                     ),
-                    VideoDB.deleted_flag.is_(False),
+                    VideoDB.availability_status == AvailabilityStatus.AVAILABLE,
                 )
             )
             .order_by(VideoDB.upload_date.desc())
@@ -218,7 +219,7 @@ class VideoRepository(
             .where(
                 and_(
                     VideoDB.available_languages.op("@>")([language.lower()]),
-                    VideoDB.deleted_flag.is_(False),
+                    VideoDB.availability_status == AvailabilityStatus.AVAILABLE,
                 )
             )
             .order_by(VideoDB.upload_date.desc())
@@ -251,7 +252,7 @@ class VideoRepository(
                         VideoDB.made_for_kids.is_(made_for_kids),
                         VideoDB.self_declared_made_for_kids.is_(made_for_kids),
                     ),
-                    VideoDB.deleted_flag.is_(False),
+                    VideoDB.availability_status == AvailabilityStatus.AVAILABLE,
                 )
             )
             .order_by(VideoDB.upload_date.desc())
@@ -287,7 +288,7 @@ class VideoRepository(
                 and_(
                     VideoDB.upload_date >= start_date,
                     VideoDB.upload_date <= end_date,
-                    VideoDB.deleted_flag.is_(False),
+                    VideoDB.availability_status == AvailabilityStatus.AVAILABLE,
                 )
             )
             .order_by(VideoDB.upload_date.desc())
@@ -367,7 +368,7 @@ class VideoRepository(
 
         # Exclude deleted videos by default
         if filters.exclude_deleted:
-            conditions.append(VideoDB.deleted_flag.is_(False))
+            conditions.append(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
 
         # Channel filters
         if filters.channel_ids:
@@ -502,7 +503,7 @@ class VideoRepository(
                 and_(
                     VideoDB.upload_date >= cutoff_date,
                     VideoDB.view_count.is_not(None),
-                    VideoDB.deleted_flag.is_(False),
+                    VideoDB.availability_status == AvailabilityStatus.AVAILABLE,
                 )
             )
             .order_by(VideoDB.view_count.desc())
@@ -512,7 +513,7 @@ class VideoRepository(
 
     async def find_deleted_videos(self, session: AsyncSession) -> List[VideoDB]:
         """
-        Find videos marked as deleted.
+        Find videos marked as unavailable (deleted, private, terminated, etc.).
 
         Parameters
         ----------
@@ -522,11 +523,11 @@ class VideoRepository(
         Returns
         -------
         List[VideoDB]
-            List of deleted videos
+            List of unavailable videos
         """
         result = await session.execute(
             select(VideoDB)
-            .where(VideoDB.deleted_flag.is_(True))
+            .where(VideoDB.availability_status != AvailabilityStatus.AVAILABLE)
             .order_by(VideoDB.created_at.desc())
         )
         return list(result.scalars().all())
@@ -567,7 +568,7 @@ class VideoRepository(
                 like_count=video_data.like_count,
                 view_count=video_data.view_count,
                 comment_count=video_data.comment_count,
-                deleted_flag=video_data.deleted_flag,
+                availability_status=video_data.availability_status,
             )
             return await self.update(session, db_obj=existing, obj_in=update_data)
         else:
@@ -599,7 +600,7 @@ class VideoRepository(
                 func.sum(VideoDB.comment_count).label("total_comments"),
                 func.avg(VideoDB.view_count).label("avg_views"),
                 func.avg(VideoDB.like_count).label("avg_likes"),
-                func.sum(func.case((VideoDB.deleted_flag.is_(True), 1), else_=0)).label(
+                func.sum(func.case((VideoDB.availability_status != AvailabilityStatus.AVAILABLE, 1), else_=0)).label(
                     "deleted_count"
                 ),
                 func.sum(
@@ -809,7 +810,7 @@ class VideoRepository(
             .where(
                 and_(
                     VideoDB.video_id.in_(qualified_video_ids),
-                    VideoDB.deleted_flag.is_(False),
+                    VideoDB.availability_status == AvailabilityStatus.AVAILABLE,
                 )
             )
             .order_by(VideoDB.upload_date.desc())
@@ -882,7 +883,7 @@ class VideoRepository(
             .where(
                 and_(
                     VideoDB.video_id.in_(video_ids_with_missing),
-                    VideoDB.deleted_flag.is_(False),
+                    VideoDB.availability_status == AvailabilityStatus.AVAILABLE,
                 )
             )
             .order_by(VideoDB.upload_date.desc())
@@ -1008,7 +1009,7 @@ class VideoRepository(
         query = select(VideoDB).where(VideoDB.category_id == category_id)
 
         if exclude_deleted:
-            query = query.where(VideoDB.deleted_flag.is_(False))
+            query = query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
 
         query = query.order_by(desc(VideoDB.view_count)).offset(skip)
 
@@ -1047,7 +1048,7 @@ class VideoRepository(
         )
 
         if exclude_deleted:
-            query = query.where(VideoDB.deleted_flag.is_(False))
+            query = query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
 
         result = await session.execute(query)
         return result.scalar() or 0

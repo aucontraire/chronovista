@@ -53,6 +53,18 @@ class PrivacyStatus(str, Enum):
     UNLISTED = "unlisted"
 
 
+class AvailabilityStatus(str, Enum):
+    """Content availability status."""
+
+    AVAILABLE = "available"
+    PRIVATE = "private"
+    DELETED = "deleted"
+    TERMINATED = "terminated"
+    COPYRIGHT = "copyright"
+    TOS_VIOLATION = "tos_violation"
+    UNAVAILABLE = "unavailable"
+
+
 class TopicType(str, Enum):
     """Topic classification types."""
 

@@ -4,7 +4,7 @@ Tests for deleted video detection in EnrichmentService (Phase 5, User Story 3).
 Covers T040a-c:
 - T040a: Unit tests for deleted video detection from 404
 - T040b: Unit tests for --include-deleted flag behavior
-- T040c: Unit test verifying local recovery doesn't set deleted_flag
+- T040c: Unit test verifying local recovery doesn't set availability_status to unavailable
 """
 
 from datetime import datetime, timezone
@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.api_responses import YouTubeVideoResponse
 from chronovista.models.enrichment_report import EnrichmentReport, EnrichmentSummary
 from chronovista.services.enrichment.enrichment_service import (
@@ -76,15 +77,15 @@ class TestDeletedVideoDetection:
             youtube_service=mock_youtube_service,
         )
 
-    async def test_video_not_returned_by_api_gets_deleted_flag_true(
+    async def test_video_not_returned_by_api_gets_availability_status_unavailable(
         self, service: EnrichmentService, mock_session: AsyncMock
     ) -> None:
-        """Test that video not returned by API gets deleted_flag=True."""
+        """Test that video not returned by API gets availability_status=unavailable."""
         # Create a mock video with placeholder title
         mock_video = MagicMock()
         mock_video.video_id = "dQw4w9WgXcQ"
         mock_video.title = "[Placeholder] Video dQw4w9WgXcQ"
-        mock_video.deleted_flag = False
+        mock_video.availability_status = AvailabilityStatus.AVAILABLE
 
         with patch.object(
             service, "_get_videos_for_enrichment", new_callable=AsyncMock
@@ -98,19 +99,19 @@ class TestDeletedVideoDetection:
             report = await service.enrich_videos(mock_session, check_prerequisites=False)
 
             # Verify the video was marked as deleted
-            assert mock_video.deleted_flag is True
+            assert mock_video.availability_status == AvailabilityStatus.UNAVAILABLE
             assert report.summary.videos_deleted == 1
             assert report.summary.videos_processed == 1
 
-    async def test_video_returned_by_api_keeps_deleted_flag_false(
+    async def test_video_returned_by_api_keeps_availability_status_available(
         self, service: EnrichmentService, mock_session: AsyncMock
     ) -> None:
-        """Test that video returned by API keeps deleted_flag=False."""
+        """Test that video returned by API keeps availability_status=AvailabilityStatus.AVAILABLE."""
         mock_video = MagicMock()
         mock_video.video_id = "dQw4w9WgXcQ"
         mock_video.title = "[Placeholder] Video dQw4w9WgXcQ"
         mock_video.channel_id = "UCplaceholder"
-        mock_video.deleted_flag = False
+        mock_video.availability_status = AvailabilityStatus.AVAILABLE
 
         api_response = make_video_response(
             "dQw4w9WgXcQ",
@@ -137,7 +138,7 @@ class TestDeletedVideoDetection:
             report = await service.enrich_videos(mock_session, check_prerequisites=False)
 
             # Verify the video was NOT marked as deleted
-            assert mock_video.deleted_flag is False
+            assert mock_video.availability_status == AvailabilityStatus.AVAILABLE
             assert report.summary.videos_deleted == 0
             assert report.summary.videos_updated == 1
 
@@ -150,13 +151,13 @@ class TestDeletedVideoDetection:
         mock_video_found.video_id = "foundVideo123"
         mock_video_found.title = "[Placeholder] Video foundVideo123"
         mock_video_found.channel_id = "UCplaceholder"
-        mock_video_found.deleted_flag = False
+        mock_video_found.availability_status = AvailabilityStatus.AVAILABLE
 
         mock_video_deleted = MagicMock()
         mock_video_deleted.video_id = "deletedVideo99"
         mock_video_deleted.title = "[Placeholder] Video deletedVideo99"
         mock_video_deleted.channel_id = "UCplaceholder"
-        mock_video_deleted.deleted_flag = False
+        mock_video_deleted.availability_status = AvailabilityStatus.AVAILABLE
 
         api_response = make_video_response(
             "foundVideo123",
@@ -191,22 +192,22 @@ class TestDeletedVideoDetection:
             report = await service.enrich_videos(mock_session, check_prerequisites=False)
 
             # Verify mixed results
-            assert mock_video_found.deleted_flag is False
-            assert mock_video_deleted.deleted_flag is True
+            assert mock_video_found.availability_status == AvailabilityStatus.AVAILABLE
+            assert mock_video_deleted.availability_status == AvailabilityStatus.UNAVAILABLE
             assert report.summary.videos_deleted == 1
             assert report.summary.videos_updated == 1
             assert report.summary.videos_processed == 2
 
-    async def test_previously_deleted_video_found_again_gets_deleted_flag_false(
+    async def test_previously_deleted_video_found_again_gets_availability_status_available(
         self, service: EnrichmentService, mock_session: AsyncMock
     ) -> None:
-        """Test that previously deleted video found again gets deleted_flag=False."""
+        """Test that previously deleted video found again gets availability_status=AvailabilityStatus.AVAILABLE."""
         # Video was previously marked as deleted, but is now available
         mock_video = MagicMock()
         mock_video.video_id = "recoveredVid1"
         mock_video.title = "[Placeholder] Video recoveredVid1"
         mock_video.channel_id = "UCplaceholder"
-        mock_video.deleted_flag = True  # Previously marked as deleted
+        mock_video.availability_status = AvailabilityStatus.UNAVAILABLE  # Previously marked as deleted
 
         api_response = make_video_response(
             "recoveredVid1",
@@ -232,9 +233,9 @@ class TestDeletedVideoDetection:
 
             report = await service.enrich_videos(mock_session, check_prerequisites=False)
 
-            # Note: The current implementation doesn't explicitly reset deleted_flag
+            # Note: The current implementation doesn't explicitly reset availability_status
             # when a video is found again, but it does update other fields.
-            # The video was updated, so it's no longer in a deleted state effectively.
+            # The video was updated, so it's no longer in an unavailable state effectively.
             assert report.summary.videos_updated == 1
             assert report.summary.videos_deleted == 0
 
@@ -245,7 +246,7 @@ class TestDeletedVideoDetection:
         mock_video = MagicMock()
         mock_video.video_id = "deletedVidXYZ"
         mock_video.title = "[Placeholder] Video deletedVidXYZ"
-        mock_video.deleted_flag = False
+        mock_video.availability_status = AvailabilityStatus.AVAILABLE
 
         with patch.object(
             service, "_get_videos_for_enrichment", new_callable=AsyncMock
@@ -337,7 +338,7 @@ class TestIncludeDeletedFlagBehavior:
         mock_video.video_id = "restoredVideo1"
         mock_video.title = "[Placeholder] Video restoredVideo1"
         mock_video.channel_id = "UCplaceholder"
-        mock_video.deleted_flag = True  # Was marked as deleted
+        mock_video.availability_status = AvailabilityStatus.UNAVAILABLE  # Was marked as deleted
 
         api_response = make_video_response(
             "restoredVideo1",
@@ -413,12 +414,12 @@ class TestGetVideosForEnrichmentDeletedFilter:
 
         # Verify execute was called
         mock_session.execute.assert_called_once()
-        # The query should have been constructed with deleted_flag == False filter
+        # The query should have been constructed with availability_status != unavailable filter
         call_args = mock_session.execute.call_args
         query = call_args[0][0]
         # Check that the query string contains the filter
         query_str = str(query)
-        assert "deleted_flag" in query_str
+        assert "availability_status" in query_str
 
     async def test_query_includes_deleted_when_include_deleted_true(
         self, service: EnrichmentService
@@ -465,15 +466,15 @@ class TestMarkVideoDeleted:
     async def test_mark_video_deleted_sets_flag(
         self, service: EnrichmentService
     ) -> None:
-        """Test that _mark_video_deleted sets deleted_flag=True."""
+        """Test that _mark_video_deleted sets availability_status=unavailable."""
         mock_session = AsyncMock()
         mock_video = MagicMock()
         mock_video.video_id = "testVideo123"
-        mock_video.deleted_flag = False
+        mock_video.availability_status = AvailabilityStatus.AVAILABLE
 
         await service._mark_video_deleted(mock_session, mock_video, dry_run=False)
 
-        assert mock_video.deleted_flag is True
+        assert mock_video.availability_status == AvailabilityStatus.UNAVAILABLE
 
     async def test_mark_video_deleted_dry_run_does_not_set_flag(
         self, service: EnrichmentService
@@ -482,11 +483,11 @@ class TestMarkVideoDeleted:
         mock_session = AsyncMock()
         mock_video = MagicMock()
         mock_video.video_id = "testVideo456"
-        mock_video.deleted_flag = False
+        mock_video.availability_status = AvailabilityStatus.AVAILABLE
 
         await service._mark_video_deleted(mock_session, mock_video, dry_run=True)
 
-        assert mock_video.deleted_flag is False
+        assert mock_video.availability_status == AvailabilityStatus.AVAILABLE
 
 
 @pytest.mark.asyncio
@@ -529,17 +530,17 @@ class TestMultipleDeletedVideosInBatch:
             MagicMock(
                 video_id="deleted001",
                 title="[Placeholder] Video deleted001",
-                deleted_flag=False,
+                availability_status=AvailabilityStatus.AVAILABLE,
             ),
             MagicMock(
                 video_id="deleted002",
                 title="[Placeholder] Video deleted002",
-                deleted_flag=False,
+                availability_status=AvailabilityStatus.AVAILABLE,
             ),
             MagicMock(
                 video_id="deleted003",
                 title="[Placeholder] Video deleted003",
-                deleted_flag=False,
+                availability_status=AvailabilityStatus.AVAILABLE,
             ),
         ]
 
@@ -558,7 +559,7 @@ class TestMultipleDeletedVideosInBatch:
             report = await service.enrich_videos(mock_session, check_prerequisites=False)
 
             # All should be marked as deleted
-            assert all(v.deleted_flag is True for v in mock_videos)
+            assert all(v.availability_status == AvailabilityStatus.UNAVAILABLE for v in mock_videos)
             assert report.summary.videos_deleted == 3
             assert report.summary.videos_updated == 0
             assert report.summary.videos_processed == 3
@@ -571,37 +572,43 @@ class TestMultipleDeletedVideosInBatch:
             MagicMock(
                 video_id="del_vid_A",
                 title="[Placeholder] Video del_vid_A",
-                deleted_flag=False,
+                availability_status=AvailabilityStatus.AVAILABLE,
             ),
             MagicMock(
                 video_id="del_vid_B",
                 title="[Placeholder] Video del_vid_B",
-                deleted_flag=False,
+                availability_status=AvailabilityStatus.AVAILABLE,
             ),
         ]
+
+        # Mock video_repository.get to return distinct mock objects per video ID
+        video_lookup = {v.video_id: v for v in mock_videos}
 
         with patch.object(
             service, "_get_videos_for_enrichment", new_callable=AsyncMock
         ) as mock_get, patch.object(
             service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([], {"del_vid_A", "del_vid_B"}))
+        ), patch.object(
+            service.video_repository, "get", new=AsyncMock(side_effect=lambda session, video_id: video_lookup.get(video_id))
         ):
             mock_get.return_value = mock_videos
 
             report = await service.enrich_videos(mock_session, check_prerequisites=False)
 
-            # Check details
+            # Check details — multi-cycle confirmation means first detection
+            # produces "deleted" (MagicMock.unavailability_first_detected is truthy)
             assert len(report.details) == 2
             for detail in report.details:
                 assert detail.status == "deleted"
                 assert detail.video_id in ["del_vid_A", "del_vid_B"]
 
 
-class TestLocalRecoveryDoesNotSetDeletedFlag:
+class TestLocalRecoveryDoesNotSetAvailabilityStatusUnavailable:
     """
-    Tests verifying local recovery does NOT set deleted_flag (T040c).
+    Tests verifying local recovery does NOT set availability_status to unavailable (T040c).
 
-    This is a critical invariant: only API enrichment should set deleted_flag=True.
-    Local recovery from Takeout data should always set deleted_flag=False because:
+    This is a critical invariant: only API enrichment should set availability_status=unavailable.
+    Local recovery from Takeout data should always set availability_status=available because:
     1. Missing channel info in Takeout doesn't mean the video is deleted
     2. Only the YouTube API can authoritatively verify video deletion
     3. Videos with incomplete Takeout data are candidates for API enrichment, not deletion
@@ -609,12 +616,12 @@ class TestLocalRecoveryDoesNotSetDeletedFlag:
     See: docs/takeout-data-quality.md
     """
 
-    def test_video_seeder_always_sets_deleted_flag_false(self) -> None:
+    def test_video_seeder_always_sets_availability_status_available(self) -> None:
         """
-        Test that VideoSeeder._transform_entry_to_video always sets deleted_flag=False.
+        Test that VideoSeeder._transform_entry_to_video always sets availability_status=available.
 
         This tests the implementation directly per docs/takeout-data-quality.md:
-        "deleted_flag should only be set True after YouTube API verification"
+        "availability_status should only be set to unavailable after YouTube API verification"
         """
         from chronovista.models.takeout.takeout_data import TakeoutWatchEntry
         from chronovista.services.seeding.video_seeder import VideoSeeder
@@ -663,13 +670,13 @@ class TestLocalRecoveryDoesNotSetDeletedFlag:
         for entry in test_cases:
             video_create = seeder._transform_entry_to_video(entry)
 
-            # CRITICAL: deleted_flag must ALWAYS be False from local recovery
-            assert video_create.deleted_flag is False, (
-                f"VideoSeeder should never set deleted_flag=True. "
+            # CRITICAL: availability_status must ALWAYS be available from local recovery
+            assert video_create.availability_status == AvailabilityStatus.AVAILABLE, (
+                f"VideoSeeder should never set availability_status=unavailable. "
                 f"Entry title: {entry.title}"
             )
 
-    def test_video_seeder_docstring_documents_deleted_flag_behavior(self) -> None:
+    def test_video_seeder_docstring_documents_availability_status_behavior(self) -> None:
         """
         Test that VideoSeeder._transform_entry_to_video docstring documents the behavior.
 
@@ -679,20 +686,20 @@ class TestLocalRecoveryDoesNotSetDeletedFlag:
 
         docstring = VideoSeeder._transform_entry_to_video.__doc__ or ""
 
-        # Verify the docstring mentions deleted_flag behavior
-        assert "deleted_flag" in docstring.lower(), (
-            "_transform_entry_to_video should document deleted_flag behavior"
+        # Verify the docstring mentions availability_status behavior
+        assert "availability_status" in docstring.lower() or "availability" in docstring.lower(), (
+            "_transform_entry_to_video should document availability_status behavior"
         )
         assert "api" in docstring.lower(), (
             "_transform_entry_to_video should mention API verification requirement"
         )
 
-    def test_playlist_membership_seeder_sets_deleted_flag_false(self) -> None:
+    def test_playlist_membership_seeder_sets_availability_status_available(self) -> None:
         """
-        Test that PlaylistMembershipSeeder also sets deleted_flag=False for new videos.
+        Test that PlaylistMembershipSeeder also sets availability_status=available for new videos.
 
         When creating placeholder videos for playlist items not in watch history,
-        deleted_flag must still be False.
+        availability_status must be available.
         """
         from chronovista.services.seeding.playlist_membership_seeder import (
             PlaylistMembershipSeeder,
@@ -700,29 +707,29 @@ class TestLocalRecoveryDoesNotSetDeletedFlag:
         from chronovista.repositories.video_repository import VideoRepository
         from chronovista.repositories.playlist_repository import PlaylistRepository
 
-        # The seeder creates VideoCreate with deleted_flag=False
+        # The seeder creates VideoCreate with availability_status=AvailabilityStatus.AVAILABLE
         # We verify this by checking the source code documentation
         import inspect
         source = inspect.getsource(PlaylistMembershipSeeder)
 
-        # Verify the code explicitly sets deleted_flag=False
-        assert "deleted_flag=False" in source, (
-            "PlaylistMembershipSeeder should explicitly set deleted_flag=False"
+        # Verify the code explicitly sets availability_status=AvailabilityStatus.AVAILABLE
+        assert "availability_status=AvailabilityStatus.AVAILABLE" in source, (
+            "PlaylistMembershipSeeder should explicitly set availability_status=AvailabilityStatus.AVAILABLE"
         )
         # Verify there's a comment explaining why
-        assert "API verification" in source or "Only set True after API" in source, (
-            "PlaylistMembershipSeeder should document why deleted_flag is False"
+        assert "API verification" in source or "Only set" in source, (
+            "PlaylistMembershipSeeder should document why availability_status is set this way"
         )
 
-    def test_takeout_data_flow_never_sets_deleted_flag_true(self) -> None:
+    def test_takeout_data_flow_never_sets_availability_status_unavailable(self) -> None:
         """
-        Integration test: verify the entire Takeout data flow preserves deleted_flag=False.
+        Integration test: verify the entire Takeout data flow preserves availability_status=available.
 
         This tests the complete path from TakeoutWatchEntry to VideoCreate.
         """
         from chronovista.models.video import VideoCreate
 
-        # All VideoCreate instances from local Takeout should have deleted_flag=False
+        # All VideoCreate instances from local Takeout should have availability_status=AvailabilityStatus.AVAILABLE
         # We test by creating VideoCreate directly with typical values
 
         # Case 1: Complete video data (valid 11-char video ID, 24-char channel ID)
@@ -733,9 +740,9 @@ class TestLocalRecoveryDoesNotSetDeletedFlag:
             description="",
             upload_date=datetime.now(timezone.utc),
             duration=0,
-            deleted_flag=False,  # This is what Takeout recovery uses
+            availability_status=AvailabilityStatus.AVAILABLE,  # This is what Takeout recovery uses
         )
-        assert video_complete.deleted_flag is False
+        assert video_complete.availability_status == AvailabilityStatus.AVAILABLE
 
         # Case 2: Placeholder video (missing metadata)
         video_placeholder = VideoCreate(
@@ -745,13 +752,13 @@ class TestLocalRecoveryDoesNotSetDeletedFlag:
             description="",
             upload_date=datetime.now(timezone.utc),
             duration=0,
-            deleted_flag=False,  # Still False even for placeholders
+            availability_status=AvailabilityStatus.AVAILABLE,  # Still False even for placeholders
         )
-        assert video_placeholder.deleted_flag is False
+        assert video_placeholder.availability_status == AvailabilityStatus.AVAILABLE
 
-    def test_only_api_enrichment_sets_deleted_flag_true(self) -> None:
+    def test_only_api_enrichment_sets_availability_status_unavailable(self) -> None:
         """
-        Meta-test: verify deleted_flag=True is only set in enrichment_service.py.
+        Meta-test: verify availability_status=unavailable is only set in enrichment_service.py.
 
         This is a code analysis test that ensures our invariant is maintained.
         """
@@ -761,7 +768,7 @@ class TestLocalRecoveryDoesNotSetDeletedFlag:
         # Get the project source directory
         src_dir = Path(__file__).parent.parent.parent.parent.parent / "src"
 
-        # Files that should NEVER set deleted_flag=True
+        # Files that should NEVER set availability_status to unavailable statuses
         prohibited_files = [
             "video_seeder.py",
             "playlist_membership_seeder.py",
@@ -770,16 +777,16 @@ class TestLocalRecoveryDoesNotSetDeletedFlag:
             "takeout_recovery_service.py",
         ]
 
-        # Pattern that would set deleted_flag to True
-        set_true_pattern = re.compile(r"deleted_flag\s*=\s*True")
+        # Pattern that would set availability_status to UNAVAILABLE
+        set_unavailable_pattern = re.compile(r"availability_status\s*=\s*AvailabilityStatus\.UNAVAILABLE")
 
         # Use rglob to find all Python files matching prohibited names
         for file_path in src_dir.rglob("*.py"):
             if file_path.name in prohibited_files:
                 content = file_path.read_text()
 
-                matches = set_true_pattern.findall(content)
+                matches = set_unavailable_pattern.findall(content)
                 assert len(matches) == 0, (
-                    f"File {file_path.name} should not set deleted_flag=True. "
+                    f"File {file_path.name} should not set availability_status=UNAVAILABLE. "
                     f"Only enrichment_service.py should do this after API verification."
                 )

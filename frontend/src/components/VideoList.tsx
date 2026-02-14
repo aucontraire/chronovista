@@ -104,13 +104,15 @@ interface VideoListProps {
   category?: string | null;
   /** Filter by topic IDs (OR logic) */
   topicIds?: string[];
+  /** Include unavailable content (T031, FR-021) */
+  includeUnavailable?: boolean;
 }
 
 /**
  * VideoList displays videos with loading, error, and empty states.
  * Includes infinite scroll with Intersection Observer and fallback Load More button.
  */
-export function VideoList({ tags = [], category = null, topicIds = [] }: VideoListProps = {}) {
+export function VideoList({ tags = [], category = null, topicIds = [], includeUnavailable = false }: VideoListProps = {}) {
   const {
     videos,
     total,
@@ -123,7 +125,7 @@ export function VideoList({ tags = [], category = null, topicIds = [] }: VideoLi
     fetchNextPage,
     retry,
     loadMoreRef,
-  } = useVideos({ tags, category, topicIds });
+  } = useVideos({ tags, category, topicIds, includeUnavailable });
 
   // Initial loading state
   if (isLoading) {

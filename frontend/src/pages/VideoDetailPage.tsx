@@ -12,18 +12,22 @@
  *   - When video API fails, TranscriptPanel is NOT rendered
  *   - Unified error message with Retry and Back to Videos options
  *   - Consistent error styling using CONTRAST_SAFE_COLORS
+ * - Alternative URL form for unavailable videos (T028, FR-015)
  */
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { ClassificationSection } from "../components/ClassificationSection";
 import { LoadingState } from "../components/LoadingState";
 import { TranscriptPanel } from "../components/transcript";
+import { UnavailabilityBanner } from "../components/UnavailabilityBanner";
 import { useDeepLinkParams } from "../hooks/useDeepLinkParams";
 import { useVideoDetail } from "../hooks/useVideoDetail";
 import { useVideoPlaylists } from "../hooks/useVideoPlaylists";
 import { CONTRAST_SAFE_COLORS } from "../styles/tokens";
+import { apiFetch } from "../api/config";
 
 /** Default page title when no video is loaded */
 const DEFAULT_PAGE_TITLE = "Chronovista";
@@ -211,6 +215,248 @@ function RefreshIcon({ className }: { className?: string }) {
 }
 
 /**
+ * Check/checkmark icon for success state.
+ */
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M4.5 12.75l6 6 9-13.5"
+      />
+    </svg>
+  );
+}
+
+/**
+ * X/close icon for clear button.
+ */
+function XMarkIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M6 18L18 6M6 6l12 12"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Props for AlternativeUrlForm component.
+ */
+interface AlternativeUrlFormProps {
+  videoId: string;
+  currentUrl: string | null;
+}
+
+/**
+ * AlternativeUrlForm component for setting/updating alternative URLs.
+ *
+ * Implements:
+ * - T028: Alternative URL input form
+ * - FR-015: Set/update/clear alternative URL for unavailable videos
+ *
+ * Features:
+ * - Client-side URL validation (HTTP/HTTPS, max 500 chars)
+ * - Inline error display
+ * - Success feedback
+ * - Clear button when URL exists
+ * - TanStack Query mutation with cache invalidation
+ */
+function AlternativeUrlForm({ videoId, currentUrl }: AlternativeUrlFormProps) {
+  const [inputValue, setInputValue] = useState(currentUrl ?? "");
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const queryClient = useQueryClient();
+
+  // Mutation for updating alternative URL
+  const updateMutation = useMutation({
+    mutationFn: async (url: string | null) => {
+      await apiFetch(`/videos/${videoId}/alternative-url`, {
+        method: "PATCH",
+        body: JSON.stringify({ alternative_url: url }),
+      });
+    },
+    onSuccess: () => {
+      // Invalidate video detail query to refresh the banner
+      void queryClient.invalidateQueries({ queryKey: ["video", videoId] });
+
+      // Show success message
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+    },
+    onError: (error: unknown) => {
+      // Handle API errors
+      if (typeof error === "object" && error !== null && "message" in error) {
+        setValidationError((error as { message: string }).message);
+      } else {
+        setValidationError("Failed to update alternative URL.");
+      }
+    },
+  });
+
+  // Validate URL format and length
+  const validateUrl = (url: string): string | null => {
+    if (!url.trim()) {
+      return null; // Empty is valid (will be treated as clear)
+    }
+
+    if (url.length > 500) {
+      return "URL must be 500 characters or less.";
+    }
+
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return "URL must start with http:// or https://.";
+      }
+    } catch {
+      return "Please enter a valid URL.";
+    }
+
+    return null;
+  };
+
+  // Handle input change
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInputValue(value);
+    setValidationError(null);
+    setShowSuccess(false);
+  };
+
+  // Handle form submission
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const trimmedValue = inputValue.trim();
+    const error = validateUrl(trimmedValue);
+
+    if (error) {
+      setValidationError(error);
+      return;
+    }
+
+    // Empty string means clear the URL
+    const urlToSubmit = trimmedValue === "" ? null : trimmedValue;
+    updateMutation.mutate(urlToSubmit);
+  };
+
+  // Handle clear button
+  const handleClear = () => {
+    setInputValue("");
+    setValidationError(null);
+    setShowSuccess(false);
+    updateMutation.mutate(null);
+  };
+
+  const hasCurrentUrl = currentUrl !== null && currentUrl !== "";
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+      <h3 className="text-lg font-semibold text-slate-900 mb-3">
+        Set Alternative URL
+      </h3>
+      <p className="text-sm text-slate-600 mb-4">
+        If this content is available on another platform (e.g., Vimeo, personal website),
+        you can save the URL here for future reference.
+      </p>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label htmlFor="alternative-url-input" className="sr-only">
+            Set Alternative URL
+          </label>
+          <input
+            id="alternative-url-input"
+            type="text"
+            value={inputValue}
+            onChange={handleInputChange}
+            placeholder="https://example.com/alternative-video"
+            aria-describedby="alternative-url-hint"
+            aria-invalid={validationError !== null}
+            disabled={updateMutation.isPending}
+            className={`
+              w-full px-4 py-2.5
+              text-base
+              border rounded-lg
+              bg-white
+              text-slate-900
+              placeholder-slate-400
+              focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+              disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed
+              ${validationError ? "border-red-500" : "border-slate-300"}
+            `}
+          />
+
+          {/* Validation error */}
+          {validationError && (
+            <p
+              id="alternative-url-hint"
+              className="mt-2 text-sm text-red-600"
+              role="alert"
+            >
+              {validationError}
+            </p>
+          )}
+
+          {/* Success message */}
+          {showSuccess && !validationError && (
+            <p className="mt-2 text-sm text-green-600 flex items-center gap-2">
+              <CheckIcon className="w-4 h-4" />
+              Alternative URL {inputValue.trim() === "" ? "cleared" : "saved"} successfully.
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Save/Update button */}
+          <button
+            type="submit"
+            disabled={updateMutation.isPending}
+            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
+          >
+            {updateMutation.isPending ? "Saving..." : hasCurrentUrl ? "Update URL" : "Save URL"}
+          </button>
+
+          {/* Clear button (only show when there's a current URL) */}
+          {hasCurrentUrl && !updateMutation.isPending && (
+            <button
+              type="button"
+              onClick={handleClear}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 transition-colors"
+            >
+              <XMarkIcon className="w-4 h-4" />
+              Clear URL
+            </button>
+          )}
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/**
  * VideoDetailPage displays comprehensive video metadata.
  *
  * Route: /videos/:videoId
@@ -352,6 +598,8 @@ export function VideoDetailPage() {
     category_id,
     category_name,
     topics = [],
+    availability_status,
+    alternative_url,
   } = video;
 
   const youtubeUrl = `https://www.youtube.com/watch?v=${video_id}`;
@@ -381,6 +629,18 @@ export function VideoDetailPage() {
           <span className="sr-only">(opens in new tab)</span>
         </a>
       </div>
+
+      {/* Unavailability Banner (FR-012, FR-020) */}
+      <UnavailabilityBanner
+        availabilityStatus={availability_status}
+        entityType="video"
+        alternativeUrl={alternative_url}
+      />
+
+      {/* Alternative URL Form (T028, FR-015) - only for unavailable videos */}
+      {availability_status !== "available" && (
+        <AlternativeUrlForm videoId={video_id} currentUrl={alternative_url} />
+      )}
 
       {/* Video Content Card */}
       <article className="bg-white rounded-xl shadow-md border border-gray-100 p-6 lg:p-8">

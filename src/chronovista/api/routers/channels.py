@@ -37,6 +37,7 @@ from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoCategory, VideoTag, VideoTopic, TopicCategory
 from chronovista.db.models import VideoTranscript
 from chronovista.exceptions import NotFoundError
+from chronovista.models.enums import AvailabilityStatus
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -75,6 +76,10 @@ async def list_channels(
     has_videos: Optional[bool] = Query(
         default=None, description="Filter to channels with/without videos"
     ),
+    include_unavailable: bool = Query(
+        False,
+        description="Include unavailable records in results",
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> ChannelListResponse:
     """
@@ -93,6 +98,9 @@ async def list_channels(
         If True, return only channels with videos.
         If False, return only channels without videos.
         If None, return all channels.
+    include_unavailable : bool
+        If True, include unavailable channels in results.
+        If False (default), only return available channels.
     db : AsyncSession
         Database session from dependency.
 
@@ -103,6 +111,10 @@ async def list_channels(
     """
     # Build base query
     query = select(ChannelDB)
+
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        query = query.where(ChannelDB.availability_status == AvailabilityStatus.AVAILABLE)
 
     # Apply has_videos filter
     if has_videos is True:
@@ -140,6 +152,7 @@ async def list_channels(
                 video_count=channel.video_count,
                 thumbnail_url=channel.thumbnail_url,
                 custom_url=None,  # Not yet persisted in DB
+                availability_status=channel.availability_status,
             )
         )
 
@@ -211,6 +224,7 @@ async def get_channel(
         default_language=channel.default_language,
         country=channel.country,
         is_subscribed=channel.is_subscribed,
+        availability_status=channel.availability_status,
         created_at=channel.created_at,
         updated_at=channel.updated_at,
     )
@@ -228,6 +242,10 @@ async def get_channel_videos(
     ),
     limit: int = Query(default=20, ge=1, le=100, description="Items per page"),
     offset: int = Query(default=0, ge=0, description="Number of items to skip"),
+    include_unavailable: bool = Query(
+        False,
+        description="Include unavailable records in results",
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> VideoListResponse:
     """
@@ -272,13 +290,16 @@ async def get_channel_videos(
     query = (
         select(VideoDB)
         .where(VideoDB.channel_id == channel_id)
-        .where(VideoDB.deleted_flag.is_(False))
         .options(selectinload(VideoDB.transcripts))
         .options(selectinload(VideoDB.channel))
         .options(selectinload(VideoDB.category))
         .options(selectinload(VideoDB.tags))
         .options(selectinload(VideoDB.video_topics).selectinload(VideoTopic.topic_category))
     )
+
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        query = query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
 
     # Count total before pagination
     count_query = select(func.count()).select_from(query.subquery())
@@ -324,6 +345,7 @@ async def get_channel_videos(
                 category_name=category_name,
                 tags=tags,
                 topics=topics,
+                availability_status=video.availability_status,
             )
         )
 

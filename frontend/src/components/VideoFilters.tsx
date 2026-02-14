@@ -136,6 +136,9 @@ export function VideoFilters({
   const rawTopicIds = searchParams.getAll('topic_id');
   const topicIds = rawTopicIds.filter((id) => id && id.trim().length > 0);
 
+  // T031: Read include_unavailable state from URL (FR-021)
+  const includeUnavailable = searchParams.get('include_unavailable') === 'true';
+
   // Fetch categories and topics for display names
   const { categories } = useCategories();
   const { topics } = useTopics();
@@ -245,13 +248,26 @@ export function VideoFilters({
   };
 
   /**
+   * Toggles the include_unavailable parameter.
+   */
+  const handleToggleIncludeUnavailable = () => {
+    const newParams = new URLSearchParams(searchParams);
+    if (includeUnavailable) {
+      newParams.delete('include_unavailable');
+    } else {
+      newParams.set('include_unavailable', 'true');
+    }
+    setSearchParams(newParams);
+  };
+
+  /**
    * Clears all filters from URL parameters.
    */
   const handleClearAll = () => {
     const newParams = new URLSearchParams();
     // Preserve non-filter parameters if any
     searchParams.forEach((value, key) => {
-      if (!['tag', 'category', 'topic_id'].includes(key)) {
+      if (!['tag', 'category', 'topic_id', 'include_unavailable'].includes(key)) {
         newParams.append(key, value);
       }
     });
@@ -346,6 +362,22 @@ export function VideoFilters({
             maxTopics={FILTER_LIMITS.MAX_TOPICS}
           />
         </div>
+      </div>
+
+      {/* T031: Include Unavailable Content Toggle (FR-021, NFR-003) */}
+      <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
+        <label className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors">
+          <input
+            type="checkbox"
+            checked={includeUnavailable}
+            onChange={handleToggleIncludeUnavailable}
+            className="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            aria-label="Include unavailable content"
+          />
+          <span className="text-sm text-gray-700 dark:text-gray-300">
+            Show unavailable content
+          </span>
+        </label>
       </div>
 
       {/* Offline Indicator (T084) */}

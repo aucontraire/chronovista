@@ -29,6 +29,7 @@ from chronovista.api.schemas.topics import TopicSummary
 from chronovista.api.schemas.videos import VideoListItem, VideoListResponse, TranscriptSummary
 from chronovista.db.models import Video, VideoCategory, VideoTag, VideoTopic, TopicCategory
 from chronovista.exceptions import NotFoundError
+from chronovista.models.enums import AvailabilityStatus
 
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -37,6 +38,10 @@ router = APIRouter(dependencies=[Depends(require_auth)])
 @router.get("/categories", response_model=CategoryListResponse, responses=LIST_ERRORS)
 async def list_categories(
     session: AsyncSession = Depends(get_db),
+    include_unavailable: bool = Query(
+        False,
+        description="Include unavailable records in results",
+    ),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
 ) -> CategoryListResponse:
@@ -60,11 +65,15 @@ async def list_categories(
     CategoryListResponse
         Paginated list of categories with metadata.
     """
-    # Subquery for video count (excluding deleted videos)
+    # Subquery for video count
+    video_count_conditions = [Video.category_id == VideoCategory.category_id]
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        video_count_conditions.append(Video.availability_status == AvailabilityStatus.AVAILABLE)
+
     video_count_subq = (
         select(func.count(Video.video_id))
-        .where(Video.category_id == VideoCategory.category_id)
-        .where(Video.deleted_flag.is_(False))
+        .where(*video_count_conditions)
         .correlate(VideoCategory)
         .scalar_subquery()
     )
@@ -125,6 +134,10 @@ async def get_category_videos(
         description="YouTube category ID",
         examples=["10", "22"],
     ),
+    include_unavailable: bool = Query(
+        False,
+        description="Include unavailable records in results",
+    ),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     session: AsyncSession = Depends(get_db),
@@ -167,11 +180,10 @@ async def get_category_videos(
             hint="Verify the category ID or check available categories.",
         )
 
-    # Build query for videos in this category (excluding deleted)
+    # Build query for videos in this category
     query = (
         select(Video)
         .where(Video.category_id == category_id)
-        .where(Video.deleted_flag.is_(False))
         .options(selectinload(Video.transcripts))
         .options(selectinload(Video.channel))
         .options(selectinload(Video.category))
@@ -179,12 +191,18 @@ async def get_category_videos(
         .options(selectinload(Video.video_topics).selectinload(VideoTopic.topic_category))
     )
 
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        query = query.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
+
     # Get total count (before pagination)
     count_query = (
         select(func.count(Video.video_id))
         .where(Video.category_id == category_id)
-        .where(Video.deleted_flag.is_(False))
     )
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        count_query = count_query.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
     total_result = await session.execute(count_query)
     total = total_result.scalar() or 0
 
@@ -240,6 +258,7 @@ async def get_category_videos(
                 category_name=category_name,
                 tags=tags,
                 topics=topics,
+                availability_status=video.availability_status,
             )
         )
 
@@ -260,6 +279,10 @@ async def get_category(
         ...,
         description="YouTube category ID",
         examples=["10", "22"],
+    ),
+    include_unavailable: bool = Query(
+        False,
+        description="Include unavailable records in results",
     ),
     session: AsyncSession = Depends(get_db),
 ) -> CategoryDetailResponse:
@@ -286,11 +309,15 @@ async def get_category(
     NotFoundError
         404 if category not found.
     """
-    # Subquery for video count (excluding deleted videos)
+    # Subquery for video count
+    video_count_conditions = [Video.category_id == VideoCategory.category_id]
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        video_count_conditions.append(Video.availability_status == AvailabilityStatus.AVAILABLE)
+
     video_count_subq = (
         select(func.count(Video.video_id))
-        .where(Video.category_id == VideoCategory.category_id)
-        .where(Video.deleted_flag.is_(False))
+        .where(*video_count_conditions)
         .correlate(VideoCategory)
         .scalar_subquery()
     )

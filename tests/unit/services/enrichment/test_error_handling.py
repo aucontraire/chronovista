@@ -31,6 +31,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, call, patch
 import pytest
 from googleapiclient.errors import HttpError
 
+from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.api_responses import YouTubeVideoResponse
 from chronovista.models.enrichment_report import (
     EnrichmentDetail,
@@ -173,7 +174,7 @@ class TestQuotaExceededHandling:
         mock_video.video_id = VALID_VIDEO_ID
         mock_video.title = "[Placeholder] Video test"
         mock_video.channel_id = "UC_test_channel"
-        mock_video.deleted_flag = False
+        mock_video.availability_status = AvailabilityStatus.AVAILABLE
 
         # Mock getting videos
         with patch.object(
@@ -235,7 +236,7 @@ class TestQuotaExceededHandling:
                 video_id=f"vid{i}",
                 title=f"[Placeholder] Video {i}",
                 channel_id=f"UC_channel_{i}",
-                deleted_flag=False,
+                availability_status=AvailabilityStatus.AVAILABLE,
             )
             for i in range(3)
         ]
@@ -586,7 +587,7 @@ class TestSIGINTGracefulShutdown:
                 video_id=f"vid{i}",
                 title=f"Video {i}",
                 channel_id=f"channel{i}",
-                deleted_flag=False,
+                availability_status=AvailabilityStatus.AVAILABLE,
             )
             for i in range(5)
         ]
@@ -624,13 +625,13 @@ class TestPartialAPIResponseHandling:
                 video_id="vid_found",
                 title="[Placeholder] Video Found",
                 channel_id="UC_channel",
-                deleted_flag=False,
+                availability_status=AvailabilityStatus.AVAILABLE,
             ),
             MagicMock(
                 video_id="vid_notfound",
                 title="[Placeholder] Video Not Found",
                 channel_id="UC_channel",
-                deleted_flag=False,
+                availability_status=AvailabilityStatus.AVAILABLE,
             ),
         ]
 
@@ -687,7 +688,7 @@ class TestPartialAPIResponseHandling:
         mock_video.video_id = VALID_VIDEO_ID
         mock_video.title = "[Placeholder] Video"
         mock_video.channel_id = None
-        mock_video.deleted_flag = False
+        mock_video.availability_status = AvailabilityStatus.AVAILABLE
 
         with patch.object(
             enrichment_service,
@@ -737,7 +738,7 @@ class TestPartialAPIResponseHandling:
         mock_video.video_id = VALID_VIDEO_ID
         mock_video.title = "[Placeholder] Video"
         mock_video.channel_id = "UC_channel"
-        mock_video.deleted_flag = False
+        mock_video.availability_status = AvailabilityStatus.AVAILABLE
 
         with patch.object(
             enrichment_service,
@@ -755,7 +756,7 @@ class TestPartialAPIResponseHandling:
 
                 # Video should be marked as deleted
                 assert report.summary.videos_deleted == 1
-                assert mock_video.deleted_flag is True
+                assert mock_video.availability_status == AvailabilityStatus.UNAVAILABLE
 
     async def test_mixed_response_no_errors(
         self, mock_session: AsyncMock, enrichment_service: EnrichmentService
@@ -766,7 +767,7 @@ class TestPartialAPIResponseHandling:
                 video_id=f"vid{i}",
                 title=f"[Placeholder] Video {i}",
                 channel_id="UC_channel",
-                deleted_flag=False,
+                availability_status=AvailabilityStatus.AVAILABLE,
             )
             for i in range(5)
         ]
@@ -822,7 +823,7 @@ class TestPartialAPIResponseHandling:
                 video_id=f"vid{i}",
                 title=f"[Placeholder] Video {i}",
                 channel_id="UC_channel",
-                deleted_flag=False,
+                availability_status=AvailabilityStatus.AVAILABLE,
             )
             for i in range(10)
         ]
@@ -1292,7 +1293,7 @@ class TestRecoveryAfterTransientErrors:
                 video_id=f"vid{i}",
                 title=f"Video {i}",
                 channel_id="UC_channel",
-                deleted_flag=False,
+                availability_status=AvailabilityStatus.AVAILABLE,
             )
             for i in range(3)
         ]
@@ -1325,7 +1326,7 @@ class TestRecoveryAfterTransientErrors:
                 video_id=f"vid{i}",
                 title=f"Video {i}",
                 channel_id="UC_channel",
-                deleted_flag=False,
+                availability_status=AvailabilityStatus.AVAILABLE,
             )
             for i in range(60)  # More than one batch
         ]
@@ -1395,7 +1396,7 @@ class TestDryRunErrorHandling:
                 video_id=f"vid{i}",
                 title=f"[Placeholder] Video {i}",
                 channel_id="UC_channel",
-                deleted_flag=False,
+                availability_status=AvailabilityStatus.AVAILABLE,
             )
             for i in range(5)
         ]

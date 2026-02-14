@@ -417,7 +417,7 @@ class TestVideoSearchAndFiltering:
                 # For now, use a simple query since search_videos method may not exist
                 result = await session.execute(
                     select(DBVideo).where(
-                        DBVideo.channel_id == channel_id, DBVideo.deleted_flag == False
+                        DBVideo.channel_id == channel_id, DBVideo.availability_status == "available"
                     )
                 )
                 filtered_videos = result.scalars().all()
@@ -426,7 +426,7 @@ class TestVideoSearchAndFiltering:
                 assert len(filtered_videos) >= 0  # May be 0 if no videos match filter
                 for video in filtered_videos:
                     assert video.channel_id == channel_id
-                    assert video.deleted_flag is False
+                    assert video.availability_status == "available"
 
                 # Test duration-based filtering
                 duration_result = await session.execute(
@@ -554,7 +554,7 @@ class TestVideoStatisticsAggregation:
                         total_likes / total_videos if total_videos > 0 else 0
                     ),
                     deleted_video_count=sum(
-                        1 for video in channel_videos if video.deleted_flag
+                        1 for video in channel_videos if video.availability_status != "available"
                     ),
                     kids_friendly_count=sum(
                         1 for video in channel_videos if video.made_for_kids

@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import Video as VideoDB
-from chronovista.models.enums import LanguageCode
+from chronovista.models.enums import AvailabilityStatus, LanguageCode
 from chronovista.models.video import VideoCreate, VideoStatistics
 from chronovista.repositories.video_repository import VideoRepository
 from tests.factories.video_factory import create_video_search_filters
@@ -49,7 +49,7 @@ class TestVideoRepository:
             like_count=1000000,
             view_count=50000000,
             comment_count=250000,
-            deleted_flag=False,
+            availability_status="available",
         )
 
     @pytest.fixture
@@ -989,7 +989,7 @@ class TestVideoRepositoryAdvancedCoverage:
             like_count=1000,
             view_count=50000,
             comment_count=250,
-            deleted_flag=False,
+            availability_status="available",
         )
 
     @pytest.mark.asyncio
@@ -1463,7 +1463,7 @@ class TestVideoRepositoryCategoryMethods:
                 view_count=10000 * (5 - i),  # Higher views for earlier videos
                 like_count=1000 * (5 - i),
                 comment_count=100 * (5 - i),
-                deleted_flag=False,
+                availability_status="available",
             )
             videos.append(video)
         return videos
@@ -1543,10 +1543,10 @@ class TestVideoRepositoryCategoryMethods:
     ):
         """Test finding videos by category ID excludes deleted videos by default."""
         # Mark some videos as deleted
-        sample_videos[1].deleted_flag = True
-        sample_videos[3].deleted_flag = True
+        sample_videos[1].availability_status = "unavailable"
+        sample_videos[3].availability_status = "unavailable"
 
-        non_deleted_videos = [v for v in sample_videos if not v.deleted_flag]
+        non_deleted_videos = [v for v in sample_videos if v.availability_status == "available"]
 
         mock_result = MagicMock()
         mock_scalars = MagicMock()
@@ -1559,7 +1559,7 @@ class TestVideoRepositoryCategoryMethods:
         )
 
         assert len(result) == 3
-        assert all(not v.deleted_flag for v in result)
+        assert all(v.availability_status == "available" for v in result)
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio
@@ -1568,8 +1568,8 @@ class TestVideoRepositoryCategoryMethods:
     ):
         """Test finding videos by category ID includes deleted videos when specified."""
         # Mark some videos as deleted
-        sample_videos[1].deleted_flag = True
-        sample_videos[3].deleted_flag = True
+        sample_videos[1].availability_status = "unavailable"
+        sample_videos[3].availability_status = "unavailable"
 
         mock_result = MagicMock()
         mock_scalars = MagicMock()
@@ -1817,7 +1817,7 @@ class TestVideoRepositoryCategoryEdgeCases:
                 duration=300,
                 category_id="23",
                 view_count=None,  # Null view count
-                deleted_flag=False,
+                availability_status="available",
             ),
             VideoDB(
                 video_id="video_2",
@@ -1828,7 +1828,7 @@ class TestVideoRepositoryCategoryEdgeCases:
                 duration=300,
                 category_id="23",
                 view_count=1000,
-                deleted_flag=False,
+                availability_status="available",
             ),
         ]
 
@@ -1877,7 +1877,7 @@ class TestVideoRepositoryCategoryEdgeCases:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_find_by_category_id_mixed_deleted_flags(
+    async def test_find_by_category_id_mixed_availability_statuses(
         self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test finding videos with mixed deleted flags."""
@@ -1892,12 +1892,12 @@ class TestVideoRepositoryCategoryEdgeCases:
                 duration=300,
                 category_id="23",
                 view_count=1000,
-                deleted_flag=(i % 2 == 0),  # Every other video is deleted
+                availability_status="unavailable" if i % 2 == 0 else "available",  # Every other video is unavailable
             )
             videos.append(video)
 
         # When excluding deleted
-        non_deleted_videos = [v for v in videos if not v.deleted_flag]
+        non_deleted_videos = [v for v in videos if v.availability_status == "available"]
         mock_result = MagicMock()
         mock_scalars = MagicMock()
         mock_scalars.all.return_value = non_deleted_videos
@@ -1909,5 +1909,5 @@ class TestVideoRepositoryCategoryEdgeCases:
         )
 
         assert len(result) == 5
-        assert all(not v.deleted_flag for v in result)
+        assert all(v.availability_status == "available" for v in result)
         mock_session.execute.assert_called_once()

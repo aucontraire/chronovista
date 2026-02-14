@@ -51,6 +51,8 @@ class VideoListItem(BaseModel):
         Human-readable category name.
     topics : List[TopicSummary]
         Associated topics with hierarchy info.
+    availability_status : str
+        Video availability status (available, deleted, private, unavailable).
     """
 
     model_config = ConfigDict(strict=True, from_attributes=True)
@@ -71,6 +73,7 @@ class VideoListItem(BaseModel):
     topics: List["TopicSummary"] = Field(
         default_factory=list, description="Associated topics"
     )
+    availability_status: str = Field(..., description="Video availability status")
 
 
 class VideoListResponse(ApiResponse[List[VideoListItem]]):
@@ -130,6 +133,8 @@ class VideoDetail(BaseModel):
     made_for_kids: bool
     transcript_summary: TranscriptSummary
     topics: List[TopicSummary] = Field(default_factory=list)  # Associated topics
+    availability_status: str = Field(..., description="Video availability status")
+    alternative_url: Optional[str] = Field(None, description="Alternative URL for deleted/unavailable content")
 
 
 class VideoDetailResponse(ApiResponse[VideoDetail]):
@@ -156,6 +161,18 @@ class VideoPlaylistsResponse(BaseModel):
     model_config = ConfigDict(strict=True)
 
     data: List[VideoPlaylistMembership]
+
+
+class AlternativeUrlRequest(BaseModel):
+    """Request body for setting an alternative URL on a video."""
+
+    model_config = ConfigDict(strict=True)
+
+    alternative_url: Optional[str] = Field(
+        None,
+        max_length=500,
+        description="Alternative URL for unavailable video (max 500 characters). Set to null to clear.",
+    )
 
 
 # Rebuild models to resolve forward references

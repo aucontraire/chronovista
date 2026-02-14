@@ -7,6 +7,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { VideoGrid } from "../components/VideoGrid";
 import { LoadingState } from "../components/LoadingState";
+import { UnavailabilityBanner } from "../components/UnavailabilityBanner";
 import { useChannelDetail, useChannelVideos } from "../hooks";
 import { cardPatterns, colorTokens } from "../styles";
 import type { ApiError } from "../types/video";
@@ -243,6 +244,7 @@ export function ChannelDetailPage() {
     video_count,
     country,
     is_subscribed,
+    availability_status,
   } = channel;
 
   return (
@@ -256,6 +258,12 @@ export function ChannelDetailPage() {
           ← Back to Channels
         </Link>
       </nav>
+
+      {/* Unavailability Banner (Feature 023) */}
+      <UnavailabilityBanner
+        availabilityStatus={availability_status}
+        entityType="channel"
+      />
 
       {/* Channel Header */}
       <div className={`${cardPatterns.base} p-8 mb-8`}>

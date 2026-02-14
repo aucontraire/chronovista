@@ -19,6 +19,8 @@ export interface UseSearchSegmentsOptions {
   query: string;
   /** Optional language filter (BCP-47 code) */
   language?: string | null;
+  /** Include unavailable content (T031, FR-021) */
+  includeUnavailable?: boolean;
 }
 
 /**
@@ -85,6 +87,7 @@ export interface UseSearchSegmentsResult {
 export function useSearchSegments({
   query,
   language,
+  includeUnavailable = false,
 }: UseSearchSegmentsOptions): UseSearchSegmentsResult {
   const {
     data,
@@ -95,7 +98,7 @@ export function useSearchSegments({
     isFetchingNextPage,
     fetchNextPage,
   } = useInfiniteQuery({
-    queryKey: ["search", "segments", query, language],
+    queryKey: ["search", "segments", query, language, includeUnavailable],
     queryFn: async ({ pageParam = 0, signal }) => {
       const params = new URLSearchParams({
         q: query,
@@ -105,6 +108,11 @@ export function useSearchSegments({
 
       if (language) {
         params.set("language", language);
+      }
+
+      // T031: Add include_unavailable parameter (FR-021)
+      if (includeUnavailable) {
+        params.set("include_unavailable", "true");
       }
 
       // T057: Pass signal for request cancellation (EC-019)

@@ -21,9 +21,11 @@ export function HomePage() {
   const tags = searchParams.getAll('tag');
   const category = searchParams.get('category');
   const topicIds = searchParams.getAll('topic_id');
+  // T031: Read include_unavailable state from URL (FR-021)
+  const includeUnavailable = searchParams.get('include_unavailable') === 'true';
 
   // Get total count for filters display (using the same hook with filters)
-  const { total } = useVideos({ tags, category, topicIds });
+  const { total } = useVideos({ tags, category, topicIds, includeUnavailable });
 
   // Set page title
   useEffect(() => {
@@ -56,7 +58,7 @@ export function HomePage() {
         <h3 id="videos-heading" className="sr-only">
           Filtered Videos
         </h3>
-        <VideoList tags={tags} category={category} topicIds={topicIds} />
+        <VideoList tags={tags} category={category} topicIds={topicIds} includeUnavailable={includeUnavailable} />
       </section>
     </div>
   );

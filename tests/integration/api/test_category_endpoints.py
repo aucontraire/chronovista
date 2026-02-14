@@ -413,7 +413,7 @@ class TestGetCategoryVideos:
                 upload_date=datetime.now(timezone.utc),
                 duration=300,
                 category_id=category.category_id,
-                deleted_flag=False,
+                availability_status="available",
             )
             video_deleted = Video(
                 video_id="vid_deleted",
@@ -422,7 +422,7 @@ class TestGetCategoryVideos:
                 upload_date=datetime.now(timezone.utc),
                 duration=300,
                 category_id=category.category_id,
-                deleted_flag=True,
+                availability_status="unavailable",
             )
             session.add_all([video_active, video_deleted])
             await session.commit()

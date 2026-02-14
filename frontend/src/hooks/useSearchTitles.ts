@@ -20,6 +20,8 @@ export interface UseSearchTitlesOptions {
   query: string;
   /** Whether the titles search type is enabled */
   enabled?: boolean;
+  /** Include unavailable content (T031, FR-021) */
+  includeUnavailable?: boolean;
 }
 
 /**
@@ -83,14 +85,21 @@ export interface UseSearchTitlesResult {
 export function useSearchTitles({
   query,
   enabled = true,
+  includeUnavailable = false,
 }: UseSearchTitlesOptions): UseSearchTitlesResult {
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ["search", "titles", query],
+    queryKey: ["search", "titles", query, includeUnavailable],
     queryFn: async ({ signal }) => {
       const params = new URLSearchParams({
         q: query,
         limit: String(SEARCH_CONFIG.TITLE_SEARCH_LIMIT),
       });
+
+      // T031: Add include_unavailable parameter (FR-021)
+      if (includeUnavailable) {
+        params.set("include_unavailable", "true");
+      }
+
       return apiFetch<TitleSearchResponse>(
         `${SEARCH_CONFIG.TITLE_SEARCH_ENDPOINT}?${params}`,
         { signal }

@@ -58,6 +58,7 @@ describe("useSearchSegments", () => {
         context_after: "Next context",
         match_count: 2,
         video_upload_date: "2023-01-01T00:00:00Z",
+        availability_status: "available",
       },
     ],
     pagination: {
@@ -397,6 +398,7 @@ describe("useSearchSegments", () => {
             context_after: null,
             match_count: 1,
             video_upload_date: "2023-01-01T00:00:00Z",
+            availability_status: "available",
           },
         ],
         pagination: {

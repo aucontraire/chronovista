@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom';
 import { HighlightedText } from './HighlightedText';
 import type { TitleSearchResult, DescriptionSearchResult } from '../types/search';
+import { AvailabilityBadge } from './AvailabilityBadge';
+import { isVideoUnavailable } from '../utils/availability';
 
 interface VideoSearchResultProps {
   /** The search result (title or description match) */
@@ -29,20 +31,31 @@ function formatDate(isoDate: string): string {
 }
 
 export function VideoSearchResult({ result, queryTerms }: VideoSearchResultProps) {
+  const isUnavailable = isVideoUnavailable(result.availability_status);
+  const cardOpacity = isUnavailable ? "opacity-50" : "";
+  const titleDecoration = isUnavailable ? "line-through" : "";
+
   return (
-    <article className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 hover:shadow-md transition-shadow">
-      {/* Title with highlighting and line clamp */}
-      <h3 className="line-clamp-2 text-base font-medium">
-        <Link
-          to={`/videos/${result.video_id}`}
-          className="text-blue-700 dark:text-blue-400 hover:underline"
-        >
-          <HighlightedText text={result.title} queryTerms={queryTerms} />
-        </Link>
-      </h3>
+    <article className={`rounded-lg border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow ${cardOpacity}`}>
+      {/* Title with highlighting, badge, and line clamp */}
+      <div className="flex items-start justify-between gap-2 mb-1.5">
+        <h3 className={`line-clamp-2 text-base font-medium flex-1 ${titleDecoration}`}>
+          <Link
+            to={`/videos/${result.video_id}`}
+            className="text-blue-700 hover:underline"
+          >
+            {isUnavailable ? (
+              "Unavailable Video"
+            ) : (
+              <HighlightedText text={result.title} queryTerms={queryTerms} />
+            )}
+          </Link>
+        </h3>
+        <AvailabilityBadge status={result.availability_status} className="flex-shrink-0 mt-0.5" />
+      </div>
 
       {/* Metadata row: channel + date */}
-      <div className="mt-1.5 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+      <div className="flex items-center gap-2 text-sm text-gray-500">
         {result.channel_title && (
           <>
             <span>{result.channel_title}</span>
@@ -53,8 +66,8 @@ export function VideoSearchResult({ result, queryTerms }: VideoSearchResultProps
       </div>
 
       {/* Description snippet (only for description search results) */}
-      {hasSnippet(result) && (
-        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+      {hasSnippet(result) && !isUnavailable && (
+        <p className="mt-2 text-sm text-gray-600 leading-relaxed">
           <HighlightedText text={result.snippet} queryTerms={queryTerms} />
         </p>
       )}

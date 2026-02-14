@@ -1,10 +1,11 @@
 """Search endpoints for transcript segment search."""
 
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from chronovista.api.deps import get_db, require_auth
 from chronovista.api.routers.responses import LIST_ERRORS, BAD_REQUEST_RESPONSE, UNAUTHORIZED_RESPONSE, INTERNAL_ERROR_RESPONSE
@@ -22,6 +23,7 @@ from chronovista.db.models import TranscriptSegment as SegmentDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as TranscriptDB
 from chronovista.exceptions import BadRequestError
+from chronovista.models.enums import AvailabilityStatus
 
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -65,6 +67,10 @@ async def search_segments(
         None, min_length=11, max_length=11, description="Limit to specific video"
     ),
     language: Optional[str] = Query(None, description="Limit to specific language"),
+    include_unavailable: bool = Query(
+        False,
+        description="Include unavailable records in results",
+    ),
     limit: int = Query(20, ge=1, le=100, description="Results per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     session: AsyncSession = Depends(get_db),
@@ -123,8 +129,11 @@ async def search_segments(
         )
         .join(VideoDB, SegmentDB.video_id == VideoDB.video_id)
         .outerjoin(ChannelDB, VideoDB.channel_id == ChannelDB.channel_id)
-        .where(VideoDB.deleted_flag.is_(False))
     )
+
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        query = query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
 
     # Apply ILIKE filter for each term (implicit AND)
     # Search both original text and corrected text so corrections are findable
@@ -147,8 +156,11 @@ async def search_segments(
     lang_base_query = (
         select(SegmentDB.language_code)
         .join(VideoDB, SegmentDB.video_id == VideoDB.video_id)
-        .where(VideoDB.deleted_flag.is_(False))
     )
+
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        lang_base_query = lang_base_query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
 
     # Apply the same text search filters (both original and corrected text)
     for term in query_terms:
@@ -241,6 +253,7 @@ async def search_segments(
                 context_after=context_after,
                 match_count=count_query_matches(_display_text(segment), query_terms),
                 video_upload_date=video.upload_date,
+                availability_status=video.availability_status,
             )
         )
 
@@ -262,6 +275,10 @@ async def search_segments(
 async def search_titles(
     q: str = Query(
         ..., min_length=2, max_length=500, description="Search query (2-500 characters)"
+    ),
+    include_unavailable: bool = Query(
+        False,
+        description="Include unavailable records in results",
     ),
     limit: int = Query(50, ge=1, le=50, description="Maximum results (1-50, default 50)"),
     session: AsyncSession = Depends(get_db),
@@ -302,7 +319,10 @@ async def search_titles(
     query_terms = query_text.split()
 
     # Build conditions for reuse (count + results)
-    conditions = [VideoDB.deleted_flag.is_(False)]
+    conditions = []
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        conditions.append(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
     for term in query_terms:
         escaped_term = term.replace("%", r"\%").replace("_", r"\_")
         conditions.append(VideoDB.title.ilike(f"%{escaped_term}%"))
@@ -316,7 +336,7 @@ async def search_titles(
 
     # Build results query with channel join, ordering, and limit
     results_query = (
-        select(VideoDB.video_id, VideoDB.title, ChannelDB.title.label("channel_title"), VideoDB.upload_date)
+        select(VideoDB.video_id, VideoDB.title, ChannelDB.title.label("channel_title"), VideoDB.upload_date, VideoDB.availability_status)
         .outerjoin(ChannelDB, VideoDB.channel_id == ChannelDB.channel_id)
         .where(*conditions)
         .order_by(VideoDB.upload_date.desc())
@@ -331,6 +351,7 @@ async def search_titles(
             title=row.title,
             channel_title=row.channel_title,
             upload_date=row.upload_date,
+            availability_status=row.availability_status,
         )
         for row in rows
     ]
@@ -401,6 +422,10 @@ async def search_descriptions(
     q: str = Query(
         ..., min_length=2, max_length=500, description="Search query (2-500 characters)"
     ),
+    include_unavailable: bool = Query(
+        False,
+        description="Include unavailable records in results",
+    ),
     limit: int = Query(50, ge=1, le=50, description="Maximum results (1-50, default 50)"),
     session: AsyncSession = Depends(get_db),
 ) -> DescriptionSearchResponse:
@@ -442,10 +467,10 @@ async def search_descriptions(
     query_terms = query_text.split()
 
     # Build conditions for reuse
-    conditions = [
-        VideoDB.deleted_flag.is_(False),
-        VideoDB.description.isnot(None),
-    ]
+    conditions: List[ColumnElement[bool]] = [VideoDB.description.isnot(None)]
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        conditions.append(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
     for term in query_terms:
         escaped_term = term.replace("%", r"\%").replace("_", r"\_")
         conditions.append(VideoDB.description.ilike(f"%{escaped_term}%"))
@@ -465,6 +490,7 @@ async def search_descriptions(
             VideoDB.description,
             ChannelDB.title.label("channel_title"),
             VideoDB.upload_date,
+            VideoDB.availability_status,
         )
         .outerjoin(ChannelDB, VideoDB.channel_id == ChannelDB.channel_id)
         .where(*conditions)
@@ -481,6 +507,7 @@ async def search_descriptions(
             channel_title=row.channel_title,
             upload_date=row.upload_date,
             snippet=_generate_snippet(row.description, query_terms),
+            availability_status=row.availability_status,
         )
         for row in rows
     ]

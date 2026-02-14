@@ -4,7 +4,7 @@
  * Features:
  * - Position badge showing 1-indexed position (#1, #2, #3, etc.)
  * - Video title, channel name, upload date, duration
- * - Deleted indicator: opacity-50, line-through title, tooltip
+ * - Unavailable indicator: opacity-50, line-through title, tooltip
  * - TranscriptSummary badge if transcripts available
  * - Clickable card linking to video detail page
  * - Accessible with keyboard navigation support
@@ -12,7 +12,7 @@
  * Visual design:
  * - Position badge: circular, bg-gray-100, text-gray-700, w-8 h-8
  * - Card: bg-white, rounded-lg, shadow-sm, hover:shadow-md
- * - Deleted state: opacity-50 on entire card, line-through on title only
+ * - Unavailable state: opacity-50 on entire card, line-through on title only
  *
  * @example
  * ```tsx
@@ -25,6 +25,8 @@ import { Link } from "react-router-dom";
 import { cardPatterns, colorTokens } from "../styles";
 import type { PlaylistVideoItem } from "../types/playlist";
 import { formatDate, formatTimestamp } from "../utils/formatters";
+import { AvailabilityBadge } from "./AvailabilityBadge";
+import { isVideoUnavailable } from "../utils/availability";
 
 interface PlaylistVideoCardProps {
   /** Playlist video data to display */
@@ -33,7 +35,7 @@ interface PlaylistVideoCardProps {
 
 /**
  * PlaylistVideoCard displays a video within a playlist context.
- * Shows position badge, video metadata, and handles deleted video state.
+ * Shows position badge, video metadata, and handles unavailable video state.
  */
 export function PlaylistVideoCard({ video }: PlaylistVideoCardProps) {
   const {
@@ -44,21 +46,24 @@ export function PlaylistVideoCard({ video }: PlaylistVideoCardProps) {
     duration,
     transcript_summary,
     position,
-    deleted_flag,
+    availability_status,
   } = video;
 
   // Convert 0-indexed position to 1-indexed display format
   const displayPosition = position + 1;
 
-  // Apply deleted state styling
-  const cardOpacity = deleted_flag ? "opacity-50" : "";
-  const titleDecoration = deleted_flag ? "line-through" : "";
+  // Derive unavailable state from availability_status
+  const isUnavailable = isVideoUnavailable(availability_status);
+
+  // Apply unavailable state styling
+  const cardOpacity = isUnavailable ? "opacity-50" : "";
+  const titleDecoration = isUnavailable ? "line-through" : "";
 
   return (
     <Link
       to={`/videos/${video_id}`}
       className="block no-underline text-inherit focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-lg"
-      aria-label={deleted_flag ? `Deleted video (was at position ${displayPosition})` : `Video: ${title} at position ${displayPosition}`}
+      aria-label={isUnavailable ? `Unavailable video (was at position ${displayPosition})` : `Video: ${title} at position ${displayPosition}`}
     >
       <article
         className={`${cardPatterns.base} ${cardPatterns.hover} ${cardPatterns.transition} p-4 ${cardOpacity}`}
@@ -75,21 +80,24 @@ export function PlaylistVideoCard({ video }: PlaylistVideoCardProps) {
 
           {/* Video Content */}
           <div className="flex-1 min-w-0">
-            {/* Video Title */}
-            <h3
-              className={`text-base font-semibold text-${colorTokens.text.primary} line-clamp-2 mb-1 ${titleDecoration}`}
-              title={deleted_flag ? "This video has been deleted from YouTube" : title}
-            >
-              {deleted_flag ? "Deleted Video" : title}
-            </h3>
+            {/* Video Title with Availability Badge */}
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <h3
+                className={`text-base font-semibold text-${colorTokens.text.primary} line-clamp-2 flex-1 ${titleDecoration}`}
+                title={isUnavailable ? "This video is no longer available on YouTube" : title}
+              >
+                {isUnavailable ? "Unavailable Video" : title}
+              </h3>
+              <AvailabilityBadge status={availability_status} className="flex-shrink-0" />
+            </div>
 
             {/* Channel Name */}
-            <p className={`text-sm text-${colorTokens.text.secondary} mb-2`}>
+            <p className={`text-sm text-${colorTokens.text.secondary}`}>
               {channel_title ?? "Unknown Channel"}
             </p>
 
             {/* Video Metadata Row */}
-            <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-${colorTokens.text.tertiary}`}>
+            <div className={`mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-${colorTokens.text.tertiary}`}>
               {/* Duration Badge */}
               <span className="inline-flex items-center bg-gray-100 px-2 py-0.5 rounded font-mono">
                 {formatTimestamp(duration)}
@@ -117,10 +125,10 @@ export function PlaylistVideoCard({ video }: PlaylistVideoCardProps) {
           </div>
         </div>
 
-        {/* Deleted Indicator Tooltip */}
-        {deleted_flag && (
+        {/* Unavailable Indicator Tooltip */}
+        {isUnavailable && (
           <div className="sr-only">
-            This video has been deleted from YouTube
+            This video is no longer available on YouTube
           </div>
         )}
       </article>

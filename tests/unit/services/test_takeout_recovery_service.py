@@ -17,6 +17,7 @@ import pytest
 
 pytestmark = pytest.mark.asyncio
 
+from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.takeout.recovery import (
     HistoricalTakeout,
     RecoveredChannelMetadata,
@@ -747,9 +748,9 @@ class TestCountPlaceholders:
 
 class TestRecoveryNeverSetsDeletedFlag:
     """
-    Tests verifying local recovery doesn't set deleted_flag (T040c).
+    Tests verifying local recovery doesn't set availability_status (T040c).
 
-    Per US3 scenario 2: local takeout recovery should NEVER set deleted_flag=True.
+    Per US3 scenario 2: local takeout recovery should NEVER set availability_status=True.
     Only the API verification flow should mark videos as deleted.
     """
 
@@ -760,16 +761,16 @@ class TestRecoveryNeverSetsDeletedFlag:
         session.commit = AsyncMock()
         return session
 
-    async def test_recovery_from_historical_takeout_never_sets_deleted_flag_true(
+    async def test_recovery_from_historical_takeout_never_sets_availability_status_true(
         self, mock_session: AsyncMock
     ) -> None:
-        """Test that recovery from historical takeout never sets deleted_flag=True."""
+        """Test that recovery from historical takeout never sets availability_status=True."""
         # Create a mock video with placeholder title
         mock_video = MagicMock()
         mock_video.video_id = "dQw4w9WgXcQ"
         mock_video.title = "[Placeholder] Video dQw4w9WgXcQ"
         mock_video.channel_id = "UCplaceholder"
-        mock_video.deleted_flag = False  # Video is not deleted initially
+        mock_video.availability_status = AvailabilityStatus.AVAILABLE  # Video is not deleted initially
 
         video_repo = MagicMock()
         video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
@@ -799,32 +800,32 @@ class TestRecoveryNeverSetsDeletedFlag:
 
         await service._recover_videos(mock_session, video_metadata, result, options)
 
-        # Verify the deleted_flag was NEVER set to True
+        # Verify the availability_status was NEVER set to True
         # Check all calls to video_repo.update
         for call in video_repo.update.call_args_list:
             kwargs = call[1]
             obj_in = kwargs.get("obj_in")
             if obj_in is not None:
-                # The VideoUpdate should not contain deleted_flag=True
-                if hasattr(obj_in, "deleted_flag"):
-                    assert obj_in.deleted_flag is not True, (
-                        "Recovery should never set deleted_flag=True"
+                # The VideoUpdate should not contain availability_status=True
+                if hasattr(obj_in, "availability_status"):
+                    assert obj_in.availability_status is not True, (
+                        "Recovery should never set availability_status=True"
                     )
 
-        # Also verify the mock_video itself wasn't modified to have deleted_flag=True
+        # Also verify the mock_video itself wasn't modified to have availability_status=True
         # (The service should only update via the repository, not directly)
         assert result.videos_recovered == 1
 
-    async def test_recovery_updates_video_metadata_but_preserves_existing_deleted_flag(
+    async def test_recovery_updates_video_metadata_but_preserves_existing_availability_status(
         self, mock_session: AsyncMock
     ) -> None:
-        """Test that recovery updates metadata but preserves existing deleted_flag."""
+        """Test that recovery updates metadata but preserves existing availability_status."""
         # Video was previously marked as deleted (by API verification)
         mock_video = MagicMock()
         mock_video.video_id = "deletedVid123"
         mock_video.title = "[Placeholder] Video deletedVid123"
         mock_video.channel_id = "UCplaceholder"
-        mock_video.deleted_flag = True  # Previously marked as deleted
+        mock_video.availability_status = AvailabilityStatus.UNAVAILABLE  # Previously marked as deleted
 
         video_repo = MagicMock()
         video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
@@ -855,26 +856,26 @@ class TestRecoveryNeverSetsDeletedFlag:
 
         await service._recover_videos(mock_session, video_metadata, result, options)
 
-        # Recovery should update title but not touch deleted_flag
+        # Recovery should update title but not touch availability_status
         # The video was a placeholder so it should be recovered
         assert result.videos_recovered == 1
 
         # Check that update was called
         video_repo.update.assert_called_once()
 
-        # Verify the update only contained title, not deleted_flag
+        # Verify the update only contained title, not availability_status
         call_args = video_repo.update.call_args
         obj_in = call_args[1].get("obj_in")
         if obj_in is not None and hasattr(obj_in, "model_dump"):
             update_dict = obj_in.model_dump(exclude_unset=True)
-            # The update should contain title but NOT deleted_flag
+            # The update should contain title but NOT availability_status
             assert "title" in update_dict
-            assert "deleted_flag" not in update_dict
+            assert "availability_status" not in update_dict
 
-    async def test_new_videos_from_recovery_have_deleted_flag_false(
+    async def test_new_videos_from_recovery_have_availability_status_false(
         self, mock_session: AsyncMock
     ) -> None:
-        """Test that new videos created from recovery have deleted_flag=False."""
+        """Test that new videos created from recovery have availability_status=False."""
         # No videos in database initially
         video_repo = MagicMock()
         video_repo.get_multi = AsyncMock(return_value=[])
@@ -908,25 +909,25 @@ class TestRecoveryNeverSetsDeletedFlag:
         assert result.channels_created == 1
         channel_repo.create.assert_called_once()
 
-        # Check that the ChannelCreate doesn't have a deleted_flag
-        # (Channels don't have deleted_flag but this verifies the pattern)
+        # Check that the ChannelCreate doesn't have a availability_status
+        # (Channels don't have availability_status but this verifies the pattern)
         call_args = channel_repo.create.call_args
         obj_in = call_args[1].get("obj_in")
         if obj_in is not None:
-            # ChannelCreate should not contain deleted_flag
+            # ChannelCreate should not contain availability_status
             # This is more about confirming the recovery pattern
             assert hasattr(obj_in, "channel_id")
             assert hasattr(obj_in, "title")
 
-    async def test_recovery_dry_run_does_not_modify_deleted_flag(
+    async def test_recovery_dry_run_does_not_modify_availability_status(
         self, mock_session: AsyncMock
     ) -> None:
-        """Test that dry run recovery doesn't modify deleted_flag."""
+        """Test that dry run recovery doesn't modify availability_status."""
         mock_video = MagicMock()
         mock_video.video_id = "testVideo789"
         mock_video.title = "[Placeholder] Video testVideo789"
         mock_video.channel_id = "UCplaceholder"
-        mock_video.deleted_flag = False
+        mock_video.availability_status = AvailabilityStatus.AVAILABLE
 
         video_repo = MagicMock()
         video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
@@ -957,17 +958,17 @@ class TestRecoveryNeverSetsDeletedFlag:
         # The recovery action should still be recorded
         assert result.videos_recovered == 1
 
-        # And the original video's deleted_flag should be unchanged
-        assert mock_video.deleted_flag is False
+        # And the original video's availability_status should be unchanged
+        assert mock_video.availability_status == AvailabilityStatus.AVAILABLE
 
-    async def test_placeholder_video_without_recovery_data_keeps_deleted_flag_unchanged(
+    async def test_placeholder_video_without_recovery_data_keeps_availability_status_unchanged(
         self, mock_session: AsyncMock
     ) -> None:
-        """Test placeholder video without recovery data keeps deleted_flag unchanged."""
+        """Test placeholder video without recovery data keeps availability_status unchanged."""
         mock_video = MagicMock()
         mock_video.video_id = "noRecoveryData"
         mock_video.title = "[Placeholder] Video noRecoveryData"
-        mock_video.deleted_flag = False  # Not deleted
+        mock_video.availability_status = AvailabilityStatus.AVAILABLE  # Not deleted
 
         video_repo = MagicMock()
         video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
@@ -991,6 +992,6 @@ class TestRecoveryNeverSetsDeletedFlag:
         # No update should be called
         video_repo.update.assert_not_called()
 
-        # deleted_flag should NOT have been set to True
-        # (Only API verification should set deleted_flag)
-        assert mock_video.deleted_flag is False
+        # availability_status should remain unchanged
+        # (Only API verification should change availability_status)
+        assert mock_video.availability_status == AvailabilityStatus.AVAILABLE

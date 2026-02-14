@@ -46,6 +46,8 @@ describe("useVideoDetail", () => {
       languages: ["en", "es"],
       has_manual: true,
     },
+    availability_status: "available",
+    alternative_url: null,
   };
 
   beforeEach(() => {

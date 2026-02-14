@@ -24,6 +24,8 @@ export interface ChannelListItem {
   thumbnail_url: string | null;
   /** Custom channel URL (e.g., @username, currently always null) */
   custom_url: string | null;
+  /** Content availability status */
+  availability_status: string;
 }
 
 /**
@@ -41,6 +43,8 @@ export interface ChannelDetail extends ChannelListItem {
   created_at: string;
   /** ISO 8601 datetime string of last update */
   updated_at: string;
+  /** Content availability status */
+  availability_status: string;
 }
 
 /**

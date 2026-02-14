@@ -33,6 +33,7 @@ from chronovista.api.schemas.tags import (
 from chronovista.api.schemas.videos import VideoListItem, VideoListResponse
 from chronovista.db.models import Video, VideoTag
 from chronovista.exceptions import NotFoundError
+from chronovista.models.enums import AvailabilityStatus
 from chronovista.utils.fuzzy import find_similar
 
 logger = logging.getLogger(__name__)
@@ -135,6 +136,10 @@ async def list_tags(
         max_length=100,
         description="Search/autocomplete query for tag names",
     ),
+    include_unavailable: bool = Query(
+        False,
+        description="Include unavailable records in results",
+    ),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
 ) -> TagListResponse | JSONResponse:
@@ -143,7 +148,7 @@ async def list_tags(
 
     Returns tags sorted by video_count in descending order by default.
     Tags are aggregated from the video_tags junction table, excluding
-    videos with deleted_flag=true.
+    videos with availability_status != 'available'.
 
     Supports autocomplete via the `q` query parameter for filtering tags.
 
@@ -192,16 +197,19 @@ async def list_tags(
                 headers={"Retry-After": str(retry_after)},
             )
 
-    # Query unique tags with counts (excluding deleted videos)
+    # Query unique tags with counts
     query = (
         select(
             VideoTag.tag,
             func.count(VideoTag.video_id).label("video_count"),
         )
         .join(Video, VideoTag.video_id == Video.video_id)
-        .where(Video.deleted_flag.is_(False))
         .group_by(VideoTag.tag)
     )
+
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        query = query.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
 
     # Apply autocomplete filter if q parameter is provided
     if q is not None:
@@ -213,8 +221,10 @@ async def list_tags(
         select(func.count(func.distinct(VideoTag.tag)))
         .select_from(VideoTag)
         .join(Video, VideoTag.video_id == Video.video_id)
-        .where(Video.deleted_flag.is_(False))
     )
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        count_base = count_base.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
     if q is not None:
         count_base = count_base.where(VideoTag.tag.ilike(f"{q}%"))
     total_result = await session.execute(count_base)
@@ -304,6 +314,10 @@ async def get_tag_videos(
         description="Tag name (URL-encoded if contains special characters like #, /, etc.)",
         examples=["music", "gaming", "%23tutorial"],
     ),
+    include_unavailable: bool = Query(
+        False,
+        description="Include unavailable records in results",
+    ),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     session: AsyncSession = Depends(get_db),
@@ -336,13 +350,17 @@ async def get_tag_videos(
         404 if tag not found.
     """
     # Verify tag exists (check if any videos have this tag)
-    tag_result = await session.execute(
+    tag_query = (
         select(VideoTag.tag)
         .join(Video, VideoTag.video_id == Video.video_id)
         .where(VideoTag.tag == tag)
-        .where(Video.deleted_flag.is_(False))
         .limit(1)
     )
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        tag_query = tag_query.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
+
+    tag_result = await session.execute(tag_query)
     if not tag_result.scalar_one_or_none():
         raise NotFoundError(
             resource_type="Tag",
@@ -355,10 +373,13 @@ async def get_tag_videos(
         select(Video)
         .join(VideoTag, Video.video_id == VideoTag.video_id)
         .where(VideoTag.tag == tag)
-        .where(Video.deleted_flag.is_(False))
         .options(selectinload(Video.transcripts))
         .options(selectinload(Video.channel))
     )
+
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        query = query.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
 
     # Total count
     count_query = (
@@ -366,8 +387,11 @@ async def get_tag_videos(
         .select_from(Video)
         .join(VideoTag, Video.video_id == VideoTag.video_id)
         .where(VideoTag.tag == tag)
-        .where(Video.deleted_flag.is_(False))
     )
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        count_query = count_query.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
+
     total_result = await session.execute(count_query)
     total = total_result.scalar() or 0
 
@@ -416,6 +440,7 @@ async def get_tag_videos(
                 category_id=category_id_val,
                 category_name=category_name,
                 topics=[],  # Not loading topics in this endpoint
+                availability_status=video.availability_status,
             )
         )
 
@@ -436,6 +461,10 @@ async def get_tag(
         ...,
         description="Tag name (URL-encoded if contains special characters like #, /, etc.)",
         examples=["music", "gaming", "%23tutorial"],
+    ),
+    include_unavailable: bool = Query(
+        False,
+        description="Include unavailable records in results",
     ),
     session: AsyncSession = Depends(get_db),
 ) -> TagDetailResponse:
@@ -462,7 +491,7 @@ async def get_tag(
     NotFoundError
         404 if tag not found.
     """
-    # Query tag with video count (excluding deleted videos)
+    # Query tag with video count
     query = (
         select(
             VideoTag.tag,
@@ -470,9 +499,12 @@ async def get_tag(
         )
         .join(Video, VideoTag.video_id == Video.video_id)
         .where(VideoTag.tag == tag)
-        .where(Video.deleted_flag.is_(False))
         .group_by(VideoTag.tag)
     )
+
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        query = query.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
 
     result = await session.execute(query)
     row = result.one_or_none()

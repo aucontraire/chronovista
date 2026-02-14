@@ -39,6 +39,7 @@ describe("useSearchDescriptions", () => {
         title: "Test Video",
         channel_title: "Test Channel",
         upload_date: "2024-01-15T00:00:00Z",
+        availability_status: "available",
         snippet: "...this is a test snippet with highlighted terms...",
       },
     ],
@@ -121,6 +122,7 @@ describe("useSearchDescriptions", () => {
       title: "Test Video",
       channel_title: "Test Channel",
       upload_date: "2024-01-15T00:00:00Z",
+        availability_status: "available",
       snippet: "...this is a test snippet with highlighted terms...",
     });
     expect(result.current.totalCount).toBe(1);
@@ -272,6 +274,7 @@ describe("useSearchDescriptions", () => {
           title: "First Video",
           channel_title: "Channel One",
           upload_date: "2024-01-01T00:00:00Z",
+        availability_status: "available",
           snippet: "...first snippet...",
         },
         {
@@ -279,6 +282,7 @@ describe("useSearchDescriptions", () => {
           title: "Second Video",
           channel_title: "Channel Two",
           upload_date: "2024-01-02T00:00:00Z",
+        availability_status: "available",
           snippet: "...second snippet...",
         },
         {
@@ -286,6 +290,7 @@ describe("useSearchDescriptions", () => {
           title: "Third Video",
           channel_title: null,
           upload_date: "2024-01-03T00:00:00Z",
+        availability_status: "available",
           snippet: "...third snippet...",
         },
       ],

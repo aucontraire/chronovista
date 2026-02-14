@@ -55,6 +55,7 @@ describe('ChannelDetailPage', () => {
     is_subscribed: true,
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-15T10:30:00Z',
+    availability_status: 'available',
   };
 
   const mockVideos: VideoListItem[] = [
@@ -597,6 +598,7 @@ describe('ChannelDetailPage', () => {
         is_subscribed: false,
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-01T00:00:00Z',
+        availability_status: 'available',
       };
 
       mockUseChannelDetail.mockReturnValue({

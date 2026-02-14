@@ -50,11 +50,14 @@ export function SearchPage() {
   const initialQuery = searchParams.get("q") || "";
   const initialLanguage = searchParams.get("language") || "";
   const initialTypes = parseEnabledTypes(searchParams.get("types"));
+  // T031: Read include_unavailable from URL (FR-021)
+  const initialIncludeUnavailable = searchParams.get("include_unavailable") === "true";
 
   const [query, setQuery] = useState(initialQuery);
   const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
   const [selectedLanguage, setSelectedLanguage] = useState(initialLanguage);
   const [enabledTypes, setEnabledTypes] = useState<EnabledSearchTypes>(initialTypes);
+  const [includeUnavailable, setIncludeUnavailable] = useState(initialIncludeUnavailable);
   const mainContentRef = useRef<HTMLElement>(null);
 
   // Set page title
@@ -78,6 +81,7 @@ export function SearchPage() {
   } = useSearchSegments({
     query: debouncedQuery,
     language: selectedLanguage || null,
+    includeUnavailable,
   });
 
   const {
@@ -90,6 +94,7 @@ export function SearchPage() {
   } = useSearchTitles({
     query: debouncedQuery,
     enabled: enabledTypes.titles,
+    includeUnavailable,
   });
 
   const {
@@ -102,6 +107,7 @@ export function SearchPage() {
   } = useSearchDescriptions({
     query: debouncedQuery,
     enabled: enabledTypes.descriptions,
+    includeUnavailable,
   });
 
   const queryTerms = debouncedQuery.trim().split(/\s+/).filter(Boolean);
@@ -140,6 +146,11 @@ export function SearchPage() {
       params.set("types", types.join(','));
     }
 
+    // T031: Add include_unavailable param (FR-021)
+    if (includeUnavailable) {
+      params.set("include_unavailable", "true");
+    }
+
     // Only update URL if params changed (replace: true prevents history entries)
     const newSearch = params.toString();
     const currentSearch = searchParams.toString();
@@ -147,7 +158,7 @@ export function SearchPage() {
     if (newSearch !== currentSearch) {
       setSearchParams(params, { replace: true });
     }
-  }, [debouncedQuery, selectedLanguage, enabledTypes, searchParams, setSearchParams]);
+  }, [debouncedQuery, selectedLanguage, enabledTypes, includeUnavailable, searchParams, setSearchParams]);
 
   // T049: ARIA live region announcements (FR-026) - Only count enabled types
   const announceText = useMemo(() => {
@@ -246,6 +257,8 @@ export function SearchPage() {
                 descriptionCount={0}
                 enabledTypes={enabledTypes}
                 onToggleType={handleToggleType}
+                includeUnavailable={includeUnavailable}
+                onToggleIncludeUnavailable={() => setIncludeUnavailable(!includeUnavailable)}
               />
             </div>
             <div>

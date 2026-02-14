@@ -32,6 +32,7 @@ function createTestSegment(overrides: Partial<SearchResultSegment> = {}): Search
     context_after: "Context after the match.",
     match_count: 1,
     video_upload_date: "2024-01-15T00:00:00Z",
+    availability_status: "available",
     ...overrides,
   };
 }

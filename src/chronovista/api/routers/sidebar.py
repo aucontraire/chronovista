@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +16,7 @@ from chronovista.api.deps import get_db, require_auth
 from chronovista.api.routers.responses import LIST_ERRORS
 from chronovista.api.schemas.sidebar import SidebarCategory, SidebarCategoryResponse
 from chronovista.db.models import Video, VideoCategory
+from chronovista.models.enums import AvailabilityStatus
 
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -28,6 +29,10 @@ router = APIRouter(dependencies=[Depends(require_auth)])
 )
 async def get_sidebar_categories(
     session: AsyncSession = Depends(get_db),
+    include_unavailable: bool = Query(
+        False,
+        description="Include unavailable records in results",
+    ),
 ) -> SidebarCategoryResponse:
     """
     Get categories for sidebar navigation.
@@ -47,11 +52,15 @@ async def get_sidebar_categories(
     SidebarCategoryResponse
         Categories ordered by video_count descending.
     """
-    # Subquery for video count per category (only non-deleted videos)
+    # Subquery for video count per category
+    video_count_conditions = [Video.category_id == VideoCategory.category_id]
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        video_count_conditions.append(Video.availability_status == AvailabilityStatus.AVAILABLE)
+
     video_count_subq = (
         select(func.count(Video.video_id))
-        .where(Video.category_id == VideoCategory.category_id)
-        .where(Video.deleted_flag.is_(False))
+        .where(*video_count_conditions)
         .correlate(VideoCategory)
         .scalar_subquery()
     )

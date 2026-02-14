@@ -40,6 +40,7 @@ describe("VideoSearchResult", () => {
         title: "Machine Learning Tutorial",
         channel_title: "Tech Channel",
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
       };
 
       render(
@@ -65,6 +66,7 @@ describe("VideoSearchResult", () => {
         title: "Test Video",
         channel_title: "Test Channel",
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
       };
 
       render(
@@ -86,6 +88,7 @@ describe("VideoSearchResult", () => {
         title: "Test Video",
         channel_title: "Test Channel",
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
       };
 
       render(
@@ -104,6 +107,7 @@ describe("VideoSearchResult", () => {
         title: "Another Video",
         channel_title: "Another Channel",
         upload_date: "2024-02-20T14:00:00Z",
+        availability_status: "available",
       };
 
       render(
@@ -124,6 +128,7 @@ describe("VideoSearchResult", () => {
         title: "Test Video",
         channel_title: "Amazing Channel",
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
       };
 
       render(
@@ -141,6 +146,7 @@ describe("VideoSearchResult", () => {
         title: "Test Video",
         channel_title: "Test Channel",
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
       };
 
       const { container } = render(
@@ -163,6 +169,7 @@ describe("VideoSearchResult", () => {
         title: "Test Video",
         channel_title: null,
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
       };
 
       render(
@@ -186,6 +193,7 @@ describe("VideoSearchResult", () => {
         title: "Test Video",
         channel_title: null,
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
       };
 
       const { container } = render(
@@ -207,6 +215,7 @@ describe("VideoSearchResult", () => {
         title: "Test Video",
         channel_title: "Test Channel",
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
       };
 
       render(
@@ -223,7 +232,8 @@ describe("VideoSearchResult", () => {
         video_id: "abc123",
         title: "Test Video",
         channel_title: "Test Channel",
-        upload_date: "2023-12-25T12:00:00Z", // Use midday to avoid timezone edge cases
+        upload_date: "2023-12-25T12:00:00Z",
+        availability_status: "available", // Use midday to avoid timezone edge cases
       };
 
       render(
@@ -249,6 +259,7 @@ describe("VideoSearchResult", () => {
           title: "Test Video",
           channel_title: "Test Channel",
           upload_date: date,
+          availability_status: "available",
         };
 
         const { unmount } = render(
@@ -270,6 +281,7 @@ describe("VideoSearchResult", () => {
         title: "Test Video",
         channel_title: "Test Channel",
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
       };
 
       render(
@@ -290,6 +302,7 @@ describe("VideoSearchResult", () => {
         title: "Test Video",
         channel_title: "Test Channel",
         upload_date: isoDate,
+        availability_status: "available",
       };
 
       render(
@@ -310,6 +323,7 @@ describe("VideoSearchResult", () => {
         title: "Test Video",
         channel_title: "Test Channel",
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
       };
 
       const { container } = render(
@@ -329,6 +343,7 @@ describe("VideoSearchResult", () => {
         title: "Machine Learning Basics",
         channel_title: "AI Academy",
         upload_date: "2024-03-10T08:00:00Z",
+        availability_status: "available",
       };
 
       render(
@@ -358,6 +373,7 @@ describe("VideoSearchResult", () => {
         title: "Deep Learning Tutorial",
         channel_title: "ML University",
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
         snippet: "This video covers neural networks and deep learning algorithms...",
       };
 
@@ -386,6 +402,7 @@ describe("VideoSearchResult", () => {
         title: "Test Video",
         channel_title: "Test Channel",
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
         snippet: "This is a test snippet with important information.",
       };
 
@@ -408,6 +425,7 @@ describe("VideoSearchResult", () => {
         title: "Python Programming",
         channel_title: "Code Academy",
         upload_date: "2024-02-20T12:00:00Z",
+        availability_status: "available",
         snippet: "Learn Python fundamentals in this comprehensive tutorial...",
       };
 
@@ -434,6 +452,7 @@ describe("VideoSearchResult", () => {
         title: "Test Video",
         channel_title: "Test Channel",
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
       };
 
       const { container } = render(
@@ -452,6 +471,7 @@ describe("VideoSearchResult", () => {
         title: "Accessible Video Title",
         channel_title: "Accessible Channel",
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
       };
 
       render(
@@ -470,6 +490,7 @@ describe("VideoSearchResult", () => {
         title: "Test Video",
         channel_title: "Test Channel",
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
       };
 
       const { container } = render(
@@ -490,6 +511,7 @@ describe("VideoSearchResult", () => {
         title: "Test Video",
         channel_title: "Test Channel",
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
       };
 
       render(
@@ -515,6 +537,7 @@ describe("VideoSearchResult", () => {
         title: "Machine Learning Fundamentals",
         channel_title: "Tech Channel",
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
       };
 
       render(
@@ -536,6 +559,7 @@ describe("VideoSearchResult", () => {
         title: "AI Course",
         channel_title: "Tech Channel",
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
         snippet: "Comprehensive AI and machine learning tutorial",
       };
 
@@ -558,6 +582,7 @@ describe("VideoSearchResult", () => {
         title: "Test Video",
         channel_title: "Test Channel",
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
       };
 
       render(
@@ -579,6 +604,7 @@ describe("VideoSearchResult", () => {
         title: "Python Tutorial",
         channel_title: "Code School",
         upload_date: "2024-01-15T10:30:00Z",
+        availability_status: "available",
         snippet: "Learn Python programming from scratch",
       };
 
@@ -606,6 +632,7 @@ describe("VideoSearchResult", () => {
         title: "Advanced React Patterns",
         channel_title: "React Academy",
         upload_date: "2024-03-01T10:00:00Z",
+        availability_status: "available",
         snippet: "...this is a test snippet with leading ellipsis...",
       };
 
@@ -627,6 +654,7 @@ describe("VideoSearchResult", () => {
         title: "TypeScript Advanced Techniques",
         channel_title: "Code Masters",
         upload_date: "2024-03-05T14:30:00Z",
+        availability_status: "available",
         snippet: "Learn advanced TypeScript patterns and best practices for large applications",
       };
 
@@ -651,6 +679,7 @@ describe("VideoSearchResult", () => {
         title: "JavaScript Basics",
         channel_title: "Web Dev Academy",
         upload_date: "2024-03-10T09:00:00Z",
+        availability_status: "available",
       };
 
       const { container } = render(
@@ -674,6 +703,7 @@ describe("VideoSearchResult", () => {
         title: "Special Characters in Code",
         channel_title: "Programming Tips",
         upload_date: "2024-03-15T11:00:00Z",
+        availability_status: "available",
         snippet: 'Learn about <special> & "quoted" characters in programming\'s syntax',
       };
 
@@ -695,6 +725,7 @@ describe("VideoSearchResult", () => {
         title: "Database Optimization",
         channel_title: "DB Masters",
         upload_date: "2024-03-20T16:00:00Z",
+        availability_status: "available",
         snippet: "...middle portion of description with key information...",
       };
 
@@ -719,6 +750,7 @@ describe("VideoSearchResult", () => {
         title: "CSS Grid Mastery",
         channel_title: "Design School",
         upload_date: "2024-03-25T12:00:00Z",
+        availability_status: "available",
         snippet: "Master CSS Grid layout with practical examples",
       };
 
@@ -745,6 +777,7 @@ describe("VideoSearchResult", () => {
         title: "Empty Description Video",
         channel_title: "Test Channel",
         upload_date: "2024-03-30T10:00:00Z",
+        availability_status: "available",
         snippet: "",
       };
 
@@ -766,6 +799,7 @@ describe("VideoSearchResult", () => {
         title: "Whitespace Test Video",
         channel_title: "Test Channel",
         upload_date: "2024-04-01T10:00:00Z",
+        availability_status: "available",
         snippet: "   ",
       };
 
@@ -787,6 +821,7 @@ describe("VideoSearchResult", () => {
         title: "Multi-line Description",
         channel_title: "Format Test",
         upload_date: "2024-04-05T10:00:00Z",
+        availability_status: "available",
         snippet: "First line\nSecond line\nThird line",
       };
 

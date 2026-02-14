@@ -298,7 +298,7 @@ class TestSearchSegments:
             mock_oauth.is_authenticated.return_value = True
             response = await async_client.get("/api/v1/search/segments?q=test")
             assert response.status_code == 200
-            # Implementation should filter deleted_flag = False
+            # Implementation should filter availability_status = available
             # This test validates the endpoint doesn't crash with this filter
 
     async def test_search_channel_title_optional(

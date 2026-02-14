@@ -11,7 +11,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .enums import LanguageCode
+from .enums import AvailabilityStatus, LanguageCode
 from .youtube_types import ChannelId
 
 
@@ -41,6 +41,21 @@ class ChannelBase(BaseModel):
     )
     is_subscribed: bool = Field(
         default=False, description="Whether the user is subscribed to this channel"
+    )
+
+    # Availability and recovery tracking
+    availability_status: AvailabilityStatus = Field(
+        default=AvailabilityStatus.AVAILABLE,
+        description="Current availability status on YouTube",
+    )
+    recovered_at: Optional[datetime] = Field(
+        default=None, description="When content was recovered"
+    )
+    recovery_source: Optional[str] = Field(
+        default=None, description="Source of recovery information"
+    )
+    unavailability_first_detected: Optional[datetime] = Field(
+        default=None, description="When unavailability was first detected"
     )
 
     # Channel ID validation now handled by ChannelId custom type
@@ -90,6 +105,10 @@ class ChannelUpdate(BaseModel):
     country: Optional[str] = Field(default=None, min_length=2, max_length=2)
     thumbnail_url: Optional[str] = Field(default=None, max_length=500)
     is_subscribed: Optional[bool] = None
+    availability_status: Optional[AvailabilityStatus] = None
+    recovered_at: Optional[datetime] = None
+    recovery_source: Optional[str] = None
+    unavailability_first_detected: Optional[datetime] = None
 
     @field_validator("title")
     @classmethod

@@ -96,7 +96,7 @@ async def db_with_segments(db_session: AsyncSession) -> AsyncSession:
         duration=300,  # 5 minutes
         made_for_kids=False,
         self_declared_made_for_kids=False,
-        deleted_flag=False,
+        availability_status="available",
     )
     db_session.add(video)
     await db_session.flush()

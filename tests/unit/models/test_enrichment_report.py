@@ -239,7 +239,13 @@ class TestEnrichmentDetail:
 
     def test_status_literal_validation(self):
         """Test status field accepts only valid Literal values."""
-        valid_statuses: list[str] = ["updated", "deleted", "error", "skipped"]
+        valid_statuses: list[str] = [
+            "updated",
+            "deleted",
+            "error",
+            "skipped",
+            "pending_confirmation",
+        ]
 
         for status in valid_statuses:
             detail = EnrichmentDetail.model_validate({"video_id": "test123", "status": status})
@@ -248,9 +254,9 @@ class TestEnrichmentDetail:
         # Invalid status
         with pytest.raises(ValidationError) as exc_info:
             EnrichmentDetail.model_validate({"video_id": "test123", "status": "invalid"})
-        assert "Input should be 'updated', 'deleted', 'error' or 'skipped'" in str(
-            exc_info.value
-        )
+        error_str = str(exc_info.value)
+        assert "pending_confirmation" in error_str
+        assert "updated" in error_str
 
     def test_video_id_required(self):
         """Test video_id is required."""

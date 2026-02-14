@@ -59,12 +59,14 @@ describe("useSearchTitles", () => {
         title: "Test Video Title",
         channel_title: "Test Channel",
         upload_date: "2023-01-01T00:00:00Z",
+        availability_status: "available",
       },
       {
         video_id: "abcd1234efg",
         title: "Another Test Video",
         channel_title: "Another Channel",
         upload_date: "2023-02-15T10:30:00Z",
+        availability_status: "available",
       },
     ],
     total_count: 2,
@@ -195,6 +197,7 @@ describe("useSearchTitles", () => {
         title: "Test Video Title",
         channel_title: "Test Channel",
         upload_date: "2023-01-01T00:00:00Z",
+        availability_status: "available",
       });
     });
   });

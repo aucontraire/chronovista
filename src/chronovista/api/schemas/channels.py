@@ -38,6 +38,8 @@ class ChannelListItem(BaseModel):
     custom_url : Optional[str]
         Custom channel URL (e.g., @username). Currently always None
         as this field is not yet persisted in the database.
+    availability_status : str
+        Channel availability status (available, deleted, terminated, suspended).
     """
 
     model_config = ConfigDict(strict=True, from_attributes=True)
@@ -52,6 +54,7 @@ class ChannelListItem(BaseModel):
         default=None,
         description="Custom channel URL (e.g., @username). Currently always None.",
     )
+    availability_status: str = Field(..., description="Channel availability status")
 
 
 class ChannelDetail(ChannelListItem):
@@ -72,6 +75,8 @@ class ChannelDetail(ChannelListItem):
         Record creation timestamp.
     updated_at : datetime
         Last update timestamp.
+    availability_status : str
+        Channel availability status (inherited from ChannelListItem).
     """
 
     default_language: Optional[str] = Field(None, description="Default language code")

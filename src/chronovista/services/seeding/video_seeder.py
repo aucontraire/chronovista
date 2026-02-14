@@ -15,7 +15,7 @@ from typing import Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...models.enums import LanguageCode
+from ...models.enums import AvailabilityStatus, LanguageCode
 from ...models.takeout.takeout_data import TakeoutData, TakeoutWatchEntry
 from ...models.video import VideoCreate, VideoUpdate
 from ...repositories.channel_repository import ChannelRepository
@@ -182,10 +182,10 @@ class VideoSeeder(BaseSeeder):
         - If entry.channel_id is None: Set channel_id=None and populate channel_name_hint
         - We NEVER generate fake channel IDs
 
-        Note on deleted_flag:
-        - We do NOT auto-mark videos as deleted based on missing channel info
+        Note on availability_status:
+        - We do NOT auto-mark videos as unavailable based on missing channel info
         - Missing channel info often just means incomplete Takeout data
-        - deleted_flag should only be set True after YouTube API verification
+        - availability_status should only be set to non-AVAILABLE after YouTube API verification
         - See: docs/takeout-data-quality.md for full explanation
         """
         # video_id is guaranteed by seed() method - entries without are skipped
@@ -214,7 +214,7 @@ class VideoSeeder(BaseSeeder):
             description="",  # Not available in Takeout
             upload_date=entry.watched_at or datetime.now(timezone.utc),
             duration=0,  # Will be enriched via API
-            deleted_flag=False,  # Only set True after API verification - see docs
+            availability_status=AvailabilityStatus.AVAILABLE,  # Only set to non-AVAILABLE after API verification - see docs
             made_for_kids=False,  # Will be enriched via API
             self_declared_made_for_kids=False,  # Will be enriched via API
             default_language=LanguageCode.ENGLISH,  # Default fallback

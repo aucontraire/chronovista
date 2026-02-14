@@ -121,8 +121,8 @@ export interface PlaylistVideoItem {
   transcript_summary: TranscriptSummary;
   /** Position in playlist (0-indexed) */
   position: number;
-  /** Whether video was deleted from YouTube (included to preserve position integrity) */
-  deleted_flag: boolean;
+  /** Content availability status */
+  availability_status: string;
 }
 
 /**

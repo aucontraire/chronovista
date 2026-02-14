@@ -68,7 +68,7 @@ class EnrichmentDetail(BaseModel):
     video_id: str = Field(
         ..., min_length=1, description="YouTube video ID"
     )
-    status: Literal["updated", "deleted", "error", "skipped"] = Field(
+    status: Literal["updated", "deleted", "error", "skipped", "pending_confirmation"] = Field(
         ..., description="Enrichment status for this video"
     )
     old_title: Optional[str] = Field(

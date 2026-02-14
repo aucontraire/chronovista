@@ -9,7 +9,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Union
 
-from fastapi import APIRouter, Depends, Path, Query, Request
+from fastapi import APIRouter, Body, Depends, Path, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +21,7 @@ from chronovista.api.schemas.filters import FilterType, FilterWarning, FilterWar
 from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.topics import TopicSummary
 from chronovista.api.schemas.videos import (
+    AlternativeUrlRequest,
     TranscriptSummary,
     VideoDetail,
     VideoDetailResponse,
@@ -32,7 +33,8 @@ from chronovista.api.schemas.videos import (
 )
 from chronovista.db.models import TopicCategory, Video as VideoDB, VideoCategory
 from chronovista.db.models import VideoTag, VideoTopic, VideoTranscript
-from chronovista.exceptions import BadRequestError, NotFoundError
+from chronovista.exceptions import BadRequestError, ConflictError, NotFoundError
+from chronovista.models.enums import AvailabilityStatus
 from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
 )
@@ -465,6 +467,10 @@ async def list_videos(
         default=[],
         description="Filter by topic ID(s) - OR logic between multiple topics. Max 10.",
     ),
+    include_unavailable: bool = Query(
+        False,
+        description="Include unavailable records in results",
+    ),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
 ) -> Union[VideoListResponse, VideoListResponseWithWarnings, JSONResponse]:
@@ -558,7 +564,6 @@ async def list_videos(
     # Build base query with relationships for classification data
     query = (
         select(VideoDB)
-        .where(VideoDB.deleted_flag.is_(False))
         .options(selectinload(VideoDB.transcripts))
         .options(selectinload(VideoDB.channel))
         .options(selectinload(VideoDB.tags))
@@ -567,6 +572,10 @@ async def list_videos(
             selectinload(VideoDB.video_topics).selectinload(VideoTopic.topic_category)
         )
     )
+
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        query = query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
 
     # Apply existing filters
     if channel_id:
@@ -711,6 +720,7 @@ async def list_videos(
                 category_id=category_id_val,
                 category_name=category_name,
                 topics=topics_list,
+                availability_status=video.availability_status,
             )
         )
 
@@ -777,10 +787,10 @@ async def get_video(
         If video not found (404).
     """
     # Query video with relationships (including category and topics)
+    # Note: No availability_status filter - return all records including unavailable
     query = (
         select(VideoDB)
         .where(VideoDB.video_id == video_id)
-        .where(VideoDB.deleted_flag.is_(False))
         .options(selectinload(VideoDB.transcripts))
         .options(selectinload(VideoDB.channel))
         .options(selectinload(VideoDB.tags))
@@ -857,6 +867,8 @@ async def get_video(
         made_for_kids=video.made_for_kids,
         transcript_summary=transcript_summary,
         topics=topics_list,
+        availability_status=video.availability_status,
+        alternative_url=video.alternative_url,
     )
 
     return VideoDetailResponse(data=detail)
@@ -917,12 +929,8 @@ async def get_video_playlists(
     NotFoundError
         If video not found (404).
     """
-    # Verify video exists
-    video_query = (
-        select(VideoDB)
-        .where(VideoDB.video_id == video_id)
-        .where(VideoDB.deleted_flag.is_(False))
-    )
+    # Verify video exists (check all records regardless of availability_status)
+    video_query = select(VideoDB).where(VideoDB.video_id == video_id)
     video_result = await session.execute(video_query)
     video = video_result.scalar_one_or_none()
 
@@ -953,3 +961,178 @@ async def get_video_playlists(
             )
 
     return VideoPlaylistsResponse(data=playlist_memberships)
+
+
+@router.patch(
+    "/videos/{video_id}/alternative-url",
+    response_model=VideoDetailResponse,
+    responses={
+        **GET_ITEM_ERRORS,
+        409: {"description": "Cannot set alternative URL on available video"},
+        422: {"description": "Validation error (invalid URL format or length)"},
+    },
+)
+async def update_alternative_url(
+    video_id: str = Path(
+        ...,
+        min_length=11,
+        max_length=11,
+        description="YouTube video ID (11 characters)",
+        example="dQw4w9WgXcQ",
+    ),
+    request_body: AlternativeUrlRequest = Body(...),
+    session: AsyncSession = Depends(get_db),
+) -> VideoDetailResponse:
+    """
+    Set or clear an alternative URL for an unavailable video.
+
+    This endpoint allows setting an alternative URL (e.g., a mirror on another
+    platform) for videos that are no longer available on YouTube. Alternative
+    URLs can only be set on videos with availability_status != 'available'.
+
+    Per FR-027, alternative URLs are rejected for available videos.
+    Per FR-029, URLs must be 500 characters or less (validated by schema).
+
+    Parameters
+    ----------
+    video_id : str
+        YouTube video ID (11 characters).
+    request_body : AlternativeUrlRequest
+        Request body containing the alternative URL (or null to clear).
+    session : AsyncSession
+        Database session from dependency.
+
+    Returns
+    -------
+    VideoDetailResponse
+        Updated video details including the new alternative_url value.
+
+    Raises
+    ------
+    NotFoundError
+        If video not found (404).
+    ConflictError
+        If attempting to set alternative URL on an available video (409).
+    """
+    # Query video without availability filter - we need to check the status
+    query = (
+        select(VideoDB)
+        .where(VideoDB.video_id == video_id)
+        .options(selectinload(VideoDB.transcripts))
+        .options(selectinload(VideoDB.channel))
+        .options(selectinload(VideoDB.tags))
+        .options(selectinload(VideoDB.category))
+        .options(
+            selectinload(VideoDB.video_topics).selectinload(VideoTopic.topic_category)
+        )
+    )
+
+    result = await session.execute(query)
+    video = result.scalar_one_or_none()
+
+    if not video:
+        raise NotFoundError(
+            resource_type="Video",
+            identifier=video_id,
+            hint="Verify the video ID or run: chronovista sync videos",
+        )
+
+    # FR-027: Reject requests for videos with availability_status='available'
+    if video.availability_status == AvailabilityStatus.AVAILABLE.value:
+        raise ConflictError(
+            message="Alternative URLs can only be set for unavailable videos",
+            details={
+                "video_id": video_id,
+                "availability_status": video.availability_status,
+                "hint": "This video is currently available on YouTube",
+            },
+        )
+
+    # Validate URL format if provided
+    alternative_url = request_body.alternative_url
+    if alternative_url is not None:
+        # Normalize empty string to None
+        alternative_url = alternative_url.strip()
+        if not alternative_url:
+            alternative_url = None
+
+    # URL format validation - ensure it's a valid HTTP/HTTPS URL
+    if alternative_url:
+        if not (alternative_url.startswith("http://") or alternative_url.startswith("https://")):
+            from chronovista.exceptions import APIValidationError
+
+            raise APIValidationError(
+                message="Alternative URL must be a valid HTTP or HTTPS URL",
+                details={
+                    "field": "alternative_url",
+                    "value": alternative_url,
+                    "constraint": "must start with http:// or https://",
+                },
+            )
+
+    # Update the alternative_url field
+    video.alternative_url = alternative_url
+    await session.commit()
+    await session.refresh(video)
+
+    # Build response (reuse logic from get_video endpoint)
+    transcript_summary = build_transcript_summary(list(video.transcripts))
+    channel_title = video.channel.title if video.channel else None
+    tags = [tag.tag for tag in video.tags] if video.tags else []
+    category_name = video.category.name if video.category else None
+
+    # Build topics list with parent paths
+    topic_cache: dict[str, TopicCategory] = {}
+    if video.video_topics:
+        all_topic_ids: set[str] = set()
+        for vt in video.video_topics:
+            all_topic_ids.add(vt.topic_id)
+            if vt.topic_category and vt.topic_category.parent_topic_id:
+                all_topic_ids.add(vt.topic_category.parent_topic_id)
+
+        # Load parent topics that might not be in video_topics
+        if all_topic_ids:
+            parent_query = select(TopicCategory).where(
+                TopicCategory.topic_id.in_(all_topic_ids)
+            )
+            parent_result = await session.execute(parent_query)
+            for tc in parent_result.scalars().all():
+                topic_cache[tc.topic_id] = tc
+
+    topics_list: List[TopicSummary] = []
+    if video.video_topics:
+        for vt in video.video_topics:
+            tc = vt.topic_category
+            if tc:
+                parent_path = _build_parent_path(tc, topic_cache)
+                topics_list.append(
+                    TopicSummary(
+                        topic_id=tc.topic_id,
+                        name=tc.category_name,
+                        parent_path=parent_path,
+                    )
+                )
+
+    detail = VideoDetail(
+        video_id=video.video_id,
+        title=video.title,
+        description=video.description,
+        channel_id=video.channel_id,
+        channel_title=channel_title,
+        upload_date=video.upload_date,
+        duration=video.duration,
+        view_count=video.view_count,
+        like_count=video.like_count,
+        comment_count=video.comment_count,
+        tags=tags,
+        category_id=video.category_id,
+        category_name=category_name,
+        default_language=video.default_language,
+        made_for_kids=video.made_for_kids,
+        transcript_summary=transcript_summary,
+        topics=topics_list,
+        availability_status=video.availability_status,
+        alternative_url=video.alternative_url,
+    )
+
+    return VideoDetailResponse(data=detail)

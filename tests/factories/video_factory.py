@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, cast
 import factory
 from factory import LazyFunction
 
-from chronovista.models.enums import LanguageCode
+from chronovista.models.enums import AvailabilityStatus, LanguageCode
 from chronovista.models.video import (
     Video,
     VideoBase,
@@ -65,7 +65,7 @@ class VideoBaseFactory(factory.Factory[VideoBase]):
     like_count: Any = factory.LazyFunction(lambda: 1200000)
     view_count: Any = factory.LazyFunction(lambda: 1400000000)
     comment_count: Any = factory.LazyFunction(lambda: 2800000)
-    deleted_flag: Any = factory.LazyFunction(lambda: False)
+    availability_status: Any = factory.LazyFunction(lambda: AvailabilityStatus.AVAILABLE)
 
 
 class VideoCreateFactory(factory.Factory[VideoCreate]):
@@ -104,7 +104,7 @@ class VideoCreateFactory(factory.Factory[VideoCreate]):
     like_count: Any = factory.LazyFunction(lambda: 85000)
     view_count: Any = factory.LazyFunction(lambda: 2500000)
     comment_count: Any = factory.LazyFunction(lambda: 12000)
-    deleted_flag: Any = factory.LazyFunction(lambda: False)
+    availability_status: Any = factory.LazyFunction(lambda: AvailabilityStatus.AVAILABLE)
 
 
 class VideoUpdateFactory(factory.Factory[VideoUpdate]):
@@ -134,7 +134,7 @@ class VideoUpdateFactory(factory.Factory[VideoUpdate]):
     like_count: Any = factory.LazyFunction(lambda: 45000)
     view_count: Any = factory.LazyFunction(lambda: 750000)
     comment_count: Any = factory.LazyFunction(lambda: 3200)
-    deleted_flag: Any = factory.LazyFunction(lambda: False)
+    availability_status: Any = factory.LazyFunction(lambda: AvailabilityStatus.AVAILABLE)
 
 
 class VideoFactory(factory.Factory[Video]):
@@ -173,7 +173,7 @@ class VideoFactory(factory.Factory[Video]):
     like_count: Any = factory.LazyFunction(lambda: 125000)
     view_count: Any = factory.LazyFunction(lambda: 3200000)
     comment_count: Any = factory.LazyFunction(lambda: 8500)
-    deleted_flag: Any = factory.LazyFunction(lambda: False)
+    availability_status: Any = factory.LazyFunction(lambda: AvailabilityStatus.AVAILABLE)
     created_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 12, 15, 23, 35, 0, tzinfo=timezone.utc)
     )
@@ -270,7 +270,7 @@ class VideoWithChannelFactory(factory.Factory[VideoWithChannel]):
     like_count: Any = factory.LazyFunction(lambda: 450000)
     view_count: Any = factory.LazyFunction(lambda: 12000000)
     comment_count: Any = factory.LazyFunction(lambda: 35000)
-    deleted_flag: Any = factory.LazyFunction(lambda: False)
+    availability_status: Any = factory.LazyFunction(lambda: AvailabilityStatus.AVAILABLE)
     created_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 9, 22, 12, 0, 0, tzinfo=timezone.utc)
     )

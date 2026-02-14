@@ -19,7 +19,7 @@ from chronovista.models.api_responses import (
     YouTubeVideoResponse,
 )
 from chronovista.models.channel import ChannelCreate
-from chronovista.models.enums import LanguageCode, PrivacyStatus, TopicType
+from chronovista.models.enums import AvailabilityStatus, LanguageCode, PrivacyStatus, TopicType
 from chronovista.models.playlist import PlaylistCreate
 from chronovista.models.playlist_membership import PlaylistMembershipCreate
 from chronovista.models.topic_category import TopicCategoryCreate
@@ -239,7 +239,7 @@ class DataTransformers:
             category_id=snippet.category_id if snippet else None,
             made_for_kids=made_for_kids,
             self_declared_made_for_kids=self_declared,
-            deleted_flag=False,
+            availability_status=AvailabilityStatus.AVAILABLE,
         )
 
     @staticmethod

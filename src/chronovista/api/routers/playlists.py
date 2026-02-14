@@ -30,6 +30,7 @@ from chronovista.api.schemas.videos import TranscriptSummary
 from chronovista.db.models import Playlist as PlaylistDB
 from chronovista.db.models import PlaylistMembership, Video as VideoDB, VideoTranscript
 from chronovista.exceptions import BadRequestError, NotFoundError
+from chronovista.models.enums import AvailabilityStatus
 
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -357,7 +358,7 @@ async def get_playlist_videos(
                 view_count=video.view_count,
                 transcript_summary=transcript_summary,
                 position=membership.position,
-                deleted_flag=video.deleted_flag,
+                availability_status=video.availability_status,
             )
         )
 

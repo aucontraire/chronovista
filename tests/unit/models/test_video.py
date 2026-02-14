@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
+from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.video import (
     Video,
     VideoBase,
@@ -55,7 +56,7 @@ class TestVideoBaseFactory:
         assert video.duration == 213
         assert video.default_language == "en"
         assert video.made_for_kids is False
-        assert video.deleted_flag is False
+        assert video.availability_status == AvailabilityStatus.AVAILABLE
 
     def test_video_base_custom_values(self):
         """Test VideoBase with custom values."""
@@ -170,7 +171,7 @@ class TestVideoBaseFactory:
             "default_language": "en-US",
             "view_count": 100000,
             "like_count": 5000,
-            "deleted_flag": False,
+            "availability_status": "available",
         }
 
         video = VideoBase.model_validate(data)
@@ -246,7 +247,7 @@ class TestVideoUpdateFactory:
             default_language=None,
             like_count=None,
             view_count=None,
-            deleted_flag=None,
+            availability_status=None,
         )
 
         assert update.title is None
@@ -299,7 +300,7 @@ class TestVideoFactory:
             "default_language": "en",
             "view_count": 25000,
             "like_count": 1500,
-            "deleted_flag": False,
+            "availability_status": "available",
             "created_at": datetime(2023, 6, 15, 10, 30, tzinfo=timezone.utc),
             "updated_at": datetime(2023, 6, 15, 12, 45, tzinfo=timezone.utc),
         }

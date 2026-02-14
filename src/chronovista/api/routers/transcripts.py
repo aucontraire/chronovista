@@ -21,6 +21,7 @@ from chronovista.db.models import TranscriptSegment as SegmentDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as TranscriptDB
 from chronovista.exceptions import NotFoundError
+from chronovista.models.enums import AvailabilityStatus
 
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -74,6 +75,10 @@ def get_language_name(code: str) -> str:
 )
 async def get_transcript_languages(
     video_id: str = Path(..., min_length=11, max_length=11),
+    include_unavailable: bool = Query(
+        False,
+        description="Include unavailable records in results",
+    ),
     session: AsyncSession = Depends(get_db),
 ) -> TranscriptLanguagesResponse:
     """
@@ -97,11 +102,12 @@ async def get_transcript_languages(
         If video not found (404).
     """
     # Check video exists
-    video_result = await session.execute(
-        select(VideoDB)
-        .where(VideoDB.video_id == video_id)
-        .where(VideoDB.deleted_flag.is_(False))
-    )
+    video_query = select(VideoDB).where(VideoDB.video_id == video_id)
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        video_query = video_query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
+
+    video_result = await session.execute(video_query)
     if not video_result.scalar_one_or_none():
         raise NotFoundError(
             resource_type="Video",

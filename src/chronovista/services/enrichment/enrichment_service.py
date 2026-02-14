@@ -43,6 +43,7 @@ from chronovista.models.enrichment_report import (
     EnrichmentReport,
     EnrichmentSummary,
 )
+from chronovista.models.enums import AvailabilityStatus
 from chronovista.services.enrichment.shutdown_handler import get_shutdown_handler
 
 from chronovista.repositories.channel_repository import ChannelRepository
@@ -1157,17 +1158,27 @@ class EnrichmentService:
 
             try:
                 if video_id in not_found_ids:
-                    # Video not found = deleted/private
-                    # Fetch fresh video object for update
-                    await self._mark_video_deleted_by_id(session, video_id, dry_run)
-                    videos_deleted += 1
-                    details.append(
-                        EnrichmentDetail(
-                            video_id=video_id,
-                            status="deleted",
-                            old_title=cached["title"],
-                        )
+                    # Video not found — apply multi-cycle confirmation (FR-024/FR-026)
+                    confirmed = await self._mark_video_deleted_by_id(
+                        session, video_id, dry_run
                     )
+                    if confirmed:
+                        videos_deleted += 1
+                        details.append(
+                            EnrichmentDetail(
+                                video_id=video_id,
+                                status="deleted",
+                                old_title=cached["title"],
+                            )
+                        )
+                    else:
+                        details.append(
+                            EnrichmentDetail(
+                                video_id=video_id,
+                                status="pending_confirmation",
+                                old_title=cached["title"],
+                            )
+                        )
                     continue
 
                 api_data = api_data_map.get(video_id)
@@ -1205,6 +1216,29 @@ class EnrichmentService:
                         )
                     )
                     continue
+
+                # FR-024: Clear pending unavailability flag on successful API response.
+                # If the video was flagged in a previous cycle but the API now
+                # returns data, it was a transient error — clear the flag.
+                if video.unavailability_first_detected is not None:
+                    logger.info(
+                        f"Video {video_id} returned from API after pending "
+                        f"unavailability — clearing transient flag"
+                    )
+                    video.unavailability_first_detected = None
+
+                # FR-018/FR-023: Restoration — if a previously unavailable video
+                # is now accessible via the API, restore it to available status.
+                if video.availability_status != AvailabilityStatus.AVAILABLE:
+                    old_status = video.availability_status
+                    video.availability_status = AvailabilityStatus.AVAILABLE
+                    video.recovered_at = datetime.now(timezone.utc)
+                    video.recovery_source = "sync"
+                    video.unavailability_first_detected = None
+                    logger.info(
+                        f"Restored video {video_id} from '{old_status}' to available "
+                        f"(recovery_source=sync)"
+                    )
 
                 # Update the video
                 for key, value in update_data.items():
@@ -1395,13 +1429,13 @@ class EnrichmentService:
             ChannelDB, VideoDB.channel_id == ChannelDB.channel_id
         )
 
-        # Handle deleted video exclusion based on priority
-        # "all" priority implicitly includes deleted, otherwise respect include_deleted
+        # Handle unavailable video exclusion based on priority
+        # "all" priority implicitly includes unavailable, otherwise respect include_deleted
         if priority_lower == "all" and not refresh_topics:
-            # ALL priority includes deleted videos (unless refresh_topics mode)
+            # ALL priority includes unavailable videos (unless refresh_topics mode)
             pass
         elif not include_deleted:
-            query = query.where(VideoDB.deleted_flag == False)  # noqa: E712
+            query = query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)  # noqa: E712
 
         # Build priority filter based on cumulative semantics
         # Skip priority filter when refresh_topics=True (process ALL videos)
@@ -1602,7 +1636,7 @@ class EnrichmentService:
         high_query = (
             select(func.count(VideoDB.video_id))
             .outerjoin(ChannelDB, VideoDB.channel_id == ChannelDB.channel_id)
-            .where(VideoDB.deleted_flag == False)  # noqa: E712
+            .where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)  # noqa: E712
             .where(high_filter)
         )
         high_result = await session.execute(high_query)
@@ -1611,7 +1645,7 @@ class EnrichmentService:
         # Count MEDIUM priority (all placeholder titles, includes HIGH)
         medium_query = (
             select(func.count(VideoDB.video_id))
-            .where(VideoDB.deleted_flag == False)  # noqa: E712
+            .where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)  # noqa: E712
             .where(medium_filter)
         )
         medium_result = await session.execute(medium_query)
@@ -1620,15 +1654,15 @@ class EnrichmentService:
         # Count LOW priority (MEDIUM + partial data)
         low_query = (
             select(func.count(VideoDB.video_id))
-            .where(VideoDB.deleted_flag == False)  # noqa: E712
+            .where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)  # noqa: E712
             .where(or_(medium_filter, low_filter))
         )
         low_result = await session.execute(low_query)
         low_count = low_result.scalar() or 0
 
-        # Count deleted videos
+        # Count unavailable videos
         deleted_query = select(func.count(VideoDB.video_id)).where(
-            VideoDB.deleted_flag == True
+            VideoDB.availability_status != AvailabilityStatus.AVAILABLE
         )  # noqa: E712
         deleted_result = await session.execute(deleted_query)
         deleted_count = deleted_result.scalar() or 0
@@ -1649,27 +1683,86 @@ class EnrichmentService:
         session: AsyncSession,
         video: Any,
         dry_run: bool,
-    ) -> None:
-        """Mark a video as deleted."""
-        if not dry_run:
-            video.deleted_flag = True
-            logger.info(f"Marked video {video.video_id} as deleted")
+    ) -> bool:
+        """
+        Apply multi-cycle unavailability confirmation for a video.
+
+        FR-024/FR-026: Uses two-cycle confirmation to avoid false positives
+        from transient API errors. First empty response sets
+        unavailability_first_detected; second confirms by setting
+        availability_status to UNAVAILABLE.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video : Any
+            Video ORM object.
+        dry_run : bool
+            If True, skip mutations.
+
+        Returns
+        -------
+        bool
+            True if the video was confirmed unavailable (second cycle),
+            False if this was the first detection (pending confirmation).
+        """
+        if dry_run:
+            return False
+
+        if video.unavailability_first_detected is not None:
+            # Second cycle: confirm unavailability
+            video.availability_status = AvailabilityStatus.UNAVAILABLE
+            video.unavailability_first_detected = None
+            logger.info(
+                f"Confirmed video {video.video_id} as unavailable "
+                f"(multi-cycle confirmation complete)"
+            )
+            return True
+        else:
+            # First cycle: mark as pending confirmation
+            video.unavailability_first_detected = datetime.now(timezone.utc)
+            logger.info(
+                f"Video {video.video_id} not found on API — "
+                f"flagged for confirmation on next sync cycle"
+            )
+            return False
 
     async def _mark_video_deleted_by_id(
         self,
         session: AsyncSession,
         video_id: str,
         dry_run: bool,
-    ) -> None:
-        """Mark a video as deleted by fetching it fresh from the database."""
+    ) -> bool:
+        """
+        Apply multi-cycle unavailability confirmation by video ID.
+
+        Fetches the video fresh from the database and delegates to
+        _mark_video_deleted for the two-cycle confirmation logic.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_id : str
+            ID of the video to mark.
+        dry_run : bool
+            If True, skip mutations.
+
+        Returns
+        -------
+        bool
+            True if the video was confirmed unavailable (second cycle),
+            False if this was the first detection (pending confirmation).
+        """
         if dry_run:
-            return
+            return False
         video = await self.video_repository.get(session, video_id)
         if video is not None:
-            video.deleted_flag = True
-            logger.info(f"Marked video {video_id} as deleted")
+            return await self._mark_video_deleted(session, video, dry_run)
         else:
-            logger.warning(f"Video {video_id} not found for deletion marking")
+            logger.warning(f"Video {video_id} not found for unavailability marking")
+            return False
 
     def _extract_video_update_from_dict(self, api_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -1842,10 +1935,10 @@ class EnrichmentService:
         placeholder_video_condition = VideoDB.title.like(f"{VIDEO_PLACEHOLDER_PREFIX}%")
 
         # Build fully enriched condition:
-        # Non-placeholder title, non-deleted, has duration > 0, has view_count
+        # Non-placeholder title, available, has duration > 0, has view_count
         fully_enriched_condition = (
             ~placeholder_video_condition
-            & (VideoDB.deleted_flag == False)  # noqa: E712
+            & (VideoDB.availability_status == AvailabilityStatus.AVAILABLE)  # noqa: E712
             & (VideoDB.duration > 0)
             & (VideoDB.view_count.isnot(None))
         )
@@ -1854,7 +1947,7 @@ class EnrichmentService:
         video_counts_query = select(
             func.count(VideoDB.video_id).label("total"),
             func.count(case((placeholder_video_condition, 1))).label("placeholder"),
-            func.count(case((VideoDB.deleted_flag == True, 1))).label(
+            func.count(case((VideoDB.availability_status != AvailabilityStatus.AVAILABLE, 1))).label(
                 "deleted"
             ),  # noqa: E712
             func.count(case((fully_enriched_condition, 1))).label("enriched"),
@@ -1868,7 +1961,7 @@ class EnrichmentService:
         deleted_videos = video_row.deleted or 0
         fully_enriched_videos = video_row.enriched or 0
 
-        # T075: Count videos missing tags (non-deleted videos with no associated tags)
+        # T075: Count videos missing tags (available videos with no associated tags)
         # Use a LEFT JOIN and check for NULL in tag table
         videos_with_tags_subquery = select(VideoTagDB.video_id).distinct().subquery()
         missing_tags_query = (
@@ -1878,14 +1971,14 @@ class EnrichmentService:
                 VideoDB.video_id == videos_with_tags_subquery.c.video_id,
             )
             .where(
-                (VideoDB.deleted_flag == False)  # noqa: E712
+                (VideoDB.availability_status == AvailabilityStatus.AVAILABLE)  # noqa: E712
                 & (videos_with_tags_subquery.c.video_id.is_(None))
             )
         )
         missing_tags_result = await session.execute(missing_tags_query)
         videos_missing_tags = missing_tags_result.scalar() or 0
 
-        # T084: Count videos missing topics (non-deleted videos with no associated topics)
+        # T084: Count videos missing topics (available videos with no associated topics)
         # Use a LEFT JOIN and check for NULL in topic table
         videos_with_topics_subquery = (
             select(VideoTopicDB.video_id).distinct().subquery()
@@ -1897,17 +1990,17 @@ class EnrichmentService:
                 VideoDB.video_id == videos_with_topics_subquery.c.video_id,
             )
             .where(
-                (VideoDB.deleted_flag == False)  # noqa: E712
+                (VideoDB.availability_status == AvailabilityStatus.AVAILABLE)  # noqa: E712
                 & (videos_with_topics_subquery.c.video_id.is_(None))
             )
         )
         missing_topics_result = await session.execute(missing_topics_query)
         videos_missing_topics = missing_topics_result.scalar() or 0
 
-        # T090: Count videos missing category (non-deleted videos with no category_id)
+        # T090: Count videos missing category (available videos with no category_id)
         # This is a simple NULL check on the category_id FK column (FR-048)
         missing_category_query = select(func.count(VideoDB.video_id)).where(
-            (VideoDB.deleted_flag == False)  # noqa: E712
+            (VideoDB.availability_status == AvailabilityStatus.AVAILABLE)  # noqa: E712
             & (VideoDB.category_id.is_(None))
         )
         missing_category_result = await session.execute(missing_category_query)
@@ -2656,11 +2749,35 @@ class EnrichmentService:
                     try:
                         api_data = api_data_map.get(channel_id)
                         if not api_data:
-                            # Channel not found on API (deleted/private)
+                            # FR-016/FR-017: Channel not found on API — apply
+                            # multi-cycle unavailability confirmation
+                            channel = await self.channel_repository.get(
+                                session, channel_id
+                            )
+                            if channel is not None:
+                                if channel.unavailability_first_detected is not None:
+                                    # Second cycle: confirm unavailability
+                                    channel.availability_status = (
+                                        AvailabilityStatus.UNAVAILABLE
+                                    )
+                                    channel.unavailability_first_detected = None
+                                    logger.info(
+                                        f"Confirmed channel {channel_id} as unavailable "
+                                        f"(multi-cycle confirmation complete)"
+                                    )
+                                else:
+                                    # First cycle: flag for confirmation
+                                    channel.unavailability_first_detected = (
+                                        datetime.now(timezone.utc)
+                                    )
+                                    logger.info(
+                                        f"Channel {channel_id} not found on API — "
+                                        f"flagged for confirmation on next sync cycle"
+                                    )
+
                             result.channels_skipped += 1
                             if verbose:
                                 result.skipped_channel_ids.append(channel_id)
-                            logger.debug(f"Channel {channel_id} not found on YouTube API")
                             continue
 
                         # Get fresh channel object from database
@@ -2671,6 +2788,28 @@ class EnrichmentService:
                             if verbose:
                                 result.failed_channel_ids.append(channel_id)
                             continue
+
+                        # FR-016: Clear pending unavailability flag on successful
+                        # API response (transient error recovery)
+                        if channel.unavailability_first_detected is not None:
+                            logger.info(
+                                f"Channel {channel_id} returned from API after "
+                                f"pending unavailability — clearing transient flag"
+                            )
+                            channel.unavailability_first_detected = None
+
+                        # FR-018/FR-023: Restoration — if a previously unavailable
+                        # channel is now accessible via the API, restore it.
+                        if channel.availability_status != AvailabilityStatus.AVAILABLE:
+                            old_status = channel.availability_status
+                            channel.availability_status = AvailabilityStatus.AVAILABLE
+                            channel.recovered_at = datetime.now(timezone.utc)
+                            channel.recovery_source = "sync"
+                            channel.unavailability_first_detected = None
+                            logger.info(
+                                f"Restored channel {channel_id} from '{old_status}' "
+                                f"to available (recovery_source=sync)"
+                            )
 
                         # Extract update data from API response
                         update_data = self._extract_channel_update(api_data)

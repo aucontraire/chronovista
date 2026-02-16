@@ -53,6 +53,8 @@ make install-docs
 - [Exporting Data](user-guide/exporting.md) - CSV/JSON export with filtering
 - [REST API](user-guide/rest-api.md) - FastAPI endpoints and usage examples
 
+Recovery commands are documented in the [CLI Overview](user-guide/cli-overview.md#recover-commands) under the Recover Commands section.
+
 ### Architecture
 
 - [Overview](architecture/overview.md) - High-level system architecture

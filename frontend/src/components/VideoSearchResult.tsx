@@ -32,8 +32,9 @@ function formatDate(isoDate: string): string {
 
 export function VideoSearchResult({ result, queryTerms }: VideoSearchResultProps) {
   const isUnavailable = isVideoUnavailable(result.availability_status);
-  const cardOpacity = isUnavailable ? "opacity-50" : "";
-  const titleDecoration = isUnavailable ? "line-through" : "";
+  const hasRecoveredData = isUnavailable && !!result.title;
+  const cardOpacity = isUnavailable && !hasRecoveredData ? "opacity-50" : "";
+  const titleDecoration = isUnavailable && !hasRecoveredData ? "line-through" : "";
 
   return (
     <article className={`rounded-lg border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow ${cardOpacity}`}>
@@ -44,7 +45,7 @@ export function VideoSearchResult({ result, queryTerms }: VideoSearchResultProps
             to={`/videos/${result.video_id}`}
             className="text-blue-700 hover:underline"
           >
-            {isUnavailable ? (
+            {!result.title && isUnavailable ? (
               "Unavailable Video"
             ) : (
               <HighlightedText text={result.title} queryTerms={queryTerms} />

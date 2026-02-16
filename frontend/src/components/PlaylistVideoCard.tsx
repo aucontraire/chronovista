@@ -54,16 +54,16 @@ export function PlaylistVideoCard({ video }: PlaylistVideoCardProps) {
 
   // Derive unavailable state from availability_status
   const isUnavailable = isVideoUnavailable(availability_status);
-
-  // Apply unavailable state styling
-  const cardOpacity = isUnavailable ? "opacity-50" : "";
-  const titleDecoration = isUnavailable ? "line-through" : "";
+  // Only apply heavy dimming when there's no recovered title
+  const hasRecoveredData = isUnavailable && !!title;
+  const cardOpacity = isUnavailable && !hasRecoveredData ? "opacity-50" : "";
+  const titleDecoration = isUnavailable && !hasRecoveredData ? "line-through" : "";
 
   return (
     <Link
       to={`/videos/${video_id}`}
       className="block no-underline text-inherit focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-lg"
-      aria-label={isUnavailable ? `Unavailable video (was at position ${displayPosition})` : `Video: ${title} at position ${displayPosition}`}
+      aria-label={isUnavailable && !title ? `Unavailable video (was at position ${displayPosition})` : `Video: ${title} at position ${displayPosition}`}
     >
       <article
         className={`${cardPatterns.base} ${cardPatterns.hover} ${cardPatterns.transition} p-4 ${cardOpacity}`}
@@ -84,9 +84,9 @@ export function PlaylistVideoCard({ video }: PlaylistVideoCardProps) {
             <div className="flex items-start justify-between gap-2 mb-1">
               <h3
                 className={`text-base font-semibold text-${colorTokens.text.primary} line-clamp-2 flex-1 ${titleDecoration}`}
-                title={isUnavailable ? "This video is no longer available on YouTube" : title}
+                title={isUnavailable && !title ? "This video is no longer available on YouTube" : title}
               >
-                {isUnavailable ? "Unavailable Video" : title}
+                {title || (isUnavailable ? "Unavailable Video" : "")}
               </h3>
               <AvailabilityBadge status={availability_status} className="flex-shrink-0" />
             </div>

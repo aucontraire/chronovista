@@ -77,7 +77,28 @@ chronovista sync transcripts
 !!! warning "IP Throttling"
     YouTube may temporarily block your IP after ~40 rapid transcript requests. If this happens, wait 24 hours and retry. Consider using smaller batches with pauses between them.
 
-### Step 6: Verify
+### Step 6: Recover Deleted Content (Optional)
+
+If your database contains deleted or unavailable videos (common with Takeout imports), recover their metadata from the Wayback Machine:
+
+```bash
+# Preview what would be recovered
+chronovista recover video --all --dry-run --limit 10
+
+# Recover all unavailable videos (with rate limiting)
+chronovista recover video --all --limit 50 --delay 1.0
+
+# Recover a specific video
+chronovista recover video --video-id VIDEO_ID
+
+# Focus on a specific time range (e.g., archives from 2018-2020)
+chronovista recover video --all --start-year 2018 --end-year 2020
+```
+
+!!! tip "Anchor Year"
+    If you know roughly when a video was available, use `--start-year` to start searching from that era. Without it, recovery tries the newest archives first, which may exhaust the search limit before reaching older (often better) snapshots.
+
+### Step 7: Verify
 
 ```bash
 # Check what's in your database
@@ -109,10 +130,11 @@ chronovista takeout seed /path/to/new-takeout --incremental
 | 3. Takeout | `chronovista takeout seed ...` | 5-30 min | Depends on history size |
 | 4. Sync all | `chronovista sync all` | 10-60 min | Depends on library size, API quota |
 | 5. Transcripts | `chronovista sync transcripts` | 30+ min | Rate-limited by YouTube |
+| 6. Recovery | `chronovista recover video --all` | 5-60 min | Rate-limited by Wayback Machine |
 
 ## See Also
 
 - [Data Sync](data-sync.md) - Detailed sync command reference
 - [Google Takeout](google-takeout.md) - Full Takeout guide
 - [Transcripts](transcripts.md) - Transcript management
-- [CLI Overview](cli-overview.md) - All commands
+- [CLI Overview](cli-overview.md) - All commands (including recover)

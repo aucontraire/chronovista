@@ -165,6 +165,8 @@ class VideoUpdate(BaseModel):
     available_languages: Optional[Dict[str, Any]] = None
     region_restriction: Optional[Dict[str, Any]] = None
     content_rating: Optional[Dict[str, Any]] = None
+    upload_date: Optional[datetime] = None
+    thumbnail_url: Optional[str] = None
     category_id: Optional[str] = Field(default=None, max_length=10)
     like_count: Optional[int] = Field(default=None, ge=0)
     view_count: Optional[int] = Field(default=None, ge=0)

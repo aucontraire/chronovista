@@ -365,6 +365,188 @@ class ChannelEnrichmentError(ChronovistaError):
         super().__init__(message)
 
 
+class RecoveryError(ChronovistaError):
+    """
+    Base exception for video recovery operations.
+
+    This exception is the base class for all recovery-related errors,
+    including CDX API failures, page parsing errors, and dependency issues.
+
+    Attributes
+    ----------
+    message : str
+        Human-readable error message.
+    video_id : str | None
+        The video ID that was being recovered when the error occurred.
+
+    Examples
+    --------
+    >>> try:
+    ...     await recovery_service.recover_video(video_id)
+    ... except RecoveryError as e:
+    ...     print(f"Recovery failed for video {e.video_id}: {e.message}")
+    """
+
+    def __init__(
+        self,
+        message: str = "Recovery operation failed",
+        video_id: str | None = None,
+    ) -> None:
+        """
+        Initialize RecoveryError.
+
+        Parameters
+        ----------
+        message : str, optional
+            Human-readable error message (default: "Recovery operation failed").
+        video_id : str | None, optional
+            The video ID that was being recovered (default: None).
+        """
+        self.video_id = video_id
+        super().__init__(message)
+
+
+class CDXError(RecoveryError):
+    """
+    CDX API errors (network, rate limit, parse).
+
+    This exception is raised when the Wayback Machine CDX API returns an
+    error, such as network failures, rate limiting (HTTP 429), or malformed
+    response data that cannot be parsed.
+
+    Attributes
+    ----------
+    message : str
+        Human-readable error message.
+    video_id : str | None
+        The video ID that was being recovered.
+    status_code : int | None
+        HTTP status code returned by the CDX API (e.g., 429 for rate limit).
+
+    Examples
+    --------
+    >>> try:
+    ...     snapshots = await cdx_client.fetch_snapshots(video_id)
+    ... except CDXError as e:
+    ...     if e.status_code == 429:
+    ...         print("CDX API rate limit exceeded")
+    ...     raise typer.Exit(3)
+    """
+
+    def __init__(
+        self,
+        message: str = "CDX API error",
+        video_id: str | None = None,
+        status_code: int | None = None,
+    ) -> None:
+        """
+        Initialize CDXError.
+
+        Parameters
+        ----------
+        message : str, optional
+            Human-readable error message (default: "CDX API error").
+        video_id : str | None, optional
+            The video ID that was being recovered (default: None).
+        status_code : int | None, optional
+            HTTP status code returned by the CDX API (default: None).
+        """
+        self.status_code = status_code
+        super().__init__(message, video_id=video_id)
+
+
+class PageParseError(RecoveryError):
+    """
+    Page extraction errors (removal notice, timeout, no data).
+
+    This exception is raised when archived YouTube page parsing fails,
+    such as when the page contains a removal notice, the request times out,
+    or no metadata could be extracted from the snapshot.
+
+    Attributes
+    ----------
+    message : str
+        Human-readable error message.
+    video_id : str | None
+        The video ID that was being recovered.
+    snapshot_timestamp : str | None
+        The Wayback Machine timestamp of the snapshot that failed to parse.
+
+    Examples
+    --------
+    >>> try:
+    ...     metadata = await page_parser.extract_metadata(snapshot_url)
+    ... except PageParseError as e:
+    ...     print(f"Failed to parse snapshot {e.snapshot_timestamp} for video {e.video_id}")
+    """
+
+    def __init__(
+        self,
+        message: str = "Page parsing failed",
+        video_id: str | None = None,
+        snapshot_timestamp: str | None = None,
+    ) -> None:
+        """
+        Initialize PageParseError.
+
+        Parameters
+        ----------
+        message : str, optional
+            Human-readable error message (default: "Page parsing failed").
+        video_id : str | None, optional
+            The video ID that was being recovered (default: None).
+        snapshot_timestamp : str | None, optional
+            The Wayback Machine timestamp of the snapshot (default: None).
+        """
+        self.snapshot_timestamp = snapshot_timestamp
+        super().__init__(message, video_id=video_id)
+
+
+class RecoveryDependencyError(RecoveryError):
+    """
+    Optional dependencies not installed.
+
+    This exception is raised when optional recovery dependencies
+    (e.g., beautifulsoup4, selenium) are not installed but required
+    for the requested recovery operation.
+
+    Attributes
+    ----------
+    message : str
+        Human-readable error message.
+    dependency_name : str | None
+        The name of the missing dependency package.
+
+    Examples
+    --------
+    >>> try:
+    ...     from bs4 import BeautifulSoup
+    ... except ImportError:
+    ...     raise RecoveryDependencyError(
+    ...         message="beautifulsoup4 is required for HTML parsing",
+    ...         dependency_name="beautifulsoup4"
+    ...     )
+    """
+
+    def __init__(
+        self,
+        message: str = "Required dependency not installed",
+        dependency_name: str | None = None,
+    ) -> None:
+        """
+        Initialize RecoveryDependencyError.
+
+        Parameters
+        ----------
+        message : str, optional
+            Human-readable error message (default: "Required dependency not installed").
+        dependency_name : str | None, optional
+            The name of the missing dependency package (default: None).
+        """
+        self.dependency_name = dependency_name
+        super().__init__(message)
+
+
 class LockAcquisitionError(ChronovistaError):
     """
     Exception raised when lock acquisition fails.
@@ -879,6 +1061,7 @@ EXIT_CODE_SUCCESS = 0
 EXIT_CODE_GENERAL_ERROR = 1
 EXIT_CODE_INVALID_ARGS = 2
 EXIT_CODE_QUOTA_EXCEEDED = 3
+EXIT_CODE_NETWORK_ERROR = 3  # Network/CDX persistent failure (recovery)
 EXIT_CODE_PREREQUISITES_MISSING = 4  # Also used for lock acquisition failure
 EXIT_CODE_AUTHENTICATION_FAILED = 5
 EXIT_CODE_LOCK_HELD = 4  # Alias for prerequisites - another process is running

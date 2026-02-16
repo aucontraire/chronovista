@@ -7,7 +7,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-AGPL--3.0-green.svg" alt="License: AGPL-3.0">
-  <img src="https://img.shields.io/badge/tests-5,473+-brightgreen.svg" alt="Tests: 5,473+">
+  <img src="https://img.shields.io/badge/tests-6,000+-brightgreen.svg" alt="Tests: 6,000+">
   <img src="https://img.shields.io/badge/coverage-72%25-brightgreen.svg" alt="Coverage: 72%">
   <img src="https://img.shields.io/badge/code%20style-black-000000.svg" alt="Code style: black">
 </p>
@@ -54,6 +54,7 @@ chronovista sync all
 | **Write Operations** | Create playlists, like videos, subscribe to channels |
 | **REST API** | FastAPI server with 20+ endpoints for programmatic access |
 | **Video Filtering** | Filter by tags, topics, categories with fuzzy search suggestions |
+| **Deleted Video Recovery** | Recover metadata for deleted/unavailable videos via the Wayback Machine |
 
 ## Installation
 
@@ -187,6 +188,37 @@ chronovista sync all  # Enriches with current API data
 ```
 </details>
 
+### Recover Deleted Videos
+
+Recover metadata for deleted or unavailable videos from the [Wayback Machine](https://web.archive.org/):
+
+```bash
+chronovista recover video --video-id VIDEO_ID                # Single video
+chronovista recover video --all --limit 50                   # Batch recover
+chronovista recover video --all --dry-run                    # Preview changes
+chronovista recover video --video-id VIDEO_ID --start-year 2018  # Anchor to era
+```
+
+<details>
+<summary>Recovery Details</summary>
+
+**What gets recovered:**
+- Title, description, upload date, channel info
+- Tags, category, thumbnail URL
+- View count, like count
+
+**How it works:**
+- Queries the Wayback Machine CDX API for archived YouTube video pages
+- Extracts metadata from JSON or HTML meta tags
+- Three-tier overwrite policy protects existing data
+- Results cached locally for 24 hours
+
+**Options:**
+- `--start-year` / `--end-year` — Focus search on a specific archive era
+- `--delay` — Rate limiting between videos in batch mode (default: 1s)
+- `--dry-run` — Preview without making database changes
+</details>
+
 ### REST API
 
 Start the REST API server for programmatic access:
@@ -306,13 +338,14 @@ poetry install
 
 ```
 chronovista/
-├── api/          # FastAPI REST API (routers, schemas, deps)
-├── cli/          # Typer CLI commands
-├── services/     # Business logic (rate-limited API, retry logic)
-├── repositories/ # Async data access with composite keys
-├── models/       # Pydantic models with validation
-├── db/           # SQLAlchemy + Alembic migrations
-└── auth/         # OAuth 2.0 with progressive scopes
+├── api/              # FastAPI REST API (routers, schemas, deps)
+├── cli/              # Typer CLI commands
+├── services/         # Business logic (rate-limited API, retry logic)
+│   └── recovery/     # Wayback Machine video recovery (CDX client, page parser, orchestrator)
+├── repositories/     # Async data access with composite keys
+├── models/           # Pydantic models with validation
+├── db/               # SQLAlchemy + Alembic migrations
+└── auth/             # OAuth 2.0 with progressive scopes
 ```
 
 **Key design decisions:**
@@ -332,6 +365,8 @@ See [System Architecture](src/chronovista/docs/architecture/system-architecture.
 - [x] REST API (20+ endpoints)
 - [x] Web frontend (React + Vite)
 - [x] Video search and filtering UI
+- [x] Deleted content visibility and status tracking
+- [x] Wayback Machine video recovery
 - [ ] ML-powered insights
 
 

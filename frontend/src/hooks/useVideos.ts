@@ -83,7 +83,7 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
     tags = [],
     category = null,
     topicIds = [],
-    includeUnavailable = false
+    includeUnavailable = true
   } = options;
 
   const loadMoreRef = useRef<HTMLDivElement | null>(null);

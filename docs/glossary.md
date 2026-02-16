@@ -45,6 +45,26 @@ Project-specific terminology used throughout chronovista documentation and code.
 **Auto-generated Transcript**
 :   Transcripts created by YouTube's speech recognition. Available for most videos but may contain errors.
 
+## Recovery Concepts
+
+**Wayback Machine**
+:   The Internet Archive's web archive ([web.archive.org](https://web.archive.org/)). chronovista queries archived YouTube video pages to recover metadata for deleted or unavailable videos.
+
+**CDX API**
+:   The Wayback Machine's index API (`web.archive.org/cdx/search/cdx`). Returns a list of archived snapshots for a given URL, filtered by status code, MIME type, and date range. chronovista uses this to discover which YouTube video pages have been archived.
+
+**Snapshot**
+:   A single archived copy of a web page stored by the Wayback Machine, identified by a 14-digit timestamp (e.g., `20220106075526`). Each snapshot may contain different metadata depending on when it was captured.
+
+**Availability Status**
+:   A video or channel's current accessibility state. Values: `available` (normal), `deleted`, `private`, `unavailable` (generic), `region_restricted`. Replaces the legacy `deleted_flag` boolean with richer status tracking.
+
+**Recovery**
+:   The process of extracting metadata (title, description, channel, tags, etc.) from a Wayback Machine snapshot of a deleted YouTube video page and updating the local database. Uses a three-tier overwrite policy: immutable fields (fill-if-NULL only), mutable fields (overwrite-if-newer), and NULL protection (never blank existing values).
+
+**Stub Channel**
+:   A minimal channel record created automatically during recovery when the recovered `channel_id` doesn't exist in the database. Satisfies foreign key constraints and is marked with `availability_status = unavailable`.
+
 ## Technical Concepts
 
 **Development Mode**

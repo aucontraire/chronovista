@@ -81,6 +81,7 @@ CREATE TABLE channels (
     default_language VARCHAR(10),
     country VARCHAR(2),
     thumbnail_url VARCHAR(500),
+    availability_status VARCHAR(20) DEFAULT 'available',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -106,11 +107,24 @@ CREATE TABLE videos (
     like_count INTEGER,
     view_count BIGINT,
     comment_count INTEGER,
-    deleted_flag BOOLEAN DEFAULT FALSE,
+    deleted_flag BOOLEAN DEFAULT FALSE,  -- Legacy; prefer availability_status
+    availability_status VARCHAR(20) DEFAULT 'available',
+    alternative_url VARCHAR(500),
+    recovered_at TIMESTAMP WITH TIME ZONE,
+    recovery_source VARCHAR(255),  -- e.g. "wayback:20220106075526"
+    unavailability_first_detected TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
+
+**Availability Status Values:** `available`, `deleted`, `private`, `unavailable`, `region_restricted`
+
+**Recovery Columns:**
+- `recovered_at` — When metadata was last recovered from an external source
+- `recovery_source` — Provenance identifier (e.g., `wayback:20220106075526`)
+- `alternative_url` — Alternate URL if the video is available elsewhere
+- `unavailability_first_detected` — When the video was first detected as unavailable
 
 ### user_language_preferences
 

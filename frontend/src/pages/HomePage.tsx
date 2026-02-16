@@ -21,8 +21,8 @@ export function HomePage() {
   const tags = searchParams.getAll('tag');
   const category = searchParams.get('category');
   const topicIds = searchParams.getAll('topic_id');
-  // T031: Read include_unavailable state from URL (FR-021)
-  const includeUnavailable = searchParams.get('include_unavailable') === 'true';
+  // Include unavailable/recovered videos by default (Feature 024)
+  const includeUnavailable = searchParams.get('include_unavailable') !== 'false';
 
   // Get total count for filters display (using the same hook with filters)
   const { total } = useVideos({ tags, category, topicIds, includeUnavailable });

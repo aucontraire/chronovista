@@ -12,6 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.27.0] - 2026-02-15
+
+### Added
+- **Feature 024: Wayback Video Recovery**
+  - CDX API client with caching, retry logic, and `--start-year`/`--end-year` temporal anchor filtering
+  - Page parser extracting metadata from `ytInitialPlayerResponse`/`ytInitialData` JSON with BeautifulSoup fallback
+  - Recovery orchestrator with three-tier overwrite policy and stub channel creation for FK safety
+  - `chronovista recover video` CLI command with single/batch modes, dry-run, and Rich output
+  - Recovered titles displayed in frontend instead of generic "Unavailable Video" text
+  - Unavailable videos visible by default across video list, channel, and playlist views
+
+### Fixed
+- Foreign key violation when recovered `channel_id` references a missing channel
+- CDX client and page parser retry on transient connection errors
+
 ## [0.26.0] - 2026-02-13
 
 ### Added

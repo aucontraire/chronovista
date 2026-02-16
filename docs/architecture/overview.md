@@ -4,27 +4,27 @@ High-level architecture of chronovista.
 
 ## System Context
 
-chronovista is a personal YouTube data analytics platform that provides comprehensive access to YouTube engagement history through a hybrid approach combining Google Takeout data imports with live YouTube Data API integration.
+chronovista is a personal YouTube data analytics platform that provides comprehensive access to YouTube engagement history through a hybrid approach combining Google Takeout data imports, live YouTube Data API integration, and Wayback Machine recovery for deleted content.
 
 ```
-+-------------------+     +-------------------+     +-------------------+
-|   User (CLI)      |     |  Google Takeout   |     |   YouTube API     |
-+--------+----------+     +--------+----------+     +--------+----------+
-         |                         |                         |
-         v                         v                         v
-+------------------------------------------------------------------------+
-|                           chronovista                                   |
-|                                                                         |
-|  +---------------+  +---------------+  +---------------+               |
-|  |  CLI Layer    |  |  REST API     |  |  Repository   |               |
-|  |  (Typer)      |  |  (FastAPI)    |  |    Layer      |               |
-|  +-------+-------+  +-------+-------+  +-------+-------+               |
-|          |                  |                  |                        |
-|          v                  v                  v                        |
-|  +----------------------------------------------------------+          |
-|  |                    PostgreSQL Database                    |          |
-|  +----------------------------------------------------------+          |
-+------------------------------------------------------------------------+
++-------------------+  +-------------------+  +-------------------+  +-------------------+
+|   User (CLI/Web)  |  |  Google Takeout   |  |   YouTube API     |  | Wayback Machine   |
++--------+----------+  +--------+----------+  +--------+----------+  +--------+----------+
+         |                      |                      |                      |
+         v                      v                      v                      v
++-----------------------------------------------------------------------------------------+
+|                              chronovista                                                 |
+|                                                                                          |
+|  +---------------+  +---------------+  +---------------+  +------------------+           |
+|  |  CLI Layer    |  |  REST API     |  |  Repository   |  | Recovery Service |           |
+|  |  (Typer)      |  |  (FastAPI)    |  |    Layer      |  | (CDX + Parser)   |           |
+|  +-------+-------+  +-------+-------+  +-------+-------+  +--------+---------+           |
+|          |                  |                  |                    |                     |
+|          v                  v                  v                    v                     |
+|  +----------------------------------------------------------------------+                |
+|  |                       PostgreSQL Database                            |                |
+|  +----------------------------------------------------------------------+                |
++-----------------------------------------------------------------------------------------+
 ```
 
 ## Design Principles
@@ -107,6 +107,9 @@ Business logic services:
 - **TranscriptService** - Multi-language transcript management
 - **TopicService** - Topic analytics
 - **TakeoutService** - Google Takeout processing
+- **RecoveryOrchestrator** - Wayback Machine video recovery coordination
+- **CDXClient** - Wayback Machine CDX API client with caching and retry
+- **PageParser** - Archived YouTube page metadata extraction
 
 ### Repository Layer
 
@@ -226,6 +229,41 @@ Graceful degradation with retry logic:
 )
 async def fetch_video(self, video_id: str) -> Video:
     ...
+```
+
+### Recovery Operation
+
+```
+1. User: chronovista recover video --video-id VIDEO_ID
+           |
+           v
+2. CLI Layer: Parse command, validate args
+           |
+           v
+3. CDXClient: Query Wayback Machine CDX API for snapshots
+           |
+           +---> Filter by date range (--start-year/--end-year)
+           |
+           +---> Cache results locally (24h TTL)
+           |
+           v
+4. PageParser: Fetch and parse archived YouTube page
+           |
+           +---> JSON extraction (ytInitialPlayerResponse)
+           |
+           +---> Meta tag fallback (og: tags, itemprop)
+           |
+           +---> Optional Selenium fallback (pre-2017 pages)
+           |
+           v
+5. Orchestrator: Apply three-tier overwrite policy
+           |
+           +---> Immutable fields: fill-if-NULL only
+           +---> Mutable fields: overwrite-if-newer
+           +---> NULL protection: never blank existing values
+           |
+           v
+6. Repository: Update video + persist recovered tags
 ```
 
 ## See Also

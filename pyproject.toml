@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "chronovista"
-version = "0.26.0"
+version = "0.27.0"
 description = "Personal YouTube data analytics tool for comprehensive access to your YouTube engagement history"
 authors = ["chronovista <noreply@chronovista.dev>"]
 maintainers = ["chronovista <noreply@chronovista.dev>"]
@@ -46,6 +46,14 @@ greenlet = "^3.0.0"
 youtube-transcript-api = "^1.2.2"
 fastapi = "^0.109.0"
 uvicorn = {extras = ["standard"], version = "^0.27.0"}
+beautifulsoup4 = "^4.12.0"
+
+[tool.poetry.group.recovery]
+optional = true
+
+[tool.poetry.group.recovery.dependencies]
+selenium = "^4.25.0"
+webdriver-manager = "^4.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"
@@ -161,7 +169,10 @@ module = [
     "yake.*",
     "spacy.*",
     "youtube_transcript_api.*",
-    "factory_boy.*"
+    "factory_boy.*",
+    "selenium.*",
+    "webdriver_manager.*",
+    "bs4.*"
 ]
 ignore_missing_imports = true
 

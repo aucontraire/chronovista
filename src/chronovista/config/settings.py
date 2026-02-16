@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     data_dir: Path = Field(default=Path("./data"))
     cache_dir: Path = Field(default=Path("./cache"))
     logs_dir: Path = Field(default=Path("./logs"))
+    cdx_cache_ttl_hours: int = Field(default=24, description="CDX cache TTL in hours")
 
     # NLP
     nlp_model: str = Field(default="en_core_web_sm")

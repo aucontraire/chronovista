@@ -112,7 +112,7 @@ interface VideoListProps {
  * VideoList displays videos with loading, error, and empty states.
  * Includes infinite scroll with Intersection Observer and fallback Load More button.
  */
-export function VideoList({ tags = [], category = null, topicIds = [], includeUnavailable = false }: VideoListProps = {}) {
+export function VideoList({ tags = [], category = null, topicIds = [], includeUnavailable = true }: VideoListProps = {}) {
   const {
     videos,
     total,

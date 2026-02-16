@@ -127,6 +127,9 @@ The project uses a hybrid approach:
 - **Orval** generates typed hooks from the OpenAPI spec for stable endpoints
 - **`apiFetch`** utility for direct API calls where generated hooks aren't available
 
+### Deleted Content Visibility
+Videos with `availability_status` other than `available` display status badges (e.g., "Deleted", "Private", "Unavailable") throughout the UI. Recovered videos show a "Recovered" indicator with the recovery source timestamp. Filters on the video list page allow toggling deleted content visibility via the `?include_deleted=true` query parameter.
+
 ### Light Theme Only
 The app uses a light-only theme (`bg-slate-50` main content). Dark mode variants are not used.
 

@@ -273,6 +273,10 @@ async def get_playlist_videos(
     ),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
+    include_unavailable: bool = Query(
+        True,
+        description="Include unavailable videos in results",
+    ),
     session: AsyncSession = Depends(get_db),
 ) -> PlaylistVideoListResponse:
     """Get videos in a playlist with position ordering.
@@ -289,6 +293,9 @@ async def get_playlist_videos(
         Items per page (1-100, default 20).
     offset : int
         Pagination offset (default 0).
+    include_unavailable : bool
+        If True (default), include unavailable videos in results.
+        If False, only return available videos.
     session : AsyncSession
         Database session from dependency.
 
@@ -323,12 +330,20 @@ async def get_playlist_videos(
         .options(selectinload(VideoDB.channel))
     )
 
+    # Apply availability filter unless include_unavailable is True
+    if not include_unavailable:
+        query = query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
+
     # Get total count (before pagination)
-    count_query = select(func.count()).select_from(
+    count_base_query = (
         select(PlaylistMembership)
+        .join(VideoDB, PlaylistMembership.video_id == VideoDB.video_id)
         .where(PlaylistMembership.playlist_id == playlist_id)
-        .subquery()
     )
+    if not include_unavailable:
+        count_base_query = count_base_query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
+
+    count_query = select(func.count()).select_from(count_base_query.subquery())
     total_result = await session.execute(count_query)
     total = total_result.scalar() or 0
 

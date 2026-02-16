@@ -27,11 +27,13 @@ const INTERSECTION_THRESHOLD = 0.8;
 async function fetchPlaylistVideos(
   playlistId: string,
   offset: number,
-  limit: number
+  limit: number,
+  includeUnavailable: boolean
 ): Promise<PlaylistVideoListResponse> {
   const params = new URLSearchParams({
     offset: offset.toString(),
     limit: limit.toString(),
+    include_unavailable: includeUnavailable.toString(),
   });
 
   return apiFetch<PlaylistVideoListResponse>(
@@ -44,6 +46,8 @@ interface UsePlaylistVideosOptions {
   limit?: number;
   /** Whether to enable the query (default: true) */
   enabled?: boolean;
+  /** Whether to include unavailable videos (default: true) */
+  includeUnavailable?: boolean;
 }
 
 interface UsePlaylistVideosReturn {
@@ -94,7 +98,7 @@ export function usePlaylistVideos(
   playlistId: string,
   options: UsePlaylistVideosOptions = {}
 ): UsePlaylistVideosReturn {
-  const { limit = DEFAULT_LIMIT, enabled = true } = options;
+  const { limit = DEFAULT_LIMIT, enabled = true, includeUnavailable = true } = options;
 
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
@@ -108,9 +112,9 @@ export function usePlaylistVideos(
     fetchNextPage,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["playlistVideos", playlistId, limit],
+    queryKey: ["playlistVideos", playlistId, limit, includeUnavailable],
     queryFn: async ({ pageParam }) => {
-      return fetchPlaylistVideos(playlistId, pageParam, limit);
+      return fetchPlaylistVideos(playlistId, pageParam, limit, includeUnavailable);
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {

@@ -111,8 +111,10 @@ export function VideoCard({ video }: VideoCardProps) {
 
   // Determine if video is unavailable
   const isUnavailable = isVideoUnavailable(availability_status);
-  const cardOpacity = isUnavailable ? "opacity-50" : "";
-  const titleDecoration = isUnavailable ? "line-through" : "";
+  // Only apply heavy dimming when there's no recovered title
+  const hasRecoveredData = isUnavailable && !!title;
+  const cardOpacity = isUnavailable && !hasRecoveredData ? "opacity-50" : "";
+  const titleDecoration = isUnavailable && !hasRecoveredData ? "line-through" : "";
 
   return (
     <Link
@@ -122,12 +124,12 @@ export function VideoCard({ video }: VideoCardProps) {
       <article
         className={`${cardPatterns.base} ${cardPatterns.hover} ${cardPatterns.transition} p-5 ${cardOpacity}`}
         role="article"
-        aria-label={isUnavailable ? `Unavailable video` : `Video: ${title}`}
+        aria-label={isUnavailable && !title ? `Unavailable video` : `Video: ${title}`}
       >
       {/* Video Title with Availability Badge */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <h3 className={`text-lg font-semibold text-${colorTokens.text.primary} line-clamp-2 flex-1 ${titleDecoration}`}>
-          {isUnavailable ? "Unavailable Video" : title}
+          {title || (isUnavailable ? "Unavailable Video" : "")}
         </h3>
         <AvailabilityBadge status={availability_status} className="flex-shrink-0" />
       </div>

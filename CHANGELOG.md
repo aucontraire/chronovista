@@ -9,6 +9,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.27.0] - 2026-02-15
+
+### Added
+
+#### Feature 024: Wayback Video Recovery
+
+Recover metadata for deleted/unavailable YouTube videos using the Internet Archive's Wayback Machine. Coordinates CDX API queries, archived page parsing, and database updates to restore titles, descriptions, tags, channels, and other metadata from archived snapshots.
+
+**CDX API Client:**
+- Async CDX API client with file-based caching (24h TTL) and retry logic
+- Exponential backoff for HTTP 503 and connection errors (ConnectTimeout, ReadTimeout, ConnectError)
+- Fixed 60s pause for HTTP 429 rate limit responses
+- `--start-year` / `--end-year` flags for temporal anchor filtering
+- Positive CDX limit (oldest-first) when `--start-year` is specified for efficient anchor-based search
+- Separate cache keys per year filter configuration
+
+**Page Parser:**
+- Extract metadata from archived YouTube pages via `ytInitialPlayerResponse` and `ytInitialData` JSON
+- Brace-counting JSON extraction for nested objects (replaces fragile regex)
+- HTML meta tag fallback via BeautifulSoup for pages without embedded JSON
+- Retry with exponential backoff (2s, 5s, 10s) for transient Wayback Machine connection failures
+- Removal notice detection to skip unavailable-content archive pages
+
+**Recovery Orchestrator:**
+- Three-tier overwrite policy: immutable fields (channel_id, category_id) fill-if-NULL only; mutable fields overwrite when snapshot is newer; NULL protection never blanks existing values
+- Stub channel creation for recovered channel_ids not present in the database (FK constraint protection)
+- Channel recovery candidate identification for unavailable channels
+- Snapshot iteration with configurable limit (max 20) and 600s timeout
+- Dry-run mode for preview without database changes
+
+**CLI Command (`chronovista recover video`):**
+- `--video-id` for single-video recovery with progress spinner
+- `--all` for batch recovery with configurable `--limit` and `--delay`
+- `--dry-run` for preview mode
+- `--start-year` / `--end-year` for temporal anchor filtering
+- Rich table output for single results and batch summary reports
+- Dependency checks for beautifulsoup4 (required) and selenium (optional)
+
+**Frontend:**
+- Recovered video titles displayed instead of generic "Unavailable Video" text
+- Dimming and strikethrough only applied when no recovered data exists
+- Unavailable videos visible by default in video list, channel, and playlist views
+- `include_unavailable` parameter added to channel and playlist video hooks
+
+### Fixed
+- Foreign key violation when recovered `channel_id` references a channel not in the database
+- Page parser regex now matches bare `ytInitialPlayerResponse = {...}` without `var` prefix
+- CDX client retries on connection-level errors (ConnectTimeout, ReadTimeout, ConnectError)
+
 ## [0.26.0] - 2026-02-13
 
 ### Added

@@ -165,6 +165,18 @@ chronovista export [COMMAND]
 | `channels` | Export channel data |
 | `watch-history` | Export watch history |
 
+### Recover Commands
+
+```bash
+chronovista recover [COMMAND]
+```
+
+| Command | Description |
+|---------|-------------|
+| `video` | Recover metadata for deleted videos via Wayback Machine |
+
+**Note:** Requires `beautifulsoup4` (included in default install). Optional `selenium` enables pre-2017 page fallback.
+
 ### API Commands
 
 ```bash
@@ -618,6 +630,56 @@ Enriches channel metadata from the YouTube Data API.
 - `--limit <n>` - Maximum channels to enrich
 - `--dry-run` - Preview without making changes
 
+### Video Recovery
+
+#### Recover Video
+
+```bash
+chronovista recover video [OPTIONS]
+```
+
+Recovers metadata for deleted YouTube videos from the Internet Archive's Wayback Machine. Supports single-video and batch recovery modes.
+
+**Options:**
+
+- `--video-id, -v <id>` - Recover a single video by ID
+- `--all, -a` - Recover all unavailable videos (batch mode)
+- `--limit, -l <n>` - Maximum videos to recover (batch mode only)
+- `--dry-run` - Preview recovery without making changes
+- `--delay, -d <seconds>` - Delay between videos in batch mode (default: 1.0)
+- `--start-year <year>` - Only search Wayback snapshots from this year onward (2005-2026)
+- `--end-year <year>` - Only search Wayback snapshots up to this year (2005-2026)
+
+**Note:** `--video-id` and `--all` are mutually exclusive. One must be specified.
+
+**Examples:**
+
+```bash
+# Recover a specific video
+chronovista recover video --video-id dQw4w9WgXcQ
+
+# Recover all unavailable videos
+chronovista recover video --all --limit 50
+
+# Preview what would be recovered
+chronovista recover video --all --dry-run --limit 10
+
+# Focus on archives from a specific era
+chronovista recover video --video-id VIDEO_ID --start-year 2018 --end-year 2020
+
+# Batch recovery with slower rate limiting
+chronovista recover video --all --delay 2.0
+```
+
+**Recovery Details:**
+
+- Queries the Wayback Machine CDX API for archived YouTube video pages
+- Extracts metadata from JSON (`ytInitialPlayerResponse`) or HTML meta tags
+- Recovers: title, description, channel, tags, upload date, view/like counts, category, thumbnail
+- Three-tier overwrite policy: immutable fields fill-if-NULL only, mutable fields overwrite-if-newer, NULL protection
+- Results are cached locally for 24 hours to avoid redundant API calls
+- Creates stub channel records when recovered `channel_id` has no existing DB entry
+
 ### Google Takeout
 
 #### Seed Database
@@ -781,6 +843,25 @@ chronovista tags by-video --id "dQw4w9WgXcQ"
 chronovista tags by-video --id "-2kc5xfeQEs"  # Video ID starting with -
 ```
 
+### Deleted Video Recovery
+
+```bash
+# Recover a specific deleted video
+chronovista recover video --video-id dQw4w9WgXcQ
+
+# Recover all unavailable videos (batch mode)
+chronovista recover video --all --limit 50
+
+# Preview recovery without making changes
+chronovista recover video --all --dry-run
+
+# Focus search on a specific era (faster for older videos)
+chronovista recover video --video-id VIDEO_ID --start-year 2018
+
+# Batch recovery with custom rate limiting
+chronovista recover video --all --limit 20 --delay 2.0
+```
+
 ### REST API Workflow
 
 ```bash
@@ -815,4 +896,5 @@ open http://localhost:8765/docs
 - [Data Synchronization](data-sync.md)
 - [Topic Analytics](topic-analytics.md)
 - [Google Takeout](google-takeout.md)
+- [Data Population](data-population.md) - Recommended data population order (including recovery)
 - [REST API](rest-api.md)

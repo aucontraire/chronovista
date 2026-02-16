@@ -24,11 +24,13 @@ const INTERSECTION_THRESHOLD = 0.8;
 async function fetchChannelVideos(
   channelId: string,
   offset: number,
-  limit: number
+  limit: number,
+  includeUnavailable: boolean
 ): Promise<VideoListResponse> {
   const params = new URLSearchParams({
     offset: offset.toString(),
     limit: limit.toString(),
+    include_unavailable: includeUnavailable.toString(),
   });
 
   return apiFetch<VideoListResponse>(
@@ -41,6 +43,8 @@ interface UseChannelVideosOptions {
   limit?: number;
   /** Whether to enable the query (default: true) */
   enabled?: boolean;
+  /** Whether to include unavailable videos (default: true) */
+  includeUnavailable?: boolean;
 }
 
 interface UseChannelVideosReturn {
@@ -90,7 +94,7 @@ export function useChannelVideos(
   channelId: string | undefined,
   options: UseChannelVideosOptions = {}
 ): UseChannelVideosReturn {
-  const { limit = DEFAULT_LIMIT, enabled = true } = options;
+  const { limit = DEFAULT_LIMIT, enabled = true, includeUnavailable = true } = options;
 
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
@@ -104,12 +108,12 @@ export function useChannelVideos(
     fetchNextPage,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["channel-videos", channelId, limit],
+    queryKey: ["channel-videos", channelId, limit, includeUnavailable],
     queryFn: async ({ pageParam }) => {
       if (!channelId) {
         throw new Error("Channel ID is required");
       }
-      return fetchChannelVideos(channelId, pageParam, limit);
+      return fetchChannelVideos(channelId, pageParam, limit, includeUnavailable);
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {

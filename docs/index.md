@@ -55,19 +55,26 @@ chronovista is a CLI application that enables users to access, store, and explor
 
     ---
 
-    FastAPI-powered REST API with 11 endpoints for programmatic access to videos, transcripts, and search
+    FastAPI-powered REST API with 20+ endpoints for programmatic access to videos, transcripts, and search
+
+-   :material-delete-restore:{ .lg .middle } **Deleted Video Recovery**
+
+    ---
+
+    Recover metadata for deleted/unavailable videos from the Wayback Machine with configurable date ranges and batch processing
 
 </div>
 
 ## Project Status
 
 !!! success "Current Status"
-    - **3,650+ tests** with **90%+ coverage** across all modules
+    - **5,500+ tests** (4,500+ backend, 1,500+ frontend) with **90%+ coverage**
     - **Comprehensive Pydantic models** with advanced validation and type safety
     - **Real API integration testing** with YouTube API data validation
     - **Advanced repository pattern** with async support and composite keys
     - **Rate-limited API service** with intelligent error handling and retry logic
-    - **Transcript timestamp preservation** with full JSONB storage (v0.10.0)
+    - **Wayback Machine recovery** for deleted/unavailable video metadata (v0.27.0)
+    - **React frontend** with video browsing, transcript search, and deep link navigation (v0.6.0)
 
 ## Quick Example
 
@@ -122,6 +129,22 @@ chronovista is a CLI application that enables users to access, store, and explor
 
     # Interactive API docs
     open http://localhost:8765/docs
+    ```
+
+=== "Recover Deleted Videos"
+
+    ```bash
+    # Recover a specific deleted video
+    chronovista recover video --video-id dQw4w9WgXcQ
+
+    # Batch recover all unavailable videos
+    chronovista recover video --all --limit 50
+
+    # Focus on a specific archive era
+    chronovista recover video --all --start-year 2018 --end-year 2020
+
+    # Preview without making changes
+    chronovista recover video --all --dry-run
     ```
 
 ## Architecture Highlights

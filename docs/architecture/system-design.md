@@ -22,9 +22,51 @@ Detailed component design and service architecture.
 |  |  TagService   |  | UserAction    |  |  TopicService |           |
 |  |               |  |   Service     |  |               |           |
 |  +---------------+  +---------------+  +---------------+           |
+|          |                  |                  |                    |
+|  +---------------+  +---------------+  +---------------+           |
+|  | Recovery      |  |  CDXClient   |  |  PageParser   |           |
+|  | Orchestrator  |  |              |  |               |           |
+|  +---------------+  +---------------+  +---------------+           |
 |                                                                    |
 +-------------------------------------------------------------------+
 ```
+
+## Recovery Services
+
+### RecoveryOrchestrator
+
+Coordinates deleted video recovery via the Wayback Machine:
+
+```
+1. Check video eligibility (must exist, must not be AVAILABLE)
+2. Query CDX API for archived snapshots
+3. Iterate snapshots (max 20, 600s timeout)
+4. Extract metadata via PageParser (JSON → meta tags → Selenium)
+5. Apply three-tier overwrite policy
+6. Create stub channels for unknown channel_ids (FK safety)
+7. Update video record and persist recovered tags
+```
+
+### CDXClient
+
+Async client for the Wayback Machine CDX API:
+
+- File-based caching with 24-hour TTL
+- Separate cache keys per year filter (`{video_id}_from2018.json`)
+- Exponential backoff retry (3 retries, base 2s)
+- Rate limit handling (60s pause on 429)
+- Configurable date range filtering (`--start-year`/`--end-year`)
+- Sort order: newest-first by default, oldest-first when `from_year` is set
+
+### PageParser
+
+Extracts metadata from archived YouTube video pages using three strategies:
+
+1. **JSON extraction** — Parses `ytInitialPlayerResponse` embedded JavaScript for title, description, channel, tags, view count, upload date, category, thumbnail
+2. **Meta tag fallback** — Parses Open Graph (`og:`) and `itemprop` HTML meta tags via BeautifulSoup (covers pre-2017 pages lacking JSON)
+3. **Selenium fallback** — Optional rendering for pre-2017 pages requiring JavaScript (requires `selenium` + `webdriver-manager`)
+
+Includes removal notice detection (playability status, title checks, body text patterns) to skip archived pages that show "Video unavailable" instead of real content.
 
 ## Core Services
 

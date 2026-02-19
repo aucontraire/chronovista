@@ -12,6 +12,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.29.0] - 2026-02-19
+
+### Added
+- **Feature 026: Local Image Cache Proxy**
+  - Backend image proxy caching YouTube channel avatars and video thumbnails locally to eliminate 429 rate-limit errors
+  - `ImageCacheService` with async fetch, atomic writes, magic-byte content type detection, and `.missing` marker files
+  - Filesystem storage under `cache/images/` with two-character prefix sharding for video thumbnails
+  - `asyncio.Semaphore(5)` concurrent fetch limiting with dual timeouts (2s on-demand, 10s warming)
+  - `ImageQuality` enum: `default`, `mqdefault`, `hqdefault`, `sddefault`, `maxresdefault`
+  - `GET /api/v1/images/channels/{channel_id}` proxy endpoint for channel avatars
+  - `GET /api/v1/images/videos/{video_id}?quality=mqdefault` proxy endpoint for video thumbnails
+  - `X-Cache` response header (`HIT`, `MISS`, `PLACEHOLDER`) and appropriate `Cache-Control`
+  - `chronovista cache warm` CLI command with Rich Progress, `--type`, `--quality`, `--limit`, `--delay`, `--dry-run`
+  - `chronovista cache status` CLI command with Rich table display
+  - `chronovista cache purge` CLI command with `--type`, `--force`, and unavailable content warning
+  - Enrichment invalidation hook: auto-deletes cached avatar when channel `thumbnail_url` changes
+  - Frontend: all YouTube CDN URLs replaced with proxy URLs in ChannelCard, ChannelDetailPage, VideoCard, VideoDetailPage, PlaylistVideoCard
+  - Video thumbnails added to VideoCard (`mqdefault`), VideoDetailPage (`sddefault`), and PlaylistVideoCard (`mqdefault`)
+  - Client-side SVG placeholder fallback on image load error
+
+### Fixed
+- Wayback page parser failing to extract `channel_id` from pre-2020 YouTube archive pages (added `data-channel-external-id` and `<a>` anchor tag fallback extraction)
+
+### Technical
+- 108 new backend tests (45 service + 22 router + 31 CLI + 10 integration)
+- 94 new frontend tests across 4 component test files
+- 96 page parser tests (4 new for channel_id fallback extraction)
+- Zero new third-party dependencies
+- mypy strict compliance (0 errors)
+- TypeScript strict mode (0 errors)
+
 ## [0.28.0] - 2026-02-17
 
 ### Added

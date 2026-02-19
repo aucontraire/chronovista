@@ -2,6 +2,7 @@
  * PlaylistVideoCard component displays a single video item within a playlist.
  *
  * Features:
+ * - Video thumbnail (320x180 mqdefault quality via proxy, Feature 026)
  * - Position badge showing 1-indexed position (#1, #2, #3, etc.)
  * - Video title, channel name, upload date, duration
  * - Unavailable indicator: opacity-50, line-through title, tooltip
@@ -10,6 +11,7 @@
  * - Accessible with keyboard navigation support
  *
  * Visual design:
+ * - Thumbnail: 160px width (w-40), 16:9 aspect ratio, rounded corners
  * - Position badge: circular, bg-gray-100, text-gray-700, w-8 h-8
  * - Card: bg-white, rounded-lg, shadow-sm, hover:shadow-md
  * - Unavailable state: opacity-50 on entire card, line-through on title only
@@ -27,11 +29,18 @@ import type { PlaylistVideoItem } from "../types/playlist";
 import { formatDate, formatTimestamp } from "../utils/formatters";
 import { AvailabilityBadge } from "./AvailabilityBadge";
 import { isVideoUnavailable } from "../utils/availability";
+import { API_BASE_URL } from "../api/config";
 
 interface PlaylistVideoCardProps {
   /** Playlist video data to display */
   video: PlaylistVideoItem;
 }
+
+/**
+ * Placeholder image URL for videos without thumbnails.
+ * Uses a play icon SVG on gray background matching project patterns.
+ */
+const PLACEHOLDER_THUMBNAIL = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='180' viewBox='0 0 320 180'%3E%3Crect fill='%23e2e8f0' width='320' height='180'/%3E%3Cpath fill='%2394a3b8' d='M128 60l48 30-48 30z'/%3E%3C/svg%3E";
 
 /**
  * PlaylistVideoCard displays a video within a playlist context.
@@ -59,6 +68,9 @@ export function PlaylistVideoCard({ video }: PlaylistVideoCardProps) {
   const cardOpacity = isUnavailable && !hasRecoveredData ? "opacity-50" : "";
   const titleDecoration = isUnavailable && !hasRecoveredData ? "line-through" : "";
 
+  // Use proxy URL for video thumbnails (Feature 026)
+  const thumbnailUrl = `${API_BASE_URL}/images/videos/${video_id}?quality=mqdefault`;
+
   return (
     <Link
       to={`/videos/${video_id}`}
@@ -70,6 +82,17 @@ export function PlaylistVideoCard({ video }: PlaylistVideoCardProps) {
         role="article"
       >
         <div className="flex items-start gap-3">
+          {/* Video Thumbnail */}
+          <img
+            src={thumbnailUrl}
+            alt={title || "Video thumbnail"}
+            className="flex-shrink-0 w-40 aspect-video object-cover rounded"
+            loading="lazy"
+            onError={(e) => {
+              e.currentTarget.src = PLACEHOLDER_THUMBNAIL;
+            }}
+          />
+
           {/* Position Badge */}
           <div
             className="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-700 text-sm font-semibold"

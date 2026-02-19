@@ -86,6 +86,20 @@ class PlaylistType(str, Enum):
     FAVORITES = "favorites"  # Legacy Favorites playlist
 
 
+class ImageQuality(str, Enum):
+    """YouTube thumbnail image quality levels.
+
+    Maps to standard YouTube thumbnail URL suffixes for different
+    resolution variants.
+    """
+
+    DEFAULT = "default"
+    MEDIUM = "mqdefault"
+    HIGH = "hqdefault"
+    STANDARD = "sddefault"
+    MAX = "maxresdefault"
+
+
 class LanguageCode(str, Enum):
     """BCP-47 language codes for international content.
 

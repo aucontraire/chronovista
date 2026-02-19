@@ -27,9 +27,15 @@ import { useDeepLinkParams } from "../hooks/useDeepLinkParams";
 import { useVideoDetail } from "../hooks/useVideoDetail";
 import { useVideoPlaylists } from "../hooks/useVideoPlaylists";
 import { CONTRAST_SAFE_COLORS } from "../styles/tokens";
-import { apiFetch, RECOVERY_TIMEOUT } from "../api/config";
+import { API_BASE_URL, apiFetch, RECOVERY_TIMEOUT } from "../api/config";
 import type { RecoveryResultData } from "../types/recovery";
 import { useRecoveryStore } from "../stores/recoveryStore";
+
+/**
+ * Placeholder image URL for videos without thumbnails.
+ * Uses a play icon SVG on gray background matching project patterns.
+ */
+const PLACEHOLDER_THUMBNAIL = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='480' viewBox='0 0 640 480'%3E%3Crect fill='%23e2e8f0' width='640' height='480'/%3E%3Cpath fill='%2394a3b8' d='M256 120l96 60-96 60z'/%3E%3C/svg%3E";
 
 /** Default page title when no video is loaded */
 const DEFAULT_PAGE_TITLE = "Chronovista";
@@ -771,7 +777,18 @@ export function VideoDetailPage() {
       )}
 
       {/* Video Content Card */}
-      <article className="bg-white rounded-xl shadow-md border border-gray-100 p-6 lg:p-8">
+      <article className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
+        {/* Video Thumbnail */}
+        <img
+          src={`${API_BASE_URL}/images/videos/${video_id}?quality=sddefault`}
+          alt={title}
+          className="w-full aspect-video object-cover"
+          onError={(e) => {
+            e.currentTarget.src = PLACEHOLDER_THUMBNAIL;
+          }}
+        />
+
+        <div className="p-6 lg:p-8">
         {/* Video Title (FR-002) */}
         <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-4">
           {title}
@@ -870,6 +887,7 @@ export function VideoDetailPage() {
           <div className="prose prose-sm max-w-none text-gray-600 whitespace-pre-wrap">
             {description || "No description available"}
           </div>
+        </div>
         </div>
       </article>
 

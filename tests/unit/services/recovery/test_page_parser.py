@@ -762,6 +762,121 @@ class TestMetaTagExtraction:
         # itemprop="channelId" should win
         assert result.channel_id == "UCpwvZwUam-URkxB7g4USKpg"
 
+    async def test_extracts_channel_id_from_data_channel_external_id(
+        self, cdx_snapshot_factory: Any, rate_limiter_mock: RateLimiter
+    ) -> None:
+        """Test channel ID extraction from data-channel-external-id attribute (pre-2020 pages)."""
+        snapshot = CdxSnapshot(**cdx_snapshot_factory())
+        parser = PageParser(rate_limiter=rate_limiter_mock)
+
+        html = '''
+<html><head>
+<meta property="og:title" content="Test Video">
+</head><body>
+<button class="yt-uix-subscription-button" data-channel-external-id="UC8-Th83bH_thdKZDJCrn88g">Subscribe</button>
+</body></html>
+'''
+
+        with patch.object(
+            httpx.AsyncClient, "get", new_callable=AsyncMock
+        ) as mock_get:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.text = html
+            mock_get.return_value = mock_response
+
+            result = await parser.extract_metadata(snapshot)
+
+        assert result is not None
+        assert result.channel_id == "UC8-Th83bH_thdKZDJCrn88g"
+
+    async def test_extracts_channel_id_from_anchor_tag(
+        self, cdx_snapshot_factory: Any, rate_limiter_mock: RateLimiter
+    ) -> None:
+        """Test channel ID extraction from <a> tags linking to /channel/UCxxx."""
+        snapshot = CdxSnapshot(**cdx_snapshot_factory())
+        parser = PageParser(rate_limiter=rate_limiter_mock)
+
+        html = '''
+<html><head>
+<meta property="og:title" content="Test Video">
+</head><body>
+<div class="yt-user-info">
+  <a href="/web/20190509183907/https://www.youtube.com/channel/UC8-Th83bH_thdKZDJCrn88g">The Tonight Show</a>
+</div>
+</body></html>
+'''
+
+        with patch.object(
+            httpx.AsyncClient, "get", new_callable=AsyncMock
+        ) as mock_get:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.text = html
+            mock_get.return_value = mock_response
+
+            result = await parser.extract_metadata(snapshot)
+
+        assert result is not None
+        assert result.channel_id == "UC8-Th83bH_thdKZDJCrn88g"
+
+    async def test_channel_id_itemprop_takes_priority_over_data_attribute(
+        self, cdx_snapshot_factory: Any, rate_limiter_mock: RateLimiter
+    ) -> None:
+        """Test that itemprop='channelId' takes priority over data-channel-external-id."""
+        snapshot = CdxSnapshot(**cdx_snapshot_factory())
+        parser = PageParser(rate_limiter=rate_limiter_mock)
+
+        html = '''
+<html><head>
+<meta itemprop="channelId" content="UCpwvZwUam-URkxB7g4USKpg">
+<meta property="og:title" content="Test Video">
+</head><body>
+<button data-channel-external-id="UC8-Th83bH_thdKZDJCrn88g">Subscribe</button>
+</body></html>
+'''
+
+        with patch.object(
+            httpx.AsyncClient, "get", new_callable=AsyncMock
+        ) as mock_get:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.text = html
+            mock_get.return_value = mock_response
+
+            result = await parser.extract_metadata(snapshot)
+
+        assert result is not None
+        assert result.channel_id == "UCpwvZwUam-URkxB7g4USKpg"
+
+    async def test_data_channel_external_id_ignores_invalid_format(
+        self, cdx_snapshot_factory: Any, rate_limiter_mock: RateLimiter
+    ) -> None:
+        """Test that invalid data-channel-external-id values are ignored."""
+        snapshot = CdxSnapshot(**cdx_snapshot_factory())
+        parser = PageParser(rate_limiter=rate_limiter_mock)
+
+        html = '''
+<html><head>
+<meta property="og:title" content="Test Video">
+</head><body>
+<button data-channel-external-id="not-a-valid-channel-id">Subscribe</button>
+</body></html>
+'''
+
+        with patch.object(
+            httpx.AsyncClient, "get", new_callable=AsyncMock
+        ) as mock_get:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.text = html
+            mock_get.return_value = mock_response
+
+            result = await parser.extract_metadata(snapshot)
+
+        assert result is not None
+        assert result.channel_id is None
+
     async def test_extracts_channel_name_from_user_url(
         self, cdx_snapshot_factory: Any, rate_limiter_mock: RateLimiter
     ) -> None:

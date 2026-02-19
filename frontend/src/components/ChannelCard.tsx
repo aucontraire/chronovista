@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 
 import { cardPatterns, colorTokens } from "../styles";
 import type { ChannelListItem } from "../types/channel";
+import { API_BASE_URL } from "../api/config";
 
 interface ChannelCardProps {
   /** Channel data to display */
@@ -52,8 +53,10 @@ export function ChannelCard({ channel }: ChannelCardProps) {
     video_count,
   } = channel;
 
-  // Use placeholder if no thumbnail
-  const displayThumbnail = thumbnail_url || PLACEHOLDER_THUMBNAIL;
+  // Use proxy URL for channel thumbnails (Feature 026)
+  const displayThumbnail = thumbnail_url
+    ? `${API_BASE_URL}/images/channels/${channel_id}`
+    : PLACEHOLDER_THUMBNAIL;
 
   // Format video count with singular/plural
   const formattedVideoCount = formatCount(video_count);
@@ -80,6 +83,9 @@ export function ChannelCard({ channel }: ChannelCardProps) {
             src={displayThumbnail}
             alt={title}
             className="w-22 h-22 rounded-full object-cover"
+            onError={(e) => {
+              e.currentTarget.src = PLACEHOLDER_THUMBNAIL;
+            }}
           />
         </div>
 

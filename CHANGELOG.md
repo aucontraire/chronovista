@@ -9,6 +9,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.29.0] - 2026-02-19
+
+### Added
+
+#### Feature 026: Local Image Cache Proxy
+
+Backend image proxy that locally caches YouTube channel avatars and video thumbnails to eliminate 429 rate-limit errors from YouTube CDN. Includes CLI commands for cache management and frontend integration replacing all direct YouTube CDN image URLs.
+
+**Image Cache Service:**
+- `ImageCacheService` with async fetch, cache, and serve logic
+- Filesystem-based storage under `cache/images/channels/` and `cache/images/videos/{prefix}/`
+- Two-character prefix sharding for video thumbnails (e.g., `dQ/dQw4w9WgXcQ_mqdefault.jpg`)
+- Atomic writes via temp file + rename to prevent serving partial downloads
+- Zero-byte `.missing` marker files for 404/410 caching (transient errors serve placeholder without marker)
+- Magic-byte content type detection (JPEG, PNG, WebP) decoupled from `.jpg` file extension
+- `asyncio.Semaphore(5)` for concurrent YouTube fetch limiting
+- Dual timeouts: 2.0s (on-demand proxy), 10.0s (CLI warming)
+- Lightweight validation: reject < 1 KB or non-image Content-Type; 5 MB max download size
+- SVG placeholder fallbacks (240x240 silhouette for channels, 320x180 play icon for videos)
+- `ImageQuality` enum: `default` (120x90), `mqdefault` (320x180), `hqdefault` (480x360), `sddefault` (640x480), `maxresdefault` (1280x720)
+
+**Image Proxy API Endpoints:**
+- `GET /api/v1/images/channels/{channel_id}` — Serve cached channel avatar
+- `GET /api/v1/images/videos/{video_id}?quality=mqdefault` — Serve cached video thumbnail
+- `X-Cache` response header: `HIT`, `MISS`, or `PLACEHOLDER`
+- Cache-Control: `public, max-age=604800, immutable` (7d) for cached images; `public, max-age=3600` (1h) for placeholders
+- Public endpoints (no auth) — `<img>` tags cannot send auth headers
+- Input validation via existing `ChannelId`/`VideoId` types
+
+**CLI Commands (`chronovista cache`):**
+- `cache warm` — Pre-warm cache with Rich Progress, `--type`, `--quality`, `--limit`, `--delay`, `--dry-run`
+- `cache status` — Rich table with cache counts, sizes, and dates
+- `cache purge` — Selective purge with `--type`, `--force`, unavailable content warning
+- Exit codes: 0 (success), 1 (partial/errors), 2 (invalid args), 130 (interrupted)
+
+**Enrichment Invalidation Hook:**
+- Lazy singleton `ImageCacheService` in enrichment service
+- Automatic cache invalidation when channel `thumbnail_url` changes during enrichment
+- NULL-safe: only invalidates on non-NULL → different non-NULL URL change
+
+**Frontend:**
+- All YouTube CDN image URLs replaced with backend proxy URLs via `API_BASE_URL`
+- `ChannelCard.tsx`: Channel avatar via `/images/channels/{channel_id}`
+- `ChannelDetailPage.tsx`: Channel avatar via proxy
+- `VideoCard.tsx`: Video thumbnail via `/images/videos/{video_id}?quality=mqdefault` (16:9, lazy-loaded)
+- `VideoDetailPage.tsx`: Video thumbnail via `/images/videos/{video_id}?quality=sddefault` (640x480, eager-loaded)
+- `PlaylistVideoCard.tsx`: Video thumbnail via `/images/videos/{video_id}?quality=mqdefault`
+- Client-side SVG placeholder fallback on `onError` (defense in depth)
+
+### Fixed
+- Wayback page parser failing to extract `channel_id` from pre-2020 YouTube archive pages that use `data-channel-external-id` attributes or `<a>` anchor tags instead of structured data meta tags. Added two fallback extraction strategies:
+  1. `data-channel-external-id` attribute on subscribe buttons
+  2. `/channel/UCxxx` URLs in `<a>` anchor tags (including Wayback-prefixed URLs)
+
+### Technical
+- 108 new backend tests (45 service + 22 router + 31 CLI + 10 integration)
+- 94 new frontend tests across 4 component test files
+- 96 page parser tests (4 new for channel_id fallback extraction)
+- Zero new third-party dependencies
+- mypy strict compliance (0 errors)
+- TypeScript strict mode (0 errors)
+
 ## [0.28.0] - 2026-02-18
 
 ### Added

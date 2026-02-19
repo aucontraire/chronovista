@@ -185,7 +185,7 @@ describe('ChannelDetailPage', () => {
       });
     });
 
-    it('should display channel thumbnail', () => {
+    it('should display channel thumbnail with proxy URL (T031b)', () => {
       renderWithProviders(<ChannelDetailPage />, {
         initialEntries: ['/channels/UC123456789012345678901'],
         path: '/channels/:channelId',
@@ -193,7 +193,8 @@ describe('ChannelDetailPage', () => {
 
       const thumbnail = screen.getByRole('img', { name: /test channel/i });
       expect(thumbnail).toBeInTheDocument();
-      expect(thumbnail).toHaveAttribute('src', 'https://example.com/thumbnail.jpg');
+      // Should use proxy URL pattern, not original YouTube URL
+      expect(thumbnail).toHaveAttribute('src', expect.stringContaining('/images/channels/UC123456789012345678901'));
     });
 
     it('should display channel name as heading', () => {
@@ -1094,6 +1095,102 @@ describe('ChannelDetailPage', () => {
       );
       expect(youtubeLink).toHaveAttribute('target', '_blank');
       expect(youtubeLink).toHaveAttribute('rel', 'noopener noreferrer');
+    });
+  });
+
+  describe('Image Proxy URL (Feature 026, T031b)', () => {
+    beforeEach(() => {
+      mockUseChannelDetail.mockReturnValue({
+        data: mockChannelData,
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      } as any);
+
+      mockUseChannelVideos.mockReturnValue({
+        videos: mockVideos,
+        total: 2,
+        loadedCount: 2,
+        isLoading: false,
+        isError: false,
+        error: null,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+        retry: vi.fn(),
+        loadMoreRef: { current: null },
+      });
+    });
+
+    it('should use proxy URL pattern ${API_BASE_URL}/images/channels/${channelId}', () => {
+      renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901'],
+        path: '/channels/:channelId',
+      });
+
+      const thumbnail = screen.getByRole('img', { name: /test channel/i });
+      const src = thumbnail.getAttribute('src');
+
+      // Verify proxy URL pattern
+      expect(src).toMatch(/\/images\/channels\/UC123456789012345678901$/);
+      expect(src).toContain('UC123456789012345678901');
+    });
+
+    it('should NOT include YouTube CDN URLs (ytimg.com or ggpht.com)', () => {
+      renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901'],
+        path: '/channels/:channelId',
+      });
+
+      const thumbnail = screen.getByRole('img', { name: /test channel/i });
+      const src = thumbnail.getAttribute('src');
+
+      // Should NOT use YouTube CDN
+      expect(src).not.toContain('ytimg.com');
+      expect(src).not.toContain('ggpht.com');
+      expect(src).not.toContain('youtube.com');
+    });
+
+    it('should render SVG placeholder on image error', () => {
+      renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901'],
+        path: '/channels/:channelId',
+      });
+
+      const thumbnail = screen.getByRole('img', { name: /test channel/i });
+      const parent = thumbnail.parentElement;
+
+      // Simulate image load error
+      const errorEvent = new Event('error', { bubbles: true });
+      thumbnail.dispatchEvent(errorEvent);
+
+      // After error, component replaces img with SVG via innerHTML
+      // The parent should still exist
+      expect(parent).toBeTruthy();
+      // The original img should be hidden (display: none)
+      expect(thumbnail.style.display).toBe('none');
+    });
+
+    it('should display SVG placeholder when thumbnail_url is null', () => {
+      mockUseChannelDetail.mockReturnValue({
+        data: { ...mockChannelData, thumbnail_url: null },
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      } as any);
+
+      renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901'],
+        path: '/channels/:channelId',
+      });
+
+      // Should render SVG placeholder div, not img
+      const placeholder = screen.getByRole('img', { name: /test channel/i });
+      expect(placeholder).toBeInTheDocument();
+      // Placeholder should be a div with role="img", not an <img> tag
+      expect(placeholder.tagName).toBe('DIV');
     });
   });
 });

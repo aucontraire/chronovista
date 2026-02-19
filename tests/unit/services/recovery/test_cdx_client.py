@@ -1229,3 +1229,404 @@ class TestCDXYearFilteringIntegration:
         assert len(snapshots) == 2
         assert snapshots[0].digest == "NEWER"
         assert snapshots[1].digest == "OLDER"
+
+
+# =============================================================================
+# TestFetchChannelSnapshots (T012) - Unit tests for fetch_channel_snapshots()
+# =============================================================================
+
+
+class TestFetchChannelSnapshots:
+    """Test fetch_channel_snapshots() method and related channel functionality."""
+
+    async def test_channel_url_construction(self) -> None:
+        """
+        For channel_id "UCuAXFkgsw1L7xaCfnd5JJOw", the CDX URL should use
+        youtube.com/channel/{channel_id} pattern with all required parameters.
+
+        Expected query parameters:
+        - url=youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw
+        - output=json
+        - filter=statuscode:200
+        - filter=mimetype:text/html
+        - fl=timestamp,original,mimetype,statuscode,digest,length
+        - limit=-100
+        """
+        client = CDXClient(cache_dir=Path("/tmp/test_cache"))
+
+        mock_response = httpx.Response(
+            status_code=200,
+            json=[],  # Empty CDX response
+        )
+
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            await client.fetch_channel_snapshots("UCuAXFkgsw1L7xaCfnd5JJOw")
+
+            # Verify get was called once
+            mock_get.assert_called_once()
+
+            # Extract the URL that was requested
+            call_args = mock_get.call_args
+            requested_url = str(call_args[0][0])  # First positional argument
+
+            # Verify all required components are present
+            assert "youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw" in requested_url
+            assert "output=json" in requested_url
+            assert "filter=statuscode:200" in requested_url
+            assert "filter=mimetype:text/html" in requested_url
+            assert "fl=timestamp,original,mimetype,statuscode,digest,length" in requested_url
+            assert "limit=-100" in requested_url
+
+    async def test_channel_cache_key_format(self, tmp_path: Path) -> None:
+        """
+        Cache file for channel snapshots should use {channel_id}_channel.json
+        naming pattern to avoid collisions with video cache keys.
+        """
+        cache_dir = tmp_path / "cdx_cache"
+        client = CDXClient(cache_dir=cache_dir)
+
+        cdx_response = [
+            ["timestamp", "original", "mimetype", "statuscode", "digest", "length"],
+            [
+                "20220106075526",
+                "https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw",
+                "text/html",
+                "200",
+                "CHANNEL123",
+                "50000",
+            ],
+        ]
+
+        mock_response = httpx.Response(status_code=200, json=cdx_response)
+
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            await client.fetch_channel_snapshots("UCuAXFkgsw1L7xaCfnd5JJOw")
+
+        # Cache file should exist with _channel suffix
+        expected_cache = cache_dir / "cdx" / "UCuAXFkgsw1L7xaCfnd5JJOw_channel.json"
+        assert expected_cache.exists()
+
+    async def test_channel_year_filter_from_year(self) -> None:
+        """
+        fetch_channel_snapshots with from_year should pass the year parameter
+        to the CDX query and use positive limit (oldest-first).
+        """
+        client = CDXClient(cache_dir=Path("/tmp/test_cache"))
+
+        mock_response = httpx.Response(status_code=200, json=[])
+
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            await client.fetch_channel_snapshots(
+                "UCuAXFkgsw1L7xaCfnd5JJOw", from_year=2018
+            )
+
+            # Verify the URL includes from parameter
+            call_args = mock_get.call_args
+            requested_url = str(call_args[0][0])
+            assert "&from=20180101000000" in requested_url
+            assert "limit=100" in requested_url
+            assert "limit=-100" not in requested_url
+
+    async def test_channel_year_filter_to_year(self) -> None:
+        """
+        fetch_channel_snapshots with to_year should pass the year parameter
+        to the CDX query and use negative limit (newest-first).
+        """
+        client = CDXClient(cache_dir=Path("/tmp/test_cache"))
+
+        mock_response = httpx.Response(status_code=200, json=[])
+
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            await client.fetch_channel_snapshots(
+                "UCuAXFkgsw1L7xaCfnd5JJOw", to_year=2020
+            )
+
+            # Verify the URL includes to parameter
+            call_args = mock_get.call_args
+            requested_url = str(call_args[0][0])
+            assert "&to=20201231235959" in requested_url
+            assert "limit=-100" in requested_url
+
+    async def test_channel_year_filter_both_years(self) -> None:
+        """
+        fetch_channel_snapshots with both from_year and to_year should pass
+        both parameters to the CDX query and use positive limit (oldest-first).
+        """
+        client = CDXClient(cache_dir=Path("/tmp/test_cache"))
+
+        mock_response = httpx.Response(status_code=200, json=[])
+
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            await client.fetch_channel_snapshots(
+                "UCuAXFkgsw1L7xaCfnd5JJOw", from_year=2018, to_year=2020
+            )
+
+            # Verify the URL includes both from and to parameters
+            call_args = mock_get.call_args
+            requested_url = str(call_args[0][0])
+            assert "&from=20180101000000" in requested_url
+            assert "&to=20201231235959" in requested_url
+            assert "limit=100" in requested_url
+            assert "limit=-100" not in requested_url
+
+    async def test_channel_empty_results_handling(self) -> None:
+        """
+        CDX returns empty array for channel query, should return empty list
+        without raising an error.
+        """
+        client = CDXClient(cache_dir=Path("/tmp/test_cache"))
+
+        mock_response = httpx.Response(status_code=200, json=[])
+
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            snapshots = await client.fetch_channel_snapshots("UCuAXFkgsw1L7xaCfnd5JJOw")
+
+            # Should return empty list without raising an error
+            assert snapshots == []
+
+    async def test_channel_cache_hit_returns_cached(self, tmp_path: Path) -> None:
+        """
+        When cache file exists and is fresh (<24h) for a channel query,
+        return cached data without making HTTP call.
+        """
+        cache_dir = tmp_path / "cdx_cache"
+        cache_dir.mkdir(parents=True)
+        cache_file = cache_dir / "cdx" / "UCuAXFkgsw1L7xaCfnd5JJOw_channel.json"
+        cache_file.parent.mkdir(parents=True)
+
+        # Create a fresh cache entry (fetched 1 hour ago)
+        cache_entry = CdxCacheEntry(
+            video_id="UCuAXFkgsw1L7xaCfnd5JJOw",
+            fetched_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            snapshots=[
+                CdxSnapshot(
+                    timestamp="20220106075526",
+                    original="https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw",
+                    mimetype="text/html",
+                    statuscode=200,
+                    digest="CACHED_CHANNEL",
+                    length=50000,
+                )
+            ],
+            raw_count=1,
+        )
+
+        # Write cache file
+        cache_file.write_text(cache_entry.model_dump_json())
+
+        client = CDXClient(cache_dir=cache_dir)
+
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+            snapshots = await client.fetch_channel_snapshots("UCuAXFkgsw1L7xaCfnd5JJOw")
+
+            # Should not make HTTP request
+            mock_get.assert_not_called()
+
+            # Should return cached snapshot
+            assert len(snapshots) == 1
+            assert snapshots[0].digest == "CACHED_CHANNEL"
+
+    async def test_channel_sort_newest_first_default(self, tmp_path: Path) -> None:
+        """
+        fetch_channel_snapshots without from_year should return snapshots
+        sorted newest-first (default behavior).
+        """
+        client = CDXClient(cache_dir=tmp_path)
+
+        cdx_response = [
+            ["timestamp", "original", "mimetype", "statuscode", "digest", "length"],
+            [
+                "20180301120000",
+                "https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw",
+                "text/html",
+                "200",
+                "OLDEST_2018",
+                "50000",
+            ],
+            [
+                "20190601120000",
+                "https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw",
+                "text/html",
+                "200",
+                "MIDDLE_2019",
+                "50000",
+            ],
+            [
+                "20200901120000",
+                "https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw",
+                "text/html",
+                "200",
+                "NEWEST_2020",
+                "50000",
+            ],
+        ]
+
+        mock_response = httpx.Response(status_code=200, json=cdx_response)
+
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            snapshots = await client.fetch_channel_snapshots("UCuAXFkgsw1L7xaCfnd5JJOw")
+
+        # Without from_year, results should be newest-first (descending)
+        assert len(snapshots) == 3
+        assert snapshots[0].digest == "NEWEST_2020"
+        assert snapshots[1].digest == "MIDDLE_2019"
+        assert snapshots[2].digest == "OLDEST_2018"
+
+    async def test_channel_sort_oldest_first_with_from_year(
+        self, tmp_path: Path
+    ) -> None:
+        """
+        fetch_channel_snapshots with from_year should return snapshots
+        sorted oldest-first to prioritize snapshots near the anchor year.
+        """
+        client = CDXClient(cache_dir=tmp_path)
+
+        cdx_response = [
+            ["timestamp", "original", "mimetype", "statuscode", "digest", "length"],
+            [
+                "20180301120000",
+                "https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw",
+                "text/html",
+                "200",
+                "OLDEST_2018",
+                "50000",
+            ],
+            [
+                "20190601120000",
+                "https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw",
+                "text/html",
+                "200",
+                "MIDDLE_2019",
+                "50000",
+            ],
+            [
+                "20200901120000",
+                "https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw",
+                "text/html",
+                "200",
+                "NEWEST_2020",
+                "50000",
+            ],
+        ]
+
+        mock_response = httpx.Response(status_code=200, json=cdx_response)
+
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            snapshots = await client.fetch_channel_snapshots(
+                "UCuAXFkgsw1L7xaCfnd5JJOw", from_year=2018
+            )
+
+        # With from_year, results should be oldest-first (ascending)
+        assert len(snapshots) == 3
+        assert snapshots[0].digest == "OLDEST_2018"
+        assert snapshots[1].digest == "MIDDLE_2019"
+        assert snapshots[2].digest == "NEWEST_2020"
+
+    async def test_channel_cache_key_with_year_filters(self, tmp_path: Path) -> None:
+        """
+        Cache files for year-filtered channel queries should include year
+        suffixes in the filename: {channel_id}_channel_from2018_to2020.json
+        """
+        cache_dir = tmp_path / "cdx_cache"
+        client = CDXClient(cache_dir=cache_dir)
+
+        cdx_response = [
+            ["timestamp", "original", "mimetype", "statuscode", "digest", "length"],
+            [
+                "20190601120000",
+                "https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw",
+                "text/html",
+                "200",
+                "YEAR_FILTERED",
+                "50000",
+            ],
+        ]
+
+        mock_response = httpx.Response(status_code=200, json=cdx_response)
+
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            await client.fetch_channel_snapshots(
+                "UCuAXFkgsw1L7xaCfnd5JJOw", from_year=2018, to_year=2020
+            )
+
+        # Cache file should be written at the year-filtered path
+        expected_cache = (
+            cache_dir / "cdx" / "UCuAXFkgsw1L7xaCfnd5JJOw_channel_from2018_to2020.json"
+        )
+        assert expected_cache.exists()
+
+        # The unfiltered cache file should NOT exist
+        unfiltered_cache = cache_dir / "cdx" / "UCuAXFkgsw1L7xaCfnd5JJOw_channel.json"
+        assert not unfiltered_cache.exists()
+
+    async def test_channel_cache_hit_with_year_filters(self, tmp_path: Path) -> None:
+        """
+        Cache hit for year-filtered channel query should use correct cache
+        file and return oldest-first when from_year is set.
+        """
+        cache_dir = tmp_path / "cdx_cache"
+        cache_dir.mkdir(parents=True)
+        cache_file = (
+            cache_dir / "cdx" / "UCuAXFkgsw1L7xaCfnd5JJOw_channel_from2018_to2020.json"
+        )
+        cache_file.parent.mkdir(parents=True)
+
+        # Create a fresh cache entry (stored newest-first, as _parse_cdx_response does)
+        cache_entry = CdxCacheEntry(
+            video_id="UCuAXFkgsw1L7xaCfnd5JJOw",
+            fetched_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            snapshots=[
+                CdxSnapshot(
+                    timestamp="20200601120000",
+                    original="https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw",
+                    mimetype="text/html",
+                    statuscode=200,
+                    digest="NEWER_2020",
+                    length=50000,
+                ),
+                CdxSnapshot(
+                    timestamp="20180601120000",
+                    original="https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw",
+                    mimetype="text/html",
+                    statuscode=200,
+                    digest="OLDER_2018",
+                    length=50000,
+                ),
+            ],
+            raw_count=2,
+        )
+
+        cache_file.write_text(cache_entry.model_dump_json())
+
+        client = CDXClient(cache_dir=cache_dir)
+
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+            snapshots = await client.fetch_channel_snapshots(
+                "UCuAXFkgsw1L7xaCfnd5JJOw", from_year=2018, to_year=2020
+            )
+
+            # Should not make HTTP request (cache hit)
+            mock_get.assert_not_called()
+
+            # Should return oldest-first when from_year is set
+            assert len(snapshots) == 2
+            assert snapshots[0].digest == "OLDER_2018"
+            assert snapshots[1].digest == "NEWER_2020"

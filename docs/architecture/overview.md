@@ -92,7 +92,7 @@ Typer-based command-line interface:
 
 FastAPI-based HTTP interface:
 
-- 11 versioned endpoints under `/api/v1/`
+- 13 versioned endpoints under `/api/v1/`
 - OAuth integration with CLI token cache
 - OpenAPI documentation (Swagger, ReDoc)
 - Pydantic V2 response schemas
@@ -108,8 +108,9 @@ Business logic services:
 - **TopicService** - Topic analytics
 - **TakeoutService** - Google Takeout processing
 - **RecoveryOrchestrator** - Wayback Machine video recovery coordination
+- **ChannelRecoveryOrchestrator** - Channel-level archive recovery with two-tier overwrite
 - **CDXClient** - Wayback Machine CDX API client with caching and retry
-- **PageParser** - Archived YouTube page metadata extraction
+- **PageParser** - Archived YouTube page metadata extraction (5-pattern like count, channel metadata)
 
 ### Repository Layer
 
@@ -231,7 +232,49 @@ async def fetch_video(self, video_id: str) -> Video:
     ...
 ```
 
-### Recovery Operation
+### Recovery API Request
+
+```
+1. Client: POST /api/v1/videos/{video_id}/recover
+           |
+           v
+2. FastAPI: Validate auth, parse year filters
+           |
+           v
+3. Dependencies: get_recovery_deps() → CDXClient, PageParser, Orchestrator
+           |
+           v
+4. Idempotency Guard: Skip if recovered within 5 minutes
+           |
+           v
+5. Orchestrator: CDX query → PageParser → overwrite policy
+           |
+           v
+6. Response: RecoveryResult with recovered fields
+```
+
+### Channel Archive Recovery
+
+```
+1. Client: POST /api/v1/channels/{channel_id}/recover
+           |
+           v
+2. FastAPI: Validate auth, parse params
+           |
+           v
+3. ChannelRecoveryOrchestrator: Iterate channel's deleted videos
+           |
+           +---> Per-video: CDX query → PageParser → overwrite
+           +---> Auto-channel recovery: extract channel metadata from video pages
+           |
+           v
+4. Two-Tier Overwrite: immutable fill-if-NULL, mutable overwrite-if-newer
+           |
+           v
+5. Response: ChannelRecoveryResult with per-video outcomes
+```
+
+### Recovery Operation (CLI)
 
 ```
 1. User: chronovista recover video --video-id VIDEO_ID

@@ -9,6 +9,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.28.0] - 2026-02-18
+
+### Added
+
+#### Feature 025: Recovery API & Channel Archive Recovery
+
+Expose video and channel recovery via REST API endpoints, add channel metadata recovery from the Wayback Machine, and provide a full frontend recovery UX with progress tracking, cancellation, and navigation guards.
+
+**Recovery API Endpoints:**
+- `POST /api/v1/videos/{video_id}/recover` with `start_year`/`end_year` query params and structured `VideoRecoveryResponse`
+- `POST /api/v1/channels/{channel_id}/recover` with `ChannelRecoveryResponse`
+- `recovered_at` and `recovery_source` fields added to video and channel detail responses
+- Idempotency guard: skips Wayback Machine if entity was recovered within last 5 minutes
+- Recovery dependency injection via `get_recovery_deps()` with shared rate limiter (40 req/s)
+
+**Channel Recovery:**
+- `extract_channel_metadata()` page parser method with JSON extraction from `ytInitialData` and HTML meta tag fallback
+- `recover_channel()` orchestrator with two-tier overwrite policy (all fields mutable, NULL protection)
+- CDX client `fetch_channel_snapshots()` with separate cache namespace
+- Auto-channel recovery during video recovery when recovered `channel_id` references an unavailable channel
+
+**Page Parser Enhancements:**
+- Truncated description replacement: `#eow-description` HTML now overrides short JSON `shortDescription` ending in "..."
+- Like count extraction restructured with 5-pattern system ordered by specificity:
+  1. Button content span (`yt-uix-button-content`)
+  2. Locale-agnostic number from like button `aria-label`
+  3. Modern `yt-formatted-string` with "N likes"
+  4. "along with N other people" English pattern
+  5. Broad `aria-label` scan (last resort)
+- International locale support for like counts (German `2.510` → 2510, etc.)
+
+**Frontend:**
+- "Recover from Web Archive" button on video and channel detail pages
+- "Re-recover from Web Archive" label when previously recovered
+- Year filter UI with collapsible "Advanced Options" section and validation
+- Zustand v5 recovery store with `persist` middleware for session-level state
+- Elapsed time counter during recovery ("Recovering... 1m 23s elapsed")
+- Cancel button with `AbortController` integration
+- `beforeunload` warning during active recovery
+- AppShell recovery indicator banner with entity link and elapsed time
+- Toast notifications for recovery completion (green) and failure (red) with 8s auto-dismiss
+- localStorage hydration with backend polling for orphaned sessions
+- SPA navigation guard (`useBlocker` modal) on video and channel detail pages
+- Transcript panel conditionally rendered based on transcript availability
+- React Router v7 `startTransition` future flag opt-in
+
+**CLI:**
+- Channel recovery statistics in batch summary for `chronovista recover`
+
+### Fixed
+- Recovery timeout mismatch: frontend `apiFetch` now accepts per-call timeout override (660s for recovery vs 10s default)
+- `sessions.get is not a function` error on localStorage hydration (added `merge` callback for Map deserialization)
+- 404 errors for `/transcript/languages` on deleted videos (gated on `transcript_summary.count > 0`)
+- Transcript languages endpoint now passes `include_unavailable=true` for deleted video support
+- Truncated descriptions from Wayback JSON no longer prevent full `#eow-description` recovery
+- Like count extraction failing on non-English locale pages (German, etc.)
+
+### Technical
+- 1,739 passing frontend tests across 71 files
+- 4,500+ passing backend tests
+- 246 recovery-specific backend tests
+- Zustand v5 (~3KB gzipped) for app-level recovery state
+- mypy strict compliance (0 errors)
+- TypeScript strict mode (0 errors)
+
 ## [0.27.0] - 2026-02-15
 
 ### Added

@@ -476,10 +476,24 @@ def _display_single_result(result: RecoveryResult, dry_run: bool) -> None:
             table.add_row("Snapshots Available", str(result.snapshots_available))
             table.add_row("Snapshots Tried", str(result.snapshots_tried))
 
+    # T027: Display channel recovery information
+    if result.channel_recovered:
+        channel_info = f"recovered {len(result.channel_fields_recovered)} fields ({', '.join(result.channel_fields_recovered)})"
+        table.add_row("Channel Recovery", f"[green]{channel_info}[/green]")
+    elif result.channel_failure_reason:
+        table.add_row("Channel Recovery", f"[red]failed - {result.channel_failure_reason}[/red]")
+
     table.add_row("Duration", f"{result.duration_seconds:.2f}s")
 
     if dry_run:
         table.add_row("Mode", "[yellow]DRY RUN - No changes made[/yellow]")
+        # T027: Show channel recovery candidates in dry-run mode
+        if result.channel_recovery_candidates:
+            candidates_str = ", ".join(result.channel_recovery_candidates)
+            table.add_row(
+                "Channel Recovery Candidates",
+                f"[yellow]{len(result.channel_recovery_candidates)} channels ({candidates_str})[/yellow]"
+            )
 
     console.print(table)
 
@@ -503,6 +517,16 @@ def _display_batch_summary(results: list[RecoveryResult], dry_run: bool) -> None
         1 for r in results if not r.success and r.failure_reason == "no_snapshots_found"
     )
 
+    # T027: Calculate channel recovery statistics
+    channels_attempted = sum(1 for r in results if r.channel_recovered or r.channel_failure_reason)
+    channels_recovered = sum(1 for r in results if r.channel_recovered)
+
+    # T027: Collect all unique channel fields recovered
+    all_channel_fields: set[str] = set()
+    for r in results:
+        if r.channel_recovered:
+            all_channel_fields.update(r.channel_fields_recovered)
+
     # T055: Summary panel
     summary_text = (
         f"[cyan]Attempted:[/cyan] {total}\n"
@@ -510,6 +534,17 @@ def _display_batch_summary(results: list[RecoveryResult], dry_run: bool) -> None
         f"[red]Failed:[/red] {failed}\n"
         f"[yellow]No Archive Found:[/yellow] {no_archive}"
     )
+
+    # T027: Add channel recovery section if any channels were attempted
+    if channels_attempted > 0:
+        summary_text += (
+            f"\n\n[bold]Channel Recovery:[/bold]\n"
+            f"[cyan]Channels attempted:[/cyan] {channels_attempted}\n"
+            f"[green]Channels recovered:[/green] {channels_recovered}"
+        )
+        if all_channel_fields:
+            fields_str = ", ".join(sorted(all_channel_fields))
+            summary_text += f"\n[cyan]Channel fields recovered:[/cyan] {fields_str}"
 
     if dry_run:
         summary_text += "\n\n[yellow]DRY RUN - No changes were made[/yellow]"

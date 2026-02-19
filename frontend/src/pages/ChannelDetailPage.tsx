@@ -3,14 +3,18 @@
  */
 
 import { useEffect, useRef } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useBlocker } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { VideoGrid } from "../components/VideoGrid";
 import { LoadingState } from "../components/LoadingState";
 import { UnavailabilityBanner } from "../components/UnavailabilityBanner";
 import { useChannelDetail, useChannelVideos } from "../hooks";
 import { cardPatterns, colorTokens } from "../styles";
+import { apiFetch, RECOVERY_TIMEOUT } from "../api/config";
 import type { ApiError } from "../types/video";
+import type { RecoveryResultData } from "../types/recovery";
+import { useRecoveryStore } from "../stores/recoveryStore";
 
 /**
  * Formats a number with K/M suffixes for readability.
@@ -51,6 +55,7 @@ export function ChannelDetailPage() {
   const { channelId } = useParams<{ channelId: string }>();
   const navigate = useNavigate();
   const mainRef = useRef<HTMLElement>(null);
+  const queryClient = useQueryClient();
 
   const {
     data: channel,
@@ -72,6 +77,83 @@ export function ChannelDetailPage() {
     retry: videosRetry,
     loadMoreRef,
   } = useChannelVideos(channelId);
+
+  // Recovery store actions and session
+  const { startRecovery, updatePhase, setResult, setError, setAbortController } = useRecoveryStore();
+
+  // Check if recovery is in progress for navigation blocker
+  const isRecoveryActive = useRecoveryStore(
+    (s) => s.getActiveSession(channelId ?? "")?.phase === "in-progress"
+  );
+
+  // Block navigation when recovery is in progress
+  // Note: useBlocker requires a data router (BrowserRouter/RouterProvider), not MemoryRouter
+  // In test environments without data router, this will return a safe default state
+  let blocker;
+  try {
+    blocker = useBlocker(isRecoveryActive);
+  } catch {
+    // Fallback for test environments or non-data-router contexts
+    blocker = {
+      state: 'unblocked' as const,
+      reset: undefined,
+      proceed: undefined,
+      location: undefined,
+    };
+  }
+
+  // Recovery mutation (Feature 025, T025, T032 timeout fix, T041 cancel, T044 Zustand integration)
+  const recoveryMutation = useMutation({
+    mutationFn: async (options?: { startYear?: number; endYear?: number }) => {
+      // Start recovery session and get sessionId
+      const sessionId = startRecovery(
+        channelId ?? "",
+        "channel",
+        channel?.title ?? null,
+        options
+      );
+
+      // Update phase to in-progress
+      updatePhase(sessionId, "in-progress");
+
+      // T041: Create AbortController for cancellation
+      const controller = new AbortController();
+      setAbortController(sessionId, controller);
+
+      const params = new URLSearchParams();
+      if (options?.startYear) params.set("start_year", String(options.startYear));
+      if (options?.endYear) params.set("end_year", String(options.endYear));
+      const qs = params.toString();
+      const endpoint = `/channels/${channelId}/recover${qs ? `?${qs}` : ""}`;
+      const response = await apiFetch<{ data: RecoveryResultData }>(
+        endpoint,
+        {
+          method: "POST",
+          timeout: RECOVERY_TIMEOUT,
+          signal: controller.signal,
+        }
+      );
+
+      return { sessionId, data: response.data };
+    },
+    onSuccess: ({ sessionId, data }) => {
+      // Set result in store
+      setResult(sessionId, data);
+      // Invalidate channel detail query to refresh page data
+      void queryClient.invalidateQueries({ queryKey: ["channel", channelId] });
+    },
+    onError: (error: unknown) => {
+      // Get the active session to extract sessionId
+      const session = useRecoveryStore.getState().getActiveSession(channelId ?? "");
+      if (session) {
+        const errorMessage =
+          typeof error === "object" && error !== null && "message" in error
+            ? (error as { message: string }).message
+            : "Recovery failed";
+        setError(session.sessionId, errorMessage);
+      }
+    },
+  });
 
   // Focus management on page load (FR-018)
   useEffect(() => {
@@ -237,6 +319,7 @@ export function ChannelDetailPage() {
 
   // Success state - render channel details
   const {
+    channel_id: channelIdFromData,
     title,
     description,
     thumbnail_url,
@@ -245,10 +328,52 @@ export function ChannelDetailPage() {
     country,
     is_subscribed,
     availability_status,
+    recovered_at,
   } = channel;
 
   return (
-    <main className="container mx-auto px-4 py-8" ref={mainRef} tabIndex={-1}>
+    <>
+      {/* Navigation Blocker Modal */}
+      {blocker.state === "blocked" && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="nav-guard-title"
+        >
+          <div className="bg-white rounded-xl shadow-xl max-w-md mx-4 p-6">
+            <h2
+              id="nav-guard-title"
+              className="text-lg font-semibold text-slate-900 mb-3"
+            >
+              Recovery in progress
+            </h2>
+            <p className="text-sm text-slate-600 mb-6">
+              Navigating away will not cancel the recovery, but you will lose visibility of the result.
+              The AppShell indicator will still show progress.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => blocker.reset?.()}
+                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2"
+                autoFocus
+              >
+                Stay
+              </button>
+              <button
+                type="button"
+                onClick={() => blocker.proceed?.()}
+                className="px-4 py-2 text-sm font-medium text-white bg-slate-700 rounded-lg hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2"
+              >
+                Leave
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <main className="container mx-auto px-4 py-8" ref={mainRef} tabIndex={-1}>
       {/* Breadcrumb Navigation */}
       <nav className="mb-6" aria-label="Breadcrumb">
         <Link
@@ -259,10 +384,13 @@ export function ChannelDetailPage() {
         </Link>
       </nav>
 
-      {/* Unavailability Banner (Feature 023) */}
+      {/* Unavailability Banner (Feature 023, Feature 025, T044 Zustand integration) */}
       <UnavailabilityBanner
         availabilityStatus={availability_status}
         entityType="channel"
+        entityId={channelIdFromData}
+        onRecover={(options) => recoveryMutation.mutate(options)}
+        recoveredAt={recovered_at}
       />
 
       {/* Channel Header */}
@@ -522,6 +650,7 @@ export function ChannelDetailPage() {
           </>
         )}
       </div>
-    </main>
+      </main>
+    </>
   );
 }

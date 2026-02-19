@@ -136,9 +136,10 @@ All responses use a consistent envelope structure.
 | `BAD_REQUEST` | 400 | Invalid request parameters |
 | `MUTUALLY_EXCLUSIVE` | 400 | Both linked and unlinked filters set to true |
 | `SYNC_IN_PROGRESS` | 409 | Another sync operation is running |
-| `CONFLICT` | 409 | Resource conflict (e.g., sync in progress) |
+| `CONFLICT` | 409 | Resource conflict (e.g., recovery on available entity) |
 | `INVALID_LANGUAGE_CODE` | 400 | Invalid BCP-47 language code |
 | `INVALID_PREFERENCE_TYPE` | 400 | Invalid preference type |
+| `SERVICE_UNAVAILABLE` | 503 | External service unavailable (e.g., Wayback Machine CDX API) |
 
 ## Endpoints
 
@@ -265,10 +266,17 @@ GET /api/v1/videos/{video_id}
       "count": 2,
       "languages": ["en", "es"],
       "has_manual": true
-    }
+    },
+    "availability_status": "available",
+    "alternative_url": null,
+    "recovered_at": null,
+    "recovery_source": null
   }
 }
 ```
+
+!!! note "Recovery Fields"
+    The `recovered_at` and `recovery_source` fields are populated when a video's metadata has been recovered from the Wayback Machine. See [Recovery Endpoints](#recovery) below.
 
 ---
 
@@ -339,10 +347,16 @@ GET /api/v1/channels/{channel_id}
     "video_count": 150,
     "thumbnail_url": "https://yt3.ggpht.com/...",
     "custom_url": "@RickAstley",
-    "published_at": "2006-09-23T00:00:00Z"
+    "published_at": "2006-09-23T00:00:00Z",
+    "availability_status": "available",
+    "recovered_at": null,
+    "recovery_source": null
   }
 }
 ```
+
+!!! note "Recovery Fields"
+    The `recovered_at` and `recovery_source` fields are populated when a channel's metadata has been recovered from the Wayback Machine. See [Recovery Endpoints](#recovery) below.
 
 #### Get Channel Videos
 
@@ -1059,6 +1073,125 @@ Returns the updated preferences in the same format as GET.
 
 ---
 
+### Recovery
+
+Recover metadata for unavailable (deleted, private, or terminated) videos and channels using the Internet Archive's Wayback Machine.
+
+#### Recover Video Metadata
+
+Trigger a Wayback Machine recovery for an unavailable video.
+
+```
+POST /api/v1/videos/{video_id}/recover
+```
+
+##### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `video_id` | string | YouTube video ID (11 characters) |
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `start_year` | integer | Only search snapshots from this year onward (2005-2026) | - |
+| `end_year` | integer | Only search snapshots up to this year (2005-2026) | - |
+
+##### Response (200 OK)
+
+```json
+{
+  "data": {
+    "video_id": "dQw4w9WgXcQ",
+    "success": true,
+    "snapshot_used": "20210315142030",
+    "fields_recovered": ["title", "description", "channel_id", "tags"],
+    "fields_skipped": ["view_count"],
+    "snapshots_available": 45,
+    "snapshots_tried": 2,
+    "failure_reason": null,
+    "duration_seconds": 3.42,
+    "channel_recovery_candidates": ["UCuAXFkgsw1L7xaCfnd5JJOw"],
+    "channel_recovered": true,
+    "channel_fields_recovered": ["title", "description"],
+    "channel_fields_skipped": [],
+    "channel_failure_reason": null
+  }
+}
+```
+
+##### Error Responses
+
+| HTTP Status | Code | Description |
+|-------------|------|-------------|
+| 404 | `NOT_FOUND` | Video not found in the database |
+| 409 | `CONFLICT` | Video is currently available (recovery only applies to unavailable videos) |
+| 503 | - | Wayback Machine CDX API unavailable (includes `Retry-After: 60` header) |
+
+##### Idempotency Guard
+
+If the video was already recovered within the last 5 minutes, the endpoint returns a cached success response without contacting the Wayback Machine, with `fields_recovered: []` and `duration_seconds: 0.0`.
+
+---
+
+#### Recover Channel Metadata
+
+Trigger a Wayback Machine recovery for an unavailable channel.
+
+```
+POST /api/v1/channels/{channel_id}/recover
+```
+
+##### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `channel_id` | string | YouTube channel ID (24 characters) |
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `start_year` | integer | Only search snapshots from this year onward (2005-2026) | - |
+| `end_year` | integer | Only search snapshots up to this year (2005-2026) | - |
+
+##### Response (200 OK)
+
+```json
+{
+  "data": {
+    "channel_id": "UCuAXFkgsw1L7xaCfnd5JJOw",
+    "success": true,
+    "snapshot_used": "20220801120000",
+    "fields_recovered": ["title", "description"],
+    "fields_skipped": [],
+    "snapshots_available": 12,
+    "snapshots_tried": 1,
+    "failure_reason": null,
+    "duration_seconds": 2.15
+  }
+}
+```
+
+##### Error Responses
+
+| HTTP Status | Code | Description |
+|-------------|------|-------------|
+| 404 | `NOT_FOUND` | Channel not found in the database |
+| 409 | `CONFLICT` | Channel is currently available (recovery only applies to unavailable channels) |
+| 503 | - | Wayback Machine CDX API unavailable (includes `Retry-After: 60` header) |
+
+##### Idempotency Guard
+
+If the channel was already recovered within the last 5 minutes, the endpoint returns a cached success response without contacting the Wayback Machine.
+
+##### Recovery Dependency Injection
+
+Both recovery endpoints share a module-level rate limiter (`get_recovery_deps()` in `deps.py`) configured at 40 requests per second. CDXClient and PageParser instances are created per-call as they hold no request-scoped state.
+
+---
+
 ### Sync Operations
 
 #### Trigger Sync Operation
@@ -1387,6 +1520,26 @@ curl "http://localhost:8000/api/v1/tags/hip%20hop"
 
 ```bash
 curl http://localhost:8000/api/v1/tags/news/videos
+```
+
+#### Recover Video Metadata
+
+```bash
+# Recover a specific unavailable video
+curl -X POST http://localhost:8000/api/v1/videos/dQw4w9WgXcQ/recover
+
+# Recover with year range filter
+curl -X POST "http://localhost:8000/api/v1/videos/dQw4w9WgXcQ/recover?start_year=2018&end_year=2022"
+```
+
+#### Recover Channel Metadata
+
+```bash
+# Recover a specific unavailable channel
+curl -X POST http://localhost:8000/api/v1/channels/UCuAXFkgsw1L7xaCfnd5JJOw/recover
+
+# Recover with year range filter
+curl -X POST "http://localhost:8000/api/v1/channels/UCuAXFkgsw1L7xaCfnd5JJOw/recover?start_year=2015"
 ```
 
 ### Using Python

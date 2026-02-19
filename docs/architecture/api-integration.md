@@ -340,6 +340,55 @@ def map_channel_response(api_response: dict) -> Channel:
     )
 ```
 
+## Recovery API Endpoints
+
+chronovista exposes two REST API endpoints for triggering Wayback Machine recovery (v0.28.0). These are internal endpoints served by FastAPI, not YouTube Data API operations.
+
+### POST /api/v1/videos/{video_id}/recover
+
+Triggers recovery of a single deleted/unavailable video via the Wayback Machine.
+
+**Parameters:**
+
+| Parameter | Location | Type | Description |
+|-----------|----------|------|-------------|
+| `video_id` | path | string | YouTube video ID |
+| `start_year` | query | int (optional) | Earliest snapshot year to search |
+| `end_year` | query | int (optional) | Latest snapshot year to search |
+
+**Behavior:**
+- Returns cached result if `recovered_at` is within the 5-minute idempotency window
+- Queries CDX API for archived snapshots, iterates up to 20 with 600s timeout
+- Applies three-tier overwrite policy (immutable fill-if-NULL, mutable overwrite-if-newer, NULL protection)
+- Auto-recovers channel metadata from video page when channel record is incomplete
+- Creates stub channel records for unknown `channel_id` values (FK safety)
+
+**Response:** `RecoveryResult` with recovered field names, snapshot timestamp, and recovery source.
+
+### POST /api/v1/channels/{channel_id}/recover
+
+Triggers batch recovery of all deleted/unavailable videos for a channel.
+
+**Parameters:**
+
+| Parameter | Location | Type | Description |
+|-----------|----------|------|-------------|
+| `channel_id` | path | string | YouTube channel ID |
+| `start_year` | query | int (optional) | Earliest snapshot year to search |
+| `end_year` | query | int (optional) | Latest snapshot year to search |
+
+**Behavior:**
+- Loads all non-available videos for the channel
+- Iterates each through the video recovery orchestrator
+- Extracts and applies channel-level metadata from video pages (two-tier overwrite)
+- Returns per-video outcomes with summary statistics
+
+**Response:** `ChannelRecoveryResult` with per-video results, total recovered count, and channel metadata updates.
+
+### Dependency Injection
+
+Both endpoints use `get_recovery_deps()` from `api/deps.py` to obtain a `RecoveryDeps` bundle containing the CDX client, page parser, and orchestrator, all sharing a single database session per request.
+
 ## See Also
 
 - [Architecture Overview](overview.md) - System context

@@ -4,26 +4,38 @@ This module provides REST API endpoints for channel operations:
 - GET /channels - List channels with pagination and filtering
 - GET /channels/{channel_id} - Get channel details by ID
 - GET /channels/{channel_id}/videos - Get videos belonging to a channel
+- POST /channels/{channel_id}/recover - Recover metadata for unavailable channel
 
 All endpoints require authentication via the require_auth dependency.
 """
 
 from __future__ import annotations
 
+import logging
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Path, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from chronovista.api.deps import get_db, require_auth
-from chronovista.api.routers.responses import GET_ITEM_ERRORS, LIST_ERRORS
+from chronovista.api.deps import get_db, get_recovery_deps, require_auth
+from chronovista.api.routers.responses import (
+    CONFLICT_RESPONSE,
+    GET_ITEM_ERRORS,
+    LIST_ERRORS,
+    NOT_FOUND_RESPONSE,
+    VALIDATION_ERROR_RESPONSE,
+)
 from chronovista.api.schemas.channels import (
     ChannelDetail,
     ChannelDetailResponse,
     ChannelListItem,
     ChannelListResponse,
+    ChannelRecoveryResponse,
+    ChannelRecoveryResultData,
 )
 from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.topics import TopicSummary
@@ -36,8 +48,14 @@ from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoCategory, VideoTag, VideoTopic, TopicCategory
 from chronovista.db.models import VideoTranscript
-from chronovista.exceptions import NotFoundError
+from chronovista.exceptions import BadRequestError, CDXError, ConflictError, NotFoundError
 from chronovista.models.enums import AvailabilityStatus
+
+logger = logging.getLogger(__name__)
+
+# Recovery idempotency guard (T033)
+# Skip Wayback Machine requests if entity was recovered within this window
+RECOVERY_IDEMPOTENCY_MINUTES = 5
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -227,6 +245,8 @@ async def get_channel(
         availability_status=channel.availability_status,
         created_at=channel.created_at,
         updated_at=channel.updated_at,
+        recovered_at=channel.recovered_at,
+        recovery_source=channel.recovery_source,
     )
 
     return ChannelDetailResponse(data=detail)
@@ -358,3 +378,176 @@ async def get_channel_videos(
             has_more=(offset + limit) < total,
         ),
     )
+
+
+@router.post(
+    "/channels/{channel_id}/recover",
+    response_model=ChannelRecoveryResponse,
+    responses={
+        **NOT_FOUND_RESPONSE,
+        **CONFLICT_RESPONSE,
+        **VALIDATION_ERROR_RESPONSE,
+        503: {"description": "Wayback Machine CDX API unavailable"},
+    },
+)
+async def recover_channel_endpoint(
+    channel_id: str = Path(
+        ...,
+        min_length=24,
+        max_length=24,
+        description="YouTube channel ID (24 characters)",
+    ),
+    start_year: Optional[int] = Query(
+        None,
+        ge=2005,
+        le=2026,
+        description="Only search snapshots from this year onward (2005-2026)",
+    ),
+    end_year: Optional[int] = Query(
+        None,
+        ge=2005,
+        le=2026,
+        description="Only search snapshots up to this year (2005-2026)",
+    ),
+    session: AsyncSession = Depends(get_db),
+) -> ChannelRecoveryResponse | JSONResponse:
+    """
+    Recover metadata for an unavailable channel using the Wayback Machine.
+
+    Queries the Internet Archive's CDX API for archived snapshots of the
+    channel's YouTube page, extracts metadata from the best available snapshot,
+    and updates the database with recovered fields.
+
+    Parameters
+    ----------
+    channel_id : str
+        YouTube channel ID (24 characters, starts with UC).
+    start_year : Optional[int]
+        Only search snapshots from this year onward (2005-2026).
+    end_year : Optional[int]
+        Only search snapshots up to this year (2005-2026).
+    session : AsyncSession
+        Database session from dependency.
+
+    Returns
+    -------
+    ChannelRecoveryResponse
+        Recovery result with fields recovered, snapshot used, and duration.
+
+    Raises
+    ------
+    NotFoundError
+        If channel not found (404).
+    ConflictError
+        If channel is currently available (409).
+    BadRequestError
+        If year range is invalid (422-level via BadRequestError).
+    JSONResponse (503)
+        If the Wayback Machine CDX API is unavailable.
+    """
+    # Validate year range: end_year >= start_year
+    if start_year is not None and end_year is not None and end_year < start_year:
+        raise BadRequestError(
+            message=(
+                f"Invalid year range: end_year ({end_year}) must be "
+                f">= start_year ({start_year})"
+            ),
+            details={
+                "start_year": start_year,
+                "end_year": end_year,
+                "constraint": "end_year >= start_year",
+            },
+        )
+
+    # Verify channel exists
+    channel_query = select(ChannelDB).where(ChannelDB.channel_id == channel_id)
+    result = await session.execute(channel_query)
+    channel = result.scalar_one_or_none()
+
+    if not channel:
+        raise NotFoundError(
+            resource_type="Channel",
+            identifier=channel_id,
+            hint="Verify the channel ID or run a sync.",
+        )
+
+    # Verify channel is unavailable (not available)
+    if channel.availability_status == AvailabilityStatus.AVAILABLE.value:
+        raise ConflictError(
+            message="Cannot recover an available channel",
+            details={
+                "channel_id": channel_id,
+                "availability_status": channel.availability_status,
+                "hint": "Recovery is only supported for unavailable channels",
+            },
+        )
+
+    # T033: Idempotency guard — skip Wayback Machine if recently recovered
+    if channel.recovered_at is not None:
+        now_utc = datetime.now(timezone.utc)
+        # Ensure recovered_at is timezone-aware for comparison
+        recovered_at = channel.recovered_at
+        if recovered_at.tzinfo is None:
+            recovered_at = recovered_at.replace(tzinfo=timezone.utc)
+        elapsed = now_utc - recovered_at
+        if elapsed < timedelta(minutes=RECOVERY_IDEMPOTENCY_MINUTES):
+            logger.info(
+                "Channel %s was already recovered %s ago (< %d min); "
+                "returning cached result",
+                channel_id,
+                elapsed,
+                RECOVERY_IDEMPOTENCY_MINUTES,
+            )
+            result_data = ChannelRecoveryResultData(
+                channel_id=channel_id,
+                success=True,
+                fields_recovered=[],
+                failure_reason=None,
+                duration_seconds=0.0,
+            )
+            return ChannelRecoveryResponse(data=result_data)
+
+    # Get recovery dependencies
+    cdx_client, page_parser, rate_limiter = get_recovery_deps()
+
+    # Call the recovery orchestrator
+    from chronovista.services.recovery.orchestrator import recover_channel
+
+    try:
+        recovery_result = await recover_channel(
+            session=session,
+            channel_id=channel_id,
+            cdx_client=cdx_client,
+            page_parser=page_parser,
+            rate_limiter=rate_limiter,
+            from_year=start_year,
+            to_year=end_year,
+        )
+    except CDXError as exc:
+        logger.warning(
+            "CDX API error during recovery of channel %s: %s",
+            channel_id,
+            exc.message,
+        )
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": f"Wayback Machine CDX API unavailable: {exc.message}",
+            },
+            headers={"Retry-After": "60"},
+        )
+
+    # Wrap result in response envelope
+    result_data = ChannelRecoveryResultData(
+        channel_id=recovery_result.channel_id,
+        success=recovery_result.success,
+        snapshot_used=recovery_result.snapshot_used,
+        fields_recovered=recovery_result.fields_recovered,
+        fields_skipped=recovery_result.fields_skipped,
+        snapshots_available=recovery_result.snapshots_available,
+        snapshots_tried=recovery_result.snapshots_tried,
+        failure_reason=recovery_result.failure_reason,
+        duration_seconds=recovery_result.duration_seconds,
+    )
+
+    return ChannelRecoveryResponse(data=result_data)

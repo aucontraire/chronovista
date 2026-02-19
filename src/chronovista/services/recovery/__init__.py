@@ -29,7 +29,7 @@ and rely on static HTML parsing only.
 
 # Try to import selenium to check availability
 try:
-    import selenium.webdriver  # type: ignore[import-not-found]  # noqa: F401
+    import selenium.webdriver  # noqa: F401
     SELENIUM_AVAILABLE = True
 except ImportError:
     SELENIUM_AVAILABLE = False

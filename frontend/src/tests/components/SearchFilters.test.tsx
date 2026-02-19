@@ -10,6 +10,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { SearchFilters } from "../../components/SearchFilters";
 import type { EnabledSearchTypes } from "../../types/search";
 
@@ -178,9 +179,118 @@ describe("SearchFilters", () => {
       // No "Coming Soon" placeholders
       expect(screen.queryByText("Coming Soon")).not.toBeInTheDocument();
 
-      // Only three checkboxes rendered
+      // Only three checkboxes rendered (without includeUnavailable toggle)
       const checkboxes = screen.getAllByRole("checkbox");
       expect(checkboxes).toHaveLength(3);
+    });
+  });
+
+  describe("Include unavailable content toggle", () => {
+    it("should render the toggle when onToggleIncludeUnavailable is provided", () => {
+      const handleToggle = vi.fn();
+      render(
+        <SearchFilters
+          availableLanguages={["en"]}
+          selectedLanguage=""
+          onLanguageChange={() => {}}
+          totalResults={10}
+          enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          includeUnavailable={false}
+          onToggleIncludeUnavailable={handleToggle}
+        />
+      );
+
+      // Should have 4 checkboxes: 3 search types + 1 unavailable toggle
+      const checkboxes = screen.getAllByRole("checkbox");
+      expect(checkboxes).toHaveLength(4);
+
+      // Verify the toggle is present and labeled correctly
+      const unavailableToggle = screen.getByLabelText("Include unavailable content");
+      expect(unavailableToggle).toBeInTheDocument();
+      expect(unavailableToggle).not.toBeChecked();
+    });
+
+    it("should not render the toggle when onToggleIncludeUnavailable is not provided", () => {
+      render(
+        <SearchFilters
+          availableLanguages={["en"]}
+          selectedLanguage=""
+          onLanguageChange={() => {}}
+          totalResults={10}
+          enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+        />
+      );
+
+      // Should only have 3 checkboxes for search types
+      const checkboxes = screen.getAllByRole("checkbox");
+      expect(checkboxes).toHaveLength(3);
+
+      // Verify the toggle is not present
+      expect(screen.queryByLabelText("Include unavailable content")).not.toBeInTheDocument();
+    });
+
+    it("should reflect the checked state correctly", () => {
+      const handleToggle = vi.fn();
+      render(
+        <SearchFilters
+          availableLanguages={["en"]}
+          selectedLanguage=""
+          onLanguageChange={() => {}}
+          totalResults={10}
+          enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          includeUnavailable={true}
+          onToggleIncludeUnavailable={handleToggle}
+        />
+      );
+
+      const unavailableToggle = screen.getByLabelText("Include unavailable content") as HTMLInputElement;
+      expect(unavailableToggle).toBeChecked();
+    });
+
+    it("should call onToggleIncludeUnavailable when clicked", async () => {
+      const handleToggle = vi.fn();
+      const user = userEvent.setup();
+      render(
+        <SearchFilters
+          availableLanguages={["en"]}
+          selectedLanguage=""
+          onLanguageChange={() => {}}
+          totalResults={10}
+          enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          includeUnavailable={false}
+          onToggleIncludeUnavailable={handleToggle}
+        />
+      );
+
+      const unavailableToggle = screen.getByLabelText("Include unavailable content");
+      await user.click(unavailableToggle);
+
+      expect(handleToggle).toHaveBeenCalledTimes(1);
+    });
+
+    it("should display the toggle in the correct section with border separator", () => {
+      const handleToggle = vi.fn();
+      const { container } = render(
+        <SearchFilters
+          availableLanguages={["en"]}
+          selectedLanguage=""
+          onLanguageChange={() => {}}
+          totalResults={10}
+          enabledTypes={defaultEnabledTypes}
+          onToggleType={vi.fn()}
+          includeUnavailable={false}
+          onToggleIncludeUnavailable={handleToggle}
+        />
+      );
+
+      // Verify the toggle section has the border-top separator
+      const toggleSection = container.querySelector('.border-t');
+      expect(toggleSection).toBeInTheDocument();
+      expect(toggleSection).toHaveClass('pt-4');
     });
   });
 });

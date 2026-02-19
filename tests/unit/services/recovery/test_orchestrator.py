@@ -2874,3 +2874,929 @@ class TestYearFiltering:
         cdx_client.fetch_snapshots.assert_called_once_with(
             "yearTest004", from_year=None, to_year=None
         )
+
+
+class TestRecoverChannel:
+    """
+    T016: Tests for recover_channel() function.
+
+    Validates channel recovery orchestration including CDX queries,
+    page parsing, database updates, and eligibility checks.
+    """
+
+    async def test_happy_path_channel_recovery_success(self) -> None:
+        """Happy path: CDX returns snapshots, parser extracts metadata, DB update succeeds."""
+        # GIVEN: An unavailable channel in database
+        from chronovista.db.models import Channel as ChannelDB
+
+        channel = ChannelDB(
+            channel_id="UCTestChannel00012345678",
+            title="Old Title",
+            description="Old Description",
+            availability_status=AvailabilityStatus.DELETED.value,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # GIVEN: Recovered channel data
+        from chronovista.services.recovery.models import RecoveredChannelData
+
+        recovered_data = RecoveredChannelData(
+            title="Recovered Channel Title",
+            description="Recovered Channel Description",
+            subscriber_count=100000,
+            video_count=250,
+            thumbnail_url="https://yt3.googleusercontent.com/sample.jpg",
+            country="US",
+            default_language="en",
+            snapshot_timestamp="20230615120000",
+        )
+
+        # GIVEN: Mock dependencies
+        session = AsyncMock(spec=AsyncSession)
+        cdx_client = AsyncMock(spec=CDXClient)
+        page_parser = AsyncMock(spec=PageParser)
+        rate_limiter = AsyncMock(spec=RateLimiter)
+
+        # Mock ChannelRepository to return our test channel
+        with patch(
+            "chronovista.services.recovery.orchestrator.ChannelRepository"
+        ) as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo_class.return_value = mock_repo
+            mock_repo.get.return_value = channel
+
+            # Mock CDX client to return snapshots
+            snapshot = CdxSnapshot(
+                timestamp="20230615120000",
+                original="https://www.youtube.com/channel/UCTestChannel00012345678",
+                mimetype="text/html",
+                statuscode=200,
+                digest="CHANNELHASH0001",
+                length=60000,
+            )
+            cdx_client.fetch_channel_snapshots.return_value = [snapshot]
+
+            # Mock page parser to return recovered data
+            page_parser.extract_channel_metadata.return_value = recovered_data
+
+            # WHEN: We recover the channel
+            from chronovista.services.recovery.orchestrator import recover_channel
+
+            result = await recover_channel(
+                session=session,
+                channel_id="UCTestChannel00012345678",
+                cdx_client=cdx_client,
+                page_parser=page_parser,
+                rate_limiter=rate_limiter,
+            )
+
+        # THEN: Recovery succeeded
+        assert result.success is True
+        assert result.snapshot_used == "20230615120000"
+        assert len(result.fields_recovered) > 0
+        assert "title" in result.fields_recovered
+        assert "description" in result.fields_recovered
+        assert result.failure_reason is None
+
+    async def test_no_snapshots_found(self) -> None:
+        """CDX returns empty list → failure with failure_reason='no_snapshots_found'."""
+        # GIVEN: An unavailable channel in database
+        from chronovista.db.models import Channel as ChannelDB
+
+        channel = ChannelDB(
+            channel_id="UCTestChannel002345678AB",
+            title="Test Channel",
+            description="Test Description",
+            availability_status=AvailabilityStatus.DELETED.value,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # GIVEN: Mock dependencies
+        session = AsyncMock(spec=AsyncSession)
+        cdx_client = AsyncMock(spec=CDXClient)
+        page_parser = AsyncMock(spec=PageParser)
+        rate_limiter = AsyncMock(spec=RateLimiter)
+
+        with patch(
+            "chronovista.services.recovery.orchestrator.ChannelRepository"
+        ) as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo_class.return_value = mock_repo
+            mock_repo.get.return_value = channel
+
+            # Mock CDX client to return empty list
+            cdx_client.fetch_channel_snapshots.return_value = []
+
+            # WHEN: We recover the channel
+            from chronovista.services.recovery.orchestrator import recover_channel
+
+            result = await recover_channel(
+                session=session,
+                channel_id="UCTestChannel002345678AB",
+                cdx_client=cdx_client,
+                page_parser=page_parser,
+                rate_limiter=rate_limiter,
+            )
+
+        # THEN: Recovery failed with no_snapshots_found
+        assert result.success is False
+        assert result.failure_reason == "no_snapshots_found"
+        assert result.snapshots_available == 0
+        assert result.snapshots_tried == 0
+
+    async def test_all_snapshots_fail_extraction(self) -> None:
+        """CDX returns snapshots but all return None from parser → failure with failure_reason='all_snapshots_failed'."""
+        # GIVEN: An unavailable channel in database
+        from chronovista.db.models import Channel as ChannelDB
+
+        channel = ChannelDB(
+            channel_id="UCTestChannel003456789AB",
+            title="Test Channel",
+            description="Test Description",
+            availability_status=AvailabilityStatus.DELETED.value,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # GIVEN: Mock dependencies
+        session = AsyncMock(spec=AsyncSession)
+        cdx_client = AsyncMock(spec=CDXClient)
+        page_parser = AsyncMock(spec=PageParser)
+        rate_limiter = AsyncMock(spec=RateLimiter)
+
+        with patch(
+            "chronovista.services.recovery.orchestrator.ChannelRepository"
+        ) as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo_class.return_value = mock_repo
+            mock_repo.get.return_value = channel
+
+            # Mock CDX client to return snapshots
+            snapshot1 = CdxSnapshot(
+                timestamp="20230615120000",
+                original="https://www.youtube.com/channel/UCTestChannel003456789AB",
+                mimetype="text/html",
+                statuscode=200,
+                digest="HASH0001",
+                length=60000,
+            )
+            snapshot2 = CdxSnapshot(
+                timestamp="20230601100000",
+                original="https://www.youtube.com/channel/UCTestChannel003456789AB",
+                mimetype="text/html",
+                statuscode=200,
+                digest="HASH0002",
+                length=60000,
+            )
+            cdx_client.fetch_channel_snapshots.return_value = [snapshot1, snapshot2]
+
+            # Mock page parser to return None for all snapshots
+            page_parser.extract_channel_metadata.return_value = None
+
+            # WHEN: We recover the channel
+            from chronovista.services.recovery.orchestrator import recover_channel
+
+            result = await recover_channel(
+                session=session,
+                channel_id="UCTestChannel003456789AB",
+                cdx_client=cdx_client,
+                page_parser=page_parser,
+                rate_limiter=rate_limiter,
+            )
+
+        # THEN: Recovery failed with all_snapshots_failed
+        assert result.success is False
+        assert result.failure_reason == "all_snapshots_failed"
+        assert result.snapshots_available == 2
+        assert result.snapshots_tried == 2
+
+    async def test_channel_not_found_in_db(self) -> None:
+        """Channel query returns None → failure with failure_reason='channel_not_found'."""
+        # GIVEN: Mock dependencies
+        session = AsyncMock(spec=AsyncSession)
+        cdx_client = AsyncMock(spec=CDXClient)
+        page_parser = AsyncMock(spec=PageParser)
+        rate_limiter = AsyncMock(spec=RateLimiter)
+
+        with patch(
+            "chronovista.services.recovery.orchestrator.ChannelRepository"
+        ) as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo_class.return_value = mock_repo
+            # Mock repository to return None (channel not found)
+            mock_repo.get.return_value = None
+
+            # WHEN: We recover a non-existent channel
+            from chronovista.services.recovery.orchestrator import recover_channel
+
+            result = await recover_channel(
+                session=session,
+                channel_id="UCNonExistent012345678AB",
+                cdx_client=cdx_client,
+                page_parser=page_parser,
+                rate_limiter=rate_limiter,
+            )
+
+        # THEN: Recovery failed with channel_not_found
+        assert result.success is False
+        assert result.failure_reason == "channel_not_found"
+
+    async def test_channel_is_available(self) -> None:
+        """Channel has availability_status='available' → failure with failure_reason='channel_available'."""
+        # GIVEN: An available channel in database
+        from chronovista.db.models import Channel as ChannelDB
+
+        channel = ChannelDB(
+            channel_id="UCTestChannel004567890AB",
+            title="Available Channel",
+            description="This channel is available",
+            availability_status=AvailabilityStatus.AVAILABLE.value,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # GIVEN: Mock dependencies
+        session = AsyncMock(spec=AsyncSession)
+        cdx_client = AsyncMock(spec=CDXClient)
+        page_parser = AsyncMock(spec=PageParser)
+        rate_limiter = AsyncMock(spec=RateLimiter)
+
+        with patch(
+            "chronovista.services.recovery.orchestrator.ChannelRepository"
+        ) as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo_class.return_value = mock_repo
+            mock_repo.get.return_value = channel
+
+            # WHEN: We attempt to recover an available channel
+            from chronovista.services.recovery.orchestrator import recover_channel
+
+            result = await recover_channel(
+                session=session,
+                channel_id="UCTestChannel004567890AB",
+                cdx_client=cdx_client,
+                page_parser=page_parser,
+                rate_limiter=rate_limiter,
+            )
+
+        # THEN: Recovery failed with channel_available
+        assert result.success is False
+        assert result.failure_reason == "channel_available"
+
+    async def test_cdx_error_propagated(self) -> None:
+        """CDXError is propagated (not caught by recover_channel)."""
+        # GIVEN: An unavailable channel in database
+        from chronovista.db.models import Channel as ChannelDB
+
+        channel = ChannelDB(
+            channel_id="UCTestChannel005678901AB",
+            title="Test Channel",
+            description="Test Description",
+            availability_status=AvailabilityStatus.DELETED.value,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # GIVEN: Mock dependencies
+        session = AsyncMock(spec=AsyncSession)
+        cdx_client = AsyncMock(spec=CDXClient)
+        page_parser = AsyncMock(spec=PageParser)
+        rate_limiter = AsyncMock(spec=RateLimiter)
+
+        with patch(
+            "chronovista.services.recovery.orchestrator.ChannelRepository"
+        ) as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo_class.return_value = mock_repo
+            mock_repo.get.return_value = channel
+
+            # Mock CDX client to raise CDXError (Note: this is actually caught and returns failure)
+            from chronovista.exceptions import CDXError
+
+            cdx_client.fetch_channel_snapshots.side_effect = CDXError("CDX API error")
+
+            # WHEN: We recover the channel
+            from chronovista.services.recovery.orchestrator import recover_channel
+
+            result = await recover_channel(
+                session=session,
+                channel_id="UCTestChannel005678901AB",
+                cdx_client=cdx_client,
+                page_parser=page_parser,
+                rate_limiter=rate_limiter,
+            )
+
+        # THEN: CDXError is caught and returns failure with cdx_connection_error
+        assert result.success is False
+        assert result.failure_reason == "cdx_connection_error"
+
+
+class TestBuildChannelUpdate:
+    """
+    T016: Tests for _build_channel_update() helper function.
+
+    Validates the two-tier overwrite policy for channel fields:
+    - Fill NULL fields always
+    - Overwrite existing fields only if incoming snapshot is newer
+    - NULL protection: never blank existing values with None
+    """
+
+    def test_fill_null_fields(self) -> None:
+        """Existing channel has NULL title, recovery has title → title included in update."""
+        # GIVEN: An existing channel with NULL title
+        from chronovista.db.models import Channel as ChannelDB
+
+        existing_channel = ChannelDB(
+            channel_id="UCTestChannel006789012AB",
+            title="Placeholder",  # Required field, but we'll test NULL on optional fields
+            description=None,  # NULL - should be filled
+            subscriber_count=None,  # NULL - should be filled
+            video_count=None,  # NULL - should be filled
+            thumbnail_url=None,  # NULL - should be filled
+            country=None,  # NULL - should be filled
+            default_language=None,  # NULL - should be filled
+            availability_status=AvailabilityStatus.DELETED.value,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # GIVEN: Recovered data with values for NULL fields
+        from chronovista.services.recovery.models import RecoveredChannelData
+
+        recovered_data = RecoveredChannelData(
+            title="Recovered Title",
+            description="Recovered Description",
+            subscriber_count=50000,
+            video_count=100,
+            thumbnail_url="https://yt3.googleusercontent.com/sample.jpg",
+            country="GB",
+            default_language="en",
+            snapshot_timestamp="20230615120000",
+        )
+
+        # WHEN: We build the update
+        from chronovista.services.recovery.orchestrator import _build_channel_update
+
+        update_dict, fields_recovered, fields_skipped = _build_channel_update(
+            existing_channel, recovered_data
+        )
+
+        # THEN: NULL fields are filled
+        assert "description" in update_dict
+        assert update_dict["description"] == "Recovered Description"
+        assert "subscriber_count" in update_dict
+        assert update_dict["subscriber_count"] == 50000
+        assert "video_count" in update_dict
+        assert update_dict["video_count"] == 100
+        assert "description" in fields_recovered
+        assert "subscriber_count" in fields_recovered
+
+    def test_overwrite_if_newer(self) -> None:
+        """Both have title, recovery has newer data → title overwritten."""
+        # GIVEN: An existing channel with data from older snapshot
+        from chronovista.db.models import Channel as ChannelDB
+
+        existing_channel = ChannelDB(
+            channel_id="UCTestChannel007890123AB",
+            title="Old Title",
+            description="Old Description",
+            subscriber_count=10000,
+            recovery_source="wayback:20220101000000",  # Older snapshot
+            availability_status=AvailabilityStatus.DELETED.value,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # GIVEN: Recovered data from newer snapshot
+        from chronovista.services.recovery.models import RecoveredChannelData
+
+        recovered_data = RecoveredChannelData(
+            title="Newer Title",
+            description="Newer Description",
+            subscriber_count=50000,
+            snapshot_timestamp="20230615120000",  # Newer than existing
+        )
+
+        # WHEN: We build the update
+        from chronovista.services.recovery.orchestrator import _build_channel_update
+
+        update_dict, fields_recovered, fields_skipped = _build_channel_update(
+            existing_channel, recovered_data
+        )
+
+        # THEN: Fields are overwritten with newer values
+        assert "title" in update_dict
+        assert update_dict["title"] == "Newer Title"
+        assert "description" in update_dict
+        assert update_dict["description"] == "Newer Description"
+        assert "subscriber_count" in update_dict
+        assert update_dict["subscriber_count"] == 50000
+        assert "title" in fields_recovered
+
+    def test_null_protection(self) -> None:
+        """Recovery has NULL title, existing has title → title NOT overwritten (skipped)."""
+        # GIVEN: An existing channel with populated fields
+        from chronovista.db.models import Channel as ChannelDB
+
+        existing_channel = ChannelDB(
+            channel_id="UCTestChannel008901234AB",
+            title="Existing Title",
+            description="Existing Description",
+            subscriber_count=25000,
+            recovery_source="wayback:20220101000000",
+            availability_status=AvailabilityStatus.DELETED.value,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # GIVEN: Recovered data with NULL values (should not overwrite)
+        from chronovista.services.recovery.models import RecoveredChannelData
+
+        recovered_data = RecoveredChannelData(
+            title=None,  # NULL - should not overwrite existing
+            description=None,  # NULL - should not overwrite existing
+            subscriber_count=None,  # NULL - should not overwrite existing
+            snapshot_timestamp="20230615120000",
+        )
+
+        # WHEN: We build the update
+        from chronovista.services.recovery.orchestrator import _build_channel_update
+
+        update_dict, fields_recovered, fields_skipped = _build_channel_update(
+            existing_channel, recovered_data
+        )
+
+        # THEN: NULL values do not overwrite existing fields
+        assert "title" not in update_dict
+        assert "description" not in update_dict
+        assert "subscriber_count" not in update_dict
+        assert "title" in fields_skipped
+        assert "description" in fields_skipped
+        assert "subscriber_count" in fields_skipped
+
+    def test_all_fields_populated_no_update(self) -> None:
+        """Existing channel has newer recovery → incoming older snapshot skipped."""
+        # GIVEN: An existing channel with all fields populated from newer snapshot
+        from chronovista.db.models import Channel as ChannelDB
+
+        existing_channel = ChannelDB(
+            channel_id="UCTestChannel009012345AB",
+            title="Complete Title",
+            description="Complete Description",
+            subscriber_count=100000,
+            video_count=500,
+            thumbnail_url="https://yt3.googleusercontent.com/existing.jpg",
+            country="US",
+            default_language="en",
+            recovery_source="wayback:20230615120000",  # Newer snapshot
+            availability_status=AvailabilityStatus.DELETED.value,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # GIVEN: Recovered data with older timestamp (should skip)
+        from chronovista.services.recovery.models import RecoveredChannelData
+
+        recovered_data = RecoveredChannelData(
+            title="Older Title",
+            description="Older Description",
+            subscriber_count=50000,
+            snapshot_timestamp="20220101000000",  # Older than existing
+        )
+
+        # WHEN: We build the update
+        from chronovista.services.recovery.orchestrator import _build_channel_update
+
+        update_dict, fields_recovered, fields_skipped = _build_channel_update(
+            existing_channel, recovered_data
+        )
+
+        # THEN: Fields are skipped because incoming is older
+        assert "title" in fields_skipped  # Existing is newer, so skipped
+        assert "description" in fields_skipped
+        assert "subscriber_count" in fields_skipped
+
+
+class TestAutoChannelRecovery:
+    """
+    T016: Tests for auto-channel recovery in recover_video().
+
+    Validates best-effort channel recovery when a video recovery succeeds
+    and the video's channel is unavailable.
+    """
+
+    async def test_channel_recovery_succeeds(self) -> None:
+        """Video recovery succeeds, channel is unavailable, channel recovery succeeds → channel_recovered=True."""
+        # GIVEN: A deleted video with a channel_id
+        video = VideoDB(
+            video_id="autoTest001",
+            title="Test Video",
+            description="Test Description",
+            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            duration=120,
+            channel_id="UC0123456789ABCDEFGHIJKa",
+            availability_status=AvailabilityStatus.DELETED.value,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # GIVEN: An unavailable channel
+        from chronovista.db.models import Channel as ChannelDB
+
+        channel = ChannelDB(
+            channel_id="UC0123456789ABCDEFGHIJKa",
+            title="Old Channel Title",
+            description="Old Description",
+            availability_status=AvailabilityStatus.DELETED.value,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # GIVEN: Recovered video data
+        from chronovista.services.recovery.models import RecoveredVideoData
+
+        recovered_video_data = RecoveredVideoData(
+            title="Recovered Video Title",
+            channel_id="UC0123456789ABCDEFGHIJKa",
+            snapshot_timestamp="20220106075526",
+        )
+
+        # GIVEN: Mock dependencies
+        session = AsyncMock(spec=AsyncSession)
+        cdx_client = AsyncMock(spec=CDXClient)
+        page_parser = AsyncMock(spec=PageParser)
+        rate_limiter = AsyncMock(spec=RateLimiter)
+
+        # Mock video repository
+        with patch(
+            "chronovista.services.recovery.orchestrator.VideoRepository"
+        ) as mock_video_repo_class, patch(
+            "chronovista.services.recovery.orchestrator.VideoTagRepository"
+        ) as mock_tag_repo_class, patch(
+            "chronovista.services.recovery.orchestrator.recover_channel"
+        ) as mock_recover_channel:
+            mock_video_repo = AsyncMock()
+            mock_video_repo_class.return_value = mock_video_repo
+            mock_video_repo.get_by_video_id.return_value = video
+
+            mock_tag_repo = AsyncMock()
+            mock_tag_repo_class.return_value = mock_tag_repo
+
+            # Mock CDX for video
+            video_snapshot = CdxSnapshot(
+                timestamp="20220106075526",
+                original="https://www.youtube.com/watch?v=autoTest001",
+                mimetype="text/html",
+                statuscode=200,
+                digest="VIDEOHASH001",
+                length=50000,
+            )
+            cdx_client.fetch_snapshots.return_value = [video_snapshot]
+            page_parser.extract_metadata.return_value = recovered_video_data
+
+            # Mock ChannelRepository to return unavailable channel
+            with patch(
+                "chronovista.services.recovery.orchestrator.ChannelRepository"
+            ) as mock_channel_repo_class:
+                mock_channel_repo = AsyncMock()
+                mock_channel_repo_class.return_value = mock_channel_repo
+                mock_channel_repo.get.return_value = channel
+
+                # Mock successful channel recovery
+                from chronovista.services.recovery.models import (
+                    ChannelRecoveryResult,
+                )
+
+                channel_recovery_result = ChannelRecoveryResult(
+                    channel_id="UC0123456789ABCDEFGHIJKa",
+                    success=True,
+                    snapshot_used="20220106075526",
+                    fields_recovered=["title", "description"],
+                    fields_skipped=[],
+                    snapshots_available=5,
+                    snapshots_tried=1,
+                    duration_seconds=2.5,
+                )
+                mock_recover_channel.return_value = channel_recovery_result
+
+                # WHEN: We recover the video
+                from chronovista.services.recovery.orchestrator import recover_video
+
+                result = await recover_video(
+                    session=session,
+                    video_id="autoTest001",
+                    cdx_client=cdx_client,
+                    page_parser=page_parser,
+                    rate_limiter=rate_limiter,
+                )
+
+        # THEN: Video recovery succeeded and channel recovery succeeded
+        assert result.success is True
+        assert result.channel_recovered is True
+        assert result.channel_fields_recovered == ["title", "description"]
+        assert result.channel_failure_reason is None
+        assert "UC0123456789ABCDEFGHIJKa" in result.channel_recovery_candidates
+
+    async def test_channel_recovery_fails(self) -> None:
+        """Video recovery succeeds, channel recovery fails → channel_recovered=False, channel_failure_reason set."""
+        # GIVEN: A deleted video with a channel_id
+        video = VideoDB(
+            video_id="autoTest002",
+            title="Test Video",
+            description="Test Description",
+            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            duration=120,
+            channel_id="UC0223456789ABCDEFGHIJKa",
+            availability_status=AvailabilityStatus.DELETED.value,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # GIVEN: An unavailable channel
+        from chronovista.db.models import Channel as ChannelDB
+
+        channel = ChannelDB(
+            channel_id="UC0223456789ABCDEFGHIJKa",
+            title="Old Channel Title",
+            description="Old Description",
+            availability_status=AvailabilityStatus.DELETED.value,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # GIVEN: Recovered video data
+        from chronovista.services.recovery.models import RecoveredVideoData
+
+        recovered_video_data = RecoveredVideoData(
+            title="Recovered Video Title",
+            channel_id="UC0223456789ABCDEFGHIJKa",
+            snapshot_timestamp="20220106075526",
+        )
+
+        # GIVEN: Mock dependencies
+        session = AsyncMock(spec=AsyncSession)
+        cdx_client = AsyncMock(spec=CDXClient)
+        page_parser = AsyncMock(spec=PageParser)
+        rate_limiter = AsyncMock(spec=RateLimiter)
+
+        # Mock video repository
+        with patch(
+            "chronovista.services.recovery.orchestrator.VideoRepository"
+        ) as mock_video_repo_class, patch(
+            "chronovista.services.recovery.orchestrator.VideoTagRepository"
+        ) as mock_tag_repo_class, patch(
+            "chronovista.services.recovery.orchestrator.recover_channel"
+        ) as mock_recover_channel:
+            mock_video_repo = AsyncMock()
+            mock_video_repo_class.return_value = mock_video_repo
+            mock_video_repo.get_by_video_id.return_value = video
+
+            mock_tag_repo = AsyncMock()
+            mock_tag_repo_class.return_value = mock_tag_repo
+
+            # Mock CDX for video
+            video_snapshot = CdxSnapshot(
+                timestamp="20220106075526",
+                original="https://www.youtube.com/watch?v=autoTest002",
+                mimetype="text/html",
+                statuscode=200,
+                digest="VIDEOHASH002",
+                length=50000,
+            )
+            cdx_client.fetch_snapshots.return_value = [video_snapshot]
+            page_parser.extract_metadata.return_value = recovered_video_data
+
+            # Mock ChannelRepository to return unavailable channel
+            with patch(
+                "chronovista.services.recovery.orchestrator.ChannelRepository"
+            ) as mock_channel_repo_class:
+                mock_channel_repo = AsyncMock()
+                mock_channel_repo_class.return_value = mock_channel_repo
+                mock_channel_repo.get.return_value = channel
+
+                # Mock failed channel recovery
+                from chronovista.services.recovery.models import (
+                    ChannelRecoveryResult,
+                )
+
+                channel_recovery_result = ChannelRecoveryResult(
+                    channel_id="UC0223456789ABCDEFGHIJKa",
+                    success=False,
+                    failure_reason="no_snapshots_found",
+                    snapshots_available=0,
+                    snapshots_tried=0,
+                    duration_seconds=1.5,
+                )
+                mock_recover_channel.return_value = channel_recovery_result
+
+                # WHEN: We recover the video
+                from chronovista.services.recovery.orchestrator import recover_video
+
+                result = await recover_video(
+                    session=session,
+                    video_id="autoTest002",
+                    cdx_client=cdx_client,
+                    page_parser=page_parser,
+                    rate_limiter=rate_limiter,
+                )
+
+        # THEN: Video recovery succeeded but channel recovery failed
+        assert result.success is True  # Video recovery still succeeds
+        assert result.channel_recovered is False
+        assert result.channel_failure_reason == "no_snapshots_found"
+        assert "UC0223456789ABCDEFGHIJKa" in result.channel_recovery_candidates
+
+    async def test_channel_already_available(self) -> None:
+        """Video recovery succeeds, channel is available → no channel recovery attempted."""
+        # GIVEN: A deleted video with a channel_id
+        video = VideoDB(
+            video_id="autoTest003",
+            title="Test Video",
+            description="Test Description",
+            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            duration=120,
+            channel_id="UC0333456789ABCDEFGHIJKa",
+            availability_status=AvailabilityStatus.DELETED.value,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # GIVEN: An available channel
+        from chronovista.db.models import Channel as ChannelDB
+
+        channel = ChannelDB(
+            channel_id="UC0333456789ABCDEFGHIJKa",
+            title="Available Channel",
+            description="Available Description",
+            availability_status=AvailabilityStatus.AVAILABLE.value,  # Available!
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # GIVEN: Recovered video data
+        from chronovista.services.recovery.models import RecoveredVideoData
+
+        recovered_video_data = RecoveredVideoData(
+            title="Recovered Video Title",
+            channel_id="UC0333456789ABCDEFGHIJKa",
+            snapshot_timestamp="20220106075526",
+        )
+
+        # GIVEN: Mock dependencies
+        session = AsyncMock(spec=AsyncSession)
+        cdx_client = AsyncMock(spec=CDXClient)
+        page_parser = AsyncMock(spec=PageParser)
+        rate_limiter = AsyncMock(spec=RateLimiter)
+
+        # Mock video repository
+        with patch(
+            "chronovista.services.recovery.orchestrator.VideoRepository"
+        ) as mock_video_repo_class, patch(
+            "chronovista.services.recovery.orchestrator.VideoTagRepository"
+        ) as mock_tag_repo_class, patch(
+            "chronovista.services.recovery.orchestrator.recover_channel"
+        ) as mock_recover_channel:
+            mock_video_repo = AsyncMock()
+            mock_video_repo_class.return_value = mock_video_repo
+            mock_video_repo.get_by_video_id.return_value = video
+
+            mock_tag_repo = AsyncMock()
+            mock_tag_repo_class.return_value = mock_tag_repo
+
+            # Mock CDX for video
+            video_snapshot = CdxSnapshot(
+                timestamp="20220106075526",
+                original="https://www.youtube.com/watch?v=autoTest003",
+                mimetype="text/html",
+                statuscode=200,
+                digest="VIDEOHASH003",
+                length=50000,
+            )
+            cdx_client.fetch_snapshots.return_value = [video_snapshot]
+            page_parser.extract_metadata.return_value = recovered_video_data
+
+            # Mock ChannelRepository to return available channel
+            with patch(
+                "chronovista.services.recovery.orchestrator.ChannelRepository"
+            ) as mock_channel_repo_class:
+                mock_channel_repo = AsyncMock()
+                mock_channel_repo_class.return_value = mock_channel_repo
+                mock_channel_repo.get.return_value = channel
+
+                # WHEN: We recover the video
+                from chronovista.services.recovery.orchestrator import recover_video
+
+                result = await recover_video(
+                    session=session,
+                    video_id="autoTest003",
+                    cdx_client=cdx_client,
+                    page_parser=page_parser,
+                    rate_limiter=rate_limiter,
+                )
+
+        # THEN: Video recovery succeeded and channel recovery was NOT attempted
+        assert result.success is True
+        assert result.channel_recovered is False
+        assert len(result.channel_recovery_candidates) == 0  # No candidates added
+        # recover_channel should NOT have been called
+        mock_recover_channel.assert_not_called()
+
+    async def test_channel_recovery_exception(self) -> None:
+        """Channel recovery throws exception → caught, channel_failure_reason set, video recovery still succeeds."""
+        # GIVEN: A deleted video with a channel_id
+        video = VideoDB(
+            video_id="autoTest004",
+            title="Test Video",
+            description="Test Description",
+            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            duration=120,
+            channel_id="UC0443456789ABCDEFGHIJKa",
+            availability_status=AvailabilityStatus.DELETED.value,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # GIVEN: An unavailable channel
+        from chronovista.db.models import Channel as ChannelDB
+
+        channel = ChannelDB(
+            channel_id="UC0443456789ABCDEFGHIJKa",
+            title="Old Channel Title",
+            description="Old Description",
+            availability_status=AvailabilityStatus.DELETED.value,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # GIVEN: Recovered video data
+        from chronovista.services.recovery.models import RecoveredVideoData
+
+        recovered_video_data = RecoveredVideoData(
+            title="Recovered Video Title",
+            channel_id="UC0443456789ABCDEFGHIJKa",
+            snapshot_timestamp="20220106075526",
+        )
+
+        # GIVEN: Mock dependencies
+        session = AsyncMock(spec=AsyncSession)
+        cdx_client = AsyncMock(spec=CDXClient)
+        page_parser = AsyncMock(spec=PageParser)
+        rate_limiter = AsyncMock(spec=RateLimiter)
+
+        # Mock video repository
+        with patch(
+            "chronovista.services.recovery.orchestrator.VideoRepository"
+        ) as mock_video_repo_class, patch(
+            "chronovista.services.recovery.orchestrator.VideoTagRepository"
+        ) as mock_tag_repo_class, patch(
+            "chronovista.services.recovery.orchestrator.recover_channel"
+        ) as mock_recover_channel:
+            mock_video_repo = AsyncMock()
+            mock_video_repo_class.return_value = mock_video_repo
+            mock_video_repo.get_by_video_id.return_value = video
+
+            mock_tag_repo = AsyncMock()
+            mock_tag_repo_class.return_value = mock_tag_repo
+
+            # Mock CDX for video
+            video_snapshot = CdxSnapshot(
+                timestamp="20220106075526",
+                original="https://www.youtube.com/watch?v=autoTest004",
+                mimetype="text/html",
+                statuscode=200,
+                digest="VIDEOHASH004",
+                length=50000,
+            )
+            cdx_client.fetch_snapshots.return_value = [video_snapshot]
+            page_parser.extract_metadata.return_value = recovered_video_data
+
+            # Mock ChannelRepository to return unavailable channel
+            with patch(
+                "chronovista.services.recovery.orchestrator.ChannelRepository"
+            ) as mock_channel_repo_class:
+                mock_channel_repo = AsyncMock()
+                mock_channel_repo_class.return_value = mock_channel_repo
+                mock_channel_repo.get.return_value = channel
+
+                # Mock channel recovery to raise an exception
+                mock_recover_channel.side_effect = Exception("Database connection lost")
+
+                # WHEN: We recover the video
+                from chronovista.services.recovery.orchestrator import recover_video
+
+                result = await recover_video(
+                    session=session,
+                    video_id="autoTest004",
+                    cdx_client=cdx_client,
+                    page_parser=page_parser,
+                    rate_limiter=rate_limiter,
+                )
+
+        # THEN: Video recovery still succeeded despite channel recovery exception
+        assert result.success is True  # Video recovery succeeds (best-effort)
+        assert result.channel_recovered is False
+        assert result.channel_failure_reason is not None
+        assert "exception" in result.channel_failure_reason
+        assert "UC0443456789ABCDEFGHIJKa" in result.channel_recovery_candidates

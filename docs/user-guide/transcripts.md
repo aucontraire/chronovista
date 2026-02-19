@@ -426,6 +426,7 @@ Some videos don't have transcripts:
 - Very new videos may not be processed yet
 - Creator disabled captions
 - Regional restrictions
+- **Deleted or unavailable videos** - Transcripts cannot be downloaded for videos that no longer exist on YouTube. However, you can recover the video's metadata (title, description, tags, etc.) from the Wayback Machine using `chronovista recover video --video-id VIDEO_ID`. Note that transcript text itself is not recoverable from the Wayback Machine.
 
 ### Rate Limited
 

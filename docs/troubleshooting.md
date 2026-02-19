@@ -232,6 +232,62 @@ Not all videos have transcripts in all languages.
 chronovista transcript languages VIDEO_ID
 ```
 
+## Recovery (Wayback Machine)
+
+### Recovery times out or hangs
+
+The Wayback Machine and its CDX API can be slow or unresponsive, especially during peak hours.
+
+**Fix:**
+
+- Wait a few minutes and retry. Wayback Machine connections are inherently flaky.
+- Use `--start-year` and `--end-year` to narrow the search window, reducing the number of snapshots the CDX API must scan.
+- For batch recovery, use `--limit` to process smaller batches.
+
+### CDX API returns 429 (Too Many Requests)
+
+You're querying the Wayback Machine CDX API too rapidly.
+
+**Fix:**
+
+- Wait 1-2 minutes before retrying. chronovista has built-in retry with exponential backoff, but sustained high volume can exceed limits.
+- Reduce batch size with `--limit`.
+- Add `--start-year` to reduce CDX result set size.
+
+### CDX API returns 503 (Service Unavailable)
+
+The Wayback Machine is temporarily overloaded or undergoing maintenance.
+
+**Fix:**
+
+- This is transient. Wait a few minutes and retry.
+- Check [Internet Archive status](https://status.archivelab.org/) for ongoing outages.
+
+### "No snapshots found" for a video or channel
+
+The Wayback Machine never archived that YouTube page, or the snapshots were captured before the metadata was populated.
+
+**Fix:**
+
+- Not all YouTube pages are archived. This is expected for less popular content.
+- Try different year ranges with `--start-year` and `--end-year` to check different archive eras.
+- For very old videos (pre-2012), archived pages may use a different HTML format that the parser cannot extract metadata from.
+
+### Recovery returns partial metadata
+
+Some Wayback Machine snapshots contain incomplete page content (e.g., title present but no description or tags).
+
+**Fix:**
+
+- This is expected. The overwrite policy ensures partial data is merged safely (NULL protection prevents blanking existing values).
+- Re-running recovery later may find a different snapshot with more complete data.
+
+### Repeated recovery returns the same result instantly
+
+This is the idempotency guard working as intended. Recovery results are cached for 5 minutes to prevent redundant Wayback Machine queries.
+
+**Fix:** Wait 5 minutes if you want to force a fresh recovery attempt.
+
 ## Docker
 
 ### Docker Compose errors
@@ -265,3 +321,4 @@ make dev-db-down
 - [YouTube API Setup](getting-started/youtube-api-setup.md) - Google Cloud configuration
 - [Installation](getting-started/installation.md) - Setup guide
 - [Database Development](development/database.md) - Database workflow
+- [CLI Overview - Recover Commands](user-guide/cli-overview.md#recover-commands) - Recovery command reference

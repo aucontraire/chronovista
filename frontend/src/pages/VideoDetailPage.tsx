@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useBlocker } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { ClassificationSection } from "../components/ClassificationSection";
@@ -27,7 +27,9 @@ import { useDeepLinkParams } from "../hooks/useDeepLinkParams";
 import { useVideoDetail } from "../hooks/useVideoDetail";
 import { useVideoPlaylists } from "../hooks/useVideoPlaylists";
 import { CONTRAST_SAFE_COLORS } from "../styles/tokens";
-import { apiFetch } from "../api/config";
+import { apiFetch, RECOVERY_TIMEOUT } from "../api/config";
+import type { RecoveryResultData } from "../types/recovery";
+import { useRecoveryStore } from "../stores/recoveryStore";
 
 /** Default page title when no video is loaded */
 const DEFAULT_PAGE_TITLE = "Chronovista";
@@ -472,6 +474,8 @@ function AlternativeUrlForm({ videoId, currentUrl }: AlternativeUrlFormProps) {
 export function VideoDetailPage() {
   const { videoId } = useParams<{ videoId: string }>();
   const { lang, segmentId, timestamp, clearDeepLinkParams } = useDeepLinkParams();
+  const queryClient = useQueryClient();
+
   // Note: error is destructured but not displayed directly per FR-027 (unified error message)
   const { data: video, isLoading, isError, error: _error, refetch } = useVideoDetail(
     videoId ?? ""
@@ -479,6 +483,85 @@ export function VideoDetailPage() {
 
   // Fetch playlists containing this video (T026)
   const { playlists: containingPlaylists } = useVideoPlaylists(videoId ?? "");
+
+  // Recovery store actions and session
+  const { startRecovery, updatePhase, setResult, setError, setAbortController } = useRecoveryStore();
+
+  // Check if recovery is in progress for navigation blocker
+  const isRecoveryActive = useRecoveryStore(
+    (s) => s.getActiveSession(videoId ?? "")?.phase === "in-progress"
+  );
+
+  // Block navigation when recovery is in progress
+  // Note: useBlocker requires a data router (BrowserRouter/RouterProvider), not MemoryRouter
+  // In test environments without data router, this will return a safe default state
+  let blocker;
+  try {
+    blocker = useBlocker(isRecoveryActive);
+  } catch {
+    // Fallback for test environments or non-data-router contexts
+    blocker = {
+      state: 'unblocked' as const,
+      reset: undefined,
+      proceed: undefined,
+      location: undefined,
+    };
+  }
+
+  // Recovery mutation (Feature 025, T021, T032 timeout fix, T041 cancel, T044 Zustand integration)
+  const recoveryMutation = useMutation({
+    mutationFn: async (options?: { startYear?: number; endYear?: number }) => {
+      // Start recovery session and get sessionId
+      const sessionId = startRecovery(
+        videoId ?? "",
+        "video",
+        video?.title ?? null,
+        options
+      );
+
+      // Update phase to in-progress
+      updatePhase(sessionId, "in-progress");
+
+      // T041: Create AbortController for cancellation
+      const controller = new AbortController();
+      setAbortController(sessionId, controller);
+
+      const params = new URLSearchParams();
+      if (options?.startYear) params.set("start_year", String(options.startYear));
+      if (options?.endYear) params.set("end_year", String(options.endYear));
+      const qs = params.toString();
+      const endpoint = `/videos/${videoId}/recover${qs ? `?${qs}` : ""}`;
+      const response = await apiFetch<{ data: RecoveryResultData }>(
+        endpoint,
+        {
+          method: "POST",
+          timeout: RECOVERY_TIMEOUT,
+          signal: controller.signal,
+        }
+      );
+
+      return { sessionId, data: response.data };
+    },
+    onSuccess: ({ sessionId, data }) => {
+      // Set result in store
+      setResult(sessionId, data);
+      // Invalidate video detail query to refresh page data
+      void queryClient.invalidateQueries({ queryKey: ["video", videoId] });
+    },
+    onError: (error: unknown) => {
+      // Extract sessionId from context (we need to store it)
+      // Since we can't access sessionId from the mutationFn return on error,
+      // we get it from the active session
+      const session = useRecoveryStore.getState().getActiveSession(videoId ?? "");
+      if (session) {
+        const errorMessage =
+          typeof error === "object" && error !== null && "message" in error
+            ? (error as { message: string }).message
+            : "Recovery failed";
+        setError(session.sessionId, errorMessage);
+      }
+    },
+  });
 
   // Set browser tab title to "Channel - Video Title" when video loads
   useEffect(() => {
@@ -600,12 +683,54 @@ export function VideoDetailPage() {
     topics = [],
     availability_status,
     alternative_url,
+    recovered_at,
   } = video;
 
   const youtubeUrl = `https://www.youtube.com/watch?v=${video_id}`;
 
   return (
-    <div className="p-6 lg:p-8">
+    <>
+      {/* Navigation Blocker Modal */}
+      {blocker.state === "blocked" && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="nav-guard-title"
+        >
+          <div className="bg-white rounded-xl shadow-xl max-w-md mx-4 p-6">
+            <h2
+              id="nav-guard-title"
+              className="text-lg font-semibold text-slate-900 mb-3"
+            >
+              Recovery in progress
+            </h2>
+            <p className="text-sm text-slate-600 mb-6">
+              Navigating away will not cancel the recovery, but you will lose visibility of the result.
+              The AppShell indicator will still show progress.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => blocker.reset?.()}
+                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2"
+                autoFocus
+              >
+                Stay
+              </button>
+              <button
+                type="button"
+                onClick={() => blocker.proceed?.()}
+                className="px-4 py-2 text-sm font-medium text-white bg-slate-700 rounded-lg hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2"
+              >
+                Leave
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="p-6 lg:p-8">
       {/* Navigation Header */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         {/* Back to Videos Link (FR-004) */}
@@ -630,11 +755,14 @@ export function VideoDetailPage() {
         </a>
       </div>
 
-      {/* Unavailability Banner (FR-012, FR-020) */}
+      {/* Unavailability Banner (FR-012, FR-020, Feature 025, T044 Zustand integration) */}
       <UnavailabilityBanner
         availabilityStatus={availability_status}
         entityType="video"
         alternativeUrl={alternative_url}
+        entityId={video_id}
+        onRecover={(options) => recoveryMutation.mutate(options)}
+        recoveredAt={recovered_at}
       />
 
       {/* Alternative URL Form (T028, FR-015) - only for unavailable videos */}
@@ -756,14 +884,16 @@ export function VideoDetailPage() {
         />
       </div>
 
-      {/* Transcript Panel */}
-      <TranscriptPanel
-        videoId={video_id}
-        initialLanguage={lang ?? undefined}
-        targetSegmentId={segmentId ?? undefined}
-        targetTimestamp={timestamp ?? undefined}
-        onDeepLinkComplete={clearDeepLinkParams}
-      />
+      {/* Transcript Panel - only render when transcripts exist (supports deleted videos with manual transcripts) */}
+      {video.transcript_summary?.count > 0 && (
+        <TranscriptPanel
+          videoId={video_id}
+          initialLanguage={lang ?? undefined}
+          targetSegmentId={segmentId ?? undefined}
+          targetTimestamp={timestamp ?? undefined}
+          onDeepLinkComplete={clearDeepLinkParams}
+        />
+      )}
 
       {/* Back to Videos Link */}
       <div className="mt-6">
@@ -775,6 +905,7 @@ export function VideoDetailPage() {
           Back to Videos
         </Link>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

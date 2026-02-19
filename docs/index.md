@@ -57,11 +57,11 @@ chronovista is a CLI application that enables users to access, store, and explor
 
     FastAPI-powered REST API with 20+ endpoints for programmatic access to videos, transcripts, and search
 
--   :material-delete-restore:{ .lg .middle } **Deleted Video Recovery**
+-   :material-delete-restore:{ .lg .middle } **Deleted Content Recovery**
 
     ---
 
-    Recover metadata for deleted/unavailable videos from the Wayback Machine with configurable date ranges and batch processing
+    Recover metadata for deleted/unavailable videos and channels from the Wayback Machine via CLI, REST API, or frontend with year filters, progress tracking, and idempotent caching
 
 </div>
 
@@ -73,8 +73,8 @@ chronovista is a CLI application that enables users to access, store, and explor
     - **Real API integration testing** with YouTube API data validation
     - **Advanced repository pattern** with async support and composite keys
     - **Rate-limited API service** with intelligent error handling and retry logic
-    - **Wayback Machine recovery** for deleted/unavailable video metadata (v0.27.0)
-    - **React frontend** with video browsing, transcript search, and deep link navigation (v0.6.0)
+    - **Wayback Machine recovery** for deleted/unavailable video and channel metadata via CLI, REST API, and frontend (v0.28.0)
+    - **React frontend** with video browsing, transcript search, deep link navigation, and recovery UI (v0.7.0)
 
 ## Quick Example
 
@@ -131,7 +131,7 @@ chronovista is a CLI application that enables users to access, store, and explor
     open http://localhost:8765/docs
     ```
 
-=== "Recover Deleted Videos"
+=== "Recover Deleted Content"
 
     ```bash
     # Recover a specific deleted video
@@ -145,6 +145,23 @@ chronovista is a CLI application that enables users to access, store, and explor
 
     # Preview without making changes
     chronovista recover video --all --dry-run
+
+    # Channel recovery happens automatically during video recovery
+    # when the channel_id is found in a Wayback Machine snapshot
+    ```
+
+=== "Recovery via REST API"
+
+    ```bash
+    # Recover a video via the API
+    curl -X POST "http://localhost:8765/api/v1/recovery/videos/dQw4w9WgXcQ" \
+      -H "Content-Type: application/json" \
+      -d '{"start_year": 2018, "end_year": 2020}'
+
+    # Recover a channel via the API
+    curl -X POST "http://localhost:8765/api/v1/recovery/channels/UCxxxxxx"
+
+    # Repeated requests within 5 minutes return cached results
     ```
 
 ## Architecture Highlights

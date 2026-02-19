@@ -17,6 +17,12 @@ export const API_BASE_URL: string =
 export const API_TIMEOUT = 10000;
 
 /**
+ * Timeout for recovery operations in milliseconds.
+ * Recovery can take up to 600s on the backend + 60s buffer.
+ */
+export const RECOVERY_TIMEOUT = 660000;
+
+/**
  * Classifies an error into a specific error type.
  */
 function classifyError(error: unknown, response?: Response): ApiErrorType {
@@ -57,29 +63,38 @@ function createApiError(error: unknown, response?: Response): ApiError {
 }
 
 /**
+ * Extended fetch options that include an optional timeout override.
+ */
+export interface ApiFetchOptions extends RequestInit {
+  /** Timeout in milliseconds. Defaults to API_TIMEOUT (10s). */
+  timeout?: number;
+}
+
+/**
  * Fetch wrapper with timeout and error handling.
  *
  * @param endpoint - API endpoint path (without base URL)
- * @param options - Fetch options
+ * @param options - Fetch options with optional timeout override
  * @returns Parsed JSON response
  * @throws ApiError on failure
  */
 export async function apiFetch<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: ApiFetchOptions = {}
 ): Promise<T> {
+  const { timeout, ...fetchOptions } = options;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
+  const timeoutId = setTimeout(() => controller.abort(), timeout ?? API_TIMEOUT);
 
   const url = `${API_BASE_URL}${endpoint}`;
 
   try {
     const response = await fetch(url, {
-      ...options,
+      ...fetchOptions,
       signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
-        ...options.headers,
+        ...fetchOptions.headers,
       },
     });
 

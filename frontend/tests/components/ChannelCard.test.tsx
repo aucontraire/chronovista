@@ -28,12 +28,13 @@ describe('ChannelCard', () => {
   };
 
   describe('Basic Rendering', () => {
-    it('should render channel thumbnail', () => {
+    it('should render channel thumbnail with proxy URL (T031)', () => {
       renderWithProviders(<ChannelCard channel={mockChannel} />);
 
       const thumbnail = screen.getByRole('img', { name: 'Test Channel' });
       expect(thumbnail).toBeInTheDocument();
-      expect(thumbnail).toHaveAttribute('src', 'https://example.com/thumbnail.jpg');
+      // Should use proxy URL pattern, not original YouTube URL
+      expect(thumbnail).toHaveAttribute('src', expect.stringContaining('/images/channels/UC123456789012345678901'));
       expect(thumbnail).toHaveAttribute('alt', 'Test Channel');
     });
 
@@ -351,6 +352,85 @@ describe('ChannelCard', () => {
 
       // Should not crash
       expect(screen.getByText('Test Channel')).toBeInTheDocument();
+    });
+  });
+
+  describe('Image Proxy URL (Feature 026, T031)', () => {
+    it('should use proxy URL pattern /api/v1/images/channels/{channel_id}', () => {
+      renderWithProviders(<ChannelCard channel={mockChannel} />);
+
+      const thumbnail = screen.getByRole('img', { name: 'Test Channel' });
+      const src = thumbnail.getAttribute('src');
+
+      // Verify proxy URL pattern
+      expect(src).toMatch(/\/images\/channels\/UC123456789012345678901$/);
+      expect(src).toContain('UC123456789012345678901');
+    });
+
+    it('should NOT include YouTube CDN URLs (ytimg.com or ggpht.com)', () => {
+      renderWithProviders(<ChannelCard channel={mockChannel} />);
+
+      const thumbnail = screen.getByRole('img', { name: 'Test Channel' });
+      const src = thumbnail.getAttribute('src');
+
+      // Should NOT use YouTube CDN
+      expect(src).not.toContain('ytimg.com');
+      expect(src).not.toContain('ggpht.com');
+      expect(src).not.toContain('youtube.com');
+    });
+
+    it('should render SVG placeholder on image error', async () => {
+      const { user } = renderWithProviders(<ChannelCard channel={mockChannel} />);
+
+      const thumbnail = screen.getByRole('img', { name: 'Test Channel' });
+
+      // Simulate image load error
+      const errorEvent = new Event('error', { bubbles: true });
+      thumbnail.dispatchEvent(errorEvent);
+
+      // After error, should fall back to placeholder
+      // The onError handler sets src to PLACEHOLDER_THUMBNAIL (SVG data URI)
+      const src = thumbnail.getAttribute('src');
+      expect(src).toContain('data:image/svg+xml');
+    });
+
+    it('should have proper alt attribute for accessibility', () => {
+      renderWithProviders(<ChannelCard channel={mockChannel} />);
+
+      const thumbnail = screen.getByRole('img', { name: 'Test Channel' });
+      expect(thumbnail).toHaveAttribute('alt', 'Test Channel');
+    });
+
+    it('should use placeholder when thumbnail_url is null', () => {
+      const channelWithoutThumbnail: ChannelListItem = {
+        ...mockChannel,
+        thumbnail_url: null,
+      };
+
+      renderWithProviders(<ChannelCard channel={channelWithoutThumbnail} />);
+
+      const placeholder = screen.getByRole('img', { name: 'Test Channel' });
+      const src = placeholder.getAttribute('src');
+
+      // Should use SVG placeholder, NOT proxy URL
+      expect(src).toContain('data:image/svg+xml');
+      expect(src).not.toContain('/images/channels/');
+    });
+
+    it('should use placeholder when thumbnail_url is empty string', () => {
+      const channelWithEmptyThumbnail: ChannelListItem = {
+        ...mockChannel,
+        thumbnail_url: '',
+      };
+
+      renderWithProviders(<ChannelCard channel={channelWithEmptyThumbnail} />);
+
+      const placeholder = screen.getByRole('img', { name: 'Test Channel' });
+      const src = placeholder.getAttribute('src');
+
+      // Should use SVG placeholder, NOT proxy URL
+      expect(src).toContain('data:image/svg+xml');
+      expect(src).not.toContain('/images/channels/');
     });
   });
 });

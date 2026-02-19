@@ -101,6 +101,8 @@ const mockDeletedVideo: VideoDetail = {
   },
   availability_status: 'deleted',
   alternative_url: null,
+  recovered_at: null,
+  recovery_source: null,
 };
 
 /**

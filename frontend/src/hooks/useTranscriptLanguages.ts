@@ -21,7 +21,7 @@ async function fetchTranscriptLanguages(
   videoId: string
 ): Promise<TranscriptLanguage[]> {
   const response = await apiFetch<TranscriptLanguagesResponse>(
-    `/videos/${videoId}/transcript/languages`
+    `/videos/${videoId}/transcript/languages?include_unavailable=true`
   );
   return response.data;
 }

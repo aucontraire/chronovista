@@ -254,6 +254,121 @@ def make_cdx_cache_entry(**overrides: Any) -> dict[str, Any]:
     return {**defaults, **overrides}
 
 
+def make_recovered_channel_data(**overrides: Any) -> dict[str, Any]:
+    """
+    Create a RecoveredChannelData dictionary with realistic defaults.
+
+    Represents metadata extracted from an archived YouTube channel page.
+    All fields are optional except snapshot_timestamp.
+
+    Parameters
+    ----------
+    **overrides : Any
+        Override any default field values.
+
+    Returns
+    -------
+    dict[str, Any]
+        Dictionary that can be unpacked into RecoveredChannelData constructor.
+
+    Examples
+    --------
+    >>> data = make_recovered_channel_data(title="Tech Channel")
+    >>> data = make_recovered_channel_data(
+    ...     title="Gaming Channel",
+    ...     subscriber_count=50000,
+    ...     country="GB"
+    ... )
+    """
+    snapshot_num = next(_snapshot_counter)
+    timestamp = str(20230101000000 + snapshot_num * 10000)
+
+    defaults = {
+        "title": "Recovered Channel Title",
+        "description": "This is a recovered channel description from Wayback Machine.",
+        "subscriber_count": 100000,
+        "video_count": 250,
+        "thumbnail_url": "https://yt3.googleusercontent.com/channel/sample/avatar.jpg",
+        "country": "US",
+        "default_language": "en",
+        "snapshot_timestamp": timestamp,
+    }
+
+    return {**defaults, **overrides}
+
+
+def make_channel_recovery_result(
+    success: bool = True, **overrides: Any
+) -> dict[str, Any]:
+    """
+    Create a ChannelRecoveryResult dictionary with realistic defaults.
+
+    Represents the outcome of a channel recovery attempt, including
+    success/failure status, fields recovered, and diagnostic information.
+
+    Parameters
+    ----------
+    success : bool
+        Whether the recovery succeeded. Determines which fields are populated.
+        Default is True (successful recovery).
+    **overrides : Any
+        Override any default field values.
+
+    Returns
+    -------
+    dict[str, Any]
+        Dictionary that can be unpacked into ChannelRecoveryResult constructor.
+
+    Examples
+    --------
+    >>> result = make_channel_recovery_result(success=True)
+    >>> result = make_channel_recovery_result(
+    ...     success=False,
+    ...     failure_reason="No snapshots found in CDX API"
+    ... )
+    >>> result = make_channel_recovery_result(
+    ...     success=True,
+    ...     fields_recovered=["title", "description", "subscriber_count"],
+    ...     snapshots_tried=2
+    ... )
+    """
+    channel_id = f"UC{uuid4().hex[:22]}"  # Valid ChannelId format
+
+    if success:
+        # Successful recovery defaults
+        defaults = {
+            "channel_id": channel_id,
+            "success": True,
+            "snapshot_used": "20230615120000",
+            "fields_recovered": [
+                "title",
+                "description",
+                "subscriber_count",
+                "video_count",
+            ],
+            "fields_skipped": ["country", "default_language"],
+            "snapshots_available": 5,
+            "snapshots_tried": 1,
+            "failure_reason": None,
+            "duration_seconds": 2.5,
+        }
+    else:
+        # Failed recovery defaults
+        defaults = {
+            "channel_id": channel_id,
+            "success": False,
+            "snapshot_used": None,
+            "fields_recovered": [],
+            "fields_skipped": [],
+            "snapshots_available": 2,
+            "snapshots_tried": 2,
+            "failure_reason": "All snapshots failed to extract metadata",
+            "duration_seconds": 4.0,
+        }
+
+    return {**defaults, **overrides}
+
+
 # ============================================================================
 # Pytest Fixtures
 # ============================================================================
@@ -340,3 +455,48 @@ def cdx_cache_entry_factory():
     ...     assert entry["raw_count"] == 25
     """
     return make_cdx_cache_entry
+
+
+@pytest.fixture
+def recovered_channel_data_factory():
+    """
+    Fixture that returns the make_recovered_channel_data factory function.
+
+    Returns
+    -------
+    Callable
+        Function that creates RecoveredChannelData dictionaries.
+
+    Examples
+    --------
+    >>> def test_channel_recovery_data(recovered_channel_data_factory):
+    ...     data = recovered_channel_data_factory(title="Tech Channel")
+    ...     assert data["title"] == "Tech Channel"
+    ...     assert data["country"] == "US"
+    """
+    return make_recovered_channel_data
+
+
+@pytest.fixture
+def channel_recovery_result_factory():
+    """
+    Fixture that returns the make_channel_recovery_result factory function.
+
+    Returns
+    -------
+    Callable
+        Function that creates ChannelRecoveryResult dictionaries.
+
+    Examples
+    --------
+    >>> def test_success_result(channel_recovery_result_factory):
+    ...     result = channel_recovery_result_factory(success=True)
+    ...     assert result["success"] is True
+    ...     assert len(result["fields_recovered"]) > 0
+    >>>
+    >>> def test_failure_result(channel_recovery_result_factory):
+    ...     result = channel_recovery_result_factory(success=False)
+    ...     assert result["success"] is False
+    ...     assert result["failure_reason"] is not None
+    """
+    return make_channel_recovery_result

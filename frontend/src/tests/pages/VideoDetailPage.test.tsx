@@ -49,6 +49,8 @@ describe("VideoDetailPage", () => {
     },
     availability_status: "available",
     alternative_url: null,
+    recovered_at: null,
+    recovery_source: null,
   };
 
   beforeEach(() => {

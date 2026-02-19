@@ -1,7 +1,7 @@
 {
   "name": "chronovista-frontend",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -18,7 +18,8 @@
     "@tanstack/react-virtual": "^3.13.18",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^6.30.3"
+    "react-router-dom": "^6.30.3",
+    "zustand": "^5.0.11"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.18",

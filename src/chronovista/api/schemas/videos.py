@@ -135,6 +135,8 @@ class VideoDetail(BaseModel):
     topics: List[TopicSummary] = Field(default_factory=list)  # Associated topics
     availability_status: str = Field(..., description="Video availability status")
     alternative_url: Optional[str] = Field(None, description="Alternative URL for deleted/unavailable content")
+    recovered_at: Optional[datetime] = Field(None, description="Timestamp when metadata was recovered via Wayback Machine")
+    recovery_source: Optional[str] = Field(None, description="Source used for metadata recovery (e.g., wayback_machine)")
 
 
 class VideoDetailResponse(ApiResponse[VideoDetail]):
@@ -173,6 +175,65 @@ class AlternativeUrlRequest(BaseModel):
         max_length=500,
         description="Alternative URL for unavailable video (max 500 characters). Set to null to clear.",
     )
+
+
+class VideoRecoveryResultData(BaseModel):
+    """Recovery result data for a single video recovery attempt.
+
+    Attributes
+    ----------
+    video_id : str
+        YouTube video ID (11 characters).
+    success : bool
+        Whether the recovery attempt succeeded.
+    snapshot_used : str | None
+        CDX timestamp of the snapshot used for recovery.
+    fields_recovered : List[str]
+        Names of fields successfully recovered.
+    fields_skipped : List[str]
+        Names of fields that were skipped during recovery.
+    snapshots_available : int
+        Total number of CDX snapshots found.
+    snapshots_tried : int
+        Number of snapshots attempted before success or exhaustion.
+    failure_reason : str | None
+        Reason for failure, if success is False.
+    duration_seconds : float
+        Wall-clock time for the recovery operation.
+    channel_recovery_candidates : List[str]
+        Channel IDs discovered during recovery that may need their own recovery.
+    channel_recovered : bool
+        Whether channel metadata was successfully recovered.
+    channel_fields_recovered : List[str]
+        Names of channel fields successfully recovered.
+    channel_fields_skipped : List[str]
+        Names of channel fields that were skipped during recovery.
+    channel_failure_reason : str | None
+        Reason for channel recovery failure, if applicable.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    video_id: str
+    success: bool
+    snapshot_used: Optional[str] = None
+    fields_recovered: List[str] = Field(default_factory=list)
+    fields_skipped: List[str] = Field(default_factory=list)
+    snapshots_available: int = 0
+    snapshots_tried: int = 0
+    failure_reason: Optional[str] = None
+    duration_seconds: float = 0.0
+    channel_recovery_candidates: List[str] = Field(default_factory=list)
+    channel_recovered: bool = False
+    channel_fields_recovered: List[str] = Field(default_factory=list)
+    channel_fields_skipped: List[str] = Field(default_factory=list)
+    channel_failure_reason: Optional[str] = None
+
+
+class VideoRecoveryResponse(ApiResponse[VideoRecoveryResultData]):
+    """Response for video recovery endpoint."""
+
+    pass
 
 
 # Rebuild models to resolve forward references

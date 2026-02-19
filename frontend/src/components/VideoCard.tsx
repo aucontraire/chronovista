@@ -8,6 +8,7 @@ import { cardPatterns, colorTokens } from "../styles";
 import type { VideoListItem } from "../types/video";
 import { AvailabilityBadge } from "./AvailabilityBadge";
 import { isVideoUnavailable } from "../utils/availability";
+import { API_BASE_URL } from "../api/config";
 
 interface VideoCardProps {
   /** Video data to display */
@@ -94,6 +95,12 @@ function formatViewCount(count: number | null): string {
 }
 
 /**
+ * Placeholder image URL for videos without thumbnails.
+ * Uses a play icon SVG on gray background matching project patterns.
+ */
+const PLACEHOLDER_THUMBNAIL = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='180' viewBox='0 0 320 180'%3E%3Crect fill='%23e2e8f0' width='320' height='180'/%3E%3Cpath fill='%2394a3b8' d='M128 60l48 30-48 30z'/%3E%3C/svg%3E";
+
+/**
  * VideoCard displays video metadata in a card format.
  * Includes title, channel, duration, upload date, and transcript info.
  * Shows unavailability indicators when content is not available (Feature 023, FR-021).
@@ -116,16 +123,32 @@ export function VideoCard({ video }: VideoCardProps) {
   const cardOpacity = isUnavailable && !hasRecoveredData ? "opacity-50" : "";
   const titleDecoration = isUnavailable && !hasRecoveredData ? "line-through" : "";
 
+  // Use proxy URL for video thumbnails (Feature 026)
+  const thumbnailUrl = `${API_BASE_URL}/images/videos/${video.video_id}?quality=mqdefault`;
+
   return (
     <Link
       to={`/videos/${video.video_id}`}
       className="block no-underline text-inherit focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-xl"
     >
       <article
-        className={`${cardPatterns.base} ${cardPatterns.hover} ${cardPatterns.transition} p-5 ${cardOpacity}`}
+        className={`${cardPatterns.base} ${cardPatterns.hover} ${cardPatterns.transition} overflow-hidden ${cardOpacity}`}
         role="article"
         aria-label={isUnavailable && !title ? `Unavailable video` : `Video: ${title}`}
       >
+      {/* Video Thumbnail */}
+      <img
+        src={thumbnailUrl}
+        alt={title || "Video thumbnail"}
+        className="w-full aspect-video object-cover"
+        loading="lazy"
+        onError={(e) => {
+          e.currentTarget.src = PLACEHOLDER_THUMBNAIL;
+        }}
+      />
+
+      {/* Video Content */}
+      <div className="p-5">
       {/* Video Title with Availability Badge */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <h3 className={`text-lg font-semibold text-${colorTokens.text.primary} line-clamp-2 flex-1 ${titleDecoration}`}>
@@ -181,6 +204,7 @@ export function VideoCard({ video }: VideoCardProps) {
           </div>
         </div>
       )}
+      </div>
       </article>
     </Link>
   );

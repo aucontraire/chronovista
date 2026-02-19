@@ -57,6 +57,7 @@ from chronovista.repositories.video_category_repository import (
 from chronovista.repositories.video_repository import VideoRepository
 from chronovista.repositories.video_tag_repository import VideoTagRepository
 from chronovista.repositories.video_topic_repository import VideoTopicRepository
+from chronovista.services.image_cache import ImageCacheConfig, ImageCacheService
 from chronovista.services.youtube_service import YouTubeService
 
 logger = logging.getLogger(__name__)
@@ -86,6 +87,36 @@ EXIT_CODE_LOCK_FAILED = 4
 
 # Batch size for API calls
 BATCH_SIZE = 50
+
+
+# ---------------------------------------------------------------------------
+# Lazy image-cache invalidation helper (Feature 026 / T029)
+# ---------------------------------------------------------------------------
+_image_cache_service: ImageCacheService | None = None
+
+
+def _get_image_cache_service() -> ImageCacheService:
+    """Return a lazily-initialised :class:`ImageCacheService` singleton.
+
+    The service is created on first call using ``settings.cache_dir`` for
+    the directory layout that matches the API/CLI image cache.
+
+    Returns
+    -------
+    ImageCacheService
+        Module-level singleton instance.
+    """
+    global _image_cache_service  # noqa: PLW0603
+    if _image_cache_service is None:
+        from chronovista.config.settings import settings
+
+        config = ImageCacheConfig(
+            cache_dir=settings.cache_dir,
+            channels_dir=settings.cache_dir / "images" / "channels",
+            videos_dir=settings.cache_dir / "images" / "videos",
+        )
+        _image_cache_service = ImageCacheService(config=config)
+    return _image_cache_service
 
 
 def sanitize_text(text: str | None) -> str | None:
@@ -2813,6 +2844,33 @@ class EnrichmentService:
 
                         # Extract update data from API response
                         update_data = self._extract_channel_update(api_data)
+
+                        # Feature 026 / FR-017: Invalidate cached channel
+                        # avatar when the thumbnail URL changes.
+                        # Rules: only invalidate when BOTH old and new are
+                        # non-NULL and they differ.
+                        new_thumb = update_data.get("thumbnail_url")
+                        old_thumb = getattr(channel, "thumbnail_url", None)
+                        if (
+                            old_thumb is not None
+                            and new_thumb is not None
+                            and old_thumb != new_thumb
+                        ):
+                            try:
+                                svc = _get_image_cache_service()
+                                await svc.invalidate_channel(channel_id)
+                                logger.info(
+                                    "Invalidated image cache for channel %s "
+                                    "(thumbnail changed)",
+                                    channel_id,
+                                )
+                            except Exception as exc:
+                                logger.warning(
+                                    "Image cache invalidation failed for "
+                                    "channel %s: %s",
+                                    channel_id,
+                                    exc,
+                                )
 
                         # Update channel fields
                         for key, value in update_data.items():

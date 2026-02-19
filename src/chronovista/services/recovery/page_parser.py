@@ -594,7 +594,11 @@ class PageParser:
             if genre_str:
                 category_id = YOUTUBE_CATEGORY_MAP.get(str(genre_str))
 
-        # Extract channel ID: try itemprop="channelId" first, then link href pattern
+        # Extract channel ID using multiple strategies in priority order:
+        # 1. itemprop="channelId" meta tag (modern structured data)
+        # 2. <link itemprop="url"> with channel URL (modern structured data)
+        # 3. data-channel-external-id attribute (pre-2020 subscribe buttons)
+        # 4. <a> tags linking to /channel/UCxxx (pre-2020 page layouts)
         channel_id: str | None = None
         channel_id_meta = soup.find(attrs={"itemprop": "channelId"})
         if channel_id_meta:
@@ -609,6 +613,19 @@ class PageParser:
                     if channel_match:
                         channel_id = channel_match.group(1)
                         break
+        if channel_id is None:
+            ext_id_el = soup.find(attrs={"data-channel-external-id": True})
+            if ext_id_el:
+                ext_id = str(ext_id_el["data-channel-external-id"])
+                if _CHANNEL_ID_RE.match(ext_id):
+                    channel_id = ext_id
+        if channel_id is None:
+            for anchor in soup.find_all("a", href=True):
+                href = str(anchor["href"])
+                anchor_match = re.search(r"/channel/(UC[A-Za-z0-9_-]{22})", href)
+                if anchor_match:
+                    channel_id = anchor_match.group(1)
+                    break
 
         # Extract channel name from <link itemprop="url" href=".../user/Name">
         channel_name_hint: str | None = None

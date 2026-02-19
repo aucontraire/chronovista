@@ -1016,3 +1016,311 @@ class TestYearFilterValidation:
         call_kwargs = mock_recover.call_args[1]
         assert call_kwargs["from_year"] == 2018
         assert call_kwargs["to_year"] == 2020
+
+
+class TestChannelRecoveryDisplay:
+    """T027 + T028: Channel recovery display tests."""
+
+    @patch("chronovista.cli.commands.recover.recover_video")
+    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    def test_single_result_with_channel_recovery(
+        self,
+        mock_get_session: MagicMock,
+        mock_recover: MagicMock,
+    ) -> None:
+        """Test that single result displays channel recovery info when channel_recovered=True."""
+        session_gen, session = create_async_mock_session()
+        mock_get_session.return_value = session_gen
+
+        mock_recover.side_effect = create_async_mock_recover(
+            RecoveryResult(
+                video_id="dQw4w9WgXcQ",
+                success=True,
+                snapshot_used="20220106075526",
+                fields_recovered=["title", "description"],
+                duration_seconds=1.5,
+                channel_recovered=True,
+                channel_fields_recovered=["title", "description", "subscriber_count"],
+            )
+        )
+
+        result = runner.invoke(
+            app,
+            ["recover", "video", "--video-id", "dQw4w9WgXcQ"],
+        )
+
+        assert result.exit_code == 0
+        # Should show channel recovery information
+        assert "channel recovery" in result.stdout.lower()
+        assert "recovered 3 fields" in result.stdout.lower()
+        assert "title" in result.stdout
+        assert "description" in result.stdout
+        assert "subscriber_count" in result.stdout
+
+    @patch("chronovista.cli.commands.recover.recover_video")
+    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    def test_single_result_without_channel_recovery(
+        self,
+        mock_get_session: MagicMock,
+        mock_recover: MagicMock,
+    ) -> None:
+        """Test that single result does not show channel info when channel_recovered=False."""
+        session_gen, session = create_async_mock_session()
+        mock_get_session.return_value = session_gen
+
+        mock_recover.side_effect = create_async_mock_recover(
+            RecoveryResult(
+                video_id="dQw4w9WgXcQ",
+                success=True,
+                snapshot_used="20220106075526",
+                fields_recovered=["title", "description"],
+                duration_seconds=1.5,
+                channel_recovered=False,
+            )
+        )
+
+        result = runner.invoke(
+            app,
+            ["recover", "video", "--video-id", "dQw4w9WgXcQ"],
+        )
+
+        assert result.exit_code == 0
+        # Should NOT show channel recovery information
+        # Look for the field name but not in context of channel recovery
+        stdout_lines = result.stdout.split("\n")
+        # Count occurrences - should only see "Channel Recovery" as part of headers, not data
+        channel_recovery_lines = [line for line in stdout_lines if "channel recovery" in line.lower()]
+        # If channel_recovered=False and no failure_reason, there should be no channel recovery row
+        assert len(channel_recovery_lines) == 0
+
+    @patch("chronovista.cli.commands.recover.recover_video")
+    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    def test_single_result_with_channel_failure(
+        self,
+        mock_get_session: MagicMock,
+        mock_recover: MagicMock,
+    ) -> None:
+        """Test that single result displays channel failure reason."""
+        session_gen, session = create_async_mock_session()
+        mock_get_session.return_value = session_gen
+
+        mock_recover.side_effect = create_async_mock_recover(
+            RecoveryResult(
+                video_id="dQw4w9WgXcQ",
+                success=True,
+                snapshot_used="20220106075526",
+                fields_recovered=["title", "description"],
+                duration_seconds=1.5,
+                channel_recovered=False,
+                channel_failure_reason="no_snapshots_found",
+            )
+        )
+
+        result = runner.invoke(
+            app,
+            ["recover", "video", "--video-id", "dQw4w9WgXcQ"],
+        )
+
+        assert result.exit_code == 0
+        # Should show channel recovery failure information
+        assert "channel recovery" in result.stdout.lower()
+        assert "failed" in result.stdout.lower()
+        assert "no_snapshots_found" in result.stdout
+
+    @patch("chronovista.cli.commands.recover.recover_video")
+    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    def test_batch_summary_with_channel_section(
+        self,
+        mock_get_session: MagicMock,
+        mock_recover: MagicMock,
+    ) -> None:
+        """Test that batch summary includes channel recovery section with correct counts."""
+        session_gen, session = create_async_mock_session()
+        mock_get_session.return_value = session_gen
+
+        # Create 3 mock videos
+        mock_videos = [
+            create_mock_video_db("dQw4w9WgXcQ"),
+            create_mock_video_db("jNQXAC9IVRw"),
+            create_mock_video_db("9bZkp7q19f0"),
+        ]
+        setup_batch_query_mock(session, mock_videos)
+
+        # Two with successful channel recovery, one with failure
+        results = [
+            RecoveryResult(
+                video_id="dQw4w9WgXcQ",
+                success=True,
+                snapshot_used="20220106075526",
+                fields_recovered=["title"],
+                duration_seconds=1.0,
+                channel_recovered=True,
+                channel_fields_recovered=["title", "description"],
+            ),
+            RecoveryResult(
+                video_id="jNQXAC9IVRw",
+                success=True,
+                snapshot_used="20220106075527",
+                fields_recovered=["title"],
+                duration_seconds=1.0,
+                channel_recovered=True,
+                channel_fields_recovered=["title", "subscriber_count"],
+            ),
+            RecoveryResult(
+                video_id="9bZkp7q19f0",
+                success=True,
+                snapshot_used="20220106075528",
+                fields_recovered=["title"],
+                duration_seconds=1.0,
+                channel_recovered=False,
+                channel_failure_reason="no_snapshots_found",
+            ),
+        ]
+
+        call_count = 0
+        async def mock_recover_side_effect(*args, **kwargs):
+            nonlocal call_count
+            result = results[call_count]
+            call_count += 1
+            return result
+
+        mock_recover.side_effect = mock_recover_side_effect
+
+        result = runner.invoke(
+            app,
+            ["recover", "video", "--all"],
+        )
+
+        assert result.exit_code == 0
+        # Should show channel recovery section
+        assert "channel recovery" in result.stdout.lower()
+        assert "channels attempted: 3" in result.stdout.lower()
+        assert "channels recovered: 2" in result.stdout.lower()
+        # Should show the unique channel fields recovered
+        assert "channel fields recovered:" in result.stdout.lower()
+        assert "title" in result.stdout
+        assert "description" in result.stdout
+        assert "subscriber_count" in result.stdout
+
+    @patch("chronovista.cli.commands.recover.recover_video")
+    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    def test_batch_summary_zero_channels(
+        self,
+        mock_get_session: MagicMock,
+        mock_recover: MagicMock,
+    ) -> None:
+        """Test that batch summary hides channel section when no channels attempted."""
+        session_gen, session = create_async_mock_session()
+        mock_get_session.return_value = session_gen
+
+        # Create 2 mock videos
+        mock_videos = [
+            create_mock_video_db("dQw4w9WgXcQ"),
+            create_mock_video_db("jNQXAC9IVRw"),
+        ]
+        setup_batch_query_mock(session, mock_videos)
+
+        # Both videos recovered successfully, but no channel recovery attempted
+        results = [
+            RecoveryResult(
+                video_id="dQw4w9WgXcQ",
+                success=True,
+                snapshot_used="20220106075526",
+                fields_recovered=["title"],
+                duration_seconds=1.0,
+                channel_recovered=False,
+            ),
+            RecoveryResult(
+                video_id="jNQXAC9IVRw",
+                success=True,
+                snapshot_used="20220106075527",
+                fields_recovered=["title"],
+                duration_seconds=1.0,
+                channel_recovered=False,
+            ),
+        ]
+
+        call_count = 0
+        async def mock_recover_side_effect(*args, **kwargs):
+            nonlocal call_count
+            result = results[call_count]
+            call_count += 1
+            return result
+
+        mock_recover.side_effect = mock_recover_side_effect
+
+        result = runner.invoke(
+            app,
+            ["recover", "video", "--all"],
+        )
+
+        assert result.exit_code == 0
+        # Should NOT show channel recovery section (no "Channel Recovery:" header)
+        # Check that "Channel Recovery:" does not appear as a section header
+        assert "channels attempted:" not in result.stdout.lower()
+        assert "channels recovered:" not in result.stdout.lower()
+
+    @patch("chronovista.cli.commands.recover.recover_video")
+    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    def test_dry_run_with_channel_candidates(
+        self,
+        mock_get_session: MagicMock,
+        mock_recover: MagicMock,
+    ) -> None:
+        """Test that dry-run displays channel recovery candidates."""
+        session_gen, session = create_async_mock_session()
+        mock_get_session.return_value = session_gen
+
+        mock_recover.side_effect = create_async_mock_recover(
+            RecoveryResult(
+                video_id="dQw4w9WgXcQ",
+                success=True,
+                snapshot_used="20220106075526",
+                fields_recovered=["title", "description"],
+                duration_seconds=1.5,
+                channel_recovery_candidates=["UC123456789012345678901", "UC987654321098765432109"],
+            )
+        )
+
+        result = runner.invoke(
+            app,
+            ["recover", "video", "--video-id", "dQw4w9WgXcQ", "--dry-run"],
+        )
+
+        assert result.exit_code == 0
+        # Should show channel recovery candidates
+        assert "channel recovery candidates" in result.stdout.lower()
+        assert "2 channels" in result.stdout.lower()
+        assert "UC123456789012345678901" in result.stdout
+        assert "UC987654321098765432109" in result.stdout
+
+    @patch("chronovista.cli.commands.recover.recover_video")
+    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    def test_dry_run_without_channel_candidates(
+        self,
+        mock_get_session: MagicMock,
+        mock_recover: MagicMock,
+    ) -> None:
+        """Test that dry-run does not show channel candidates section when list is empty."""
+        session_gen, session = create_async_mock_session()
+        mock_get_session.return_value = session_gen
+
+        mock_recover.side_effect = create_async_mock_recover(
+            RecoveryResult(
+                video_id="dQw4w9WgXcQ",
+                success=True,
+                snapshot_used="20220106075526",
+                fields_recovered=["title", "description"],
+                duration_seconds=1.5,
+                channel_recovery_candidates=[],
+            )
+        )
+
+        result = runner.invoke(
+            app,
+            ["recover", "video", "--video-id", "dQw4w9WgXcQ", "--dry-run"],
+        )
+
+        assert result.exit_code == 0
+        # Should NOT show channel recovery candidates section
+        assert "channel recovery candidates" not in result.stdout.lower()

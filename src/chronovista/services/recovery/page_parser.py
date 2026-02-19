@@ -33,12 +33,16 @@ import re
 from datetime import datetime, timezone
 
 import httpx
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from chronovista import __version__
 from chronovista.services.recovery import SELENIUM_AVAILABLE
 from chronovista.services.recovery.cdx_client import RateLimiter
-from chronovista.services.recovery.models import CdxSnapshot, RecoveredVideoData
+from chronovista.services.recovery.models import (
+    CdxSnapshot,
+    RecoveredChannelData,
+    RecoveredVideoData,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -347,6 +351,17 @@ class PageParser:
         # Try JSON extraction first
         result = self._extract_from_json(html, snapshot.timestamp)
         if result is not None:
+            # Supplement missing fields from HTML DOM.  Transitional pages
+            # (pre-mid-2020) may have ytInitialPlayerResponse but with an
+            # incomplete videoDetails (no shortDescription) and no like
+            # count in ytInitialData.  The full data is often present in
+            # dedicated HTML elements (#eow-description, like button).
+            desc_needs_supplement = (
+                result.description is None
+                or (result.description.endswith("...") and len(result.description) < 200)
+            )
+            if desc_needs_supplement or result.like_count is None:
+                self._supplement_from_html(result, html, supplement_desc=desc_needs_supplement)
             return result
 
         # Fall back to meta tag extraction
@@ -516,6 +531,22 @@ class PageParser:
         if og_desc and og_desc.get("content"):
             description = str(og_desc["content"])
 
+        # Try full description from #eow-description HTML element.
+        # Old-format YouTube pages (pre-mid-2020) have the complete
+        # description in this element, while og:description is always
+        # truncated to 160 characters by YouTube.
+        eow_desc = soup.find(id="eow-description")
+        if eow_desc:
+            for br in eow_desc.find_all("br"):
+                br.replace_with("\n")
+            full_desc = eow_desc.get_text().strip()
+            # Clean up excessive consecutive newlines
+            full_desc = re.sub(r"\n{3,}", "\n\n", full_desc)
+            if full_desc and (
+                description is None or len(full_desc) > len(description)
+            ):
+                description = full_desc
+
         # Extract og:image -> thumbnail_url
         thumbnail_url: str | None = None
         og_image = soup.find("meta", attrs={"property": "og:image"})
@@ -671,6 +702,162 @@ class PageParser:
 
         return None
 
+    def _supplement_from_html(
+        self,
+        result: RecoveredVideoData,
+        html: str,
+        *,
+        supplement_desc: bool = True,
+    ) -> None:
+        """
+        Supplement missing or truncated fields from HTML DOM elements.
+
+        When ``_extract_from_json`` succeeds but leaves gaps (no
+        ``shortDescription`` in ``videoDetails``, or a truncated
+        ``shortDescription`` ending in ``...``), the full data is often
+        present in dedicated HTML elements that predate the JSON era.
+
+        Mutates *result* in place — sets ``description`` and/or
+        ``like_count`` when a richer value is found in the HTML.
+
+        Parameters
+        ----------
+        result : RecoveredVideoData
+            Mutable result from JSON extraction with potential gaps.
+        html : str
+            Raw HTML content of the archived YouTube page.
+        supplement_desc : bool
+            Whether to attempt description supplementation (default True).
+        """
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Supplement description from #eow-description when missing or truncated
+        if supplement_desc:
+            eow_desc = soup.find(id="eow-description")
+            if eow_desc:
+                for br in eow_desc.find_all("br"):
+                    br.replace_with("\n")
+                full_desc = eow_desc.get_text().strip()
+                full_desc = re.sub(r"\n{3,}", "\n\n", full_desc)
+                if full_desc and (
+                    result.description is None
+                    or len(full_desc) > len(result.description)
+                ):
+                    result.description = full_desc
+
+        # Supplement like_count from HTML elements
+        if result.like_count is None:
+            result.like_count = self._extract_like_count_from_html(soup)
+
+    def _extract_like_count_from_html(
+        self, soup: BeautifulSoup
+    ) -> int | None:
+        """
+        Extract like count from HTML elements as a fallback.
+
+        Checks five patterns in priority order, starting with the most
+        targeted (class-scoped) before falling back to broad scans:
+
+        1. **Old-format button content**: The number inside
+           ``<span class="yt-uix-button-content">`` within the like
+           button (class ``like-button-renderer-like-button``).
+           Handles European thousand separators (``2.510`` → 2510).
+        2. **Old-format aria-label (locale-agnostic)**: Extract the
+           first multi-digit number from the like button's
+           ``aria-label``, regardless of language.  Covers German
+           ``"Ich mag das Video (wie 2.510 andere auch)"``, Spanish,
+           French, etc.
+        3. **Modern format**: ``aria-label="N likes"`` on
+           ``yt-formatted-string`` elements (scoped to avoid stray
+           matches on unrelated page elements).
+        4. **Older English format**: ``aria-label="like this video along
+           with N other people"`` on the like button.
+        5. **ytInitialData accessibility label**: ``"N likes"`` in
+           a ``yt-formatted-string`` or button ``aria-label`` (broad
+           scan as last resort).
+
+        Parameters
+        ----------
+        soup : BeautifulSoup
+            Parsed HTML of the archived YouTube page.
+
+        Returns
+        -------
+        int | None
+            The like count as an integer, or None if not found.
+        """
+        # Collect like buttons (exclude dislike) once for patterns 1-2
+        like_buttons: list[Tag] = []
+        for btn in soup.find_all(
+            "button", class_="like-button-renderer-like-button"
+        ):
+            classes = btn.get("class")
+            if classes is not None and any(
+                "dislike" in str(c) for c in classes
+            ):
+                continue
+            like_buttons.append(btn)
+
+        # Pattern 1: Old-format button content <span class="yt-uix-button-content">
+        for btn in like_buttons:
+            content_span = btn.find(class_="yt-uix-button-content")
+            if content_span:
+                text = content_span.get_text(strip=True)
+                # Remove thousand separators (both . and , conventions)
+                cleaned = re.sub(r"[.,]", "", text)
+                try:
+                    return int(cleaned)
+                except (ValueError, TypeError):
+                    pass
+
+        # Pattern 2: Locale-agnostic number from like button aria-label.
+        # Works for any language: DE "wie 2.510 andere", EN "2,510 likes",
+        # ES "2.510 personas", FR "2 510 autres", etc.
+        for btn in like_buttons:
+            label = btn.get("aria-label")
+            if not label:
+                continue
+            # Extract first multi-digit number (may contain . or , separators)
+            match = re.search(r"(\d[\d.,]*\d)", str(label))
+            if match:
+                cleaned = re.sub(r"[.,]", "", match.group(1))
+                try:
+                    return int(cleaned)
+                except (ValueError, TypeError):
+                    pass
+
+        # Pattern 3: Modern yt-formatted-string with aria-label="N likes"
+        for elem in soup.find_all("yt-formatted-string", attrs={"aria-label": True}):
+            label = str(elem.get("aria-label", ""))
+            match = re.search(r"([\d,]+)\s+likes?", label)
+            if match:
+                try:
+                    return int(match.group(1).replace(",", ""))
+                except (ValueError, TypeError):
+                    pass
+
+        # Pattern 4: "like this video along with N other people"
+        for elem in soup.find_all(attrs={"aria-label": True}):
+            label = str(elem.get("aria-label", ""))
+            match = re.search(r"along with ([\d,]+) other", label)
+            if match:
+                try:
+                    return int(match.group(1).replace(",", ""))
+                except (ValueError, TypeError):
+                    pass
+
+        # Pattern 5: Broad scan — aria-label="N likes" on any element
+        for elem in soup.find_all(attrs={"aria-label": True}):
+            label = str(elem.get("aria-label", ""))
+            match = re.search(r"([\d,]+)\s+likes?", label)
+            if match:
+                try:
+                    return int(match.group(1).replace(",", ""))
+                except (ValueError, TypeError):
+                    pass
+
+        return None
+
     async def _extract_with_selenium(
         self, snapshot: CdxSnapshot
     ) -> RecoveredVideoData | None:
@@ -692,3 +879,391 @@ class PageParser:
             Always returns ``None`` in this placeholder implementation.
         """
         return None
+
+    # ------------------------------------------------------------------
+    # Channel metadata extraction
+    # ------------------------------------------------------------------
+
+    async def extract_channel_metadata(
+        self, snapshot: CdxSnapshot, channel_id: str
+    ) -> RecoveredChannelData | None:
+        """
+        Extract channel metadata from a Wayback Machine snapshot.
+
+        Fetches the archived channel page, checks for embedded
+        ``ytInitialData`` JSON first, then falls back to HTML meta tag
+        extraction for pre-2017 pages.
+
+        Parameters
+        ----------
+        snapshot : CdxSnapshot
+            The CDX snapshot of the channel page to fetch and parse.
+        channel_id : str
+            Expected YouTube channel ID for cross-validation. If the
+            ``externalId`` found in the page JSON does not match this
+            value, the snapshot is discarded and ``None`` is returned.
+
+        Returns
+        -------
+        RecoveredChannelData | None
+            Extracted channel metadata, or ``None`` if no useful data
+            could be extracted or the channel ID did not match.
+        """
+        # Fetch the snapshot page with retry for transient failures
+        html: str | None = None
+        for attempt in range(_MAX_FETCH_RETRIES):
+            await self._rate_limiter.acquire()
+            try:
+                async with httpx.AsyncClient(
+                    follow_redirects=True,
+                ) as client:
+                    response = await client.get(
+                        snapshot.wayback_url,
+                        timeout=_REQUEST_TIMEOUT_SECONDS,
+                        headers={"User-Agent": f"chronovista/{__version__}"},
+                    )
+                html = response.text
+                break
+            except (
+                httpx.ConnectTimeout,
+                httpx.ReadTimeout,
+                httpx.ConnectError,
+            ) as e:
+                backoff = _RETRY_BACKOFF_SECONDS[attempt]
+                logger.warning(
+                    "Channel fetch attempt %d/%d for snapshot %s failed "
+                    "(%s), retrying in %.0fs",
+                    attempt + 1,
+                    _MAX_FETCH_RETRIES,
+                    snapshot.timestamp,
+                    type(e).__name__,
+                    backoff,
+                )
+                await asyncio.sleep(backoff)
+            except Exception as e:
+                logger.warning(
+                    "Failed to fetch channel snapshot %s: %s: %s",
+                    snapshot.timestamp,
+                    type(e).__name__,
+                    e,
+                )
+                return None
+
+        if html is None:
+            logger.warning(
+                "Failed to fetch channel snapshot %s after %d retries",
+                snapshot.timestamp,
+                _MAX_FETCH_RETRIES,
+            )
+            return None
+
+        # Try JSON extraction first
+        result = self._extract_channel_from_json(
+            html, snapshot.timestamp, channel_id
+        )
+        if result is not None:
+            return result
+
+        # Fall back to meta tag extraction (no cross-validation possible)
+        return self._extract_channel_from_meta_tags(html, snapshot.timestamp)
+
+    def _extract_channel_from_json(
+        self,
+        html: str,
+        snapshot_timestamp: str,
+        expected_channel_id: str,
+    ) -> RecoveredChannelData | None:
+        """
+        Extract channel metadata from ``ytInitialData`` JSON in page source.
+
+        Navigates into ``metadata.channelMetadataRenderer`` for core fields
+        (title, description, avatar, externalId, country, defaultLanguage)
+        and ``header.c4TabbedHeaderRenderer`` for subscriber/video counts.
+
+        Parameters
+        ----------
+        html : str
+            Raw HTML content of the archived YouTube channel page.
+        snapshot_timestamp : str
+            CDX timestamp of the snapshot (14 digits).
+        expected_channel_id : str
+            Channel ID that the page is expected to belong to. Used for
+            cross-validation against ``externalId``.
+
+        Returns
+        -------
+        RecoveredChannelData | None
+            Extracted channel metadata, or ``None`` if JSON was not found,
+            was malformed, or the channel ID did not match.
+        """
+        match = _YT_INITIAL_DATA_RE.search(html)
+        if not match:
+            return None
+
+        json_str = _extract_json_object(html, match.end())
+        if not json_str:
+            return None
+
+        try:
+            data = json.loads(json_str)
+        except (json.JSONDecodeError, ValueError):
+            logger.warning(
+                "Malformed ytInitialData JSON in channel snapshot %s",
+                snapshot_timestamp,
+            )
+            return None
+
+        # --- channelMetadataRenderer ---
+        metadata_renderer = (
+            data.get("metadata", {}).get("channelMetadataRenderer", {})
+        )
+        if not metadata_renderer:
+            return None
+
+        # Cross-validate channel ID (FR-023)
+        external_id = metadata_renderer.get("externalId")
+        if external_id and external_id != expected_channel_id:
+            logger.warning(
+                "Channel ID mismatch in snapshot %s: expected %s, "
+                "found %s — discarding snapshot",
+                snapshot_timestamp,
+                expected_channel_id,
+                external_id,
+            )
+            return None
+
+        title = metadata_renderer.get("title")
+        description = metadata_renderer.get("description")
+        country = metadata_renderer.get("country")
+        default_language = metadata_renderer.get("defaultLanguage")
+
+        # Avatar / thumbnail
+        thumbnail_url: str | None = None
+        avatar = metadata_renderer.get("avatar", {})
+        thumbnails = avatar.get("thumbnails", [])
+        if thumbnails:
+            thumbnail_url = thumbnails[0].get("url")
+
+        # Normalise country to uppercase 2-letter ISO code or None
+        if country:
+            country = country.strip().upper()
+            if not re.match(r"^[A-Z]{2}$", country):
+                country = None
+
+        # --- c4TabbedHeaderRenderer (subscriber + video counts) ---
+        header_renderer = (
+            data.get("header", {}).get("c4TabbedHeaderRenderer", {})
+        )
+        subscriber_count: int | None = None
+        video_count: int | None = None
+
+        sub_text = (
+            header_renderer.get("subscriberCountText", {})
+            .get("simpleText", "")
+        )
+        if sub_text:
+            subscriber_count = self._parse_subscriber_count(sub_text)
+
+        video_text_runs = (
+            header_renderer.get("videosCountText", {}).get("runs", [])
+        )
+        if video_text_runs:
+            video_count = self._parse_video_count(
+                video_text_runs[0].get("text", "")
+            )
+
+        # Check if any usable data was found
+        has_any = any([
+            title,
+            description,
+            thumbnail_url,
+            subscriber_count is not None,
+            video_count is not None,
+            country,
+            default_language,
+        ])
+        if not has_any:
+            return None
+
+        return RecoveredChannelData(
+            title=title,
+            description=description,
+            subscriber_count=subscriber_count,
+            video_count=video_count,
+            thumbnail_url=thumbnail_url,
+            country=country,
+            default_language=default_language,
+            snapshot_timestamp=snapshot_timestamp,
+        )
+
+    def _extract_channel_from_meta_tags(
+        self, html: str, snapshot_timestamp: str
+    ) -> RecoveredChannelData | None:
+        """
+        Extract channel metadata from HTML meta tags using BeautifulSoup.
+
+        Parses Open Graph meta tags (``og:title``, ``og:description``,
+        ``og:image``) as a fallback for pre-2017 channel pages that lack
+        the ``ytInitialData`` JSON.
+
+        Parameters
+        ----------
+        html : str
+            Raw HTML content of the archived YouTube channel page.
+        snapshot_timestamp : str
+            CDX timestamp of the snapshot (14 digits).
+
+        Returns
+        -------
+        RecoveredChannelData | None
+            Extracted channel metadata if any usable tags were found, or
+            ``None`` if no meaningful metadata could be extracted.
+        """
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Extract og:title
+        title: str | None = None
+        og_title = soup.find("meta", attrs={"property": "og:title"})
+        if og_title and og_title.get("content"):
+            title = str(og_title["content"])
+
+        # Extract og:description
+        description: str | None = None
+        og_desc = soup.find("meta", attrs={"property": "og:description"})
+        if og_desc and og_desc.get("content"):
+            description = str(og_desc["content"])
+
+        # Extract og:image -> thumbnail_url
+        thumbnail_url: str | None = None
+        og_image = soup.find("meta", attrs={"property": "og:image"})
+        if og_image and og_image.get("content"):
+            thumbnail_url = str(og_image["content"])
+
+        # Check if any usable data was found
+        has_any = any([title, description, thumbnail_url])
+        if not has_any:
+            return None
+
+        return RecoveredChannelData(
+            title=title,
+            description=description,
+            thumbnail_url=thumbnail_url,
+            snapshot_timestamp=snapshot_timestamp,
+        )
+
+    @staticmethod
+    def _parse_subscriber_count(text: str) -> int | None:
+        """
+        Parse a human-readable subscriber count string into an integer.
+
+        Handles YouTube's various formatting conventions including SI
+        suffixes (K, M, B), comma-separated numbers, and the special
+        "No subscribers" case.
+
+        Parameters
+        ----------
+        text : str
+            Subscriber count text, e.g. ``"1.2M subscribers"``,
+            ``"500K subscribers"``, ``"1,234 subscribers"``,
+            ``"No subscribers"``.
+
+        Returns
+        -------
+        int | None
+            Parsed integer count, or ``None`` if the text could not be
+            parsed.
+
+        Examples
+        --------
+        >>> PageParser._parse_subscriber_count("1.2M subscribers")
+        1200000
+        >>> PageParser._parse_subscriber_count("500K subscribers")
+        500000
+        >>> PageParser._parse_subscriber_count("1,234 subscribers")
+        1234
+        >>> PageParser._parse_subscriber_count("No subscribers")
+        0
+        """
+        if not text or not text.strip():
+            return None
+
+        cleaned = text.strip()
+
+        # "No subscribers" special case
+        if cleaned.lower().startswith("no "):
+            return 0
+
+        # Remove "subscribers" suffix (case-insensitive)
+        cleaned = re.sub(r"\s*subscribers?\s*$", "", cleaned, flags=re.IGNORECASE)
+        cleaned = cleaned.strip()
+
+        if not cleaned:
+            return None
+
+        # SI suffix multipliers
+        suffix_map: dict[str, int] = {
+            "K": 1_000,
+            "M": 1_000_000,
+            "B": 1_000_000_000,
+        }
+
+        last_char = cleaned[-1].upper()
+        if last_char in suffix_map:
+            numeric_part = cleaned[:-1].strip().replace(",", "")
+            try:
+                value = float(numeric_part) * suffix_map[last_char]
+                return int(value)
+            except (ValueError, TypeError):
+                return None
+
+        # Plain number (possibly comma-separated)
+        numeric_str = cleaned.replace(",", "")
+        try:
+            return int(numeric_str)
+        except (ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _parse_video_count(text: str) -> int | None:
+        """
+        Parse a human-readable video count string into an integer.
+
+        Handles YouTube's formatting with optional comma separators and
+        the ``"videos"`` suffix.
+
+        Parameters
+        ----------
+        text : str
+            Video count text, e.g. ``"1,234 videos"``, ``"500"``.
+
+        Returns
+        -------
+        int | None
+            Parsed integer count, or ``None`` if the text could not be
+            parsed.
+
+        Examples
+        --------
+        >>> PageParser._parse_video_count("1,234 videos")
+        1234
+        >>> PageParser._parse_video_count("500")
+        500
+        """
+        if not text or not text.strip():
+            return None
+
+        cleaned = text.strip()
+
+        # Remove "videos" suffix (case-insensitive)
+        cleaned = re.sub(r"\s*videos?\s*$", "", cleaned, flags=re.IGNORECASE)
+        cleaned = cleaned.strip()
+
+        if not cleaned:
+            return None
+
+        # Plain number (possibly comma-separated)
+        numeric_str = cleaned.replace(",", "")
+        try:
+            return int(numeric_str)
+        except (ValueError, TypeError):
+            return None

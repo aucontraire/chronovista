@@ -284,6 +284,8 @@ export function SearchPage() {
               descriptionCount={descriptionTotalCount}
               enabledTypes={enabledTypes}
               onToggleType={handleToggleType}
+              includeUnavailable={includeUnavailable}
+              onToggleIncludeUnavailable={() => setIncludeUnavailable(!includeUnavailable)}
             />
           </div>
 

@@ -6,7 +6,7 @@ import asyncio
 import logging
 import time
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple, Union
 
 from fastapi import APIRouter, Body, Depends, Path, Query, Request
@@ -15,8 +15,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from chronovista.api.deps import get_db, require_auth
-from chronovista.api.routers.responses import GET_ITEM_ERRORS, LIST_ERRORS
+from chronovista.api.deps import get_db, get_recovery_deps, require_auth
+from chronovista.api.routers.responses import (
+    CONFLICT_RESPONSE,
+    GET_ITEM_ERRORS,
+    LIST_ERRORS,
+    NOT_FOUND_RESPONSE,
+    VALIDATION_ERROR_RESPONSE,
+)
 from chronovista.api.schemas.filters import FilterType, FilterWarning, FilterWarningCode
 from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.topics import TopicSummary
@@ -30,10 +36,12 @@ from chronovista.api.schemas.videos import (
     VideoListResponseWithWarnings,
     VideoPlaylistMembership,
     VideoPlaylistsResponse,
+    VideoRecoveryResponse,
+    VideoRecoveryResultData,
 )
 from chronovista.db.models import TopicCategory, Video as VideoDB, VideoCategory
 from chronovista.db.models import VideoTag, VideoTopic, VideoTranscript
-from chronovista.exceptions import BadRequestError, ConflictError, NotFoundError
+from chronovista.exceptions import BadRequestError, CDXError, ConflictError, NotFoundError
 from chronovista.models.enums import AvailabilityStatus
 from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
@@ -56,6 +64,10 @@ _filter_request_counts: Dict[str, List[float]] = defaultdict(list)
 
 # Query timeout per FR-036 (T099)
 QUERY_TIMEOUT_SECONDS = 10
+
+# Recovery idempotency guard (T033)
+# Skip Wayback Machine requests if entity was recovered within this window
+RECOVERY_IDEMPOTENCY_MINUTES = 5
 
 
 def _get_client_id(request: Request) -> str:
@@ -869,6 +881,8 @@ async def get_video(
         topics=topics_list,
         availability_status=video.availability_status,
         alternative_url=video.alternative_url,
+        recovered_at=video.recovered_at,
+        recovery_source=video.recovery_source,
     )
 
     return VideoDetailResponse(data=detail)
@@ -1133,6 +1147,187 @@ async def update_alternative_url(
         topics=topics_list,
         availability_status=video.availability_status,
         alternative_url=video.alternative_url,
+        recovered_at=video.recovered_at,
+        recovery_source=video.recovery_source,
     )
 
     return VideoDetailResponse(data=detail)
+
+
+@router.post(
+    "/videos/{video_id}/recover",
+    response_model=VideoRecoveryResponse,
+    responses={
+        **NOT_FOUND_RESPONSE,
+        **CONFLICT_RESPONSE,
+        **VALIDATION_ERROR_RESPONSE,
+        503: {"description": "Wayback Machine CDX API unavailable"},
+    },
+)
+async def recover_video_endpoint(
+    video_id: str = Path(
+        ...,
+        min_length=11,
+        max_length=11,
+        description="YouTube video ID (11 characters)",
+        example="dQw4w9WgXcQ",
+    ),
+    start_year: Optional[int] = Query(
+        None,
+        ge=2005,
+        le=2026,
+        description="Only search snapshots from this year onward (2005-2026)",
+    ),
+    end_year: Optional[int] = Query(
+        None,
+        ge=2005,
+        le=2026,
+        description="Only search snapshots up to this year (2005-2026)",
+    ),
+    session: AsyncSession = Depends(get_db),
+) -> VideoRecoveryResponse | JSONResponse:
+    """
+    Recover metadata for an unavailable video using the Wayback Machine.
+
+    Queries the Internet Archive's CDX API for archived snapshots of the
+    video's YouTube page, extracts metadata from the best available snapshot,
+    and updates the database with recovered fields.
+
+    Parameters
+    ----------
+    video_id : str
+        YouTube video ID (11 characters).
+    start_year : Optional[int]
+        Only search snapshots from this year onward (2005-2026).
+    end_year : Optional[int]
+        Only search snapshots up to this year (2005-2026).
+    session : AsyncSession
+        Database session from dependency.
+
+    Returns
+    -------
+    VideoRecoveryResponse
+        Recovery result with fields recovered, snapshot used, and duration.
+
+    Raises
+    ------
+    NotFoundError
+        If video not found (404).
+    ConflictError
+        If video is currently available (409).
+    BadRequestError
+        If year range is invalid (422-level via BadRequestError).
+    JSONResponse (503)
+        If the Wayback Machine CDX API is unavailable.
+    """
+    # Validate year range: end_year >= start_year
+    if start_year is not None and end_year is not None and end_year < start_year:
+        raise BadRequestError(
+            message=(
+                f"Invalid year range: end_year ({end_year}) must be "
+                f">= start_year ({start_year})"
+            ),
+            details={
+                "start_year": start_year,
+                "end_year": end_year,
+                "constraint": "end_year >= start_year",
+            },
+        )
+
+    # Verify video exists
+    video_query = select(VideoDB).where(VideoDB.video_id == video_id)
+    result = await session.execute(video_query)
+    video = result.scalar_one_or_none()
+
+    if not video:
+        raise NotFoundError(
+            resource_type="Video",
+            identifier=video_id,
+            hint="Verify the video ID or run: chronovista sync videos",
+        )
+
+    # Verify video is unavailable (not available)
+    if video.availability_status == AvailabilityStatus.AVAILABLE.value:
+        raise ConflictError(
+            message="Cannot recover an available video",
+            details={
+                "video_id": video_id,
+                "availability_status": video.availability_status,
+                "hint": "Recovery is only supported for unavailable videos",
+            },
+        )
+
+    # T033: Idempotency guard — skip Wayback Machine if recently recovered
+    if video.recovered_at is not None:
+        now_utc = datetime.now(timezone.utc)
+        # Ensure recovered_at is timezone-aware for comparison
+        recovered_at = video.recovered_at
+        if recovered_at.tzinfo is None:
+            recovered_at = recovered_at.replace(tzinfo=timezone.utc)
+        elapsed = now_utc - recovered_at
+        if elapsed < timedelta(minutes=RECOVERY_IDEMPOTENCY_MINUTES):
+            logger.info(
+                "Video %s was already recovered %s ago (< %d min); "
+                "returning cached result",
+                video_id,
+                elapsed,
+                RECOVERY_IDEMPOTENCY_MINUTES,
+            )
+            result_data = VideoRecoveryResultData(
+                video_id=video_id,
+                success=True,
+                fields_recovered=[],
+                failure_reason=None,
+                duration_seconds=0.0,
+            )
+            return VideoRecoveryResponse(data=result_data)
+
+    # Get recovery dependencies
+    cdx_client, page_parser, rate_limiter = get_recovery_deps()
+
+    # Call the recovery orchestrator
+    from chronovista.services.recovery.orchestrator import recover_video
+
+    try:
+        recovery_result = await recover_video(
+            session=session,
+            video_id=video_id,
+            cdx_client=cdx_client,
+            page_parser=page_parser,
+            rate_limiter=rate_limiter,
+            from_year=start_year,
+            to_year=end_year,
+        )
+    except CDXError as exc:
+        logger.warning(
+            "CDX API error during recovery of video %s: %s",
+            video_id,
+            exc.message,
+        )
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": f"Wayback Machine CDX API unavailable: {exc.message}",
+            },
+            headers={"Retry-After": "60"},
+        )
+
+    # Wrap result in response envelope
+    result_data = VideoRecoveryResultData(
+        video_id=recovery_result.video_id,
+        success=recovery_result.success,
+        snapshot_used=recovery_result.snapshot_used,
+        fields_recovered=recovery_result.fields_recovered,
+        fields_skipped=recovery_result.fields_skipped,
+        snapshots_available=recovery_result.snapshots_available,
+        snapshots_tried=recovery_result.snapshots_tried,
+        failure_reason=recovery_result.failure_reason,
+        duration_seconds=recovery_result.duration_seconds,
+        channel_recovery_candidates=recovery_result.channel_recovery_candidates,
+        channel_recovered=recovery_result.channel_recovered,
+        channel_fields_recovered=recovery_result.channel_fields_recovered,
+        channel_fields_skipped=recovery_result.channel_fields_skipped,
+        channel_failure_reason=recovery_result.channel_failure_reason,
+    )
+
+    return VideoRecoveryResponse(data=result_data)

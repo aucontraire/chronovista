@@ -249,6 +249,46 @@ Unexpected server error. Internal details are logged server-side:
 }
 ```
 
+### 409 Conflict (Recovery Endpoints)
+
+Attempting to recover an entity that is currently available:
+
+```bash
+curl -s -X POST http://localhost:8765/api/v1/videos/dQw4w9WgXcQ/recover | jq
+```
+
+```json
+{
+  "type": "https://api.chronovista.com/errors/CONFLICT",
+  "title": "Resource Conflict",
+  "status": 409,
+  "detail": "Cannot recover an available video",
+  "instance": "/api/v1/videos/dQw4w9WgXcQ/recover",
+  "code": "CONFLICT",
+  "request_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+The same applies for channel recovery (`POST /api/v1/channels/{channel_id}/recover`).
+
+### 503 Service Unavailable (Recovery Endpoints)
+
+The Wayback Machine CDX API is temporarily unavailable during a recovery request. Includes a `Retry-After` header:
+
+```bash
+curl -si -X POST http://localhost:8765/api/v1/videos/dQw4w9WgXcQ/recover
+```
+
+```http
+HTTP/1.1 503 Service Unavailable
+Content-Type: application/json
+Retry-After: 60
+
+{
+  "detail": "Wayback Machine CDX API unavailable: Connection timeout"
+}
+```
+
 ### 502 External Service Error
 
 External service (e.g., YouTube API) unavailable:

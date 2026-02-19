@@ -27,6 +27,11 @@ Detailed component design and service architecture.
 |  | Recovery      |  |  CDXClient   |  |  PageParser   |           |
 |  | Orchestrator  |  |              |  |               |           |
 |  +---------------+  +---------------+  +---------------+           |
+|          |                  |                  |                    |
+|  +---------------+                                                 |
+|  | ChannelRecovery|                                                |
+|  | Orchestrator   |                                                |
+|  +---------------+                                                 |
 |                                                                    |
 +-------------------------------------------------------------------+
 ```
@@ -67,6 +72,43 @@ Extracts metadata from archived YouTube video pages using three strategies:
 3. **Selenium fallback** — Optional rendering for pre-2017 pages requiring JavaScript (requires `selenium` + `webdriver-manager`)
 
 Includes removal notice detection (playability status, title checks, body text patterns) to skip archived pages that show "Video unavailable" instead of real content.
+
+Additional extraction patterns (v0.28.0):
+- **5-pattern like count** — Extracts like counts from multiple page layout variants
+- **Truncated description replacement** — Replaces `og:description` truncated text with full description from JSON when available
+- **Channel metadata extraction** — Extracts channel title and ID from video pages for auto-channel recovery
+
+### ChannelRecoveryOrchestrator
+
+Coordinates channel-level archive recovery (v0.28.0):
+
+```
+1. Load all deleted/unavailable videos for the channel
+2. Iterate videos through RecoveryOrchestrator
+3. Extract channel metadata from recovered video pages (auto-channel recovery)
+4. Apply two-tier overwrite policy for channel record:
+   - Immutable fields: fill-if-NULL only (title, description)
+   - Mutable fields: overwrite-if-newer (thumbnail, subscriber count)
+5. Return per-video recovery outcomes with summary statistics
+```
+
+### Recovery Dependency Injection
+
+Recovery services are wired via `get_recovery_deps()` in `api/deps.py`:
+
+```python
+async def get_recovery_deps(
+    session: AsyncSession = Depends(get_session),
+) -> RecoveryDeps:
+    """Provides CDXClient, PageParser, and RecoveryOrchestrator."""
+    ...
+```
+
+This factory creates the full recovery dependency graph (CDX client, page parser, orchestrator) per-request with shared database session.
+
+### Idempotency Guard
+
+Recovery endpoints enforce a 5-minute idempotency window. If `recovered_at` is within the last 5 minutes, the endpoint returns the existing result without re-querying the Wayback Machine. This prevents redundant CDX/page-fetch cycles from duplicate requests or UI retries.
 
 ## Core Services
 

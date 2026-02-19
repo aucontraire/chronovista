@@ -177,6 +177,8 @@ chronovista recover [COMMAND]
 
 **Note:** Requires `beautifulsoup4` (included in default install). Optional `selenium` enables pre-2017 page fallback.
 
+Video recovery also attempts to recover the associated channel's metadata when the channel is unavailable. In batch mode (`--all`), the summary report includes channel recovery statistics showing how many channels were attempted, recovered, and which fields were restored.
+
 ### API Commands
 
 ```bash
@@ -679,6 +681,8 @@ chronovista recover video --all --delay 2.0
 - Three-tier overwrite policy: immutable fields fill-if-NULL only, mutable fields overwrite-if-newer, NULL protection
 - Results are cached locally for 24 hours to avoid redundant API calls
 - Creates stub channel records when recovered `channel_id` has no existing DB entry
+- Automatically attempts channel recovery when the associated channel is unavailable
+- Batch summary includes channel recovery statistics (channels attempted, recovered, and fields restored)
 
 ### Google Takeout
 

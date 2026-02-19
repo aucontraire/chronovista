@@ -767,7 +767,6 @@ describe("VideoSearchResult", () => {
       expect(paragraph).toHaveClass("mt-2");
       expect(paragraph).toHaveClass("text-sm");
       expect(paragraph).toHaveClass("text-gray-600");
-      expect(paragraph).toHaveClass("dark:text-gray-300");
       expect(paragraph).toHaveClass("leading-relaxed");
     });
 

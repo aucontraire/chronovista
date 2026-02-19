@@ -13,6 +13,7 @@ Overview of the chronovista web frontend architecture.
 | Server State | TanStack Query 5 | Data fetching, caching, synchronization |
 | Routing | React Router 6 | Client-side navigation |
 | Virtualization | TanStack Virtual 3 | Efficient rendering of large lists |
+| Client State | Zustand 5 | Recovery session state with persist middleware |
 | API Generation | Orval 7 | TypeScript client from OpenAPI spec |
 
 ## Project Structure
@@ -28,6 +29,8 @@ frontend/src/
 │   ├── video/          # VideoCard, VideoList, VideoDetailPage
 │   ├── channel/        # ChannelCard, ChannelList
 │   └── playlist/       # PlaylistCard, PlaylistNavigation
+├── stores/             # Zustand state stores
+│   └── recoveryStore.ts           # Recovery session state with localStorage persist
 ├── hooks/              # Custom React hooks
 │   ├── useTranscriptSegments.ts   # Infinite scroll transcript loading
 │   ├── useDeepLinkParams.ts       # URL parameter handling for deep links
@@ -93,6 +96,33 @@ URL parameters drive filtering and deep linking via `useSearchParams`:
 /search?q=keyword&section=segments
 ```
 
+### Recovery State (Zustand)
+
+Recovery session state is managed by a Zustand v5 store with `persist` middleware (`frontend/src/stores/recoveryStore.ts`). This store tracks active recovery operations across page navigations and browser refreshes:
+
+```typescript
+// Recovery store shape
+interface RecoveryState {
+  activeRecovery: {
+    entityType: "video" | "channel";
+    entityId: string;
+    startedAt: number;
+    startYear?: number;
+    endYear?: number;
+  } | null;
+  abortController: AbortController | null;
+  // actions
+  startRecovery: (params: StartRecoveryParams) => void;
+  cancelRecovery: () => void;
+  clearRecovery: () => void;
+}
+```
+
+Key behaviors:
+- **localStorage persistence** via Zustand `persist` middleware for crash recovery
+- **Hydration with backend polling** — on app load, if an orphaned session exists in localStorage, the store polls the backend to check if recovery completed while the tab was closed
+- **AbortController integration** — `cancelRecovery()` aborts the in-flight HTTP request
+
 ### Local State
 
 Minimal local state for UI concerns only (open/closed panels, form inputs before submission).
@@ -129,6 +159,21 @@ The project uses a hybrid approach:
 
 ### Deleted Content Visibility
 Videos with `availability_status` other than `available` display status badges (e.g., "Deleted", "Private", "Unavailable") throughout the UI. Recovered videos show a "Recovered" indicator with the recovery source timestamp. Filters on the video list page allow toggling deleted content visibility via the `?include_deleted=true` query parameter.
+
+### Recovery UX
+
+The recovery flow (v0.28.0) provides real-time feedback for long-running Wayback Machine operations:
+
+- **Recover button** — Appears on deleted/unavailable video and channel pages. Triggers `POST /api/v1/videos/{video_id}/recover` or `POST /api/v1/channels/{channel_id}/recover` with optional year filters
+- **Progress timer** — Elapsed time display while recovery is in progress
+- **AppShell recovery indicator** — A global banner in the AppShell layout shows active recovery status with entity link and elapsed time, visible from any page
+- **Toast notifications** — Recovery events (started, completed, failed, cancelled) display as toast messages with 8-second auto-dismiss
+- **SPA navigation guard** — `useBlocker` modal warns the user before navigating away during an active recovery, preventing accidental cancellation
+- **Cancel with AbortController** — The recovery store's `cancelRecovery()` action aborts the in-flight fetch request via `AbortController`
+
+### React Router v7 Future Flags
+
+The app opts in to `startTransition` via React Router's `v7_startTransition` future flag, wrapping route state updates in `React.startTransition` for concurrent rendering compatibility.
 
 ### Light Theme Only
 The app uses a light-only theme (`bg-slate-50` main content). Dark mode variants are not used.

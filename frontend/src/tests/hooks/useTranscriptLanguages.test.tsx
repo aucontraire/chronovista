@@ -90,7 +90,7 @@ describe("useTranscriptLanguages", () => {
       });
 
       await waitFor(() => {
-        expect(apiConfig.apiFetch).toHaveBeenCalledWith("/videos/dQw4w9WgXcQ/transcript/languages");
+        expect(apiConfig.apiFetch).toHaveBeenCalledWith("/videos/dQw4w9WgXcQ/transcript/languages?include_unavailable=true");
       });
     });
 
@@ -278,7 +278,7 @@ describe("useTranscriptLanguages", () => {
         expect(result.current.isSuccess).toBe(true);
       });
 
-      expect(apiConfig.apiFetch).toHaveBeenCalledWith("/videos/dQw4w9WgXcQ/transcript/languages");
+      expect(apiConfig.apiFetch).toHaveBeenCalledWith("/videos/dQw4w9WgXcQ/transcript/languages?include_unavailable=true");
     });
   });
 

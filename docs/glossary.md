@@ -60,10 +60,22 @@ Project-specific terminology used throughout chronovista documentation and code.
 :   A video or channel's current accessibility state. Values: `available` (normal), `deleted`, `private`, `unavailable` (generic), `region_restricted`. Replaces the legacy `deleted_flag` boolean with richer status tracking.
 
 **Recovery**
-:   The process of extracting metadata (title, description, channel, tags, etc.) from a Wayback Machine snapshot of a deleted YouTube video page and updating the local database. Uses a three-tier overwrite policy: immutable fields (fill-if-NULL only), mutable fields (overwrite-if-newer), and NULL protection (never blank existing values).
+:   The process of extracting metadata from a Wayback Machine snapshot of a deleted YouTube page and updating the local database. **Video recovery** pulls title, description, tags, thumbnail, channel info, like/view counts, and upload date using a three-tier overwrite policy. **Channel recovery** pulls title, description, subscriber count, video count, thumbnail, and country using a two-tier overwrite policy. Recovery is available via CLI (`chronovista recover video`), REST API (`POST /api/v1/recovery/videos/{id}` and `POST /api/v1/recovery/channels/{id}`), and the frontend's "Recover from Web Archive" button.
+
+**Recovery Source**
+:   The origin of recovered metadata, recorded in the `recovery_source` field. Typically `wayback_machine` for data extracted from Internet Archive snapshots.
+
+**Overwrite Policy (Three-Tier, Videos)**
+:   The strategy for merging recovered video metadata with existing database records. **Immutable fields** (e.g., `channel_id`, `category_id`) are only written if the current value is NULL. **Mutable fields** (e.g., `title`, `description`, `view_count`) overwrite existing values if the recovered data is newer. **NULL protection** ensures existing non-NULL values are never blanked by NULL recovered values.
+
+**Overwrite Policy (Two-Tier, Channels)**
+:   The strategy for merging recovered channel metadata. All fields are **mutable** (overwrite-if-newer), with **NULL protection** to prevent blanking existing values. There are no immutable fields for channel recovery.
+
+**Idempotency Guard**
+:   A mechanism that caches recovery results for 5 minutes. If the same video or channel is recovered again within this window, the cached result is returned immediately without re-querying the Wayback Machine. Prevents redundant network calls and duplicate processing.
 
 **Stub Channel**
-:   A minimal channel record created automatically during recovery when the recovered `channel_id` doesn't exist in the database. Satisfies foreign key constraints and is marked with `availability_status = unavailable`.
+:   A minimal channel record created automatically during video recovery when the recovered `channel_id` doesn't exist in the database. Satisfies foreign key constraints and is marked with `availability_status = unavailable`. Stub channels are eligible for subsequent channel recovery to fill in their metadata.
 
 ## Technical Concepts
 

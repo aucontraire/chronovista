@@ -47,6 +47,8 @@ describe("useChannelVideos", () => {
         category_name: "Music",
         topics: [],
         availability_status: "available",
+        recovered_at: null,
+        recovery_source: null,
       },
       {
         video_id: "unavail123",
@@ -66,6 +68,8 @@ describe("useChannelVideos", () => {
         category_name: null,
         topics: [],
         availability_status: "deleted",
+        recovered_at: null,
+        recovery_source: null,
       },
     ],
     pagination: {

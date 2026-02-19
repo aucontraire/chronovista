@@ -2,7 +2,7 @@
 Pydantic models for the Wayback Machine video recovery service.
 
 Provides validated data models for CDX API snapshots, recovered video metadata,
-recovery results, and CDX response caching.
+recovered channel metadata, recovery results, and CDX response caching.
 
 Models
 ------
@@ -10,8 +10,12 @@ CdxSnapshot
     Represents a single archived capture from the Wayback Machine CDX API.
 RecoveredVideoData
     Metadata extracted from an archived YouTube page.
+RecoveredChannelData
+    Metadata extracted from an archived YouTube channel page.
 RecoveryResult
-    Outcome of a single video recovery attempt.
+    Outcome of a single video recovery attempt (with optional channel recovery).
+ChannelRecoveryResult
+    Outcome of a standalone channel recovery attempt.
 CdxCacheEntry
     File-based cache entry for CDX responses.
 """
@@ -24,7 +28,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
-from chronovista.models.youtube_types import VideoId
+from chronovista.models.youtube_types import ChannelId, VideoId
 
 
 class CdxSnapshot(BaseModel):
@@ -383,13 +387,221 @@ class RecoveredVideoData(BaseModel):
         return any(getattr(self, f) is not None for f in _metadata_fields)
 
 
+class RecoveredChannelData(BaseModel):
+    """
+    Metadata extracted from an archived YouTube channel page.
+
+    Contains optional fields for all recoverable channel metadata. Only
+    ``snapshot_timestamp`` is required. All other fields default to None.
+
+    Attributes
+    ----------
+    title : str | None
+        Channel title/name, if recovered.
+    description : str | None
+        Channel description, if recovered.
+    subscriber_count : int | None
+        Subscriber count at the time of archival. Must be >= 0.
+    video_count : int | None
+        Video count at the time of archival. Must be >= 0.
+    thumbnail_url : str | None
+        Channel thumbnail/avatar URL, if recovered.
+    country : str | None
+        Channel country as 2-character ISO code, if recovered.
+    default_language : str | None
+        Channel default language, if recovered.
+    snapshot_timestamp : str
+        CDX timestamp of the snapshot used for extraction. Must be 14 digits.
+    """
+
+    title: str | None = None
+    description: str | None = None
+    subscriber_count: int | None = None
+    video_count: int | None = None
+    thumbnail_url: str | None = None
+    country: str | None = None
+    default_language: str | None = None
+    snapshot_timestamp: str
+
+    @field_validator("snapshot_timestamp")
+    @classmethod
+    def validate_snapshot_timestamp(cls, v: str) -> str:
+        """
+        Validate that snapshot_timestamp is exactly 14 digits.
+
+        Parameters
+        ----------
+        v : str
+            The snapshot timestamp to validate.
+
+        Returns
+        -------
+        str
+            The validated snapshot timestamp.
+
+        Raises
+        ------
+        ValueError
+            If snapshot_timestamp is not exactly 14 digits.
+        """
+        if not re.match(r"^\d{14}$", v):
+            raise ValueError(
+                f"snapshot_timestamp must be exactly 14 digits, got '{v}'"
+            )
+        return v
+
+    @field_validator("subscriber_count")
+    @classmethod
+    def validate_subscriber_count(cls, v: int | None) -> int | None:
+        """
+        Validate that subscriber_count is non-negative if provided.
+
+        Parameters
+        ----------
+        v : int | None
+            The subscriber count to validate.
+
+        Returns
+        -------
+        int | None
+            The validated subscriber count.
+
+        Raises
+        ------
+        ValueError
+            If subscriber_count is negative.
+        """
+        if v is not None and v < 0:
+            raise ValueError(f"subscriber_count must be >= 0, got {v}")
+        return v
+
+    @field_validator("video_count")
+    @classmethod
+    def validate_video_count(cls, v: int | None) -> int | None:
+        """
+        Validate that video_count is non-negative if provided.
+
+        Parameters
+        ----------
+        v : int | None
+            The video count to validate.
+
+        Returns
+        -------
+        int | None
+            The validated video count.
+
+        Raises
+        ------
+        ValueError
+            If video_count is negative.
+        """
+        if v is not None and v < 0:
+            raise ValueError(f"video_count must be >= 0, got {v}")
+        return v
+
+    @field_validator("country", mode="before")
+    @classmethod
+    def validate_country(cls, v: Any) -> str | None:
+        """
+        Validate that country is a 2-character ISO code if provided.
+
+        Parameters
+        ----------
+        v : Any
+            The country code to validate.
+
+        Returns
+        -------
+        str | None
+            The validated country code, or None.
+
+        Raises
+        ------
+        ValueError
+            If country is provided but is not exactly 2 uppercase letters.
+        """
+        if v is None:
+            return v
+        if not isinstance(v, str):
+            raise ValueError(f"country must be a string, got {type(v).__name__}")
+        if not re.match(r"^[A-Z]{2}$", v):
+            raise ValueError(
+                f"country must be a 2-character ISO code (e.g. 'US'), got '{v}'"
+            )
+        return v
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def recovery_source(self) -> str:
+        """
+        Recovery source identifier combining source type and timestamp.
+
+        Returns
+        -------
+        str
+            String in the format ``wayback:{snapshot_timestamp}``.
+        """
+        return f"wayback:{self.snapshot_timestamp}"
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def recovered_fields(self) -> list[str]:
+        """
+        List of metadata field names that have non-None values.
+
+        Excludes ``snapshot_timestamp`` since it is required infrastructure,
+        not recovered metadata.
+
+        Returns
+        -------
+        list[str]
+            List of field names with recovered (non-None) values.
+        """
+        _metadata_fields = [
+            "title",
+            "description",
+            "subscriber_count",
+            "video_count",
+            "thumbnail_url",
+            "country",
+            "default_language",
+        ]
+        return [f for f in _metadata_fields if getattr(self, f) is not None]
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def has_data(self) -> bool:
+        """
+        Check if at least one metadata field has been recovered.
+
+        Metadata fields are all optional fields (excludes ``snapshot_timestamp``).
+
+        Returns
+        -------
+        bool
+            True if at least one metadata field is non-None.
+        """
+        _metadata_fields = [
+            "title",
+            "description",
+            "subscriber_count",
+            "video_count",
+            "thumbnail_url",
+            "country",
+            "default_language",
+        ]
+        return any(getattr(self, f) is not None for f in _metadata_fields)
+
+
 class RecoveryResult(BaseModel):
     """
     Outcome of a single video recovery attempt.
 
     Captures the full context of a recovery operation, including whether it
     succeeded, which fields were recovered, which snapshot was used, and
-    any failure reason.
+    any failure reason. Optionally includes channel recovery information
+    when channel recovery was attempted alongside video recovery.
 
     Attributes
     ----------
@@ -413,6 +625,14 @@ class RecoveryResult(BaseModel):
         Wall-clock time for the recovery operation.
     channel_recovery_candidates : list[str]
         Channel IDs discovered during recovery that may need their own recovery.
+    channel_recovered : bool
+        Whether channel metadata was successfully recovered.
+    channel_fields_recovered : list[str]
+        Names of channel fields successfully recovered.
+    channel_fields_skipped : list[str]
+        Names of channel fields that were skipped during recovery.
+    channel_failure_reason : str | None
+        Reason for channel recovery failure, if applicable.
     """
 
     video_id: VideoId
@@ -425,6 +645,51 @@ class RecoveryResult(BaseModel):
     failure_reason: str | None = None
     duration_seconds: float = 0.0
     channel_recovery_candidates: list[str] = Field(default_factory=list)
+    channel_recovered: bool = False
+    channel_fields_recovered: list[str] = Field(default_factory=list)
+    channel_fields_skipped: list[str] = Field(default_factory=list)
+    channel_failure_reason: str | None = None
+
+
+class ChannelRecoveryResult(BaseModel):
+    """
+    Outcome of a standalone channel recovery attempt.
+
+    Captures the full context of a channel recovery operation, including
+    whether it succeeded, which fields were recovered, which snapshot was
+    used, and any failure reason.
+
+    Attributes
+    ----------
+    channel_id : ChannelId
+        YouTube channel ID (24 characters, starts with UC).
+    success : bool
+        Whether the recovery attempt succeeded.
+    snapshot_used : str | None
+        CDX timestamp of the snapshot used for recovery.
+    fields_recovered : list[str]
+        Names of fields successfully recovered.
+    fields_skipped : list[str]
+        Names of fields that were skipped during recovery.
+    snapshots_available : int
+        Total number of CDX snapshots found.
+    snapshots_tried : int
+        Number of snapshots attempted before success or exhaustion.
+    failure_reason : str | None
+        Reason for failure, if ``success`` is False.
+    duration_seconds : float
+        Wall-clock time for the recovery operation.
+    """
+
+    channel_id: ChannelId
+    success: bool
+    snapshot_used: str | None = None
+    fields_recovered: list[str] = Field(default_factory=list)
+    fields_skipped: list[str] = Field(default_factory=list)
+    snapshots_available: int = 0
+    snapshots_tried: int = 0
+    failure_reason: str | None = None
+    duration_seconds: float = 0.0
 
 
 class CdxCacheEntry(BaseModel):

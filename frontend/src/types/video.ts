@@ -58,6 +58,10 @@ export interface VideoListItem {
   topics: TopicSummary[];
   /** Content availability status */
   availability_status: string;
+  /** ISO 8601 datetime when video was recovered (null if not recovered) */
+  recovered_at: string | null;
+  /** Source of recovery data (e.g., "wayback_machine", null if not recovered) */
+  recovery_source: string | null;
 }
 
 /**
@@ -102,6 +106,10 @@ export interface VideoDetail {
   availability_status: string;
   /** Alternative URL for deleted/unavailable content */
   alternative_url: string | null;
+  /** ISO 8601 datetime when video was recovered (null if not recovered) */
+  recovered_at: string | null;
+  /** Source of recovery data (e.g., "wayback_machine", null if not recovered) */
+  recovery_source: string | null;
 }
 
 /**

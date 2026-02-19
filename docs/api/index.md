@@ -55,6 +55,8 @@ All endpoints except `/health` require authentication. The API shares OAuth toke
 | `/preferences/languages` | GET, PUT | Language preferences |
 | `/sync/{operation}` | POST | Trigger sync |
 | `/sync/status` | GET | Sync status |
+| `/videos/{id}/recover` | POST | Recover video metadata via Wayback Machine |
+| `/channels/{id}/recover` | POST | Recover channel metadata via Wayback Machine |
 
 ### Interactive Documentation
 

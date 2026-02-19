@@ -1385,6 +1385,159 @@ describe("SearchPage Integration Tests", () => {
     });
   });
 
+  describe("Include Unavailable Content Toggle (FR-021)", () => {
+    it("should render the toggle in the filter panel when results are shown", async () => {
+      const mockResponse = createMockSearchResponse();
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
+
+      const { user } = renderWithProviders(<SearchPage />);
+
+      const searchInput = screen.getByRole("searchbox");
+      await user.type(searchInput, "test");
+      await waitForDebounce();
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("Introduction to Machine Learning")
+        ).toBeInTheDocument();
+      });
+
+      // Verify the toggle is present in the filter panel
+      // Note: Filter panel is hidden on mobile with "hidden lg:block"
+      // We need to query by id since it might be hidden in test viewport
+      const unavailableToggle = document.querySelector('input[aria-label="Include unavailable content"]');
+      expect(unavailableToggle).toBeInTheDocument();
+    });
+
+    it("should update URL when toggle is changed", async () => {
+      const mockResponse = createMockSearchResponse();
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
+
+      const { user } = renderWithProviders(<SearchPage />, {
+        initialEntries: ["/search"],
+        path: "/search",
+      });
+
+      const searchInput = screen.getByRole("searchbox");
+      await user.type(searchInput, "test");
+      await waitForDebounce();
+
+      await waitFor(() => {
+        expect(mockApiFetch).toHaveBeenCalled();
+      });
+
+      // Verify initial URL does not have include_unavailable param
+      expect(window.location.search).not.toContain("include_unavailable");
+
+      // Find and click the toggle
+      const unavailableToggle = document.querySelector('input[aria-label="Include unavailable content"]') as HTMLInputElement;
+      expect(unavailableToggle).not.toBeNull();
+      await user.click(unavailableToggle!);
+
+      // Verify URL was updated with include_unavailable=true
+      await waitFor(() => {
+        expect(window.location.search).toContain("include_unavailable=true");
+      });
+    });
+
+    it("should restore include_unavailable state from URL on page load", async () => {
+      const mockResponse = createMockSearchResponse();
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
+
+      renderWithProviders(<SearchPage />, {
+        initialEntries: ["/search?q=test&include_unavailable=true"],
+        path: "/search",
+      });
+
+      await waitFor(() => {
+        expect(mockApiFetch).toHaveBeenCalled();
+      });
+
+      // Verify toggle is checked
+      const unavailableToggle = document.querySelector('input[aria-label="Include unavailable content"]') as HTMLInputElement;
+      expect(unavailableToggle).not.toBeNull();
+      expect(unavailableToggle!.checked).toBe(true);
+
+      // Verify API was called with include_unavailable=true
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/include_unavailable=true/),
+        expect.any(Object)
+      );
+    });
+
+    it("should pass include_unavailable to all three search endpoints", async () => {
+      const mockResponse = createMockSearchResponse();
+      mockApiFetch.mockImplementation(async (url: string) => {
+        if (url.includes('/search/segments')) {
+          return mockResponse;
+        }
+        if (url.includes('/search/titles')) {
+          return createMockTitleResponse();
+        }
+        if (url.includes('/search/descriptions')) {
+          return createMockDescriptionResponse();
+        }
+        return mockResponse;
+      });
+
+      renderWithProviders(<SearchPage />, {
+        initialEntries: ["/search?q=test&include_unavailable=true"],
+        path: "/search",
+      });
+
+      await waitFor(() => {
+        expect(mockApiFetch).toHaveBeenCalled();
+      });
+
+      // Verify all three endpoints were called with include_unavailable=true
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/search\/segments.*include_unavailable=true/),
+        expect.any(Object)
+      );
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/search\/titles.*include_unavailable=true/),
+        expect.any(Object)
+      );
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/search\/descriptions.*include_unavailable=true/),
+        expect.any(Object)
+      );
+    });
+  });
+
   describe("Edge Cases", () => {
     it("should handle empty query submission (EC-010)", async () => {
       const { user } = renderWithProviders(<SearchPage />);

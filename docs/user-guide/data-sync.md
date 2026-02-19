@@ -386,6 +386,25 @@ make dev-db-reset
 chronovista sync all
 ```
 
+## Recovering Deleted Content
+
+Sync only works for videos and channels that are still available on YouTube. For deleted, private, or otherwise unavailable content, use the **recovery** feature to retrieve metadata from the Wayback Machine:
+
+```bash
+# Recover a specific deleted video
+chronovista recover video --video-id VIDEO_ID
+
+# Batch recover all unavailable videos
+chronovista recover video --all --limit 50
+
+# Narrow the Wayback Machine search to a specific era
+chronovista recover video --all --start-year 2018 --end-year 2020
+```
+
+Channel metadata is automatically recovered during video recovery when a channel ID is found in the archived page. Recovery is also available via the REST API and the frontend's "Recover from Web Archive" button.
+
+See the [CLI Overview](cli-overview.md#recover-commands) for full recovery command reference.
+
 ## See Also
 
 - [Google Takeout](google-takeout.md) - Import historical data

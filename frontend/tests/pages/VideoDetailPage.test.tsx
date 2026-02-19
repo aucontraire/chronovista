@@ -46,6 +46,7 @@ describe('VideoDetailPage', () => {
     category_id: '22',
     default_language: 'en',
     made_for_kids: false,
+    availability_status: 'available',
     transcript_summary: {
       count: 2,
       languages: ['en', 'es'],

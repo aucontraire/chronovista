@@ -12,6 +12,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.28.0] - 2026-02-17
+
+### Added
+- **Feature 025: Recovery API & Channel Archive Recovery**
+  - `POST /api/v1/videos/{video_id}/recover` endpoint with year filter params and structured `RecoveryResult` response
+  - `POST /api/v1/channels/{channel_id}/recover` endpoint with `ChannelRecoveryResult` response
+  - `recovered_at` and `recovery_source` fields in video and channel detail API responses
+  - Channel metadata recovery from Wayback Machine (title, description, subscriber count, video count, thumbnail, country)
+  - Auto-channel recovery triggered during video recovery when channel is unavailable
+  - CDX client `fetch_channel_snapshots()` with separate cache namespace
+  - Page parser `extract_channel_metadata()` with JSON extraction and meta tag fallback
+  - Channel recovery orchestrator with three-tier overwrite policy
+  - Backend idempotency guard (5-minute window) preventing duplicate recovery calls
+  - Recovery dependency injection via `get_recovery_deps()` in `deps.py`
+  - "Recover from Web Archive" button on video and channel detail pages
+  - "Re-recover from Web Archive" label when previously recovered
+  - Year filter UI with collapsible "Advanced Options" section and validation
+  - Zustand v5 recovery store with `persist` middleware for session-level state
+  - Elapsed time counter during recovery ("Recovering... 1m 23s elapsed")
+  - Cancel button with `AbortController` integration
+  - `beforeunload` warning during active recovery
+  - AppShell recovery indicator banner with entity link and elapsed time
+  - Toast notifications for recovery completion (green) and failure (red) with 8s auto-dismiss
+  - localStorage hydration UX with backend polling for orphaned sessions
+  - SPA navigation guard (`useBlocker` modal) on video and channel detail pages
+  - CLI `chronovista recover` channel recovery statistics in batch summary
+  - Transcript panel conditionally rendered based on transcript availability (supports deleted videos with manual transcripts)
+  - React Router v7 `startTransition` future flag opt-in
+
+### Components
+- `RecoverySession` Zustand store (`frontend/src/stores/recoveryStore.ts`)
+- `RecoveredChannelData` and `ChannelRecoveryResult` Pydantic models
+- Recovery indicator banner in AppShell
+- Toast notification system for recovery events
+- Navigation guard modal ("Stay"/"Leave")
+
+### Fixed
+- Recovery timeout mismatch: frontend `apiFetch` now accepts per-call timeout override (660s for recovery vs 10s default)
+- `sessions.get is not a function` error on localStorage hydration (added `merge` callback for Map deserialization)
+- 404 errors for `/transcript/languages` on deleted videos (gated on `transcript_summary.count > 0`)
+- Transcript languages endpoint now passes `include_unavailable=true` for deleted video support
+
+### Technical
+- 1,739 passing frontend tests across 71 files
+- 4,500+ passing backend tests
+- 246 recovery-specific backend tests
+- Zustand v5 (~3KB gzipped) for app-level recovery state
+- mypy strict compliance (0 errors)
+- TypeScript strict mode (0 errors)
+
 ## [0.27.0] - 2026-02-15
 
 ### Added

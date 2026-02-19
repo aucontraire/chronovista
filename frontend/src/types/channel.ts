@@ -26,6 +26,10 @@ export interface ChannelListItem {
   custom_url: string | null;
   /** Content availability status */
   availability_status: string;
+  /** ISO 8601 datetime when channel was recovered (null if not recovered) */
+  recovered_at: string | null;
+  /** Source of recovery data (e.g., "wayback_machine", null if not recovered) */
+  recovery_source: string | null;
 }
 
 /**
@@ -45,6 +49,10 @@ export interface ChannelDetail extends ChannelListItem {
   updated_at: string;
   /** Content availability status */
   availability_status: string;
+  /** ISO 8601 datetime when channel was recovered (null if not recovered) */
+  recovered_at: string | null;
+  /** Source of recovery data (e.g., "wayback_machine", null if not recovered) */
+  recovery_source: string | null;
 }
 
 /**

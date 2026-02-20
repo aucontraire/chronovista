@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef } from "react";
 
 import { apiFetch } from "../api/config";
 import type { VideoListResponse } from "../types/video";
+import type { ChannelVideoSortField, SortOrder } from "../types/filters";
 
 /**
  * Default number of videos to fetch per page.
@@ -25,13 +26,26 @@ async function fetchChannelVideos(
   channelId: string,
   offset: number,
   limit: number,
-  includeUnavailable: boolean
+  includeUnavailable: boolean,
+  sortBy?: ChannelVideoSortField,
+  sortOrder?: SortOrder,
+  likedOnly?: boolean
 ): Promise<VideoListResponse> {
   const params = new URLSearchParams({
     offset: offset.toString(),
     limit: limit.toString(),
     include_unavailable: includeUnavailable.toString(),
   });
+
+  if (sortBy) {
+    params.set("sort_by", sortBy);
+  }
+  if (sortOrder) {
+    params.set("sort_order", sortOrder);
+  }
+  if (likedOnly) {
+    params.set("liked_only", "true");
+  }
 
   return apiFetch<VideoListResponse>(
     `/channels/${channelId}/videos?${params.toString()}`
@@ -45,6 +59,12 @@ interface UseChannelVideosOptions {
   enabled?: boolean;
   /** Whether to include unavailable videos (default: true) */
   includeUnavailable?: boolean;
+  /** Sort field (upload_date or title) */
+  sortBy?: ChannelVideoSortField;
+  /** Sort order (asc or desc) */
+  sortOrder?: SortOrder;
+  /** Filter to only liked videos */
+  likedOnly?: boolean;
 }
 
 interface UseChannelVideosReturn {
@@ -94,7 +114,14 @@ export function useChannelVideos(
   channelId: string | undefined,
   options: UseChannelVideosOptions = {}
 ): UseChannelVideosReturn {
-  const { limit = DEFAULT_LIMIT, enabled = true, includeUnavailable = true } = options;
+  const {
+    limit = DEFAULT_LIMIT,
+    enabled = true,
+    includeUnavailable = true,
+    sortBy,
+    sortOrder,
+    likedOnly,
+  } = options;
 
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
@@ -108,12 +135,12 @@ export function useChannelVideos(
     fetchNextPage,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["channel-videos", channelId, limit, includeUnavailable],
+    queryKey: ["channel-videos", channelId, limit, includeUnavailable, sortBy, sortOrder, likedOnly],
     queryFn: async ({ pageParam }) => {
       if (!channelId) {
         throw new Error("Channel ID is required");
       }
-      return fetchChannelVideos(channelId, pageParam, limit, includeUnavailable);
+      return fetchChannelVideos(channelId, pageParam, limit, includeUnavailable, sortBy, sortOrder, likedOnly);
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {

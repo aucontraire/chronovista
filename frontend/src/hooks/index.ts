@@ -10,7 +10,10 @@ export { useChannelVideos } from "./useChannelVideos";
 export { useTags } from "./useTags";
 export { useTopics } from "./useTopics";
 export { usePlaylistDetail } from "./usePlaylistDetail";
-export { usePlaylistVideos } from "./usePlaylistVideos";
+export {
+  usePlaylistVideos,
+  type UsePlaylistVideosOptions,
+} from "./usePlaylistVideos";
 export { usePlaylists } from "./usePlaylists";
 export { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 export { useTranscript } from "./useTranscript";
@@ -32,3 +35,4 @@ export {
   type UseSearchSegmentsOptions,
   type UseSearchSegmentsResult,
 } from "./useSearchSegments";
+export { useUrlParam, useUrlParamBoolean } from "./useUrlParam";

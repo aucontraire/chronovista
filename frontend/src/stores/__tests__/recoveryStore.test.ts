@@ -275,20 +275,14 @@ describe("recoveryStore", () => {
       useRecoveryStore.getState().updatePhase(sessionId, "in-progress");
 
       const mockResult: RecoveryResultData = {
-        videoId: "test-video-id",
-        channelId: "test-channel-id",
-        videoTitle: "Test Video",
-        channelTitle: "Test Channel",
-        thumbnailUrl: "https://example.com/thumb.jpg",
-        uploadDate: "2020-01-01",
-        description: "Test description",
-        viewCount: 1000,
-        likeCount: 100,
-        commentCount: 10,
-        duration: 120,
-        snapshotUrl: "https://web.archive.org/web/20200101000000/...",
-        snapshotTimestamp: "2020-01-01T00:00:00Z",
-        recoveredFields: ["videoTitle", "description"],
+        success: true,
+        snapshot_used: "20200101000000",
+        fields_recovered: ["title", "description"],
+        fields_skipped: [],
+        snapshots_available: 5,
+        snapshots_tried: 2,
+        failure_reason: null,
+        duration_seconds: 3.5,
       };
 
       vi.setSystemTime(endTime);
@@ -309,20 +303,14 @@ describe("recoveryStore", () => {
         .startRecovery("test-video-id", "video");
 
       const mockResult: RecoveryResultData = {
-        videoId: "test-video-id",
-        channelId: "test-channel-id",
-        videoTitle: "Test Video",
-        channelTitle: "Test Channel",
-        thumbnailUrl: "https://example.com/thumb.jpg",
-        uploadDate: "2020-01-01",
-        description: "Test description",
-        viewCount: 1000,
-        likeCount: 100,
-        commentCount: 10,
-        duration: 120,
-        snapshotUrl: "https://web.archive.org/web/20200101000000/...",
-        snapshotTimestamp: "2020-01-01T00:00:00Z",
-        recoveredFields: ["videoTitle", "description"],
+        success: true,
+        snapshot_used: "20200101000000",
+        fields_recovered: ["title", "description"],
+        fields_skipped: [],
+        snapshots_available: 5,
+        snapshots_tried: 2,
+        failure_reason: null,
+        duration_seconds: 3.5,
       };
 
       useRecoveryStore.getState().setResult(sessionId, mockResult);
@@ -336,20 +324,14 @@ describe("recoveryStore", () => {
 
     it("should handle setResult for non-existent sessionId gracefully", () => {
       const mockResult: RecoveryResultData = {
-        videoId: "test-video-id",
-        channelId: "test-channel-id",
-        videoTitle: "Test Video",
-        channelTitle: "Test Channel",
-        thumbnailUrl: "https://example.com/thumb.jpg",
-        uploadDate: "2020-01-01",
-        description: "Test description",
-        viewCount: 1000,
-        likeCount: 100,
-        commentCount: 10,
-        duration: 120,
-        snapshotUrl: "https://web.archive.org/web/20200101000000/...",
-        snapshotTimestamp: "2020-01-01T00:00:00Z",
-        recoveredFields: ["videoTitle", "description"],
+        success: true,
+        snapshot_used: "20200101000000",
+        fields_recovered: ["title", "description"],
+        fields_skipped: [],
+        snapshots_available: 5,
+        snapshots_tried: 2,
+        failure_reason: null,
+        duration_seconds: 3.5,
       };
 
       expect(() => {
@@ -632,7 +614,7 @@ describe("recoveryStore", () => {
         const activeSessions = useRecoveryStore.getState().getActiveSessions();
 
         expect(activeSessions).toHaveLength(1);
-        expect(activeSessions[0].entityId).toBe("video-2");
+        expect(activeSessions[0]!.entityId).toBe("video-2");
       });
 
       it("should exclude failed sessions", () => {
@@ -648,7 +630,7 @@ describe("recoveryStore", () => {
         const activeSessions = useRecoveryStore.getState().getActiveSessions();
 
         expect(activeSessions).toHaveLength(1);
-        expect(activeSessions[0].entityId).toBe("video-2");
+        expect(activeSessions[0]!.entityId).toBe("video-2");
       });
 
       it("should exclude cancelled sessions", () => {
@@ -664,7 +646,7 @@ describe("recoveryStore", () => {
         const activeSessions = useRecoveryStore.getState().getActiveSessions();
 
         expect(activeSessions).toHaveLength(1);
-        expect(activeSessions[0].entityId).toBe("video-2");
+        expect(activeSessions[0]!.entityId).toBe("video-2");
       });
 
       it("should return empty array when no active sessions", () => {
@@ -762,7 +744,7 @@ describe("recoveryStore", () => {
 
       // Should only have the pending session
       expect(partializedState.sessions.size).toBe(1);
-      const pendingSession = Array.from(partializedState.sessions.values())[0];
+      const pendingSession = Array.from(partializedState.sessions.values())[0]!;
       expect(pendingSession.sessionId).toBe(sessionId1);
       expect(pendingSession.phase).toBe("pending");
     });
@@ -850,7 +832,7 @@ describe("recoveryStore", () => {
       );
 
       expect(serialized).toHaveLength(1);
-      expect(serialized[0][1]).not.toHaveProperty("abortController");
+      expect(serialized[0]![1]).not.toHaveProperty("abortController");
     });
 
     it("should discard stale sessions (>10 min) on hydration", () => {
@@ -954,12 +936,12 @@ describe("recoveryStore", () => {
       };
 
       // Simulate the storage getItem logic
-      const sessionsArray = persistedData.state.sessions;
-      const restoredSessions = new Map(
-        sessionsArray.map(([key, session]: [string, any]) => [
+      const sessionsArray = persistedData.state.sessions as [string, any][];
+      const restoredSessions = new Map<string, any>(
+        sessionsArray.map(([key, session]) => [
           key,
           { ...session, abortController: null }, // Restored sessions have null abortController
-        ])
+        ] as [string, any])
       );
 
       // Apply to store

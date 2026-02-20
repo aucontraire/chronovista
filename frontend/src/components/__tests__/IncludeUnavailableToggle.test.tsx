@@ -77,7 +77,7 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
       renderWithProviders(<VideoFilters videoCount={0} />);
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
       expect(toggle).toBeInTheDocument();
     });
@@ -94,7 +94,7 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
       renderWithProviders(<VideoFilters videoCount={0} />);
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
       expect(toggle).not.toBeChecked();
     });
@@ -105,7 +105,7 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
       });
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
       expect(toggle).toBeChecked();
     });
@@ -114,7 +114,7 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
       renderWithProviders(<VideoFilters videoCount={0} />);
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
       expect(toggle).toHaveAttribute("type", "checkbox");
     });
@@ -126,7 +126,7 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
       renderWithProviders(<VideoFilters videoCount={0} />);
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
 
       // Tab to the toggle
@@ -144,7 +144,7 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
       renderWithProviders(<VideoFilters videoCount={0} />);
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
 
       // Focus and press Space
@@ -159,12 +159,13 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
       renderWithProviders(<VideoFilters videoCount={0} />);
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
-      const label = toggle.closest("label");
+      // FilterToggle uses <label htmlFor> (sibling), not wrapping <label>
+      const label = document.querySelector(`label[for="${toggle.id}"]`);
 
-      // Focus label and press Enter (label wraps checkbox, so this activates it)
-      label!.focus();
+      // Focus label and press Enter
+      (label as HTMLElement)!.focus();
       await user.keyboard("{Enter}");
 
       // Note: Native checkbox behavior is to toggle on Space, not Enter
@@ -176,7 +177,7 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
       renderWithProviders(<VideoFilters videoCount={0} />);
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
 
       // Check for focus ring classes (WCAG 2.4.7)
@@ -187,13 +188,16 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
   });
 
   describe("Accessibility (NFR-003)", () => {
-    it("should have aria-label attribute", () => {
+    it("should have accessible name from associated label", () => {
       renderWithProviders(<VideoFilters videoCount={0} />);
 
+      // FilterToggle uses <label htmlFor> for accessible name (not aria-label)
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
-      expect(toggle).toHaveAttribute("aria-label", "Include unavailable content");
+      const label = document.querySelector(`label[for="${toggle.id}"]`);
+      expect(label).toBeInTheDocument();
+      expect(label).toHaveTextContent("Show unavailable content");
     });
 
     it("should communicate checked state to screen readers", () => {
@@ -202,7 +206,7 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
       });
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
       expect(toggle).toHaveAttribute("checked");
     });
@@ -211,7 +215,7 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
       renderWithProviders(<VideoFilters videoCount={0} />);
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
       expect(toggle).not.toHaveAttribute("checked");
     });
@@ -220,7 +224,7 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
       renderWithProviders(<VideoFilters videoCount={0} />);
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
       expect(toggle.getAttribute("role")).toBe(null); // Native checkbox, no explicit role needed
       expect(toggle.tagName).toBe("INPUT");
@@ -231,9 +235,10 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
       renderWithProviders(<VideoFilters videoCount={0} />);
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
-      const label = toggle.closest("label");
+      // FilterToggle uses <label htmlFor> (sibling), not wrapping <label>
+      const label = document.querySelector(`label[for="${toggle.id}"]`);
 
       expect(label).toBeInTheDocument();
       expect(label).toHaveTextContent("Show unavailable content");
@@ -246,7 +251,7 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
       renderWithProviders(<VideoFilters videoCount={0} />);
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
 
       await user.click(toggle);
@@ -261,7 +266,7 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
       });
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
       expect(toggle).toBeChecked();
 
@@ -275,7 +280,7 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
       renderWithProviders(<VideoFilters videoCount={0} />);
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
 
       // Toggle ON
@@ -294,7 +299,7 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
       });
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
 
       await user.click(toggle);
@@ -308,7 +313,7 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
       renderWithProviders(<VideoFilters videoCount={0} />);
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
 
       // Multiple clicks
@@ -332,7 +337,7 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
 
       // Verify toggle is checked
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
       expect(toggle).toBeChecked();
 
@@ -353,36 +358,39 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
       );
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
-      const section = toggle.closest("div.pt-3");
+      // FilterToggle is inside: div.pt-3 > div.flex > input
+      const section = toggle.closest("div.flex")?.parentElement;
 
       expect(section).toBeInTheDocument();
+      expect(section).toHaveClass("pt-3");
       expect(section).toHaveClass("border-t");
       expect(section).toHaveClass("border-gray-200");
     });
 
-    it("should have hover effect on label", () => {
+    it("should have cursor-pointer on label", () => {
       renderWithProviders(<VideoFilters videoCount={0} />);
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
-      const label = toggle.closest("label");
+      // FilterToggle uses <label htmlFor> (sibling), not wrapping <label>
+      const label = document.querySelector(`label[for="${toggle.id}"]`);
 
-      expect(label).toHaveClass("hover:bg-gray-50");
       expect(label).toHaveClass("cursor-pointer");
     });
 
-    it("should have gap between checkbox and label text", () => {
+    it("should have spacing between checkbox and label text", () => {
       renderWithProviders(<VideoFilters videoCount={0} />);
 
       const toggle = screen.getByRole("checkbox", {
-        name: /include unavailable content/i,
+        name: /show unavailable content/i,
       });
-      const label = toggle.closest("label");
+      // FilterToggle uses ml-2 on the label for spacing
+      const label = document.querySelector(`label[for="${toggle.id}"]`);
 
-      expect(label).toHaveClass("gap-3");
+      expect(label).toHaveClass("ml-2");
     });
   });
 });

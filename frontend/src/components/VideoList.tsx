@@ -7,6 +7,7 @@ import { EmptyState } from "./EmptyState";
 import { ErrorState } from "./ErrorState";
 import { LoadingState } from "./LoadingState";
 import { VideoCard } from "./VideoCard";
+import type { VideoSortField, SortOrder } from "../types/filters";
 
 /**
  * Pagination status component showing "X of Y videos".
@@ -106,13 +107,30 @@ interface VideoListProps {
   topicIds?: string[];
   /** Include unavailable content (T031, FR-021) */
   includeUnavailable?: boolean;
+  /** Sort field (Feature 027) */
+  sortBy?: VideoSortField;
+  /** Sort order (Feature 027) */
+  sortOrder?: SortOrder;
+  /** Filter to liked videos only (Feature 027) */
+  likedOnly?: boolean;
+  /** Filter to videos with transcripts (Feature 027) */
+  hasTranscript?: boolean;
 }
 
 /**
  * VideoList displays videos with loading, error, and empty states.
  * Includes infinite scroll with Intersection Observer and fallback Load More button.
  */
-export function VideoList({ tags = [], category = null, topicIds = [], includeUnavailable = true }: VideoListProps = {}) {
+export function VideoList({
+  tags = [],
+  category = null,
+  topicIds = [],
+  includeUnavailable = true,
+  sortBy,
+  sortOrder,
+  likedOnly = false,
+  hasTranscript,
+}: VideoListProps = {}) {
   const {
     videos,
     total,
@@ -125,7 +143,16 @@ export function VideoList({ tags = [], category = null, topicIds = [], includeUn
     fetchNextPage,
     retry,
     loadMoreRef,
-  } = useVideos({ tags, category, topicIds, includeUnavailable });
+  } = useVideos({
+    tags,
+    category,
+    topicIds,
+    includeUnavailable,
+    likedOnly,
+    ...(sortBy !== undefined && { sortBy }),
+    ...(sortOrder !== undefined && { sortOrder }),
+    ...(hasTranscript !== undefined && { hasTranscript }),
+  });
 
   // Initial loading state
   if (isLoading) {

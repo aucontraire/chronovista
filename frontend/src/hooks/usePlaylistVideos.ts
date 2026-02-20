@@ -1,11 +1,15 @@
 /**
  * usePlaylistVideos hook for fetching videos in a playlist with infinite scroll.
+ *
+ * Supports configurable sort order, boolean filters, and automatic refetch
+ * when sort/filter options change.
  */
 
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef } from "react";
 
 import { apiFetch } from "../api/config";
+import type { SortOrder } from "../types/filters";
 import type {
   PlaylistVideoItem,
   PlaylistVideoListResponse,
@@ -22,13 +26,18 @@ const DEFAULT_LIMIT = 25;
 const INTERSECTION_THRESHOLD = 0.8;
 
 /**
- * Fetches a page of videos from a playlist.
+ * Fetches a page of videos from a playlist with sort/filter params.
  */
 async function fetchPlaylistVideos(
   playlistId: string,
   offset: number,
   limit: number,
-  includeUnavailable: boolean
+  includeUnavailable: boolean,
+  sortBy?: string,
+  sortOrder?: SortOrder,
+  likedOnly?: boolean,
+  hasTranscript?: boolean,
+  unavailableOnly?: boolean
 ): Promise<PlaylistVideoListResponse> {
   const params = new URLSearchParams({
     offset: offset.toString(),
@@ -36,18 +45,44 @@ async function fetchPlaylistVideos(
     include_unavailable: includeUnavailable.toString(),
   });
 
+  if (sortBy) {
+    params.set("sort_by", sortBy);
+  }
+  if (sortOrder) {
+    params.set("sort_order", sortOrder);
+  }
+  if (likedOnly) {
+    params.set("liked_only", "true");
+  }
+  if (hasTranscript) {
+    params.set("has_transcript", "true");
+  }
+  if (unavailableOnly) {
+    params.set("unavailable_only", "true");
+  }
+
   return apiFetch<PlaylistVideoListResponse>(
     `/playlists/${playlistId}/videos?${params.toString()}`
   );
 }
 
-interface UsePlaylistVideosOptions {
+export interface UsePlaylistVideosOptions {
   /** Number of videos per page (default: 25) */
   limit?: number;
   /** Whether to enable the query (default: true) */
   enabled?: boolean;
   /** Whether to include unavailable videos (default: true) */
   includeUnavailable?: boolean;
+  /** Sort field (position, upload_date, title) */
+  sortBy?: string;
+  /** Sort order (asc, desc) */
+  sortOrder?: SortOrder;
+  /** Filter to show only liked videos */
+  likedOnly?: boolean;
+  /** Filter to show only videos with transcripts */
+  hasTranscript?: boolean;
+  /** Filter to show only unavailable videos */
+  unavailableOnly?: boolean;
 }
 
 interface UsePlaylistVideosReturn {
@@ -80,11 +115,15 @@ interface UsePlaylistVideosReturn {
  *
  * Uses TanStack Query's useInfiniteQuery for data fetching and caching.
  * Includes an Intersection Observer for automatic next page loading.
- * Videos are returned ordered by position (handled by the API).
+ * Sort/filter options are included in the query key for automatic refetch.
  *
  * @example
  * ```tsx
- * const { videos, isLoading, loadMoreRef } = usePlaylistVideos("PLxxx");
+ * const { videos, isLoading, loadMoreRef } = usePlaylistVideos("PLxxx", {
+ *   sortBy: "upload_date",
+ *   sortOrder: "desc",
+ *   hasTranscript: true,
+ * });
  *
  * return (
  *   <div>
@@ -98,7 +137,16 @@ export function usePlaylistVideos(
   playlistId: string,
   options: UsePlaylistVideosOptions = {}
 ): UsePlaylistVideosReturn {
-  const { limit = DEFAULT_LIMIT, enabled = true, includeUnavailable = true } = options;
+  const {
+    limit = DEFAULT_LIMIT,
+    enabled = true,
+    includeUnavailable = true,
+    sortBy,
+    sortOrder,
+    likedOnly,
+    hasTranscript,
+    unavailableOnly,
+  } = options;
 
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
@@ -112,9 +160,29 @@ export function usePlaylistVideos(
     fetchNextPage,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["playlistVideos", playlistId, limit, includeUnavailable],
+    queryKey: [
+      "playlistVideos",
+      playlistId,
+      limit,
+      includeUnavailable,
+      sortBy,
+      sortOrder,
+      likedOnly,
+      hasTranscript,
+      unavailableOnly,
+    ],
     queryFn: async ({ pageParam }) => {
-      return fetchPlaylistVideos(playlistId, pageParam, limit, includeUnavailable);
+      return fetchPlaylistVideos(
+        playlistId,
+        pageParam,
+        limit,
+        includeUnavailable,
+        sortBy,
+        sortOrder,
+        likedOnly,
+        hasTranscript,
+        unavailableOnly
+      );
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {

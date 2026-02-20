@@ -3,6 +3,7 @@
  *
  * Implements:
  * - T043: Display active filters as colored pills
+ * - T031: Boolean filter pills (Liked, Has transcripts) alongside tag/topic/category pills
  * - T092: WCAG AA color contrast (7.0:1+) across all states
  * - T091: Touch-friendly 44px minimum targets on mobile
  * - T094: 8px minimum spacing between interactive elements
@@ -12,8 +13,8 @@
  * - FR-ACC-007: Visible focus indicators
  *
  * Features:
- * - Color-coded pills: blue=tags, green=categories, purple=topics
- * - Remove button (×) for each pill
+ * - Color-coded pills: blue=tags, green=categories, purple=topics, slate=boolean
+ * - Remove button (x) for each pill
  * - Accessible with proper ARIA labels
  * - Keyboard navigation support
  * - Uses FILTER_COLORS from types/filters.ts with 7.0:1+ contrast
@@ -25,6 +26,7 @@
  * - Tags: Blue scheme (7.1:1 contrast)
  * - Categories: Green scheme (7.2:1 contrast)
  * - Topics: Purple scheme (7.0:1 contrast)
+ * - Boolean: Slate scheme (7.0:1+ contrast)
  *
  * @see FR-ACC-001: WCAG 2.1 Level AA Compliance
  * @see FR-ACC-002: Focus Management
@@ -39,9 +41,12 @@ import { filterColors } from '../styles/tokens';
  */
 const MAX_FILTER_TEXT_LENGTH = 20;
 
-interface FilterPill {
+/** Supported filter pill types. */
+export type FilterPillType = 'tag' | 'category' | 'topic' | 'boolean';
+
+export interface FilterPill {
   /** Type of filter (determines color scheme) */
-  type: 'tag' | 'category' | 'topic';
+  type: FilterPillType;
   /** Value/ID of the filter */
   value: string;
   /** Display label for the filter */
@@ -50,11 +55,11 @@ interface FilterPill {
   fullText?: string | undefined;
 }
 
-interface FilterPillsProps {
+export interface FilterPillsProps {
   /** Array of active filters to display */
   filters: FilterPill[];
   /** Callback when a filter is removed */
-  onRemove: (type: 'tag' | 'category' | 'topic', value: string) => void;
+  onRemove: (type: FilterPillType, value: string) => void;
   /** Optional className for container */
   className?: string;
 }
@@ -76,14 +81,16 @@ function truncateText(text: string, maxLength: number): string {
 /**
  * Gets the appropriate emoji icon for a filter type.
  */
-function getFilterIcon(type: 'tag' | 'category' | 'topic'): string {
+function getFilterIcon(type: FilterPillType): string {
   switch (type) {
     case 'tag':
-      return '🏷️';
+      return '\u{1F3F7}\uFE0F';
     case 'category':
-      return '📂';
+      return '\u{1F4C2}';
     case 'topic':
-      return '🌐';
+      return '\u{1F310}';
+    case 'boolean':
+      return '\u{2705}';
   }
 }
 
@@ -94,6 +101,7 @@ function getFilterIcon(type: 'tag' | 'category' | 'topic'): string {
  * - Tags: Blue (7.1:1 contrast)
  * - Categories: Green (7.2:1 contrast)
  * - Topics: Purple (7.0:1 contrast)
+ * - Boolean: Slate (7.0:1+ contrast) — for Liked, Has transcripts, etc.
  *
  * @example
  * ```tsx
@@ -102,6 +110,8 @@ function getFilterIcon(type: 'tag' | 'category' | 'topic'): string {
  *     { type: 'tag', value: 'music', label: 'music' },
  *     { type: 'category', value: '10', label: 'Gaming' },
  *     { type: 'topic', value: '/m/04rlf', label: 'Music', fullText: 'Arts > Music' },
+ *     { type: 'boolean', value: 'liked_only', label: 'Liked' },
+ *     { type: 'boolean', value: 'has_transcript', label: 'Has transcripts' },
  *   ]}
  *   onRemove={(type, value) => handleFilterRemove(type, value)}
  * />

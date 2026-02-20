@@ -26,6 +26,8 @@ export interface ChannelListItem {
   custom_url: string | null;
   /** Content availability status */
   availability_status: string;
+  /** Whether the user is subscribed to this channel */
+  is_subscribed: boolean;
   /** ISO 8601 datetime when channel was recovered (null if not recovered) */
   recovered_at: string | null;
   /** Source of recovery data (e.g., "wayback_machine", null if not recovered) */
@@ -41,8 +43,6 @@ export interface ChannelDetail extends ChannelListItem {
   default_language: string | null;
   /** Country code (ISO 3166-1 alpha-2, may be null) */
   country: string | null;
-  /** Whether the user is subscribed to this channel */
-  is_subscribed: boolean;
   /** ISO 8601 datetime string of record creation */
   created_at: string;
   /** ISO 8601 datetime string of last update */

@@ -7,6 +7,7 @@ import logging
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from enum import Enum
 from typing import Dict, List, Optional, Tuple, Union
 
 from fastapi import APIRouter, Body, Depends, Path, Query, Request
@@ -25,6 +26,7 @@ from chronovista.api.routers.responses import (
 )
 from chronovista.api.schemas.filters import FilterType, FilterWarning, FilterWarningCode
 from chronovista.api.schemas.responses import PaginationMeta
+from chronovista.api.schemas.sorting import SortOrder
 from chronovista.api.schemas.topics import TopicSummary
 from chronovista.api.schemas.videos import (
     AlternativeUrlRequest,
@@ -39,7 +41,7 @@ from chronovista.api.schemas.videos import (
     VideoRecoveryResponse,
     VideoRecoveryResultData,
 )
-from chronovista.db.models import TopicCategory, Video as VideoDB, VideoCategory
+from chronovista.db.models import TopicCategory, UserVideo as UserVideoDB, Video as VideoDB, VideoCategory
 from chronovista.db.models import VideoTag, VideoTopic, VideoTranscript
 from chronovista.exceptions import BadRequestError, CDXError, ConflictError, NotFoundError
 from chronovista.models.enums import AvailabilityStatus
@@ -48,6 +50,25 @@ from chronovista.repositories.playlist_membership_repository import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class VideoSortField(str, Enum):
+    """Sort fields for video list endpoint.
+
+    Values correspond to database column names used in ORDER BY clauses.
+    The frontend display label "Date Added" maps to ``upload_date`` (FR-017).
+    """
+
+    UPLOAD_DATE = "upload_date"
+    TITLE = "title"
+
+
+# Mapping from VideoSortField enum to actual SQLAlchemy column references.
+# Used by the list_videos endpoint to build ORDER BY clauses.
+_VIDEO_SORT_COLUMN_MAP = {
+    VideoSortField.UPLOAD_DATE: VideoDB.upload_date,
+    VideoSortField.TITLE: VideoDB.title,
+}
 
 # Filter limits per FR-034
 MAX_TAGS = 10
@@ -483,6 +504,18 @@ async def list_videos(
         False,
         description="Include unavailable records in results",
     ),
+    sort_by: VideoSortField = Query(
+        VideoSortField.UPLOAD_DATE,
+        description="Sort field (upload_date or title)",
+    ),
+    sort_order: SortOrder = Query(
+        SortOrder.DESC,
+        description="Sort order (asc or desc)",
+    ),
+    liked_only: bool = Query(
+        False,
+        description="Filter to only liked videos",
+    ),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
 ) -> Union[VideoListResponse, VideoListResponseWithWarnings, JSONResponse]:
@@ -634,6 +667,16 @@ async def list_videos(
         )
         query = query.where(VideoDB.video_id.in_(topic_videos))
 
+    # Liked-only filter (Feature 027) — EXISTS subquery following has_transcript pattern
+    if liked_only:
+        liked_subquery = (
+            select(UserVideoDB.video_id)
+            .where(UserVideoDB.liked.is_(True))
+            .distinct()
+            .scalar_subquery()
+        )
+        query = query.where(VideoDB.video_id.in_(liked_subquery))
+
     # T099: Execute query with timeout (FR-036: 10s timeout)
     try:
         async def execute_queries() -> Tuple[int, List[VideoDB], Dict[str, TopicCategory]]:
@@ -643,8 +686,18 @@ async def list_videos(
             total_result = await session.execute(count_query)
             total = total_result.scalar() or 0
 
-            # Apply pagination and ordering
-            paginated_query = query.order_by(VideoDB.upload_date.desc()).offset(offset).limit(limit)
+            # Apply sorting (Feature 027) with deterministic secondary sort (FR-029)
+            sort_column = _VIDEO_SORT_COLUMN_MAP[sort_by]
+            if sort_order == SortOrder.ASC:
+                order_clause = sort_column.asc()
+            else:
+                order_clause = sort_column.desc()
+            paginated_query = (
+                query
+                .order_by(order_clause, VideoDB.video_id.asc())
+                .offset(offset)
+                .limit(limit)
+            )
 
             # Execute query
             result = await session.execute(paginated_query)

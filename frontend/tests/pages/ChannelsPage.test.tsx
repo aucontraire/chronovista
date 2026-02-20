@@ -8,6 +8,12 @@
  * - Implements infinite scroll
  * - Displays error state on API failure
  * - Channels are sorted by video count (display order from API)
+ * - Sort dropdown renders 2 options (video_count, name) (Feature 027, US-3)
+ * - Filter tabs render 3 options (All, Subscribed, Not Subscribed)
+ * - URL state persistence for tab+sort on refresh
+ * - Count header reflects filtered count (FR-030)
+ * - Empty state for subscription filter
+ * - Tab+sort combination
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -17,7 +23,15 @@ import { ChannelsPage } from '../../src/pages/ChannelsPage';
 import type { ChannelListItem } from '../../src/types/channel';
 
 // Mock the useChannels hook
-vi.mock('../../src/hooks/useChannels');
+vi.mock('../../src/hooks/useChannels', async () => {
+  const actual = await vi.importActual<typeof import('../../src/hooks/useChannels')>(
+    '../../src/hooks/useChannels'
+  );
+  return {
+    ...actual,
+    useChannels: vi.fn(),
+  };
+});
 
 // Mock the ChannelCard component
 vi.mock('../../src/components/ChannelCard', () => ({
@@ -43,6 +57,10 @@ describe('ChannelsPage', () => {
       video_count: 500,
       thumbnail_url: 'https://example.com/tech.jpg',
       custom_url: '@tech',
+      availability_status: 'available',
+      is_subscribed: true,
+      recovered_at: null,
+      recovery_source: null,
     },
     {
       channel_id: 'UC234567890123456789012',
@@ -52,6 +70,10 @@ describe('ChannelsPage', () => {
       video_count: 300,
       thumbnail_url: 'https://example.com/gaming.jpg',
       custom_url: '@gaming',
+      availability_status: 'available',
+      is_subscribed: true,
+      recovered_at: null,
+      recovery_source: null,
     },
     {
       channel_id: 'UC345678901234567890123',
@@ -61,6 +83,10 @@ describe('ChannelsPage', () => {
       video_count: 200,
       thumbnail_url: 'https://example.com/music.jpg',
       custom_url: '@music',
+      availability_status: 'available',
+      is_subscribed: false,
+      recovered_at: null,
+      recovery_source: null,
     },
   ];
 
@@ -108,7 +134,7 @@ describe('ChannelsPage', () => {
 
       renderWithProviders(<ChannelsPage />);
 
-      // Should show multiple skeleton cards (typically 6-12)
+      // Should show multiple skeleton cards
       const loadingContainer = screen.getByRole('status');
       expect(loadingContainer).toBeInTheDocument();
     });
@@ -175,7 +201,6 @@ describe('ChannelsPage', () => {
       const channelCards = screen.getAllByRole('article');
 
       // Channels should be in the order returned by the API
-      // API returns them sorted by video count descending
       expect(channelCards[0]).toHaveTextContent('Tech Channel');
       expect(channelCards[0]).toHaveTextContent('500 videos');
 
@@ -189,8 +214,9 @@ describe('ChannelsPage', () => {
     it('should display total channel count', () => {
       renderWithProviders(<ChannelsPage />);
 
-      // Should show "3 channels" or similar
-      expect(screen.getByText(/3 channels/i)).toBeInTheDocument();
+      // Should show "3 channels" somewhere on the page (count header + footer)
+      const matches = screen.getAllByText(/3 channels/i);
+      expect(matches.length).toBeGreaterThanOrEqual(1);
     });
 
     it('should use proper semantic HTML structure', () => {
@@ -244,10 +270,9 @@ describe('ChannelsPage', () => {
 
       renderWithProviders(<ChannelsPage />);
 
-      // Should guide user on next steps
-      expect(
-        screen.getByText(/no channels found|haven't synced any channels/i)
-      ).toBeInTheDocument();
+      // Should guide user on next steps (heading + description text)
+      expect(screen.getByText('No channels yet')).toBeInTheDocument();
+      expect(screen.getByText(/syncing your YouTube data/i)).toBeInTheDocument();
     });
 
     it('should NOT show channel cards in empty state', () => {
@@ -399,8 +424,7 @@ describe('ChannelsPage', () => {
 
       renderWithProviders(<ChannelsPage />);
 
-      // Should have a load more trigger element for intersection observer
-      // This might be a div with ref={loadMoreRef}
+      // Should have channel cards
       const channelCards = screen.getAllByRole('article');
       expect(channelCards).toHaveLength(3);
     });
@@ -488,7 +512,6 @@ describe('ChannelsPage', () => {
       renderWithProviders(<ChannelsPage />);
 
       // The component should use the ref from the hook
-      // This is verified by the hook managing the intersection observer
       expect(screen.getAllByRole('article')).toHaveLength(3);
     });
   });
@@ -595,11 +618,399 @@ describe('ChannelsPage', () => {
 
   describe('Page Metadata', () => {
     it('should set appropriate page title', () => {
+      mockUseChannels.mockReturnValue({
+        channels: mockChannels,
+        total: 3,
+        loadedCount: 3,
+        isLoading: false,
+        isError: false,
+        error: null,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+        retry: vi.fn(),
+        loadMoreRef: { current: null },
+      });
+
       renderWithProviders(<ChannelsPage />);
 
-      // Page title would be set via React Helmet or similar
-      // Verify the heading is present as a proxy
       expect(screen.getByRole('heading', { name: /channels/i, level: 1 })).toBeInTheDocument();
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Feature 027: Sort Dropdown Tests (US-3)
+  // ═══════════════════════════════════════════════════════════════════
+
+  describe('Sort Dropdown (Feature 027, US-3)', () => {
+    beforeEach(() => {
+      mockUseChannels.mockReturnValue({
+        channels: mockChannels,
+        total: 3,
+        loadedCount: 3,
+        isLoading: false,
+        isError: false,
+        error: null,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+        retry: vi.fn(),
+        loadMoreRef: { current: null },
+      });
+    });
+
+    it('should render sort dropdown', () => {
+      renderWithProviders(<ChannelsPage />);
+
+      // Sort dropdown should be present with "Sort by" label
+      expect(screen.getByLabelText(/sort by/i)).toBeInTheDocument();
+    });
+
+    it('should render sort dropdown with 2 sort fields (4 options with asc/desc)', () => {
+      renderWithProviders(<ChannelsPage />);
+
+      const select = screen.getByLabelText(/sort by/i);
+      const options = within(select).getAllByRole('option');
+
+      // 2 fields x 2 orders = 4 options
+      expect(options.length).toBe(4);
+    });
+
+    it('should have video_count and name sort options', () => {
+      renderWithProviders(<ChannelsPage />);
+
+      const select = screen.getByLabelText(/sort by/i);
+
+      // Check that video_count and name labels are present (multiple options per field)
+      const videoCountOptions = within(select).getAllByText(/video count/i);
+      expect(videoCountOptions.length).toBeGreaterThanOrEqual(1);
+
+      const nameOptions = within(select).getAllByText(/name/i);
+      expect(nameOptions.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Feature 027: Subscription Filter Tabs Tests (US-3)
+  // ═══════════════════════════════════════════════════════════════════
+
+  describe('Subscription Filter Tabs (Feature 027, US-3)', () => {
+    beforeEach(() => {
+      mockUseChannels.mockReturnValue({
+        channels: mockChannels,
+        total: 3,
+        loadedCount: 3,
+        isLoading: false,
+        isError: false,
+        error: null,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+        retry: vi.fn(),
+        loadMoreRef: { current: null },
+      });
+    });
+
+    it('should render 3 filter tabs', () => {
+      renderWithProviders(<ChannelsPage />);
+
+      const tabs = screen.getAllByRole('tab');
+      expect(tabs).toHaveLength(3);
+    });
+
+    it('should render All, Subscribed, and Not Subscribed tabs', () => {
+      renderWithProviders(<ChannelsPage />);
+
+      expect(screen.getByRole('tab', { name: 'All' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Subscribed' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Not Subscribed' })).toBeInTheDocument();
+    });
+
+    it('should have "All" tab selected by default', () => {
+      renderWithProviders(<ChannelsPage />);
+
+      const allTab = screen.getByRole('tab', { name: 'All' });
+      expect(allTab).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('should update selected tab on click', async () => {
+      const { user } = renderWithProviders(<ChannelsPage />);
+
+      const subscribedTab = screen.getByRole('tab', { name: 'Subscribed' });
+      await user.click(subscribedTab);
+
+      await waitFor(() => {
+        expect(subscribedTab).toHaveAttribute('aria-selected', 'true');
+      });
+    });
+
+    it('should have subscription filter tabs with tablist role', () => {
+      renderWithProviders(<ChannelsPage />);
+
+      expect(screen.getByRole('tablist')).toBeInTheDocument();
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Feature 027: URL State Persistence (US-3)
+  // ═══════════════════════════════════════════════════════════════════
+
+  describe('URL State Persistence (Feature 027, US-3)', () => {
+    it('should restore subscription filter from URL on mount', () => {
+      mockUseChannels.mockReturnValue({
+        channels: mockChannels,
+        total: 3,
+        loadedCount: 3,
+        isLoading: false,
+        isError: false,
+        error: null,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+        retry: vi.fn(),
+        loadMoreRef: { current: null },
+      });
+
+      renderWithProviders(<ChannelsPage />, {
+        initialEntries: ['/?subscription=subscribed'],
+      });
+
+      const subscribedTab = screen.getByRole('tab', { name: 'Subscribed' });
+      expect(subscribedTab).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('should pass sort params to useChannels hook', () => {
+      mockUseChannels.mockReturnValue({
+        channels: [],
+        total: 0,
+        loadedCount: 0,
+        isLoading: false,
+        isError: false,
+        error: null,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+        retry: vi.fn(),
+        loadMoreRef: { current: null },
+      });
+
+      renderWithProviders(<ChannelsPage />, {
+        initialEntries: ['/?sort_by=name&sort_order=asc&subscription=subscribed'],
+      });
+
+      // useChannels should be called with the URL params
+      expect(mockUseChannels).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sortBy: 'name',
+          sortOrder: 'asc',
+          isSubscribed: 'subscribed',
+        })
+      );
+    });
+
+    it('should use defaults when no URL params present', () => {
+      mockUseChannels.mockReturnValue({
+        channels: [],
+        total: 0,
+        loadedCount: 0,
+        isLoading: false,
+        isError: false,
+        error: null,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+        retry: vi.fn(),
+        loadMoreRef: { current: null },
+      });
+
+      renderWithProviders(<ChannelsPage />);
+
+      // useChannels should be called with defaults
+      expect(mockUseChannels).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sortBy: 'video_count',
+          sortOrder: 'desc',
+          isSubscribed: 'all',
+        })
+      );
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Feature 027: Channel Count Header (FR-030)
+  // ═══════════════════════════════════════════════════════════════════
+
+  describe('Channel Count Header (FR-030)', () => {
+    it('should display filtered count in header', () => {
+      mockUseChannels.mockReturnValue({
+        channels: mockChannels,
+        total: 3,
+        loadedCount: 3,
+        isLoading: false,
+        isError: false,
+        error: null,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+        retry: vi.fn(),
+        loadMoreRef: { current: null },
+      });
+
+      renderWithProviders(<ChannelsPage />);
+
+      // Count header should reflect total (3 channels)
+      expect(screen.getByText('3 channels')).toBeInTheDocument();
+    });
+
+    it('should use singular for single channel', () => {
+      mockUseChannels.mockReturnValue({
+        channels: [mockChannels[0]],
+        total: 1,
+        loadedCount: 1,
+        isLoading: false,
+        isError: false,
+        error: null,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+        retry: vi.fn(),
+        loadMoreRef: { current: null },
+      });
+
+      renderWithProviders(<ChannelsPage />);
+
+      // Should show "1 channel" (singular)
+      expect(screen.getByText('1 channel')).toBeInTheDocument();
+    });
+
+    it('should have ARIA live region for count announcement', () => {
+      mockUseChannels.mockReturnValue({
+        channels: mockChannels,
+        total: 3,
+        loadedCount: 3,
+        isLoading: false,
+        isError: false,
+        error: null,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+        retry: vi.fn(),
+        loadMoreRef: { current: null },
+      });
+
+      renderWithProviders(<ChannelsPage />);
+
+      // Should have SR-only ARIA live region for screen reader announcements
+      const liveRegion = screen.getByRole('status');
+      expect(liveRegion).toHaveTextContent('Showing 3 channels');
+      expect(liveRegion).toHaveClass('sr-only');
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Feature 027: Subscription Filter Empty State
+  // ═══════════════════════════════════════════════════════════════════
+
+  describe('Subscription Filter Empty State (Feature 027, US-3)', () => {
+    it('should show subscription-specific empty state for subscribed filter', () => {
+      mockUseChannels.mockReturnValue({
+        channels: [],
+        total: 0,
+        loadedCount: 0,
+        isLoading: false,
+        isError: false,
+        error: null,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+        retry: vi.fn(),
+        loadMoreRef: { current: null },
+      });
+
+      renderWithProviders(<ChannelsPage />, {
+        initialEntries: ['/?subscription=subscribed'],
+      });
+
+      expect(screen.getByText(/no subscribed channels/i)).toBeInTheDocument();
+    });
+
+    it('should show subscription-specific empty state for not_subscribed filter', () => {
+      mockUseChannels.mockReturnValue({
+        channels: [],
+        total: 0,
+        loadedCount: 0,
+        isLoading: false,
+        isError: false,
+        error: null,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+        retry: vi.fn(),
+        loadMoreRef: { current: null },
+      });
+
+      renderWithProviders(<ChannelsPage />, {
+        initialEntries: ['/?subscription=not_subscribed'],
+      });
+
+      expect(screen.getByText(/no unsubscribed channels/i)).toBeInTheDocument();
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Feature 027: Tab + Sort Combination
+  // ═══════════════════════════════════════════════════════════════════
+
+  describe('Tab + Sort Combination (Feature 027, US-3)', () => {
+    it('should pass combined tab and sort params to hook', () => {
+      mockUseChannels.mockReturnValue({
+        channels: [],
+        total: 0,
+        loadedCount: 0,
+        isLoading: false,
+        isError: false,
+        error: null,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+        retry: vi.fn(),
+        loadMoreRef: { current: null },
+      });
+
+      renderWithProviders(<ChannelsPage />, {
+        initialEntries: ['/?subscription=subscribed&sort_by=name&sort_order=asc'],
+      });
+
+      expect(mockUseChannels).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sortBy: 'name',
+          sortOrder: 'asc',
+          isSubscribed: 'subscribed',
+        })
+      );
+    });
+
+    it('should show toolbar in all states (loading, error, empty, data)', () => {
+      // Loading state
+      mockUseChannels.mockReturnValue({
+        channels: [],
+        total: null,
+        loadedCount: 0,
+        isLoading: true,
+        isError: false,
+        error: null,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+        retry: vi.fn(),
+        loadMoreRef: { current: null },
+      });
+
+      renderWithProviders(<ChannelsPage />);
+
+      // Toolbar should be visible even during loading
+      expect(screen.getByRole('tablist')).toBeInTheDocument();
+      expect(screen.getByLabelText(/sort by/i)).toBeInTheDocument();
     });
   });
 });

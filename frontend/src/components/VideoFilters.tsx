@@ -58,6 +58,8 @@ import { TagAutocomplete } from './TagAutocomplete';
 import { CategoryDropdown } from './CategoryDropdown';
 import { TopicCombobox } from './TopicCombobox';
 import { FilterPills } from './FilterPills';
+import type { FilterPillType } from './FilterPills';
+import { FilterToggle } from './FilterToggle';
 import { useCategories } from '../hooks/useCategories';
 import { useTopics } from '../hooks/useTopics';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
@@ -136,16 +138,18 @@ export function VideoFilters({
   const rawTopicIds = searchParams.getAll('topic_id');
   const topicIds = rawTopicIds.filter((id) => id && id.trim().length > 0);
 
-  // T031: Read include_unavailable state from URL (FR-021)
-  const includeUnavailable = searchParams.get('include_unavailable') === 'true';
+  // Read boolean filter params from URL (Feature 027)
+  const likedOnly = searchParams.get('liked_only') === 'true';
+  const hasTranscript = searchParams.get('has_transcript') === 'true';
 
   // Fetch categories and topics for display names
   const { categories } = useCategories();
   const { topics } = useTopics();
 
-  // Calculate filter counts
+  // Calculate filter counts (include boolean filters in active count)
   const totalFilters = calculateTotalFilters(tags, category, topicIds);
-  const hasActiveFilters = totalFilters > 0;
+  const booleanFilterCount = (likedOnly ? 1 : 0) + (hasTranscript ? 1 : 0);
+  const hasActiveFilters = totalFilters > 0 || booleanFilterCount > 0;
   const approachingLimit = isApproachingLimit(tags, category, topicIds);
 
   // Log warnings for invalid filter values (T073)
@@ -248,26 +252,14 @@ export function VideoFilters({
   };
 
   /**
-   * Toggles the include_unavailable parameter.
-   */
-  const handleToggleIncludeUnavailable = () => {
-    const newParams = new URLSearchParams(searchParams);
-    if (includeUnavailable) {
-      newParams.delete('include_unavailable');
-    } else {
-      newParams.set('include_unavailable', 'true');
-    }
-    setSearchParams(newParams);
-  };
-
-  /**
    * Clears all filters from URL parameters.
    */
   const handleClearAll = () => {
     const newParams = new URLSearchParams();
     // Preserve non-filter parameters if any
+    const filterKeys = ['tag', 'category', 'topic_id', 'include_unavailable', 'liked_only', 'has_transcript'];
     searchParams.forEach((value, key) => {
-      if (!['tag', 'category', 'topic_id', 'include_unavailable'].includes(key)) {
+      if (!filterKeys.includes(key)) {
         newParams.append(key, value);
       }
     });
@@ -276,9 +268,10 @@ export function VideoFilters({
 
   /**
    * Handles filter removal from FilterPills.
+   * Supports tag, category, topic, and boolean pill types.
    */
   const handleFilterRemove = (
-    type: 'tag' | 'category' | 'topic',
+    type: FilterPillType,
     value: string
   ) => {
     switch (type) {
@@ -291,10 +284,17 @@ export function VideoFilters({
       case 'topic':
         handleTopicRemove(value);
         break;
+      case 'boolean': {
+        // Remove the boolean URL param (e.g., liked_only, has_transcript)
+        const newParams = new URLSearchParams(searchParams);
+        newParams.delete(value);
+        setSearchParams(newParams);
+        break;
+      }
     }
   };
 
-  // Build filter pills data
+  // Build filter pills data (including boolean pills for Feature 027)
   const filterPills = [
     ...tags.map((tag) => ({
       type: 'tag' as const,
@@ -324,6 +324,13 @@ export function VideoFilters({
           : undefined,
       };
     }),
+    // Boolean filter pills (Feature 027, T031)
+    ...(likedOnly
+      ? [{ type: 'boolean' as const, value: 'liked_only', label: 'Liked' }]
+      : []),
+    ...(hasTranscript
+      ? [{ type: 'boolean' as const, value: 'has_transcript', label: 'Has transcripts' }]
+      : []),
   ];
 
   return (
@@ -364,20 +371,12 @@ export function VideoFilters({
         </div>
       </div>
 
-      {/* T031: Include Unavailable Content Toggle (FR-021, NFR-003) */}
+      {/* T010: Include Unavailable Content Toggle - Migrated to FilterToggle (FR-021, NFR-003) */}
       <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
-        <label className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors">
-          <input
-            type="checkbox"
-            checked={includeUnavailable}
-            onChange={handleToggleIncludeUnavailable}
-            className="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-            aria-label="Include unavailable content"
-          />
-          <span className="text-sm text-gray-700 dark:text-gray-300">
-            Show unavailable content
-          </span>
-        </label>
+        <FilterToggle
+          paramKey="include_unavailable"
+          label="Show unavailable content"
+        />
       </div>
 
       {/* Offline Indicator (T084) */}
@@ -428,7 +427,7 @@ export function VideoFilters({
           {/* Active Filters Header */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Active Filters ({totalFilters})
+              Active Filters ({totalFilters + booleanFilterCount})
             </h3>
             <button
               type="button"

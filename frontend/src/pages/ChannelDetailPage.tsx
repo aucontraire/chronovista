@@ -3,18 +3,30 @@
  */
 
 import { useEffect, useRef } from "react";
-import { Link, useNavigate, useParams, useBlocker } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams, useBlocker } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { VideoGrid } from "../components/VideoGrid";
 import { LoadingState } from "../components/LoadingState";
+import { SortDropdown } from "../components/SortDropdown";
+import { FilterToggle } from "../components/FilterToggle";
 import { UnavailabilityBanner } from "../components/UnavailabilityBanner";
 import { useChannelDetail, useChannelVideos } from "../hooks";
+import { useUrlParamBoolean } from "../hooks/useUrlParam";
 import { cardPatterns, colorTokens } from "../styles";
 import { apiFetch, API_BASE_URL, RECOVERY_TIMEOUT } from "../api/config";
 import type { ApiError } from "../types/video";
 import type { RecoveryResultData } from "../types/recovery";
+import type { ChannelVideoSortField, SortOption, SortOrder } from "../types/filters";
 import { useRecoveryStore } from "../stores/recoveryStore";
+
+/**
+ * Sort options for channel videos.
+ */
+const CHANNEL_VIDEO_SORT_OPTIONS: SortOption<ChannelVideoSortField>[] = [
+  { field: "upload_date", label: "Date Added", defaultOrder: "desc" },
+  { field: "title", label: "Title", defaultOrder: "asc" },
+];
 
 /**
  * Formats a number with K/M suffixes for readability.
@@ -56,6 +68,18 @@ export function ChannelDetailPage() {
   const navigate = useNavigate();
   const mainRef = useRef<HTMLElement>(null);
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+
+  // Read sort/filter params from URL for passing to hook
+  const urlSortBy = searchParams.get("sort_by") as ChannelVideoSortField | null;
+  const urlSortOrder = searchParams.get("sort_order") as SortOrder | null;
+  const [likedOnly] = useUrlParamBoolean("liked_only");
+
+  // Validate sort params against allowed values
+  const validSortFields: ChannelVideoSortField[] = ["upload_date", "title"];
+  const validSortOrders: SortOrder[] = ["asc", "desc"];
+  const sortBy = urlSortBy && validSortFields.includes(urlSortBy) ? urlSortBy : undefined;
+  const sortOrder = urlSortOrder && validSortOrders.includes(urlSortOrder) ? urlSortOrder : undefined;
 
   const {
     data: channel,
@@ -76,7 +100,11 @@ export function ChannelDetailPage() {
     isFetchingNextPage,
     retry: videosRetry,
     loadMoreRef,
-  } = useChannelVideos(channelId);
+  } = useChannelVideos(channelId, {
+    likedOnly,
+    ...(sortBy !== undefined && { sortBy }),
+    ...(sortOrder !== undefined && { sortOrder }),
+  });
 
   // Recovery store actions and session
   const { startRecovery, updatePhase, setResult, setError, setAbortController } = useRecoveryStore();
@@ -175,6 +203,11 @@ export function ChannelDetailPage() {
       document.title = "ChronoVista";
     };
   }, [channel?.title]);
+
+  // Scroll to top when sort or filter changes (FR-031)
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [sortBy, sortOrder, likedOnly]);
 
   // Loading state
   if (channelLoading) {
@@ -571,6 +604,24 @@ export function ChannelDetailPage() {
           Videos
         </h2>
 
+        {/* Sort & Filter Toolbar (Feature 027, US-5) */}
+        <div className="flex flex-wrap items-center gap-4 mb-6">
+          <SortDropdown<ChannelVideoSortField>
+            options={CHANNEL_VIDEO_SORT_OPTIONS}
+            defaultField="upload_date"
+            defaultOrder="desc"
+            label="Sort videos by"
+          />
+          <FilterToggle paramKey="liked_only" label="Show Liked Only" />
+        </div>
+
+        {/* ARIA live region for filtered count (FR-005) */}
+        {!videosLoading && !videosError && videosTotal !== null && videosTotal > 0 && (
+          <div role="status" aria-live="polite" className="sr-only">
+            {`Showing ${loadedCount} of ${videosTotal} result${videosTotal !== 1 ? "s" : ""}`}
+          </div>
+        )}
+
         {/* Videos Loading State */}
         {videosLoading && <LoadingState count={6} />}
 
@@ -599,8 +650,39 @@ export function ChannelDetailPage() {
         {/* Videos List */}
         {!videosLoading && !videosError && (
           <>
-            {/* Empty State (EC-003) */}
-            {videos.length === 0 && (
+            {/* Empty State — Liked filter active (FR-025) */}
+            {videos.length === 0 && likedOnly && (
+              <div
+                className="bg-white border border-gray-200 rounded-xl shadow-lg p-12 text-center"
+                role="status"
+              >
+                <div className="mx-auto w-20 h-20 mb-6 text-gray-400 bg-gray-100 rounded-full p-4">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={1.5}
+                    stroke="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z"
+                    />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                  No liked videos found
+                </h3>
+                <p className="text-gray-600 max-w-md mx-auto">
+                  No videos in this channel have been liked yet. Try clearing the filter to see all videos.
+                </p>
+              </div>
+            )}
+
+            {/* Empty State — No filter active (EC-003) */}
+            {videos.length === 0 && !likedOnly && (
               <div
                 className="bg-white border border-gray-200 rounded-xl shadow-lg p-12 text-center"
                 role="status"

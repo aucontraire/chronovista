@@ -13,11 +13,16 @@
  * - Loading skeletons while fetching
  * - Error state with retry option
  * - Focus management on page load (FR-018)
+ * - Sort dropdown renders 2 options (Feature 027, US-5)
+ * - Liked toggle renders (Feature 027, US-5)
+ * - URL state persistence on refresh
+ * - Empty state message "No liked videos found" when liked filter active
+ * - Focus remains on control after change
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
-import { renderWithProviders } from '../test-utils';
+import { renderWithProviders, getTestLocation } from '../test-utils';
 import { ChannelDetailPage } from '../../src/pages/ChannelDetailPage';
 import type { ChannelDetail } from '../../src/types/channel';
 import type { VideoListItem } from '../../src/types/video';
@@ -1191,6 +1196,315 @@ describe('ChannelDetailPage', () => {
       expect(placeholder).toBeInTheDocument();
       // Placeholder should be a div with role="img", not an <img> tag
       expect(placeholder.tagName).toBe('DIV');
+    });
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sort & Filter Tests (Feature 027, US-5, T040)
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('ChannelDetailPage Sort & Filter (Feature 027)', () => {
+  const mockChannelData: ChannelDetail = {
+    channel_id: 'UC123456789012345678901',
+    title: 'Test Channel',
+    description: 'A test channel.',
+    subscriber_count: 1000,
+    video_count: 50,
+    thumbnail_url: 'https://example.com/thumb.jpg',
+    custom_url: '@test',
+    default_language: 'en',
+    country: 'US',
+    is_subscribed: true,
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-15T10:30:00Z',
+    availability_status: 'available',
+  };
+
+  const mockVideos: VideoListItem[] = [
+    {
+      video_id: 'dQw4w9WgXcQ',
+      title: 'Alpha Video',
+      channel_id: 'UC123456789012345678901',
+      channel_title: 'Test Channel',
+      upload_date: '2024-01-15T10:30:00Z',
+      duration: 245,
+      view_count: 1000000,
+      transcript_summary: { count: 1, languages: ['en'], has_manual: true },
+    },
+    {
+      video_id: 'jNQXAC9IVRw',
+      title: 'Beta Video',
+      channel_id: 'UC123456789012345678901',
+      channel_title: 'Test Channel',
+      upload_date: '2024-01-10T08:00:00Z',
+      duration: 180,
+      view_count: 500000,
+      transcript_summary: { count: 0, languages: [], has_manual: false },
+    },
+  ];
+
+  function setupMocks(options: {
+    videos?: VideoListItem[];
+    total?: number | null;
+    isLoading?: boolean;
+  } = {}) {
+    const { videos = mockVideos, total = 2, isLoading = false } = options;
+
+    mockUseChannelDetail.mockReturnValue({
+      data: mockChannelData,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    } as any);
+
+    mockUseChannelVideos.mockReturnValue({
+      videos,
+      total,
+      loadedCount: videos.length,
+      isLoading,
+      isError: false,
+      error: null,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+      retry: vi.fn(),
+      loadMoreRef: { current: null },
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Sort Dropdown Tests
+  // ═══════════════════════════════════════════════════════════════════════
+
+  describe('Sort Dropdown', () => {
+    it('should render the sort dropdown with label', () => {
+      setupMocks();
+      renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901'],
+        path: '/channels/:channelId',
+      });
+
+      expect(screen.getByText('Sort videos by')).toBeInTheDocument();
+    });
+
+    it('should render a select element for sorting', () => {
+      setupMocks();
+      renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901'],
+        path: '/channels/:channelId',
+      });
+
+      const select = screen.getByRole('combobox', { name: /sort videos by/i });
+      expect(select).toBeInTheDocument();
+    });
+
+    it('should render sort options for upload date and title', () => {
+      setupMocks();
+      renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901'],
+        path: '/channels/:channelId',
+      });
+
+      const select = screen.getByRole('combobox', { name: /sort videos by/i });
+      const options = within(select).getAllByRole('option');
+
+      // 2 fields x 2 directions = 4 option entries
+      expect(options.length).toBe(4);
+
+      // Check option labels contain expected field names
+      const optionTexts = options.map((opt) => opt.textContent);
+      expect(optionTexts.some((t) => t?.includes('Date Added'))).toBe(true);
+      expect(optionTexts.some((t) => t?.includes('Title'))).toBe(true);
+    });
+
+    it('should have upload_date descending as default selected value', () => {
+      setupMocks();
+      renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901'],
+        path: '/channels/:channelId',
+      });
+
+      const select = screen.getByRole('combobox', { name: /sort videos by/i }) as HTMLSelectElement;
+      // Default: upload_date:desc
+      expect(select.value).toBe('upload_date:desc');
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Filter Toggle Tests
+  // ═══════════════════════════════════════════════════════════════════════
+
+  describe('Liked Filter Toggle', () => {
+    it('should render liked_only filter toggle', () => {
+      setupMocks();
+      renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901'],
+        path: '/channels/:channelId',
+      });
+
+      expect(screen.getByLabelText('Show Liked Only')).toBeInTheDocument();
+    });
+
+    it('should have liked toggle unchecked by default', () => {
+      setupMocks();
+      renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901'],
+        path: '/channels/:channelId',
+      });
+
+      const checkbox = screen.getByLabelText('Show Liked Only') as HTMLInputElement;
+      expect(checkbox.checked).toBe(false);
+    });
+
+    it('should set liked_only URL param when toggled on', async () => {
+      setupMocks();
+      const { user } = renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901'],
+        path: '/channels/:channelId',
+      });
+
+      const checkbox = screen.getByLabelText('Show Liked Only');
+      await user.click(checkbox);
+
+      const location = getTestLocation();
+      expect(location.search).toContain('liked_only=true');
+    });
+
+    it('should pass sort/filter params to useChannelVideos hook', () => {
+      setupMocks();
+      renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901?liked_only=true&sort_by=title&sort_order=asc'],
+        path: '/channels/:channelId',
+      });
+
+      // Verify the hook was called with sort/filter params
+      expect(mockUseChannelVideos).toHaveBeenCalledWith(
+        'UC123456789012345678901',
+        expect.objectContaining({
+          sortBy: 'title',
+          sortOrder: 'asc',
+          likedOnly: true,
+        })
+      );
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // URL State Persistence Tests
+  // ═══════════════════════════════════════════════════════════════════════
+
+  describe('URL State Persistence', () => {
+    it('should restore sort params from URL on mount', () => {
+      setupMocks();
+      renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901?sort_by=title&sort_order=desc'],
+        path: '/channels/:channelId',
+      });
+
+      const select = screen.getByRole('combobox', { name: /sort videos by/i }) as HTMLSelectElement;
+      expect(select.value).toBe('title:desc');
+    });
+
+    it('should restore liked filter from URL on mount', () => {
+      setupMocks();
+      renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901?liked_only=true'],
+        path: '/channels/:channelId',
+      });
+
+      const checkbox = screen.getByLabelText('Show Liked Only') as HTMLInputElement;
+      expect(checkbox.checked).toBe(true);
+    });
+
+    it('should restore both sort and filter params from URL on mount', () => {
+      setupMocks();
+      renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901?sort_by=title&sort_order=asc&liked_only=true'],
+        path: '/channels/:channelId',
+      });
+
+      const select = screen.getByRole('combobox', { name: /sort videos by/i }) as HTMLSelectElement;
+      expect(select.value).toBe('title:asc');
+
+      const checkbox = screen.getByLabelText('Show Liked Only') as HTMLInputElement;
+      expect(checkbox.checked).toBe(true);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Empty State Messages Tests
+  // ═══════════════════════════════════════════════════════════════════════
+
+  describe('Empty State Messages', () => {
+    it('should show default empty message when no filters active', () => {
+      setupMocks({ videos: [], total: 0 });
+      renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901'],
+        path: '/channels/:channelId',
+      });
+
+      expect(screen.getByText('No videos yet')).toBeInTheDocument();
+    });
+
+    it('should show liked-specific empty message when liked filter active', () => {
+      setupMocks({ videos: [], total: 0 });
+      renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901?liked_only=true'],
+        path: '/channels/:channelId',
+      });
+
+      expect(screen.getByText('No liked videos found')).toBeInTheDocument();
+    });
+
+    it('should NOT show default empty message when liked filter active and empty', () => {
+      setupMocks({ videos: [], total: 0 });
+      renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901?liked_only=true'],
+        path: '/channels/:channelId',
+      });
+
+      expect(screen.queryByText('No videos yet')).not.toBeInTheDocument();
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Focus Management Tests
+  // ═══════════════════════════════════════════════════════════════════════
+
+  describe('Focus Management', () => {
+    it('should keep focus on checkbox after toggling liked filter', async () => {
+      setupMocks();
+      const { user } = renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901'],
+        path: '/channels/:channelId',
+      });
+
+      const checkbox = screen.getByLabelText('Show Liked Only');
+      await user.click(checkbox);
+
+      // Focus should remain on the checkbox after state change (FR-032)
+      expect(document.activeElement).toBe(checkbox);
+    });
+
+    it('should keep focus on sort dropdown after changing sort', async () => {
+      setupMocks();
+      const { user } = renderWithProviders(<ChannelDetailPage />, {
+        initialEntries: ['/channels/UC123456789012345678901'],
+        path: '/channels/:channelId',
+      });
+
+      const select = screen.getByRole('combobox', { name: /sort videos by/i });
+      await user.selectOptions(select, 'title:asc');
+
+      // Focus should remain on the select after state change (FR-032)
+      expect(document.activeElement).toBe(select);
     });
   });
 });

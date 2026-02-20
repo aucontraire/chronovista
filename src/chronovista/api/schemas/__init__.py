@@ -40,6 +40,7 @@ from chronovista.api.schemas.responses import (
     ErrorResponse,
     PaginationMeta,
 )
+from chronovista.api.schemas.sorting import SortOrder
 from chronovista.api.schemas.tags import (
     TagDetail,
     TagDetailResponse,
@@ -92,6 +93,8 @@ __all__ = [
     "ErrorCode",
     "ErrorResponse",
     "PaginationMeta",
+    # Sorting
+    "SortOrder",
     # Tags
     "TagDetail",
     "TagDetailResponse",

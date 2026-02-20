@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef } from "react";
 
 import { apiFetch } from "../api/config";
 import type { VideoListResponse } from "../types/video";
+import type { VideoSortField, SortOrder } from "../types/filters";
 
 /**
  * Default number of videos to fetch per page.
@@ -31,6 +32,14 @@ interface UseVideosOptions {
   topicIds?: string[];
   /** Include unavailable content (T031, FR-021) */
   includeUnavailable?: boolean;
+  /** Sort field (Feature 027) */
+  sortBy?: VideoSortField;
+  /** Sort order (Feature 027) */
+  sortOrder?: SortOrder;
+  /** Filter to liked videos only (Feature 027) */
+  likedOnly?: boolean;
+  /** Filter to videos with transcripts (Feature 027) */
+  hasTranscript?: boolean;
 }
 
 interface UseVideosReturn {
@@ -83,7 +92,11 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
     tags = [],
     category = null,
     topicIds = [],
-    includeUnavailable = true
+    includeUnavailable = false,  // T010: Default false (unchecked) per FR-007
+    sortBy,
+    sortOrder,
+    likedOnly = false,
+    hasTranscript,
   } = options;
 
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -98,7 +111,7 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
     fetchNextPage,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["videos", { limit, tags, category, topicIds, includeUnavailable }],
+    queryKey: ["videos", { limit, tags, category, topicIds, includeUnavailable, sortBy, sortOrder, likedOnly, hasTranscript }],
     queryFn: async ({ pageParam, signal }) => {
       const params = new URLSearchParams({
         offset: pageParam.toString(),
@@ -114,6 +127,12 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
       if (includeUnavailable) {
         params.set('include_unavailable', 'true');
       }
+
+      // Feature 027: Add sort and liked filter parameters
+      if (sortBy) params.set('sort_by', sortBy);
+      if (sortOrder) params.set('sort_order', sortOrder);
+      if (likedOnly) params.set('liked_only', 'true');
+      if (hasTranscript) params.set('has_transcript', 'true');
 
       return apiFetch<VideoListResponse>(`/videos?${params.toString()}`, { signal });
     },

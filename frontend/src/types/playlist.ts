@@ -4,6 +4,13 @@
  */
 
 import type { TranscriptSummary } from "./video";
+import type { SortOrder } from "./filters";
+
+/**
+ * Sort order direction (re-exported from filters for backward compatibility).
+ * @see {@link ./filters.ts} for canonical definition.
+ */
+export type { SortOrder } from "./filters";
 
 /**
  * Pagination metadata for list responses.
@@ -33,11 +40,6 @@ export type PlaylistFilterType = "all" | "linked" | "local";
  * Sort field for playlist list view.
  */
 export type PlaylistSortField = "title" | "created_at" | "video_count";
-
-/**
- * Sort order direction.
- */
-export type SortOrder = "asc" | "desc";
 
 /**
  * Combined sort option for UI display.

@@ -53,19 +53,25 @@ export type {
   PlaylistSortOption,
   PlaylistVideoItem,
   PlaylistVideoListResponse,
-  SortOrder,
   VideoPlaylistMembership,
   VideoPlaylistsResponse,
 } from "./playlist";
 
 export type {
+  ChannelSortField,
+  ChannelVideoSortField,
+  FilterToggleConfig,
   FilterType,
   FilterWarning,
   FilterWarningCode,
+  PlaylistVideoSortField,
   ProblemDetails,
   SidebarCategory,
+  SortOption,
+  SortOrder,
   TopicHierarchyItem,
   VideoFilters,
+  VideoSortField,
 } from "./filters";
 
 export { FILTER_COLORS, FILTER_LIMITS, TIMEOUT_CONFIG } from "./filters";

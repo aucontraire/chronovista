@@ -298,6 +298,15 @@ export const filterColors = {
     /** Medium orange border (#FDBA74) */
     border: '#FDBA74',
   },
+  /** Boolean filter colors - slate/gray scheme with 7.0:1+ contrast (Feature 027) */
+  boolean: {
+    /** Light slate background (#F1F5F9) */
+    background: '#F1F5F9',
+    /** Dark slate text (#334155) - 7.0:1+ contrast on background */
+    text: '#334155',
+    /** Medium slate border (#CBD5E1) */
+    border: '#CBD5E1',
+  },
 } as const;
 
 /** Type for filter color scheme keys */

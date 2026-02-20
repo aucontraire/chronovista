@@ -132,3 +132,55 @@ export const TIMEOUT_CONFIG = {
   /** Maximum number of retry attempts */
   MAX_RETRIES: 3,
 } as const;
+
+/**
+ * Sort order direction (FR-028).
+ * Shared across all sort components.
+ */
+export type SortOrder = 'asc' | 'desc';
+
+/**
+ * Generic sort option type (FR-001).
+ * Used to define sort options for different entity types.
+ *
+ * @template T - The sort field type (union of allowed field names)
+ */
+export interface SortOption<T> {
+  /** Sort field name (snake_case matching API params) */
+  field: T;
+  /** Display label for UI */
+  label: string;
+  /** Default sort order for this field */
+  defaultOrder: SortOrder;
+}
+
+/**
+ * Configuration for boolean filter toggles (FR-002).
+ * Used for features like "Show Deleted" or "Hide Watched".
+ */
+export interface FilterToggleConfig {
+  /** URL parameter key (snake_case matching API params) */
+  paramKey: string;
+  /** Display label for UI */
+  label: string;
+}
+
+/**
+ * Sort field options for video list page (FR-027).
+ */
+export type VideoSortField = 'upload_date' | 'title';
+
+/**
+ * Sort field options for playlist video list page (FR-027).
+ */
+export type PlaylistVideoSortField = 'position' | 'upload_date' | 'title';
+
+/**
+ * Sort field options for channel list page (FR-027).
+ */
+export type ChannelSortField = 'name' | 'video_count';
+
+/**
+ * Sort field options for channel video list page (FR-027).
+ */
+export type ChannelVideoSortField = 'upload_date' | 'title';

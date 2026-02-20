@@ -16,14 +16,24 @@ import { useSearchParams } from "react-router-dom";
 
 import { PlaylistCard } from "../components/PlaylistCard";
 import { PlaylistFilterTabs } from "../components/PlaylistFilterTabs";
-import { PlaylistSortDropdown } from "../components/PlaylistSortDropdown";
+import { SortDropdown } from "../components/SortDropdown";
 import { ErrorState } from "../components/ErrorState";
 import { usePlaylists } from "../hooks/usePlaylists";
 import type {
   PlaylistFilterType,
   PlaylistSortField,
-  SortOrder,
 } from "../types/playlist";
+import type { SortOrder, SortOption } from "../types/filters";
+
+/**
+ * Sort options for playlists (Feature 027).
+ * Matches existing PlaylistSortDropdown behavior.
+ */
+const PLAYLIST_SORT_OPTIONS: SortOption<PlaylistSortField>[] = [
+  { field: "title", label: "Title", defaultOrder: "asc" },
+  { field: "created_at", label: "Date Added", defaultOrder: "desc" },
+  { field: "video_count", label: "Video Count", defaultOrder: "desc" },
+];
 
 /**
  * Skeleton card for playlist loading state.
@@ -225,13 +235,13 @@ export function PlaylistsPage() {
     ["all", "linked", "local"].includes(filterParam) ? filterParam : "all"
   ) as PlaylistFilterType;
 
-  // Parse sort from URL
-  const sortByParam = searchParams.get("sort_by") || "created_at";
+  // Parse sort from URL (Feature 027: default is video_count desc)
+  const sortByParam = searchParams.get("sort_by") || "video_count";
   const sortOrderParam = searchParams.get("sort_order") || "desc";
   const sortBy = (
     ["title", "created_at", "video_count"].includes(sortByParam)
       ? sortByParam
-      : "created_at"
+      : "video_count"
   ) as PlaylistSortField;
   const sortOrder = (
     ["asc", "desc"].includes(sortOrderParam) ? sortOrderParam : "desc"
@@ -259,6 +269,11 @@ export function PlaylistsPage() {
     };
   }, []);
 
+  // Scroll to top when filter or sort changes (FR-031)
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [filter, sortBy, sortOrder]);
+
   // Handle filter change (update URL param)
   const handleFilterChange = (newFilter: PlaylistFilterType) => {
     const newParams = new URLSearchParams(searchParams);
@@ -271,19 +286,6 @@ export function PlaylistsPage() {
     setSearchParams(newParams);
   };
 
-  // Handle sort change (update URL params)
-  const handleSortChange = (newSortBy: PlaylistSortField, newSortOrder: SortOrder) => {
-    const newParams = new URLSearchParams(searchParams);
-    // Only add sort params if not default
-    if (newSortBy === "created_at" && newSortOrder === "desc") {
-      newParams.delete("sort_by");
-      newParams.delete("sort_order");
-    } else {
-      newParams.set("sort_by", newSortBy);
-      newParams.set("sort_order", newSortOrder);
-    }
-    setSearchParams(newParams);
-  };
 
   // Initial loading state (CHK051)
   if (isLoading) {
@@ -295,10 +297,11 @@ export function PlaylistsPage() {
             currentFilter={filter}
             onFilterChange={handleFilterChange}
           />
-          <PlaylistSortDropdown
-            sortBy={sortBy}
-            sortOrder={sortOrder}
-            onSortChange={handleSortChange}
+          <SortDropdown
+            options={PLAYLIST_SORT_OPTIONS}
+            defaultField="video_count"
+            defaultOrder="desc"
+            label="Sort by"
           />
         </div>
         <PlaylistLoadingState count={12} />
@@ -316,10 +319,11 @@ export function PlaylistsPage() {
             currentFilter={filter}
             onFilterChange={handleFilterChange}
           />
-          <PlaylistSortDropdown
-            sortBy={sortBy}
-            sortOrder={sortOrder}
-            onSortChange={handleSortChange}
+          <SortDropdown
+            options={PLAYLIST_SORT_OPTIONS}
+            defaultField="video_count"
+            defaultOrder="desc"
+            label="Sort by"
           />
         </div>
         <ErrorState error={error} onRetry={retry} />
@@ -337,10 +341,11 @@ export function PlaylistsPage() {
             currentFilter={filter}
             onFilterChange={handleFilterChange}
           />
-          <PlaylistSortDropdown
-            sortBy={sortBy}
-            sortOrder={sortOrder}
-            onSortChange={handleSortChange}
+          <SortDropdown
+            options={PLAYLIST_SORT_OPTIONS}
+            defaultField="video_count"
+            defaultOrder="desc"
+            label="Sort by"
           />
         </div>
         <PlaylistEmptyState filter={filter} />
@@ -359,12 +364,20 @@ export function PlaylistsPage() {
           currentFilter={filter}
           onFilterChange={handleFilterChange}
         />
-        <PlaylistSortDropdown
-          sortBy={sortBy}
-          sortOrder={sortOrder}
-          onSortChange={handleSortChange}
+        <SortDropdown
+          options={PLAYLIST_SORT_OPTIONS}
+          defaultField="video_count"
+          defaultOrder="desc"
+          label="Sort by"
         />
       </div>
+
+      {/* ARIA live region announcing filtered count (FR-005) */}
+      {total !== null && (
+        <div role="status" aria-live="polite" className="sr-only">
+          Showing {total} playlist{total !== 1 ? "s" : ""}
+        </div>
+      )}
 
       <div className="space-y-4">
         {/* Pagination Status - Top (only show if more to load) */}

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
+from enum import Enum
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Path, Query
@@ -38,6 +39,7 @@ from chronovista.api.schemas.channels import (
     ChannelRecoveryResultData,
 )
 from chronovista.api.schemas.responses import PaginationMeta
+from chronovista.api.schemas.sorting import SortOrder
 from chronovista.api.schemas.topics import TopicSummary
 from chronovista.api.schemas.videos import (
     TranscriptSummary,
@@ -45,6 +47,7 @@ from chronovista.api.schemas.videos import (
     VideoListResponse,
 )
 from chronovista.db.models import Channel as ChannelDB
+from chronovista.db.models import UserVideo as UserVideoDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoCategory, VideoTag, VideoTopic, TopicCategory
 from chronovista.db.models import VideoTranscript
@@ -52,6 +55,28 @@ from chronovista.exceptions import BadRequestError, CDXError, ConflictError, Not
 from chronovista.models.enums import AvailabilityStatus
 
 logger = logging.getLogger(__name__)
+
+
+class ChannelSortField(str, Enum):
+    """Valid fields for sorting channels."""
+
+    VIDEO_COUNT = "video_count"
+    NAME = "name"
+
+
+class ChannelVideoSortField(str, Enum):
+    """Valid fields for sorting videos within a channel."""
+
+    UPLOAD_DATE = "upload_date"
+    TITLE = "title"
+
+
+# Mapping from ChannelVideoSortField enum to SQLAlchemy column references.
+_CHANNEL_VIDEO_SORT_COLUMN_MAP = {
+    ChannelVideoSortField.UPLOAD_DATE: VideoDB.upload_date,
+    ChannelVideoSortField.TITLE: VideoDB.title,
+}
+
 
 # Recovery idempotency guard (T033)
 # Skip Wayback Machine requests if entity was recovered within this window
@@ -89,10 +114,22 @@ def _build_transcript_summary(transcripts: List[VideoTranscript]) -> TranscriptS
 
 @router.get("/channels", response_model=ChannelListResponse, responses=LIST_ERRORS)
 async def list_channels(
+    sort_by: ChannelSortField = Query(
+        ChannelSortField.VIDEO_COUNT,
+        description="Sort field (video_count or name)",
+    ),
+    sort_order: SortOrder = Query(
+        SortOrder.DESC,
+        description="Sort order (asc or desc)",
+    ),
     limit: int = Query(default=20, ge=1, le=100, description="Items per page"),
     offset: int = Query(default=0, ge=0, description="Number of items to skip"),
     has_videos: Optional[bool] = Query(
         default=None, description="Filter to channels with/without videos"
+    ),
+    is_subscribed: Optional[bool] = Query(
+        default=None,
+        description="Filter by subscription status: true=subscribed only, false=not subscribed only, omitted=all",
     ),
     include_unavailable: bool = Query(
         False,
@@ -101,13 +138,18 @@ async def list_channels(
     db: AsyncSession = Depends(get_db),
 ) -> ChannelListResponse:
     """
-    List all channels with pagination.
+    List all channels with pagination, sorting, and filtering.
 
-    Returns a paginated list of channels, ordered by video count descending.
-    Optionally filter to channels that have (or don't have) videos.
+    Returns a paginated list of channels with configurable sort order.
+    Optionally filter to channels that have (or don't have) videos,
+    or by subscription status.
 
     Parameters
     ----------
+    sort_by : ChannelSortField
+        Sort field: video_count or name (default: video_count).
+    sort_order : SortOrder
+        Sort direction: asc or desc (default: desc).
     limit : int
         Items per page (1-100, default 20).
     offset : int
@@ -115,6 +157,10 @@ async def list_channels(
     has_videos : Optional[bool]
         If True, return only channels with videos.
         If False, return only channels without videos.
+        If None, return all channels.
+    is_subscribed : Optional[bool]
+        If True, return only subscribed channels.
+        If False, return only not-subscribed channels.
         If None, return all channels.
     include_unavailable : bool
         If True, include unavailable channels in results.
@@ -142,14 +188,32 @@ async def list_channels(
             (ChannelDB.video_count == 0) | (ChannelDB.video_count.is_(None))
         )
 
+    # Apply subscription filter
+    if is_subscribed is True:
+        query = query.where(ChannelDB.is_subscribed == True)  # noqa: E712
+    elif is_subscribed is False:
+        query = query.where(ChannelDB.is_subscribed == False)  # noqa: E712
+
     # Count total before pagination
     count_query = select(func.count()).select_from(query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
-    # Apply ordering and pagination (video_count DESC per spec)
+    # Build sort clause
+    sort_column_map = {
+        ChannelSortField.VIDEO_COUNT: ChannelDB.video_count,
+        ChannelSortField.NAME: ChannelDB.title,
+    }
+    sort_column = sort_column_map[sort_by]
+
+    if sort_order == SortOrder.ASC:
+        order_clause = sort_column.asc().nulls_last()
+    else:
+        order_clause = sort_column.desc().nulls_last()
+
+    # Apply ordering and pagination (secondary sort by channel_id for determinism)
     query = (
-        query.order_by(ChannelDB.video_count.desc().nulls_last())
+        query.order_by(order_clause, ChannelDB.channel_id.asc())
         .offset(offset)
         .limit(limit)
     )
@@ -171,6 +235,7 @@ async def list_channels(
                 thumbnail_url=channel.thumbnail_url,
                 custom_url=None,  # Not yet persisted in DB
                 availability_status=channel.availability_status,
+                is_subscribed=channel.is_subscribed,
             )
         )
 
@@ -260,6 +325,18 @@ async def get_channel_videos(
         max_length=24,
         description="YouTube channel ID (24 characters)",
     ),
+    sort_by: ChannelVideoSortField = Query(
+        ChannelVideoSortField.UPLOAD_DATE,
+        description="Sort field (upload_date or title)",
+    ),
+    sort_order: SortOrder = Query(
+        SortOrder.DESC,
+        description="Sort order (asc or desc)",
+    ),
+    liked_only: bool = Query(
+        False,
+        description="Filter to only liked videos",
+    ),
     limit: int = Query(default=20, ge=1, le=100, description="Items per page"),
     offset: int = Query(default=0, ge=0, description="Number of items to skip"),
     include_unavailable: bool = Query(
@@ -272,16 +349,24 @@ async def get_channel_videos(
     Get videos belonging to a channel.
 
     Returns a paginated list of videos for the specified channel,
-    ordered by upload date descending.
+    with configurable sort order and liked filter.
 
     Parameters
     ----------
     channel_id : str
         YouTube channel ID (exactly 24 characters).
+    sort_by : ChannelVideoSortField
+        Sort field: upload_date or title (default: upload_date).
+    sort_order : SortOrder
+        Sort direction: asc or desc (default: desc).
+    liked_only : bool
+        If True, only return videos the user has liked (default: False).
     limit : int
         Items per page (1-100, default 20).
     offset : int
         Number of items to skip (default 0).
+    include_unavailable : bool
+        If True, include unavailable videos in results (default: False).
     db : AsyncSession
         Database session from dependency.
 
@@ -321,13 +406,29 @@ async def get_channel_videos(
     if not include_unavailable:
         query = query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
 
+    # Liked-only filter (Feature 027) — EXISTS subquery
+    if liked_only:
+        liked_subquery = (
+            select(UserVideoDB.video_id)
+            .where(UserVideoDB.liked.is_(True))
+            .distinct()
+            .scalar_subquery()
+        )
+        query = query.where(VideoDB.video_id.in_(liked_subquery))
+
     # Count total before pagination
     count_query = select(func.count()).select_from(query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
-    # Apply ordering and pagination
-    query = query.order_by(VideoDB.upload_date.desc()).offset(offset).limit(limit)
+    # Apply sorting (Feature 027) with deterministic secondary sort (FR-029)
+    sort_column = _CHANNEL_VIDEO_SORT_COLUMN_MAP[sort_by]
+    if sort_order == SortOrder.ASC:
+        order_clause = sort_column.asc()
+    else:
+        order_clause = sort_column.desc()
+
+    query = query.order_by(order_clause, VideoDB.video_id.asc()).offset(offset).limit(limit)
 
     # Execute query
     result = await db.execute(query)

@@ -7,6 +7,10 @@
  * - "View on YouTube" link for linked playlists
  * - Back to Playlists navigation (top and bottom)
  * - Video list using PlaylistVideoCard with infinite scroll
+ * - Sort dropdown (position, upload_date, title) with URL state sync
+ * - Filter toggles (unavailable_only, liked_only, has_transcript) with URL state sync
+ * - Context-aware empty state messages for active filters (FR-025)
+ * - ARIA live region announcing filtered count (FR-005)
  * - Loading, error, and empty states
  * - 404 handling for missing playlists
  *
@@ -21,14 +25,24 @@
  */
 
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
+import { FilterToggle } from "../components/FilterToggle";
 import { LoadingState } from "../components/LoadingState";
 import { PlaylistVideoCard } from "../components/PlaylistVideoCard";
-import { usePlaylistDetail, usePlaylistVideos } from "../hooks";
+import { SortDropdown } from "../components/SortDropdown";
+import { usePlaylistDetail, usePlaylistVideos, useUrlParamBoolean } from "../hooks";
 import { cardPatterns } from "../styles";
+import type { PlaylistVideoSortField, SortOption, SortOrder } from "../types/filters";
 import type { PlaylistPrivacyStatus } from "../types/playlist";
 import { formatDate } from "../utils/formatters";
+
+/** Sort options for playlist videos (position, upload_date, title). */
+const PLAYLIST_VIDEO_SORT_OPTIONS: SortOption<PlaylistVideoSortField>[] = [
+  { field: "position", label: "Position", defaultOrder: "asc" },
+  { field: "upload_date", label: "Upload Date", defaultOrder: "desc" },
+  { field: "title", label: "Title", defaultOrder: "asc" },
+];
 
 /** Default page title when no playlist is loaded */
 const DEFAULT_PAGE_TITLE = "ChronoVista";
@@ -276,6 +290,7 @@ function PlaylistTypeBadge({ isLinked }: { isLinked: boolean }) {
  */
 export function PlaylistDetailPage() {
   const { playlistId } = useParams<{ playlistId: string }>();
+  const [searchParams] = useSearchParams();
   const {
     playlist,
     isLoading: headerLoading,
@@ -284,8 +299,21 @@ export function PlaylistDetailPage() {
     retry: headerRetry,
   } = usePlaylistDetail(playlistId || "");
 
+  // Read sort params from URL (coordinated by SortDropdown)
+  const sortBy = (searchParams.get("sort_by") ?? "position") as PlaylistVideoSortField;
+  const sortOrder = (searchParams.get("sort_order") ?? "asc") as SortOrder;
+
+  // Read filter params from URL (managed by FilterToggle)
+  const [likedOnly] = useUrlParamBoolean("liked_only");
+  const [hasTranscript] = useUrlParamBoolean("has_transcript");
+  const [unavailableOnly] = useUrlParamBoolean("unavailable_only");
+
+  // Determine if any filter is active
+  const hasActiveFilter = likedOnly || hasTranscript || unavailableOnly;
+
   const {
     videos,
+    total,
     isLoading: videosLoading,
     isError: videosError,
     hasNextPage,
@@ -293,6 +321,11 @@ export function PlaylistDetailPage() {
     loadMoreRef,
   } = usePlaylistVideos(playlistId || "", {
     enabled: Boolean(playlistId) && Boolean(playlist),
+    sortBy,
+    sortOrder,
+    likedOnly,
+    hasTranscript,
+    unavailableOnly,
   });
 
   // Description truncation state (CHK041)
@@ -322,6 +355,11 @@ export function PlaylistDetailPage() {
       document.title = DEFAULT_PAGE_TITLE;
     };
   }, [playlist, headerLoading, is404]);
+
+  // Scroll to top when sort or filter changes (FR-031)
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [sortBy, sortOrder, likedOnly, hasTranscript, unavailableOnly]);
 
   // Loading state
   if (headerLoading) {
@@ -523,7 +561,30 @@ export function PlaylistDetailPage() {
 
       {/* Videos Section */}
       <div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">Videos</h2>
+        <h2 className="text-2xl font-bold text-gray-900 mb-4">Videos</h2>
+
+        {/* Sort & Filter Toolbar */}
+        <div className="flex flex-wrap items-center gap-4 mb-6 p-4 bg-white border border-gray-200 rounded-lg">
+          <SortDropdown<PlaylistVideoSortField>
+            options={PLAYLIST_VIDEO_SORT_OPTIONS}
+            defaultField="position"
+            defaultOrder="asc"
+            label="Sort by"
+          />
+          <div className="h-6 w-px bg-gray-200" aria-hidden="true" />
+          <FilterToggle paramKey="unavailable_only" label="Unavailable only" />
+          <FilterToggle paramKey="liked_only" label="Liked only" />
+          <FilterToggle paramKey="has_transcript" label="Has transcript" />
+        </div>
+
+        {/* ARIA live region announcing filtered count (FR-005) */}
+        {!videosLoading && !videosError && (
+          <div role="status" aria-live="polite" className="sr-only">
+            {total !== null
+              ? `Showing ${total} ${total === 1 ? "video" : "videos"}${hasActiveFilter ? " (filtered)" : ""}`
+              : ""}
+          </div>
+        )}
 
         {/* Videos Loading State */}
         {videosLoading && <LoadingState count={6} />}
@@ -543,7 +604,7 @@ export function PlaylistDetailPage() {
         {/* Videos List */}
         {!videosLoading && !videosError && (
           <>
-            {/* Empty State (CHK047) */}
+            {/* Empty State - context-aware messaging (FR-025) */}
             {videos.length === 0 && (
               <div
                 className="bg-white border border-gray-200 rounded-xl p-8 text-center"
@@ -552,12 +613,34 @@ export function PlaylistDetailPage() {
                 <div className="mx-auto w-16 h-16 mb-4 text-gray-400 bg-gray-100 rounded-full p-4">
                   <FilmIcon className="w-full h-full" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  No videos in this playlist
-                </h3>
-                <p className="text-gray-600">
-                  This playlist doesn&apos;t contain any videos yet.
-                </p>
+                {hasActiveFilter ? (
+                  <>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                      No matching videos
+                    </h3>
+                    <p className="text-gray-600">
+                      {(() => {
+                        const activeCount = [likedOnly, hasTranscript, unavailableOnly].filter(Boolean).length;
+                        if (activeCount > 1) {
+                          return "No videos match the selected filters. Try removing some filters.";
+                        }
+                        if (likedOnly) return "No liked videos in this playlist.";
+                        if (hasTranscript) return "No videos with transcripts in this playlist.";
+                        if (unavailableOnly) return "No unavailable videos in this playlist.";
+                        return "No videos match the selected filters.";
+                      })()}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                      No videos in this playlist
+                    </h3>
+                    <p className="text-gray-600">
+                      This playlist doesn&apos;t contain any videos yet.
+                    </p>
+                  </>
+                )}
               </div>
             )}
 
@@ -590,8 +673,8 @@ export function PlaylistDetailPage() {
                 {/* All Loaded Message */}
                 {!hasNextPage && videos.length > 0 && (
                   <p className="text-sm text-gray-500 text-center py-4 mt-4 border-t border-gray-100">
-                    All {video_count} {video_count === 1 ? "video" : "videos"}{" "}
-                    loaded
+                    All {total ?? video_count} {(total ?? video_count) === 1 ? "video" : "videos"}{" "}
+                    loaded{hasActiveFilter ? " (filtered)" : ""}
                   </p>
                 )}
               </div>

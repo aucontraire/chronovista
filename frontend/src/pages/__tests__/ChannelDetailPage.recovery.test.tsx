@@ -178,6 +178,10 @@ const mockDeletedChannel: ChannelDetail = {
   availability_status: 'deleted',
   recovered_at: null,
   recovery_source: null,
+  custom_url: null,
+  default_language: null,
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
 };
 
 /**

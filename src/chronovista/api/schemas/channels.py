@@ -40,6 +40,8 @@ class ChannelListItem(BaseModel):
         as this field is not yet persisted in the database.
     availability_status : str
         Channel availability status (available, deleted, terminated, suspended).
+    is_subscribed : bool
+        Whether the user is subscribed to this channel.
     """
 
     model_config = ConfigDict(strict=True, from_attributes=True)
@@ -55,6 +57,7 @@ class ChannelListItem(BaseModel):
         description="Custom channel URL (e.g., @username). Currently always None.",
     )
     availability_status: str = Field(..., description="Channel availability status")
+    is_subscribed: bool = Field(False, description="Whether user is subscribed")
 
 
 class ChannelDetail(ChannelListItem):
@@ -81,7 +84,6 @@ class ChannelDetail(ChannelListItem):
 
     default_language: Optional[str] = Field(None, description="Default language code")
     country: Optional[str] = Field(None, description="Country code (ISO 3166-1)")
-    is_subscribed: bool = Field(False, description="Whether user is subscribed")
     created_at: datetime = Field(..., description="Record creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
     recovered_at: Optional[datetime] = Field(None, description="Timestamp when metadata was recovered via Wayback Machine")

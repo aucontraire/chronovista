@@ -1,5 +1,7 @@
 /**
  * useChannels hook for fetching channels with infinite scroll support.
+ *
+ * Supports sorting by video_count or name, and filtering by subscription status.
  */
 
 import { useInfiniteQuery } from "@tanstack/react-query";
@@ -7,6 +9,7 @@ import { useCallback, useEffect, useRef } from "react";
 
 import { apiFetch } from "../api/config";
 import type { ChannelListResponse } from "../types/channel";
+import type { ChannelSortField, SortOrder } from "../types/filters";
 
 /**
  * Default number of channels to fetch per page.
@@ -19,21 +22,48 @@ const DEFAULT_LIMIT = 25;
 const INTERSECTION_THRESHOLD = 0.8;
 
 /**
+ * Subscription filter values that map to the API is_subscribed param.
+ * - "all" -> omit is_subscribed param
+ * - "subscribed" -> is_subscribed=true
+ * - "not_subscribed" -> is_subscribed=false
+ */
+export type SubscriptionFilter = "all" | "subscribed" | "not_subscribed";
+
+/**
  * Fetches a page of channels from the API.
  */
 async function fetchChannels(
   offset: number,
-  limit: number
+  limit: number,
+  sortBy: ChannelSortField,
+  sortOrder: SortOrder,
+  isSubscribed: SubscriptionFilter
 ): Promise<ChannelListResponse> {
   const params = new URLSearchParams({
     offset: offset.toString(),
     limit: limit.toString(),
+    sort_by: sortBy,
+    sort_order: sortOrder,
   });
+
+  // Map subscription filter to API param
+  if (isSubscribed === "subscribed") {
+    params.append("is_subscribed", "true");
+  } else if (isSubscribed === "not_subscribed") {
+    params.append("is_subscribed", "false");
+  }
+  // For "all", omit the is_subscribed parameter
 
   return apiFetch<ChannelListResponse>(`/channels?${params.toString()}`);
 }
 
 interface UseChannelsOptions {
+  /** Sort field: "video_count" or "name" (default: "video_count") */
+  sortBy?: ChannelSortField;
+  /** Sort order: "asc" or "desc" (default: "desc") */
+  sortOrder?: SortOrder;
+  /** Subscription filter: "all", "subscribed", or "not_subscribed" (default: "all") */
+  isSubscribed?: SubscriptionFilter;
   /** Number of channels per page (default: 25) */
   limit?: number;
   /** Whether to enable the query (default: true) */
@@ -70,10 +100,15 @@ interface UseChannelsReturn {
  *
  * Uses TanStack Query's useInfiniteQuery for data fetching and caching.
  * Includes an Intersection Observer for automatic next page loading.
+ * Supports sorting by video_count or name, and filtering by subscription status.
  *
  * @example
  * ```tsx
- * const { channels, isLoading, loadMoreRef } = useChannels();
+ * const { channels, isLoading, loadMoreRef } = useChannels({
+ *   sortBy: 'video_count',
+ *   sortOrder: 'desc',
+ *   isSubscribed: 'subscribed',
+ * });
  *
  * return (
  *   <div>
@@ -84,7 +119,13 @@ interface UseChannelsReturn {
  * ```
  */
 export function useChannels(options: UseChannelsOptions = {}): UseChannelsReturn {
-  const { limit = DEFAULT_LIMIT, enabled = true } = options;
+  const {
+    sortBy = "video_count",
+    sortOrder = "desc",
+    isSubscribed = "all",
+    limit = DEFAULT_LIMIT,
+    enabled = true,
+  } = options;
 
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
@@ -98,9 +139,9 @@ export function useChannels(options: UseChannelsOptions = {}): UseChannelsReturn
     fetchNextPage,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["channels", limit],
+    queryKey: ["channels", sortBy, sortOrder, isSubscribed, limit],
     queryFn: async ({ pageParam }) => {
-      return fetchChannels(pageParam, limit);
+      return fetchChannels(pageParam, limit, sortBy, sortOrder, isSubscribed);
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {

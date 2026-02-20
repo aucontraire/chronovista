@@ -1,11 +1,42 @@
 /**
  * ChannelsPage component displays the list of channels with all states.
+ *
+ * Features (Feature 027, US-3):
+ * - Sort dropdown (video_count/name) with URL state persistence
+ * - Subscription filter tabs (All/Subscribed/Not Subscribed) with URL state
+ * - Dynamic channel count header reflecting filtered results
+ * - ARIA live region for count announcement
+ * - Pagination reset on filter/sort change
  */
 
 import { useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { ChannelCard } from "../components/ChannelCard";
+import { SortDropdown } from "../components/SortDropdown";
 import { useChannels } from "../hooks/useChannels";
+import type { SubscriptionFilter } from "../hooks/useChannels";
+import type { ChannelSortField, SortOrder, SortOption } from "../types/filters";
+
+/**
+ * Sort options for channels (Feature 027, FR-013).
+ */
+const CHANNEL_SORT_OPTIONS: SortOption<ChannelSortField>[] = [
+  { field: "video_count", label: "Video Count", defaultOrder: "desc" },
+  { field: "name", label: "Name", defaultOrder: "asc" },
+];
+
+/**
+ * Valid subscription filter tab values.
+ */
+const SUBSCRIPTION_TABS: Array<{
+  value: SubscriptionFilter;
+  label: string;
+}> = [
+  { value: "all", label: "All" },
+  { value: "subscribed", label: "Subscribed" },
+  { value: "not_subscribed", label: "Not Subscribed" },
+];
 
 /**
  * Skeleton card for channel loading state.
@@ -94,14 +125,46 @@ function AllLoadedMessage({ total }: AllLoadedMessageProps) {
 }
 
 /**
- * Empty state specific to channels.
+ * Empty state specific to channels with filter-aware messaging.
  */
-function ChannelEmptyState() {
+interface ChannelEmptyStateProps {
+  subscriptionFilter: SubscriptionFilter;
+}
+
+function ChannelEmptyState({ subscriptionFilter }: ChannelEmptyStateProps) {
+  const getEmptyStateContent = () => {
+    switch (subscriptionFilter) {
+      case "subscribed":
+        return {
+          heading: "No subscribed channels",
+          message:
+            "None of your synced channels are marked as subscribed. Subscription status is synced from your YouTube data.",
+          showCommand: true,
+        };
+      case "not_subscribed":
+        return {
+          heading: "No unsubscribed channels",
+          message:
+            "All your synced channels are currently subscribed.",
+          showCommand: false,
+        };
+      default: // "all"
+        return {
+          heading: "No channels yet",
+          message:
+            "You haven\u2019t synced any channels yet. Get started by syncing your YouTube data.",
+          showCommand: true,
+        };
+    }
+  };
+
+  const { heading, message, showCommand } = getEmptyStateContent();
+
   return (
     <div
       className="bg-white border border-gray-200 rounded-xl shadow-lg p-12 text-center flex flex-col items-center justify-center min-h-[400px]"
       role="status"
-      aria-label="No channels available"
+      aria-label={heading}
     >
       {/* Channel Icon */}
       <div className="mx-auto w-20 h-20 mb-6 text-gray-400 bg-gray-100 rounded-full p-4">
@@ -123,34 +186,95 @@ function ChannelEmptyState() {
 
       {/* Heading */}
       <h3 className="text-xl font-semibold text-gray-900 mb-3">
-        No channels yet
+        {heading}
       </h3>
 
       {/* Instructions */}
-      <p className="text-gray-600 mb-6 max-w-sm">
-        You haven&apos;t synced any channels yet. Get started by syncing your YouTube data.
-      </p>
+      <p className="text-gray-600 mb-6 max-w-sm">{message}</p>
 
       {/* CLI Command */}
-      <div className="inline-block mb-6">
-        <code className="bg-gray-900 text-green-400 px-5 py-3 rounded-lg font-mono text-sm shadow-md block">
-          $ chronovista sync
-        </code>
-      </div>
+      {showCommand && (
+        <>
+          <div className="inline-block mb-6">
+            <code className="bg-gray-900 text-green-400 px-5 py-3 rounded-lg font-mono text-sm shadow-md block">
+              $ chronovista sync
+            </code>
+          </div>
 
-      {/* Additional Help */}
-      <p className="text-sm text-gray-500 max-w-xs">
-        This will fetch your YouTube channels, videos, and transcripts.
-      </p>
+          {/* Additional Help */}
+          <p className="text-sm text-gray-500 max-w-xs">
+            This will fetch your YouTube channels, videos, and transcripts.
+          </p>
+        </>
+      )}
     </div>
   );
 }
 
 /**
+ * Subscription filter tabs component (page-specific, NOT shared per Rule of Three).
+ */
+interface SubscriptionFilterTabsProps {
+  currentFilter: SubscriptionFilter;
+  onFilterChange: (filter: SubscriptionFilter) => void;
+}
+
+function SubscriptionFilterTabs({
+  currentFilter,
+  onFilterChange,
+}: SubscriptionFilterTabsProps) {
+  return (
+    <nav aria-label="Subscription filter" role="tablist">
+      <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
+        {SUBSCRIPTION_TABS.map((tab) => {
+          const isActive = currentFilter === tab.value;
+          return (
+            <button
+              key={tab.value}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => onFilterChange(tab.value)}
+              className={`min-h-[44px] px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                isActive
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+              }`}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
+/**
  * ChannelsPage displays channels with loading, error, and empty states.
- * Includes infinite scroll with Intersection Observer.
+ * Includes sort dropdown, subscription filter tabs, and infinite scroll.
  */
 export function ChannelsPage() {
+  // URL params for filter and sort
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Parse subscription filter from URL
+  const subParam = searchParams.get("subscription") || "all";
+  const subscriptionFilter = (
+    ["all", "subscribed", "not_subscribed"].includes(subParam) ? subParam : "all"
+  ) as SubscriptionFilter;
+
+  // Parse sort from URL (default: video_count desc)
+  const sortByParam = searchParams.get("sort_by") || "video_count";
+  const sortOrderParam = searchParams.get("sort_order") || "desc";
+  const sortBy = (
+    ["video_count", "name"].includes(sortByParam) ? sortByParam : "video_count"
+  ) as ChannelSortField;
+  const sortOrder = (
+    ["asc", "desc"].includes(sortOrderParam) ? sortOrderParam : "desc"
+  ) as SortOrder;
+
+  // Fetch channels with current sort and filter
   const {
     channels,
     total,
@@ -162,7 +286,7 @@ export function ChannelsPage() {
     isFetchingNextPage,
     retry,
     loadMoreRef,
-  } = useChannels();
+  } = useChannels({ sortBy, sortOrder, isSubscribed: subscriptionFilter });
 
   // Set page title
   useEffect(() => {
@@ -172,11 +296,52 @@ export function ChannelsPage() {
     };
   }, []);
 
+  // Scroll to top when filter or sort changes (FR-031)
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [subscriptionFilter, sortBy, sortOrder]);
+
+  // Handle subscription filter change (update URL param, reset pagination)
+  const handleSubscriptionChange = (newFilter: SubscriptionFilter) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (newFilter === "all") {
+        next.delete("subscription");
+      } else {
+        next.set("subscription", newFilter);
+      }
+      return next;
+    });
+  };
+
+  // Channel count header text
+  const countText =
+    total !== null
+      ? `${total} channel${total !== 1 ? "s" : ""}`
+      : null;
+
+  // Toolbar with filter tabs and sort dropdown (shown in all states)
+  const toolbar = (
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+      <SubscriptionFilterTabs
+        currentFilter={subscriptionFilter}
+        onFilterChange={handleSubscriptionChange}
+      />
+      <SortDropdown
+        options={CHANNEL_SORT_OPTIONS}
+        defaultField="video_count"
+        defaultOrder="desc"
+        label="Sort by"
+      />
+    </div>
+  );
+
   // Initial loading state
   if (isLoading) {
     return (
       <main className="container mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-6">Channels</h1>
+        {toolbar}
         <ChannelLoadingState count={8} />
       </main>
     );
@@ -192,6 +357,7 @@ export function ChannelsPage() {
     return (
       <main className="container mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-6">Channels</h1>
+        {toolbar}
         <div
           className="bg-gradient-to-br from-red-50 to-amber-50 border border-red-200 rounded-xl shadow-lg p-8 text-center"
           role="alert"
@@ -256,7 +422,8 @@ export function ChannelsPage() {
     return (
       <main className="container mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-6">Channels</h1>
-        <ChannelEmptyState />
+        {toolbar}
+        <ChannelEmptyState subscriptionFilter={subscriptionFilter} />
       </main>
     );
   }
@@ -264,7 +431,25 @@ export function ChannelsPage() {
   // Channels list with pagination
   return (
     <main className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-gray-900 mb-6">Channels</h1>
+      <div className="flex items-baseline justify-between mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">Channels</h1>
+        {/* Dynamic channel count header (FR-030) - visible only */}
+        {countText && (
+          <span className="text-sm text-gray-500 ml-3" aria-hidden="true">
+            {countText}
+          </span>
+        )}
+      </div>
+
+      {/* Toolbar: filter tabs + sort dropdown */}
+      {toolbar}
+
+      {/* ARIA live region announcing filtered count (FR-005) */}
+      {total !== null && (
+        <div role="status" aria-live="polite" className="sr-only">
+          Showing {total} channel{total !== 1 ? "s" : ""}
+        </div>
+      )}
 
       <div className="space-y-4">
         {/* Pagination Status - Top (only show if more to load) */}

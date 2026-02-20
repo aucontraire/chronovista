@@ -194,7 +194,7 @@ describe("UnavailabilityBanner - Recovery Button", () => {
         ]),
       });
 
-      const { container } = render(
+      render(
         <UnavailabilityBanner
           availabilityStatus="deleted"
           entityType="video"
@@ -336,7 +336,7 @@ describe("UnavailabilityBanner - Recovery Button", () => {
         ]),
       });
 
-      const { container } = render(
+      render(
         <UnavailabilityBanner
           availabilityStatus="deleted"
           entityType="video"
@@ -385,7 +385,7 @@ describe("UnavailabilityBanner - Recovery Button", () => {
         ]),
       });
 
-      const { container } = render(
+      render(
         <UnavailabilityBanner
           availabilityStatus="deleted"
           entityType="video"
@@ -479,7 +479,7 @@ describe("UnavailabilityBanner - Recovery Button", () => {
         ]),
       });
 
-      const { container } = render(
+      render(
         <UnavailabilityBanner
           availabilityStatus="deleted"
           entityType="video"
@@ -528,7 +528,7 @@ describe("UnavailabilityBanner - Recovery Button", () => {
         ]),
       });
 
-      const { container } = render(
+      render(
         <UnavailabilityBanner
           availabilityStatus="deleted"
           entityType="video"
@@ -766,7 +766,7 @@ describe("UnavailabilityBanner - Recovery Button", () => {
         ]),
       });
 
-      const { container } = render(
+      render(
         <UnavailabilityBanner
           availabilityStatus="deleted"
           entityType="video"
@@ -815,7 +815,7 @@ describe("UnavailabilityBanner - Recovery Button", () => {
         ]),
       });
 
-      const { container } = render(
+      render(
         <UnavailabilityBanner
           availabilityStatus="deleted"
           entityType="video"
@@ -1065,7 +1065,6 @@ describe("UnavailabilityBanner - Recovery Button", () => {
         />
       );
 
-      const ariaLiveRegion = container.querySelector('[aria-live="polite"]');
       // The main banner has aria-live, but the recovery status area should also have it
       const statusRegions = container.querySelectorAll('[aria-live="polite"]');
       expect(statusRegions.length).toBeGreaterThan(0);
@@ -1245,7 +1244,7 @@ describe("UnavailabilityBanner - Recovery Button", () => {
   describe("Button Styling", () => {
     it("should have archive box icon", () => {
       const mockRecover = vi.fn();
-      const { container } = render(
+      render(
         <UnavailabilityBanner
           availabilityStatus="deleted"
           entityType="video"
@@ -1439,10 +1438,10 @@ describe("UnavailabilityBanner - Recovery Button", () => {
 
       // Should have "Any year" + (current year - 2005 + 1) years
       expect(options.length).toBe(yearCount + 1);
-      expect(options[0].textContent).toBe("Any year");
-      expect(options[0]).toHaveValue("");
-      expect(options[1]).toHaveValue("2005");
-      expect(options[yearCount]).toHaveValue(String(currentYear));
+      expect(options[0]!.textContent).toBe("Any year");
+      expect(options[0]!).toHaveValue("");
+      expect(options[1]!).toHaveValue("2005");
+      expect(options[yearCount]!).toHaveValue(String(currentYear));
 
       // Restore fake timers
       vi.useFakeTimers();
@@ -1475,10 +1474,10 @@ describe("UnavailabilityBanner - Recovery Button", () => {
 
       // Should have "Any year" + (current year - 2005 + 1) years
       expect(options.length).toBe(yearCount + 1);
-      expect(options[0].textContent).toBe("Any year");
-      expect(options[0]).toHaveValue("");
-      expect(options[1]).toHaveValue("2005");
-      expect(options[yearCount]).toHaveValue(String(currentYear));
+      expect(options[0]!.textContent).toBe("Any year");
+      expect(options[0]!).toHaveValue("");
+      expect(options[1]!).toHaveValue("2005");
+      expect(options[yearCount]!).toHaveValue(String(currentYear));
 
       // The end year should default to current year
       expect(endYearSelect).toHaveValue(String(currentYear));
@@ -1988,7 +1987,7 @@ describe("UnavailabilityBanner - Recovery Button", () => {
         ]),
       });
 
-      const { container } = render(
+      render(
         <UnavailabilityBanner
           availabilityStatus="deleted"
           entityType="video"
@@ -2171,7 +2170,7 @@ describe("UnavailabilityBanner - Recovery Button", () => {
         ]),
       });
 
-      const { container } = render(
+      render(
         <UnavailabilityBanner
           availabilityStatus="deleted"
           entityType="video"

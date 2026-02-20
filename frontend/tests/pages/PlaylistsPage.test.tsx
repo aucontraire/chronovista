@@ -411,7 +411,7 @@ describe('PlaylistsPage', () => {
 
       expect(mockUsePlaylists).toHaveBeenCalledWith({
         filter: 'linked',
-        sortBy: 'created_at',
+        sortBy: 'video_count',
         sortOrder: 'desc',
       });
     });
@@ -423,7 +423,7 @@ describe('PlaylistsPage', () => {
 
       expect(mockUsePlaylists).toHaveBeenCalledWith({
         filter: 'all',
-        sortBy: 'created_at',
+        sortBy: 'video_count',
         sortOrder: 'desc',
       });
     });
@@ -1157,6 +1157,145 @@ describe('PlaylistsPage', () => {
       unmount();
 
       expect(document.title).toBe('ChronoVista');
+    });
+  });
+
+  describe('Sort Dropdown (Feature 027)', () => {
+    beforeEach(() => {
+      mockUsePlaylists.mockReturnValue({
+        playlists: mockPlaylists,
+        total: 3,
+        loadedCount: 3,
+        isLoading: false,
+        isError: false,
+        error: null,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+        retry: vi.fn(),
+        loadMoreRef: { current: null },
+      });
+    });
+
+    it('should render SortDropdown component', () => {
+      renderWithProviders(<PlaylistsPage />, { initialEntries: ['/playlists'] });
+
+      // Should have a combobox for sorting (native select)
+      const sortDropdown = screen.getByLabelText(/sort by/i);
+      expect(sortDropdown).toBeInTheDocument();
+      expect(sortDropdown.tagName).toBe('SELECT');
+    });
+
+    it('should display all three sort options (title, created_at, video_count)', () => {
+      renderWithProviders(<PlaylistsPage />, { initialEntries: ['/playlists'] });
+
+      const sortDropdown = screen.getByLabelText(/sort by/i) as HTMLSelectElement;
+
+      // Should have 6 options (3 fields × 2 orders)
+      expect(sortDropdown.options).toHaveLength(6);
+
+      // Check that all three fields are represented
+      const optionTexts = Array.from(sortDropdown.options).map((opt) => opt.textContent);
+      expect(optionTexts.some((text) => text?.includes('Title'))).toBe(true);
+      expect(optionTexts.some((text) => text?.includes('Date Added'))).toBe(true);
+      expect(optionTexts.some((text) => text?.includes('Video Count'))).toBe(true);
+    });
+
+    it('should default to video_count desc when no URL params', () => {
+      renderWithProviders(<PlaylistsPage />, { initialEntries: ['/playlists'] });
+
+      expect(mockUsePlaylists).toHaveBeenCalledWith({
+        filter: 'all',
+        sortBy: 'video_count',
+        sortOrder: 'desc',
+      });
+    });
+
+    it('should read sort_by and sort_order from URL params', () => {
+      renderWithProviders(<PlaylistsPage />, {
+        initialEntries: ['/playlists?sort_by=title&sort_order=asc'],
+      });
+
+      expect(mockUsePlaylists).toHaveBeenCalledWith({
+        filter: 'all',
+        sortBy: 'title',
+        sortOrder: 'asc',
+      });
+    });
+
+    it('should update URL when sort changes', async () => {
+      const { user } = renderWithProviders(<PlaylistsPage />, {
+        initialEntries: ['/playlists'],
+      });
+
+      const sortDropdown = screen.getByLabelText(/sort by/i);
+
+      // Change to title ascending
+      await user.selectOptions(sortDropdown, 'title:asc');
+
+      await waitFor(() => {
+        const location = getTestLocation();
+        expect(location.search).toContain('sort_by=title');
+        expect(location.search).toContain('sort_order=asc');
+      });
+    });
+
+    it('should preserve filter param when changing sort', async () => {
+      const { user } = renderWithProviders(<PlaylistsPage />, {
+        initialEntries: ['/playlists?filter=linked'],
+      });
+
+      const sortDropdown = screen.getByLabelText(/sort by/i);
+
+      // Change sort
+      await user.selectOptions(sortDropdown, 'title:asc');
+
+      await waitFor(() => {
+        const location = getTestLocation();
+        expect(location.search).toContain('filter=linked');
+        expect(location.search).toContain('sort_by=title');
+      });
+    });
+
+    it('should handle invalid sort_by param by defaulting to video_count', () => {
+      renderWithProviders(<PlaylistsPage />, {
+        initialEntries: ['/playlists?sort_by=invalid'],
+      });
+
+      expect(mockUsePlaylists).toHaveBeenCalledWith({
+        filter: 'all',
+        sortBy: 'video_count',
+        sortOrder: 'desc',
+      });
+    });
+
+    it('should handle invalid sort_order param by defaulting to desc', () => {
+      renderWithProviders(<PlaylistsPage />, {
+        initialEntries: ['/playlists?sort_by=title&sort_order=invalid'],
+      });
+
+      expect(mockUsePlaylists).toHaveBeenCalledWith({
+        filter: 'all',
+        sortBy: 'title',
+        sortOrder: 'desc',
+      });
+    });
+
+    it('should maintain sort during filter changes', async () => {
+      const { user } = renderWithProviders(<PlaylistsPage />, {
+        initialEntries: ['/playlists?sort_by=title&sort_order=asc'],
+      });
+
+      // Change filter to "linked"
+      const linkedTab = screen.getByRole('tab', { name: 'YouTube-Linked' });
+      await user.click(linkedTab);
+
+      await waitFor(() => {
+        const location = getTestLocation();
+        expect(location.search).toContain('filter=linked');
+        expect(location.search).toContain('sort_by=title');
+        expect(location.search).toContain('sort_order=asc');
+      });
     });
   });
 

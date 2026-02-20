@@ -26,9 +26,10 @@ from chronovista.api.schemas.playlists import (
     PlaylistVideoListResponse,
 )
 from chronovista.api.schemas.responses import PaginationMeta
+from chronovista.api.schemas.sorting import SortOrder
 from chronovista.api.schemas.videos import TranscriptSummary
 from chronovista.db.models import Playlist as PlaylistDB
-from chronovista.db.models import PlaylistMembership, Video as VideoDB, VideoTranscript
+from chronovista.db.models import PlaylistMembership, UserVideo, Video as VideoDB, VideoTranscript
 from chronovista.exceptions import BadRequestError, NotFoundError
 from chronovista.models.enums import AvailabilityStatus
 
@@ -44,11 +45,12 @@ class PlaylistSortField(str, Enum):
     VIDEO_COUNT = "video_count"
 
 
-class SortOrder(str, Enum):
-    """Sort order direction."""
+class PlaylistVideoSortField(str, Enum):
+    """Valid fields for sorting videos within a playlist."""
 
-    ASC = "asc"
-    DESC = "desc"
+    POSITION = "position"
+    UPLOAD_DATE = "upload_date"
+    TITLE = "title"
 
 
 def build_transcript_summary(transcripts: List[VideoTranscript]) -> TranscriptSummary:
@@ -186,8 +188,8 @@ async def list_playlists(
     else:
         order_clause = sort_column.desc()
 
-    # Apply ordering and pagination
-    query = query.order_by(order_clause).offset(offset).limit(limit)
+    # Apply ordering and pagination (secondary sort by playlist_id for determinism)
+    query = query.order_by(order_clause, PlaylistDB.playlist_id.asc()).offset(offset).limit(limit)
 
     # Execute query
     result = await session.execute(query)
@@ -277,11 +279,31 @@ async def get_playlist_videos(
         True,
         description="Include unavailable videos in results",
     ),
+    sort_by: PlaylistVideoSortField = Query(
+        PlaylistVideoSortField.POSITION,
+        description="Field to sort by (position, upload_date, title)",
+    ),
+    sort_order: SortOrder = Query(
+        SortOrder.ASC,
+        description="Sort order (asc or desc)",
+    ),
+    liked_only: bool = Query(
+        False,
+        description="Filter to show only liked videos",
+    ),
+    has_transcript: bool = Query(
+        False,
+        description="Filter to show only videos with transcripts",
+    ),
+    unavailable_only: bool = Query(
+        False,
+        description="Filter to show only unavailable videos",
+    ),
     session: AsyncSession = Depends(get_db),
 ) -> PlaylistVideoListResponse:
-    """Get videos in a playlist with position ordering.
+    """Get videos in a playlist with sorting and filtering.
 
-    Returns videos ordered by their position in the playlist (ASC).
+    Returns videos with configurable sort order (default: position ASC).
     Includes deleted_flag to preserve position integrity even for
     videos that have been deleted from YouTube.
 
@@ -296,6 +318,16 @@ async def get_playlist_videos(
     include_unavailable : bool
         If True (default), include unavailable videos in results.
         If False, only return available videos.
+    sort_by : PlaylistVideoSortField
+        Field to sort by: position, upload_date, or title (default: position).
+    sort_order : SortOrder
+        Sort direction: asc or desc (default: asc).
+    liked_only : bool
+        If True, only return videos the user has liked (default: False).
+    has_transcript : bool
+        If True, only return videos with transcripts (default: False).
+    unavailable_only : bool
+        If True, only return unavailable videos (default: False).
     session : AsyncSession
         Database session from dependency.
 
@@ -334,22 +366,81 @@ async def get_playlist_videos(
     if not include_unavailable:
         query = query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
 
-    # Get total count (before pagination)
+    # Apply unavailable_only filter
+    if unavailable_only:
+        query = query.where(VideoDB.availability_status != AvailabilityStatus.AVAILABLE)
+
+    # Apply liked_only filter (EXISTS subquery on user_videos)
+    if liked_only:
+        liked_subquery = (
+            select(UserVideo.video_id)
+            .where(UserVideo.liked.is_(True))
+            .distinct()
+            .scalar_subquery()
+        )
+        query = query.where(VideoDB.video_id.in_(liked_subquery))
+
+    # Apply has_transcript filter (EXISTS subquery on video_transcripts)
+    if has_transcript:
+        transcript_subquery = (
+            select(VideoTranscript.video_id).distinct().scalar_subquery()
+        )
+        query = query.where(VideoDB.video_id.in_(transcript_subquery))
+
+    # Build count query with the same filters
     count_base_query = (
         select(PlaylistMembership)
         .join(VideoDB, PlaylistMembership.video_id == VideoDB.video_id)
         .where(PlaylistMembership.playlist_id == playlist_id)
     )
     if not include_unavailable:
-        count_base_query = count_base_query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
+        count_base_query = count_base_query.where(
+            VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+        )
+    if unavailable_only:
+        count_base_query = count_base_query.where(
+            VideoDB.availability_status != AvailabilityStatus.AVAILABLE
+        )
+    if liked_only:
+        liked_count_subquery = (
+            select(UserVideo.video_id)
+            .where(UserVideo.liked.is_(True))
+            .distinct()
+            .scalar_subquery()
+        )
+        count_base_query = count_base_query.where(
+            VideoDB.video_id.in_(liked_count_subquery)
+        )
+    if has_transcript:
+        transcript_count_subquery = (
+            select(VideoTranscript.video_id).distinct().scalar_subquery()
+        )
+        count_base_query = count_base_query.where(
+            VideoDB.video_id.in_(transcript_count_subquery)
+        )
 
     count_query = select(func.count()).select_from(count_base_query.subquery())
     total_result = await session.execute(count_query)
     total = total_result.scalar() or 0
 
-    # Apply ordering (position ASC) and pagination
+    # Map sort field to database column
+    sort_column_map = {
+        PlaylistVideoSortField.POSITION: PlaylistMembership.position,
+        PlaylistVideoSortField.UPLOAD_DATE: VideoDB.upload_date,
+        PlaylistVideoSortField.TITLE: VideoDB.title,
+    }
+    sort_column = sort_column_map[sort_by]
+
+    # Apply sort order with deterministic secondary sort by video_id (FR-029)
+    if sort_order == SortOrder.ASC:
+        order_clause = sort_column.asc()
+    else:
+        order_clause = sort_column.desc()
+
     query = (
-        query.order_by(PlaylistMembership.position.asc()).offset(offset).limit(limit)
+        query.order_by(order_clause, VideoDB.video_id.asc())
+        .offset(offset)
+        .limit(limit)
     )
 
     # Execute query

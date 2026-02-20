@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.30.0] - 2026-02-19
+
+### Added
+
+#### Feature 027: Unified Filter & Sort System
+
+Consistent sorting and filtering controls across all 5 list pages with shared reusable components, replacing ad-hoc implementations.
+
+**Backend:**
+- Shared `SortOrder` enum extracted to `api/schemas/sorting.py` for reuse across all routers
+- `sort_by`, `sort_order`, `liked_only` params on `GET /videos`
+- `sort_by`, `sort_order`, `liked_only`, `has_transcript`, `unavailable_only` params on `GET /playlists/{id}/videos`
+- `sort_by`, `sort_order`, `is_subscribed` params on `GET /channels`; `is_subscribed` added to `ChannelListItem` schema
+- `sort_by`, `sort_order`, `liked_only` params on `GET /channels/{id}/videos`
+- Deterministic secondary sort by primary key on all 5 sorted endpoints for pagination consistency
+
+**Frontend:**
+- `SortDropdown<TField>` generic typed component (native `<select>`, WCAG 2.5.8 compliant)
+- `FilterToggle` component (native checkbox with URL param sync, 44×44px hit area)
+- `useUrlParam` and `useUrlParamBoolean` hooks for URL state management with snake_case param keys
+- `FilterPills` extended with boolean pill support (Liked, Has transcripts)
+- Channels page subscription filter tabs (All/Subscribed/Not Subscribed)
+- ARIA live region announcements (`role="status"`, `aria-live="polite"`) on all 5 pages
+- Scroll-to-top and pagination reset on filter/sort changes
+- Focus management — triggering control retains focus after state changes
+
+### Removed
+- `PlaylistSortDropdown.tsx` replaced by generic `SortDropdown`
+
 ## [0.29.0] - 2026-02-19
 
 ### Added

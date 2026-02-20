@@ -12,6 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.30.0] - 2026-02-19
+
+### Added
+- **Feature 027: Unified Filter & Sort System**
+  - Shared `SortDropdown`, `FilterToggle` components and `useUrlParam` hooks across all 5 list pages
+  - Backend `sort_by`, `sort_order`, and boolean filter params on videos, playlists, channels, and channel videos endpoints
+  - Shared `SortOrder` enum for all routers; deterministic secondary sort by PK on all sorted endpoints
+  - `is_subscribed` added to `ChannelListItem` schema; subscription filter tabs on Channels page
+  - `FilterPills` extended with boolean pill support (Liked, Has transcripts)
+  - ARIA live region announcements, scroll-to-top on filter change, focus management on all pages
+  - 93 new backend tests (unit + integration), 132+ new frontend tests
+
+### Removed
+- `PlaylistSortDropdown.tsx` replaced by generic `SortDropdown`
+
 ## [0.29.0] - 2026-02-19
 
 ### Added

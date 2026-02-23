@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.31.0] - 2026-02-22
+
+### Added
+
+#### Feature 028a: Tag Normalization Schema & Core Service (ADR-003 Phase 1)
+
+Foundational storage layer and normalization algorithm for tag grouping. Creates the schema, enums, normalization service, and all supporting infrastructure. Tables are empty after this phase — no data moves until Phase 2 (028b backfill).
+
+**Database Migration:**
+- 5 new tables created in FK dependency order: `named_entities`, `entity_aliases`, `canonical_tags`, `tag_aliases`, `tag_operation_logs`
+- 15 indexes including partial indexes for soft-delete optimization
+- All CHECK constraints, UNIQUE constraints, and cascade rules per ADR-003
+- UUIDv7 primary keys generated application-side via `uuid_utils.uuid7` (PG 15 lacks native support)
+
+**Normalization Pipeline (`TagNormalizationService`):**
+- 9-step `normalize()` pipeline: strip whitespace, strip single leading `#`, replace NBSP/tabs, collapse spaces, strip zero-width chars, NFKD decompose, strip Tier 1 marks, NFC recompose, casefold
+- `selective_strip_diacritics()` standalone utility — strips only 8 universally safe combining marks (Tier 1) while preserving structurally distinct marks (tilde, cedilla, ogonek, horn, etc.)
+- `select_canonical_form()` — title case preference via `str.istitle()`, frequency tiebreaker, alphabetical `min()` deterministic tiebreaker
+
+**Enums (6 new `str, Enum` types):**
+- `EntityType` (8 values), `EntityAliasType` (6), `TagStatus` (3), `CreationMethod` (4), `DiscoveryMethod` (5), `TagOperationType` (5)
+
+**Pydantic Models:**
+- Base/Create/Update/Full hierarchy for `CanonicalTag`, `TagAlias`, `NamedEntity`, `EntityAlias`
+- State invariant validators: merged status requires `merged_into_id` (FR-027), no self-merge (FR-028)
+
+**Repositories:**
+- `CanonicalTagRepository`, `TagAliasRepository`, `NamedEntityRepository`, `EntityAliasRepository`
+- Inherit from `BaseSQLAlchemyRepository` with ORM model aliasing to avoid Pydantic naming conflicts
+
+### Technical
+- 189 new tests (186 passed, 3 skipped for index verification): 71 normalization service tests, 28 schema integration tests, 66 Pydantic model validation tests, 24 repository unit tests
+- Hypothesis property-based tests (500 examples each) for idempotency and Tier 1 absence invariants
+- 98% test coverage across all new modules
+- 5,183 total tests passing with 0 regressions
+- mypy strict compliance (0 errors on all 9 new source files)
+- New dependency: `uuid_utils` v0.14.1
+
 ## [0.30.0] - 2026-02-19
 
 ### Added

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime
 from typing import Any, Dict, List, Optional, Union
+from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
@@ -21,10 +22,12 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
+from sqlalchemy.sql import func, text
+from uuid_utils import uuid7
 
 
 class Base(DeclarativeBase):
@@ -714,6 +717,290 @@ class PlaylistMembership(Base):
     )
 
 
+class NamedEntity(Base):
+    """Named entities extracted from video tags (people, places, organizations, etc.)."""
+
+    __tablename__ = "named_entities"
+
+    # Primary key
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
+
+    # Entity identification
+    canonical_name: Mapped[str] = mapped_column(String(500), nullable=False)
+    canonical_name_normalized: Mapped[str] = mapped_column(String(500), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    entity_subtype: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # External references (JSONB for flexibility)
+    external_ids: Mapped[Dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+
+    # Statistics
+    mention_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    video_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    channel_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Discovery and quality
+    discovery_method: Mapped[str] = mapped_column(String(30), nullable=False, default="manual")
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+
+    # Status and merging
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    merged_into_id: Mapped[Optional[UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("named_entities.id"), nullable=True
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    # Table constraints
+    __table_args__ = (
+        UniqueConstraint("canonical_name_normalized", "entity_type", name="uq_named_entity_canonical"),
+        CheckConstraint(
+            "entity_type IN ('person', 'organization', 'place', 'event', 'work', 'technical_term')",
+            name="chk_entity_type_valid"
+        ),
+        CheckConstraint(
+            "status IN ('active', 'merged', 'deprecated')",
+            name="chk_entity_status_valid"
+        ),
+        CheckConstraint(
+            "discovery_method IN ('manual', 'spacy_ner', 'tag_bootstrap', 'llm_extraction', 'user_created')",
+            name="chk_entity_discovery_method_valid"
+        ),
+        CheckConstraint(
+            "confidence >= 0.0 AND confidence <= 1.0",
+            name="chk_entity_confidence_range"
+        ),
+    )
+
+    # Relationships
+    aliases: Mapped[list["EntityAlias"]] = relationship(
+        "EntityAlias", back_populates="entity", cascade="all, delete-orphan"
+    )
+    canonical_tags: Mapped[list["CanonicalTag"]] = relationship(
+        "CanonicalTag", back_populates="entity", foreign_keys="CanonicalTag.entity_id"
+    )
+    merged_into: Mapped[Optional["NamedEntity"]] = relationship(
+        "NamedEntity", remote_side="NamedEntity.id"
+    )
+
+
+class EntityAlias(Base):
+    """Alternative names and variations for named entities."""
+
+    __tablename__ = "entity_aliases"
+
+    # Primary key
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
+
+    # Foreign key to parent entity
+    entity_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("named_entities.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # Alias information
+    alias_name: Mapped[str] = mapped_column(String(500), nullable=False)
+    alias_name_normalized: Mapped[str] = mapped_column(String(500), nullable=False)
+    alias_type: Mapped[str] = mapped_column(String(30), nullable=False, default="name_variant")
+
+    # Usage statistics
+    occurrence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Timestamps
+    first_seen_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_seen_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    # Table constraints
+    __table_args__ = (
+        UniqueConstraint("alias_name_normalized", "entity_id", name="uq_entity_alias_name"),
+        CheckConstraint(
+            "alias_type IN ('name_variant', 'abbreviation', 'nickname', 'asr_error', 'translated_name', 'former_name')",
+            name="chk_alias_type_valid"
+        ),
+    )
+
+    # Relationships
+    entity: Mapped["NamedEntity"] = relationship("NamedEntity", back_populates="aliases")
+
+
+class CanonicalTag(Base):
+    """Canonical tag form with normalization and entity linking."""
+
+    __tablename__ = "canonical_tags"
+
+    # Primary key
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
+
+    # Tag forms
+    canonical_form: Mapped[str] = mapped_column(String(500), nullable=False)
+    normalized_form: Mapped[str] = mapped_column(String(500), nullable=False, unique=True)
+
+    # Statistics
+    alias_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    video_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Entity linking (optional)
+    entity_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    entity_id: Mapped[Optional[UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("named_entities.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # Status and merging
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    merged_into_id: Mapped[Optional[UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("canonical_tags.id"), nullable=True
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    # Table constraints
+    __table_args__ = (
+        CheckConstraint(
+            "entity_type IN ('person', 'organization', 'place', 'event', 'work', 'technical_term', 'topic', 'descriptor') OR entity_type IS NULL",
+            name="chk_canonical_tag_entity_type_valid"
+        ),
+        CheckConstraint(
+            "status IN ('active', 'merged', 'deprecated')",
+            name="chk_canonical_tag_status_valid"
+        ),
+        CheckConstraint(
+            "alias_count >= 1",
+            name="chk_canonical_tag_alias_count_positive"
+        ),
+        CheckConstraint(
+            "video_count >= 0",
+            name="chk_canonical_tag_video_count_non_negative"
+        ),
+        CheckConstraint(
+            "canonical_form != ''",
+            name="chk_canonical_tag_canonical_form_not_empty"
+        ),
+    )
+
+    # Relationships
+    aliases: Mapped[list["TagAlias"]] = relationship(
+        "TagAlias", back_populates="canonical_tag", cascade="all, delete-orphan"
+    )
+    entity: Mapped[Optional["NamedEntity"]] = relationship(
+        "NamedEntity", back_populates="canonical_tags", foreign_keys=[entity_id]
+    )
+    merged_into: Mapped[Optional["CanonicalTag"]] = relationship(
+        "CanonicalTag", remote_side="CanonicalTag.id"
+    )
+
+
+class TagAlias(Base):
+    """Raw tag forms mapped to their canonical representation."""
+
+    __tablename__ = "tag_aliases"
+
+    # Primary key
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
+
+    # Tag forms
+    raw_form: Mapped[str] = mapped_column(String(500), nullable=False, unique=True)
+    normalized_form: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    # Foreign key to canonical tag
+    canonical_tag_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("canonical_tags.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # Metadata
+    creation_method: Mapped[str] = mapped_column(String(30), nullable=False, default="auto_normalize")
+    normalization_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    # Usage statistics
+    occurrence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    # Timestamps
+    first_seen_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_seen_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    # Table constraints
+    __table_args__ = (
+        CheckConstraint(
+            "creation_method IN ('auto_normalize', 'manual_merge', 'backfill', 'api_create')",
+            name="chk_tag_alias_creation_method_valid"
+        ),
+        CheckConstraint(
+            "occurrence_count >= 1",
+            name="chk_tag_alias_occurrence_count_positive"
+        ),
+    )
+
+    # Relationships
+    canonical_tag: Mapped["CanonicalTag"] = relationship("CanonicalTag", back_populates="aliases")
+
+
+class TagOperationLog(Base):
+    """Audit log for tag normalization and management operations."""
+
+    __tablename__ = "tag_operation_logs"
+
+    # Primary key
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
+
+    # Operation details
+    operation_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    source_canonical_ids: Mapped[List[Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    target_canonical_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    affected_alias_ids: Mapped[List[Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+
+    # Context and recovery
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    performed_by: Mapped[str] = mapped_column(String(100), nullable=False, default="system")
+    performed_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    rollback_data: Mapped[Dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+
+    # Rollback tracking
+    rolled_back: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    rolled_back_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Table constraints
+    __table_args__ = (
+        CheckConstraint(
+            "operation_type IN ('merge', 'split', 'rename', 'delete', 'create')",
+            name="chk_tag_operation_type_valid"
+        ),
+    )
+
+
 # Export all models
 __all__ = [
     "Base",
@@ -733,4 +1020,9 @@ __all__ = [
     "UserVideo",
     "Playlist",
     "PlaylistMembership",
+    "NamedEntity",
+    "EntityAlias",
+    "CanonicalTag",
+    "TagAlias",
+    "TagOperationLog",
 ]

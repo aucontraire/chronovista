@@ -12,6 +12,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.31.0] - 2026-02-22
+
+### Added
+- **Feature 028a: Tag Normalization Schema & Core Service (ADR-003 Phase 1)**
+  - 5 new tables: `named_entities`, `entity_aliases`, `canonical_tags`, `tag_aliases`, `tag_operation_logs` with UUIDv7 PKs, 15 indexes, all CHECK/UNIQUE/cascade constraints
+  - 9-step `TagNormalizationService.normalize()` pipeline with three-tier selective diacritic stripping (8 safe Tier 1 marks stripped, Tier 2/3 preserved)
+  - `selective_strip_diacritics()` standalone utility for reuse in future phases
+  - `select_canonical_form()` with `str.istitle()` preference, frequency tiebreaker, alphabetical `min()` deterministic tiebreaker
+  - 6 new `(str, Enum)` types: `EntityType` (8), `EntityAliasType` (6), `TagStatus` (3), `CreationMethod` (4), `DiscoveryMethod` (5), `TagOperationType` (5)
+  - Pydantic V2 Base/Create/Update/Full models for all 4 main entities with state invariant validators (FR-027, FR-028)
+  - 4 new repositories inheriting `BaseSQLAlchemyRepository` with ORM model aliasing
+  - 5 factory-boy factories for test data generation
+
+### Technical
+- 189 new tests (71 service + 28 schema + 66 model + 24 repository)
+- Hypothesis property-based tests (500 examples each) for idempotency and Tier 1 absence invariants
+- 98% coverage across all new modules; 5,183 total tests with 0 regressions
+- mypy strict compliance (0 errors)
+- New dependency: `uuid_utils` v0.14.1
+
 ## [0.30.0] - 2026-02-19
 
 ### Added

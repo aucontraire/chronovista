@@ -145,6 +145,57 @@ from .transcript_segment_factory import (
     create_transcript_segment_create,
     create_transcript_segment_response,
 )
+from .canonical_tag_factory import (
+    CanonicalTagBaseFactory,
+    CanonicalTagCreateFactory,
+    CanonicalTagFactory,
+    CanonicalTagTestData,
+    CanonicalTagUpdateFactory,
+    create_canonical_tag,
+    create_canonical_tag_base,
+    create_canonical_tag_create,
+    create_canonical_tag_update,
+)
+from .tag_alias_factory import (
+    TagAliasBaseFactory,
+    TagAliasCreateFactory,
+    TagAliasFactory,
+    TagAliasTestData,
+    TagAliasUpdateFactory,
+    create_tag_alias,
+    create_tag_alias_base,
+    create_tag_alias_create,
+    create_tag_alias_update,
+)
+from .named_entity_factory import (
+    NamedEntityBaseFactory,
+    NamedEntityCreateFactory,
+    NamedEntityFactory,
+    NamedEntityTestData,
+    NamedEntityUpdateFactory,
+    create_named_entity,
+    create_named_entity_base,
+    create_named_entity_create,
+    create_named_entity_update,
+)
+from .entity_alias_factory import (
+    EntityAliasBaseFactory,
+    EntityAliasCreateFactory,
+    EntityAliasFactory,
+    EntityAliasTestData,
+    EntityAliasUpdateFactory,
+    create_entity_alias,
+    create_entity_alias_base,
+    create_entity_alias_create,
+    create_entity_alias_update,
+)
+from .tag_operation_log_factory import (
+    TagOperationLogFactory,
+    TagOperationLogTestData,
+    create_merge_operation_log,
+    create_split_operation_log,
+    create_tag_operation_log,
+)
 
 __all__ = [
     # VideoTag factories
@@ -275,4 +326,50 @@ __all__ = [
     "create_transcript_segment_response",
     "create_batch_transcript_segments",
     "create_corrected_transcript_segment",
+    # CanonicalTag factories
+    "CanonicalTagBaseFactory",
+    "CanonicalTagCreateFactory",
+    "CanonicalTagUpdateFactory",
+    "CanonicalTagFactory",
+    "CanonicalTagTestData",
+    "create_canonical_tag",
+    "create_canonical_tag_base",
+    "create_canonical_tag_create",
+    "create_canonical_tag_update",
+    # TagAlias factories
+    "TagAliasBaseFactory",
+    "TagAliasCreateFactory",
+    "TagAliasUpdateFactory",
+    "TagAliasFactory",
+    "TagAliasTestData",
+    "create_tag_alias",
+    "create_tag_alias_base",
+    "create_tag_alias_create",
+    "create_tag_alias_update",
+    # NamedEntity factories
+    "NamedEntityBaseFactory",
+    "NamedEntityCreateFactory",
+    "NamedEntityUpdateFactory",
+    "NamedEntityFactory",
+    "NamedEntityTestData",
+    "create_named_entity",
+    "create_named_entity_base",
+    "create_named_entity_create",
+    "create_named_entity_update",
+    # EntityAlias factories
+    "EntityAliasBaseFactory",
+    "EntityAliasCreateFactory",
+    "EntityAliasUpdateFactory",
+    "EntityAliasFactory",
+    "EntityAliasTestData",
+    "create_entity_alias",
+    "create_entity_alias_base",
+    "create_entity_alias_create",
+    "create_entity_alias_update",
+    # TagOperationLog factories
+    "TagOperationLogFactory",
+    "TagOperationLogTestData",
+    "create_tag_operation_log",
+    "create_merge_operation_log",
+    "create_split_operation_log",
 ]

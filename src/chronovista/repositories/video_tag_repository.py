@@ -344,3 +344,33 @@ class VideoTagRepository(
         # In a real implementation, you'd join with the videos table
         # and delete tags where video_id doesn't exist in videos
         return 0
+
+    async def get_distinct_tags_with_counts(
+        self, session: AsyncSession
+    ) -> List[Tuple[str, int]]:
+        """
+        Retrieve all distinct tags with their occurrence counts.
+
+        Returns all distinct non-NULL tags from the video_tags table,
+        grouped and ordered alphabetically by tag value.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+
+        Returns
+        -------
+        list[tuple[str, int]]
+            List of (tag, occurrence_count) tuples ordered by tag.
+        """
+        result = await session.execute(
+            select(
+                VideoTagDB.tag,
+                func.count(VideoTagDB.tag).label("occurrence_count"),
+            )
+            .where(VideoTagDB.tag.is_not(None))
+            .group_by(VideoTagDB.tag)
+            .order_by(VideoTagDB.tag)
+        )
+        return [(row[0], row[1]) for row in result.all()]

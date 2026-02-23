@@ -113,26 +113,24 @@ class TestNormalize:
         else:
             assert svc.normalize(first) == first
 
-    def test_idempotency_double_hash_converges(
+    def test_idempotency_double_hash_strips_all(
         self, svc: TagNormalizationService
     ) -> None:
-        """'##double' converges after two passes (output with leading '#' is not stable)."""
-        first = svc.normalize("##double")
-        assert first == "#double"
-        second = svc.normalize(first)
-        assert second == "double"
-        # Third pass is stable
-        assert svc.normalize(second) == second
+        """'##double' strips ALL leading '#' characters in one pass (FR-007 idempotency)."""
+        result = svc.normalize("##double")
+        assert result == "double"
+        # Second pass is stable (idempotent)
+        assert svc.normalize(result) == result
 
     # ----- edge cases: hashtag stripping ---------------------------------
 
-    def test_triple_hash_strips_one(self, svc: TagNormalizationService) -> None:
-        """'###' strips one '#' leaving '##'."""
-        assert svc.normalize("###") == "##"
+    def test_triple_hash_strips_all(self, svc: TagNormalizationService) -> None:
+        """'###' strips ALL '#' characters, yielding None (empty string)."""
+        assert svc.normalize("###") is None
 
     def test_double_hash_tag(self, svc: TagNormalizationService) -> None:
-        """'##double' strips one '#' leaving '#double'."""
-        assert svc.normalize("##double") == "#double"
+        """'##double' strips ALL leading '#' characters, leaving 'double'."""
+        assert svc.normalize("##double") == "double"
 
     # ----- edge cases: zero-width characters -----------------------------
 

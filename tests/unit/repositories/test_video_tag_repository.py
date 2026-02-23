@@ -614,3 +614,124 @@ class TestVideoTagRepositoryIntegration:
 
             assert result is True
             mock_exists.assert_called_once_with(mock_session, "dQw4w9WgXcQ", "music")
+
+
+class TestGetDistinctTagsWithCounts:
+    """Test get_distinct_tags_with_counts method."""
+
+    @pytest.fixture
+    def repository(self) -> VideoTagRepository:
+        """Create repository instance for testing."""
+        return VideoTagRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> MagicMock:
+        """Create mock async session."""
+        return MagicMock(spec=AsyncSession)
+
+    @pytest.mark.asyncio
+    async def test_returns_tags_with_counts(
+        self, repository: VideoTagRepository, mock_session: MagicMock
+    ) -> None:
+        """Test method returns tags with their occurrence counts."""
+        # Set up mock result
+        mock_result = MagicMock()
+        mock_result.all.return_value = [
+            ("music", 150),
+            ("python", 80),
+            ("travel", 45),
+        ]
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        result = await repository.get_distinct_tags_with_counts(mock_session)
+
+        assert result == [("music", 150), ("python", 80), ("travel", 45)]
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_empty_table_returns_empty_list(
+        self, repository: VideoTagRepository, mock_session: MagicMock
+    ) -> None:
+        """Test method returns empty list when table has no rows."""
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        result = await repository.get_distinct_tags_with_counts(mock_session)
+
+        assert result == []
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_groups_correctly(
+        self, repository: VideoTagRepository, mock_session: MagicMock
+    ) -> None:
+        """Test method returns properly grouped tags (each tag appears once)."""
+        # Mock result shows each tag appears once with its total count
+        mock_result = MagicMock()
+        mock_result.all.return_value = [
+            ("gaming", 200),
+            ("music", 150),
+            ("tech", 100),
+        ]
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        result = await repository.get_distinct_tags_with_counts(mock_session)
+
+        # Verify each tag appears exactly once
+        tags = [tag for tag, _ in result]
+        assert len(tags) == len(set(tags))  # No duplicates
+        assert result == [("gaming", 200), ("music", 150), ("tech", 100)]
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_single_tag(
+        self, repository: VideoTagRepository, mock_session: MagicMock
+    ) -> None:
+        """Test method handles single tag correctly."""
+        mock_result = MagicMock()
+        mock_result.all.return_value = [("python", 1)]
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        result = await repository.get_distinct_tags_with_counts(mock_session)
+
+        assert result == [("python", 1)]
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_large_dataset(
+        self, repository: VideoTagRepository, mock_session: MagicMock
+    ) -> None:
+        """Test method handles large number of distinct tags."""
+        # Generate 100 tags with various counts
+        mock_data = [(f"tag_{i}", i * 10) for i in range(1, 101)]
+        mock_result = MagicMock()
+        mock_result.all.return_value = mock_data
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        result = await repository.get_distinct_tags_with_counts(mock_session)
+
+        assert len(result) == 100
+        assert result[0] == ("tag_1", 10)
+        assert result[-1] == ("tag_100", 1000)
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_tags_with_same_count(
+        self, repository: VideoTagRepository, mock_session: MagicMock
+    ) -> None:
+        """Test method handles tags with identical occurrence counts."""
+        # All tags have the same count but should still be grouped and ordered
+        mock_result = MagicMock()
+        mock_result.all.return_value = [
+            ("alpha", 50),
+            ("beta", 50),
+            ("gamma", 50),
+        ]
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        result = await repository.get_distinct_tags_with_counts(mock_session)
+
+        # Should return all tags with their counts, alphabetically ordered
+        assert result == [("alpha", 50), ("beta", 50), ("gamma", 50)]
+        mock_session.execute.assert_called_once()

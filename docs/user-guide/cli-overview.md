@@ -97,6 +97,9 @@ chronovista tags [COMMAND]
 | `search --pattern <pattern>` | Search tags by pattern |
 | `stats` | Comprehensive tag statistics |
 | `by-video --id <video_id>` | Show all tags for a video |
+| `normalize` | Normalize all tags and populate canonical_tags/tag_aliases tables |
+| `analyze` | Preview tag normalization analysis without modifying the database |
+| `recount` | Recalculate alias_count and video_count on all canonical tags |
 
 **Note:** Tags use `--tag`, `--pattern`, and `--id` options (not positional arguments) to support tags and video IDs that start with `-`.
 
@@ -531,6 +534,73 @@ chronovista tags by-video --id "-2kc5xfeQEs"
 chronovista tags by-video -i "dQw4w9WgXcQ"
 ```
 
+#### Normalize Tags
+
+```bash
+chronovista tags normalize [OPTIONS]
+```
+
+Processes all distinct tags from `video_tags` through the 9-step Unicode normalization pipeline and populates the `canonical_tags` and `tag_aliases` tables. Idempotent — safe to re-run after partial completion or to pick up new tags.
+
+**Options:**
+
+- `--batch-size <n>` - Number of records per transaction commit (default: 1000)
+
+**Examples:**
+
+```bash
+# Run with default batch size
+chronovista tags normalize
+
+# Run with smaller batches (less memory, more frequent commits)
+chronovista tags normalize --batch-size 500
+```
+
+#### Analyze Tags
+
+```bash
+chronovista tags analyze [OPTIONS]
+```
+
+Read-only preview of tag normalization showing estimated canonical tag count, top canonical groups by alias count, collision candidates (diacritic-affected merges), and skipped tags.
+
+**Options:**
+
+- `--format <format>` - Output format: `table` (default) or `json`
+- `--dry-run` - Accepted but no-op (analyze is always read-only)
+
+**Examples:**
+
+```bash
+# Table output to terminal
+chronovista tags analyze
+
+# Save JSON for review
+chronovista tags analyze --format json > analysis.json
+```
+
+#### Recount Tags
+
+```bash
+chronovista tags recount [OPTIONS]
+```
+
+Recalculates `alias_count` and `video_count` on all canonical tags from the source-of-truth tables (`tag_aliases` and `video_tags`). Useful after manual edits or to verify data integrity.
+
+**Options:**
+
+- `--dry-run` - Preview count deltas without writing to the database
+
+**Examples:**
+
+```bash
+# Recalculate and update counts
+chronovista tags recount
+
+# Preview what would change
+chronovista tags recount --dry-run
+```
+
 ### Playlist Management
 
 #### List Playlists
@@ -845,6 +915,22 @@ chronovista tags stats
 # View all tags for a specific video
 chronovista tags by-video --id "dQw4w9WgXcQ"
 chronovista tags by-video --id "-2kc5xfeQEs"  # Video ID starting with -
+```
+
+### Tag Normalization
+
+```bash
+# Preview normalization analysis (read-only)
+chronovista tags analyze
+chronovista tags analyze --format json > analysis.json
+
+# Run the backfill (populates canonical_tags and tag_aliases)
+chronovista tags normalize
+chronovista tags normalize --batch-size 500
+
+# Recalculate counts after manual changes
+chronovista tags recount
+chronovista tags recount --dry-run  # Preview count deltas
 ```
 
 ### Deleted Video Recovery

@@ -52,6 +52,13 @@ Command-line interface modules.
       show_root_heading: true
       show_source: true
 
+## Tag Commands
+
+::: chronovista.cli.tag_commands
+    options:
+      show_root_heading: true
+      show_source: true
+
 ## Transcript Commands
 
 ::: chronovista.cli.transcript_commands

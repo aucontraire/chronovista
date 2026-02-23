@@ -12,6 +12,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.32.0] - 2026-02-23
+
+### Added
+- **Feature 029: Tag Normalization Backfill Pipeline (ADR-003 Phase 2)**
+  - `TagBackfillService` bulk normalization pipeline processing 141,163 tags into 124,686 canonical groups
+  - `chronovista tags normalize` CLI command with `--batch-size` option and Rich progress bar
+  - `chronovista tags analyze` CLI command with `--format` (table/json) for pre-backfill preview and collision review
+  - `chronovista tags recount` CLI command with `--dry-run` for recalculating `alias_count` and `video_count`
+  - SQLAlchemy Core `INSERT ... ON CONFLICT DO NOTHING` bulk inserts with pre-generated UUIDv7 primary keys
+  - Two-pass `video_count` computation: insert with 0, then single SQL `UPDATE ... FROM (subquery JOIN)`
+  - Collision detection flagging diacritic-affected merges (e.g., México/Mexico) for manual review
+  - `KNOWN_FALSE_MERGE_PATTERNS` (5 entries: café, résumé, cliché, naïve, rapé) for analysis display labels
+  - Per-batch transaction commits (1,000 records/batch) with idempotent re-run support
+  - `get_distinct_tags_with_counts()` repository method for bulk tag extraction
+
+### Fixed
+- Tag normalization idempotency bug: `normalize("##")` → `"#"` but `normalize("#")` → `None`; changed single `#` strip to `lstrip("#")`
+
+### Technical
+- 145 new tests (37 unit + 12 integration + 17 CLI + Hypothesis property-based)
+- 5,255 total tests passing with 0 regressions
+- mypy strict compliance (0 errors)
+- No new dependencies
+
 ## [0.31.0] - 2026-02-22
 
 ### Added

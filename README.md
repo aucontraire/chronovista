@@ -7,7 +7,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-AGPL--3.0-green.svg" alt="License: AGPL-3.0">
-  <img src="https://img.shields.io/badge/tests-6,000+-brightgreen.svg" alt="Tests: 6,000+">
+  <img src="https://img.shields.io/badge/tests-7,200+-brightgreen.svg" alt="Tests: 7,200+">
   <img src="https://img.shields.io/badge/coverage-72%25-brightgreen.svg" alt="Coverage: 72%">
   <img src="https://img.shields.io/badge/code%20style-black-000000.svg" alt="Code style: black">
 </p>
@@ -367,6 +367,7 @@ See [System Architecture](src/chronovista/docs/architecture/system-architecture.
 - [x] Video search and filtering UI
 - [x] Deleted content visibility and status tracking
 - [x] Wayback Machine video recovery
+- [x] Tag normalization (canonical grouping of 141K tags)
 - [ ] ML-powered insights
 
 

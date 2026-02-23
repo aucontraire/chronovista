@@ -466,3 +466,93 @@ def tags_by_video(
             )
 
     asyncio.run(run_by_video())
+
+
+@tag_app.command("normalize")
+def normalize_tags(
+    batch_size: int = typer.Option(
+        1000,
+        "--batch-size",
+        help="Number of records per transaction commit",
+    ),
+) -> None:
+    """Normalize all video tags and populate canonical_tags/tag_aliases tables."""
+
+    async def _run() -> None:
+        from chronovista.services.tag_backfill import TagBackfillService
+        from chronovista.services.tag_normalization import TagNormalizationService
+
+        normalization_service = TagNormalizationService()
+        backfill_service = TagBackfillService(normalization_service)
+
+        async for session in db_manager.get_session(echo=False):
+            await backfill_service.run_backfill(
+                session, batch_size=batch_size, console=console
+            )
+
+    try:
+        asyncio.run(_run())
+    except SystemExit as e:
+        raise typer.Exit(code=e.code if isinstance(e.code, int) else 1)
+
+
+@tag_app.command("analyze")
+def analyze_tags(
+    output_format: str = typer.Option(
+        "table",
+        "--format",
+        help="Output format",
+        case_sensitive=False,
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Accepted but no-op (analyze is always read-only)",
+    ),
+) -> None:
+    """Analyze tag normalization without modifying the database."""
+
+    async def _run() -> None:
+        from chronovista.services.tag_backfill import TagBackfillService
+        from chronovista.services.tag_normalization import TagNormalizationService
+
+        normalization_service = TagNormalizationService()
+        backfill_service = TagBackfillService(normalization_service)
+
+        async for session in db_manager.get_session(echo=False):
+            await backfill_service.run_analysis(
+                session, output_format=output_format, console=console
+            )
+
+    try:
+        asyncio.run(_run())
+    except SystemExit as e:
+        raise typer.Exit(code=e.code if isinstance(e.code, int) else 1)
+
+
+@tag_app.command("recount")
+def recount_tags(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview count changes without writing to the database",
+    ),
+) -> None:
+    """Recalculate alias_count and video_count on all canonical tags."""
+
+    async def _run() -> None:
+        from chronovista.services.tag_backfill import TagBackfillService
+        from chronovista.services.tag_normalization import TagNormalizationService
+
+        normalization_service = TagNormalizationService()
+        backfill_service = TagBackfillService(normalization_service)
+
+        async for session in db_manager.get_session(echo=False):
+            await backfill_service.run_recount(
+                session, dry_run=dry_run, console=console
+            )
+
+    try:
+        asyncio.run(_run())
+    except SystemExit as e:
+        raise typer.Exit(code=e.code if isinstance(e.code, int) else 1)

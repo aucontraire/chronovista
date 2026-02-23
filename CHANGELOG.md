@@ -9,6 +9,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.32.0] - 2026-02-23
+
+### Added
+
+#### Feature 029: Tag Normalization Backfill Pipeline (ADR-003 Phase 2)
+
+Bulk backfill pipeline that processes all 141,163 distinct tags from the `video_tags` table through the 9-step Unicode normalization pipeline (from Phase 1) to populate `canonical_tags` (124,686 rows) and `tag_aliases` (141,163 rows). Includes pre-backfill analysis with collision detection, post-backfill count recalculation, and three new CLI commands.
+
+**Backfill Pipeline (`TagBackfillService`):**
+- `_normalize_and_group()` processes all distinct tags through `TagNormalizationService.normalize()`, groups by normalized form, selects canonical forms via `select_canonical_form()`
+- SQLAlchemy Core `INSERT ... ON CONFLICT DO NOTHING` for bulk inserts (first use in codebase — justified by 140K+ rows)
+- Pre-generated UUIDv7 primary keys via `uuid_utils.uuid7()` for batch efficiency
+- Two-pass `video_count` computation: insert `canonical_tags` with `video_count=0`, then single SQL `UPDATE ... FROM (subquery JOIN tag_aliases JOIN video_tags)`
+- Per-batch transaction commits (1,000 records/batch) — interruption loses at most one batch
+- Idempotent re-run: `ON CONFLICT DO NOTHING` on UNIQUE constraints; safe to re-execute after partial completion
+
+**Analysis & Collision Detection:**
+- `run_analysis()` provides read-only pre-backfill preview with top canonical tags, collision candidates, and skip list
+- Collision detection compares casefolded-only forms within normalized groups; flags merges where forms differ by Tier 1 diacritics (e.g., México/Mexico → mexico)
+- `KNOWN_FALSE_MERGE_PATTERNS` (`frozenset[str]`, 5 entries: café, résumé, cliché, naïve, rapé) — display-only labels in analysis output, not stored in DB, does not prevent merges
+- Table and JSON output formats (`--format table|json`)
+
+**Count Recalculation:**
+- `run_recount()` recalculates `alias_count` and `video_count` on all canonical tags from source-of-truth tables
+- `--dry-run` mode previews count deltas without writing
+
+**CLI Commands (`chronovista tags`):**
+- `tags normalize` — Run backfill with `--batch-size` option (default 1,000) and Rich progress bar
+- `tags analyze` — Pre-backfill analysis with `--format` (table/json) and `--dry-run` (no-op, always read-only)
+- `tags recount` — Recalculate counts with `--dry-run` for preview
+
+**Repository Enhancement:**
+- `get_distinct_tags_with_counts()` on `VideoTagRepository` — `SELECT tag, COUNT(*) FROM video_tags GROUP BY tag`
+
+### Fixed
+- Tag normalization idempotency bug: `normalize("##")` produced `"#"` but `normalize("#")` produced `None`; changed single leading `#` strip (`text[1:]`) to `text.lstrip("#")` to strip all leading hash characters
+
+### Technical
+- 145 new tests: 37 unit (service), 12 integration (full pipeline against DB), 17 CLI (command interface), 79 existing tests updated
+- Hypothesis property-based tests for normalization idempotency (500 examples)
+- 5,255 total tests passing with 0 regressions
+- mypy strict compliance (0 errors on all new and modified files)
+- No new dependencies (uses existing SQLAlchemy Core, uuid_utils, Rich, Typer)
+
 ## [0.31.0] - 2026-02-22
 
 ### Added

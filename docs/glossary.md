@@ -77,6 +77,23 @@ Project-specific terminology used throughout chronovista documentation and code.
 **Stub Channel**
 :   A minimal channel record created automatically during video recovery when the recovered `channel_id` doesn't exist in the database. Satisfies foreign key constraints and is marked with `availability_status = unavailable`. Stub channels are eligible for subsequent channel recovery to fill in their metadata.
 
+## Tag Normalization Concepts
+
+**Tag Normalization**
+:   The process of grouping raw video tags into canonical forms using Unicode normalization, diacritic stripping, and case folding. For example, "México", "mexico", and "MEXICO" all normalize to the same canonical tag. Implemented as a 9-step pipeline in `TagNormalizationService`.
+
+**Canonical Tag**
+:   The preferred display form for a group of normalized tags. Selected by preference: title case (`str.istitle()`), then highest frequency, then alphabetical tiebreaker. Stored in the `canonical_tags` table with UUIDv7 primary keys.
+
+**Tag Alias**
+:   A raw tag form from `video_tags` linked to its canonical tag. Every distinct raw tag becomes exactly one alias. Stored in the `tag_aliases` table. The `video_tags` table itself is never modified — aliases provide the mapping.
+
+**Collision Candidate**
+:   A group of tags that were merged by diacritic stripping where the casefolded forms differ (e.g., "México" casefolds to "méxico" while "Mexico" casefolds to "mexico"). Flagged in `tags analyze` output for manual review. Not an error — most collisions are correct merges.
+
+**Tier 1 Diacritics**
+:   Eight combining marks that are universally safe to strip during normalization: acute, grave, circumflex, diaeresis, macron, breve, dot above, and ring above. Stripping these merges common accent variants (e.g., café/cafe) without changing letter identity.
+
 ## Technical Concepts
 
 **Development Mode**

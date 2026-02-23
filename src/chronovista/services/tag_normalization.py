@@ -93,7 +93,7 @@ class TagNormalizationService:
     The 9-step pipeline is executed in strict order:
 
     1. Strip leading/trailing whitespace
-    2. Strip a single leading ``#`` character
+    2. Strip all leading ``#`` characters
     3. Replace non-breaking spaces (U+00A0) and tabs with regular space
     4. Collapse multiple spaces to a single space
     5. Strip zero-width characters (U+200B, U+200C, U+200D, U+FEFF)
@@ -132,9 +132,8 @@ class TagNormalizationService:
         # Step 1: Strip leading/trailing whitespace
         text = raw_tag.strip()
 
-        # Step 2: Strip SINGLE leading '#' character
-        if text.startswith("#"):
-            text = text[1:]
+        # Step 2: Strip ALL leading '#' characters (for idempotency — FR-007)
+        text = text.lstrip("#")
 
         # Step 3: Replace non-breaking spaces and tabs with regular space
         text = text.replace("\u00A0", " ").replace("\t", " ")

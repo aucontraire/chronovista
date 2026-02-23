@@ -232,3 +232,64 @@ class LanguageCode(str, Enum):
             "ar": ["ar", "ar-SA", "ar-EG"],
         }
         return variants_map.get(base_language, [base_language])
+
+
+class EntityType(str, Enum):
+    """Types of named entities extracted from tags."""
+
+    PERSON = "person"
+    ORGANIZATION = "organization"
+    PLACE = "place"
+    EVENT = "event"
+    WORK = "work"
+    TECHNICAL_TERM = "technical_term"
+    TOPIC = "topic"
+    DESCRIPTOR = "descriptor"
+
+
+class EntityAliasType(str, Enum):
+    """Types of alias relationships between entity names."""
+
+    NAME_VARIANT = "name_variant"
+    ABBREVIATION = "abbreviation"
+    NICKNAME = "nickname"
+    ASR_ERROR = "asr_error"
+    TRANSLATED_NAME = "translated_name"
+    FORMER_NAME = "former_name"
+
+
+class TagStatus(str, Enum):
+    """Lifecycle status of a canonical tag."""
+
+    ACTIVE = "active"
+    MERGED = "merged"
+    DEPRECATED = "deprecated"
+
+
+class CreationMethod(str, Enum):
+    """Methods by which a canonical tag was created."""
+
+    AUTO_NORMALIZE = "auto_normalize"
+    MANUAL_MERGE = "manual_merge"
+    BACKFILL = "backfill"
+    API_CREATE = "api_create"
+
+
+class DiscoveryMethod(str, Enum):
+    """Methods by which a tag was originally discovered."""
+
+    MANUAL = "manual"
+    SPACY_NER = "spacy_ner"
+    TAG_BOOTSTRAP = "tag_bootstrap"
+    LLM_EXTRACTION = "llm_extraction"
+    USER_CREATED = "user_created"
+
+
+class TagOperationType(str, Enum):
+    """Types of operations recorded in the tag operation log."""
+
+    MERGE = "merge"
+    SPLIT = "split"
+    RENAME = "rename"
+    DELETE = "delete"
+    CREATE = "create"

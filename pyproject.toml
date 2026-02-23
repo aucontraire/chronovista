@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "chronovista"
-version = "0.30.0"
+version = "0.31.0"
 description = "Personal YouTube data analytics tool for comprehensive access to your YouTube engagement history"
 authors = ["chronovista <noreply@chronovista.dev>"]
 maintainers = ["chronovista <noreply@chronovista.dev>"]
@@ -47,6 +47,7 @@ youtube-transcript-api = "^1.2.2"
 fastapi = "^0.109.0"
 uvicorn = {extras = ["standard"], version = "^0.27.0"}
 beautifulsoup4 = "^4.12.0"
+uuid-utils = "^0.14.1"
 
 [tool.poetry.group.recovery]
 optional = true

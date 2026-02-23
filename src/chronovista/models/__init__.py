@@ -172,6 +172,30 @@ from .transcript_segment import (
     TranscriptSegment,
     TranscriptSegmentResponse,
 )
+from .canonical_tag import (
+    CanonicalTag,
+    CanonicalTagBase,
+    CanonicalTagCreate,
+    CanonicalTagUpdate,
+)
+from .tag_alias import (
+    TagAlias,
+    TagAliasBase,
+    TagAliasCreate,
+    TagAliasUpdate,
+)
+from .named_entity import (
+    NamedEntity,
+    NamedEntityBase,
+    NamedEntityCreate,
+    NamedEntityUpdate,
+)
+from .entity_alias import (
+    EntityAlias,
+    EntityAliasBase,
+    EntityAliasCreate,
+    EntityAliasUpdate,
+)
 
 __all__ = [
     # YouTube API Response Models (FR-005, FR-006, FR-007)
@@ -325,6 +349,26 @@ __all__ = [
     "EnrichmentReport",
     "EnrichmentSummary",
     "EnrichmentDetail",
+    # Canonical Tags (Feature 028 - Tag Normalization)
+    "CanonicalTag",
+    "CanonicalTagCreate",
+    "CanonicalTagUpdate",
+    "CanonicalTagBase",
+    # Tag Aliases (Feature 028 - Tag Normalization)
+    "TagAlias",
+    "TagAliasCreate",
+    "TagAliasUpdate",
+    "TagAliasBase",
+    # Named Entities (Feature 028 - Tag Normalization)
+    "NamedEntity",
+    "NamedEntityCreate",
+    "NamedEntityUpdate",
+    "NamedEntityBase",
+    # Entity Aliases (Feature 028 - Tag Normalization)
+    "EntityAlias",
+    "EntityAliasCreate",
+    "EntityAliasUpdate",
+    "EntityAliasBase",
     # Utility functions
     "get_model_count",
 ]

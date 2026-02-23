@@ -6,10 +6,14 @@ the Repository pattern for clean separation of domain logic and data persistence
 """
 
 from .base import BaseRepository, BaseSQLAlchemyRepository, IdType
+from .canonical_tag_repository import CanonicalTagRepository
 from .channel_repository import ChannelRepository
 from .channel_topic_repository import ChannelTopicRepository
+from .entity_alias_repository import EntityAliasRepository
+from .named_entity_repository import NamedEntityRepository
 from .playlist_membership_repository import PlaylistMembershipRepository
 from .playlist_repository import PlaylistRepository
+from .tag_alias_repository import TagAliasRepository
 from .topic_category_repository import TopicCategoryRepository
 from .transcript_segment_repository import TranscriptSegmentRepository
 from .user_language_preference_repository import UserLanguagePreferenceRepository
@@ -25,10 +29,14 @@ __all__ = [
     "BaseRepository",
     "BaseSQLAlchemyRepository",
     "IdType",
+    "CanonicalTagRepository",
     "ChannelRepository",
     "ChannelTopicRepository",
+    "EntityAliasRepository",
+    "NamedEntityRepository",
     "PlaylistMembershipRepository",
     "PlaylistRepository",
+    "TagAliasRepository",
     "TopicCategoryRepository",
     "TranscriptSegmentRepository",
     "UserLanguagePreferenceRepository",

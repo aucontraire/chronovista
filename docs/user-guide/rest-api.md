@@ -197,8 +197,12 @@ GET /api/v1/videos
 | `has_transcript` | boolean | Filter by transcript availability | - |
 | `uploaded_after` | datetime | ISO 8601 date filter (inclusive) | - |
 | `uploaded_before` | datetime | ISO 8601 date filter (inclusive) | - |
+| `canonical_tag` | string[] | Filter by canonical tag group (AND semantics, max 10) | - |
 | `limit` | integer | Items per page (1-100) | 20 |
 | `offset` | integer | Pagination offset | 0 |
+
+!!! tip "Canonical Tag vs Raw Tag Filtering"
+    The `tag` parameter matches exact raw tag strings (case-sensitive). The `canonical_tag` parameter matches normalized tag groups — e.g., `canonical_tag=mexico` returns videos tagged with "mexico", "Mexico", "méxico", "México", "#mexico", etc. Multiple `canonical_tag` values use AND semantics (videos must match all specified groups).
 
 ##### Response
 
@@ -811,6 +815,127 @@ GET /api/v1/tags/{tag}/videos
 ##### Response
 
 Returns the same format as the videos list endpoint, filtered to videos with the specified tag, sorted by upload date (most recent first).
+
+---
+
+### Canonical Tags
+
+Canonical tags group raw tag variations (case, accents, hashtags) into unified concepts. For example, the canonical tag "mexico" groups "mexico", "Mexico", "méxico", "México", "#mexico", and more. Built by the tag normalization pipeline (ADR-003).
+
+#### List Canonical Tags
+
+Get paginated list of canonical tags with optional prefix search and fuzzy suggestions.
+
+```
+GET /api/v1/canonical-tags
+```
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `q` | string | Prefix search query (1-500 characters) | - |
+| `limit` | integer | Items per page (1-100) | 20 |
+| `offset` | integer | Pagination offset | 0 |
+
+##### Response
+
+```json
+{
+  "data": [
+    {
+      "canonical_form": "Mexico",
+      "normalized_form": "mexico",
+      "alias_count": 9,
+      "video_count": 910
+    },
+    {
+      "canonical_form": "Mexico City",
+      "normalized_form": "mexico city",
+      "alias_count": 4,
+      "video_count": 64
+    }
+  ],
+  "pagination": {
+    "total": 124686,
+    "limit": 20,
+    "offset": 0,
+    "has_more": true
+  },
+  "suggestions": null
+}
+```
+
+!!! note "Fuzzy Suggestions"
+    When `q` is provided (2+ characters) and no prefix matches are found, the response includes a `suggestions` array with up to 10 similar canonical tags using Levenshtein distance matching. Each suggestion includes both `canonical_form` (for display) and `normalized_form` (for URL navigation).
+
+!!! note "Rate Limiting"
+    When `q` is provided, the endpoint enforces a rate limit of 50 requests per minute per client IP. Exceeding this returns a 429 response with a `Retry-After` header.
+
+#### Get Canonical Tag Detail
+
+Get details for a canonical tag including its top raw-form aliases.
+
+```
+GET /api/v1/canonical-tags/{normalized_form}
+```
+
+##### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `normalized_form` | string | Normalized tag form (URL-encoded if contains spaces) |
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `alias_limit` | integer | Maximum aliases to return (1-50) | 5 |
+
+##### Response
+
+```json
+{
+  "data": {
+    "canonical_form": "Mexico",
+    "normalized_form": "mexico",
+    "alias_count": 9,
+    "video_count": 910,
+    "top_aliases": [
+      { "raw_form": "mexico", "occurrence_count": 651 },
+      { "raw_form": "Mexico", "occurrence_count": 176 },
+      { "raw_form": "méxico", "occurrence_count": 109 },
+      { "raw_form": "México", "occurrence_count": 76 },
+      { "raw_form": "#mexico", "occurrence_count": 8 }
+    ],
+    "created_at": "2026-02-23T19:39:36Z",
+    "updated_at": "2026-02-23T19:41:12Z"
+  }
+}
+```
+
+#### Get Canonical Tag Videos
+
+Get paginated videos across all raw tag variations for a canonical tag.
+
+```
+GET /api/v1/canonical-tags/{normalized_form}/videos
+```
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `include_unavailable` | boolean | Include deleted/private videos | false |
+| `limit` | integer | Items per page (1-100) | 20 |
+| `offset` | integer | Pagination offset | 0 |
+
+##### Response
+
+Returns the same format as the videos list endpoint, filtered to videos matching any raw form alias of the canonical tag, sorted by upload date (most recent first).
+
+!!! note "Query Timeout"
+    This endpoint has a 10-second query timeout. If exceeded, a 504 Gateway Timeout response is returned.
 
 ---
 
@@ -1522,6 +1647,51 @@ curl "http://localhost:8000/api/v1/tags/hip%20hop"
 curl http://localhost:8000/api/v1/tags/news/videos
 ```
 
+#### List Canonical Tags
+
+```bash
+# All canonical tags sorted by video count
+curl http://localhost:8000/api/v1/canonical-tags
+
+# Prefix search
+curl "http://localhost:8000/api/v1/canonical-tags?q=mex&limit=10"
+
+# Fuzzy suggestions (when no prefix match)
+curl "http://localhost:8000/api/v1/canonical-tags?q=mexco"
+```
+
+#### Get Canonical Tag Detail
+
+```bash
+# Simple tag
+curl http://localhost:8000/api/v1/canonical-tags/mexico
+
+# Tag with spaces (URL-encoded)
+curl "http://localhost:8000/api/v1/canonical-tags/new%20york"
+
+# Limit aliases returned
+curl "http://localhost:8000/api/v1/canonical-tags/mexico?alias_limit=3"
+```
+
+#### Get Canonical Tag Videos
+
+```bash
+curl http://localhost:8000/api/v1/canonical-tags/mexico/videos
+```
+
+#### Filter Videos by Canonical Tag
+
+```bash
+# Single canonical tag (returns all raw variations)
+curl "http://localhost:8000/api/v1/videos?canonical_tag=mexico"
+
+# Multiple canonical tags (AND semantics)
+curl "http://localhost:8000/api/v1/videos?canonical_tag=mexico&canonical_tag=travel"
+
+# Combined with raw tag filter
+curl "http://localhost:8000/api/v1/videos?canonical_tag=gaming&tag=python"
+```
+
 #### Recover Video Metadata
 
 ```bash
@@ -1639,7 +1809,9 @@ await updatePreferences([
 
 ## Rate Limiting
 
-The API does not implement rate limiting directly, but be aware of YouTube API quotas when triggering sync operations. See the [Authentication](authentication.md) guide for quota information.
+The canonical tag search endpoint (`GET /api/v1/canonical-tags?q=...`) and tag search endpoint (`GET /api/v1/tags?q=...`) enforce rate limiting at **50 requests per minute per client IP**. Exceeding this limit returns a `429 Too Many Requests` response with a `Retry-After` header indicating how many seconds to wait.
+
+Other endpoints do not implement rate limiting directly, but be aware of YouTube API quotas when triggering sync operations. See the [Authentication](authentication.md) guide for quota information.
 
 ## Troubleshooting
 

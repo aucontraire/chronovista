@@ -45,6 +45,9 @@ from chronovista.db.models import TopicCategory, UserVideo as UserVideoDB, Video
 from chronovista.db.models import VideoTag, VideoTopic, VideoTranscript
 from chronovista.exceptions import BadRequestError, CDXError, ConflictError, NotFoundError
 from chronovista.models.enums import AvailabilityStatus
+from chronovista.repositories.canonical_tag_repository import (
+    CanonicalTagRepository,
+)
 from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
 )
@@ -72,6 +75,7 @@ _VIDEO_SORT_COLUMN_MAP = {
 
 # Filter limits per FR-034
 MAX_TAGS = 10
+MAX_CANONICAL_TAGS = 10
 MAX_TOPICS = 10
 MAX_TOTAL_FILTERS = 15
 
@@ -192,6 +196,7 @@ def build_transcript_summary(transcripts: List[VideoTranscript]) -> TranscriptSu
 
 def _validate_filter_limits(
     tags: List[str],
+    canonical_tags: List[str],
     topic_ids: List[str],
     category: Optional[str],
 ) -> None:
@@ -202,6 +207,8 @@ def _validate_filter_limits(
     ----------
     tags : List[str]
         List of tag filters.
+    canonical_tags : List[str]
+        List of canonical tag filters.
     topic_ids : List[str]
         List of topic ID filters.
     category : Optional[str]
@@ -227,6 +234,22 @@ def _validate_filter_limits(
             },
         )
 
+    # Check canonical tag limit
+    if len(canonical_tags) > MAX_CANONICAL_TAGS:
+        raise BadRequestError(
+            message=(
+                f"Maximum {MAX_CANONICAL_TAGS} canonical tags allowed, "
+                f"received {len(canonical_tags)}. "
+                f"Remove {len(canonical_tags) - MAX_CANONICAL_TAGS} canonical tags to continue."
+            ),
+            details={
+                "field": "canonical_tag",
+                "max_allowed": MAX_CANONICAL_TAGS,
+                "received": len(canonical_tags),
+                "excess": len(canonical_tags) - MAX_CANONICAL_TAGS,
+            },
+        )
+
     # Check topic limit
     if len(topic_ids) > MAX_TOPICS:
         raise BadRequestError(
@@ -243,7 +266,7 @@ def _validate_filter_limits(
         )
 
     # Check total filter count
-    total_filters = len(tags) + len(topic_ids) + (1 if category else 0)
+    total_filters = len(tags) + len(canonical_tags) + len(topic_ids) + (1 if category else 0)
     if total_filters > MAX_TOTAL_FILTERS:
         raise BadRequestError(
             message=(
@@ -496,6 +519,10 @@ async def list_videos(
         None,
         description="Filter by YouTube category ID (single value)",
     ),
+    canonical_tag: List[str] = Query(
+        default=[],
+        description="Filter by canonical tag(s) - AND logic between multiple. Max 10.",
+    ),
     topic_id: List[str] = Query(
         default=[],
         description="Filter by topic ID(s) - OR logic between multiple topics. Max 10.",
@@ -589,7 +616,7 @@ async def list_videos(
     query_start_time = time.perf_counter()
 
     # Validate filter limits (FR-034)
-    _validate_filter_limits(tag, topic_id, category)
+    _validate_filter_limits(tag, canonical_tag, topic_id, category)
 
     # Validate filter values and collect warnings (FR-042 through FR-045)
     all_warnings: List[FilterWarning] = []
@@ -605,6 +632,27 @@ async def list_videos(
     # Validate topics
     valid_topics, topic_warnings = await _validate_topics(session, topic_id)
     all_warnings.extend(topic_warnings)
+
+    # Canonical tag filter: build subqueries (AND logic)
+    canonical_tag_subqueries = None
+    if canonical_tag:
+        ct_repo = CanonicalTagRepository()
+        canonical_tag_subqueries = await ct_repo.build_canonical_tag_video_subqueries(
+            session, canonical_tag
+        )
+        if canonical_tag_subqueries is None:
+            # FR-012: Unrecognized canonical tag — short-circuit to empty result
+            logger.warning(
+                "Canonical tag filter short-circuit: one or more values not found: %s",
+                canonical_tag,
+            )
+            pagination = PaginationMeta(
+                total=0,
+                limit=limit,
+                offset=offset,
+                has_more=False,
+            )
+            return VideoListResponse(data=[], pagination=pagination)
 
     # Build base query with relationships for classification data
     query = (
@@ -666,6 +714,11 @@ async def list_videos(
             .distinct()
         )
         query = query.where(VideoDB.video_id.in_(topic_videos))
+
+    # Canonical tag filter (AND logic — intersect video sets per canonical tag)
+    if canonical_tag_subqueries:
+        for sq in canonical_tag_subqueries:
+            query = query.where(VideoDB.video_id.in_(sq))
 
     # Liked-only filter (Feature 027) — EXISTS subquery following has_transcript pattern
     if liked_only:
@@ -800,9 +853,10 @@ async def list_videos(
     # T100: Performance logging for filter query timing
     query_elapsed_ms = (time.perf_counter() - query_start_time) * 1000
     logger.info(
-        "[videos] Filter query completed in %.0fms (tags=%d, category=%s, topics=%d)",
+        "[videos] Filter query completed in %.0fms (tags=%d, canonical_tags=%d, category=%s, topics=%d)",
         query_elapsed_ms,
         len(valid_tags),
+        len(canonical_tag),
         1 if valid_category else 0,
         len(valid_topics),
     )

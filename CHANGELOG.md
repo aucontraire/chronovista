@@ -9,6 +9,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.33.0] - 2026-02-23
+
+### Added
+
+#### Feature 030: Canonical Tag API (ADR-003 Phase 3)
+
+Read-only REST API exposing 124,686 canonical tags from the tag normalization system. Provides browse, detail, and video-by-tag endpoints with prefix search, fuzzy suggestions, per-client rate limiting, and integration into the unified video filter system. Backend only — no frontend or CLI changes.
+
+**API Endpoints (`/api/v1/canonical-tags`):**
+- `GET /canonical-tags` — Browse all canonical tags sorted by `video_count DESC` with pagination (`limit`, `offset`)
+- `GET /canonical-tags?q={prefix}` — Prefix search on `canonical_form` and `normalized_form` via `ILIKE '{q}%'`
+- `GET /canonical-tags/{normalized_form}` — Full detail: display form, alias/video counts, top aliases (configurable via `alias_limit`, default 5), timestamps
+- `GET /canonical-tags/{normalized_form}/videos` — Paginated videos via 3-table JOIN: `canonical_tags → tag_aliases (canonical_tag_id) → video_tags (raw_form = tag) → videos (video_id)`, ordered by `upload_date DESC`
+- `GET /videos?canonical_tag={normalized_form}` — Filter existing video list by canonical tag with AND semantics across multiple values (e.g., `?canonical_tag=python&canonical_tag=tutorial`)
+
+**Fuzzy Suggestions (Levenshtein distance ≤ 2):**
+- When `q` parameter is provided and prefix search yields zero results, computes fuzzy suggestions from top 5,000 active canonical tags (by `video_count`)
+- Uses `chronovista.utils.fuzzy.find_similar()` with `max_distance=2`, `limit=10`
+- Returns structured `CanonicalTagSuggestion` objects with `canonical_form` and `normalized_form`
+- Fallback is best-effort: catches all exceptions and returns `null` suggestions on failure
+
+**Rate Limiting (per-client IP, autocomplete only):**
+- 50 requests per minute sliding window, applied only when `q` parameter is present
+- Client identification via `X-Forwarded-For` header (proxied) or `request.client.host` (direct)
+- In-memory `defaultdict(list)` storage with timestamp cleanup per request
+- 429 response with `Retry-After` header and `retry_after` body field
+
+**Repository (`CanonicalTagRepository`):**
+- `search()` — Prefix ILIKE on `canonical_form`/`normalized_form` with `status` filter, `video_count DESC` sort, pagination, total count
+- `get_by_normalized_form()` — Single lookup by unique normalized form with status filter
+- `get_top_aliases()` — Top aliases for a canonical tag ordered by `occurrence_count DESC`
+- `get_videos_by_normalized_form()` — 3-table JOIN path with `selectinload(channel)`, `selectinload(transcripts)`, `selectinload(category)`, `include_unavailable` toggle, pagination, distinct count
+- `build_canonical_tag_video_subqueries()` — Builds per-tag subqueries for AND-intersection filtering; returns `None` on unrecognized tag (short-circuit for FR-012 empty result)
+
+**Pydantic V2 Schemas (6 models):**
+- `CanonicalTagListItem` — Summary with `canonical_form`, `normalized_form`, `alias_count`, `video_count`
+- `CanonicalTagDetail` — Full detail extending list item with `top_aliases`, `created_at`, `updated_at`
+- `TagAliasItem` — Individual alias with `raw_form`, `occurrence_count`
+- `CanonicalTagSuggestion` — Fuzzy match result with `canonical_form`, `normalized_form`
+- `CanonicalTagListResponse` — Wraps `data`, `pagination`, optional `suggestions`
+- `CanonicalTagDetailResponse` — Wraps single `data` item
+- All models use `ConfigDict(strict=True, from_attributes=True)`
+
+**Unified Filter Integration:**
+- `CANONICAL_TAG` added to `FilterType` enum in `api/schemas/filters.py`
+- Max 10 canonical tag values per request, counting toward `MAX_TOTAL_FILTERS=15`
+- `build_canonical_tag_video_subqueries()` generates SQL-level AND intersection subqueries
+- Unrecognized canonical tags return empty result (FR-012 short-circuit) with WARNING log
+
+**NFR Compliance:**
+- NFR-001: List endpoint 0.174s (requirement: < 2s)
+- NFR-002: Videos-by-tag endpoint 0.091s (requirement: < 3s)
+- NFR-005: WARNING for unrecognized filters, INFO for query timing, DEBUG for fuzzy pool details
+- NFR-006: 10-second `asyncio.wait_for()` timeout on video queries with 504 Gateway Timeout response and `Retry-After: 5` header
+
+**Route Registration:**
+- Router mounted at `/api/v1/` in `api/main.py` with `tags=["Canonical Tags"]`
+- Videos endpoint defined before detail endpoint to prevent `{normalized_form}` capturing `"videos"` path segment
+
+### Fixed
+- Missing `selectinload(VideoDB.category)` in `CanonicalTagRepository.get_videos_by_normalized_form()` — caused `MissingGreenlet` error when router accessed `video.category.name` outside async context
+
+### Technical
+- 96 new tests: 21 unit (repository), 25 integration (router), 8 integration (filter), 4 regression (backward compatibility SC-005), 7 fuzzy/rate-limit, 24 tag endpoint, 7 additional
+- All test IDs generated via `YouTubeIdFactory.create_channel_id()` / `create_video_id()` — zero hand-crafted YouTube IDs
+- Quickstart validation passed all 12 checks against live production data (124,686 canonical tags, 141,163 aliases)
+- mypy strict compliance (0 errors on all new and modified files)
+- No new dependencies (uses existing FastAPI, SQLAlchemy, Pydantic V2, uuid_utils)
+- No database migrations (reads existing tables from Feature 028a/029)
+- 5,351 total tests passing with 0 regressions
+
 ## [0.32.0] - 2026-02-23
 
 ### Added

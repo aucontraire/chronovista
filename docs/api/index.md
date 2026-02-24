@@ -51,6 +51,9 @@ All endpoints except `/health` require authentication. The API shares OAuth toke
 | `/tags` | GET | List tags |
 | `/tags/{tag}` | GET | Get tag details |
 | `/tags/{tag}/videos` | GET | Videos with tag |
+| `/canonical-tags` | GET | List canonical tags (with prefix search and fuzzy suggestions) |
+| `/canonical-tags/{normalized_form}` | GET | Get canonical tag detail with aliases |
+| `/canonical-tags/{normalized_form}/videos` | GET | Videos across all raw tag variations |
 | `/search/segments` | GET | Search transcripts |
 | `/preferences/languages` | GET, PUT | Language preferences |
 | `/sync/{operation}` | POST | Trigger sync |

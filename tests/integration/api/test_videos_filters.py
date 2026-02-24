@@ -5,9 +5,12 @@ Tests filter logic for tags, categories, and topics per FR-019 through FR-053.
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, AsyncGenerator, List
+from typing import TYPE_CHECKING, Any, AsyncGenerator, List
 from unittest.mock import patch
+
+from uuid_utils import uuid7
 
 import pytest
 from httpx import AsyncClient
@@ -15,13 +18,16 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import (
+    CanonicalTag,
     Channel,
+    TagAlias,
     TopicCategory,
     Video,
     VideoCategory,
     VideoTag,
     VideoTopic,
 )
+from tests.factories.id_factory import YouTubeIdFactory
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -579,3 +585,408 @@ class TestEmptyResults:
             # Check that we have warnings for each invalid filter
             if "warnings" in data:
                 assert len(data["warnings"]) == 3  # One for each invalid filter
+
+
+# ---------------------------------------------------------------------------
+# Factory-generated IDs for canonical tag filter tests.
+# Seeds are stable so IDs are deterministic across runs.
+# ---------------------------------------------------------------------------
+_CT_CHANNEL_ID = YouTubeIdFactory.create_channel_id(seed="canonical_tag_filter_test")
+
+_CT_VID_1 = YouTubeIdFactory.create_video_id(seed="ct_filter_vid_1")
+_CT_VID_2 = YouTubeIdFactory.create_video_id(seed="ct_filter_vid_2")
+_CT_VID_3 = YouTubeIdFactory.create_video_id(seed="ct_filter_vid_3")
+_CT_VID_4 = YouTubeIdFactory.create_video_id(seed="ct_filter_vid_4")
+_CT_VID_5 = YouTubeIdFactory.create_video_id(seed="ct_filter_vid_5")
+
+_CT_VIDEO_IDS = [_CT_VID_1, _CT_VID_2, _CT_VID_3, _CT_VID_4, _CT_VID_5]
+
+
+def _make_uuid() -> uuid.UUID:
+    """Generate a UUIDv7 compatible with both Pydantic and PostgreSQL."""
+    return uuid.UUID(bytes=uuid7().bytes)
+
+
+class TestCanonicalTagFilter:
+    """Tests for canonical_tag filter on the /api/v1/videos endpoint.
+
+    The canonical_tag filter resolves aliases via the 3-table join path:
+    canonical_tags -> tag_aliases (canonical_tag_id) -> video_tags (raw_form = tag)
+    and applies AND semantics across multiple canonical_tag values.
+    """
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _seed_data(
+        session_factory,
+    ) -> dict[str, Any]:
+        """Seed CanonicalTag, TagAlias, Channel, Video, and VideoTag rows.
+
+        Returns a dict with all created IDs for assertion/cleanup reference.
+        """
+        async with session_factory() as session:
+            # ----- cleanup previous run leftovers (FK order) -----
+            video_ids = _CT_VIDEO_IDS
+            await session.execute(
+                delete(VideoTag).where(VideoTag.video_id.in_(video_ids))
+            )
+            await session.execute(
+                delete(TagAlias).where(
+                    TagAlias.raw_form.in_(
+                        [
+                            "python",
+                            "Python",
+                            "#Python",
+                            "gaming",
+                            "Gaming",
+                            "#gaming",
+                        ]
+                    )
+                )
+            )
+            # Delete canonical tags by normalized_form (unique)
+            await session.execute(
+                delete(CanonicalTag).where(
+                    CanonicalTag.normalized_form.in_(["python", "gaming"])
+                )
+            )
+            await session.execute(
+                delete(Video).where(Video.video_id.in_(video_ids))
+            )
+            await session.execute(
+                delete(Channel).where(Channel.channel_id == _CT_CHANNEL_ID)
+            )
+            await session.commit()
+
+            # ----- Channel -----
+            channel = Channel(
+                channel_id=_CT_CHANNEL_ID,
+                title="Canonical Tag Test Channel",
+                description="Channel for canonical tag filter tests",
+            )
+            session.add(channel)
+            await session.flush()
+
+            # ----- Canonical tags -----
+            ct_python_id = _make_uuid()
+            ct_gaming_id = _make_uuid()
+
+            ct_python = CanonicalTag(
+                id=ct_python_id,
+                canonical_form="Python",
+                normalized_form="python",
+                alias_count=3,
+                video_count=3,
+                status="active",
+            )
+            ct_gaming = CanonicalTag(
+                id=ct_gaming_id,
+                canonical_form="Gaming",
+                normalized_form="gaming",
+                alias_count=3,
+                video_count=2,
+                status="active",
+            )
+            session.add_all([ct_python, ct_gaming])
+            await session.flush()
+
+            # ----- Tag aliases -----
+            aliases = [
+                TagAlias(
+                    id=_make_uuid(),
+                    raw_form="python",
+                    normalized_form="python",
+                    canonical_tag_id=ct_python_id,
+                    occurrence_count=10,
+                ),
+                TagAlias(
+                    id=_make_uuid(),
+                    raw_form="Python",
+                    normalized_form="python",
+                    canonical_tag_id=ct_python_id,
+                    occurrence_count=5,
+                ),
+                TagAlias(
+                    id=_make_uuid(),
+                    raw_form="#Python",
+                    normalized_form="python",
+                    canonical_tag_id=ct_python_id,
+                    occurrence_count=2,
+                ),
+                TagAlias(
+                    id=_make_uuid(),
+                    raw_form="gaming",
+                    normalized_form="gaming",
+                    canonical_tag_id=ct_gaming_id,
+                    occurrence_count=8,
+                ),
+                TagAlias(
+                    id=_make_uuid(),
+                    raw_form="Gaming",
+                    normalized_form="gaming",
+                    canonical_tag_id=ct_gaming_id,
+                    occurrence_count=4,
+                ),
+                TagAlias(
+                    id=_make_uuid(),
+                    raw_form="#gaming",
+                    normalized_form="gaming",
+                    canonical_tag_id=ct_gaming_id,
+                    occurrence_count=1,
+                ),
+            ]
+            session.add_all(aliases)
+            await session.flush()
+
+            # ----- Videos -----
+            # v1: tagged "python" (lowercase alias)
+            # v2: tagged "Python" (titlecase alias)
+            # v3: tagged "#Python" (hashtag alias)
+            # v4: tagged "gaming" AND "python" (both canonical tags)
+            # v5: tagged "Gaming" only
+            for idx, vid_id in enumerate(_CT_VIDEO_IDS, start=1):
+                v = Video(
+                    video_id=vid_id,
+                    channel_id=_CT_CHANNEL_ID,
+                    title=f"Canonical Tag Test Video {idx}",
+                    description=f"Test video {idx} for canonical tag filter",
+                    upload_date=datetime(2024, 3, idx, tzinfo=timezone.utc),
+                    duration=200 + idx * 10,
+                )
+                session.add(v)
+            await session.flush()
+
+            # ----- VideoTag rows -----
+            tag_rows = [
+                VideoTag(video_id=_CT_VID_1, tag="python"),
+                VideoTag(video_id=_CT_VID_2, tag="Python"),
+                VideoTag(video_id=_CT_VID_3, tag="#Python"),
+                VideoTag(video_id=_CT_VID_4, tag="python"),
+                VideoTag(video_id=_CT_VID_4, tag="gaming"),
+                VideoTag(video_id=_CT_VID_5, tag="Gaming"),
+            ]
+            session.add_all(tag_rows)
+            await session.commit()
+
+        return {
+            "video_ids": _CT_VIDEO_IDS,
+            "ct_python_id": ct_python_id,
+            "ct_gaming_id": ct_gaming_id,
+        }
+
+    @staticmethod
+    async def _cleanup_data(session_factory) -> None:
+        """Remove all rows seeded by ``_seed_data``."""
+        video_ids = _CT_VIDEO_IDS
+        async with session_factory() as session:
+            await session.execute(
+                delete(VideoTag).where(VideoTag.video_id.in_(video_ids))
+            )
+            await session.execute(
+                delete(TagAlias).where(
+                    TagAlias.raw_form.in_(
+                        [
+                            "python",
+                            "Python",
+                            "#Python",
+                            "gaming",
+                            "Gaming",
+                            "#gaming",
+                        ]
+                    )
+                )
+            )
+            await session.execute(
+                delete(CanonicalTag).where(
+                    CanonicalTag.normalized_form.in_(["python", "gaming"])
+                )
+            )
+            await session.execute(
+                delete(Video).where(Video.video_id.in_(video_ids))
+            )
+            await session.execute(
+                delete(Channel).where(Channel.channel_id == _CT_CHANNEL_ID)
+            )
+            await session.commit()
+
+    # ------------------------------------------------------------------
+    # Tests
+    # ------------------------------------------------------------------
+
+    async def test_single_canonical_tag_returns_videos_across_aliases(
+        self,
+        async_client: AsyncClient,
+        integration_session_factory,
+    ) -> None:
+        """A single canonical_tag value should match videos tagged with any alias."""
+        await self._seed_data(integration_session_factory)
+        try:
+            with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+                mock_oauth.is_authenticated.return_value = True
+                response = await async_client.get(
+                    "/api/v1/videos?canonical_tag=python"
+                )
+                assert response.status_code == 200
+                data = response.json()
+                video_ids = {v["video_id"] for v in data["data"]}
+                # v1 ("python"), v2 ("Python"), v3 ("#Python"), v4 ("python")
+                assert _CT_VID_1 in video_ids
+                assert _CT_VID_2 in video_ids
+                assert _CT_VID_3 in video_ids
+                assert _CT_VID_4 in video_ids
+                # v5 only has "Gaming" — should NOT appear
+                assert _CT_VID_5 not in video_ids
+        finally:
+            await self._cleanup_data(integration_session_factory)
+
+    async def test_multiple_canonical_tags_and_semantics(
+        self,
+        async_client: AsyncClient,
+        integration_session_factory,
+    ) -> None:
+        """Multiple canonical_tag params use AND logic — only videos matching ALL should appear."""
+        await self._seed_data(integration_session_factory)
+        try:
+            with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+                mock_oauth.is_authenticated.return_value = True
+                response = await async_client.get(
+                    "/api/v1/videos?canonical_tag=python&canonical_tag=gaming"
+                )
+                assert response.status_code == 200
+                data = response.json()
+                video_ids = {v["video_id"] for v in data["data"]}
+                # Only v4 has both "python" AND "gaming" tags
+                assert _CT_VID_4 in video_ids
+                # Others should be excluded
+                assert _CT_VID_1 not in video_ids
+                assert _CT_VID_5 not in video_ids
+        finally:
+            await self._cleanup_data(integration_session_factory)
+
+    async def test_nonexistent_canonical_tag_returns_empty_set(
+        self,
+        async_client: AsyncClient,
+        integration_session_factory,
+    ) -> None:
+        """A canonical_tag that does not exist returns empty data, not 404."""
+        await self._seed_data(integration_session_factory)
+        try:
+            with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+                mock_oauth.is_authenticated.return_value = True
+                response = await async_client.get(
+                    "/api/v1/videos?canonical_tag=nonexistent_tag_xyz_999"
+                )
+                assert response.status_code == 200
+                data = response.json()
+                assert data["data"] == []
+                assert data["pagination"]["total"] == 0
+        finally:
+            await self._cleanup_data(integration_session_factory)
+
+    async def test_raw_tag_filter_still_works(
+        self,
+        async_client: AsyncClient,
+        integration_session_factory,
+    ) -> None:
+        """Existing raw tag filter (tag=...) is unchanged — backwards compat FR-007."""
+        await self._seed_data(integration_session_factory)
+        try:
+            with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+                mock_oauth.is_authenticated.return_value = True
+                response = await async_client.get("/api/v1/videos?tag=python")
+                assert response.status_code == 200
+                data = response.json()
+                video_ids = {v["video_id"] for v in data["data"]}
+                # Raw tag "python" matches exactly — v1 and v4 only
+                assert _CT_VID_1 in video_ids
+                assert _CT_VID_4 in video_ids
+                # "Python" (titlecase) is a different raw tag
+                assert _CT_VID_2 not in video_ids
+        finally:
+            await self._cleanup_data(integration_session_factory)
+
+    async def test_canonical_tag_combined_with_raw_tag(
+        self,
+        async_client: AsyncClient,
+        integration_session_factory,
+    ) -> None:
+        """canonical_tag AND raw tag filters apply together (AND across both)."""
+        await self._seed_data(integration_session_factory)
+        try:
+            with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+                mock_oauth.is_authenticated.return_value = True
+                # canonical_tag=gaming narrows to v4, v5
+                # tag=python narrows to v1, v4
+                # intersection = v4
+                response = await async_client.get(
+                    "/api/v1/videos?canonical_tag=gaming&tag=python"
+                )
+                assert response.status_code == 200
+                data = response.json()
+                video_ids = {v["video_id"] for v in data["data"]}
+                assert _CT_VID_4 in video_ids
+                assert len(video_ids & {_CT_VID_1, _CT_VID_2, _CT_VID_3, _CT_VID_5}) == 0
+        finally:
+            await self._cleanup_data(integration_session_factory)
+
+    async def test_exceeding_max_canonical_tags_returns_400(
+        self,
+        async_client: AsyncClient,
+    ) -> None:
+        """More than 10 canonical_tag values should return 400 (FR-034)."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            params = "&".join(
+                [f"canonical_tag=tag{i}" for i in range(11)]
+            )
+            response = await async_client.get(f"/api/v1/videos?{params}")
+            assert response.status_code == 400
+
+    async def test_canonical_tag_counts_toward_total_filter_limit(
+        self,
+        async_client: AsyncClient,
+    ) -> None:
+        """canonical_tags + tags + topics total > 15 returns 400 (FR-034)."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            # 6 canonical_tags + 5 tags + 5 topics = 16 > 15
+            ct_params = "&".join(
+                [f"canonical_tag=ct{i}" for i in range(6)]
+            )
+            tag_params = "&".join([f"tag=tag{i}" for i in range(5)])
+            topic_params = "&".join(
+                [f"topic_id=/m/topic{i}" for i in range(5)]
+            )
+            response = await async_client.get(
+                f"/api/v1/videos?{ct_params}&{tag_params}&{topic_params}"
+            )
+            assert response.status_code == 400
+
+    async def test_empty_canonical_tag_list_returns_all_videos(
+        self,
+        async_client: AsyncClient,
+        integration_session_factory,
+    ) -> None:
+        """No canonical_tag parameter returns normal unfiltered results."""
+        await self._seed_data(integration_session_factory)
+        try:
+            with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+                mock_oauth.is_authenticated.return_value = True
+                # Without canonical_tag filter
+                response_all = await async_client.get("/api/v1/videos")
+                assert response_all.status_code == 200
+                total_all = response_all.json()["pagination"]["total"]
+
+                # With empty canonical_tag (no value provided)
+                response_empty = await async_client.get("/api/v1/videos")
+                assert response_empty.status_code == 200
+                total_empty = response_empty.json()["pagination"]["total"]
+
+                # Totals should be the same — no filtering applied
+                assert total_all == total_empty
+                assert total_all > 0
+        finally:
+            await self._cleanup_data(integration_session_factory)

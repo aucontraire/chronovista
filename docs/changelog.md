@@ -12,6 +12,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.33.0] - 2026-02-23
+
+### Added
+- **Feature 030: Canonical Tag API (ADR-003 Phase 3)**
+  - `GET /api/v1/canonical-tags` — browse all 124,686 canonical tags with prefix search, sorted by video_count DESC
+  - `GET /api/v1/canonical-tags/{normalized_form}` — tag detail with top raw-form aliases and occurrence counts
+  - `GET /api/v1/canonical-tags/{normalized_form}/videos` — paginated videos spanning all raw tag variations via 3-table JOIN
+  - `GET /api/v1/videos?canonical_tag=...` — filter videos by canonical tag with AND semantics across multiple values
+  - Fuzzy suggestion fallback (Levenshtein distance ≤ 2) when prefix search yields no results, returning structured `CanonicalTagSuggestion` objects
+  - Per-client IP rate limiting (50 req/min) on canonical tag autocomplete endpoint
+  - `build_canonical_tag_video_subqueries()` repository method for SQL-level AND intersection filtering
+  - 6 Pydantic V2 response schemas: `CanonicalTagListItem`, `CanonicalTagDetail`, `TagAliasItem`, `CanonicalTagSuggestion`, `CanonicalTagListResponse`, `CanonicalTagDetailResponse`
+  - `CANONICAL_TAG` filter type added to unified filter system with max 10 values, counting toward MAX_TOTAL_FILTERS=15
+  - 10-second query timeout on videos-by-tag endpoint with 504 Gateway Timeout response
+
+### Fixed
+- Missing `selectinload(VideoDB.category)` in canonical tag videos repository query causing `MissingGreenlet` error
+
+### Technical
+- 96 new tests (21 unit + 25 integration router + 8 integration filter + 4 regression + 7 fuzzy/rate-limit + 24 tag endpoint)
+- All test IDs generated via `YouTubeIdFactory` (factory-based, no hand-crafted IDs)
+- NFR-005 logging compliance: WARNING for unrecognized filters, INFO for query timing, DEBUG for fuzzy pool details
+- Quickstart validation passed all 12 checks against live data (124,686 canonical tags)
+- Performance: list endpoint 0.174s (NFR-001: <2s), videos-by-tag 0.091s (NFR-002: <3s)
+- No new dependencies, no migrations
+
 ## [0.32.0] - 2026-02-23
 
 ### Added

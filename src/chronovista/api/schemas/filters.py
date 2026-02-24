@@ -43,6 +43,8 @@ class FilterType(str, Enum):
     ----------
     TAG : str
         Tag-based filtering.
+    CANONICAL_TAG : str
+        Canonical tag-based filtering (normalized tag groups).
     CATEGORY : str
         Category-based filtering.
     TOPIC : str
@@ -50,6 +52,7 @@ class FilterType(str, Enum):
     """
 
     TAG = "tag"
+    CANONICAL_TAG = "canonical_tag"
     CATEGORY = "category"
     TOPIC = "topic"
 
@@ -57,12 +60,15 @@ class FilterType(str, Enum):
 class VideoFilterParams(BaseModel):
     """Query parameters for filtering videos (FR-034).
 
-    Validates filter limits: max 10 tags, max 10 topics, 1 category, 15 total.
+    Validates filter limits: max 10 tags, max 10 canonical tags,
+    max 10 topics, 1 category, 15 total.
 
     Attributes
     ----------
     tags : List[str]
         Filter by tag(s) with OR logic between multiple values. Max 10.
+    canonical_tags : List[str]
+        Filter by canonical tag(s) with AND logic between multiple values. Max 10.
     category : Optional[str]
         Filter by category ID (single value only).
     topic_ids : List[str]
@@ -84,6 +90,10 @@ class VideoFilterParams(BaseModel):
     tags: List[str] = Field(
         default_factory=list,
         description="Filter by tag(s) - OR logic between multiple",
+    )
+    canonical_tags: List[str] = Field(
+        default_factory=list,
+        description="Filter by canonical tag(s) - AND logic between multiple",
     )
     category: Optional[str] = Field(
         None,
@@ -118,6 +128,33 @@ class VideoFilterParams(BaseModel):
             raise ValueError(
                 f"Maximum 10 tags allowed, received {len(v)}. "
                 f"Remove {len(v) - 10} tags to continue."
+            )
+        return v
+
+    @field_validator("canonical_tags")
+    @classmethod
+    def validate_canonical_tags_limit(cls, v: List[str]) -> List[str]:
+        """Validate maximum 10 canonical tags.
+
+        Parameters
+        ----------
+        v : List[str]
+            The list of canonical tag normalized forms to validate.
+
+        Returns
+        -------
+        List[str]
+            The validated list of canonical tags.
+
+        Raises
+        ------
+        ValueError
+            If more than 10 canonical tags are provided.
+        """
+        if len(v) > 10:
+            raise ValueError(
+                f"Maximum 10 canonical tags allowed, received {len(v)}. "
+                f"Remove {len(v) - 10} canonical tags to continue."
             )
         return v
 
@@ -156,7 +193,7 @@ class VideoFilterParams(BaseModel):
         int
             Total count of all filter values (tags + topics + category if set).
         """
-        count = len(self.tags) + len(self.topic_ids)
+        count = len(self.tags) + len(self.canonical_tags) + len(self.topic_ids)
         if self.category:
             count += 1
         return count
@@ -320,6 +357,7 @@ class ErrorTypeURI:
 # Filter validation limits (FR-034)
 FILTER_LIMITS = {
     "MAX_TAGS": 10,
+    "MAX_CANONICAL_TAGS": 10,
     "MAX_TOPICS": 10,
     "MAX_CATEGORIES": 1,
     "MAX_TOTAL": 15,

@@ -65,6 +65,27 @@ Database schema and entity relationships.
                            |    language_code  |
                            |    localized_title|
                            +-------------------+
+
++-------------------+     +-------------------+     +-------------------+
+| named_entities    |     | canonical_tags    |     | tag_operation_logs|
++-------------------+     +-------------------+     +-------------------+
+| PK id (UUID)      |     | PK id (UUID)      |     | PK id (UUID)      |
+|    canonical_name |     |    canonical_form |     |    operation_type |
+|    entity_type    |     |    normalized_form|     |    rollback_data  |
+|    discovery_method|    |    entity_type    |     |    performed_by   |
+|    confidence     |     | FK entity_id      |     |    rolled_back    |
++--------+----------+     |    status         |     +-------------------+
+         |                +--------+----------+
+         |  1:N                    |  1:N
+         |                         |
++--------+----------+     +--------+----------+
+| entity_aliases    |     | tag_aliases       |
++-------------------+     +-------------------+
+| PK id (UUID)      |     | PK id (UUID)      |
+| FK entity_id      |     |    raw_form       |-----> video_tags.tag
+|    alias_name     |     |    normalized_form|
+|    alias_type     |     | FK canonical_tag_id|
++-------------------+     +-------------------+
 ```
 
 ## Core Tables
@@ -311,6 +332,111 @@ CREATE TABLE video_localizations (
 );
 ```
 
+## Tag Normalization Tables
+
+### canonical_tags
+
+The authoritative/display form of each unique tag concept. Maps raw tag variations to canonical forms via `tag_aliases`.
+
+```sql
+CREATE TABLE canonical_tags (
+    id UUID PRIMARY KEY,  -- UUIDv7 generated application-side
+    canonical_form VARCHAR(500) NOT NULL,
+    normalized_form VARCHAR(500) NOT NULL UNIQUE,
+    alias_count INTEGER NOT NULL DEFAULT 1,
+    video_count INTEGER NOT NULL DEFAULT 0,
+    entity_type VARCHAR(50),  -- person, organization, place, event, work, technical_term, topic, descriptor
+    entity_id UUID REFERENCES named_entities(id) ON DELETE SET NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',  -- active, merged, deprecated
+    merged_into_id UUID REFERENCES canonical_tags(id),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+```
+
+### tag_aliases
+
+Maps every raw tag variation to its canonical form. Joins to `video_tags.tag` via `raw_form`.
+
+```sql
+CREATE TABLE tag_aliases (
+    id UUID PRIMARY KEY,  -- UUIDv7 generated application-side
+    raw_form VARCHAR(500) NOT NULL UNIQUE,
+    normalized_form VARCHAR(500) NOT NULL,
+    canonical_tag_id UUID NOT NULL REFERENCES canonical_tags(id) ON DELETE CASCADE,
+    creation_method VARCHAR(30) NOT NULL DEFAULT 'auto_normalize',
+    normalization_version INTEGER NOT NULL DEFAULT 1,
+    occurrence_count INTEGER NOT NULL DEFAULT 1,
+    first_seen_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    last_seen_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+```
+
+### named_entities
+
+Entity knowledge base for named entities extracted from tags.
+
+```sql
+CREATE TABLE named_entities (
+    id UUID PRIMARY KEY,  -- UUIDv7 generated application-side
+    canonical_name VARCHAR(500) NOT NULL,
+    canonical_name_normalized VARCHAR(500) NOT NULL,
+    entity_type VARCHAR(50) NOT NULL,  -- person, organization, place, event, work, technical_term
+    entity_subtype VARCHAR(100),
+    description TEXT,
+    external_ids JSONB DEFAULT '{}',
+    mention_count INTEGER NOT NULL DEFAULT 0,
+    video_count INTEGER NOT NULL DEFAULT 0,
+    channel_count INTEGER NOT NULL DEFAULT 0,
+    discovery_method VARCHAR(30) NOT NULL DEFAULT 'manual',
+    confidence FLOAT NOT NULL DEFAULT 1.0,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    merged_into_id UUID REFERENCES named_entities(id),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_entity_normalized_type UNIQUE (canonical_name_normalized, entity_type)
+);
+```
+
+### entity_aliases
+
+Name variations for entities. Created when a tag is classified as an entity type.
+
+```sql
+CREATE TABLE entity_aliases (
+    id UUID PRIMARY KEY,  -- UUIDv7 generated application-side
+    entity_id UUID NOT NULL REFERENCES named_entities(id) ON DELETE CASCADE,
+    alias_name VARCHAR(500) NOT NULL,
+    alias_name_normalized VARCHAR(500) NOT NULL,
+    alias_type VARCHAR(30) NOT NULL DEFAULT 'name_variant',
+    occurrence_count INTEGER NOT NULL DEFAULT 0,
+    first_seen_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    last_seen_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_entity_alias_normalized UNIQUE (alias_name_normalized, entity_id)
+);
+```
+
+### tag_operation_logs
+
+Audit trail for tag management operations (merge, split, rename, classify, deprecate). Stores self-contained `rollback_data` JSONB for undo capability.
+
+```sql
+CREATE TABLE tag_operation_logs (
+    id UUID PRIMARY KEY,  -- UUIDv7 generated application-side
+    operation_type VARCHAR(30) NOT NULL,  -- merge, split, rename, delete, create
+    source_canonical_ids JSONB NOT NULL DEFAULT '[]',
+    target_canonical_id UUID,
+    affected_alias_ids JSONB NOT NULL DEFAULT '[]',
+    reason TEXT,
+    performed_by VARCHAR(100) NOT NULL DEFAULT 'system',
+    performed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    rollback_data JSONB NOT NULL DEFAULT '{}',
+    rolled_back BOOLEAN NOT NULL DEFAULT FALSE,
+    rolled_back_at TIMESTAMP WITH TIME ZONE
+);
+```
+
 ## Indexes
 
 ### Performance Indexes
@@ -336,6 +462,20 @@ CREATE INDEX idx_channel_topics_topic ON channel_topics(topic_id);
 -- User queries
 CREATE INDEX idx_user_videos_user ON user_videos(user_id);
 CREATE INDEX idx_user_videos_watched ON user_videos(last_watched_at);
+
+-- Tag normalization queries
+CREATE INDEX idx_canonical_tags_video_count_desc ON canonical_tags(video_count DESC);
+CREATE INDEX idx_canonical_tags_canonical_pattern ON canonical_tags(canonical_form varchar_pattern_ops);
+CREATE INDEX idx_canonical_tags_entity_id ON canonical_tags(entity_id) WHERE entity_id IS NOT NULL;
+CREATE INDEX idx_canonical_tags_active_normalized ON canonical_tags(normalized_form) WHERE status = 'active';
+CREATE INDEX idx_tag_aliases_normalized ON tag_aliases(normalized_form);
+CREATE INDEX idx_tag_aliases_canonical_id ON tag_aliases(canonical_tag_id);
+CREATE INDEX idx_tag_aliases_raw_pattern ON tag_aliases(raw_form varchar_pattern_ops);
+CREATE INDEX idx_named_entities_normalized ON named_entities(canonical_name_normalized);
+CREATE INDEX idx_named_entities_type ON named_entities(entity_type);
+CREATE INDEX idx_entity_aliases_entity_id ON entity_aliases(entity_id);
+CREATE INDEX idx_tag_operation_logs_performed_at ON tag_operation_logs(performed_at);
+CREATE INDEX idx_video_tags_tag ON video_tags(tag);
 ```
 
 ## Pydantic Models

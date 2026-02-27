@@ -100,6 +100,15 @@ chronovista tags [COMMAND]
 | `normalize` | Normalize all tags and populate canonical_tags/tag_aliases tables |
 | `analyze` | Preview tag normalization analysis without modifying the database |
 | `recount` | Recalculate alias_count and video_count on all canonical tags |
+| `merge <sources...> --into <target>` | Merge canonical tags (reassign aliases from source to target) |
+| `split <normalized_form> --aliases "..."` | Split aliases into a new canonical tag |
+| `rename <normalized_form> --to "..."` | Change canonical display form (cosmetic only) |
+| `classify <normalized_form> --type <type>` | Assign entity type (person, place, topic, etc.) |
+| `classify --top N` | Show top N unclassified tags by video count |
+| `deprecate <normalized_form>` | Soft-delete a canonical tag |
+| `collisions` | Interactive review of diacritic collision candidates |
+| `undo <operation_id>` | Reverse a tag management operation |
+| `undo --list` | Show recent tag management operations |
 
 **Note:** Tags use `--tag`, `--pattern`, and `--id` options (not positional arguments) to support tags and video IDs that start with `-`.
 
@@ -600,6 +609,214 @@ chronovista tags recount
 # Preview what would change
 chronovista tags recount --dry-run
 ```
+
+#### Merge Tags
+
+```bash
+chronovista tags merge <SOURCES...> --into <TARGET> [OPTIONS]
+```
+
+Merges one or more canonical tags into a target tag. All aliases from the source tags are reassigned to the target. Source tags are marked as `merged` with `merged_into_id` set. Counts are recalculated on the target.
+
+**Arguments:**
+
+- `SOURCES` - One or more normalized forms to merge (positional, required)
+
+**Options:**
+
+- `--into <normalized_form>` - Target canonical tag (required)
+- `--reason <text>` - Reason for the merge (stored in operation log, max 1000 chars)
+
+**Examples:**
+
+```bash
+# Single merge
+chronovista tags merge mejico --into mexico
+
+# Multi-source merge (single atomic operation)
+chronovista tags merge mejico mexiko --into mexico --reason "spelling variants"
+```
+
+#### Split Tag
+
+```bash
+chronovista tags split <NORMALIZED_FORM> --aliases <ALIASES> [OPTIONS]
+```
+
+Splits specific aliases from a canonical tag into a new canonical tag. The new tag's canonical form is selected using the standard algorithm (istitle → frequency → alphabetical). At least one alias must remain on the original tag.
+
+**Arguments:**
+
+- `NORMALIZED_FORM` - Canonical tag to split from (positional, required)
+
+**Options:**
+
+- `--aliases <aliases>` - Comma-separated raw forms to split out (required)
+- `--reason <text>` - Reason for the split (max 1000 chars)
+
+**Examples:**
+
+```bash
+# Split specific aliases into a new canonical tag
+chronovista tags split "machine learning" --aliases "ML,M.L." --reason "acronym should be separate"
+```
+
+#### Rename Tag
+
+```bash
+chronovista tags rename <NORMALIZED_FORM> --to <NEW_FORM> [OPTIONS]
+```
+
+Changes the display form (`canonical_form`) of a canonical tag without affecting its `normalized_form` or aliases. Cosmetic only.
+
+**Arguments:**
+
+- `NORMALIZED_FORM` - Tag to rename (positional, required)
+
+**Options:**
+
+- `--to <form>` - New display form (required)
+- `--reason <text>` - Reason for the rename (max 1000 chars)
+
+**Examples:**
+
+```bash
+# Fix capitalization
+chronovista tags rename "joe biden" --to "Joe Biden"
+
+# Fix brand casing
+chronovista tags rename "iphone" --to "iPhone"
+```
+
+#### Classify Tag
+
+```bash
+chronovista tags classify <NORMALIZED_FORM> --type <TYPE> [OPTIONS]
+chronovista tags classify --top <N>
+```
+
+Assigns an entity type to a canonical tag. Entity-producing types (person, organization, place, event, work, technical_term) create a `named_entities` record and copy tag aliases as `entity_aliases`. Tag-only types (topic, descriptor) set `entity_type` only.
+
+With `--top N`, displays the N highest-video_count unclassified canonical tags for triage.
+
+**Arguments:**
+
+- `NORMALIZED_FORM` - Tag to classify (positional, optional if using --top)
+
+**Options:**
+
+- `--type <type>` - Entity type: `person`, `organization`, `place`, `event`, `work`, `technical_term`, `topic`, `descriptor`
+- `--top <n>` - Show top N unclassified tags by video count
+- `--force` - Reclassify an already-classified tag
+- `--reason <text>` - Reason for the classification (max 1000 chars)
+
+**Examples:**
+
+```bash
+# Classify as a person (creates named entity + entity aliases)
+chronovista tags classify "aaron mate" --type person --reason "journalist, The Grayzone"
+
+# Classify as a topic (no entity record created)
+chronovista tags classify "politics" --type topic --reason "general subject area"
+
+# Show top 20 unclassified tags for triage
+chronovista tags classify --top 20
+
+# Reclassify an already-classified tag
+chronovista tags classify "python" --type technical_term --force
+```
+
+#### Deprecate Tag
+
+```bash
+chronovista tags deprecate <NORMALIZED_FORM> [OPTIONS]
+chronovista tags deprecate --list
+```
+
+Soft-deletes a canonical tag by setting its status to `deprecated`. Deprecated tags are excluded from search and browse results but all data (aliases, video links) is preserved. With `--list`, shows all currently deprecated tags.
+
+**Arguments:**
+
+- `NORMALIZED_FORM` - Tag to deprecate (positional, optional if using --list)
+
+**Options:**
+
+- `--list` - Show all deprecated tags
+- `--reason <text>` - Reason for deprecation (max 1000 chars)
+
+**Examples:**
+
+```bash
+# Deprecate a junk tag
+chronovista tags deprecate "!!!" --reason "punctuation-only tag"
+
+# View all deprecated tags
+chronovista tags deprecate --list
+```
+
+#### Review Collisions
+
+```bash
+chronovista tags collisions [OPTIONS]
+```
+
+Interactive review of Tier 1 diacritic collision candidates — groups where raw forms differ by accents that were stripped during normalization (e.g., "café" and "cafe" merged into one canonical tag).
+
+For each group, displays the canonical form, raw aliases with occurrence counts, and which diacritics were stripped. Actions per group: `[s]plit` (split aliases into separate tag), `[k]eep` (mark as reviewed), `[n]ext` (skip).
+
+**Options:**
+
+- `--format <format>` - Output format: `table` (default, interactive) or `json` (non-interactive)
+- `--limit <n>` - Review only the top N collisions by combined occurrence count
+- `--include-reviewed` - Include previously reviewed collisions
+
+**Examples:**
+
+```bash
+# Interactive review
+chronovista tags collisions
+
+# Export all collisions as JSON for programmatic review
+chronovista tags collisions --format json > collisions.json
+
+# Review top 10 highest-occurrence collisions
+chronovista tags collisions --limit 10
+```
+
+#### Undo Operation
+
+```bash
+chronovista tags undo <OPERATION_ID>
+chronovista tags undo --list
+```
+
+Reverses a tag management operation using the self-contained `rollback_data` stored in `tag_operation_logs`. Supports undo for merge, split, rename, classify, and deprecate operations. With `--list`, shows the 20 most recent operations.
+
+**Arguments:**
+
+- `OPERATION_ID` - UUID of the operation to undo (positional, optional if using --list)
+
+**Options:**
+
+- `--list` - Show the 20 most recent operations with IDs, types, timestamps, and rolled_back status
+
+**Examples:**
+
+```bash
+# View recent operations
+chronovista tags undo --list
+
+# Undo a specific operation
+chronovista tags undo 019c9d80-8242-70c0-88ed-537e3acd6bc4
+```
+
+**Notes:**
+
+- Already-undone operations cannot be undone again
+- Cascading undo is not supported (undoing an undo requires manually re-running the original command)
+- For merge undo: aliases are reassigned back, source tags restored to `active`
+- For split undo: aliases moved back, created canonical tag deleted
+- For classify undo: entity_type cleared; created entity/aliases deleted (only if `discovery_method='user_created'`)
 
 ### Playlist Management
 

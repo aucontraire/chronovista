@@ -14,6 +14,7 @@ from .named_entity_repository import NamedEntityRepository
 from .playlist_membership_repository import PlaylistMembershipRepository
 from .playlist_repository import PlaylistRepository
 from .tag_alias_repository import TagAliasRepository
+from .tag_operation_log_repository import TagOperationLogRepository
 from .topic_category_repository import TopicCategoryRepository
 from .transcript_segment_repository import TranscriptSegmentRepository
 from .user_language_preference_repository import UserLanguagePreferenceRepository
@@ -37,6 +38,7 @@ __all__ = [
     "PlaylistMembershipRepository",
     "PlaylistRepository",
     "TagAliasRepository",
+    "TagOperationLogRepository",
     "TopicCategoryRepository",
     "TranscriptSegmentRepository",
     "UserLanguagePreferenceRepository",

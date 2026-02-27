@@ -94,6 +94,26 @@ Project-specific terminology used throughout chronovista documentation and code.
 **Tier 1 Diacritics**
 :   Eight combining marks that are universally safe to strip during normalization: acute, grave, circumflex, diaeresis, macron, breve, dot above, and ring above. Stripping these merges common accent variants (e.g., café/cafe) without changing letter identity.
 
+## Tag Management Concepts
+
+**Tag Management**
+:   Manual curation of the canonical tag system via CLI commands. Includes merging spelling variants, splitting incorrectly merged tags, renaming display forms, classifying tags as named entities, reviewing diacritic collisions, and deprecating junk tags. All operations are logged with full rollback data for undo capability.
+
+**Tag Operation Log**
+:   An audit trail record in the `tag_operation_logs` table. Each tag management operation (merge, split, rename, classify, deprecate) creates a log entry with `operation_type`, `reason`, `performed_by`, and `rollback_data` JSONB containing the complete previous state needed to reverse the operation.
+
+**Rollback Data**
+:   A self-contained JSON snapshot stored in `tag_operation_logs.rollback_data` that captures everything needed to undo an operation without reading other tables. For example, a merge operation's rollback data includes the source canonical IDs, alias reassignments, and previous counts.
+
+**Entity Classification**
+:   Assigning an `entity_type` to a canonical tag (e.g., person, organization, place). Entity-producing types (person, organization, place, event, work, technical_term) create a `named_entities` record and copy tag aliases as `entity_aliases`. Tag-only types (topic, descriptor) set `entity_type` on the canonical tag without creating entity records.
+
+**Deprecated Tag**
+:   A canonical tag with `status = 'deprecated'`. Excluded from search and browse results but all data (aliases, video links) is preserved. Deprecation is reversible via `tags undo`.
+
+**Diacritic Collision**
+:   A canonical tag group where raw forms differ by accents that were stripped during Tier 1 normalization. For example, "café" and "cafe" both normalize to "cafe" and get merged. The `tags collisions` command identifies these for manual review — most are correct merges, but some may need splitting.
+
 ## Technical Concepts
 
 **Development Mode**

@@ -196,6 +196,12 @@ from .entity_alias import (
     EntityAliasCreate,
     EntityAliasUpdate,
 )
+from .tag_operation_log import (
+    TagOperationLog,
+    TagOperationLogBase,
+    TagOperationLogCreate,
+    TagOperationLogUpdate,
+)
 
 __all__ = [
     # YouTube API Response Models (FR-005, FR-006, FR-007)
@@ -369,6 +375,11 @@ __all__ = [
     "EntityAliasCreate",
     "EntityAliasUpdate",
     "EntityAliasBase",
+    # Tag Operation Logs (Feature 031 - Tag Management CLI)
+    "TagOperationLog",
+    "TagOperationLogCreate",
+    "TagOperationLogUpdate",
+    "TagOperationLogBase",
     # Utility functions
     "get_model_count",
 ]

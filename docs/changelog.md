@@ -12,6 +12,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.34.0] - 2026-02-27
+
+### Added
+- **Feature 031: Tag Management CLI (ADR-003 Phase 4)**
+  - 7 new CLI commands for manual curation of 124,686 canonical tags with full undo capability
+  - `tags merge <sources...> --into <target>` — merge spelling variants with multi-source support (single atomic operation)
+  - `tags split <normalized_form> --aliases "raw1,raw2,..."` — split incorrectly merged aliases into a new canonical tag
+  - `tags rename <normalized_form> --to "New Form"` — change display form without affecting normalized form
+  - `tags classify <normalized_form> --type <entity_type>` — assign entity type (person, organization, place, event, work, technical_term, topic, descriptor)
+  - `tags classify --top N` — display top N unclassified canonical tags by video count for triage
+  - `tags deprecate <normalized_form>` — soft-delete junk tags (excluded from search/browse, data preserved)
+  - `tags collisions` — interactive review of Tier 1 diacritic collision candidates with [s]plit/[k]eep/[n]ext actions
+  - `tags undo <operation_id>` — reverse any operation using self-contained `rollback_data` JSONB
+  - `tags undo --list` — show 20 most recent operations with IDs, types, timestamps, rolled_back status
+  - `TagManagementService` orchestrating all operations with atomic transactions and type-specific undo handlers
+  - Entity classification creates `named_entities` + `entity_aliases` records for entity-producing types; topic/descriptor set `entity_type` only
+  - Upsert semantics for entity alias creation handling duplicate normalized forms (e.g., "Aaron Mate" / "Aaron Maté")
+  - `TagOperationLogRepository` for audit trail access (get, exists, get_recent, get_by_operation_id)
+  - 4 Pydantic V2 models: `TagOperationLogBase`, `TagOperationLogCreate`, `TagOperationLogUpdate`, `TagOperationLog`
+  - 7 result dataclasses: `MergeResult`, `SplitResult`, `RenameResult`, `ClassifyResult`, `DeprecateResult`, `UndoResult`, `CollisionGroup`
+  - All commands support `--reason "text"` flag stored in operation logs
+  - Rich console output with formatted panels and tables for all operations
+
+### Fixed
+- UUID JSON serialization in `tag_operation_logs` JSONB columns (Pydantic V2 coercion workaround)
+- Entity alias unique constraint violation during classify when multiple aliases normalize to same form
+
+### Technical
+- 181 new tests (73 unit service + 35 unit repository + 73 integration CLI)
+- 5,493 total tests passing with 0 regressions
+- mypy strict compliance (0 errors across 415 source files)
+- No new dependencies, no database migrations
+- `video_tags` table never modified (Safety Guarantee #1 from ADR-003)
+
 ## [0.33.0] - 2026-02-23
 
 ### Added

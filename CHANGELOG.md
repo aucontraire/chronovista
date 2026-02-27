@@ -9,6 +9,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.34.0] - 2026-02-27
+
+### Added
+
+#### Feature 031: Tag Management CLI (ADR-003 Phase 4)
+
+CLI commands for manual curation of the canonical tag system. Enables merging spelling variants the normalization pipeline missed, splitting incorrectly merged tags, renaming display forms, classifying tags as named entities, reviewing diacritic collisions, deprecating junk tags, and undoing any operation. All mutations are logged to `tag_operation_logs` with full `rollback_data` JSONB for undo capability. Backend/CLI only — no frontend changes, no new API endpoints, no database migrations.
+
+**7 New CLI Commands (`chronovista tags`):**
+
+| Command | Description |
+|---------|-------------|
+| `tags merge <sources...> --into <target>` | Merge one or more canonical tags into a target, reassigning all aliases |
+| `tags split <normalized_form> --aliases "raw1,raw2,..."` | Split specific aliases into a new canonical tag |
+| `tags rename <normalized_form> --to "New Form"` | Change canonical display form without affecting normalized form |
+| `tags classify <normalized_form> --type <entity_type>` | Assign entity type (person, organization, place, event, work, technical_term, topic, descriptor) |
+| `tags classify --top N` | Display top N unclassified canonical tags by video count |
+| `tags deprecate <normalized_form>` | Soft-delete a canonical tag (excluded from search/browse, data preserved) |
+| `tags collisions` | Interactive review of Tier 1 diacritic collision candidates with split/keep/next actions |
+| `tags undo <operation_id>` | Reverse any tag management operation using self-contained rollback data |
+
+**Tag Management Service (`TagManagementService`):**
+- Orchestrates all 7 operations with atomic transactions (all-or-nothing semantics per NFR-004)
+- Self-contained rollback data: each operation stores complete previous state in `tag_operation_logs.rollback_data` JSONB — undo requires no additional table reads
+- Type-specific undo handlers: `_undo_merge()`, `_undo_split()`, `_undo_rename()`, `_undo_classify()`, `_undo_deprecate()`
+- Lazy count recalculation via `SELECT COUNT` with JOIN after every mutation
+- Multi-source merge: `tags merge mejico mexiko --into mexico` in a single atomic operation with one log entry
+- Entity classification with upsert semantics (FR-019): handles multiple tag aliases normalizing to the same form (e.g., "Aaron Mate" and "Aaron Maté" → "aaron mate") by accumulating `occurrence_count` instead of failing on unique constraint
+- Entity-producing types (person, organization, place, event, work, technical_term) create `named_entities` + `entity_aliases` records; tag-only types (topic, descriptor) set `entity_type` only
+- Collision detection compares casefolded forms within canonical tag groups to find false diacritic merges
+- All commands support `--reason "text"` flag stored in `tag_operation_logs.reason`
+
+**Result Dataclasses:**
+- `MergeResult`, `SplitResult`, `RenameResult`, `ClassifyResult`, `DeprecateResult`, `UndoResult`, `CollisionGroup`
+- Rich console output with formatted panels and tables for all operations
+
+**Repository (`TagOperationLogRepository`):**
+- `get()`, `exists()`, `get_recent(limit=20)`, `get_by_operation_id()` for audit trail access
+- Inherits CRUD from `BaseSQLAlchemyRepository` with UUIDv7 primary keys
+
+**Pydantic V2 Models (`TagOperationLog` family):**
+- `TagOperationLogBase`, `TagOperationLogCreate`, `TagOperationLogUpdate`, `TagOperationLog`
+- JSONB-stored UUID lists use `list[str]` to prevent Pydantic V2 coercion issues with `json.dumps()`
+- Validated `operation_type` constrained to {merge, split, rename, delete, create}
+
+### Fixed
+- UUID JSON serialization error in `tag_operation_logs` JSONB columns: changed `source_canonical_ids` and `affected_alias_ids` from `list[uuid.UUID]` to `list[str]` in `TagOperationLogCreate` to prevent Pydantic V2 from coercing strings back to UUID objects that `json.dumps()` cannot serialize
+- Entity alias unique constraint violation during `tags classify` when multiple tag aliases normalize to the same form (e.g., "Aaron Mate" and "Aaron Maté"): implemented upsert semantics with `occurrence_count` accumulation for both in-batch duplicates and pre-existing DB records
+
+### Technical
+- 181 new tests: 73 unit (service), 35 unit (repository), 73 integration (CLI commands)
+- All commands registered on existing `tag_app` Typer group — no new CLI entry points
+- Uses existing repositories: `CanonicalTagRepository`, `TagAliasRepository`, `NamedEntityRepository`, `EntityAliasRepository`
+- `performed_by` field set to `'cli'` for all CLI-initiated operations
+- `video_tags` table never modified (Safety Guarantee #1 from ADR-003)
+- 5,493 total tests passing with 0 regressions
+- mypy strict compliance (0 errors across 415 source files)
+- No new dependencies, no database migrations
+
 ## [0.33.0] - 2026-02-23
 
 ### Added

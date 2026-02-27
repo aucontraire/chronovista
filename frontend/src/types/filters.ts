@@ -15,6 +15,8 @@ export interface VideoFilters {
   category: string | null;
   /** Selected topic IDs (OR logic) */
   topicIds: string[];
+  /** Selected canonical tag normalized forms (OR logic) */
+  canonicalTags: string[];
 }
 
 /**

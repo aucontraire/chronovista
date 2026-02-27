@@ -5,6 +5,7 @@
  * - T013: Zero-regression after FilterToggle migration
  * - Include unavailable content checkbox functionality
  * - URL state persistence for include_unavailable parameter
+ * - T032: canonicalTags passed to useVideos from canonical_tag URL params (Feature 030)
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -257,6 +258,53 @@ describe("HomePage - Include Unavailable Content (T013)", () => {
       expect(useVideosMock).toHaveBeenCalledWith(
         expect.objectContaining({
           includeUnavailable: true,
+        })
+      );
+    });
+
+    it("should pass canonicalTags from URL canonical_tag params to useVideos", async () => {
+      const useVideosMock = vi.mocked(
+        (await import("../../hooks/useVideos")).useVideos
+      );
+
+      renderWithProviders(<HomePage />, {
+        initialEntries: ["/?canonical_tag=javascript&canonical_tag=python"],
+      });
+
+      expect(useVideosMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          canonicalTags: ["javascript", "python"],
+        })
+      );
+    });
+
+    it("should pass empty canonicalTags array when no canonical_tag params in URL", async () => {
+      const useVideosMock = vi.mocked(
+        (await import("../../hooks/useVideos")).useVideos
+      );
+
+      renderWithProviders(<HomePage />);
+
+      expect(useVideosMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          canonicalTags: [],
+        })
+      );
+    });
+
+    it("should pass both tags and canonicalTags when both URL params present", async () => {
+      const useVideosMock = vi.mocked(
+        (await import("../../hooks/useVideos")).useVideos
+      );
+
+      renderWithProviders(<HomePage />, {
+        initialEntries: ["/?tag=music&canonical_tag=javascript"],
+      });
+
+      expect(useVideosMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tags: ["music"],
+          canonicalTags: ["javascript"],
         })
       );
     });

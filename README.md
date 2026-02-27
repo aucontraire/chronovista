@@ -1,14 +1,14 @@
 <h1 align="center">chronovista</h1>
 
 <p align="center">
-  <strong>Your YouTube data, your control. Local-first analytics for personal YouTube history.</strong>
+  <strong>A CLI + web dashboard for your YouTube history. Sync watch history, search transcripts by timestamp, recover deleted videos, and explore 124,000+ canonical tags — all stored privately in local PostgreSQL.</strong>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-AGPL--3.0-green.svg" alt="License: AGPL-3.0">
-  <img src="https://img.shields.io/badge/tests-7,200+-brightgreen.svg" alt="Tests: 7,200+">
-  <img src="https://img.shields.io/badge/coverage-72%25-brightgreen.svg" alt="Coverage: 72%">
+  <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/tests-7,670+-brightgreen.svg" alt="Tests: 7,670+">
+  <img src="https://img.shields.io/badge/coverage-72%25-yellow.svg" alt="Coverage: 74%">
   <img src="https://img.shields.io/badge/code%20style-black-000000.svg" alt="Code style: black">
 </p>
 
@@ -23,6 +23,8 @@
 
 ---
 
+<!-- TODO: Add a screenshot of the React dashboard or a terminal recording (vhs/asciinema) here -->
+
 ## Quick Start
 
 ```bash
@@ -36,25 +38,34 @@ cp .env.example .env  # Add YouTube API credentials, set DEVELOPMENT_MODE=true
 make dev-migrate
 
 # Authenticate and sync
-chronovista auth login
-chronovista sync all
+poetry run chronovista auth login
+poetry run chronovista sync all
+# Or activate the virtualenv first: poetry shell
 ```
 
 ## Features
 
+Most YouTube data tools require cloud sync or third-party services. chronovista runs entirely on your machine: PostgreSQL stores everything, the REST API is local, and the React dashboard is served from localhost. Deleted video metadata can be recovered automatically from the Wayback Machine, and the tag normalization system groups 141,000+ raw tag variations into 124,000+ canonical forms with fuzzy search.
+
 | Category | Capabilities |
 |----------|-------------|
-| **Privacy-First** | All data stored locally in PostgreSQL - no cloud sync, complete data ownership |
-| **Multi-Language** | Smart transcript management with language preferences (fluent, learning, curious) |
-| **Transcript Queries** | Timestamp-based transcript search - find what was said at any moment |
+| **Local-First Privacy** | All data in local PostgreSQL — no cloud sync, complete data ownership |
+| **Multi-Language Transcripts** | 50+ languages with personal preferences (fluent, learning, curious, exclude) |
+| **Transcript Search** | Timestamp-based queries — find what was said at any moment, export as SRT |
+| **Tag Intelligence** | 124K canonical tags with variation grouping, fuzzy search, and 7 curation CLI commands |
 | **Channel Analytics** | Subscription tracking, keyword extraction, topic analysis |
-| **Topic Intelligence** | 17 CLI commands for content discovery, trends, and engagement scoring |
-| **Google Takeout** | Import complete YouTube history including deleted videos |
-| **Export Options** | CSV/JSON export with language-aware filtering |
-| **Write Operations** | Create playlists, like videos, subscribe to channels |
-| **REST API** | FastAPI server with 20+ endpoints for programmatic access |
-| **Video Filtering** | Filter by tags, topics, categories with fuzzy search suggestions |
-| **Deleted Video Recovery** | Recover metadata for deleted/unavailable videos via the Wayback Machine |
+| **Google Takeout** | Import complete YouTube history including deleted/private videos |
+| **Deleted Video Recovery** | Recover metadata for unavailable videos via the Wayback Machine CDX API |
+| **REST API + Web UI** | FastAPI server (20+ endpoints) with React dashboard for browsing and filtering |
+| **Write Operations** | Create playlists, like videos, subscribe to channels via OAuth |
+| **Export** | CSV/JSON with language-aware filtering |
+
+### Tech Stack
+
+- **Backend:** Python 3.11+, FastAPI, SQLAlchemy 2.0 (async), Alembic, Typer, Pydantic V2
+- **Frontend:** React 19, TypeScript 5.7 (strict), TanStack Query v5, Tailwind CSS 4
+- **Database:** PostgreSQL 15 via asyncpg
+- **Auth:** Google OAuth 2.0 with progressive scope management
 
 ## Installation
 
@@ -154,6 +165,17 @@ chronovista topics chart             # Visual ASCII chart
 chronovista topics explore           # Interactive exploration
 ```
 
+### Tag Management
+
+```bash
+chronovista tags merge mejico mexiko --into mexico   # Merge spelling variants
+chronovista tags split mexico --aliases "Mexican"    # Split incorrectly merged tags
+chronovista tags rename mexico --to "Mexico"         # Change display form
+chronovista tags classify mexico --type place        # Assign entity type
+chronovista tags collisions                          # Review diacritic collision candidates
+chronovista tags undo OPERATION_ID                   # Reverse any operation
+```
+
 ### Google Takeout Import
 
 Import your complete YouTube history from [Google Takeout](https://takeout.google.com/):
@@ -235,45 +257,62 @@ curl "http://localhost:8765/api/v1/search/segments?q=keyword"
 open http://localhost:8765/docs
 ```
 
+### Web Frontend
+
+```bash
+make dev               # Start backend (8765) + frontend (8766)
+open http://localhost:8766
+```
+
+The React dashboard provides video browsing with tag/category/topic filters, transcript search, playlist navigation, and deleted video visibility controls.
+
 ## Development
+
+### Workflow
 
 ```bash
 # Install dev dependencies
 poetry install --with dev
 
-# Run tests
-make test              # All tests
-make test-cov          # With coverage (90% threshold)
+# Start the full local stack
+make dev               # Backend on :8765, frontend on :8766
+
+# Before committing — run all checks
+make quality           # format + lint + type-check
+```
+
+### Testing
+
+```bash
+make test              # All backend tests (5,493+)
+make test-cov          # With coverage
 make test-fast         # Quick run
 
-# Code quality
+# Frontend tests (2,177+)
+cd frontend && npm test
+```
+
+### Code Quality
+
+```bash
 make format            # black + isort
 make lint              # ruff
-make type-check        # mypy
-make quality           # All checks
+make type-check        # mypy (strict, 0 errors across 415+ source files)
+```
 
-# Database
+### Database
+
+```bash
 make db-upgrade        # Run migrations
-make db-revision       # Create migration
+make db-revision       # Create new migration
 ```
 
 ### Frontend Development
 
-The project includes a React frontend for web-based video browsing.
-
 ```bash
-# Start both backend and frontend
-make dev
-
-# Or start individually
-make dev-backend  # Port 8765
-make dev-frontend # Port 8766
-```
-
-After modifying backend Pydantic models, regenerate the API client:
-
-```bash
-make generate-api
+make dev-backend       # Backend only (port 8765)
+make dev-frontend      # Frontend only (port 8766)
+make generate-api      # Regenerate TypeScript API client after backend model changes
 ```
 
 See [`frontend/README.md`](frontend/README.md) for detailed frontend documentation.
@@ -338,38 +377,29 @@ poetry install
 
 ```
 chronovista/
-├── api/              # FastAPI REST API (routers, schemas, deps)
-├── cli/              # Typer CLI commands
-├── services/         # Business logic (rate-limited API, retry logic)
-│   └── recovery/     # Wayback Machine video recovery (CDX client, page parser, orchestrator)
-├── repositories/     # Async data access with composite keys
-├── models/           # Pydantic models with validation
-├── db/               # SQLAlchemy + Alembic migrations
-└── auth/             # OAuth 2.0 with progressive scopes
+├── api/              # FastAPI REST API: 20+ endpoints, RFC 7807 errors, rate limiting
+├── cli/              # Typer CLI: 40+ commands (auth, sync, topics, recovery, tags)
+├── services/         # Business logic: sync orchestration, tag normalization, recovery pipeline
+│   └── recovery/     # Wayback Machine recovery: CDX client, HTML parser, orchestrator
+├── repositories/     # Async SQLAlchemy DAL: all DB access, composite key support
+├── models/           # Pydantic V2 domain models (separate from ORM models in db/)
+├── db/               # SQLAlchemy ORM models + Alembic migrations
+└── auth/             # OAuth 2.0 with progressive scope management
 ```
 
 **Key design decisions:**
-- Async-first with full async/await implementation
-- Type-safe Pydantic models throughout
-- Repository pattern with composite key support
-- Multi-environment testing (dev, test, integration)
+- Async-first with full async/await (asyncpg, httpx)
+- Strict type safety: Pydantic V2 models + mypy strict mode
+- Repository pattern isolating all database access
+- Layered architecture: CLI/API -> Services -> Repositories -> DB
 
 See [System Architecture](src/chronovista/docs/architecture/system-architecture.md) for details.
 
 ## Roadmap
 
-- [x] Topic Analytics (17 CLI commands)
-- [x] Graph Visualization (DOT/JSON export)
-- [x] Interactive CLI with Rich UI
-- [x] Timestamp-based transcript queries
-- [x] REST API (20+ endpoints)
-- [x] Web frontend (React + Vite)
-- [x] Video search and filtering UI
-- [x] Deleted content visibility and status tracking
-- [x] Wayback Machine video recovery
-- [x] Tag normalization (canonical grouping of 141K tags)
-- [ ] ML-powered insights
-
+- [ ] ML-powered content insights and recommendations
+- [ ] Screenshot/terminal recording for README
+- [ ] CI/CD pipeline with automated badge generation
 
 ## Contributing
 
@@ -383,9 +413,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ## License
 
 [AGPL-3.0](LICENSE)
-
-## Links
-
-- [Documentation](src/chronovista/docs/chronovista_PRD.md)
-- [Issues](https://github.com/chronovista/chronovista/issues)
-- [Discussions](https://github.com/chronovista/chronovista/discussions)

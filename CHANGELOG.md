@@ -9,6 +9,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.35.0] - 2026-02-27
+
+### Added
+
+#### Feature 032: Canonical Tag Frontend Integration (ADR-003 Phase 3 Frontend)
+
+Integrates the canonical tag API (Feature 030) into the React frontend. Replaces raw tag autocomplete, filter pills, and video detail tag display with canonical-tag-aware components showing aggregated video counts, variation counts, and top aliases. Frontend only — no backend changes, no new API endpoints, no database migrations.
+
+**Canonical Tag Autocomplete (`TagAutocomplete`):**
+- Two-line dropdown options: canonical_form with video_count right-aligned, "N variations" in smaller text below
+- Calls `GET /api/v1/canonical-tags?q={search}&limit=10` via new `useCanonicalTags` hook (replaces `useTags`)
+- "Did you mean:" fuzzy suggestions when prefix search returns zero results and query >= 2 characters
+- Rate limit 429 handling: "Too many requests. Please wait." with input disabled for `Retry-After` duration
+- Selection uses `normalized_form` as filter value, generating `?canonical_tag=<normalized_form>` URL parameters
+- Full ARIA combobox pattern preserved with enhanced screen reader announcements ("Mexico, 910 videos, 8 variations")
+
+**Consolidated Filter Pills (`FilterPills`, `VideoFilters`):**
+- Single pill per canonical tag with variation count badge (e.g., "Mexico · 8 vars")
+- New `canonical_tag` filter type with teal color scheme (`filterColors.canonical_tag`)
+- `?canonical_tag=<normalized_form>` URL parameters replace `?tag=<raw_tag>` for all new filter selections
+- Canonical tag display names resolved via `useCanonicalTags` hook with TanStack Query caching
+- "Active Filters (N)" count reflects canonical tags, not raw aliases
+- `handleClearAll` clears `canonical_tag` parameters alongside existing filter types
+
+**Video List Filtering (`useVideos`, `HomePage`):**
+- `useVideos` hook sends `canonical_tag=<normalized_form>` parameters to backend (Feature 030 endpoint)
+- `canonicalTags` option added to `UseVideosOptions` interface
+- TanStack Query cache key includes `canonicalTags` for proper invalidation
+- `HomePage` reads `searchParams.getAll('canonical_tag')` and passes to `useVideos`
+
+**Video Detail Tag Grouping (`ClassificationSection`):**
+- Raw tags grouped by canonical form using batch `useQueries` resolution against `GET /api/v1/canonical-tags?q={tag}&limit=1`
+- Each canonical group shows `canonical_form` badge with teal color scheme
+- Top aliases displayed below each badge ("Also: MEXICO, mexico, méxico, #mexico") via `useCanonicalTagDetail` hook
+- Alias line hidden when `alias_count=1` or when only alias is the canonical form itself (R7 rule)
+- Unresolved/orphaned tags displayed in separate "Unresolved Tags" subsection with slate italic styling
+- Skeleton loading placeholders during resolution (up to 10)
+- Clicking any canonical tag badge navigates to `/videos?canonical_tag=<normalized_form>`
+
+**New Hooks:**
+- `useCanonicalTags(search, options)` — debounced canonical tag search with suggestions support
+- `useCanonicalTagDetail(normalizedForm)` — fetch canonical tag detail with top aliases
+
+**New Types (`types/canonical-tags.ts`):**
+- `CanonicalTagListItem`, `CanonicalTagSuggestion`, `CanonicalTagListResponse`
+- `TagAliasItem`, `CanonicalTagDetailResponse`
+- `SelectedCanonicalTag` — display/value pair for selected tags
+
+**Design Tokens (`styles/tokens.ts`):**
+- `filterColors.canonical_tag` — teal color scheme (`#F0FDFA` bg, `#134E4A` text, `#99F6E4` border)
+
+### Migration Notes
+
+**URL Parameter Change — Backward Compatible:**
+- The frontend now generates `?canonical_tag=<normalized_form>` URLs instead of `?tag=<raw_tag>` for all tag-related navigation and filtering
+- **Old bookmarks still work**: URLs with `?tag=Mexico` continue to function — the backend `GET /api/v1/videos?tag=Mexico` endpoint is unchanged, and the frontend reads both `tag` and `canonical_tag` URL parameters
+- Legacy `?tag=` pills display without variation count badges, visually distinguishable from canonical tag pills
+- The frontend no longer generates `?tag=` URLs; all new tag links use `?canonical_tag=`
+
+**Prerequisites:**
+- Feature 028a (Tag Normalization Schema), Feature 029 (Tag Normalization Backfill), and Feature 030 (Canonical Tag API) must be deployed before canonical tag features function
+- Without the backfill pipeline (`chronovista tags normalize`), the canonical tag endpoints return empty results and the autocomplete will show no suggestions
+- Raw tag filtering via `?tag=` continues to work regardless of whether the backfill has been run
+
+### Technical
+- 212 new frontend tests across 6 test files (2,177 total frontend tests, 88 test files)
+- Coverage: useCanonicalTags 100%, useCanonicalTagDetail 95%, ClassificationSection 98%, FilterPills 98%, TagAutocomplete 84%, HomePage 100%
+- Frontend version: 0.9.0 → 0.10.0
+- No new npm dependencies
+- No backend changes, no database migrations
+- TanStack Query cache config preserved: staleTime 5min, gcTime 10min, retry 3 with exponential backoff
+- WCAG 2.1 Level AA compliance maintained (44px touch targets, ARIA combobox, screen reader announcements)
+
 ## [0.34.0] - 2026-02-27
 
 ### Added

@@ -15,7 +15,7 @@
  * - SearchFilters integration (conditional rendering)
  */
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
@@ -341,12 +341,14 @@ describe("IncludeUnavailableToggle - VideoFilters", () => {
       });
       expect(toggle).toBeChecked();
 
-      // Click Clear All button
+      // Click Clear All button (uses 150ms debounce internally)
       const clearButton = screen.getByRole("button", { name: /clear all/i });
       await user.click(clearButton);
 
-      // Verify toggle is now unchecked
-      expect(toggle).not.toBeChecked();
+      // Verify toggle is now unchecked (wait for debounced Clear All to fire)
+      await waitFor(() => {
+        expect(toggle).not.toBeChecked();
+      }, { timeout: 500 });
       expect(window.location.search).not.toContain("include_unavailable");
     });
   });

@@ -4,10 +4,11 @@
  * Verifies:
  * - T044: Filter panel layout and integration
  * - T045: TagAutocomplete integration
- * - T047: URL state sync
- * - T048: Clear All functionality
+ * - T047: URL state sync (including canonical_tag params)
+ * - T048: Clear All functionality (clears canonical_tag params)
  * - T042b: Filter limit validation
  * - FR-034: Filter limits enforcement
+ * - US2/T015-T016: Canonical tag filter pills with canonical_tag URL params
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -169,6 +170,32 @@ describe("VideoFilters", () => {
         expect(musicLabels.length).toBeGreaterThan(0);
       });
     });
+
+    it("should read canonical_tag params from URL and display as pills", async () => {
+      renderWithProviders(<VideoFilters />, {
+        initialEntries: ["/?canonical_tag=javascript&canonical_tag=python"],
+      });
+
+      // canonical_tag normalized forms appear in FilterPills as display labels
+      // (falls back to normalized_form since no hydration in test environment)
+      await waitFor(() => {
+        const filterList = screen.getByRole("list", { name: "Active filters" });
+        expect(filterList).toBeInTheDocument();
+        // At minimum the filter count should show 2
+        expect(screen.getByText("Active Filters (2)")).toBeInTheDocument();
+      });
+    });
+
+    it("should count canonical_tag filters in active filter total", async () => {
+      renderWithProviders(<VideoFilters />, {
+        initialEntries: ["/?canonical_tag=react&tag=music&category=10"],
+      });
+
+      // 1 canonical_tag + 1 tag + 1 category = 3 total
+      await waitFor(() => {
+        expect(screen.getByText("Active Filters (3)")).toBeInTheDocument();
+      });
+    });
   });
 
   describe("Filter limit validation (T042b, FR-034)", () => {
@@ -265,6 +292,31 @@ describe("VideoFilters", () => {
 
       // Filters should be removed (this is a simplification - in real tests,
       // you'd check URL params or verify the filters are no longer visible)
+      await waitFor(() => {
+        expect(
+          screen.getByText(
+            /No active filters. Select tags, categories, or topics to filter videos./
+          )
+        ).toBeInTheDocument();
+      });
+    });
+
+    it("should clear canonical_tag params when Clear All clicked", async () => {
+      const user = userEvent.setup();
+
+      renderWithProviders(<VideoFilters />, {
+        initialEntries: ["/?canonical_tag=javascript&canonical_tag=python"],
+      });
+
+      // Verify canonical_tag filters are active
+      await waitFor(() => {
+        expect(screen.getByText("Active Filters (2)")).toBeInTheDocument();
+      });
+
+      const clearAllButton = screen.getByRole("button", { name: "Clear All" });
+      await user.click(clearAllButton);
+
+      // All canonical_tag filters should be cleared
       await waitFor(() => {
         expect(
           screen.getByText(

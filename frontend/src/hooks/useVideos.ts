@@ -24,8 +24,14 @@ interface UseVideosOptions {
   limit?: number;
   /** Whether to enable the query (default: true) */
   enabled?: boolean;
-  /** Filter by tags (OR logic) */
+  /**
+   * Filter by legacy raw tags (OR logic).
+   * @deprecated Use `canonicalTags` instead. Kept for backward compatibility
+   * with old bookmarks and existing URL params using the `tag` key.
+   */
   tags?: string[];
+  /** Filter by canonical tag normalized forms (OR logic, Feature 030) */
+  canonicalTags?: string[];
   /** Filter by category ID */
   category?: string | null;
   /** Filter by topic IDs (OR logic) */
@@ -90,6 +96,7 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
     limit = DEFAULT_LIMIT,
     enabled = true,
     tags = [],
+    canonicalTags = [],
     category = null,
     topicIds = [],
     includeUnavailable = false,  // T010: Default false (unchecked) per FR-007
@@ -111,7 +118,7 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
     fetchNextPage,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["videos", { limit, tags, category, topicIds, includeUnavailable, sortBy, sortOrder, likedOnly, hasTranscript }],
+    queryKey: ["videos", { limit, tags, canonicalTags, category, topicIds, includeUnavailable, sortBy, sortOrder, likedOnly, hasTranscript }],
     queryFn: async ({ pageParam, signal }) => {
       const params = new URLSearchParams({
         offset: pageParam.toString(),
@@ -119,7 +126,10 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
       });
 
       // Add filter parameters
+      // Legacy raw tag filter (backward compatibility)
       tags.forEach(tag => params.append('tag', tag));
+      // Canonical tag filter (Feature 030)
+      canonicalTags.forEach(tag => params.append('canonical_tag', tag));
       if (category) params.set('category', category);
       topicIds.forEach(id => params.append('topic_id', id));
 

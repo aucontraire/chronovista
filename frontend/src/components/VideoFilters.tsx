@@ -21,12 +21,13 @@
  * - T090: Responsive layout with mobile breakpoint
  * - T091: Touch-friendly 44px minimum targets
  * - T096: RTL layout support
+ * - US2/T015-T016: Canonical tag filter pills with bookmark hydration
  *
  * Features:
  * - Integrated TagAutocomplete, CategoryDropdown, TopicCombobox
- * - FilterPills display for active filters
+ * - FilterPills display for active filters (including canonical_tag type)
  * - "Clear All" button to reset all filters
- * - URL state synchronization (tags, category, topic_id params)
+ * - URL state synchronization (tags, canonical_tag, category, topic_id params)
  * - Filter limit validation (10 tags, 10 topics, 1 category, 15 total)
  * - Warning messages near limits
  * - Video count display
@@ -35,12 +36,16 @@
  * - Browser navigation support (back/forward)
  * - Responsive mobile-first design with collapsible filters
  * - RTL (Right-to-Left) language support
+ * - displayNameCache: Map<string, { canonical_form, alias_count }> for canonical pill labels
+ * - Bookmark hydration via GET /canonical-tags/{normalizedForm} (NOT search endpoint)
+ * - 150ms debounce for bulk Clear All canonical tag cleanup (R6)
  *
  * Layout:
  * ┌────────────────────────────────────────────────────────────────┐
  * │ 🔍 Search tags...    📂 Category ▼    🌐 Topics ▼   Clear All  │
  * ├────────────────────────────────────────────────────────────────┤
  * │ Active: [🏷️ music ×] [📂 Gaming ×] [🌐 Arts > Music ×]         │
+ * │         [🏷️ JavaScript 3 var. ×]                               │
  * │ Showing 47 videos                                              │
  * └────────────────────────────────────────────────────────────────┘
  *
@@ -49,10 +54,12 @@
  * @see T071-T075: URL composability
  * @see T090-T096: Mobile & accessibility polish
  * @see FR-034: Filter limits
+ * @see US2: Canonical tag filter pills
  */
 
 import { useSearchParams } from 'react-router-dom';
-import { useEffect, useState, useId } from 'react';
+import { useEffect, useState, useId, useRef, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { TagAutocomplete } from './TagAutocomplete';
 import { CategoryDropdown } from './CategoryDropdown';
@@ -64,6 +71,9 @@ import { useCategories } from '../hooks/useCategories';
 import { useTopics } from '../hooks/useTopics';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { FILTER_LIMITS } from '../types/filters';
+import type { SelectedCanonicalTag } from '../types/canonical-tags';
+import { API_BASE_URL } from '../api/config';
+import type { CanonicalTagDetailResponse } from '../types/canonical-tags';
 
 interface VideoFiltersProps {
   /** Total number of videos matching current filters */
@@ -75,14 +85,23 @@ interface VideoFiltersProps {
 }
 
 /**
+ * Cache entry for a resolved canonical tag display name.
+ */
+interface CanonicalTagCacheEntry {
+  canonical_form: string;
+  alias_count: number;
+}
+
+/**
  * Calculates the total number of active filters across all types.
  */
 function calculateTotalFilters(
   tags: string[],
   category: string | null,
-  topicIds: string[]
+  topicIds: string[],
+  canonicalTags: string[]
 ): number {
-  return tags.length + (category ? 1 : 0) + topicIds.length;
+  return tags.length + (category ? 1 : 0) + topicIds.length + canonicalTags.length;
 }
 
 /**
@@ -91,9 +110,10 @@ function calculateTotalFilters(
 function isApproachingLimit(
   tags: string[],
   category: string | null,
-  topicIds: string[]
+  topicIds: string[],
+  canonicalTags: string[]
 ): boolean {
-  const total = calculateTotalFilters(tags, category, topicIds);
+  const total = calculateTotalFilters(tags, category, topicIds, canonicalTags);
   return (
     tags.length >= FILTER_LIMITS.MAX_TAGS * 0.8 ||
     topicIds.length >= FILTER_LIMITS.MAX_TOPICS * 0.8 ||
@@ -127,6 +147,12 @@ export function VideoFilters({
   // Check online status for offline indicator (T084)
   const isOnline = useOnlineStatus();
 
+  // Ref to the TagAutocomplete's search input for focus management (FR-022)
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  // TanStack Query client for prefetching canonical tag details
+  const queryClient = useQueryClient();
+
   // Read filter state from URL with sanitization (T073)
   // Filter out empty/whitespace-only values for robust URL handling
   const rawTags = searchParams.getAll('tag');
@@ -138,6 +164,10 @@ export function VideoFilters({
   const rawTopicIds = searchParams.getAll('topic_id');
   const topicIds = rawTopicIds.filter((id) => id && id.trim().length > 0);
 
+  // Read canonical_tag URL params (US2/T016)
+  const rawCanonicalTags = searchParams.getAll('canonical_tag');
+  const canonicalTags = rawCanonicalTags.filter((ct) => ct && ct.trim().length > 0);
+
   // Read boolean filter params from URL (Feature 027)
   const likedOnly = searchParams.get('liked_only') === 'true';
   const hasTranscript = searchParams.get('has_transcript') === 'true';
@@ -146,11 +176,92 @@ export function VideoFilters({
   const { categories } = useCategories();
   const { topics } = useTopics();
 
+  /**
+   * Display name cache for canonical tags (R2).
+   * Maps normalized_form → { canonical_form, alias_count }.
+   * Populated on autocomplete selection and bookmark hydration.
+   */
+  const [displayNameCache, setDisplayNameCache] = useState<
+    Map<string, CanonicalTagCacheEntry>
+  >(new Map());
+
   // Calculate filter counts (include boolean filters in active count)
-  const totalFilters = calculateTotalFilters(tags, category, topicIds);
+  const totalFilters = calculateTotalFilters(tags, category, topicIds, canonicalTags);
   const booleanFilterCount = (likedOnly ? 1 : 0) + (hasTranscript ? 1 : 0);
   const hasActiveFilters = totalFilters > 0 || booleanFilterCount > 0;
-  const approachingLimit = isApproachingLimit(tags, category, topicIds);
+  const approachingLimit = isApproachingLimit(tags, category, topicIds, canonicalTags);
+
+  /**
+   * Hydrate display names for canonical_tag URL params on page load (bookmark scenario).
+   * Uses GET /canonical-tags/{normalizedForm}?alias_limit=1 (NOT the search endpoint,
+   * which does prefix matching and may return the wrong tag).
+   * Only fetches for normalized_forms not already in the cache.
+   */
+  useEffect(() => {
+    const missing = canonicalTags.filter(
+      (nf) => !displayNameCache.has(nf)
+    );
+    if (missing.length === 0) return;
+
+    void Promise.all(
+      missing.map(async (normalizedForm) => {
+        // Check TanStack Query cache first
+        const cached = queryClient.getQueryData<ReturnType<typeof Object> | null>([
+          'canonical-tag-detail',
+          normalizedForm,
+        ]);
+
+        if (cached && typeof cached === 'object' && 'canonical_form' in cached) {
+          const detail = cached as { canonical_form: string; alias_count: number };
+          setDisplayNameCache((prev) =>
+            new Map(prev).set(normalizedForm, {
+              canonical_form: detail.canonical_form,
+              alias_count: detail.alias_count,
+            })
+          );
+          return;
+        }
+
+        try {
+          const url = `${API_BASE_URL}/canonical-tags/${encodeURIComponent(normalizedForm)}?alias_limit=1`;
+          const response = await fetch(url, {
+            headers: { 'Content-Type': 'application/json' },
+          });
+
+          if (response.status === 404) {
+            // Tag not found — use normalized form as fallback label
+            setDisplayNameCache((prev) =>
+              new Map(prev).set(normalizedForm, {
+                canonical_form: normalizedForm,
+                alias_count: 1,
+              })
+            );
+            return;
+          }
+
+          if (!response.ok) return;
+
+          const json = (await response.json()) as CanonicalTagDetailResponse;
+          const detail = json.data;
+          setDisplayNameCache((prev) =>
+            new Map(prev).set(normalizedForm, {
+              canonical_form: detail.canonical_form,
+              alias_count: detail.alias_count,
+            })
+          );
+        } catch {
+          // On error, fall back to normalized form as display label
+          setDisplayNameCache((prev) =>
+            new Map(prev).set(normalizedForm, {
+              canonical_form: normalizedForm,
+              alias_count: 1,
+            })
+          );
+        }
+      })
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canonicalTags.join(',')]);
 
   // Log warnings for invalid filter values (T073)
   useEffect(() => {
@@ -186,31 +297,71 @@ export function VideoFilters({
     } else {
       setWarningMessage('');
     }
-  }, [tags.length, topicIds.length, totalFilters, approachingLimit]);
+  }, [tags.length, topicIds.length, canonicalTags.length, totalFilters, approachingLimit]);
 
   /**
-   * Adds a tag to the URL parameters.
+   * Adds a canonical tag to the URL parameters.
+   * Stores the normalized_form in the URL under the `canonical_tag` key.
+   * Populates the display name cache with canonical_form and alias_count.
    */
-  const handleTagAdd = (tag: string) => {
-    if (tags.includes(tag)) return;
-    if (tags.length >= FILTER_LIMITS.MAX_TAGS) return;
+  const handleCanonicalTagAdd = (tag: SelectedCanonicalTag) => {
+    if (canonicalTags.includes(tag.normalized_form)) return;
+    if (canonicalTags.length >= FILTER_LIMITS.MAX_TAGS) return;
     if (totalFilters >= FILTER_LIMITS.MAX_TOTAL) return;
 
+    // Populate display name cache
+    setDisplayNameCache((prev) =>
+      new Map(prev).set(tag.normalized_form, {
+        canonical_form: tag.canonical_form,
+        alias_count: tag.alias_count,
+      })
+    );
+
     const newParams = new URLSearchParams(searchParams);
-    newParams.append('tag', tag);
+    newParams.append('canonical_tag', tag.normalized_form);
     setSearchParams(newParams);
   };
 
   /**
-   * Removes a tag from the URL parameters.
+   * Removes a canonical tag from the URL parameters.
    */
-  const handleTagRemove = (tag: string) => {
+  const handleCanonicalTagRemove = (normalizedForm: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('canonical_tag');
+    canonicalTags
+      .filter((ct) => ct !== normalizedForm)
+      .forEach((ct) => newParams.append('canonical_tag', ct));
+    setSearchParams(newParams);
+  };
+
+  /**
+   * Removes a legacy tag from the URL parameters.
+   * Receives the normalized_form of the tag to remove.
+   * Handles legacy `tag` URL params that may exist in old bookmarks.
+   */
+  const handleTagRemove = (normalizedForm: string) => {
     const newParams = new URLSearchParams(searchParams);
     // Remove all instances of this tag
     newParams.delete('tag');
-    tags.filter((t) => t !== tag).forEach((t) => newParams.append('tag', t));
+    tags.filter((t) => t !== normalizedForm).forEach((t) => newParams.append('tag', t));
     setSearchParams(newParams);
   };
+
+  /**
+   * Convert canonical_tag URL strings into SelectedCanonicalTag objects
+   * for the TagAutocomplete component. Uses display name cache for canonical_form
+   * and alias_count; falls back to normalized_form when not yet hydrated.
+   */
+  const selectedCanonicalTags: SelectedCanonicalTag[] = canonicalTags.map(
+    (normalizedForm) => {
+      const cached = displayNameCache.get(normalizedForm);
+      return {
+        canonical_form: cached?.canonical_form ?? normalizedForm,
+        normalized_form: normalizedForm,
+        alias_count: cached?.alias_count ?? 1,
+      };
+    }
+  );
 
   /**
    * Updates the category in URL parameters.
@@ -253,22 +404,47 @@ export function VideoFilters({
 
   /**
    * Clears all filters from URL parameters.
+   * Includes canonical_tag params.
+   * Uses 150ms debounce for bulk changes (R6).
    */
-  const handleClearAll = () => {
-    const newParams = new URLSearchParams();
-    // Preserve non-filter parameters if any
-    const filterKeys = ['tag', 'category', 'topic_id', 'include_unavailable', 'liked_only', 'has_transcript'];
-    searchParams.forEach((value, key) => {
-      if (!filterKeys.includes(key)) {
-        newParams.append(key, value);
+  const clearAllTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleClearAll = useCallback(() => {
+    if (clearAllTimeoutRef.current) {
+      clearTimeout(clearAllTimeoutRef.current);
+    }
+    clearAllTimeoutRef.current = setTimeout(() => {
+      const newParams = new URLSearchParams();
+      // Preserve non-filter parameters if any
+      const filterKeys = [
+        'tag',
+        'canonical_tag',
+        'category',
+        'topic_id',
+        'include_unavailable',
+        'liked_only',
+        'has_transcript',
+      ];
+      searchParams.forEach((value, key) => {
+        if (!filterKeys.includes(key)) {
+          newParams.append(key, value);
+        }
+      });
+      setSearchParams(newParams);
+    }, 150);
+  }, [searchParams, setSearchParams]);
+
+  // Cleanup debounce on unmount
+  useEffect(() => {
+    return () => {
+      if (clearAllTimeoutRef.current) {
+        clearTimeout(clearAllTimeoutRef.current);
       }
-    });
-    setSearchParams(newParams);
-  };
+    };
+  }, []);
 
   /**
    * Handles filter removal from FilterPills.
-   * Supports tag, category, topic, and boolean pill types.
+   * Supports tag, canonical_tag, category, topic, and boolean pill types.
    */
   const handleFilterRemove = (
     type: FilterPillType,
@@ -277,6 +453,9 @@ export function VideoFilters({
     switch (type) {
       case 'tag':
         handleTagRemove(value);
+        break;
+      case 'canonical_tag':
+        handleCanonicalTagRemove(value);
         break;
       case 'category':
         handleCategoryChange(null);
@@ -294,13 +473,23 @@ export function VideoFilters({
     }
   };
 
-  // Build filter pills data (including boolean pills for Feature 027)
+  // Build filter pills data (including boolean pills for Feature 027 and canonical_tag pills for US2)
   const filterPills = [
     ...tags.map((tag) => ({
       type: 'tag' as const,
       value: tag,
       label: tag,
     })),
+    // Canonical tag pills (US2): use display name cache, fall back to normalized form
+    ...canonicalTags.map((normalizedForm) => {
+      const cached = displayNameCache.get(normalizedForm);
+      return {
+        type: 'canonical_tag' as const,
+        value: normalizedForm,
+        label: cached?.canonical_form ?? normalizedForm,
+        aliasCount: cached?.alias_count,
+      };
+    }),
     ...(category
       ? [
           {
@@ -342,12 +531,12 @@ export function VideoFilters({
     >
       {/* Filter Controls Row - Stack vertically on mobile, grid on desktop */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Tag Autocomplete */}
+        {/* Tag Autocomplete — canonical tag search (US2) */}
         <div className="w-full">
           <TagAutocomplete
-            selectedTags={tags}
-            onTagSelect={handleTagAdd}
-            onTagRemove={handleTagRemove}
+            selectedTags={selectedCanonicalTags}
+            onTagSelect={handleCanonicalTagAdd}
+            onTagRemove={handleCanonicalTagRemove}
             maxTags={FILTER_LIMITS.MAX_TAGS}
           />
         </div>
@@ -439,7 +628,11 @@ export function VideoFilters({
           </div>
 
           {/* Filter Pills */}
-          <FilterPills filters={filterPills} onRemove={handleFilterRemove} />
+          <FilterPills
+            filters={filterPills}
+            onRemove={handleFilterRemove}
+            searchInputRef={searchInputRef}
+          />
 
           {/* Video Count */}
           {videoCount !== null && (

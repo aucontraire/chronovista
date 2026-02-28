@@ -99,8 +99,13 @@ function AllLoadedMessage({ total }: AllLoadedMessageProps) {
 }
 
 interface VideoListProps {
-  /** Filter by tags (OR logic) */
+  /**
+   * Filter by legacy raw tags (OR logic).
+   * @deprecated Use `canonicalTags` instead for canonical tag filtering.
+   */
   tags?: string[];
+  /** Filter by canonical tag normalized forms (OR logic, Feature 030) */
+  canonicalTags?: string[];
   /** Filter by category ID */
   category?: string | null;
   /** Filter by topic IDs (OR logic) */
@@ -123,6 +128,7 @@ interface VideoListProps {
  */
 export function VideoList({
   tags = [],
+  canonicalTags = [],
   category = null,
   topicIds = [],
   includeUnavailable = true,
@@ -145,6 +151,7 @@ export function VideoList({
     loadMoreRef,
   } = useVideos({
     tags,
+    canonicalTags,
     category,
     topicIds,
     includeUnavailable,

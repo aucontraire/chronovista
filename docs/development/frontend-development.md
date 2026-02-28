@@ -62,7 +62,7 @@ Run these from the `frontend/` directory:
 
 ## Running Tests
 
-The frontend has 1,400+ tests using [vitest](https://vitest.dev/) and [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/).
+The frontend has 2,100+ tests using [vitest](https://vitest.dev/) and [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/).
 
 ```bash
 cd frontend

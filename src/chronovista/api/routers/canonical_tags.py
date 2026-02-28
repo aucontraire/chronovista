@@ -289,6 +289,82 @@ async def get_canonical_tag_videos(
 
 
 @router.get(
+    "/canonical-tags/resolve",
+    response_model=CanonicalTagDetailResponse,
+    responses={
+        404: {"description": "No canonical tag found for the given raw form"},
+    },
+)
+async def resolve_canonical_tag(
+    raw_form: str = Query(
+        ..., min_length=1, max_length=200,
+        description="Exact raw tag string to resolve to a canonical tag",
+    ),
+    alias_limit: int = Query(
+        5, ge=1, le=50, description="Maximum number of top aliases to return"
+    ),
+    session: AsyncSession = Depends(get_db),
+) -> CanonicalTagDetailResponse:
+    """
+    Resolve a raw tag string to its canonical tag via exact alias lookup.
+
+    Unlike the search endpoint which uses prefix matching, this endpoint
+    performs an exact (case-insensitive) match on the tag_aliases table
+    and returns the linked canonical tag detail.
+
+    Parameters
+    ----------
+    raw_form : str
+        The raw tag string to resolve (e.g., "JavaScript", "python", "#Mexico").
+    alias_limit : int
+        Maximum number of top aliases to return (1-50, default 5).
+    session : AsyncSession
+        Database session from dependency.
+
+    Returns
+    -------
+    CanonicalTagDetailResponse
+        The canonical tag detail for the resolved tag.
+
+    Raises
+    ------
+    NotFoundError
+        404 if no canonical tag is linked to the given raw form.
+    """
+    tag = await _repository.resolve_by_raw_form(session, raw_form)
+    if tag is None:
+        raise NotFoundError(
+            resource_type="Canonical Tag",
+            identifier=raw_form,
+            hint="No canonical tag found for this raw tag. It may be unresolved.",
+        )
+
+    aliases = await _repository.get_top_aliases(
+        session, tag.id, limit=alias_limit
+    )
+
+    alias_items: List[TagAliasItem] = [
+        TagAliasItem(
+            raw_form=alias.raw_form,
+            occurrence_count=alias.occurrence_count,
+        )
+        for alias in aliases
+    ]
+
+    detail = CanonicalTagDetail(
+        canonical_form=tag.canonical_form,
+        normalized_form=tag.normalized_form,
+        alias_count=tag.alias_count,
+        video_count=tag.video_count,
+        top_aliases=alias_items,
+        created_at=tag.created_at,
+        updated_at=tag.updated_at,
+    )
+
+    return CanonicalTagDetailResponse(data=detail)
+
+
+@router.get(
     "/canonical-tags/{normalized_form}",
     response_model=CanonicalTagDetailResponse,
     responses=GET_ITEM_ERRORS,

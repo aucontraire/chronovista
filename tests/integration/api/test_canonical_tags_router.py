@@ -436,6 +436,454 @@ class TestListCanonicalTags:
 
 
 # ---------------------------------------------------------------------------
+# TestSearchResolvesMergedAliases
+# ---------------------------------------------------------------------------
+
+# Prefix used for merge-scenario canonical tags to avoid collisions
+_MERGE_TAG_PREFIX = "mrg_test_"
+
+
+class TestSearchResolvesMergedAliases:
+    """Tests verifying that search resolves aliases after a merge operation.
+
+    Regression suite for the bug where searching by the raw_form of a merged
+    alias returned zero results because the search only matched
+    ``canonical_form``/``normalized_form`` columns, not ``tag_aliases.raw_form``.
+
+    Scenario
+    --------
+    - "target" canonical tag: ``mrg_test_claudia sheinbaum`` (active)
+    - "source" canonical tag: ``mrg_test_sheinbaum presidenta`` (active → merged)
+    - Source has two aliases: one with raw_form ``mrg_test_sheinbaum presidenta``
+      and one with raw_form ``mrg_test_Sheinbaum Presidenta`` (case variant).
+    - Merge is simulated by:
+      1. Reassigning all source aliases to the target (update canonical_tag_id
+         and normalized_form on each TagAlias row).
+      2. Setting source status to ``"merged"`` with ``merged_into_id`` pointing
+         to the target.
+
+    After the merge the active tag is *target*.  Searching by a prefix that
+    matches the source alias raw_form must return *target*, not *source*.
+    """
+
+    # ------------------------------------------------------------------
+    # Helper: create a canonical tag row
+    # ------------------------------------------------------------------
+
+    async def _insert_canonical_tag(
+        self,
+        session: AsyncSession,
+        canonical_form: str,
+        normalized_form: str,
+        alias_count: int = 1,
+        video_count: int = 0,
+        status: str = "active",
+        merged_into_id: uuid.UUID | None = None,
+    ) -> CanonicalTag:
+        """Insert a canonical tag and flush (does not commit).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Active database session.
+        canonical_form : str
+            Human-readable tag display form.
+        normalized_form : str
+            Normalised (lowercased) tag form — must be unique.
+        alias_count : int, optional
+            Minimum 1 to satisfy the DB check constraint (default 1).
+        video_count : int, optional
+            Denormalised video count (default 0).
+        status : str, optional
+            Lifecycle status: "active", "merged", or "deprecated" (default "active").
+        merged_into_id : uuid.UUID | None, optional
+            UUID of the target canonical tag when status is "merged".
+
+        Returns
+        -------
+        CanonicalTag
+            The flushed ORM instance.
+        """
+        now = datetime.now(tz=timezone.utc)
+        tag = CanonicalTag(
+            id=uuid.UUID(bytes=uuid7().bytes),
+            canonical_form=canonical_form,
+            normalized_form=normalized_form,
+            alias_count=alias_count,
+            video_count=video_count,
+            status=status,
+            merged_into_id=merged_into_id,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(tag)
+        await session.flush()
+        return tag
+
+    async def _insert_alias(
+        self,
+        session: AsyncSession,
+        raw_form: str,
+        normalized_form: str,
+        canonical_tag_id: uuid.UUID,
+        occurrence_count: int = 10,
+    ) -> TagAlias:
+        """Insert a tag alias and flush (does not commit).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Active database session.
+        raw_form : str
+            Raw tag string as it appears in ``video_tags.tag``.
+        normalized_form : str
+            Normalised form stored on the alias row.
+        canonical_tag_id : uuid.UUID
+            FK to the owning canonical tag.
+        occurrence_count : int, optional
+            Minimum 1 to satisfy the DB check constraint (default 10).
+
+        Returns
+        -------
+        TagAlias
+            The flushed ORM instance.
+        """
+        now = datetime.now(tz=timezone.utc)
+        alias = TagAlias(
+            id=uuid.UUID(bytes=uuid7().bytes),
+            raw_form=raw_form,
+            normalized_form=normalized_form,
+            canonical_tag_id=canonical_tag_id,
+            creation_method="backfill",
+            normalization_version=1,
+            occurrence_count=occurrence_count,
+            first_seen_at=now,
+            last_seen_at=now,
+            created_at=now,
+        )
+        session.add(alias)
+        await session.flush()
+        return alias
+
+    # ------------------------------------------------------------------
+    # Fixture: merge scenario data
+    # ------------------------------------------------------------------
+
+    @pytest.fixture
+    async def merge_scenario(
+        self,
+        test_data_session: AsyncSession,
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """Set up the merge scenario and clean up in a finally block.
+
+        Creates:
+        - ``ct_target``: active canonical tag with normalized_form
+          ``mrg_test_claudia sheinbaum``
+        - ``ct_source``: initially active, then merged into target, with
+          normalized_form ``mrg_test_sheinbaum presidenta``
+        - Two aliases originally belonging to source:
+          - raw_form ``mrg_test_sheinbaum presidenta``  (lower-case variant)
+          - raw_form ``mrg_test_Sheinbaum Presidenta``  (title-case variant)
+        - One alias originally belonging to target:
+          - raw_form ``mrg_test_Claudia Sheinbaum``
+
+        After merge simulation (alias reassignment + source status update),
+        all three aliases point to ``ct_target`` and ``ct_source.status``
+        is ``"merged"``.
+
+        Yields a ``dict`` with:
+        - ``"ct_target"``: target CanonicalTag ORM instance
+        - ``"ct_source"``: source CanonicalTag ORM instance
+        - ``"source_alias_raw_form"``: str — the lower-case source alias raw_form
+        - ``"source_alias_raw_form_title"``: str — the title-case source alias raw_form
+        - ``"target_alias_raw_form"``: str — the target's own alias raw_form
+        - ``"source_normalized_form"``: str — source's original normalized_form
+        - ``"target_normalized_form"``: str — target's normalized_form
+        """
+        # ---- Create target canonical tag (stays active) ----
+        target_normalized = f"{_MERGE_TAG_PREFIX}claudia sheinbaum"
+        ct_target = await self._insert_canonical_tag(
+            test_data_session,
+            canonical_form="Mrg_test_Claudia Sheinbaum",
+            normalized_form=target_normalized,
+            alias_count=3,  # will own 3 aliases after merge
+            video_count=5,
+        )
+
+        # ---- Create source canonical tag (will be merged) ----
+        source_normalized = f"{_MERGE_TAG_PREFIX}sheinbaum presidenta"
+        ct_source = await self._insert_canonical_tag(
+            test_data_session,
+            canonical_form="Mrg_test_Sheinbaum Presidenta",
+            normalized_form=source_normalized,
+            alias_count=2,  # owns 2 aliases before merge
+            video_count=2,
+        )
+
+        # ---- Create aliases for target (its own alias) ----
+        target_alias_raw_form = f"{_MERGE_TAG_PREFIX}Claudia Sheinbaum"
+        await self._insert_alias(
+            test_data_session,
+            raw_form=target_alias_raw_form,
+            normalized_form=target_normalized,
+            canonical_tag_id=ct_target.id,
+            occurrence_count=50,
+        )
+
+        # ---- Create aliases for source (these will be reassigned to target) ----
+        source_alias_raw_form = f"{_MERGE_TAG_PREFIX}sheinbaum presidenta"
+        source_alias_raw_form_title = f"{_MERGE_TAG_PREFIX}Sheinbaum Presidenta"
+
+        alias_source_lower = await self._insert_alias(
+            test_data_session,
+            raw_form=source_alias_raw_form,
+            normalized_form=source_normalized,
+            canonical_tag_id=ct_source.id,
+            occurrence_count=20,
+        )
+        alias_source_title = await self._insert_alias(
+            test_data_session,
+            raw_form=source_alias_raw_form_title,
+            normalized_form=source_normalized,
+            canonical_tag_id=ct_source.id,
+            occurrence_count=15,
+        )
+
+        await test_data_session.flush()
+
+        # ---- Simulate merge: reassign source aliases to target ----
+        # Update both canonical_tag_id and normalized_form on alias rows,
+        # mirroring what the real merge operation performs.
+        alias_source_lower.canonical_tag_id = ct_target.id
+        alias_source_lower.normalized_form = target_normalized
+        alias_source_title.canonical_tag_id = ct_target.id
+        alias_source_title.normalized_form = target_normalized
+
+        # ---- Set source status to merged ----
+        ct_source.status = "merged"
+        ct_source.merged_into_id = ct_target.id
+
+        await test_data_session.commit()
+
+        try:
+            yield {
+                "ct_target": ct_target,
+                "ct_source": ct_source,
+                "source_alias_raw_form": source_alias_raw_form,
+                "source_alias_raw_form_title": source_alias_raw_form_title,
+                "target_alias_raw_form": target_alias_raw_form,
+                "source_normalized_form": source_normalized,
+                "target_normalized_form": target_normalized,
+            }
+        finally:
+            # Clean up in FK-safe order: TagAlias → CanonicalTag
+            await test_data_session.execute(
+                delete(TagAlias).where(
+                    TagAlias.raw_form.like(f"{_MERGE_TAG_PREFIX}%")
+                )
+            )
+            await test_data_session.execute(
+                delete(CanonicalTag).where(
+                    CanonicalTag.normalized_form.like(f"{_MERGE_TAG_PREFIX}%")
+                )
+            )
+            await test_data_session.commit()
+
+    # ------------------------------------------------------------------
+    # Tests
+    # ------------------------------------------------------------------
+
+    async def test_search_by_merged_alias_raw_form_finds_target(
+        self,
+        async_client: AsyncClient,
+        merge_scenario: dict[str, Any],
+    ) -> None:
+        """After merging source into target, searching by source alias raw_form prefix returns target.
+
+        This is the primary regression test.  Before the fix, the search query
+        only matched ``canonical_form`` and ``normalized_form`` columns.  The
+        source alias raw_form was reassigned to the target, so a prefix search
+        must traverse ``tag_aliases.raw_form`` and surface the active target tag.
+
+        The search query prefix is derived from the raw_form of the first source
+        alias, which starts with ``mrg_test_sheinbaum``.  After the merge that
+        alias belongs to the active target tag; the source tag is ``merged`` and
+        must not appear in results.
+        """
+        source_alias_raw = merge_scenario["source_alias_raw_form"]
+        # Use the first 24 chars of the raw_form as the search prefix.
+        # "mrg_test_sheinbaum presi" is unambiguous and long enough to avoid
+        # matching unrelated tags inserted by other tests.
+        q = source_alias_raw[:24]
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(
+                f"/api/v1/canonical-tags?q={q}"
+            )
+
+        assert response.status_code == 200, (
+            f"Expected 200 but got {response.status_code}: {response.text}"
+        )
+        body = response.json()
+
+        # The target tag must appear in results — its alias raw_form matches q
+        target_norm = merge_scenario["target_normalized_form"]
+        result_norms = [item["normalized_form"] for item in body["data"]]
+        assert target_norm in result_norms, (
+            f"Expected target tag '{target_norm}' in search results for q='{q}'; "
+            f"got: {result_norms}.  "
+            "This indicates the alias raw_form JOIN path is not working after merge."
+        )
+
+        # The merged source tag must NOT appear — it has status='merged'
+        source_norm = merge_scenario["source_normalized_form"]
+        assert source_norm not in result_norms, (
+            f"Merged source tag '{source_norm}' must not appear in search results "
+            "(status='merged' should be filtered out by default)."
+        )
+
+    async def test_search_by_source_normalized_form_finds_target(
+        self,
+        async_client: AsyncClient,
+        merge_scenario: dict[str, Any],
+    ) -> None:
+        """After merge, searching by the source's original normalized_form prefix returns target.
+
+        During the merge, the source aliases have their ``normalized_form``
+        column updated to match the target's normalized_form.  The *original*
+        source normalized_form (``mrg_test_sheinbaum presidenta``) now lives
+        only as the ``normalized_form`` of the source canonical_tag row (which
+        is ``merged`` and invisible) — it is no longer on any alias row.
+
+        However, the alias ``raw_form`` still starts with the source's original
+        tag text (``mrg_test_sheinbaum presidenta``), so searching by that
+        prefix still resolves to the target via the ``tag_aliases.raw_form``
+        ILIKE path.
+
+        This test verifies that the updated ``normalized_form`` on alias rows
+        does not break the lookup: the raw_form path is sufficient to find
+        the target.
+        """
+        # The source alias raw_form starts with "mrg_test_sheinbaum presidenta".
+        # We query with a 22-char prefix to avoid catching unrelated rows.
+        source_alias_raw = merge_scenario["source_alias_raw_form"]
+        q = source_alias_raw[:22]
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(
+                f"/api/v1/canonical-tags?q={q}"
+            )
+
+        assert response.status_code == 200, (
+            f"Expected 200 but got {response.status_code}: {response.text}"
+        )
+        body = response.json()
+
+        target_norm = merge_scenario["target_normalized_form"]
+        result_norms = [item["normalized_form"] for item in body["data"]]
+        assert target_norm in result_norms, (
+            f"Expected target tag '{target_norm}' in results for q='{q}'; "
+            f"got: {result_norms}.  "
+            "Alias raw_form ILIKE path must find the target even after "
+            "normalized_form on alias rows has been updated."
+        )
+
+    async def test_search_by_target_canonical_form_still_works(
+        self,
+        async_client: AsyncClient,
+        merge_scenario: dict[str, Any],
+    ) -> None:
+        """After merge, searching by target's own canonical_form continues to work.
+
+        The merge operation must not interfere with the pre-existing search
+        behaviour for the target tag.  Querying the target's canonical_form
+        prefix must still return the target without regression.
+        """
+        # "Mrg_test_Claudia Sheinbaum" — use 21 chars as the prefix to keep
+        # the query specific enough while exercising the ILIKE path on
+        # canonical_form.
+        q = "Mrg_test_Claudia Shei"
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(
+                f"/api/v1/canonical-tags?q={q}"
+            )
+
+        assert response.status_code == 200, (
+            f"Expected 200 but got {response.status_code}: {response.text}"
+        )
+        body = response.json()
+
+        target_norm = merge_scenario["target_normalized_form"]
+        result_norms = [item["normalized_form"] for item in body["data"]]
+        assert target_norm in result_norms, (
+            f"Expected target tag '{target_norm}' in results for q='{q}'; "
+            f"got: {result_norms}.  "
+            "Canonical_form ILIKE path on the target tag must not regress "
+            "after adding alias-based search."
+        )
+
+        # The merged source must not appear either
+        source_norm = merge_scenario["source_normalized_form"]
+        assert source_norm not in result_norms, (
+            f"Merged source tag '{source_norm}' appeared in results for "
+            f"q='{q}' — status='merged' filter must still apply."
+        )
+
+    async def test_merged_canonical_tag_not_returned_directly(
+        self,
+        async_client: AsyncClient,
+        merge_scenario: dict[str, Any],
+    ) -> None:
+        """The merged source canonical tag itself must not appear in any search results.
+
+        This test verifies the status filter is applied correctly: even when
+        searching for a prefix that historically matched the source tag's own
+        canonical_form (``Mrg_test_Sheinbaum Presidenta``), the source must not
+        appear because its status is now ``"merged"``.
+
+        The target may or may not appear depending on whether its aliases match;
+        the critical assertion is that the *source* is absent.
+        """
+        # Use the source's own canonical_form prefix — before the merge this
+        # would have returned the source directly.
+        q = "Mrg_test_Sheinbaum Pre"
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(
+                f"/api/v1/canonical-tags?q={q}"
+            )
+
+        assert response.status_code == 200, (
+            f"Expected 200 but got {response.status_code}: {response.text}"
+        )
+        body = response.json()
+
+        source_norm = merge_scenario["source_normalized_form"]
+        result_norms = [item["normalized_form"] for item in body["data"]]
+
+        # The merged source tag must be absent — it is status='merged'
+        assert source_norm not in result_norms, (
+            f"Merged source tag '{source_norm}' must not appear in results for "
+            f"q='{q}'.  The default status='active' filter must exclude merged tags."
+        )
+
+        # The target must appear: its two reassigned aliases have raw_form
+        # starting with "mrg_test_Sheinbaum Pre…" which matches the query.
+        target_norm = merge_scenario["target_normalized_form"]
+        assert target_norm in result_norms, (
+            f"Expected active target tag '{target_norm}' in results for q='{q}'; "
+            f"got: {result_norms}.  "
+            "The reassigned alias raw_forms (title-case variant) should match "
+            "this prefix and surface the target."
+        )
+
+
+# ---------------------------------------------------------------------------
 # TestCanonicalTagDetail
 # ---------------------------------------------------------------------------
 

@@ -307,6 +307,12 @@ export const filterColors = {
     /** Medium slate border (#CBD5E1) */
     border: '#CBD5E1',
   },
+  /** Canonical tag filter colors - blue scheme with 7.1:1 contrast */
+  canonical_tag: {
+    background: '#DBEAFE',
+    text: '#1E40AF',
+    border: '#BFDBFE',
+  },
 } as const;
 
 /** Type for filter color scheme keys */

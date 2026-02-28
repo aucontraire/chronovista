@@ -12,6 +12,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.35.0] - 2026-02-27
+
+### Added
+- **Feature 032: Canonical Tag Frontend Integration (ADR-003 Phase 3 Frontend)**
+  - Canonical tag autocomplete with aggregated video counts and variation counts (replaces raw tag autocomplete)
+  - Two-line dropdown options: canonical form + video count on line 1, "N variations" on line 2
+  - "Did you mean:" fuzzy suggestions when prefix search returns zero results
+  - Rate limit 429 handling with `Retry-After` header support
+  - Consolidated filter pills: single pill per canonical tag with "· N vars" badge and teal color scheme
+  - `?canonical_tag=<normalized_form>` URL parameters replace `?tag=<raw_tag>` for all new tag navigation
+  - Video detail tags grouped by canonical form with top aliases displayed ("Also: MEXICO, mexico, méxico")
+  - Unresolved/orphaned tags shown in separate "Unresolved Tags" subsection with slate italic styling
+  - Skeleton loading placeholders during canonical tag resolution
+  - New hooks: `useCanonicalTags` (search), `useCanonicalTagDetail` (detail with aliases)
+  - New types: `CanonicalTagListItem`, `SelectedCanonicalTag`, `CanonicalTagDetailResponse`, etc.
+  - Design token: `filterColors.canonical_tag` (teal: `#F0FDFA`/`#134E4A`/`#99F6E4`)
+
+### Migration Notes
+- **Old `?tag=` bookmarks still work** — backend endpoint unchanged, frontend reads both `tag` and `canonical_tag` URL params
+- Frontend no longer generates `?tag=` URLs; all new tag links use `?canonical_tag=<normalized_form>`
+- Requires Features 028a/029/030 deployed; without backfill, canonical endpoints return empty results
+
+### Technical
+- 212 new frontend tests (2,177 total, 88 test files)
+- Frontend version: 0.9.0 → 0.10.0
+- No backend changes, no new dependencies, no migrations
+- WCAG 2.1 Level AA compliance maintained
+
 ## [0.34.0] - 2026-02-27
 
 ### Added

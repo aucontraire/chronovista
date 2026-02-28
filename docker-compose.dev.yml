@@ -15,7 +15,7 @@ services:
     command: >
       postgres
       -c shared_preload_libraries=''
-      -c max_connections=50
+      -c max_connections=200
       -c shared_buffers=128MB
       -c effective_cache_size=512MB
       -c work_mem=4MB

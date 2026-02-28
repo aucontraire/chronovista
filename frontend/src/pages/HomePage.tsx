@@ -33,7 +33,10 @@ export function HomePage() {
   const [searchParams] = useSearchParams();
 
   // Read filter state from URL
+  // Legacy raw tag params (backward compatibility with old bookmarks)
   const tags = searchParams.getAll("tag");
+  // Canonical tag params (Feature 030 — normalized_form values)
+  const canonicalTags = searchParams.getAll("canonical_tag");
   const category = searchParams.get("category");
   const topicIds = searchParams.getAll("topic_id");
   // T010: Read include_unavailable from URL (FR-027 - snake_case param)
@@ -50,6 +53,7 @@ export function HomePage() {
   // Get total count for filters display (using the same hook with all filters)
   const { total } = useVideos({
     tags,
+    canonicalTags,
     category,
     topicIds,
     includeUnavailable,
@@ -69,7 +73,7 @@ export function HomePage() {
   // Scroll to top when filter or sort changes (FR-031)
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [tags, category, topicIds, includeUnavailable, sortBy, sortOrder, likedOnly, hasTranscript]);
+  }, [tags, canonicalTags, category, topicIds, includeUnavailable, sortBy, sortOrder, likedOnly, hasTranscript]);
 
   return (
     <div className="p-6 lg:p-8">
@@ -121,6 +125,7 @@ export function HomePage() {
         </h3>
         <VideoList
           tags={tags}
+          canonicalTags={canonicalTags}
           category={category}
           topicIds={topicIds}
           includeUnavailable={includeUnavailable}

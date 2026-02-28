@@ -24,13 +24,21 @@ import { screen, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../test-utils';
 import { TagAutocomplete } from '../../src/components/TagAutocomplete';
 import { QueryClient } from '@tanstack/react-query';
+import type { SelectedCanonicalTag } from '../../src/types/canonical-tags';
 
-// Mock the useTags hook
-vi.mock('../../src/hooks/useTags', () => ({
-  useTags: ({ search }: { search?: string }) => {
-    const mockTags = ['react', 'typescript', 'javascript', 'python', 'go', 'rust'];
+// Mock the useCanonicalTags hook used by TagAutocomplete
+vi.mock('../../src/hooks/useCanonicalTags', () => ({
+  useCanonicalTags: (search: string) => {
+    const mockTags = [
+      { canonical_form: 'react', normalized_form: 'react', alias_count: 1, video_count: 10 },
+      { canonical_form: 'typescript', normalized_form: 'typescript', alias_count: 1, video_count: 8 },
+      { canonical_form: 'javascript', normalized_form: 'javascript', alias_count: 2, video_count: 15 },
+      { canonical_form: 'python', normalized_form: 'python', alias_count: 1, video_count: 5 },
+      { canonical_form: 'go', normalized_form: 'go', alias_count: 1, video_count: 3 },
+      { canonical_form: 'rust', normalized_form: 'rust', alias_count: 1, video_count: 4 },
+    ];
     const filteredTags = search
-      ? mockTags.filter(tag => tag.toLowerCase().includes(search.toLowerCase()))
+      ? mockTags.filter(tag => tag.canonical_form.toLowerCase().includes(search.toLowerCase()))
       : [];
 
     return {
@@ -39,10 +47,20 @@ vi.mock('../../src/hooks/useTags', () => ({
       isLoading: false,
       isError: false,
       error: null,
-      refetch: () => {},
+      isRateLimited: false,
+      rateLimitRetryAfter: 0,
     };
   },
 }));
+
+// Helper to create SelectedCanonicalTag objects from simple strings
+function makeSelectedTags(tagNames: string[]): SelectedCanonicalTag[] {
+  return tagNames.map(name => ({
+    canonical_form: name,
+    normalized_form: name,
+    alias_count: 1,
+  }));
+}
 
 describe('TagAutocomplete', () => {
   let mockOnTagSelect: ReturnType<typeof vi.fn>;
@@ -67,7 +85,7 @@ describe('TagAutocomplete', () => {
     it('should render with label and tag count', () => {
       renderWithProviders(
         <TagAutocomplete
-          selectedTags={['react', 'typescript']}
+          selectedTags={makeSelectedTags(['react', 'typescript'])}
           onTagSelect={mockOnTagSelect}
           onTagRemove={mockOnTagRemove}
         />,
@@ -81,7 +99,7 @@ describe('TagAutocomplete', () => {
     it('should display selected tags as filter pills', () => {
       renderWithProviders(
         <TagAutocomplete
-          selectedTags={['react', 'typescript']}
+          selectedTags={makeSelectedTags(['react', 'typescript'])}
           onTagSelect={mockOnTagSelect}
           onTagRemove={mockOnTagRemove}
         />,
@@ -479,7 +497,7 @@ describe('TagAutocomplete', () => {
     it('should return focus to input after tag removal', async () => {
       const { user } = renderWithProviders(
         <TagAutocomplete
-          selectedTags={['react']}
+          selectedTags={makeSelectedTags(['react'])}
           onTagSelect={mockOnTagSelect}
           onTagRemove={mockOnTagRemove}
         />,
@@ -499,11 +517,10 @@ describe('TagAutocomplete', () => {
   describe('Maximum Tag Limit', () => {
     it('should disable input when max tags reached', () => {
       const maxTags = 3;
-      const selectedTags = ['react', 'typescript', 'javascript'];
 
       renderWithProviders(
         <TagAutocomplete
-          selectedTags={selectedTags}
+          selectedTags={makeSelectedTags(['react', 'typescript', 'javascript'])}
           onTagSelect={mockOnTagSelect}
           onTagRemove={mockOnTagRemove}
           maxTags={maxTags}
@@ -519,7 +536,7 @@ describe('TagAutocomplete', () => {
     it('should show correct count in label', () => {
       renderWithProviders(
         <TagAutocomplete
-          selectedTags={['react', 'typescript']}
+          selectedTags={makeSelectedTags(['react', 'typescript'])}
           onTagSelect={mockOnTagSelect}
           onTagRemove={mockOnTagRemove}
           maxTags={5}
@@ -535,7 +552,7 @@ describe('TagAutocomplete', () => {
     it('should have aria-live region for announcements', () => {
       renderWithProviders(
         <TagAutocomplete
-          selectedTags={['react']}
+          selectedTags={makeSelectedTags(['react'])}
           onTagSelect={mockOnTagSelect}
           onTagRemove={mockOnTagRemove}
         />,
@@ -570,7 +587,7 @@ describe('TagAutocomplete', () => {
     it('should render remove buttons for selected tags', () => {
       renderWithProviders(
         <TagAutocomplete
-          selectedTags={['react', 'typescript']}
+          selectedTags={makeSelectedTags(['react', 'typescript'])}
           onTagSelect={mockOnTagSelect}
           onTagRemove={mockOnTagRemove}
         />,
@@ -584,7 +601,7 @@ describe('TagAutocomplete', () => {
     it('should call onTagRemove when remove button clicked', async () => {
       const { user } = renderWithProviders(
         <TagAutocomplete
-          selectedTags={['react']}
+          selectedTags={makeSelectedTags(['react'])}
           onTagSelect={mockOnTagSelect}
           onTagRemove={mockOnTagRemove}
         />,
@@ -594,6 +611,7 @@ describe('TagAutocomplete', () => {
       const removeButton = screen.getByRole('button', { name: /Remove tag react/ });
       await user.click(removeButton);
 
+      // onTagRemove is called with the normalizedForm ('react')
       expect(mockOnTagRemove).toHaveBeenCalledWith('react');
     });
   });
@@ -619,7 +637,7 @@ describe('TagAutocomplete', () => {
     it('should have focus ring on remove buttons', () => {
       renderWithProviders(
         <TagAutocomplete
-          selectedTags={['react']}
+          selectedTags={makeSelectedTags(['react'])}
           onTagSelect={mockOnTagSelect}
           onTagRemove={mockOnTagRemove}
         />,

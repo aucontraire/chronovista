@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, Optional
 
-from sqlalchemy import desc, distinct, func, or_, select
+from sqlalchemy import desc, distinct, exists, func, or_, select
 from sqlalchemy.sql import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -92,10 +92,19 @@ class CanonicalTagRepository(
 
         if q is not None:
             pattern = f"{q}%"
+            # Match canonical tags whose alias raw_form starts with the query.
+            # EXISTS avoids row duplication when a tag has multiple matching aliases.
+            alias_match = exists(
+                select(TagAliasDB.id).where(
+                    TagAliasDB.canonical_tag_id == CanonicalTagDB.id,
+                    TagAliasDB.raw_form.ilike(pattern),
+                )
+            )
             base_query = base_query.where(
                 or_(
                     CanonicalTagDB.canonical_form.ilike(pattern),
                     CanonicalTagDB.normalized_form.ilike(pattern),
+                    alias_match,
                 )
             )
 
@@ -266,11 +275,44 @@ class CanonicalTagRepository(
 
         return items, total_count
 
+    async def resolve_by_raw_form(
+        self,
+        session: AsyncSession,
+        raw_form: str,
+    ) -> CanonicalTagDB | None:
+        """
+        Resolve a raw tag string to its canonical tag via exact alias lookup.
+
+        Performs case-insensitive exact match on tag_aliases.raw_form,
+        returning the linked active canonical tag or None.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        raw_form : str
+            The exact raw tag string to look up.
+
+        Returns
+        -------
+        CanonicalTagDB | None
+            The linked canonical tag if found and active, else None.
+        """
+        result = await session.execute(
+            select(CanonicalTagDB)
+            .join(TagAliasDB, TagAliasDB.canonical_tag_id == CanonicalTagDB.id)
+            .where(
+                TagAliasDB.raw_form.ilike(raw_form),
+                CanonicalTagDB.status == "active",
+            )
+        )
+        return result.scalars().first()
+
     async def build_canonical_tag_video_subqueries(
         self,
         session: AsyncSession,
         normalized_forms: list[str],
-    ) -> list[Select[Any]] | None:
+    ) -> list[Select[Any]]:
         """
         Build SQLAlchemy subqueries for filtering videos by canonical tags.
 
@@ -278,8 +320,8 @@ class CanonicalTagRepository(
         linked to that canonical tag via the 3-table join path:
         canonical_tags -> tag_aliases -> video_tags.
 
-        Uses AND semantics: each subquery is applied as a separate
-        WHERE video_id IN (...) clause by the caller.
+        Uses OR semantics: the caller UNIONs the subqueries so that
+        videos matching ANY of the canonical tags are returned.
 
         Parameters
         ----------
@@ -290,10 +332,10 @@ class CanonicalTagRepository(
 
         Returns
         -------
-        list | None
-            List of SQLAlchemy Select subqueries, or None if any
-            normalized_form has no matching active canonical tag
-            (short-circuit for FR-012 empty result).
+        list[Select[Any]]
+            List of SQLAlchemy Select subqueries for recognized canonical
+            tags.  Unrecognized normalized_forms are silently skipped
+            (OR semantics — valid tags still produce results).
         """
         if not normalized_forms:
             return []
@@ -304,8 +346,9 @@ class CanonicalTagRepository(
             # Check if the canonical tag exists and is active
             ct = await self.get_by_normalized_form(session, nf, status="active")
             if ct is None:
-                # Short-circuit: unrecognized canonical tag means empty result
-                return None
+                # Skip unrecognized tags — OR semantics means we still
+                # show results for the remaining valid tags.
+                continue
 
             # Build subquery for this canonical tag
             sq = (

@@ -138,13 +138,19 @@ def integration_db_engine(integration_test_db_url, integration_db_schema_setup):
     """
     Create database engine for integration tests.
 
-    Each test gets its own engine instance to avoid connection issues.
+    Each test gets its own engine instance for isolation.
     Depends on integration_db_schema_setup to ensure tables exist.
+
+    Pool is tightly bounded (pool_size=2, max_overflow=0) to prevent
+    connection exhaustion against PostgreSQL's max_connections limit.
     """
     engine = create_async_engine(
         integration_test_db_url,
         echo=False,  # Set to True for SQL debugging
         pool_pre_ping=True,
+        pool_size=2,
+        max_overflow=0,
+        pool_timeout=10,
     )
 
     return engine
@@ -344,7 +350,7 @@ async def async_client(
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
     finally:
-        # Clean up the override and dispose the engine
+        # Clean up the override and dispose the engine to release connections
         app.dependency_overrides.clear()
         await integration_db_engine.dispose()
 

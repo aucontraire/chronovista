@@ -250,8 +250,14 @@ describe('FilterPills - Boolean Filter Pills (T033)', () => {
         <FilterPills filters={filters} onRemove={() => {}} />
       );
 
-      const srOnlyText = container.querySelector('.sr-only');
-      expect(srOnlyText).toHaveTextContent('boolean:');
+      // querySelector returns the first .sr-only which is the announcement region;
+      // use querySelectorAll to find the span inside the pill label
+      const srOnlyElements = container.querySelectorAll('.sr-only');
+      const pillTypeSrOnly = Array.from(srOnlyElements).find(
+        (el) => el.textContent?.includes('boolean:')
+      );
+      expect(pillTypeSrOnly).toBeTruthy();
+      expect(pillTypeSrOnly).toHaveTextContent('boolean:');
     });
 
     it('should have 44px minimum hit area on boolean pill remove buttons', () => {

@@ -8,11 +8,11 @@ import time
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from fastapi import APIRouter, Body, Depends, Path, Query, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -521,7 +521,7 @@ async def list_videos(
     ),
     canonical_tag: List[str] = Query(
         default=[],
-        description="Filter by canonical tag(s) - AND logic between multiple. Max 10.",
+        description="Filter by canonical tag(s) - OR logic between multiple. Max 10.",
     ),
     topic_id: List[str] = Query(
         default=[],
@@ -633,17 +633,17 @@ async def list_videos(
     valid_topics, topic_warnings = await _validate_topics(session, topic_id)
     all_warnings.extend(topic_warnings)
 
-    # Canonical tag filter: build subqueries (AND logic)
-    canonical_tag_subqueries = None
+    # Canonical tag filter: build subqueries (OR logic)
+    canonical_tag_subqueries: list[Any] | None = None
     if canonical_tag:
         ct_repo = CanonicalTagRepository()
         canonical_tag_subqueries = await ct_repo.build_canonical_tag_video_subqueries(
             session, canonical_tag
         )
-        if canonical_tag_subqueries is None:
-            # FR-012: Unrecognized canonical tag — short-circuit to empty result
+        if not canonical_tag_subqueries:
+            # All requested canonical tags were unrecognized — short-circuit
             logger.warning(
-                "Canonical tag filter short-circuit: one or more values not found: %s",
+                "Canonical tag filter short-circuit: no valid tags found among: %s",
                 canonical_tag,
             )
             pagination = PaginationMeta(
@@ -715,10 +715,10 @@ async def list_videos(
         )
         query = query.where(VideoDB.video_id.in_(topic_videos))
 
-    # Canonical tag filter (AND logic — intersect video sets per canonical tag)
+    # Canonical tag filter (OR logic — union video sets across canonical tags)
     if canonical_tag_subqueries:
-        for sq in canonical_tag_subqueries:
-            query = query.where(VideoDB.video_id.in_(sq))
+        combined = union(*canonical_tag_subqueries)
+        query = query.where(VideoDB.video_id.in_(combined))
 
     # Liked-only filter (Feature 027) — EXISTS subquery following has_transcript pattern
     if liked_only:

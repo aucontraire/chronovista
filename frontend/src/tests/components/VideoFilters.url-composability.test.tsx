@@ -2,11 +2,12 @@
  * Tests for VideoFilters URL Composability (Phase 12 - US8)
  *
  * Verifies:
- * - T071: Combined URL params persist all filters
- * - T072: URL pre-population on page load
+ * - T071: Combined URL params persist all filters (including canonical_tag)
+ * - T072: URL pre-population on page load (canonical_tag params hydrated)
  * - T073: Graceful handling of invalid URL filter values
  * - T074: Browser refresh preserves all filter state
  * - T075: Browser back/forward navigation with filter state
+ * - US2/T015-T016: canonical_tag URL parameter composability
  *
  * These tests ensure that filters are fully shareable via URLs and
  * work seamlessly with browser navigation.
@@ -172,6 +173,30 @@ describe("VideoFilters - URL Composability (T071-T075)", () => {
         expect(screen.getByText("Active Filters (6)")).toBeInTheDocument();
       });
     });
+
+    it("should handle canonical_tag params combined with other filter types", async () => {
+      renderWithProviders(<VideoFilters />, {
+        initialEntries: [
+          "/?canonical_tag=javascript&canonical_tag=python&category=10&topic_id=/m/04rlf",
+        ],
+      });
+
+      await waitFor(() => {
+        // 2 canonical_tags + 1 category + 1 topic = 4 total
+        expect(screen.getByText("Active Filters (4)")).toBeInTheDocument();
+      });
+    });
+
+    it("should handle multiple canonical_tag params only", async () => {
+      renderWithProviders(<VideoFilters />, {
+        initialEntries: ["/?canonical_tag=react&canonical_tag=typescript&canonical_tag=node"],
+      });
+
+      await waitFor(() => {
+        // 3 canonical_tags = 3 total
+        expect(screen.getByText("Active Filters (3)")).toBeInTheDocument();
+      });
+    });
   });
 
   describe("T072: URL pre-population on page load", () => {
@@ -224,6 +249,20 @@ describe("VideoFilters - URL Composability (T071-T075)", () => {
           /No active filters. Select tags, categories, or topics to filter videos./
         )
       ).toBeInTheDocument();
+    });
+
+    it("should pre-populate canonical_tag filters from URL on initial render", async () => {
+      renderWithProviders(<VideoFilters />, {
+        initialEntries: ["/?canonical_tag=javascript"],
+      });
+
+      // canonical_tag filter should be counted
+      await waitFor(() => {
+        expect(screen.getByText("Active Filters (1)")).toBeInTheDocument();
+        // FilterPills list should be present
+        const filterList = screen.getByRole("list", { name: "Active filters" });
+        expect(filterList).toBeInTheDocument();
+      });
     });
   });
 
@@ -519,6 +558,17 @@ describe("VideoFilters - URL Composability (T071-T075)", () => {
 
       // One of these should be true
       expect(noFilters || activeFilters).toBeTruthy();
+    });
+
+    it("should ignore empty canonical_tag values in URL", () => {
+      renderWithProviders(<VideoFilters />, {
+        initialEntries: ["/?canonical_tag=&canonical_tag=javascript"],
+      });
+
+      // Empty canonical_tag should be filtered out; only "javascript" counts
+      waitFor(() => {
+        expect(screen.getByText("Active Filters (1)")).toBeInTheDocument();
+      });
     });
   });
 

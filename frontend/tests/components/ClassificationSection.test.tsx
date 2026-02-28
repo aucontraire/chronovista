@@ -16,12 +16,23 @@
  * - Accessibility: semantic HTML, ARIA labels, keyboard navigation
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 import { renderWithProviders } from '../test-utils';
 import { ClassificationSection } from '../../src/components/ClassificationSection';
 import type { TopicSummary } from '../../src/types/video';
 import type { VideoPlaylistMembership } from '../../src/types/playlist';
+
+// Mock useQueries so all tag resolution queries immediately return null (orphaned).
+// This causes all tags to render in the "Unresolved Tags" subsection as plain links.
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>();
+  return {
+    ...actual,
+    useQueries: ({ queries }: { queries: unknown[] }) =>
+      queries.map(() => ({ data: null, isLoading: false, isError: false })),
+  };
+});
 
 describe('ClassificationSection', () => {
   const mockTopics: TopicSummary[] = [
@@ -114,8 +125,9 @@ describe('ClassificationSection', () => {
         />
       );
 
-      const reactLink = screen.getByRole('link', { name: 'Filter videos by tag: react' });
-      const tsLink = screen.getByRole('link', { name: 'Filter videos by tag: typescript' });
+      // With useQueries mocked to return null, tags are orphaned and rendered as unresolved
+      const reactLink = screen.getByRole('link', { name: 'Filter videos by tag: react (unresolved)' });
+      const tsLink = screen.getByRole('link', { name: 'Filter videos by tag: typescript (unresolved)' });
 
       expect(reactLink).toBeInTheDocument();
       expect(tsLink).toBeInTheDocument();
@@ -133,9 +145,10 @@ describe('ClassificationSection', () => {
         />
       );
 
-      const cppLink = screen.getByRole('link', { name: 'Filter videos by tag: C++' });
-      const musicLink = screen.getByRole('link', { name: 'Filter videos by tag: music & arts' });
-      const rockLink = screen.getByRole('link', { name: 'Filter videos by tag: rock/metal' });
+      // With useQueries mocked to return null, tags are orphaned and rendered as unresolved
+      const cppLink = screen.getByRole('link', { name: 'Filter videos by tag: C++ (unresolved)' });
+      const musicLink = screen.getByRole('link', { name: 'Filter videos by tag: music & arts (unresolved)' });
+      const rockLink = screen.getByRole('link', { name: 'Filter videos by tag: rock/metal (unresolved)' });
 
       expect(cppLink).toHaveAttribute('href', '/videos?tag=C%2B%2B');
       expect(musicLink).toHaveAttribute('href', '/videos?tag=music%20%26%20arts');
@@ -152,7 +165,8 @@ describe('ClassificationSection', () => {
         />
       );
 
-      const tagLink = screen.getByRole('link', { name: 'Filter videos by tag: react' });
+      // With useQueries mocked to return null, tag is orphaned/unresolved
+      const tagLink = screen.getByRole('link', { name: 'Filter videos by tag: react (unresolved)' });
 
       // Check for hover classes
       expect(tagLink).toHaveClass('hover:underline');
@@ -194,13 +208,14 @@ describe('ClassificationSection', () => {
         />
       );
 
-      const tagLink = screen.getByRole('link', { name: 'Filter videos by tag: react' });
+      // With useQueries mocked to return null, tag is orphaned/unresolved — uses boolean (slate) colors
+      const tagLink = screen.getByRole('link', { name: 'Filter videos by tag: react (unresolved)' });
 
-      // Check for inline styles from filterColors.tag
+      // Unresolved tags use filterColors.boolean (slate scheme)
       expect(tagLink).toHaveStyle({
-        backgroundColor: '#DBEAFE',
-        color: '#1E40AF',
-        borderColor: '#BFDBFE',
+        backgroundColor: '#F1F5F9',
+        color: '#334155',
+        borderColor: '#CBD5E1',
       });
     });
   });
@@ -495,13 +510,14 @@ describe('ClassificationSection', () => {
         />
       );
 
-      const tagLink = screen.getByRole('link', { name: 'Filter videos by tag: react' });
+      // With useQueries mocked to return null, tag is orphaned/unresolved
+      const tagLink = screen.getByRole('link', { name: 'Filter videos by tag: react (unresolved)' });
       const categoryLink = screen.getByRole('link', {
         name: 'Filter videos by category: Science & Technology',
       });
       const topicLink = screen.getByRole('link', { name: 'Filter videos by topic: Music' });
 
-      expect(tagLink).toHaveAccessibleName('Filter videos by tag: react');
+      expect(tagLink).toHaveAccessibleName('Filter videos by tag: react (unresolved)');
       expect(categoryLink).toHaveAccessibleName('Filter videos by category: Science & Technology');
       expect(topicLink).toHaveAccessibleName('Filter videos by topic: Music');
     });
@@ -516,7 +532,8 @@ describe('ClassificationSection', () => {
         />
       );
 
-      const tagLink = screen.getByRole('link', { name: 'Filter videos by tag: react' });
+      // With useQueries mocked to return null, tag is orphaned/unresolved
+      const tagLink = screen.getByRole('link', { name: 'Filter videos by tag: react (unresolved)' });
 
       // Link elements are inherently keyboard focusable
       expect(tagLink.tagName).toBe('A');
@@ -574,7 +591,8 @@ describe('ClassificationSection', () => {
         />
       );
 
-      const tagLink = screen.getByRole('link', { name: `Filter videos by tag: ${longTag}` });
+      // With useQueries mocked to return null, tag is orphaned/unresolved
+      const tagLink = screen.getByRole('link', { name: `Filter videos by tag: ${longTag} (unresolved)` });
       expect(tagLink).toHaveTextContent(longTag);
     });
 
@@ -588,6 +606,7 @@ describe('ClassificationSection', () => {
         />
       );
 
+      // With useQueries mocked to return null, tags are orphaned/unresolved
       // React keys should prevent duplicate rendering
       const reactLinks = screen.getAllByText('react');
       expect(reactLinks.length).toBeGreaterThanOrEqual(1);

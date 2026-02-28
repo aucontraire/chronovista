@@ -26,6 +26,17 @@ vi.mock('../../src/components/transcript', () => ({
   ),
 }));
 
+// Mock useQueries so ClassificationSection renders tags as orphaned (unresolved).
+// This ensures tag text is visible in the DOM for assertions.
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>();
+  return {
+    ...actual,
+    useQueries: ({ queries }: { queries: unknown[] }) =>
+      queries.map(() => ({ data: null, isLoading: false, isError: false })),
+  };
+});
+
 import { useVideoDetail } from '../../src/hooks/useVideoDetail';
 
 const mockUseVideoDetail = vi.mocked(useVideoDetail);

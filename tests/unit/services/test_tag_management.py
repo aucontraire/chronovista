@@ -1440,6 +1440,114 @@ class TestMerge:
         assert source.status == TagStatus.MERGED.value
         assert source.merged_into_id == target.id
 
+    async def test_merge_update_includes_normalized_form(
+        self,
+        service: TagManagementService,
+        mock_canonical_tag_repo: AsyncMock,
+        mock_operation_log_repo: AsyncMock,
+        mock_session: AsyncMock,
+    ) -> None:
+        """
+        Regression test: the bulk alias UPDATE must set ``normalized_form``
+        alongside ``canonical_tag_id``.
+
+        Background
+        ----------
+        A bug was found where ``merge()`` updated ``canonical_tag_id`` on
+        all source aliases but omitted ``normalized_form``.  That left the
+        lookup path ``raw_form → normalized_form → canonical_tag`` broken
+        after a merge because the alias still pointed at the old
+        ``normalized_form`` even though its FK had moved to the target tag.
+
+        What this test validates
+        -------------------------
+        After a successful single-source merge the second ``session.execute``
+        call (index 1 in the call list) carries a SQLAlchemy ``Update``
+        statement whose rendered SQL string contains ``normalized_form``.
+        This ensures that both columns are always present in the SET clause
+        regardless of future refactors.
+
+        Expected behaviour
+        ------------------
+        - ``mock_session.execute.call_args_list[1].args[0]`` is the bulk
+          alias UPDATE statement.
+        - ``str(update_stmt)`` includes the literal token ``normalized_form``.
+        - The SQL string also includes ``canonical_tag_id`` (sanity check).
+        """
+        source_tag = _make_canonical_tag(
+            normalized_form="python3",
+            canonical_form="Python3",
+            status="active",
+            alias_count=2,
+            video_count=5,
+        )
+        source_tag.entity_type = None
+        source_tag.entity_id = None
+
+        target_tag = _make_canonical_tag(
+            normalized_form="python",
+            canonical_form="Python",
+            status="active",
+            alias_count=3,
+            video_count=10,
+        )
+        target_tag.entity_type = None
+        target_tag.entity_id = None
+
+        # validate_active_tag: target first, then source
+        mock_canonical_tag_repo.get_by_normalized_form.side_effect = [
+            target_tag,   # target validate_active_tag
+            source_tag,   # source validate_active_tag
+        ]
+
+        source_alias = _make_tag_alias(
+            raw_form="python3",
+            canonical_tag_id=source_tag.id,
+        )
+        alias_select_result = _make_scalars_result([source_alias])
+
+        op_id = uuid.uuid4()
+        log_entry = _make_operation_log(operation_type="merge")
+        log_entry.id = op_id
+        mock_operation_log_repo.create.return_value = log_entry
+
+        mock_session.execute = AsyncMock(
+            side_effect=[
+                alias_select_result,   # [0] SELECT aliases for source
+                MagicMock(),           # [1] UPDATE aliases to target (the call under test)
+                _make_scalar_result(4),  # [2] recalculate alias_count
+                _make_scalar_result(12), # [3] recalculate video_count
+                MagicMock(),             # [4] UPDATE canonical_tags counts
+            ]
+        )
+
+        await service.merge(
+            mock_session,
+            source_normalized_forms=["python3"],
+            target_normalized_form="python",
+            reason="Consolidating Python variants",
+        )
+
+        # The bulk alias UPDATE is the second execute call (index 1).
+        all_calls = mock_session.execute.call_args_list
+        assert len(all_calls) >= 2, (
+            "Expected at least 2 session.execute calls; "
+            f"got {len(all_calls)}"
+        )
+
+        update_stmt = all_calls[1].args[0]
+        sql_string = str(update_stmt)
+
+        assert "normalized_form" in sql_string, (
+            "The alias bulk UPDATE must include 'normalized_form' in its SET "
+            f"clause to keep the lookup path consistent after merge. "
+            f"Actual SQL: {sql_string!r}"
+        )
+        assert "canonical_tag_id" in sql_string, (
+            "The alias bulk UPDATE must also include 'canonical_tag_id' in "
+            f"its SET clause. Actual SQL: {sql_string!r}"
+        )
+
 
 # ===========================================================================
 # TestSplit
@@ -1849,20 +1957,22 @@ class TestUndoSplit:
         )
 
         # SELECT to check subsequent ops -> empty
-        # UPDATE alias back to original
+        # get original_tag for normalized_form (before alias UPDATE)
+        # UPDATE alias back to original (FK + normalized_form)
         # get created_tag for deletion
         # recalculate original: alias, video, UPDATE
         # get original_tag for name
         mock_session.execute = AsyncMock(
             side_effect=[
                 _make_scalars_result([]),    # subsequent_ops check
-                MagicMock(),                  # UPDATE alias canonical_tag_id
+                MagicMock(),                  # UPDATE alias canonical_tag_id + normalized_form
                 _make_scalar_result(3),       # recalculate alias_count
                 _make_scalar_result(8),       # recalculate video_count
                 MagicMock(),                  # UPDATE canonical_tags
             ]
         )
         mock_canonical_tag_repo.get.side_effect = [
+            original_tag,  # get original_tag for normalized_form (before alias UPDATE)
             created_tag,   # get created_tag for deletion
             original_tag,  # get original_tag for name display
         ]
@@ -2077,12 +2187,16 @@ class TestUndo:
             canonical_form="PY3",
             status="active",
         )
-        mock_canonical_tag_repo.get.side_effect = [created_tag, original_tag]
+        mock_canonical_tag_repo.get.side_effect = [
+            original_tag,  # get original_tag for normalized_form (before alias UPDATE)
+            created_tag,   # get created_tag for deletion
+            original_tag,  # get original_tag for name display
+        ]
 
         mock_session.execute = AsyncMock(
             side_effect=[
                 _make_scalars_result([]),  # no subsequent ops
-                MagicMock(),               # UPDATE alias
+                MagicMock(),               # UPDATE alias (FK + normalized_form)
                 _make_scalar_result(3),    # recalculate alias_count
                 _make_scalar_result(8),    # recalculate video_count
                 MagicMock(),               # UPDATE

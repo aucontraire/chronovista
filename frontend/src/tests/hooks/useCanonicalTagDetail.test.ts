@@ -1,9 +1,9 @@
 /**
- * Unit tests for useCanonicalTagDetail and useResolveRawTag hooks.
+ * Unit tests for useCanonicalTagDetail hook.
  *
- * Both hooks use the native fetch API (not apiFetch) to call canonical-tag
- * endpoints. Tests mock global.fetch via vi.stubGlobal and wrap components
- * in QueryClientProvider.
+ * The hook uses the native fetch API (not apiFetch) to call the canonical-tag
+ * detail endpoint. Tests mock global.fetch via vi.stubGlobal and wrap
+ * components in QueryClientProvider.
  *
  * Error-path tests use vi.useFakeTimers() to advance through TanStack
  * Query's retry-delay scheduler without waiting for real wall-clock time.
@@ -16,16 +16,10 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 
-import {
-  useCanonicalTagDetail,
-  useResolveRawTag,
-} from "../../hooks/useCanonicalTagDetail";
+import { useCanonicalTagDetail } from "../../hooks/useCanonicalTagDetail";
 import type {
   CanonicalTagDetail,
   CanonicalTagDetailResponse,
-  CanonicalTagListItem,
-  CanonicalTagListResponse,
-  PaginationMeta,
 } from "../../types/canonical-tags";
 
 // ---------------------------------------------------------------------------
@@ -86,13 +80,6 @@ function createWrapper(queryClient: QueryClient) {
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const mockPagination: PaginationMeta = {
-  total: 1,
-  limit: 1,
-  offset: 0,
-  has_more: false,
-};
-
 const mockDetail: CanonicalTagDetail = {
   canonical_form: "JavaScript",
   normalized_form: "javascript",
@@ -108,23 +95,6 @@ const mockDetail: CanonicalTagDetail = {
 };
 
 const mockDetailResponse: CanonicalTagDetailResponse = { data: mockDetail };
-
-const mockListItem: CanonicalTagListItem = {
-  canonical_form: "JavaScript",
-  normalized_form: "javascript",
-  alias_count: 3,
-  video_count: 42,
-};
-
-const mockListResponse: CanonicalTagListResponse = {
-  data: [mockListItem],
-  pagination: mockPagination,
-};
-
-const emptyListResponse: CanonicalTagListResponse = {
-  data: [],
-  pagination: { ...mockPagination, total: 0 },
-};
 
 // ===========================================================================
 // useCanonicalTagDetail
@@ -185,7 +155,7 @@ describe("useCanonicalTagDetail", () => {
 
       const calledUrl: string = fetchSpy.mock.calls[0]?.[0] as string;
       expect(calledUrl).toContain("/canonical-tags/javascript");
-      expect(calledUrl).toContain("alias_limit=5");
+      expect(calledUrl).toContain("alias_limit=10");
     });
 
     it("URL-encodes special characters in normalizedForm", async () => {
@@ -449,327 +419,5 @@ describe("useCanonicalTagDetail", () => {
       expect(result.current.data).toBeNull();
       fastRetryClient.clear();
     }, 15000);
-  });
-});
-
-// ===========================================================================
-// useResolveRawTag
-// ===========================================================================
-
-describe("useResolveRawTag", () => {
-  let queryClient: QueryClient;
-
-  beforeEach(() => {
-    queryClient = makeQueryClient();
-    vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    queryClient.clear();
-  });
-
-  // -------------------------------------------------------------------------
-  // 5. Resolves raw tag to canonical
-  // -------------------------------------------------------------------------
-  describe("successful resolution", () => {
-    it("returns the first CanonicalTagListItem when the API returns one result", async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValueOnce(makeFetchResponse(mockListResponse, 200))
-      );
-
-      const { result } = renderHook(() => useResolveRawTag("JavaScript"), {
-        wrapper: createWrapper(queryClient),
-      });
-
-      // Initially loading
-      expect(result.current.isLoading).toBe(true);
-
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false);
-      });
-
-      expect(result.current.data).toEqual(mockListItem);
-      expect(result.current.isError).toBe(false);
-    });
-
-    it("calls fetch with the correct URL including the raw tag as the q parameter", async () => {
-      const fetchSpy = vi
-        .fn()
-        .mockResolvedValueOnce(makeFetchResponse(mockListResponse, 200));
-      vi.stubGlobal("fetch", fetchSpy);
-
-      renderHook(() => useResolveRawTag("JavaScript"), {
-        wrapper: createWrapper(queryClient),
-      });
-
-      await waitFor(() => {
-        expect(fetchSpy).toHaveBeenCalled();
-      });
-
-      const calledUrl: string = fetchSpy.mock.calls[0]?.[0] as string;
-      expect(calledUrl).toContain("/canonical-tags?");
-      expect(calledUrl).toContain("q=JavaScript");
-      expect(calledUrl).toContain("limit=1");
-    });
-
-    it("URL-encodes special characters in rawTag", async () => {
-      const fetchSpy = vi
-        .fn()
-        .mockResolvedValueOnce(makeFetchResponse(mockListResponse, 200));
-      vi.stubGlobal("fetch", fetchSpy);
-
-      renderHook(() => useResolveRawTag("C++ programming"), {
-        wrapper: createWrapper(queryClient),
-      });
-
-      await waitFor(() => {
-        expect(fetchSpy).toHaveBeenCalled();
-      });
-
-      const calledUrl: string = fetchSpy.mock.calls[0]?.[0] as string;
-      expect(calledUrl).toContain(encodeURIComponent("C++ programming"));
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // 6. Unresolved raw tag returns null
-  // -------------------------------------------------------------------------
-  describe("unresolved tag handling", () => {
-    it("returns null data when the API responds with an empty data array", async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValueOnce(
-          makeFetchResponse(emptyListResponse, 200)
-        )
-      );
-
-      const { result } = renderHook(
-        () => useResolveRawTag("unmatched-tag-xyz"),
-        { wrapper: createWrapper(queryClient) }
-      );
-
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false);
-      });
-
-      expect(result.current.data).toBeNull();
-      expect(result.current.isError).toBe(false);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // 7. Disabled when rawTag is empty
-  // -------------------------------------------------------------------------
-  describe("query disabled state", () => {
-    it("does not call fetch when rawTag is an empty string", () => {
-      const fetchSpy = vi.fn();
-      vi.stubGlobal("fetch", fetchSpy);
-
-      const { result } = renderHook(() => useResolveRawTag(""), {
-        wrapper: createWrapper(queryClient),
-      });
-
-      expect(result.current.isLoading).toBe(false);
-      expect(result.current.data).toBeNull();
-      expect(fetchSpy).not.toHaveBeenCalled();
-    });
-
-    it("starts fetching once rawTag becomes non-empty", async () => {
-      const fetchSpy = vi
-        .fn()
-        .mockResolvedValueOnce(makeFetchResponse(mockListResponse, 200));
-      vi.stubGlobal("fetch", fetchSpy);
-
-      let rawTag = "";
-      const { result, rerender } = renderHook(
-        () => useResolveRawTag(rawTag),
-        { wrapper: createWrapper(queryClient) }
-      );
-
-      // Disabled initially
-      expect(result.current.isLoading).toBe(false);
-      expect(fetchSpy).not.toHaveBeenCalled();
-
-      // Enable by providing a non-empty rawTag
-      rawTag = "JavaScript";
-      rerender();
-
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false);
-      });
-
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
-      expect(result.current.data).toEqual(mockListItem);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // 8. Error handling
-  //
-  // useResolveRawTag defines `retry: 3` AND `retryDelay` as a function at the
-  // query level, meaning both the retry count and the delay schedule override
-  // any QueryClient defaults.  We use real timers and extend both the waitFor
-  // and the it() timeouts to cover the full exponential backoff:
-  //   attempt 0 → 1 000ms, attempt 1 → 2 000ms, attempt 2 → 4 000ms = 7 000ms
-  // -------------------------------------------------------------------------
-  describe("error handling", () => {
-    it("sets isError=true on a network failure (fetch rejects)", async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockRejectedValue(new TypeError("Network request failed"))
-      );
-
-      const { result } = renderHook(() => useResolveRawTag("JavaScript"), {
-        wrapper: createWrapper(queryClient),
-      });
-
-      await waitFor(
-        () => {
-          expect(result.current.isError).toBe(true);
-        },
-        { timeout: 10000 }
-      );
-
-      expect(result.current.data).toBeNull();
-    }, 15000);
-
-    it("sets isError=true when the API responds with a 500 status", async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue(makeFetchResponse(null, 500))
-      );
-
-      const { result } = renderHook(() => useResolveRawTag("JavaScript"), {
-        wrapper: createWrapper(queryClient),
-      });
-
-      await waitFor(
-        () => {
-          expect(result.current.isError).toBe(true);
-        },
-        { timeout: 10000 }
-      );
-
-      expect(result.current.data).toBeNull();
-    }, 15000);
-
-    it("sets isError=true when the API responds with a 400 status", async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue(makeFetchResponse(null, 400))
-      );
-
-      const { result } = renderHook(() => useResolveRawTag("JavaScript"), {
-        wrapper: createWrapper(queryClient),
-      });
-
-      await waitFor(
-        () => {
-          expect(result.current.isError).toBe(true);
-        },
-        { timeout: 10000 }
-      );
-
-      expect(result.current.data).toBeNull();
-      expect(result.current.isLoading).toBe(false);
-    }, 15000);
-  });
-
-  // -------------------------------------------------------------------------
-  // Cache configuration
-  // -------------------------------------------------------------------------
-  describe("cache configuration", () => {
-    it("stores query state after a successful fetch (staleTime/gcTime configured)", async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValueOnce(makeFetchResponse(mockListResponse, 200))
-      );
-
-      const { result } = renderHook(() => useResolveRawTag("JavaScript"), {
-        wrapper: createWrapper(queryClient),
-      });
-
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false);
-      });
-
-      const queryState = queryClient.getQueryState([
-        "canonical-tag-resolve",
-        "JavaScript",
-      ]);
-      expect(queryState).toBeDefined();
-      expect(queryState?.status).toBe("success");
-    });
-
-    it("serves cached data for the same rawTag without a second fetch", async () => {
-      const fetchSpy = vi
-        .fn()
-        .mockResolvedValueOnce(makeFetchResponse(mockListResponse, 200));
-      vi.stubGlobal("fetch", fetchSpy);
-
-      // First render — populates cache
-      const { result: result1 } = renderHook(
-        () => useResolveRawTag("JavaScript"),
-        { wrapper: createWrapper(queryClient) }
-      );
-
-      await waitFor(() => {
-        expect(result1.current.isLoading).toBe(false);
-      });
-
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
-
-      // Second render reusing the same QueryClient
-      const { result: result2 } = renderHook(
-        () => useResolveRawTag("JavaScript"),
-        { wrapper: createWrapper(queryClient) }
-      );
-
-      expect(result2.current.data).toEqual(mockListItem);
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
-    });
-
-    it("uses separate cache entries for different rawTag values", async () => {
-      const secondListItem: CanonicalTagListItem = {
-        canonical_form: "TypeScript",
-        normalized_form: "typescript",
-        alias_count: 2,
-        video_count: 18,
-      };
-
-      const fetchSpy = vi
-        .fn()
-        .mockResolvedValueOnce(makeFetchResponse(mockListResponse, 200))
-        .mockResolvedValueOnce(
-          makeFetchResponse(
-            { data: [secondListItem], pagination: mockPagination },
-            200
-          )
-        );
-      vi.stubGlobal("fetch", fetchSpy);
-
-      const { result: result1 } = renderHook(
-        () => useResolveRawTag("JavaScript"),
-        { wrapper: createWrapper(queryClient) }
-      );
-
-      await waitFor(() => {
-        expect(result1.current.isLoading).toBe(false);
-      });
-
-      const { result: result2 } = renderHook(
-        () => useResolveRawTag("TypeScript"),
-        { wrapper: createWrapper(queryClient) }
-      );
-
-      await waitFor(() => {
-        expect(result2.current.isLoading).toBe(false);
-      });
-
-      expect(result1.current.data?.canonical_form).toBe("JavaScript");
-      expect(result2.current.data?.canonical_form).toBe("TypeScript");
-      expect(fetchSpy).toHaveBeenCalledTimes(2);
-    });
   });
 });

@@ -405,12 +405,17 @@ class TagManagementService:
                 "alias_ids": [str(a) for a in alias_ids],
             })
 
-            # Reassign aliases to target
+            # Reassign aliases to target — update both FK and normalized_form
+            # so that the lookup path (raw_form -> normalized_form -> canonical_tag)
+            # remains consistent after the merge.
             if alias_ids:
                 await session.execute(
                     update(TagAliasDB)
                     .where(TagAliasDB.canonical_tag_id == src.id)
-                    .values(canonical_tag_id=target.id)
+                    .values(
+                        canonical_tag_id=target.id,
+                        normalized_form=target.normalized_form,
+                    )
                 )
                 all_moved_alias_ids.extend(alias_ids)
                 total_aliases_moved += len(alias_ids)
@@ -1367,17 +1372,32 @@ class TagManagementService:
             source_id = uuid.UUID(source_data["canonical_tag_id"])
             alias_ids = [uuid.UUID(a) for a in source_data["alias_ids"]]
 
-            # Reassign aliases back to the source
-            if alias_ids:
-                for alias_id in alias_ids:
-                    await session.execute(
-                        update(TagAliasDB)
-                        .where(TagAliasDB.id == alias_id)
-                        .values(canonical_tag_id=source_id)
+            # Look up source tag first to get its normalized_form for alias restoration.
+            # The source tag still exists (status='merged') — we need its
+            # normalized_form to correctly restore alias.normalized_form when
+            # moving aliases back.
+            source_tag = await self._canonical_tag_repo.get(session, source_id)
+
+            # Reassign aliases back to the source — restore both FK and
+            # normalized_form so the lookup path is correct after undo.
+            if alias_ids and source_tag is not None:
+                await session.execute(
+                    update(TagAliasDB)
+                    .where(TagAliasDB.id.in_(alias_ids))
+                    .values(
+                        canonical_tag_id=source_id,
+                        normalized_form=source_tag.normalized_form,
                     )
+                )
+            elif alias_ids:
+                # Source tag not found — restore FK only (best effort)
+                await session.execute(
+                    update(TagAliasDB)
+                    .where(TagAliasDB.id.in_(alias_ids))
+                    .values(canonical_tag_id=source_id)
+                )
 
             # Restore source tag to active
-            source_tag = await self._canonical_tag_repo.get(session, source_id)
             if source_tag is not None:
                 source_tag.status = TagStatus.ACTIVE.value
                 source_tag.merged_into_id = None
@@ -1446,14 +1466,29 @@ class TagManagementService:
                 f"({', '.join(op_types)}). Undo those operations first."
             )
 
-        # Move aliases back to original
-        if moved_alias_ids:
-            for alias_id in moved_alias_ids:
-                await session.execute(
-                    update(TagAliasDB)
-                    .where(TagAliasDB.id == alias_id)
-                    .values(canonical_tag_id=original_id)
+        # Look up the original canonical tag to get its normalized_form
+        # before reassigning aliases, so we can restore normalized_form too.
+        original_tag_for_nf = await self._canonical_tag_repo.get(
+            session, original_id
+        )
+
+        # Move aliases back to original — restore both FK and normalized_form
+        if moved_alias_ids and original_tag_for_nf is not None:
+            await session.execute(
+                update(TagAliasDB)
+                .where(TagAliasDB.id.in_(moved_alias_ids))
+                .values(
+                    canonical_tag_id=original_id,
+                    normalized_form=original_tag_for_nf.normalized_form,
                 )
+            )
+        elif moved_alias_ids:
+            # Original tag not found — restore FK only (best effort)
+            await session.execute(
+                update(TagAliasDB)
+                .where(TagAliasDB.id.in_(moved_alias_ids))
+                .values(canonical_tag_id=original_id)
+            )
 
         # Delete the created canonical tag
         created_tag = await self._canonical_tag_repo.get(session, created_id)

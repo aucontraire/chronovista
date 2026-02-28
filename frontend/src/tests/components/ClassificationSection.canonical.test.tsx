@@ -17,43 +17,28 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import React from "react";
 import { ClassificationSection } from "../../components/ClassificationSection";
-import type { CanonicalTagListItem, CanonicalTagDetail } from "../../types/canonical-tags";
+import type { CanonicalTagDetail } from "../../types/canonical-tags";
 
 // ---------------------------------------------------------------------------
 // Helpers: mock fetch responses
 // ---------------------------------------------------------------------------
 
-function makeListResponse(items: CanonicalTagListItem[]) {
-  return JSON.stringify({
-    data: items,
-    pagination: { total: items.length, limit: 1, offset: 0, has_more: false },
-  });
-}
-
 function makeDetailResponse(detail: CanonicalTagDetail) {
   return JSON.stringify({ data: detail });
-}
-
-function buildListItem(
-  canonicalForm: string,
-  normalizedForm: string,
-  aliasCount: number,
-  videoCount = 10
-): CanonicalTagListItem {
-  return { canonical_form: canonicalForm, normalized_form: normalizedForm, alias_count: aliasCount, video_count: videoCount };
 }
 
 function buildDetail(
   canonicalForm: string,
   normalizedForm: string,
   aliasCount: number,
-  topAliases: Array<{ raw_form: string; occurrence_count: number }>
+  topAliases: Array<{ raw_form: string; occurrence_count: number }>,
+  videoCount = 10
 ): CanonicalTagDetail {
   return {
     canonical_form: canonicalForm,
     normalized_form: normalizedForm,
     alias_count: aliasCount,
-    video_count: 10,
+    video_count: videoCount,
     top_aliases: topAliases,
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-01T00:00:00Z",
@@ -170,12 +155,15 @@ describe("ClassificationSection — canonical tag display", () => {
       // Resolve "JavaScript" → canonical "JavaScript"
       // Also mock detail fetch (useCanonicalTagDetail) → no detail needed
       fetchMock.mockImplementation((url: string) => {
-        if (url.includes("canonical-tags?q=JavaScript")) {
+        if (url.includes("canonical-tags/resolve?raw_form=JavaScript")) {
           return Promise.resolve(
             mockResponse(
-              makeListResponse([
-                buildListItem("JavaScript", "javascript", 3, 25),
-              ])
+              makeDetailResponse(
+                buildDetail("JavaScript", "javascript", 3, [
+                  { raw_form: "JavaScript", occurrence_count: 20 },
+                  { raw_form: "js", occurrence_count: 5 },
+                ])
+              )
             )
           );
         }
@@ -191,7 +179,7 @@ describe("ClassificationSection — canonical tag display", () => {
             )
           );
         }
-        return Promise.resolve(mockResponse(makeListResponse([]), 200));
+        return Promise.resolve(mockResponse("", 404));
       });
 
       renderComponent(["JavaScript"]);
@@ -209,14 +197,17 @@ describe("ClassificationSection — canonical tag display", () => {
       // Both "JavaScript" and "javascript" → same canonical "JavaScript"
       fetchMock.mockImplementation((url: string) => {
         if (
-          url.includes("canonical-tags?q=JavaScript") ||
-          url.includes("canonical-tags?q=javascript")
+          url.includes("canonical-tags/resolve?raw_form=JavaScript") ||
+          url.includes("canonical-tags/resolve?raw_form=javascript")
         ) {
           return Promise.resolve(
             mockResponse(
-              makeListResponse([
-                buildListItem("JavaScript", "javascript", 3, 25),
-              ])
+              makeDetailResponse(
+                buildDetail("JavaScript", "javascript", 3, [
+                  { raw_form: "JavaScript", occurrence_count: 20 },
+                  { raw_form: "js", occurrence_count: 5 },
+                ])
+              )
             )
           );
         }
@@ -232,7 +223,7 @@ describe("ClassificationSection — canonical tag display", () => {
             )
           );
         }
-        return Promise.resolve(mockResponse(makeListResponse([]), 200));
+        return Promise.resolve(mockResponse("", 404));
       });
 
       renderComponent(["JavaScript", "javascript"]);
@@ -251,12 +242,18 @@ describe("ClassificationSection — canonical tag display", () => {
   // Alias display per R7 and FR-012
   // -------------------------------------------------------------------------
   describe("Alias display (R7, FR-012)", () => {
-    it("renders 'Also:' line with aliases excluding canonical_form itself (R7)", async () => {
+    it("renders tooltip with aliases excluding canonical_form itself (R7)", async () => {
       fetchMock.mockImplementation((url: string) => {
-        if (url.includes("canonical-tags?q=JavaScript")) {
+        if (url.includes("canonical-tags/resolve?raw_form=JavaScript")) {
           return Promise.resolve(
             mockResponse(
-              makeListResponse([buildListItem("JavaScript", "javascript", 3, 25)])
+              makeDetailResponse(
+                buildDetail("JavaScript", "javascript", 3, [
+                  { raw_form: "JavaScript", occurrence_count: 20 },
+                  { raw_form: "js", occurrence_count: 10 },
+                  { raw_form: "JS", occurrence_count: 5 },
+                ])
+              )
             )
           );
         }
@@ -273,26 +270,32 @@ describe("ClassificationSection — canonical tag display", () => {
             )
           );
         }
-        return Promise.resolve(mockResponse(makeListResponse([]), 200));
+        return Promise.resolve(mockResponse("", 404));
       });
 
-      renderComponent(["JavaScript"]);
+      const { container } = renderComponent(["JavaScript"]);
 
       await waitFor(() => {
-        const alsoP = screen.getByText(/Also:/);
+        const tooltip = container.querySelector('[role="tooltip"]');
+        expect(tooltip).toBeInTheDocument();
         // canonical_form "JavaScript" should NOT be in alias list
-        expect(alsoP.closest("p")?.textContent).not.toMatch(/JavaScript,/);
-        // but "js" or "JS" should appear
-        expect(alsoP.closest("p")?.textContent).toContain("js");
+        expect(tooltip?.textContent).not.toMatch(/JavaScript,/);
+        // but "js" and "JS" should appear
+        expect(tooltip?.textContent).toContain("js");
+        expect(tooltip?.textContent).toContain("JS");
       });
     });
 
-    it("hides 'Also:' line when alias_count is 1 (FR-012)", async () => {
+    it("hides count badge and tooltip when alias_count is 1 (FR-012)", async () => {
       fetchMock.mockImplementation((url: string) => {
-        if (url.includes("canonical-tags?q=SomeTag")) {
+        if (url.includes("canonical-tags/resolve?raw_form=SomeTag")) {
           return Promise.resolve(
             mockResponse(
-              makeListResponse([buildListItem("SomeTag", "sometag", 1, 5)])
+              makeDetailResponse(
+                buildDetail("SomeTag", "sometag", 1, [
+                  { raw_form: "SomeTag", occurrence_count: 5 },
+                ])
+              )
             )
           );
         }
@@ -307,10 +310,10 @@ describe("ClassificationSection — canonical tag display", () => {
             )
           );
         }
-        return Promise.resolve(mockResponse(makeListResponse([]), 200));
+        return Promise.resolve(mockResponse("", 404));
       });
 
-      renderComponent(["SomeTag"]);
+      const { container } = renderComponent(["SomeTag"]);
 
       await waitFor(() => {
         expect(
@@ -320,15 +323,22 @@ describe("ClassificationSection — canonical tag display", () => {
         ).toBeInTheDocument();
       });
 
-      expect(screen.queryByText(/Also:/)).not.toBeInTheDocument();
+      // No count badge and no tooltip rendered
+      expect(container.querySelector('[role="tooltip"]')).not.toBeInTheDocument();
+      expect(container.querySelector('[aria-label*="aliases"]')).not.toBeInTheDocument();
     });
 
-    it("hides 'Also:' line when all aliases equal canonical_form (R7)", async () => {
+    it("hides count badge and tooltip when all aliases equal canonical_form (R7)", async () => {
       fetchMock.mockImplementation((url: string) => {
-        if (url.includes("canonical-tags?q=React")) {
+        if (url.includes("canonical-tags/resolve?raw_form=React")) {
           return Promise.resolve(
             mockResponse(
-              makeListResponse([buildListItem("React", "react", 2, 15)])
+              makeDetailResponse(
+                buildDetail("React", "react", 2, [
+                  // Only alias IS the canonical_form itself — filtered out by R7
+                  { raw_form: "React", occurrence_count: 15 },
+                ])
+              )
             )
           );
         }
@@ -344,10 +354,10 @@ describe("ClassificationSection — canonical tag display", () => {
             )
           );
         }
-        return Promise.resolve(mockResponse(makeListResponse([]), 200));
+        return Promise.resolve(mockResponse("", 404));
       });
 
-      renderComponent(["React"]);
+      const { container } = renderComponent(["React"]);
 
       await waitFor(() => {
         expect(
@@ -357,7 +367,9 @@ describe("ClassificationSection — canonical tag display", () => {
         ).toBeInTheDocument();
       });
 
-      expect(screen.queryByText(/Also:/)).not.toBeInTheDocument();
+      // No count badge and no tooltip rendered
+      expect(container.querySelector('[role="tooltip"]')).not.toBeInTheDocument();
+      expect(container.querySelector('[aria-label*="aliases"]')).not.toBeInTheDocument();
     });
   });
 
@@ -367,11 +379,9 @@ describe("ClassificationSection — canonical tag display", () => {
   describe("Badge aria-label (FR-024)", () => {
     it("includes alias_count - 1 variations in aria-label", async () => {
       fetchMock.mockImplementation((url: string) => {
-        if (url.includes("canonical-tags?q=JavaScript")) {
+        if (url.includes("canonical-tags/resolve?raw_form=JavaScript")) {
           return Promise.resolve(
-            mockResponse(
-              makeListResponse([buildListItem("JavaScript", "javascript", 4, 100)])
-            )
+            mockResponse(makeDetailResponse(buildDetail("JavaScript", "javascript", 4, [])))
           );
         }
         if (url.includes("canonical-tags/javascript")) {
@@ -379,7 +389,7 @@ describe("ClassificationSection — canonical tag display", () => {
             mockResponse(makeDetailResponse(buildDetail("JavaScript", "javascript", 4, [])))
           );
         }
-        return Promise.resolve(mockResponse(makeListResponse([]), 200));
+        return Promise.resolve(mockResponse("", 404));
       });
 
       renderComponent(["JavaScript"]);
@@ -394,11 +404,9 @@ describe("ClassificationSection — canonical tag display", () => {
 
     it("omits variation clause when alias_count is 1", async () => {
       fetchMock.mockImplementation((url: string) => {
-        if (url.includes("canonical-tags?q=Solo")) {
+        if (url.includes("canonical-tags/resolve?raw_form=Solo")) {
           return Promise.resolve(
-            mockResponse(
-              makeListResponse([buildListItem("Solo", "solo", 1, 5)])
-            )
+            mockResponse(makeDetailResponse(buildDetail("Solo", "solo", 1, [])))
           );
         }
         if (url.includes("canonical-tags/solo")) {
@@ -406,7 +414,7 @@ describe("ClassificationSection — canonical tag display", () => {
             mockResponse(makeDetailResponse(buildDetail("Solo", "solo", 1, [])))
           );
         }
-        return Promise.resolve(mockResponse(makeListResponse([]), 200));
+        return Promise.resolve(mockResponse("", 404));
       });
 
       renderComponent(["Solo"]);
@@ -421,19 +429,17 @@ describe("ClassificationSection — canonical tag display", () => {
 
     it("includes video_count in aria-label", async () => {
       fetchMock.mockImplementation((url: string) => {
-        if (url.includes("canonical-tags?q=Python")) {
+        if (url.includes("canonical-tags/resolve?raw_form=Python")) {
           return Promise.resolve(
-            mockResponse(
-              makeListResponse([buildListItem("Python", "python", 2, 42)])
-            )
+            mockResponse(makeDetailResponse(buildDetail("Python", "python", 2, [], 42)))
           );
         }
         if (url.includes("canonical-tags/python")) {
           return Promise.resolve(
-            mockResponse(makeDetailResponse(buildDetail("Python", "python", 2, [])))
+            mockResponse(makeDetailResponse(buildDetail("Python", "python", 2, [], 42)))
           );
         }
-        return Promise.resolve(mockResponse(makeListResponse([]), 200));
+        return Promise.resolve(mockResponse("", 404));
       });
 
       renderComponent(["Python"]);
@@ -453,11 +459,9 @@ describe("ClassificationSection — canonical tag display", () => {
   describe("Badge click navigation", () => {
     it("badge links to /?canonical_tag={normalizedForm}", async () => {
       fetchMock.mockImplementation((url: string) => {
-        if (url.includes("canonical-tags?q=React")) {
+        if (url.includes("canonical-tags/resolve?raw_form=React")) {
           return Promise.resolve(
-            mockResponse(
-              makeListResponse([buildListItem("React", "react", 2, 20)])
-            )
+            mockResponse(makeDetailResponse(buildDetail("React", "react", 2, [])))
           );
         }
         if (url.includes("canonical-tags/react")) {
@@ -465,7 +469,7 @@ describe("ClassificationSection — canonical tag display", () => {
             mockResponse(makeDetailResponse(buildDetail("React", "react", 2, [])))
           );
         }
-        return Promise.resolve(mockResponse(makeListResponse([]), 200));
+        return Promise.resolve(mockResponse("", 404));
       });
 
       renderComponent(["React"]);
@@ -485,9 +489,7 @@ describe("ClassificationSection — canonical tag display", () => {
   describe("Unresolved Tags subsection (T024, FR-013)", () => {
     it("renders 'Unresolved Tags' subsection when orphaned tags exist", async () => {
       // Returns empty list → orphaned
-      fetchMock.mockResolvedValue(
-        mockResponse(makeListResponse([]))
-      );
+      fetchMock.mockResolvedValue(mockResponse("", 404));
 
       renderComponent(["orphaned-tag"]);
 
@@ -499,7 +501,7 @@ describe("ClassificationSection — canonical tag display", () => {
     });
 
     it("orphaned tag aria-label includes '(unresolved)'", async () => {
-      fetchMock.mockResolvedValue(mockResponse(makeListResponse([])));
+      fetchMock.mockResolvedValue(mockResponse("", 404));
 
       renderComponent(["mystery-tag"]);
 
@@ -513,7 +515,7 @@ describe("ClassificationSection — canonical tag display", () => {
     });
 
     it("orphaned tag links via ?tag={rawTag}", async () => {
-      fetchMock.mockResolvedValue(mockResponse(makeListResponse([])));
+      fetchMock.mockResolvedValue(mockResponse("", 404));
 
       renderComponent(["mystery-tag"]);
 
@@ -526,7 +528,7 @@ describe("ClassificationSection — canonical tag display", () => {
     });
 
     it("uses slate/italic styling for orphaned tags (FR-013)", async () => {
-      fetchMock.mockResolvedValue(mockResponse(makeListResponse([])));
+      fetchMock.mockResolvedValue(mockResponse("", 404));
 
       const { container } = renderComponent(["orphaned"]);
 
@@ -541,7 +543,7 @@ describe("ClassificationSection — canonical tag display", () => {
     });
 
     it("renders aria-describedby hidden explanation text", async () => {
-      fetchMock.mockResolvedValue(mockResponse(makeListResponse([])));
+      fetchMock.mockResolvedValue(mockResponse("", 404));
 
       const { container } = renderComponent(["some-tag"]);
 
@@ -563,11 +565,9 @@ describe("ClassificationSection — canonical tag display", () => {
 
     it("does NOT render Unresolved Tags when all tags are resolved", async () => {
       fetchMock.mockImplementation((url: string) => {
-        if (url.includes("canonical-tags?q=React")) {
+        if (url.includes("canonical-tags/resolve?raw_form=React")) {
           return Promise.resolve(
-            mockResponse(
-              makeListResponse([buildListItem("React", "react", 2, 20)])
-            )
+            mockResponse(makeDetailResponse(buildDetail("React", "react", 2, [])))
           );
         }
         if (url.includes("canonical-tags/react")) {
@@ -575,7 +575,7 @@ describe("ClassificationSection — canonical tag display", () => {
             mockResponse(makeDetailResponse(buildDetail("React", "react", 2, [])))
           );
         }
-        return Promise.resolve(mockResponse(makeListResponse([]), 200));
+        return Promise.resolve(mockResponse("", 404));
       });
 
       renderComponent(["React"]);
@@ -594,7 +594,7 @@ describe("ClassificationSection — canonical tag display", () => {
     });
 
     it("shows only Unresolved Tags subsection when all tags are orphaned", async () => {
-      fetchMock.mockResolvedValue(mockResponse(makeListResponse([])));
+      fetchMock.mockResolvedValue(mockResponse("", 404));
 
       renderComponent(["a", "b", "c"]);
 
@@ -617,11 +617,9 @@ describe("ClassificationSection — canonical tag display", () => {
   describe("Mobile layout (NFR-007)", () => {
     it("tag container has flex flex-wrap gap-2 classes", async () => {
       fetchMock.mockImplementation((url: string) => {
-        if (url.includes("canonical-tags?q=React")) {
+        if (url.includes("canonical-tags/resolve?raw_form=React")) {
           return Promise.resolve(
-            mockResponse(
-              makeListResponse([buildListItem("React", "react", 2, 20)])
-            )
+            mockResponse(makeDetailResponse(buildDetail("React", "react", 2, [])))
           );
         }
         if (url.includes("canonical-tags/react")) {
@@ -629,7 +627,7 @@ describe("ClassificationSection — canonical tag display", () => {
             mockResponse(makeDetailResponse(buildDetail("React", "react", 2, [])))
           );
         }
-        return Promise.resolve(mockResponse(makeListResponse([]), 200));
+        return Promise.resolve(mockResponse("", 404));
       });
 
       const { container } = renderComponent(["React"]);
@@ -648,11 +646,9 @@ describe("ClassificationSection — canonical tag display", () => {
 
     it("canonical badge container has min-h-[44px] for touch target (NFR-007)", async () => {
       fetchMock.mockImplementation((url: string) => {
-        if (url.includes("canonical-tags?q=TypeScript")) {
+        if (url.includes("canonical-tags/resolve?raw_form=TypeScript")) {
           return Promise.resolve(
-            mockResponse(
-              makeListResponse([buildListItem("TypeScript", "typescript", 2, 30)])
-            )
+            mockResponse(makeDetailResponse(buildDetail("TypeScript", "typescript", 2, [])))
           );
         }
         if (url.includes("canonical-tags/typescript")) {
@@ -660,7 +656,7 @@ describe("ClassificationSection — canonical tag display", () => {
             mockResponse(makeDetailResponse(buildDetail("TypeScript", "typescript", 2, [])))
           );
         }
-        return Promise.resolve(mockResponse(makeListResponse([]), 200));
+        return Promise.resolve(mockResponse("", 404));
       });
 
       const { container } = renderComponent(["TypeScript"]);
@@ -680,15 +676,20 @@ describe("ClassificationSection — canonical tag display", () => {
   });
 
   // -------------------------------------------------------------------------
-  // Accessibility: Also line (FR-012)
+  // Accessibility: count badge + tooltip (FR-012)
   // -------------------------------------------------------------------------
-  describe("Alias line accessibility (FR-012)", () => {
-    it("'Also:' span is aria-hidden", async () => {
+  describe("Count badge and tooltip accessibility (FR-012)", () => {
+    it("renders a +N count badge with aria-label when aliases exist", async () => {
       fetchMock.mockImplementation((url: string) => {
-        if (url.includes("canonical-tags?q=TypeScript")) {
+        if (url.includes("canonical-tags/resolve?raw_form=TypeScript")) {
           return Promise.resolve(
             mockResponse(
-              makeListResponse([buildListItem("TypeScript", "typescript", 3, 50)])
+              makeDetailResponse(
+                buildDetail("TypeScript", "typescript", 3, [
+                  { raw_form: "TypeScript", occurrence_count: 40 },
+                  { raw_form: "ts", occurrence_count: 10 },
+                ])
+              )
             )
           );
         }
@@ -704,26 +705,31 @@ describe("ClassificationSection — canonical tag display", () => {
             )
           );
         }
-        return Promise.resolve(mockResponse(makeListResponse([]), 200));
+        return Promise.resolve(mockResponse("", 404));
       });
 
       const { container } = renderComponent(["TypeScript"]);
 
       await waitFor(() => {
-        expect(screen.getByText(/Also:/)).toBeInTheDocument();
+        // The count badge span has aria-label="N aliases"
+        const badge = container.querySelector('[aria-label*="aliases"]');
+        expect(badge).toBeInTheDocument();
+        // variationCount = alias_count(3) - 1 = 2 (true count excluding canonical_form)
+        expect(badge?.getAttribute("aria-label")).toContain("2 aliases");
       });
-
-      const alsoSpan = container.querySelector('[aria-hidden="true"]');
-      expect(alsoSpan).toBeInTheDocument();
-      expect(alsoSpan?.textContent).toBe("Also: ");
     });
 
-    it("'Also:' paragraph has aria-label with joined aliases", async () => {
+    it("tooltip has role=tooltip and shows 'Also known as:' header with alias list", async () => {
       fetchMock.mockImplementation((url: string) => {
-        if (url.includes("canonical-tags?q=TypeScript")) {
+        if (url.includes("canonical-tags/resolve?raw_form=TypeScript")) {
           return Promise.resolve(
             mockResponse(
-              makeListResponse([buildListItem("TypeScript", "typescript", 3, 50)])
+              makeDetailResponse(
+                buildDetail("TypeScript", "typescript", 3, [
+                  { raw_form: "TypeScript", occurrence_count: 40 },
+                  { raw_form: "ts", occurrence_count: 10 },
+                ])
+              )
             )
           );
         }
@@ -739,15 +745,62 @@ describe("ClassificationSection — canonical tag display", () => {
             )
           );
         }
-        return Promise.resolve(mockResponse(makeListResponse([]), 200));
+        return Promise.resolve(mockResponse("", 404));
       });
 
       const { container } = renderComponent(["TypeScript"]);
 
       await waitFor(() => {
-        const alsoP = container.querySelector("p[aria-label*='Aliases']");
-        expect(alsoP).toBeInTheDocument();
-        expect(alsoP?.getAttribute("aria-label")).toContain("ts");
+        const tooltip = container.querySelector('[role="tooltip"]');
+        expect(tooltip).toBeInTheDocument();
+        expect(tooltip?.textContent).toContain("Also known as:");
+        // Alias "ts" appears; canonical_form "TypeScript" is filtered out (R7)
+        expect(tooltip?.textContent).toContain("ts");
+        expect(tooltip?.textContent).not.toContain("TypeScript");
+      });
+    });
+
+    it("Link has aria-describedby pointing to the tooltip id", async () => {
+      fetchMock.mockImplementation((url: string) => {
+        if (url.includes("canonical-tags/resolve?raw_form=TypeScript")) {
+          return Promise.resolve(
+            mockResponse(
+              makeDetailResponse(
+                buildDetail("TypeScript", "typescript", 3, [
+                  { raw_form: "TypeScript", occurrence_count: 40 },
+                  { raw_form: "ts", occurrence_count: 10 },
+                ])
+              )
+            )
+          );
+        }
+        if (url.includes("canonical-tags/typescript")) {
+          return Promise.resolve(
+            mockResponse(
+              makeDetailResponse(
+                buildDetail("TypeScript", "typescript", 3, [
+                  { raw_form: "TypeScript", occurrence_count: 40 },
+                  { raw_form: "ts", occurrence_count: 10 },
+                ])
+              )
+            )
+          );
+        }
+        return Promise.resolve(mockResponse("", 404));
+      });
+
+      const { container } = renderComponent(["TypeScript"]);
+
+      await waitFor(() => {
+        const link = screen.getByRole("link", {
+          name: /Filter videos by canonical tag: TypeScript/,
+        });
+        const describedBy = link.getAttribute("aria-describedby");
+        expect(describedBy).toBeTruthy();
+        // The referenced element should be the tooltip
+        const tooltipEl = container.querySelector(`#${describedBy}`);
+        expect(tooltipEl).toBeInTheDocument();
+        expect(tooltipEl?.getAttribute("role")).toBe("tooltip");
       });
     });
   });

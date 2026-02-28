@@ -210,6 +210,73 @@ class TestCanonicalTagRepositorySearch:
         assert len(items) == 1
         assert items[0] == tag_c
 
+    async def test_search_with_q_includes_alias_exists_subquery(
+        self,
+        repository: CanonicalTagRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Search with q parameter generates SQL that includes tag_aliases EXISTS.
+
+        Regression test: after the merge bug fix, the search query must include
+        an EXISTS subquery on tag_aliases.raw_form so that merged aliases whose
+        raw_form differs from their canonical tag's canonical_form/normalized_form
+        can still be found.
+        """
+        count_result = MagicMock()
+        count_result.scalar_one.return_value = 0
+
+        items_scalars = MagicMock()
+        items_scalars.all.return_value = []
+        items_result = MagicMock()
+        items_result.scalars.return_value = items_scalars
+
+        mock_session.execute.side_effect = [count_result, items_result]
+
+        await repository.search(mock_session, q="sheinbaum")
+
+        # Inspect the SQL of the count query (first execute call)
+        count_call_stmt = mock_session.execute.call_args_list[0].args[0]
+        sql_string = str(count_call_stmt.compile(compile_kwargs={"literal_binds": False}))
+
+        assert "tag_aliases" in sql_string, (
+            "Expected EXISTS subquery referencing tag_aliases table in search SQL; "
+            f"got: {sql_string}"
+        )
+        assert "EXISTS" in sql_string.upper(), (
+            "Expected EXISTS clause in search SQL for alias matching; "
+            f"got: {sql_string}"
+        )
+
+    async def test_search_without_q_excludes_alias_subquery(
+        self,
+        repository: CanonicalTagRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Search without q parameter does NOT include tag_aliases subquery.
+
+        The alias EXISTS subquery should only be added when q is provided,
+        to avoid unnecessary overhead on unfiltered list queries.
+        """
+        count_result = MagicMock()
+        count_result.scalar_one.return_value = 0
+
+        items_scalars = MagicMock()
+        items_scalars.all.return_value = []
+        items_result = MagicMock()
+        items_result.scalars.return_value = items_scalars
+
+        mock_session.execute.side_effect = [count_result, items_result]
+
+        await repository.search(mock_session)  # No q parameter
+
+        count_call_stmt = mock_session.execute.call_args_list[0].args[0]
+        sql_string = str(count_call_stmt.compile(compile_kwargs={"literal_binds": False}))
+
+        assert "tag_aliases" not in sql_string, (
+            "Expected NO tag_aliases reference in search SQL when q is not provided; "
+            f"got: {sql_string}"
+        )
+
     async def test_search_empty_results(
         self,
         repository: CanonicalTagRepository,
@@ -636,13 +703,12 @@ class TestCanonicalTagRepositoryBuildSubqueries:
         assert len(result) == 2
         assert mock_session.execute.call_count == 2
 
-    async def test_unrecognized_form_returns_none(
+    async def test_all_unrecognized_forms_returns_empty_list(
         self,
         repository: CanonicalTagRepository,
         mock_session: MagicMock,
     ) -> None:
-        """Unrecognized normalized_form short-circuits and returns None."""
-        # get_by_normalized_form returns None for unknown tag
+        """All unrecognized normalized_forms returns empty list (OR skip)."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
@@ -651,6 +717,28 @@ class TestCanonicalTagRepositoryBuildSubqueries:
             mock_session, ["unknown_tag"]
         )
 
-        assert result is None
-        # Only one call needed: the short-circuit on first unknown
+        assert result == []
         mock_session.execute.assert_called_once()
+
+    async def test_mixed_valid_invalid_skips_invalid(
+        self,
+        repository: CanonicalTagRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Mix of valid + invalid tags: invalid skipped, valid produces subquery."""
+        tag_python = _make_canonical_tag(normalized_form="python")
+
+        result_unknown = MagicMock()
+        result_unknown.scalar_one_or_none.return_value = None
+        result_python = MagicMock()
+        result_python.scalar_one_or_none.return_value = tag_python
+
+        mock_session.execute.side_effect = [result_unknown, result_python]
+
+        result = await repository.build_canonical_tag_video_subqueries(
+            mock_session, ["unknown_tag", "python"]
+        )
+
+        assert len(result) == 1
+        assert hasattr(result[0], "subquery")
+        assert mock_session.execute.call_count == 2

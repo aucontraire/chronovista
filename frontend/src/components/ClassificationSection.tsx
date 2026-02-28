@@ -36,7 +36,7 @@ import { filterColors } from "../styles/tokens";
 import { useCanonicalTagDetail } from "../hooks/useCanonicalTagDetail";
 import type { TopicSummary } from "../types/video";
 import type { VideoPlaylistMembership } from "../types/playlist";
-import type { CanonicalTagListItem } from "../types/canonical-tags";
+import type { CanonicalTagListItem, CanonicalTagDetailResponse } from "../types/canonical-tags";
 import { API_BASE_URL } from "../api/config";
 
 // ---------------------------------------------------------------------------
@@ -102,13 +102,24 @@ function Subsection({
 }
 
 /**
- * Renders a single canonical tag badge with alias line.
+ * Renders a single canonical tag badge with an inline "+N" count badge and
+ * a hover/focus tooltip listing the aliases.
  *
- * Fetches detail data to display top aliases.
- * Hides alias line per R7 (excludes canonical_form) and FR-012 (alias_count=1).
+ * Approach 1 (count badge + tooltip):
+ * - The pill gets a "+N" span appended when filteredAliases.length > 0
+ * - A tooltip positioned absolutely below the pill reveals the full alias list
+ *   on hover (group hover) and on focus-within (keyboard / tap users)
+ * - The old "Also:" <p> line is removed; layout no longer stretches pill width
+ * - For tags with 0 or 1 alias after filtering (showAliases=false), the pill
+ *   looks identical to Category / Topics pills — no badge, no tooltip
+ *
+ * Hides alias UI per R7 (excludes canonical_form) and FR-012 (alias_count=1).
  */
 function CanonicalTagBadge({ group }: { group: CanonicalGroup }) {
   const { data: detail } = useCanonicalTagDetail(group.normalizedForm);
+
+  // Stable tooltip id for aria-describedby association
+  const tooltipId = `tooltip-${group.normalizedForm}`;
 
   // Filter aliases: exclude the canonical_form itself (R7)
   const filteredAliases = useMemo(() => {
@@ -118,7 +129,7 @@ function CanonicalTagBadge({ group }: { group: CanonicalGroup }) {
       .filter((raw) => raw !== group.canonicalForm);
   }, [detail?.top_aliases, group.canonicalForm]);
 
-  // Hide "Also:" when alias_count=1 (only one variation = the canonical itself)
+  // Hide badge + tooltip when alias_count=1 (only one variation = canonical itself)
   // or when no aliases remain after filtering (R7)
   const showAliases = group.aliasCount > 1 && filteredAliases.length > 0;
 
@@ -130,11 +141,13 @@ function CanonicalTagBadge({ group }: { group: CanonicalGroup }) {
   ].join(" ");
 
   return (
-    <div className="flex flex-col gap-1">
-      {/* Canonical badge */}
+    // relative + group/pill enables the CSS group-hover and group-focus-within
+    // selectors on the tooltip below. No flex-col wrapper — avoids width stretch.
+    <div className="relative group/pill">
+      {/* Canonical badge pill */}
       <Link
         to={`/videos?canonical_tag=${encodeURIComponent(group.normalizedForm)}`}
-        className="inline-flex items-center px-3 py-1 text-sm font-medium rounded-full transition-all duration-200 hover:underline hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 min-h-[44px]"
+        className="inline-flex items-center self-start px-3 py-1 text-sm font-medium rounded-full transition-all duration-200 hover:underline hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 min-h-[44px]"
         style={{
           backgroundColor: filterColors.canonical_tag.background,
           color: filterColors.canonical_tag.text,
@@ -143,19 +156,42 @@ function CanonicalTagBadge({ group }: { group: CanonicalGroup }) {
           borderColor: filterColors.canonical_tag.border,
         }}
         aria-label={ariaLabel}
+        aria-describedby={showAliases ? tooltipId : undefined}
       >
         {group.canonicalForm}
+
+        {/* +N count badge — uses true alias count (minus canonical form itself) */}
+        {showAliases && (
+          <span
+            className="ml-1.5 text-xs font-normal opacity-60"
+            aria-label={`${variationCount} aliases`}
+          >
+            +{variationCount}
+          </span>
+        )}
       </Link>
 
-      {/* FR-012: Alias line — hidden when alias_count=1 or no remaining aliases */}
+      {/* Tooltip — shown on hover or focus-within of the wrapper div */}
       {showAliases && (
-        <p
-          className="text-xs text-gray-500 pl-1"
-          aria-label={`Aliases: ${filteredAliases.join(", ")}`}
+        <div
+          id={tooltipId}
+          role="tooltip"
+          className="absolute left-0 top-full mt-1 z-10 w-max max-w-[220px] bg-white border border-gray-200 rounded-md shadow-md p-2 text-xs opacity-0 pointer-events-none group-hover/pill:opacity-100 group-hover/pill:pointer-events-auto group-focus-within/pill:opacity-100 group-focus-within/pill:pointer-events-auto transition-opacity duration-150"
         >
-          <span aria-hidden="true">Also: </span>
-          {filteredAliases.join(", ")}
-        </p>
+          <p className="font-medium text-gray-700 mb-1">Also known as:</p>
+          <ul className="space-y-0.5">
+            {filteredAliases.map((alias) => (
+              <li key={alias} className="text-gray-600 truncate">
+                {alias}
+              </li>
+            ))}
+          </ul>
+          {variationCount > filteredAliases.length && (
+            <p className="text-gray-400 mt-1">
+              and {variationCount - filteredAliases.length} more
+            </p>
+          )}
+        </div>
       )}
     </div>
   );
@@ -206,21 +242,26 @@ export function ClassificationSection({
       }: {
         signal: AbortSignal;
       }): Promise<CanonicalTagListItem | null> => {
-        const url = `${API_BASE_URL}/canonical-tags?q=${encodeURIComponent(rawTag)}&limit=1`;
+        const url = `${API_BASE_URL}/canonical-tags/resolve?raw_form=${encodeURIComponent(rawTag)}`;
         const response = await fetch(url, {
           signal,
           headers: { "Content-Type": "application/json" },
         });
+        if (response.status === 404) {
+          return null; // No canonical tag for this raw tag — will become orphan
+        }
         if (!response.ok) {
           throw new Error(
             `Failed to resolve raw tag: ${response.status} ${response.statusText}`
           );
         }
-        const json = (await response.json()) as {
-          data: CanonicalTagListItem[];
-          pagination: { total: number; limit: number; offset: number; has_more: boolean };
+        const json = (await response.json()) as CanonicalTagDetailResponse;
+        return {
+          canonical_form: json.data.canonical_form,
+          normalized_form: json.data.normalized_form,
+          alias_count: json.data.alias_count,
+          video_count: json.data.video_count,
         };
-        return json.data[0] ?? null;
       },
       enabled: rawTag.length > 0,
       staleTime: 5 * 60 * 1000,

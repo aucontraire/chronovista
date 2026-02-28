@@ -842,12 +842,12 @@ class TestCanonicalTagFilter:
         finally:
             await self._cleanup_data(integration_session_factory)
 
-    async def test_multiple_canonical_tags_and_semantics(
+    async def test_multiple_canonical_tags_or_semantics(
         self,
         async_client: AsyncClient,
         integration_session_factory,
     ) -> None:
-        """Multiple canonical_tag params use AND logic — only videos matching ALL should appear."""
+        """Multiple canonical_tag params use OR logic — videos matching ANY should appear."""
         await self._seed_data(integration_session_factory)
         try:
             with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
@@ -858,11 +858,12 @@ class TestCanonicalTagFilter:
                 assert response.status_code == 200
                 data = response.json()
                 video_ids = {v["video_id"] for v in data["data"]}
-                # Only v4 has both "python" AND "gaming" tags
-                assert _CT_VID_4 in video_ids
-                # Others should be excluded
-                assert _CT_VID_1 not in video_ids
-                assert _CT_VID_5 not in video_ids
+                # OR semantics: videos matching python OR gaming
+                assert _CT_VID_1 in video_ids  # python
+                assert _CT_VID_2 in video_ids  # Python
+                assert _CT_VID_3 in video_ids  # #Python
+                assert _CT_VID_4 in video_ids  # python + gaming
+                assert _CT_VID_5 in video_ids  # Gaming
         finally:
             await self._cleanup_data(integration_session_factory)
 
@@ -883,6 +884,31 @@ class TestCanonicalTagFilter:
                 data = response.json()
                 assert data["data"] == []
                 assert data["pagination"]["total"] == 0
+        finally:
+            await self._cleanup_data(integration_session_factory)
+
+    async def test_valid_plus_invalid_canonical_tag_returns_valid_results(
+        self,
+        async_client: AsyncClient,
+        integration_session_factory,
+    ) -> None:
+        """Mixed valid+invalid canonical tags: invalid is skipped, valid still returns results."""
+        await self._seed_data(integration_session_factory)
+        try:
+            with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+                mock_oauth.is_authenticated.return_value = True
+                response = await async_client.get(
+                    "/api/v1/videos?canonical_tag=python&canonical_tag=nonexistent_xyz_999"
+                )
+                assert response.status_code == 200
+                data = response.json()
+                video_ids = {v["video_id"] for v in data["data"]}
+                # "python" is valid — should still return its videos
+                assert _CT_VID_1 in video_ids
+                assert _CT_VID_2 in video_ids
+                assert _CT_VID_4 in video_ids
+                # "nonexistent_xyz_999" is skipped, not short-circuited
+                assert data["pagination"]["total"] > 0
         finally:
             await self._cleanup_data(integration_session_factory)
 

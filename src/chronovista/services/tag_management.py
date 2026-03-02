@@ -1003,7 +1003,7 @@ class TagManagementService:
 
                 ea_create = EntityAliasCreate(
                     entity_id=entity_id_for_aliases,
-                    alias_name=tag_alias.raw_form,
+                    alias_name=tag.canonical_form,
                     alias_name_normalized=norm,
                     alias_type=EntityAliasType.NAME_VARIANT,
                     occurrence_count=tag_alias.occurrence_count,

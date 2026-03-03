@@ -1,5 +1,6 @@
 """Transcript endpoints for viewing and retrieving transcript data."""
 
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Path, Query
@@ -17,6 +18,7 @@ from chronovista.api.schemas.transcripts import (
     TranscriptResponse,
     TranscriptSegment,
 )
+from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
 from chronovista.db.models import TranscriptSegment as SegmentDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as TranscriptDB
@@ -297,6 +299,23 @@ async def get_transcript_segments(
     segment_result = await session.execute(query)
     segments: list[SegmentDB] = list(segment_result.scalars().all())
 
+    # Derive correction metadata for all segments in a single query
+    segment_ids = [seg.id for seg in segments]
+    correction_meta: dict[int, tuple[datetime | None, int]] = {}
+    if segment_ids:
+        meta_query = (
+            select(
+                TranscriptCorrectionDB.segment_id,
+                func.max(TranscriptCorrectionDB.corrected_at).label("latest_corrected_at"),
+                func.count().label("correction_count"),
+            )
+            .where(TranscriptCorrectionDB.segment_id.in_(segment_ids))
+            .group_by(TranscriptCorrectionDB.segment_id)
+        )
+        meta_result = await session.execute(meta_query)
+        for row in meta_result.all():
+            correction_meta[row.segment_id] = (row.latest_corrected_at, row.correction_count)
+
     items = [
         TranscriptSegment(
             id=seg.id,
@@ -304,6 +323,9 @@ async def get_transcript_segments(
             start_time=seg.start_time,
             end_time=seg.end_time,
             duration=seg.duration,
+            has_correction=seg.has_correction,
+            corrected_at=correction_meta.get(seg.id, (None, 0))[0],
+            correction_count=correction_meta.get(seg.id, (None, 0))[1],
         )
         for seg in segments
     ]

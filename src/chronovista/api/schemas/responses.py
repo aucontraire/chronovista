@@ -43,6 +43,10 @@ class ErrorCode(str, Enum):
     CONFLICT = "CONFLICT"
     MUTUALLY_EXCLUSIVE = "MUTUALLY_EXCLUSIVE"
     RATE_LIMITED = "RATE_LIMITED"
+    SEGMENT_NOT_FOUND = "SEGMENT_NOT_FOUND"
+    NO_CHANGE_DETECTED = "NO_CHANGE_DETECTED"
+    NO_ACTIVE_CORRECTION = "NO_ACTIVE_CORRECTION"
+    INVALID_CORRECTION_TYPE = "INVALID_CORRECTION_TYPE"
 
     # 5xx Server Errors
     INTERNAL_ERROR = "INTERNAL_ERROR"
@@ -92,6 +96,10 @@ ERROR_TITLES: dict[ErrorCode, str] = {
     ErrorCode.DATABASE_ERROR: "Database Error",
     ErrorCode.EXTERNAL_SERVICE_ERROR: "External Service Error",
     ErrorCode.SERVICE_UNAVAILABLE: "Service Unavailable",
+    ErrorCode.SEGMENT_NOT_FOUND: "Segment Not Found",
+    ErrorCode.NO_CHANGE_DETECTED: "No Change Detected",
+    ErrorCode.NO_ACTIVE_CORRECTION: "No Active Correction",
+    ErrorCode.INVALID_CORRECTION_TYPE: "Invalid Correction Type",
 }
 """Mapping from ErrorCode to human-readable RFC 7807 title."""
 

@@ -55,6 +55,9 @@ class TranscriptSegment(BaseModel):
     start_time: float  # Start time in seconds
     end_time: float  # End time in seconds
     duration: float  # Segment duration
+    has_correction: bool = False  # Whether segment has active correction
+    corrected_at: datetime | None = None  # Timestamp of most recent correction
+    correction_count: int = 0  # Total audit records for this segment
 
 
 class SegmentListResponse(ApiResponse[List[TranscriptSegment]]):

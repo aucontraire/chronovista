@@ -140,6 +140,10 @@ All responses use a consistent envelope structure.
 | `INVALID_LANGUAGE_CODE` | 400 | Invalid BCP-47 language code |
 | `INVALID_PREFERENCE_TYPE` | 400 | Invalid preference type |
 | `SERVICE_UNAVAILABLE` | 503 | External service unavailable (e.g., Wayback Machine CDX API) |
+| `SEGMENT_NOT_FOUND` | 422 | Transcript segment not found for video/language |
+| `NO_CHANGE_DETECTED` | 422 | Corrected text identical to current text |
+| `INVALID_CORRECTION_TYPE` | 422 | Invalid correction type (e.g., `revert` on submit endpoint) |
+| `NO_ACTIVE_CORRECTION` | 422 | No active correction to revert |
 
 ## Endpoints
 
@@ -1029,14 +1033,20 @@ GET /api/v1/videos/{video_id}/transcript/segments
       "text": "We're no strangers to love",
       "start_time": 18.5,
       "end_time": 21.3,
-      "duration": 2.8
+      "duration": 2.8,
+      "has_correction": false,
+      "corrected_at": null,
+      "correction_count": 0
     },
     {
       "id": 1235,
       "text": "You know the rules and so do I",
       "start_time": 21.3,
       "end_time": 24.1,
-      "duration": 2.8
+      "duration": 2.8,
+      "has_correction": true,
+      "corrected_at": "2026-03-03T10:15:00Z",
+      "correction_count": 2
     }
   ],
   "pagination": {
@@ -1047,6 +1057,234 @@ GET /api/v1/videos/{video_id}/transcript/segments
   }
 }
 ```
+
+##### Correction Metadata Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `has_correction` | boolean | Whether the segment has an active correction |
+| `corrected_at` | datetime \| null | Timestamp of the most recent correction (null if uncorrected) |
+| `correction_count` | integer | Total number of correction audit records for this segment |
+
+!!! note "Effective Text"
+    The `text` field returns the effective text — corrected text if `has_correction` is true, original text otherwise. Use the correction history endpoint to see previous versions.
+
+---
+
+### Transcript Corrections
+
+Submit, revert, and view correction history for transcript segments. All correction endpoints require authentication and a `language_code` query parameter.
+
+#### Submit a Correction
+
+Apply a correction to a specific transcript segment.
+
+```
+POST /api/v1/videos/{video_id}/transcript/segments/{segment_id}/corrections
+```
+
+##### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `video_id` | string | YouTube video ID (11 characters) |
+| `segment_id` | integer | Transcript segment ID |
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `language_code` | string | BCP-47 language code (required) | - |
+
+##### Request Body
+
+```json
+{
+  "corrected_text": "The corrected segment text",
+  "correction_type": "spelling",
+  "correction_note": "Fixed typo in speaker name",
+  "corrected_by_user_id": "user123"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `corrected_text` | string | Yes | Corrected text (min 1 character after whitespace stripping) |
+| `correction_type` | string | Yes | One of: `spelling`, `profanity_fix`, `context_correction`, `formatting`, `asr_error` |
+| `correction_note` | string | No | Optional explanation for the correction |
+| `corrected_by_user_id` | string | No | Optional user identifier (max 100 chars) |
+
+!!! warning "Revert Type Not Allowed"
+    The `correction_type` value `revert` is rejected by this endpoint. Use the dedicated revert endpoint instead.
+
+##### Response (201 Created)
+
+```json
+{
+  "data": {
+    "correction": {
+      "id": "019576a1-2b3c-7def-8901-234567890abc",
+      "video_id": "dQw4w9WgXcQ",
+      "language_code": "en",
+      "segment_id": 1234,
+      "correction_type": "spelling",
+      "original_text": "We're no strangers to lvoe",
+      "corrected_text": "We're no strangers to love",
+      "correction_note": "Fixed typo in speaker name",
+      "corrected_by_user_id": "user123",
+      "corrected_at": "2026-03-03T10:15:00Z",
+      "version_number": 1
+    },
+    "segment_state": {
+      "has_correction": true,
+      "effective_text": "We're no strangers to love"
+    }
+  }
+}
+```
+
+##### Error Responses
+
+| HTTP Status | Code | Description |
+|-------------|------|-------------|
+| 404 | `NOT_FOUND` | Video not found |
+| 422 | `SEGMENT_NOT_FOUND` | Segment not found for the given video/language |
+| 422 | `NO_CHANGE_DETECTED` | Corrected text is identical to current text |
+| 422 | `INVALID_CORRECTION_TYPE` | `correction_type=revert` is not allowed |
+
+---
+
+#### Revert a Correction
+
+Revert the latest correction on a segment, restoring it to the previous state.
+
+```
+POST /api/v1/videos/{video_id}/transcript/segments/{segment_id}/corrections/revert
+```
+
+##### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `video_id` | string | YouTube video ID (11 characters) |
+| `segment_id` | integer | Transcript segment ID |
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `language_code` | string | BCP-47 language code (required) | - |
+
+##### Request Body
+
+No request body. The revert target is always the latest correction.
+
+##### Response (200 OK)
+
+```json
+{
+  "data": {
+    "correction": {
+      "id": "019576b2-3c4d-7ef0-1234-567890abcdef",
+      "video_id": "dQw4w9WgXcQ",
+      "language_code": "en",
+      "segment_id": 1234,
+      "correction_type": "revert",
+      "original_text": "We're no strangers to love",
+      "corrected_text": "We're no strangers to lvoe",
+      "correction_note": null,
+      "corrected_by_user_id": null,
+      "corrected_at": "2026-03-03T10:20:00Z",
+      "version_number": 2
+    },
+    "segment_state": {
+      "has_correction": false,
+      "effective_text": "We're no strangers to lvoe"
+    }
+  }
+}
+```
+
+!!! note "Revert Behavior"
+    - **Single correction**: Reverts to original text (`has_correction` becomes `false`)
+    - **Stacked corrections**: Reverts to the previous correction's text (`has_correction` stays `true`)
+
+##### Error Responses
+
+| HTTP Status | Code | Description |
+|-------------|------|-------------|
+| 404 | `NOT_FOUND` | Video not found |
+| 422 | `SEGMENT_NOT_FOUND` | Segment not found for the given video/language |
+| 422 | `NO_ACTIVE_CORRECTION` | Segment has no active correction to revert |
+
+---
+
+#### Get Correction History
+
+Retrieve paginated correction history for a segment.
+
+```
+GET /api/v1/videos/{video_id}/transcript/segments/{segment_id}/corrections
+```
+
+##### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `video_id` | string | YouTube video ID (11 characters) |
+| `segment_id` | integer | Transcript segment ID |
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `language_code` | string | BCP-47 language code (required) | - |
+| `limit` | integer | Items per page (1-100) | 50 |
+| `offset` | integer | Pagination offset | 0 |
+
+##### Response (200 OK)
+
+```json
+{
+  "data": [
+    {
+      "id": "019576b2-3c4d-7ef0-1234-567890abcdef",
+      "video_id": "dQw4w9WgXcQ",
+      "language_code": "en",
+      "segment_id": 1234,
+      "correction_type": "revert",
+      "original_text": "We're no strangers to love",
+      "corrected_text": "We're no strangers to lvoe",
+      "correction_note": null,
+      "corrected_by_user_id": null,
+      "corrected_at": "2026-03-03T10:20:00Z",
+      "version_number": 2
+    },
+    {
+      "id": "019576a1-2b3c-7def-8901-234567890abc",
+      "video_id": "dQw4w9WgXcQ",
+      "language_code": "en",
+      "segment_id": 1234,
+      "correction_type": "spelling",
+      "original_text": "We're no strangers to lvoe",
+      "corrected_text": "We're no strangers to love",
+      "correction_note": "Fixed typo",
+      "corrected_by_user_id": "user123",
+      "corrected_at": "2026-03-03T10:15:00Z",
+      "version_number": 1
+    }
+  ],
+  "pagination": {
+    "total": 2,
+    "limit": 50,
+    "offset": 0,
+    "has_more": false
+  }
+}
+```
+
+!!! note "Empty History"
+    Returns an empty `data` array (not 404) when a segment has no corrections or when the segment ID doesn't exist.
 
 ---
 
@@ -1690,6 +1928,36 @@ curl "http://localhost:8000/api/v1/videos?canonical_tag=mexico&canonical_tag=tra
 
 # Combined with raw tag filter
 curl "http://localhost:8000/api/v1/videos?canonical_tag=gaming&tag=python"
+```
+
+#### Submit a Transcript Correction
+
+```bash
+# Submit a spelling correction
+curl -X POST "http://localhost:8000/api/v1/videos/dQw4w9WgXcQ/transcript/segments/1234/corrections?language_code=en" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "corrected_text": "We'\''re no strangers to love",
+    "correction_type": "spelling",
+    "correction_note": "Fixed ASR typo"
+  }'
+```
+
+#### Revert a Correction
+
+```bash
+# Revert the latest correction
+curl -X POST "http://localhost:8000/api/v1/videos/dQw4w9WgXcQ/transcript/segments/1234/corrections/revert?language_code=en"
+```
+
+#### Get Correction History
+
+```bash
+# View correction history for a segment
+curl "http://localhost:8000/api/v1/videos/dQw4w9WgXcQ/transcript/segments/1234/corrections?language_code=en"
+
+# With pagination
+curl "http://localhost:8000/api/v1/videos/dQw4w9WgXcQ/transcript/segments/1234/corrections?language_code=en&limit=10&offset=0"
 ```
 
 #### Recover Video Metadata

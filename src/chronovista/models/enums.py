@@ -293,3 +293,14 @@ class TagOperationType(str, Enum):
     RENAME = "rename"
     DELETE = "delete"
     CREATE = "create"
+
+
+class CorrectionType(str, Enum):
+    """Types of corrections that can be applied to a transcript."""
+
+    SPELLING = "spelling"
+    PROFANITY_FIX = "profanity_fix"
+    CONTEXT_CORRECTION = "context_correction"
+    FORMATTING = "formatting"
+    ASR_ERROR = "asr_error"
+    REVERT = "revert"

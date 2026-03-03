@@ -659,6 +659,71 @@ class TranscriptService(TranscriptServiceInterface):
 
         return results
 
+    def _update_segment_text(
+        self,
+        segment: Any,
+        new_text: str,
+        force_overwrite: bool = False,
+    ) -> None:
+        """
+        Update a transcript segment's raw text with re-download protection.
+
+        Implements FR-015 and FR-016 from Feature 033: if a segment has an
+        existing manual correction (has_correction=True), the corrected_text is
+        preserved by default so that human corrections are not silently lost
+        during a transcript re-download.
+
+        Parameters
+        ----------
+        segment : Any
+            ORM or domain object with attributes: ``text``, ``corrected_text``,
+            ``has_correction``.  Mutated in-place.
+        new_text : str
+            The fresh raw text from the re-downloaded transcript.
+        force_overwrite : bool, optional
+            When True, bypass correction protection: clear ``corrected_text``,
+            set ``has_correction = False``, and update ``text`` with
+            ``new_text``.  Callers MUST recompute the parent transcript's
+            ``has_corrections`` / ``correction_count`` after processing all
+            segments.  Defaults to False.
+
+        Notes
+        -----
+        - When *force_overwrite* is False and the segment has a correction, a
+          WARNING is logged about the divergence between raw and corrected text
+          (FR-016).
+        - When *force_overwrite* is True, an INFO message is logged.
+        - When the segment has no correction, the update proceeds silently.
+        - This method does **not** touch the database; it only mutates the
+          in-memory object.  The caller is responsible for flushing/committing.
+        - Recomputation of transcript-level ``has_corrections`` and
+          ``correction_count`` after a force-overwrite is the caller's
+          responsibility (EC-FORCE-OVERWRITE-AUDIT).
+        """
+        if segment.has_correction:
+            if force_overwrite:
+                logger.info(
+                    "Segment %s: force-overwrite requested; "
+                    "clearing corrected_text and resetting has_correction",
+                    getattr(segment, "id", "<unknown>"),
+                )
+                segment.text = new_text
+                segment.corrected_text = None
+                segment.has_correction = False
+            else:
+                # FR-015: preserve corrected_text; only update the raw column
+                # FR-016: warn about divergence between raw and corrected text
+                logger.warning(
+                    "Segment %s has correction; raw text updated but "
+                    "corrected_text preserved",
+                    getattr(segment, "id", "<unknown>"),
+                )
+                segment.text = new_text
+                # corrected_text intentionally left unchanged
+        else:
+            # No correction — update normally
+            segment.text = new_text
+
     def is_service_available(self) -> bool:
         """Check if the transcript service is available."""
         return self._api_available or self.enable_mock_fallback

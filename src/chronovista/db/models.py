@@ -315,6 +315,20 @@ class VideoTranscript(Base):
         comment="Source: youtube_transcript_api, youtube_data_api_v3, manual_upload, unknown"
     )
 
+    # Correction metadata (Feature 033)
+    has_corrections: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default=text("false"),
+        comment="Whether any segment has active corrections"
+    )
+    last_corrected_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+        comment="Timestamp of most recent correction"
+    )
+    correction_count: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False, server_default=text("0"),
+        comment="Count of active (non-reverted) corrections"
+    )
+
     # Relationships
     video: Mapped["Video"] = relationship("Video", back_populates="transcripts")
     segments: Mapped[list["TranscriptSegment"]] = relationship(
@@ -322,6 +336,11 @@ class VideoTranscript(Base):
         back_populates="transcript",
         order_by="TranscriptSegment.sequence_number",
         cascade="all, delete-orphan",
+    )
+    corrections: Mapped[list["TranscriptCorrection"]] = relationship(
+        "TranscriptCorrection",
+        back_populates="transcript",
+        order_by="TranscriptCorrection.corrected_at.desc()",
     )
 
 
@@ -1001,6 +1020,64 @@ class TagOperationLog(Base):
     )
 
 
+class TranscriptCorrection(Base):
+    """Append-only audit record for transcript segment corrections (Feature 033).
+
+    Records are never updated or deleted. Each row captures a single correction
+    event including the before/after text, correction type, and version number
+    within the segment's correction chain.
+    """
+
+    __tablename__ = "transcript_corrections"
+
+    # Primary key (UUIDv7, time-ordered)
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
+
+    # Transcript linkage (composite FK to video_transcripts)
+    video_id: Mapped[str] = mapped_column(String(20), nullable=False)
+    language_code: Mapped[str] = mapped_column(String(10), nullable=False)
+
+    # Segment linkage (optional FK to transcript_segments)
+    segment_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("transcript_segments.id", ondelete="RESTRICT"), nullable=True
+    )
+
+    # Correction content
+    correction_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    original_text: Mapped[str] = mapped_column(Text, nullable=False)
+    corrected_text: Mapped[str] = mapped_column(Text, nullable=False)
+    correction_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Audit metadata
+    corrected_by_user_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    corrected_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Table constraints
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["video_id", "language_code"],
+            ["video_transcripts.video_id", "video_transcripts.language_code"],
+            name="fk_transcript_corrections_transcript",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "version_number >= 1",
+            name="chk_transcript_corrections_version_number_positive",
+        ),
+    )
+
+    # Relationships
+    transcript: Mapped["VideoTranscript"] = relationship(
+        "VideoTranscript", back_populates="corrections"
+    )
+    segment: Mapped[Optional["TranscriptSegment"]] = relationship(
+        "TranscriptSegment"
+    )
+
+
 # Export all models
 __all__ = [
     "Base",
@@ -1025,4 +1102,5 @@ __all__ = [
     "CanonicalTag",
     "TagAlias",
     "TagOperationLog",
+    "TranscriptCorrection",
 ]

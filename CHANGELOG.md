@@ -9,6 +9,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.36.0] - 2026-03-02
+
+### Added
+
+#### Feature 033: Transcript Corrections Audit Table (ADR-005 Increment 3)
+
+Append-only audit table and service layer for recording, applying, reverting, and protecting transcript corrections. All mutations use the flush-only transaction pattern — the caller owns the transaction lifecycle. Backend only — no new API endpoints, no frontend changes, no CLI commands.
+
+**Database Migration:**
+- New `transcript_corrections` table with columns: id (UUIDv7 PK), video_id, language_code, segment_id (nullable FK), correction_type, original_text, corrected_text, correction_note (nullable), corrected_by_user_id (nullable), corrected_at (server_default now()), version_number
+- Composite FK to `video_transcripts(video_id, language_code)` with RESTRICT on delete
+- Optional FK to `transcript_segments(id)` with RESTRICT on delete
+- CHECK constraint: `version_number >= 1`
+- Indexes: `idx_transcript_corrections_lookup (video_id, language_code, corrected_at)` and `idx_transcript_corrections_segment (segment_id, corrected_at)`
+- 3 new columns on `video_transcripts`: `has_corrections` (BOOLEAN, default false), `last_corrected_at` (TIMESTAMP), `correction_count` (INTEGER, default 0)
+- Fully reversible: downgrade drops table and removes columns
+
+**CorrectionType Enum (6 values):**
+- `spelling`, `profanity_fix`, `context_correction`, `formatting`, `asr_error`, `revert`
+
+**TranscriptCorrectionRepository (append-only, FR-018):**
+- `update()` and `delete()` raise `NotImplementedError` — immutable audit trail
+- `get_by_segment()` — corrections for a segment ordered by `version_number DESC`
+- `get_by_video()` — paginated corrections for a transcript with total count
+- `count_by_video()` — total corrections for a (video_id, language_code) pair
+- `get_latest_version()` — highest version_number with `FOR UPDATE` row lock (NFR-005)
+- `get()` and `exists()` by UUID primary key
+
+**TranscriptCorrectionService:**
+- `apply_correction()` — atomically creates audit record, updates segment `corrected_text` and `has_correction`, updates transcript metadata (`has_corrections`, `correction_count`, `last_corrected_at`); version chain: `original_text` is the current effective text, not the original raw text (FR-008a); raises `ValueError` for non-existent segment or identical text (no-op prevention)
+- `revert_correction()` — reverts to previous state: revert-to-original (V_N==1: clears `corrected_text`, `has_correction=False`, decrements `correction_count`, recomputes `has_corrections` via EXISTS scan) or revert-to-prior (V_N>1: restores to `V_N.original_text`, keeps `has_correction=True`); records revert as new audit entry with `correction_type='revert'`
+- All mutations use `session.flush()` only — never calls `session.commit()` or `session.rollback()` (FR-007a)
+- Structured INFO logging for all operations (NFR-006)
+
+**Re-Download Protection (US5):**
+- Transcript sync checks `has_correction` before overwriting segment text
+- Corrected segments: raw `text` column updated, `corrected_text` preserved, warning logged about divergence
+- `--force-overwrite` flag bypasses protection and recomputes transcript metadata
+- Uncorrected segments update normally
+
+**Pydantic V2 Domain Models:**
+- `TranscriptCorrectionBase`, `TranscriptCorrectionCreate`, `TranscriptCorrectionRead`
+- `ConfigDict(strict=True, from_attributes=True)` pattern
+
+**Cross-Feature Contract Verification:**
+- `display_text` property returns `corrected_text` after `apply_correction` and original `text` after revert-to-original
+- Search router ILIKE queries cover `corrected_text` column for corrected segments
+- SRT export uses `display_text` for corrected segment output
+- Transcripts API inline ternary returns correct effective text
+- Transcript metadata columns (`has_corrections`, `correction_count`, `last_corrected_at`) verified in API responses
+
+### Technical
+- 139 new tests: 34 unit (models), 44 unit (repository), 31 unit (service), 9 unit (transcript service US5), 21 integration (full DB flows + cross-feature contracts)
+- Hypothesis property-based tests for CorrectionType exhaustiveness, text field edge cases, version chain integrity
+- 5,632 total tests passing with 0 regressions
+- Coverage: 97-100% on all new source files (transcript_correction.py, transcript_correction_repository.py, transcript_correction_service.py, migration)
+- mypy strict compliance (0 errors on all new and modified files)
+- No new dependencies (uses existing SQLAlchemy, Alembic, Pydantic V2, uuid_utils)
+- Test factory: `TranscriptCorrectionFactory` with UUIDv7 PK generation via `uuid.UUID(bytes=uuid7().bytes)`
+
 ## [0.35.0] - 2026-02-27
 
 ### Added

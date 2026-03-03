@@ -12,6 +12,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.36.0] - 2026-03-02
+
+### Added
+- **Feature 033: Transcript Corrections Audit Table (ADR-005 Increment 3)**
+  - Append-only `transcript_corrections` audit table with UUIDv7 PKs, composite FK to `video_transcripts`, version chains, and `CorrectionType` enum (spelling, profanity_fix, context_correction, formatting, asr_error, revert)
+  - `TranscriptCorrectionRepository` with immutability enforcement (`update()`/`delete()` raise `NotImplementedError`), segment/video queries, pagination, and `FOR UPDATE` row locking for version safety
+  - `TranscriptCorrectionService.apply_correction()` — atomically creates audit record + updates segment `corrected_text`/`has_correction` + updates transcript metadata (`has_corrections`, `correction_count`, `last_corrected_at`); version chain preserves previous effective text as `original_text`
+  - `TranscriptCorrectionService.revert_correction()` — reverts to previous state (revert-to-original clears correction, revert-to-prior restores previous version); records revert as new audit entry
+  - Re-download protection: corrected segments preserve `corrected_text` during transcript sync; `--force-overwrite` flag bypasses protection
+  - 3 new columns on `video_transcripts`: `has_corrections`, `last_corrected_at`, `correction_count`
+  - Flush-only transaction pattern throughout (caller owns transaction lifecycle)
+  - Cross-feature contract tests: `display_text` property, search ILIKE on `corrected_text`, SRT export, API responses
+  - Pydantic V2 domain models: `TranscriptCorrectionBase`, `TranscriptCorrectionCreate`, `TranscriptCorrectionRead`
+  - Alembic migration fully reversible (downgrade drops table and removes columns)
+
+### Technical
+- 139 new tests (34 unit models + 44 unit repository + 31 unit service + 9 unit transcript service + 21 integration)
+- Hypothesis property-based tests for enum exhaustiveness, text edge cases, version chain integrity
+- 5,632 total tests passing with 0 regressions
+- 97-100% coverage on all new source files
+- mypy strict compliance (0 errors)
+- No new dependencies, no new API endpoints, no frontend changes
+
 ## [0.35.0] - 2026-02-27
 
 ### Added

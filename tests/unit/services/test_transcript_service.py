@@ -1162,3 +1162,241 @@ class TestResolveLanguageCode:
         service._resolve_language_code("en-XX")  # Unknown English variant
         # Should not log a warning since it's English-like
         mock_logger.warning.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# US-5 / FR-015 / FR-016 — Re-download protection for corrected segments
+# ---------------------------------------------------------------------------
+
+
+class _FakeSegment:
+    """Minimal in-memory stand-in for a TranscriptSegment ORM object."""
+
+    def __init__(
+        self,
+        *,
+        id: int = 1,
+        text: str = "original raw text",
+        corrected_text: Optional[str] = None,
+        has_correction: bool = False,
+    ) -> None:
+        self.id = id
+        self.text = text
+        self.corrected_text = corrected_text
+        self.has_correction = has_correction
+
+
+class TestUpdateSegmentTextRedownloadProtection:
+    """
+    Tests for TranscriptService._update_segment_text (US-5, FR-015, FR-016).
+
+    These tests use a lightweight fake segment object to avoid any database
+    dependency.  The helper method operates purely on Python attributes.
+    """
+
+    @pytest.fixture
+    def service(self) -> TranscriptService:
+        """Return a TranscriptService with mock fallback enabled (no real API)."""
+        return TranscriptService(enable_mock_fallback=True)
+
+    # ------------------------------------------------------------------
+    # Scenario: segment has a correction, force_overwrite=False (default)
+    # ------------------------------------------------------------------
+
+    def test_corrected_segment_preserves_corrected_text(
+        self, service: TranscriptService
+    ) -> None:
+        """
+        FR-015: When has_correction=True and force_overwrite=False, a re-download
+        MUST NOT touch corrected_text.
+        """
+        segment = _FakeSegment(
+            id=42,
+            text="old raw text",
+            corrected_text="human-corrected text",
+            has_correction=True,
+        )
+
+        service._update_segment_text(segment, "new raw text from re-download")
+
+        # corrected_text must be untouched
+        assert segment.corrected_text == "human-corrected text"
+
+    def test_corrected_segment_raw_text_updated(
+        self, service: TranscriptService
+    ) -> None:
+        """
+        FR-015: Even when correction protection is active, segment.text (the raw
+        column) MUST be updated with the fresh downloaded text.
+        """
+        segment = _FakeSegment(
+            id=7,
+            text="old raw text",
+            corrected_text="human-corrected text",
+            has_correction=True,
+        )
+
+        service._update_segment_text(segment, "new raw text from re-download")
+
+        assert segment.text == "new raw text from re-download"
+
+    @patch("chronovista.services.transcript_service.logger")
+    def test_corrected_segment_logs_warning(
+        self, mock_logger: MagicMock, service: TranscriptService
+    ) -> None:
+        """
+        FR-016: A WARNING must be logged about divergence when a corrected
+        segment's raw text is updated during re-download.
+        """
+        segment = _FakeSegment(
+            id=99,
+            text="stale raw",
+            corrected_text="the correction",
+            has_correction=True,
+        )
+
+        service._update_segment_text(segment, "fresh raw text")
+
+        mock_logger.warning.assert_called_once()
+        warning_msg = mock_logger.warning.call_args[0][0]
+        assert "corrected_text preserved" in warning_msg
+
+    # ------------------------------------------------------------------
+    # Scenario: segment has a correction, force_overwrite=True
+    # ------------------------------------------------------------------
+
+    def test_force_overwrite_bypasses_protection(
+        self, service: TranscriptService
+    ) -> None:
+        """
+        US-5 AC-3: With force_overwrite=True, corrected_text is cleared and
+        has_correction is reset to False.
+        """
+        segment = _FakeSegment(
+            id=5,
+            text="old raw",
+            corrected_text="a correction that should be wiped",
+            has_correction=True,
+        )
+
+        service._update_segment_text(
+            segment, "overwritten raw text", force_overwrite=True
+        )
+
+        assert segment.text == "overwritten raw text"
+        assert segment.corrected_text is None
+        assert segment.has_correction is False
+
+    @patch("chronovista.services.transcript_service.logger")
+    def test_force_overwrite_logs_info_not_warning(
+        self, mock_logger: MagicMock, service: TranscriptService
+    ) -> None:
+        """
+        When force_overwrite=True, an INFO is logged (not a WARNING), and no
+        warning about divergence should appear.
+        """
+        segment = _FakeSegment(
+            id=3,
+            text="old",
+            corrected_text="correction",
+            has_correction=True,
+        )
+
+        service._update_segment_text(segment, "new", force_overwrite=True)
+
+        mock_logger.info.assert_called_once()
+        mock_logger.warning.assert_not_called()
+        info_msg = mock_logger.info.call_args[0][0]
+        assert "force-overwrite" in info_msg
+
+    # ------------------------------------------------------------------
+    # Scenario: segment has NO correction (happy path)
+    # ------------------------------------------------------------------
+
+    def test_uncorrected_segment_updates_normally(
+        self, service: TranscriptService
+    ) -> None:
+        """
+        US-5 AC-4: A segment with has_correction=False is updated without any
+        special handling.
+        """
+        segment = _FakeSegment(
+            id=10,
+            text="old raw text",
+            corrected_text=None,
+            has_correction=False,
+        )
+
+        service._update_segment_text(segment, "new raw text")
+
+        assert segment.text == "new raw text"
+        assert segment.corrected_text is None
+        assert segment.has_correction is False
+
+    @patch("chronovista.services.transcript_service.logger")
+    def test_uncorrected_segment_no_log_emitted(
+        self, mock_logger: MagicMock, service: TranscriptService
+    ) -> None:
+        """No warnings or info messages should be emitted for uncorrected segments."""
+        segment = _FakeSegment(has_correction=False)
+
+        service._update_segment_text(segment, "anything")
+
+        mock_logger.warning.assert_not_called()
+        mock_logger.info.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # EC-FORCE-OVERWRITE-AUDIT: metadata recomputation after force-overwrite
+    # ------------------------------------------------------------------
+
+    def test_force_overwrite_recomputes_metadata(
+        self, service: TranscriptService
+    ) -> None:
+        """
+        EC-FORCE-OVERWRITE-AUDIT: After a force overwrite clears a segment's
+        correction, the caller must be able to recompute has_corrections /
+        correction_count by scanning remaining segments.
+
+        This test verifies the contract: after _update_segment_text with
+        force_overwrite=True, the segment's has_correction is False, so a
+        simple scan of all segments can correctly determine whether the parent
+        transcript still has active corrections.
+        """
+        # Two corrected segments
+        seg_a = _FakeSegment(id=1, text="raw a", corrected_text="fix a", has_correction=True)
+        seg_b = _FakeSegment(id=2, text="raw b", corrected_text="fix b", has_correction=True)
+
+        # Force-overwrite only segment A
+        service._update_segment_text(seg_a, "new raw a", force_overwrite=True)
+
+        # Simulate caller recomputing transcript metadata after all segments are processed
+        all_segments = [seg_a, seg_b]
+        recomputed_has_corrections = any(s.has_correction for s in all_segments)
+        recomputed_correction_count = sum(1 for s in all_segments if s.has_correction)
+
+        # seg_a is cleared; seg_b still has its correction
+        assert seg_a.has_correction is False
+        assert seg_b.has_correction is True
+        assert recomputed_has_corrections is True
+        assert recomputed_correction_count == 1
+
+    def test_force_overwrite_all_segments_clears_transcript_corrections(
+        self, service: TranscriptService
+    ) -> None:
+        """
+        EC-FORCE-OVERWRITE-AUDIT: When ALL corrected segments are force-
+        overwritten, recomputed has_corrections must be False and
+        correction_count must be 0.
+        """
+        seg_a = _FakeSegment(id=1, text="raw a", corrected_text="fix a", has_correction=True)
+        seg_b = _FakeSegment(id=2, text="raw b", corrected_text="fix b", has_correction=True)
+
+        service._update_segment_text(seg_a, "new a", force_overwrite=True)
+        service._update_segment_text(seg_b, "new b", force_overwrite=True)
+
+        all_segments = [seg_a, seg_b]
+        recomputed_has_corrections = any(s.has_correction for s in all_segments)
+        recomputed_correction_count = sum(1 for s in all_segments if s.has_correction)
+
+        assert recomputed_has_corrections is False
+        assert recomputed_correction_count == 0

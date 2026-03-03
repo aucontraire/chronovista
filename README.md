@@ -393,7 +393,7 @@ chronovista/
 - Repository pattern isolating all database access
 - Layered architecture: CLI/API -> Services -> Repositories -> DB
 
-See [System Architecture](src/chronovista/docs/architecture/system-architecture.md) for details.
+See [Architecture Overview](docs/architecture/overview.md) for details.
 
 ## Roadmap
 

@@ -9,6 +9,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.37.0] - 2026-03-03
+
+### Added
+
+#### Feature 034: Correction Submission API (ADR-005 Increment 4)
+
+REST API endpoints for submitting, reverting, and viewing transcript corrections with full audit trail. Enriches existing segment responses with correction metadata. Backend only — no frontend changes, no CLI commands, no database migrations.
+
+**3 New API Endpoints (`/api/v1/videos/{video_id}/transcript/segments/{segment_id}/corrections`):**
+
+| Endpoint | Method | Status | Description |
+|----------|--------|--------|-------------|
+| `.../corrections` | POST | 201 | Submit a correction to a transcript segment |
+| `.../corrections/revert` | POST | 200 | Revert the latest correction on a segment |
+| `.../corrections` | GET | 200 | Paginated correction history for a segment |
+
+**Submit Correction (US-1):**
+- Accepts `corrected_text` (required, min 1 char after whitespace stripping), `correction_type` (required, one of 5 non-revert `CorrectionType` values), `correction_note` (optional), `corrected_by_user_id` (optional)
+- `language_code` as required query parameter (matches existing transcript endpoint pattern)
+- Field validator rejects `correction_type=revert` (use dedicated revert endpoint instead)
+- Delegates to `TranscriptCorrectionService.apply_correction()` from Feature 033
+- Returns 201 with audit record (id, version_number, original_text, corrected_text, corrected_at) and segment state (has_correction, effective_text)
+- Error codes: `SEGMENT_NOT_FOUND` (422), `NO_CHANGE_DETECTED` (422), `INVALID_CORRECTION_TYPE` (422), `NOT_FOUND` (404 for video)
+
+**Revert Correction (US-2):**
+- No request body — always reverts the latest correction
+- Delegates to `TranscriptCorrectionService.revert_correction()` from Feature 033
+- Returns 200 with revert audit record and restored segment state
+- Error codes: `SEGMENT_NOT_FOUND` (422), `NO_ACTIVE_CORRECTION` (422), `NOT_FOUND` (404 for video)
+
+**Correction History (US-3):**
+- Paginated via `limit` (default 50, max 100) and `offset` query parameters
+- Results ordered by `version_number DESC` (newest first)
+- Returns empty list for segments with no corrections (not 404)
+- Returns `ApiResponse[list[CorrectionAuditRecord]]` with `PaginationMeta`
+
+**Segment Response Enrichment (US-4):**
+- 3 new fields on existing `GET .../transcript/segments` response: `has_correction` (bool), `corrected_at` (datetime | null), `correction_count` (int)
+- Derived via single aggregation query on `transcript_corrections` table (no N+1)
+- `text` field continues to return effective text (corrected if available, original otherwise)
+
+**Pydantic V2 Schemas (5 models):**
+- `CorrectionSubmitRequest` — request body with `str_strip_whitespace=True`, `min_length=1`, revert rejection validator
+- `CorrectionAuditRecord` — audit record with `from_attributes=True` for ORM mapping
+- `SegmentCorrectionState` — post-mutation segment state (has_correction, effective_text)
+- `CorrectionSubmitResponse` — wraps audit record + segment state
+- `CorrectionRevertResponse` — type alias for `CorrectionSubmitResponse`
+
+### Technical
+- 57 new tests: 33 unit (schemas), 24 integration (API endpoints — 9 submit, 6 revert, 6 history, 3 segment enrichment)
+- 5,689 total tests passing with 0 regressions
+- Coverage: 100% on correction router, 100% on correction schemas
+- mypy strict compliance (0 errors on all new and modified files)
+- No new dependencies, no database migrations (uses tables from Feature 033)
+- All error responses use RFC 7807 problem details format (Feature 013)
+- `pytestmark = pytest.mark.asyncio` in all async test files
+- `ASGITransport` + `AsyncClient` for API integration tests (no server required)
+
 ## [0.36.0] - 2026-03-02
 
 ### Added

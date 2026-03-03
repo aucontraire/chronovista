@@ -12,6 +12,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.37.0] - 2026-03-03
+
+### Added
+- **Feature 034: Correction Submission API (ADR-005 Increment 4)**
+  - `POST .../segments/{segment_id}/corrections` — Submit a correction with `corrected_text`, `correction_type`, optional `correction_note` and `corrected_by_user_id`; returns 201 with audit record and segment state
+  - `POST .../segments/{segment_id}/corrections/revert` — Revert latest correction (no body); returns 200 with revert audit record and restored segment state
+  - `GET .../segments/{segment_id}/corrections` — Paginated correction history ordered by version_number DESC; returns empty list for uncorrected segments
+  - `language_code` required query parameter on all 3 endpoints (matches existing transcript endpoint pattern)
+  - Field validator rejects `correction_type=revert` on submit (must use dedicated revert endpoint)
+  - RFC 7807 error codes: `SEGMENT_NOT_FOUND`, `NO_CHANGE_DETECTED`, `INVALID_CORRECTION_TYPE`, `NO_ACTIVE_CORRECTION`, `NOT_FOUND`
+  - 3 new fields on existing segment list response: `has_correction` (bool), `corrected_at` (datetime | null), `correction_count` (int) — derived via single aggregation query
+  - 5 Pydantic V2 schemas: `CorrectionSubmitRequest`, `CorrectionAuditRecord`, `SegmentCorrectionState`, `CorrectionSubmitResponse`, `CorrectionRevertResponse`
+  - Authentication required on all endpoints (existing `require_auth` dependency)
+
+### Technical
+- 57 new tests (33 unit schemas + 24 integration API)
+- 5,689 total tests passing with 0 regressions
+- 100% coverage on correction router and schemas
+- mypy strict compliance (0 errors)
+- No new dependencies, no database migrations (uses Feature 033 tables)
+
 ## [0.36.0] - 2026-03-02
 
 ### Added

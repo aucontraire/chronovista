@@ -26,6 +26,7 @@ from chronovista.api.routers import (
     sync,
     tags,
     topics,
+    transcript_corrections,
     transcripts,
     videos,
 )
@@ -197,6 +198,7 @@ app.include_router(tags.router, prefix="/api/v1", tags=["tags"])
 app.include_router(canonical_tags.router, prefix="/api/v1", tags=["canonical-tags"])
 app.include_router(videos.router, prefix="/api/v1", tags=["videos"])
 app.include_router(transcripts.router, prefix="/api/v1", tags=["transcripts"])
+app.include_router(transcript_corrections.router, prefix="/api/v1", tags=["transcript-corrections"])
 app.include_router(search.router, prefix="/api/v1", tags=["search"])
 app.include_router(preferences.router, prefix="/api/v1", tags=["preferences"])
 app.include_router(sync.router, prefix="/api/v1", tags=["sync"])

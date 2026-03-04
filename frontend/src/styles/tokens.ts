@@ -56,6 +56,19 @@ export interface ColorTokens {
   };
   /** Default border color - gray-100 */
   border: string;
+  /** Correction indicator colors (Feature 035) */
+  correction: {
+    /** Badge background - amber-100 */
+    bg: string;
+    /** Badge text - amber-800 */
+    text: string;
+    /** Badge border - amber-200 */
+    border: string;
+    /** Header indicator text - amber-700 */
+    headerText: string;
+    /** Revert confirmation background - amber-50 */
+    revertBg: string;
+  };
 }
 
 /**
@@ -96,6 +109,13 @@ export const colorTokens: ColorTokens = {
     },
   },
   border: "gray-100",
+  correction: {
+    bg: "amber-100",
+    text: "amber-800",
+    border: "amber-200",
+    headerText: "amber-700",
+    revertBg: "amber-50",
+  },
 } as const;
 
 // =============================================================================

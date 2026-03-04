@@ -191,6 +191,14 @@ export function VideoCard({ video }: VideoCardProps) {
             >
               {transcript_summary.has_manual ? "Manual CC" : "Auto CC"}
             </span>
+            {(transcript_summary.has_corrections ?? false) && (
+              <span
+                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200"
+                aria-label="Transcript has corrections"
+              >
+                Corrections
+              </span>
+            )}
             <span className={`text-${colorTokens.text.tertiary}`}>
               {transcript_summary.count} transcript
               {transcript_summary.count !== 1 ? "s" : ""}

@@ -50,7 +50,7 @@ from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import UserVideo as UserVideoDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoCategory, VideoTag, VideoTopic, TopicCategory
-from chronovista.db.models import VideoTranscript
+from chronovista.db.models import TranscriptSegment, VideoTranscript
 from chronovista.exceptions import BadRequestError, CDXError, ConflictError, NotFoundError
 from chronovista.models.enums import AvailabilityStatus
 
@@ -85,7 +85,10 @@ RECOVERY_IDEMPOTENCY_MINUTES = 5
 router = APIRouter(dependencies=[Depends(require_auth)])
 
 
-def _build_transcript_summary(transcripts: List[VideoTranscript]) -> TranscriptSummary:
+def _build_transcript_summary(
+    transcripts: List[VideoTranscript],
+    has_corrections: bool = False,
+) -> TranscriptSummary:
     """
     Build transcript summary from transcript list.
 
@@ -93,14 +96,18 @@ def _build_transcript_summary(transcripts: List[VideoTranscript]) -> TranscriptS
     ----------
     transcripts : List[VideoTranscript]
         List of transcript database models.
+    has_corrections : bool
+        Whether any segment for this video has a user correction.
 
     Returns
     -------
     TranscriptSummary
-        Summary containing count, languages, and manual indicator.
+        Summary containing count, languages, manual indicator, and corrections flag.
     """
     if not transcripts:
-        return TranscriptSummary(count=0, languages=[], has_manual=False)
+        return TranscriptSummary(
+            count=0, languages=[], has_manual=False, has_corrections=has_corrections,
+        )
 
     languages = list({t.language_code for t in transcripts})
     has_manual = any(t.is_cc or t.transcript_type == "MANUAL" for t in transcripts)
@@ -109,6 +116,7 @@ def _build_transcript_summary(transcripts: List[VideoTranscript]) -> TranscriptS
         count=len(transcripts),
         languages=sorted(languages),
         has_manual=has_manual,
+        has_corrections=has_corrections,
     )
 
 
@@ -434,10 +442,30 @@ async def get_channel_videos(
     result = await db.execute(query)
     videos = result.scalars().all()
 
+    # Batch query: find which videos have corrected segments (Feature 035)
+    videos_with_corrections: set[str] = set()
+    video_ids = [v.video_id for v in videos]
+    if video_ids:
+        corrections_query = (
+            select(TranscriptSegment.video_id)
+            .where(
+                TranscriptSegment.video_id.in_(video_ids),
+                TranscriptSegment.has_correction.is_(True),
+            )
+            .distinct()
+        )
+        corrections_result = await db.execute(corrections_query)
+        videos_with_corrections = {
+            row[0] for row in corrections_result.fetchall()
+        }
+
     # Transform to response items
     items: List[VideoListItem] = []
     for video in videos:
-        transcript_summary = _build_transcript_summary(list(video.transcripts))
+        transcript_summary = _build_transcript_summary(
+            list(video.transcripts),
+            has_corrections=video.video_id in videos_with_corrections,
+        )
         channel_title = video.channel.title if video.channel else None
 
         # Build classification fields

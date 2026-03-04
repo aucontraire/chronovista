@@ -12,6 +12,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive user guide and API reference
 - Architecture documentation
 
+## [0.38.0] - 2026-03-03
+
+### Added
+- **Feature 035: Frontend Inline Correction UI (ADR-005 Increment 5)**
+  - Full inline correction workflow in the transcript panel: edit, submit, revert, and view correction history without leaving the page
+  - "Corrected" badge (`bg-amber-100 text-amber-800`) on segments with active corrections; tooltip shows correction count and timestamp
+  - Video-level "Corrections" badge on `VideoCard` and "This transcript has corrections" indicator on `VideoDetailPage`
+  - `has_corrections` computed field on backend `TranscriptSummary` via EXISTS subquery
+  - Inline edit mode: `<textarea>` with correction type `<select>` (spelling, asr_error, context_correction, profanity_fix, formatting), Save/Cancel with 44×44px touch targets
+  - Client-side validation: empty text and no-change detection with `role="alert"` and `aria-invalid="true"`; errors clear on next keystroke
+  - Single-edit-at-a-time enforcement: entering edit on a second segment cancels the first
+  - Revert workflow: inline "Revert to previous version?" confirmation with auto-focused Confirm button, `aria-busy` during pending mutation
+  - Correction history panel: inline bordered card with audit records (type, date, original text, corrected text, version, note), "Load more" pagination, loading skeleton, Escape to dismiss
+  - `useCorrectSegment` hook with optimistic updates (immediate text patch, rollback on error, authoritative overwrite on success)
+  - `useRevertSegment` hook with server-confirmed state only (no optimistic updates)
+  - `useSegmentCorrectionHistory` hook with `staleTime: 0` and conditional `enabled`
+  - TanStack Query cache patched via `queryClient.setQueryData` on infinite query pages — no `invalidateQueries` on success
+  - SegmentEditState discriminated union (read | editing | confirming-revert | history) preventing impossible UI states
+  - Dedicated `aria-live` region for screen reader announcements (edit entered, saved, cancelled, revert shown/completed, history opened, errors)
+  - Full keyboard accessibility: Tab navigation to all buttons, Escape cancel with correct focus restoration, `stopPropagation` to prevent parent scroll interception
+  - Segment row `hover:bg-slate-50` highlight and button tooltips (Edit, Revert, History)
+  - 14 new frontend files: 4 correction components, 3 hooks, 1 type file, 1 barrel export, 5 test files
+  - 8 modified files: TranscriptSegments.tsx, TranscriptPanel.tsx, VideoCard.tsx, transcript types, video types, useTranscriptSegments, backend video schemas + router
+
+### Technical
+- 263 new tests (252 frontend + 11 backend); 2,320 total frontend tests, 5,700+ total backend tests
+- WCAG 2.1 Level AA compliance (keyboard 2.1.1, focus 2.4.3/2.4.7, touch targets 2.5.8, color 1.4.1, status messages 4.1.3, error prevention 3.3.4)
+- Frontend version: 0.10.0 → 0.11.0
+- No new dependencies, no database migrations (uses Features 033/034 tables)
+- mypy strict + TypeScript strict compliance (0 errors)
+
 ## [0.37.0] - 2026-03-03
 
 ### Added

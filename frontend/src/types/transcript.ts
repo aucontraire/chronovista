@@ -64,6 +64,12 @@ export interface TranscriptSegment {
   end_time: number;
   /** Duration in seconds (end_time - start_time) */
   duration: number;
+  /** Whether this segment has an active correction (Feature 035) */
+  has_correction: boolean;
+  /** ISO 8601 datetime of the most recent correction, null if uncorrected (Feature 035) */
+  corrected_at: string | null;
+  /** Total number of corrections applied to this segment (Feature 035) */
+  correction_count: number;
 }
 
 /**

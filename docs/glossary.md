@@ -114,6 +114,23 @@ Project-specific terminology used throughout chronovista documentation and code.
 **Diacritic Collision**
 :   A canonical tag group where raw forms differ by accents that were stripped during Tier 1 normalization. For example, "café" and "cafe" both normalize to "cafe" and get merged. The `tags collisions` command identifies these for manual review — most are correct merges, but some may need splitting.
 
+## Transcript Correction Concepts
+
+**Transcript Correction**
+:   A user-submitted edit to a transcript segment's text. Each correction records the original text, corrected text, correction type, and version number in an append-only audit trail (`transcript_corrections` table). Corrections are applied via the inline edit UI in the transcript panel or the REST API.
+
+**Correction Type**
+:   A classification for why a segment was corrected. Values: `spelling`, `asr_error` (automatic speech recognition mistake), `context_correction`, `profanity_fix`, `formatting`, `revert`. The `revert` type is reserved for the system and cannot be submitted manually.
+
+**SegmentEditState**
+:   A TypeScript discriminated union representing the four mutually exclusive UI states of a transcript segment: `read` (default), `editing` (inline edit form open), `confirming-revert` (revert confirmation visible), `history` (correction history panel expanded). Enforces single-edit-at-a-time — only one segment can be in a non-read state.
+
+**Optimistic Update**
+:   A UI pattern where the correction's effect is applied to the TanStack Query cache immediately when the user clicks Save, before the server responds. If the server rejects the change, the cache is rolled back to the snapshot taken before the mutation. Revert operations do not use optimistic updates — they wait for server confirmation.
+
+**Effective Text**
+:   The text currently displayed for a transcript segment. If the segment has an active correction, this is the corrected text; otherwise, it is the original auto-generated text. The `text` field in API responses always returns the effective text.
+
 ## Technical Concepts
 
 **Development Mode**

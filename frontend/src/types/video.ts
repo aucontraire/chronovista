@@ -13,6 +13,8 @@ export interface TranscriptSummary {
   languages: string[];
   /** Whether any transcript is manually created (not auto-generated) */
   has_manual: boolean;
+  /** Whether any segment in the video has an active correction (Feature 035) */
+  has_corrections: boolean;
 }
 
 /**

@@ -41,7 +41,7 @@ from chronovista.api.schemas.videos import (
     VideoRecoveryResponse,
     VideoRecoveryResultData,
 )
-from chronovista.db.models import TopicCategory, UserVideo as UserVideoDB, Video as VideoDB, VideoCategory
+from chronovista.db.models import TopicCategory, TranscriptSegment, UserVideo as UserVideoDB, Video as VideoDB, VideoCategory
 from chronovista.db.models import VideoTag, VideoTopic, VideoTranscript
 from chronovista.exceptions import BadRequestError, CDXError, ConflictError, NotFoundError
 from chronovista.models.enums import AvailabilityStatus
@@ -167,7 +167,10 @@ def _check_rate_limit(
 router = APIRouter(dependencies=[Depends(require_auth)])
 
 
-def build_transcript_summary(transcripts: List[VideoTranscript]) -> TranscriptSummary:
+def build_transcript_summary(
+    transcripts: List[VideoTranscript],
+    has_corrections: bool = False,
+) -> TranscriptSummary:
     """
     Build transcript summary from transcript list.
 
@@ -175,14 +178,18 @@ def build_transcript_summary(transcripts: List[VideoTranscript]) -> TranscriptSu
     ----------
     transcripts : List[VideoTranscript]
         List of transcript database models.
+    has_corrections : bool
+        Whether any segment for this video has a user correction.
 
     Returns
     -------
     TranscriptSummary
-        Summary containing count, languages, and manual indicator.
+        Summary containing count, languages, manual indicator, and corrections flag.
     """
     if not transcripts:
-        return TranscriptSummary(count=0, languages=[], has_manual=False)
+        return TranscriptSummary(
+            count=0, languages=[], has_manual=False, has_corrections=has_corrections,
+        )
 
     languages = list({t.language_code for t in transcripts})
     has_manual = any(t.is_cc or t.transcript_type == "MANUAL" for t in transcripts)
@@ -191,6 +198,7 @@ def build_transcript_summary(transcripts: List[VideoTranscript]) -> TranscriptSu
         count=len(transcripts),
         languages=sorted(languages),
         has_manual=has_manual,
+        has_corrections=has_corrections,
     )
 
 
@@ -732,7 +740,7 @@ async def list_videos(
 
     # T099: Execute query with timeout (FR-036: 10s timeout)
     try:
-        async def execute_queries() -> Tuple[int, List[VideoDB], Dict[str, TopicCategory]]:
+        async def execute_queries() -> Tuple[int, List[VideoDB], Dict[str, TopicCategory], set[str]]:
             """Execute all database queries for video listing."""
             # Get total count (before pagination)
             count_query = select(func.count()).select_from(query.subquery())
@@ -775,9 +783,26 @@ async def list_videos(
                 for tc in topic_result.scalars().all():
                     topic_cache[tc.topic_id] = tc
 
-            return total, videos, topic_cache
+            # Batch query: find which videos have corrected segments (Feature 035)
+            videos_with_corrections: set[str] = set()
+            video_ids = [v.video_id for v in videos]
+            if video_ids:
+                corrections_query = (
+                    select(TranscriptSegment.video_id)
+                    .where(
+                        TranscriptSegment.video_id.in_(video_ids),
+                        TranscriptSegment.has_correction.is_(True),
+                    )
+                    .distinct()
+                )
+                corrections_result = await session.execute(corrections_query)
+                videos_with_corrections = {
+                    row[0] for row in corrections_result.fetchall()
+                }
 
-        total, videos, topic_cache = await asyncio.wait_for(
+            return total, videos, topic_cache, videos_with_corrections
+
+        total, videos, topic_cache, videos_with_corrections = await asyncio.wait_for(
             execute_queries(),
             timeout=QUERY_TIMEOUT_SECONDS,
         )
@@ -799,7 +824,10 @@ async def list_videos(
     # Transform to response items with classification data
     items: List[VideoListItem] = []
     for video in videos:
-        transcript_summary = build_transcript_summary(list(video.transcripts))
+        transcript_summary = build_transcript_summary(
+            list(video.transcripts),
+            has_corrections=video.video_id in videos_with_corrections,
+        )
         channel_title = video.channel.title if video.channel else None
 
         # Extract tags
@@ -929,8 +957,22 @@ async def get_video(
             hint="Verify the video ID or run: chronovista sync videos",
         )
 
+    # Check if any segments have corrections (Feature 035)
+    corrections_exists_query = (
+        select(TranscriptSegment.id)
+        .where(
+            TranscriptSegment.video_id == video_id,
+            TranscriptSegment.has_correction.is_(True),
+        )
+        .limit(1)
+    )
+    corrections_result = await session.execute(corrections_exists_query)
+    has_corrections = corrections_result.scalar_one_or_none() is not None
+
     # Build response
-    transcript_summary = build_transcript_summary(list(video.transcripts))
+    transcript_summary = build_transcript_summary(
+        list(video.transcripts), has_corrections=has_corrections,
+    )
     channel_title = video.channel.title if video.channel else None
     tags = [tag.tag for tag in video.tags] if video.tags else []
     category_name = video.category.name if video.category else None
@@ -1196,8 +1238,22 @@ async def update_alternative_url(
     await session.commit()
     await session.refresh(video)
 
+    # Check if any segments have corrections (Feature 035)
+    corrections_exists_query = (
+        select(TranscriptSegment.id)
+        .where(
+            TranscriptSegment.video_id == video_id,
+            TranscriptSegment.has_correction.is_(True),
+        )
+        .limit(1)
+    )
+    corrections_result = await session.execute(corrections_exists_query)
+    has_corrections = corrections_result.scalar_one_or_none() is not None
+
     # Build response (reuse logic from get_video endpoint)
-    transcript_summary = build_transcript_summary(list(video.transcripts))
+    transcript_summary = build_transcript_summary(
+        list(video.transcripts), has_corrections=has_corrections,
+    )
     channel_title = video.channel.title if video.channel else None
     tags = [tag.tag for tag in video.tags] if video.tags else []
     category_name = video.category.name if video.category else None

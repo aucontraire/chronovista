@@ -48,6 +48,35 @@ vi.mock("../../../utils/formatTimestamp", () => ({
   }),
 }));
 
+// Mock useCorrectSegment so TranscriptSegments does not require a QueryClientProvider
+vi.mock("../../../hooks/useCorrectSegment", () => ({
+  useCorrectSegment: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+  })),
+}));
+
+// Mock useRevertSegment so TranscriptSegments does not require a QueryClientProvider
+vi.mock("../../../hooks/useRevertSegment", () => ({
+  useRevertSegment: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+  })),
+}));
+
+// Mock useSegmentCorrectionHistory so TranscriptSegments does not require a QueryClientProvider
+vi.mock("../../../hooks/useSegmentCorrectionHistory", () => ({
+  useSegmentCorrectionHistory: vi.fn().mockReturnValue({
+    data: undefined,
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
 // Import after mocks to get mocked versions
 import { useTranscriptSegments } from "../../../hooks/useTranscriptSegments";
 import { usePrefersReducedMotion } from "../../../hooks/usePrefersReducedMotion";

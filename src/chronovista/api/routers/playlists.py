@@ -29,7 +29,7 @@ from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.sorting import SortOrder
 from chronovista.api.schemas.videos import TranscriptSummary
 from chronovista.db.models import Playlist as PlaylistDB
-from chronovista.db.models import PlaylistMembership, UserVideo, Video as VideoDB, VideoTranscript
+from chronovista.db.models import PlaylistMembership, TranscriptSegment, UserVideo, Video as VideoDB, VideoTranscript
 from chronovista.exceptions import BadRequestError, NotFoundError
 from chronovista.models.enums import AvailabilityStatus
 
@@ -53,21 +53,28 @@ class PlaylistVideoSortField(str, Enum):
     TITLE = "title"
 
 
-def build_transcript_summary(transcripts: List[VideoTranscript]) -> TranscriptSummary:
+def build_transcript_summary(
+    transcripts: List[VideoTranscript],
+    has_corrections: bool = False,
+) -> TranscriptSummary:
     """Build transcript summary from transcript list.
 
     Parameters
     ----------
     transcripts : List[VideoTranscript]
         List of transcript database models.
+    has_corrections : bool
+        Whether any segment for this video has a user correction.
 
     Returns
     -------
     TranscriptSummary
-        Summary containing count, languages, and manual indicator.
+        Summary containing count, languages, manual indicator, and corrections flag.
     """
     if not transcripts:
-        return TranscriptSummary(count=0, languages=[], has_manual=False)
+        return TranscriptSummary(
+            count=0, languages=[], has_manual=False, has_corrections=has_corrections,
+        )
 
     languages = list({t.language_code for t in transcripts})
     has_manual = any(t.is_cc or t.transcript_type == "MANUAL" for t in transcripts)
@@ -76,6 +83,7 @@ def build_transcript_summary(transcripts: List[VideoTranscript]) -> TranscriptSu
         count=len(transcripts),
         languages=sorted(languages),
         has_manual=has_manual,
+        has_corrections=has_corrections,
     )
 
 
@@ -447,10 +455,30 @@ async def get_playlist_videos(
     result = await session.execute(query)
     rows = result.all()
 
+    # Batch query: find which videos have corrected segments (Feature 035)
+    videos_with_corrections: set[str] = set()
+    video_ids = [video.video_id for _membership, video in rows]
+    if video_ids:
+        corrections_query = (
+            select(TranscriptSegment.video_id)
+            .where(
+                TranscriptSegment.video_id.in_(video_ids),
+                TranscriptSegment.has_correction.is_(True),
+            )
+            .distinct()
+        )
+        corrections_result = await session.execute(corrections_query)
+        videos_with_corrections = {
+            row[0] for row in corrections_result.fetchall()
+        }
+
     # Transform to response items
     items: List[PlaylistVideoListItem] = []
     for membership, video in rows:
-        transcript_summary = build_transcript_summary(list(video.transcripts))
+        transcript_summary = build_transcript_summary(
+            list(video.transcripts),
+            has_corrections=video.video_id in videos_with_corrections,
+        )
         channel_title = video.channel.title if video.channel else None
 
         items.append(

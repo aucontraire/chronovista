@@ -62,7 +62,7 @@ Run these from the `frontend/` directory:
 
 ## Running Tests
 
-The frontend has 2,100+ tests using [vitest](https://vitest.dev/) and [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/).
+The frontend has 2,300+ tests using [vitest](https://vitest.dev/) and [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/).
 
 ```bash
 cd frontend
@@ -89,7 +89,9 @@ npx vitest run --grep "deep link"
 frontend/src/
 ├── components/
 │   ├── transcript/
-│   │   └── __tests__/          # Transcript component tests
+│   │   ├── __tests__/          # Transcript component and integration tests
+│   │   └── corrections/
+│   │       └── __tests__/      # Correction component tests (Badge, EditForm, Revert, History)
 │   ├── search/
 │   │   └── __tests__/          # Search component tests
 │   └── video/

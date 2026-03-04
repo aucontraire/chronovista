@@ -25,6 +25,7 @@ frontend/src/
 ├── components/         # Reusable UI components
 │   ├── layout/         # AppShell, Sidebar, TopNav
 │   ├── transcript/     # TranscriptPanel, TranscriptSegments, LanguageSelector
+│   │   └── corrections/  # CorrectionBadge, SegmentEditForm, RevertConfirmation, CorrectionHistoryPanel
 │   ├── search/         # SearchPage, SearchFilters, SearchResults
 │   ├── video/          # VideoCard, VideoList, VideoDetailPage
 │   ├── channel/        # ChannelCard, ChannelList
@@ -46,6 +47,7 @@ frontend/src/
 │   ├── video.ts
 │   ├── channel.ts
 │   ├── transcript.ts
+│   ├── corrections.ts  # CorrectionType, CorrectionAuditRecord, SegmentEditState
 │   └── playlist.ts
 ├── styles/             # Design tokens and shared styles
 │   └── tokens.ts       # Spacing, colors, animation config
@@ -83,8 +85,9 @@ const segmentsQueryKey = (videoId: string, languageCode: string) =>
 Patterns used:
 - `useQuery` for single-resource fetching
 - `useInfiniteQuery` for paginated lists (video lists, transcript segments)
-- `useMutation` for write operations
-- Query invalidation for cache updates after mutations
+- `useMutation` for write operations with optimistic updates (transcript corrections)
+- Direct cache patching via `queryClient.setQueryData` for instant UI updates without refetch
+- Query invalidation only on error (rollback scenario)
 
 ### URL State
 
@@ -170,6 +173,18 @@ The recovery flow (v0.28.0) provides real-time feedback for long-running Wayback
 - **Toast notifications** — Recovery events (started, completed, failed, cancelled) display as toast messages with 8-second auto-dismiss
 - **SPA navigation guard** — `useBlocker` modal warns the user before navigating away during an active recovery, preventing accidental cancellation
 - **Cancel with AbortController** — The recovery store's `cancelRecovery()` action aborts the in-flight fetch request via `AbortController`
+
+### Inline Transcript Corrections (v0.38.0)
+
+The correction UI (Feature 035) enables inline editing of transcript segments directly in the transcript panel:
+
+- **SegmentEditState discriminated union** — Each segment is in one of four mutually exclusive states: `read`, `editing`, `confirming-revert`, or `history`. This prevents impossible UI states (e.g., editing and viewing history simultaneously)
+- **Single-edit-at-a-time** — Only one segment can be in a non-read state at a time. Entering edit mode on segment B automatically cancels segment A
+- **Optimistic updates** — `useCorrectSegment` applies text changes to the TanStack Query cache immediately on mutate, rolls back on error, and overwrites with authoritative server values on success. Revert uses server-confirmed state only (no optimistic updates)
+- **Cache patching** — Both mutation hooks patch the specific segment within the infinite query pages via `queryClient.setQueryData`, preserving scroll position. `invalidateQueries` is never called on success
+- **Correction components** — Four components in `components/transcript/corrections/`: `CorrectionBadge` (visual indicator), `SegmentEditForm` (inline textarea + type select + validation), `RevertConfirmation` (confirm/cancel row), `CorrectionHistoryPanel` (audit record list with pagination)
+- **Focus management** — Edit mode focuses textarea, revert focuses Confirm button, Escape restores focus to the originating button. `stopPropagation` prevents parent scroll handler from intercepting keystrokes
+- **Screen reader support** — Dedicated `aria-live` region announces all state transitions (edit entered, saved, cancelled, revert shown/completed, history opened, errors)
 
 ### React Router v7 Future Flags
 

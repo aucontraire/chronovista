@@ -18,6 +18,7 @@ class TranscriptSummary(BaseModel):
     count: int  # Number of transcripts
     languages: List[str]  # Available language codes (BCP-47)
     has_manual: bool  # Any manual/CC transcripts?
+    has_corrections: bool = False  # Any segments with user corrections?
 
 
 class VideoListItem(BaseModel):

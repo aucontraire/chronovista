@@ -11,14 +11,24 @@
  * - NFR-A11-A15: Keyboard scrolling and accessibility
  * - NFR-P12-P16: Virtualization for 500+ segments
  * - NFR-R06: Responsive text sizing
+ * - Feature 035 (T023): Inline correction edit mode
+ *   - US-4: Inline editing with validation
+ *   - US-8: Screen reader announcements for correction state
+ *   - US-10: Optimistic update feedback
+ *   - NFR-003: Virtualizer height notification on edit mode toggle
+ *   - NFR-004: Motion preferences for transition animations
  *
  * @module components/transcript/TranscriptSegments
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type React from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 import { useTranscriptSegments } from "../../hooks/useTranscriptSegments";
+import { useCorrectSegment } from "../../hooks/useCorrectSegment";
+import { useRevertSegment } from "../../hooks/useRevertSegment";
+import { useSegmentCorrectionHistory } from "../../hooks/useSegmentCorrectionHistory";
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { formatTimestamp } from "../../utils/formatTimestamp";
 import {
@@ -28,6 +38,17 @@ import {
   CONTRAST_SAFE_COLORS,
 } from "../../styles/tokens";
 import type { TranscriptSegment } from "../../types/transcript";
+import type {
+  SegmentEditState,
+  CorrectionType,
+  CorrectionAuditRecord,
+} from "../../types/corrections";
+import {
+  CorrectionBadge,
+  SegmentEditForm,
+  RevertConfirmation,
+  CorrectionHistoryPanel,
+} from "./corrections";
 
 /**
  * Props for the TranscriptSegments component.
@@ -50,46 +71,257 @@ export interface TranscriptSegmentsProps {
 }
 
 /**
+ * Shared edit mode props threaded through SegmentItem, StandardSegmentList, and VirtualizedSegmentList.
+ */
+interface EditModeProps {
+  editState: SegmentEditState;
+  isPending: boolean;
+  correctionError: string | null;
+  onEdit: (segmentId: number) => void;
+  onSave: (data: {
+    corrected_text: string;
+    correction_type: CorrectionType;
+    correction_note: string | null;
+  }) => void;
+  onCancel: () => void;
+  editButtonRef: React.RefObject<HTMLButtonElement | null>;
+  // Revert workflow props (T026)
+  revertIsPending: boolean;
+  onRevert: (segmentId: number) => void;
+  onRevertConfirm: () => void;
+  onRevertCancel: () => void;
+  revertButtonRef: React.RefObject<HTMLButtonElement | null>;
+  // History panel props (T027-T029)
+  onHistory: (segmentId: number) => void;
+  onHistoryClose: () => void;
+  onHistoryLoadMore: () => void;
+  historyRecords: CorrectionAuditRecord[];
+  historyIsLoading: boolean;
+  historyHasMore: boolean;
+  historyButtonRef: React.RefObject<HTMLButtonElement | null>;
+}
+
+/**
  * SegmentItem component renders a single transcript segment.
  *
  * Supports optional highlight state for deep link navigation (FR-008, FR-009, FR-015).
+ * Supports inline edit mode (Feature 035): shows SegmentEditForm when this segment is active.
  */
 function SegmentItem({
   segment,
   isVirtualized,
   isHighlighted,
   highlightTransitionClass,
+  editState,
+  isPending,
+  correctionError,
+  onEdit,
+  onSave,
+  onCancel,
+  editButtonRef,
+  revertIsPending,
+  onRevert,
+  onRevertConfirm,
+  onRevertCancel,
+  revertButtonRef,
+  onHistory,
+  onHistoryClose,
+  onHistoryLoadMore,
+  historyRecords,
+  historyIsLoading,
+  historyHasMore,
+  historyButtonRef,
 }: {
   segment: TranscriptSegment;
   isVirtualized: boolean;
   isHighlighted?: boolean;
   highlightTransitionClass?: string;
-}) {
+} & EditModeProps) {
+  const isEditing =
+    editState.mode === "editing" && editState.segmentId === segment.id;
+  const isConfirmingRevert =
+    editState.mode === "confirming-revert" && editState.segmentId === segment.id;
+  const isHistory =
+    editState.mode === "history" && editState.segmentId === segment.id;
+
   // Highlight styles: yellow background with left border indicator (FR-008)
   const highlightClasses = isHighlighted
     ? "bg-yellow-100 border-l-4 border-yellow-400"
     : "border-l-4 border-transparent";
 
   return (
-    <div
-      className={`flex gap-4 py-2 ${isVirtualized ? "px-2" : ""} ${highlightClasses} ${highlightTransitionClass ?? ""}`}
-      data-segment-id={segment.id}
-      // FR-015: Make highlighted segment focusable for programmatic focus
-      tabIndex={isHighlighted ? -1 : undefined}
-    >
-      {/* Timestamp - left side (NFR-A17, NFR-A18: text-gray-600 for 7.0:1 contrast) */}
-      <span
-        className={`flex-shrink-0 w-16 ${CONTRAST_SAFE_COLORS.timestamp} font-mono ${RESPONSIVE_CONFIG.segmentTextSize.mobile} lg:${RESPONSIVE_CONFIG.segmentTextSize.desktop}`}
+    <div>
+      {/* Segment row */}
+      <div
+        className={`group flex gap-4 py-2 hover:bg-slate-50 ${isVirtualized ? "px-2" : ""} ${highlightClasses} ${highlightTransitionClass ?? ""}`}
+        data-segment-id={segment.id}
+        // FR-015: Make highlighted segment focusable for programmatic focus
+        tabIndex={isHighlighted ? -1 : undefined}
+        // US-10: Indicate when a mutation is in-flight on this segment
+        aria-busy={
+          (isEditing && isPending) || (isConfirmingRevert && revertIsPending)
+            ? "true"
+            : undefined
+        }
       >
-        {formatTimestamp(segment.start_time)}
-      </span>
+        {/* Timestamp - left side (NFR-A17, NFR-A18: text-gray-600 for 7.0:1 contrast) */}
+        <span
+          className={`flex-shrink-0 w-16 ${CONTRAST_SAFE_COLORS.timestamp} font-mono ${RESPONSIVE_CONFIG.segmentTextSize.mobile} lg:${RESPONSIVE_CONFIG.segmentTextSize.desktop}`}
+        >
+          {formatTimestamp(segment.start_time)}
+        </span>
 
-      {/* Segment text - right side (NFR-A16, NFR-A18: text-gray-900 for 16.6:1 contrast) */}
-      <p
-        className={`flex-1 ${CONTRAST_SAFE_COLORS.bodyText} ${RESPONSIVE_CONFIG.segmentTextSize.mobile} lg:${RESPONSIVE_CONFIG.segmentTextSize.desktop}`}
-      >
-        {segment.text}
-      </p>
+        {/* Content area: edit form, revert confirmation, or normal read view */}
+        <div className="flex-1 min-w-0">
+          {isEditing ? (
+            /* Inline edit form when this segment is in edit mode */
+            <SegmentEditForm
+              initialText={segment.text}
+              segmentId={segment.id}
+              isPending={isPending}
+              onSave={onSave}
+              onCancel={onCancel}
+              serverError={correctionError}
+            />
+          ) : isConfirmingRevert ? (
+            /* Inline revert confirmation row — shown instead of text when confirming revert */
+            <RevertConfirmation
+              isPending={revertIsPending}
+              onConfirm={onRevertConfirm}
+              onCancel={onRevertCancel}
+            />
+          ) : (
+            /* Normal read view */
+            <div className="flex items-start gap-2">
+              <p
+                className={`flex-1 ${CONTRAST_SAFE_COLORS.bodyText} ${RESPONSIVE_CONFIG.segmentTextSize.mobile} lg:${RESPONSIVE_CONFIG.segmentTextSize.desktop}`}
+              >
+                {segment.text}
+              </p>
+
+              {/* Correction badge — renders only when segment has an active correction (Feature 035) */}
+              <CorrectionBadge
+                hasCorrection={segment.has_correction}
+                correctionCount={segment.correction_count}
+                correctedAt={segment.corrected_at}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Action buttons — visible on hover/focus-within, hidden during edit or confirming-revert mode */}
+        {!isEditing && !isConfirmingRevert && (
+          <>
+            {/* Edit button */}
+            <button
+              ref={editState.mode === "read" ? editButtonRef : undefined}
+              type="button"
+              onClick={() => onEdit(segment.id)}
+              title="Edit segment"
+              aria-label={`Edit segment ${segment.id}`}
+              className="
+                opacity-0 group-hover:opacity-100 group-focus-within:opacity-100
+                flex-shrink-0 p-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100
+                rounded focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:opacity-100
+                transition-opacity
+              "
+            >
+              {/* Pencil icon */}
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                />
+              </svg>
+            </button>
+
+            {/* Revert button — only visible when the segment has an active correction */}
+            {segment.has_correction && (
+              <button
+                ref={editState.mode === "read" ? revertButtonRef : undefined}
+                type="button"
+                onClick={() => onRevert(segment.id)}
+                title="Revert to previous version"
+                aria-label={`Revert correction for segment ${segment.id}`}
+                className="
+                  opacity-0 group-hover:opacity-100 group-focus-within:opacity-100
+                  flex-shrink-0 p-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100
+                  rounded focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:opacity-100
+                  transition-opacity
+                "
+              >
+                {/* Undo/revert arrow icon */}
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 10h10a5 5 0 0 1 0 10H9M3 10l4-4M3 10l4 4"
+                  />
+                </svg>
+              </button>
+            )}
+
+            {/* History button — only visible when segment has recorded corrections */}
+            {segment.correction_count > 0 && (
+              <button
+                ref={editState.mode === "read" ? historyButtonRef : undefined}
+                type="button"
+                onClick={() => onHistory(segment.id)}
+                title="View correction history"
+                aria-label={`View correction history for segment ${segment.id}`}
+                className="
+                  opacity-0 group-hover:opacity-100 group-focus-within:opacity-100
+                  flex-shrink-0 p-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100
+                  rounded focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:opacity-100
+                  transition-opacity
+                "
+              >
+                {/* Clock/history icon */}
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              </button>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* History panel — renders below the segment row, segment text stays visible */}
+      {isHistory && (
+        <CorrectionHistoryPanel
+          records={historyRecords}
+          isLoading={historyIsLoading}
+          hasMore={historyHasMore}
+          onLoadMore={onHistoryLoadMore}
+          onClose={onHistoryClose}
+        />
+      )}
     </div>
   );
 }
@@ -175,6 +407,8 @@ function ErrorRetry({
  * VirtualizedSegmentList component for rendering 500+ segments efficiently.
  *
  * Uses @tanstack/react-virtual for windowed rendering (NFR-P12-P16).
+ * When a segment enters/exits edit mode, the virtual item wrapper uses a ref callback
+ * so the virtualizer can re-measure the item's height (NFR-003).
  */
 function VirtualizedSegmentList({
   segments,
@@ -182,12 +416,14 @@ function VirtualizedSegmentList({
   onScroll,
   highlightedSegmentId,
   highlightTransitionClass,
+  editModeProps,
 }: {
   segments: TranscriptSegment[];
   containerRef: React.RefObject<HTMLDivElement | null>;
   onScroll: () => void;
   highlightedSegmentId: number | null;
   highlightTransitionClass: string;
+  editModeProps: EditModeProps;
 }) {
   const virtualizer = useVirtualizer({
     count: segments.length,
@@ -216,12 +452,15 @@ function VirtualizedSegmentList({
         return (
           <div
             key={virtualItem.key}
+            // NFR-003: ref callback so the virtualizer re-measures on edit mode toggle
+            ref={(el) => {
+              if (el) virtualizer.measureElement(el);
+            }}
             style={{
               position: "absolute",
               top: 0,
               left: 0,
               width: "100%",
-              height: `${virtualItem.size}px`,
               transform: `translateY(${virtualItem.start}px)`,
             }}
           >
@@ -230,6 +469,7 @@ function VirtualizedSegmentList({
               isVirtualized={true}
               isHighlighted={isHighlighted}
               highlightTransitionClass={isHighlighted ? highlightTransitionClass : ""}
+              {...editModeProps}
             />
           </div>
         );
@@ -245,10 +485,12 @@ function StandardSegmentList({
   segments,
   highlightedSegmentId,
   highlightTransitionClass,
+  editModeProps,
 }: {
   segments: TranscriptSegment[];
   highlightedSegmentId: number | null;
   highlightTransitionClass: string;
+  editModeProps: EditModeProps;
 }) {
   return (
     <>
@@ -261,6 +503,7 @@ function StandardSegmentList({
             isVirtualized={false}
             isHighlighted={isHighlighted}
             highlightTransitionClass={isHighlighted ? highlightTransitionClass : ""}
+            {...editModeProps}
           />
         );
       })}
@@ -316,6 +559,7 @@ function findNearestSegmentByTimestamp(
  * - Accessible container with tabindex, role, aria-label (NFR-A15)
  * - Responsive text sizing: text-sm mobile, text-base desktop (NFR-R06)
  * - Error handling with retry button and segment preservation (FR-025a-d)
+ * - Inline correction editing with optimistic update (Feature 035)
  *
  * @example
  * ```tsx
@@ -357,8 +601,50 @@ export function TranscriptSegments({
   // Track whether a targeted seek is currently in-flight
   const [deepLinkSeeking, setDeepLinkSeeking] = useState(false);
 
-  // Reduced motion preference for highlight animation (FR-009)
+  // Reduced motion preference for highlight animation (FR-009) and segment transitions (NFR-004)
   const prefersReducedMotion = usePrefersReducedMotion();
+
+  // --- Feature 035: Edit mode state ---
+
+  /** Current edit state — controls which segment (if any) shows an inline form */
+  const [editState, setEditState] = useState<SegmentEditState>({ mode: "read" });
+
+  /** Screen reader announcement for correction submission (US-8) */
+  const [correctionAnnouncement, setCorrectionAnnouncement] = useState("");
+
+  /** Server-side error message to surface inside SegmentEditForm (US-4) */
+  const [correctionError, setCorrectionError] = useState<string | null>(null);
+
+  /** Ref to the edit button of the segment that most recently exited edit mode */
+  const editButtonRef = useRef<HTMLButtonElement>(null);
+
+  /** Ref to the revert button for focus restoration after revert cancel (T026) */
+  const revertButtonRef = useRef<HTMLButtonElement>(null);
+
+  /** Ref to the history button for focus restoration after history panel close (T029) */
+  const historyButtonRef = useRef<HTMLButtonElement>(null);
+
+  /** Pagination offset for the history panel (T029) */
+  const [historyOffset, setHistoryOffset] = useState(0);
+
+  /** Mutation hook for submitting corrections (Feature 035) */
+  const correctSegment = useCorrectSegment(videoId, languageCode);
+
+  /** Mutation hook for reverting corrections (T026) */
+  const revertSegment = useRevertSegment(videoId, languageCode);
+
+  /** Query hook for correction history panel (T029) */
+  const historySegmentId =
+    editState.mode === "history" ? editState.segmentId : 0;
+  const historyQuery = useSegmentCorrectionHistory(
+    videoId,
+    languageCode,
+    historySegmentId,
+    {
+      enabled: editState.mode === "history",
+      offset: historyOffset,
+    }
+  );
 
   const {
     segments,
@@ -628,6 +914,205 @@ export function TranscriptSegments({
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+  // --- Feature 035: Edit mode handlers ---
+
+  /**
+   * Enters edit mode for a segment.
+   * Single-edit constraint: setEditState replaces the entire state,
+   * so entering edit on segment B automatically cancels segment A.
+   */
+  const handleEdit = useCallback((segmentId: number) => {
+    setEditState({ mode: "editing", segmentId });
+    setCorrectionError(null);
+    // US-8: Announce edit mode entry to screen readers
+    setCorrectionAnnouncement("Editing segment. Press Escape to cancel.");
+    // Clear the announcement after 3s so the same message can be re-announced on next edit
+    setTimeout(() => setCorrectionAnnouncement(""), 3000);
+  }, []);
+
+  /**
+   * Submits a correction via the mutation hook.
+   * On success: returns to read mode and focuses the edit button.
+   * On error: surfaces the error message inside SegmentEditForm via correctionError state.
+   */
+  const handleSave = useCallback(
+    (data: {
+      corrected_text: string;
+      correction_type: CorrectionType;
+      correction_note: string | null;
+    }) => {
+      if (editState.mode !== "editing") return;
+
+      correctSegment.mutate(
+        { segmentId: editState.segmentId, ...data },
+        {
+          onSuccess: () => {
+            setEditState({ mode: "read" });
+            setCorrectionError(null);
+            // US-8: Announce successful save
+            setCorrectionAnnouncement("Correction saved.");
+            setTimeout(() => setCorrectionAnnouncement(""), 3000);
+            // Return focus to the edit button after state update settles
+            setTimeout(() => editButtonRef.current?.focus(), 0);
+          },
+          onError: (error) => {
+            const message =
+              error instanceof Error
+                ? error.message
+                : "Failed to save correction.";
+            setCorrectionError(message);
+            // US-8: Announce the error assertively
+            setCorrectionAnnouncement(message);
+            setTimeout(() => setCorrectionAnnouncement(""), 3000);
+          },
+        }
+      );
+    },
+    [editState, correctSegment]
+  );
+
+  /**
+   * Cancels the current edit, returns to read mode, and restores focus to the edit button.
+   */
+  const handleCancel = useCallback(() => {
+    setEditState({ mode: "read" });
+    setCorrectionError(null);
+    setCorrectionAnnouncement("");
+    setTimeout(() => editButtonRef.current?.focus(), 0);
+  }, []);
+
+  // --- Feature 035 (T026): Revert workflow handlers ---
+
+  /**
+   * Enters confirming-revert mode for a segment.
+   * Cancels any other active mode on any other segment (same single-action constraint).
+   */
+  const handleRevert = useCallback((segmentId: number) => {
+    setEditState({ mode: "confirming-revert", segmentId });
+    setCorrectionError(null);
+    // US-8: Announce revert confirmation request to screen readers
+    setCorrectionAnnouncement("Revert correction? Press Escape to cancel.");
+    setTimeout(() => setCorrectionAnnouncement(""), 3000);
+  }, []);
+
+  /**
+   * Executes the revert mutation after user confirms.
+   * On success: returns to read mode, announces result, focuses edit button.
+   * On error: announces error, auto-dismisses after 4 seconds (per spec).
+   */
+  const handleRevertConfirm = useCallback(() => {
+    if (editState.mode !== "confirming-revert") return;
+    const { segmentId } = editState;
+
+    revertSegment.mutate(
+      { segmentId },
+      {
+        onSuccess: () => {
+          setEditState({ mode: "read" });
+          setCorrectionError(null);
+          // US-8: Announce successful revert
+          setCorrectionAnnouncement("Correction reverted.");
+          setTimeout(() => setCorrectionAnnouncement(""), 3000);
+          // Focus edit button — revert button may no longer exist after revert clears has_correction
+          setTimeout(() => editButtonRef.current?.focus(), 0);
+        },
+        onError: (error) => {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Failed to revert correction.";
+          setCorrectionError(message);
+          // US-8: Announce the error assertively
+          setCorrectionAnnouncement(message);
+          setTimeout(() => setCorrectionAnnouncement(""), 3000);
+          // Auto-dismiss error and return to read after 4 seconds (per spec)
+          setTimeout(() => {
+            setCorrectionError(null);
+            setEditState({ mode: "read" });
+          }, 4000);
+        },
+      }
+    );
+  }, [editState, revertSegment]);
+
+  /**
+   * Cancels the revert confirmation, returns to read mode, and restores focus to the revert button.
+   */
+  const handleRevertCancel = useCallback(() => {
+    setEditState({ mode: "read" });
+    setCorrectionAnnouncement("");
+    // Restore focus to the revert button so keyboard users don't lose their place
+    setTimeout(() => revertButtonRef.current?.focus(), 0);
+  }, []);
+
+  // --- Feature 035 (T029): History panel handlers ---
+
+  /**
+   * Opens the correction history panel for the given segment.
+   * Resets the pagination offset and announces the action to screen readers.
+   */
+  const handleHistory = useCallback((segmentId: number) => {
+    setEditState({ mode: "history", segmentId });
+    setHistoryOffset(0);
+    // US-8: Announce history loading to screen readers
+    setCorrectionAnnouncement("Loading correction history...");
+    setTimeout(() => setCorrectionAnnouncement(""), 3000);
+  }, []);
+
+  /**
+   * Closes the history panel and restores focus to the history button.
+   */
+  const handleHistoryClose = useCallback(() => {
+    setEditState({ mode: "read" });
+    setCorrectionAnnouncement("");
+    setTimeout(() => historyButtonRef.current?.focus(), 0);
+  }, []);
+
+  /**
+   * Loads the next page of history records by incrementing the offset.
+   */
+  const handleHistoryLoadMore = useCallback(() => {
+    setHistoryOffset((prev) => prev + 50);
+  }, []);
+
+  // Announce history data when it loads (US-8)
+  useEffect(() => {
+    if (editState.mode !== "history") return;
+    if (!historyQuery.data) return;
+
+    const count = historyQuery.data.data.length;
+    const noun = count === 1 ? "record" : "records";
+    setCorrectionAnnouncement(
+      `Correction history opened. ${count} ${noun}.`
+    );
+    setTimeout(() => setCorrectionAnnouncement(""), 3000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyQuery.data]);
+
+  /** Bundle edit mode props to pass through list components to SegmentItem */
+  const editModeProps: EditModeProps = {
+    editState,
+    isPending: correctSegment.isPending,
+    correctionError,
+    onEdit: handleEdit,
+    onSave: handleSave,
+    onCancel: handleCancel,
+    editButtonRef,
+    revertIsPending: revertSegment.isPending,
+    onRevert: handleRevert,
+    onRevertConfirm: handleRevertConfirm,
+    onRevertCancel: handleRevertCancel,
+    revertButtonRef,
+    // History panel props (T029)
+    onHistory: handleHistory,
+    onHistoryClose: handleHistoryClose,
+    onHistoryLoadMore: handleHistoryLoadMore,
+    historyRecords: historyQuery.data?.data ?? [],
+    historyIsLoading: historyQuery.isLoading,
+    historyHasMore: historyQuery.data?.pagination.has_more ?? false,
+    historyButtonRef,
+  };
+
   // Initial loading state
   if (isLoading && segments.length === 0) {
     return (
@@ -687,12 +1172,14 @@ export function TranscriptSegments({
           onScroll={handleScroll}
           highlightedSegmentId={highlightedSegmentId}
           highlightTransitionClass={highlightTransitionClass}
+          editModeProps={editModeProps}
         />
       ) : (
         <StandardSegmentList
           segments={segments}
           highlightedSegmentId={highlightedSegmentId}
           highlightTransitionClass={highlightTransitionClass}
+          editModeProps={editModeProps}
         />
       )}
 
@@ -736,6 +1223,19 @@ export function TranscriptSegments({
           className="sr-only"
         >
           {deepLinkAnnouncement}
+        </div>
+      )}
+
+      {/* Correction state announcement for screen readers (US-8) */}
+      {correctionAnnouncement && (
+        <div
+          role="status"
+          aria-live={correctionError ? "assertive" : "polite"}
+          aria-atomic="true"
+          className="sr-only"
+          data-correction-announcement="true"
+        >
+          {correctionAnnouncement}
         </div>
       )}
     </div>

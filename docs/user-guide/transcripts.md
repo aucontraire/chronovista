@@ -283,6 +283,70 @@ YouTube transcripts are stored as small overlapping segments (typically 2-5 seco
 
 Note: YouTube's UI combines multiple segments for display, but chronovista preserves the original segment boundaries for precise timestamp queries.
 
+## Inline Transcript Corrections (v0.38.0)
+
+Edit transcript segments directly in the web UI to fix ASR errors, spelling mistakes, and formatting issues.
+
+### Editing a Segment
+
+1. Hover over any transcript segment to reveal the **Edit** button (pencil icon)
+2. Click Edit or press Enter/Space to enter edit mode
+3. Modify the text in the textarea
+4. Select the correction type from the dropdown:
+   - **asr_error** (default) — Automatic speech recognition mistake
+   - **spelling** — Spelling or typo correction
+   - **context_correction** — Contextual word replacement
+   - **profanity_fix** — Profanity or inappropriate content fix
+   - **formatting** — Punctuation, capitalization, or formatting change
+5. Click **Save** or press Enter to submit
+
+The correction is applied instantly (optimistic update) and confirmed by the server. If the server rejects it, the text rolls back automatically.
+
+### Validation
+
+- Empty text is rejected: "Correction text cannot be empty."
+- Identical text is rejected: "Correction is identical to the current text."
+- Validation runs on Save, not on every keystroke
+
+### Reverting a Correction
+
+When a segment has been corrected, a **Revert** button appears:
+
+1. Click Revert to show the confirmation: "Revert to previous version?"
+2. Click **Confirm** to revert, or **Cancel** to dismiss
+3. Revert goes back one version — if multiple corrections exist, it restores the previous correction's text (not the original)
+
+### Viewing Correction History
+
+When a segment has been corrected one or more times, a **History** button appears:
+
+1. Click History to expand the correction history panel below the segment
+2. Each entry shows: correction type, date, original text, corrected text, version number, and optional note
+3. Click **Load more** to see older entries
+4. Press **Escape** to close the panel
+
+### Correction Badges
+
+- **Segment badge**: A "Corrected" badge appears on corrected segments. Hover to see correction count and timestamp.
+- **Video badge**: A "Corrections" badge appears on video cards when any segment in that video's transcript has been corrected.
+- **Transcript panel**: "This transcript has corrections" indicator appears in the panel header.
+
+### Keyboard Navigation
+
+The entire correction workflow is keyboard-accessible:
+
+- **Tab** to reach Edit, Revert, and History buttons
+- **Enter/Space** to activate buttons
+- **Tab** within edit mode: textarea → correction type → Save → Cancel
+- **Escape** to cancel any action and return focus to the originating button
+
+### Limitations
+
+- Only one segment can be edited at a time
+- Revert goes back one version only (not to a specific earlier version)
+- The Full Text view does not reflect corrections (it uses the original transcript text)
+- No batch correction across multiple segments
+
 ## Filtering and Search
 
 ### Filter by Properties

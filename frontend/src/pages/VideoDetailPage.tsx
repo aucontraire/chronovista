@@ -877,6 +877,16 @@ export function VideoDetailPage() {
             </svg>
             {formatLikeCount(like_count)}
           </span>
+
+          {/* Corrections Badge (Feature 035, US-2) */}
+          {(video.transcript_summary?.has_corrections ?? false) && (
+            <span
+              className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200"
+              aria-label="Transcript has corrections"
+            >
+              Corrections
+            </span>
+          )}
         </div>
 
         {/* Description Section (FR-002) */}

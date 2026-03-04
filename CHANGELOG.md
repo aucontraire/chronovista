@@ -9,6 +9,119 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.38.0] - 2026-03-03
+
+### Added
+
+#### Feature 035: Frontend Inline Correction UI (ADR-005 Increment 5)
+
+Full inline correction workflow in the transcript panel — edit segment text, choose correction type, submit, revert, and view correction history — all without leaving the page. Consumes the REST API from Feature 034. Frontend and backend query changes only — no new API endpoints, no database migrations.
+
+**Segment-Level Correction Badge (US-1):**
+- "Corrected" badge (`bg-amber-100 text-amber-800 border-amber-200`) on segments where `has_correction === true`
+- Tooltip shows "Corrected {count} times" and formatted `corrected_at` timestamp when `correction_count > 1`
+- `aria-label="Corrected segment"` — text label always present (WCAG 1.4.1)
+- Badge renders in both StandardSegmentList and VirtualizedSegmentList paths
+
+**Video-Level Correction Indicator (US-2):**
+- `has_corrections` field on `TranscriptSummary` interface (backend: EXISTS subquery on `transcript_segments.has_correction`)
+- "Corrections" badge on `VideoCard` in transcript info row alongside "Manual CC" / "Auto CC"
+- "This transcript has corrections" indicator in `TranscriptPanel` header on `VideoDetailPage`
+- Absent `has_corrections` treated as `false` via nullish coalescing
+
+**Inline Edit Mode (US-3, US-4):**
+- Edit button visible on hover/focus-within with `aria-label="Edit segment {id}"`
+- `<textarea>` pre-filled with effective text; auto-focused on mount (WCAG 2.4.3)
+- `<select>` for correction type: spelling, asr_error, context_correction, profanity_fix, formatting (default: asr_error)
+- Save and Cancel buttons with 44×44px touch targets (WCAG 2.5.8)
+- Client-side validation: empty text ("Correction text cannot be empty.") and no-change ("Correction is identical to the current text.") with `role="alert"` and `aria-invalid="true"`
+- Validation on Save click only; errors clear on next keystroke
+- Single-edit-at-a-time: entering edit on a second segment cancels the first
+- API errors displayed inline with `aria-describedby` linking to textarea
+
+**Revert Workflow (US-5):**
+- Revert button appears when `has_correction === true` with `aria-label="Revert correction for segment {id}"`
+- Inline confirmation row: "Revert to previous version?" with Confirm/Cancel buttons
+- Confirm button auto-focused on mount (WCAG 2.4.3, 3.3.4)
+- `aria-busy="true"` on Confirm button during pending mutation; Cancel always enabled
+- On 422 `NO_ACTIVE_CORRECTION`, inline `role="alert"` error shown for 4 seconds
+- Focus returns to Edit button after successful revert (Revert button may no longer exist)
+
+**Correction History Panel (US-6):**
+- History button appears when `correction_count > 0` with `aria-label="View correction history for segment {id}"`
+- Inline bordered card below segment row with `role="region"` and `aria-label="Correction history"`
+- Each `CorrectionAuditRecord` displays: correction type (title-cased), formatted date, original text, corrected text, version number, and correction note
+- "Load more" pagination when `has_more === true`
+- Empty state: "No corrections recorded for this segment."
+- Loading skeleton with 3 pulsing placeholder rows
+- Escape key dismisses panel; focus returns to History button
+
+**Keyboard Accessibility (US-7):**
+- Edit, Revert, History buttons reachable via Tab
+- Edit mode tab order: textarea → correction type → Save → Cancel
+- Escape cancels edit/revert/history with correct focus restoration
+- All interactive elements have `focus-visible:ring-2 focus-visible:ring-blue-500`
+- `event.stopPropagation()` on edit form keydown prevents parent scroll handler interception
+
+**Screen Reader Announcements (US-8):**
+- Dedicated `aria-live="polite" aria-atomic="true" className="sr-only"` region
+- Announcements for: edit mode entered, correction saved, edit cancelled, revert confirmation shown, revert completed, history panel opened, API errors
+- Error announcements use `aria-live="assertive"`
+- All SVG icons carry `aria-hidden="true"`
+
+**TanStack Query Cache Patching (US-9, US-10):**
+- `useCorrectSegment` hook: optimistic patch on mutate (text, has_correction, corrected_at, correction_count), rollback on error, authoritative overwrite on success
+- `useRevertSegment` hook: server-confirmed state only (no optimistic updates)
+- `useSegmentCorrectionHistory` hook: `staleTime: 0`, `enabled: isHistoryOpen`
+- Cache patched via `queryClient.setQueryData` on infinite query pages — no `invalidateQueries` on success
+- `aria-busy="true"` on segment row during pending mutation
+
+**UI Polish:**
+- Segment row `hover:bg-slate-50` for visual identification on wide screens
+- Tooltips on action buttons: "Edit segment", "Revert to previous version", "View correction history"
+
+**New Frontend Files (14):**
+
+| File | Description |
+|------|-------------|
+| `types/corrections.ts` | CorrectionType, CorrectionAuditRecord, CorrectionSubmitResponse, CorrectionRevertResponse, SegmentEditState discriminated union |
+| `hooks/useCorrectSegment.ts` | Submit mutation with optimistic updates and rollback |
+| `hooks/useRevertSegment.ts` | Revert mutation with server-confirmed state |
+| `hooks/useSegmentCorrectionHistory.ts` | Correction history query hook |
+| `components/transcript/corrections/CorrectionBadge.tsx` | "Corrected" badge with tooltip |
+| `components/transcript/corrections/SegmentEditForm.tsx` | Inline edit form with validation |
+| `components/transcript/corrections/RevertConfirmation.tsx` | Inline revert confirmation row |
+| `components/transcript/corrections/CorrectionHistoryPanel.tsx` | Correction history panel with pagination |
+| `components/transcript/corrections/index.ts` | Barrel export |
+| `components/transcript/corrections/__tests__/CorrectionBadge.test.tsx` | Badge tests |
+| `components/transcript/corrections/__tests__/SegmentEditForm.test.tsx` | Edit form tests |
+| `components/transcript/corrections/__tests__/RevertConfirmation.test.tsx` | Revert confirmation tests |
+| `components/transcript/corrections/__tests__/CorrectionHistoryPanel.test.tsx` | History panel tests |
+| `components/transcript/__tests__/TranscriptSegments.corrections.test.tsx` | Integration tests |
+
+**Modified Files (8):**
+- `types/transcript.ts` — Added `has_correction`, `corrected_at`, `correction_count` to `TranscriptSegment`
+- `types/video.ts` — Added `has_corrections` to `TranscriptSummary`
+- `hooks/useTranscriptSegments.ts` — Exported `segmentsQueryKey` for cache patching
+- `components/transcript/TranscriptSegments.tsx` — EditModeProps, SegmentEditState, aria-live region, single-edit-at-a-time, hover highlight, button tooltips
+- `components/transcript/TranscriptPanel.tsx` — "This transcript has corrections" indicator
+- `components/video/VideoCard.tsx` — "Corrections" badge in transcript info row
+- `src/chronovista/api/schemas/videos.py` — `has_corrections` computed field on `TranscriptSummary`
+- `src/chronovista/api/routers/videos.py` — EXISTS subquery for `has_corrections` aggregation
+
+### Technical
+- 263 new tests: 252 frontend (CorrectionBadge 23, SegmentEditForm 52, RevertConfirmation 16, CorrectionHistoryPanel 29, TranscriptSegments integration 40, hook tests 92) + 11 backend (TranscriptSummary corrections)
+- 2,320 total frontend tests passing (98 files), 5,700+ total backend tests passing
+- Coverage: 90%+ on all new components and hooks
+- mypy strict compliance (0 errors on all modified backend files)
+- TypeScript strict mode (0 errors)
+- WCAG 2.1 Level AA compliance: keyboard operability (2.1.1), focus order (2.4.3), focus visible (2.4.7), touch targets (2.5.8), color independence (1.4.1), status messages (4.1.3), error prevention (3.3.4)
+- Frontend version: 0.10.0 → 0.11.0
+- No new npm dependencies, no new Python dependencies
+- No database migrations (uses existing tables from Features 033/034)
+- SegmentEditState discriminated union prevents impossible UI states (read | editing | confirming-revert | history)
+- Optimistic updates with rollback on submit; server-confirmed state on revert
+
 ## [0.37.0] - 2026-03-03
 
 ### Added

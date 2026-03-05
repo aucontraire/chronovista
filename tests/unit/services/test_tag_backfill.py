@@ -45,6 +45,16 @@ def mock_session() -> AsyncMock:
     return AsyncMock()
 
 
+@pytest.fixture
+def empty_ct_session() -> AsyncMock:
+    """Provide a mock session that returns no existing canonical tags."""
+    session = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.all.return_value = []
+    session.execute.return_value = mock_result
+    return session
+
+
 # =========================================================================
 # TestNormalizeAndGroupCore — core normalization and grouping
 # =========================================================================
@@ -175,13 +185,13 @@ class TestNormalizeAndGroup:
     """Tests for ``_normalize_and_group`` method (with UUID generation)."""
 
     @pytest.mark.asyncio
-    async def test_generates_uuid7_ids(self, service: TagBackfillService) -> None:
+    async def test_generates_uuid7_ids(self, service: TagBackfillService, empty_ct_session: AsyncMock) -> None:
         """Verify all IDs in batch records are valid UUIDs."""
         distinct_tags = {"Python": 10, "Java": 5}
         execution_timestamp = datetime.now(UTC)
 
-        ct_records, ta_records, skip_list = service._normalize_and_group(
-            distinct_tags, execution_timestamp
+        ct_records, ta_records, skip_list = await service._normalize_and_group(
+            empty_ct_session, distinct_tags, execution_timestamp
         )
 
         # Verify canonical tag IDs are UUIDs
@@ -194,13 +204,13 @@ class TestNormalizeAndGroup:
             assert isinstance(record["canonical_tag_id"], uuid.UUID)
 
     @pytest.mark.asyncio
-    async def test_canonical_form_selection(self, service: TagBackfillService) -> None:
+    async def test_canonical_form_selection(self, service: TagBackfillService, empty_ct_session: AsyncMock) -> None:
         """Verify select_canonical_form is called with correct aliases list."""
         distinct_tags = {"Python": 100, "python": 50, "PYTHON": 25}
         execution_timestamp = datetime.now(UTC)
 
-        ct_records, ta_records, skip_list = service._normalize_and_group(
-            distinct_tags, execution_timestamp
+        ct_records, ta_records, skip_list = await service._normalize_and_group(
+            empty_ct_session, distinct_tags, execution_timestamp
         )
 
         # Should be 1 canonical tag
@@ -211,13 +221,13 @@ class TestNormalizeAndGroup:
         assert ct_records[0]["normalized_form"] == "python"
 
     @pytest.mark.asyncio
-    async def test_batch_record_fields(self, service: TagBackfillService) -> None:
+    async def test_batch_record_fields(self, service: TagBackfillService, empty_ct_session: AsyncMock) -> None:
         """Verify canonical_tags records have correct keys and types."""
         distinct_tags = {"Python": 10}
         execution_timestamp = datetime.now(UTC)
 
-        ct_records, ta_records, skip_list = service._normalize_and_group(
-            distinct_tags, execution_timestamp
+        ct_records, ta_records, skip_list = await service._normalize_and_group(
+            empty_ct_session, distinct_tags, execution_timestamp
         )
 
         assert len(ct_records) == 1
@@ -249,13 +259,13 @@ class TestNormalizeAndGroup:
         assert record["status"] == "active"
 
     @pytest.mark.asyncio
-    async def test_alias_record_fields(self, service: TagBackfillService) -> None:
+    async def test_alias_record_fields(self, service: TagBackfillService, empty_ct_session: AsyncMock) -> None:
         """Verify tag_aliases records have correct keys and types."""
         distinct_tags = {"Python": 10}
         execution_timestamp = datetime.now(UTC)
 
-        ct_records, ta_records, skip_list = service._normalize_and_group(
-            distinct_tags, execution_timestamp
+        ct_records, ta_records, skip_list = await service._normalize_and_group(
+            empty_ct_session, distinct_tags, execution_timestamp
         )
 
         assert len(ta_records) == 1
@@ -293,13 +303,13 @@ class TestNormalizeAndGroup:
         assert record["occurrence_count"] == 10
 
     @pytest.mark.asyncio
-    async def test_execution_timestamp_used(self, service: TagBackfillService) -> None:
+    async def test_execution_timestamp_used(self, service: TagBackfillService, empty_ct_session: AsyncMock) -> None:
         """Verify first_seen_at and last_seen_at both match execution_timestamp."""
         distinct_tags = {"Python": 10}
         execution_timestamp = datetime(2023, 5, 15, 10, 30, 45, tzinfo=UTC)
 
-        ct_records, ta_records, skip_list = service._normalize_and_group(
-            distinct_tags, execution_timestamp
+        ct_records, ta_records, skip_list = await service._normalize_and_group(
+            empty_ct_session, distinct_tags, execution_timestamp
         )
 
         assert len(ta_records) == 1
@@ -310,14 +320,14 @@ class TestNormalizeAndGroup:
 
     @pytest.mark.asyncio
     async def test_alias_count_matches_group_size(
-        self, service: TagBackfillService
+        self, service: TagBackfillService, empty_ct_session: AsyncMock
     ) -> None:
         """Verify alias_count on canonical tag equals number of aliases."""
         distinct_tags = {"Python": 100, "python": 50, "PYTHON": 25}
         execution_timestamp = datetime.now(UTC)
 
-        ct_records, ta_records, skip_list = service._normalize_and_group(
-            distinct_tags, execution_timestamp
+        ct_records, ta_records, skip_list = await service._normalize_and_group(
+            empty_ct_session, distinct_tags, execution_timestamp
         )
 
         # Should be 1 canonical tag with 3 aliases
@@ -329,7 +339,7 @@ class TestNormalizeAndGroup:
 
     @pytest.mark.asyncio
     async def test_varchar_500_boundary_casefold(
-        self, service: TagBackfillService
+        self, service: TagBackfillService, empty_ct_session: AsyncMock
     ) -> None:
         """Test a tag at VARCHAR(500) boundary where casefold expansion increases length."""
         # Create a string at the boundary with German ß (expands to ss)
@@ -342,8 +352,8 @@ class TestNormalizeAndGroup:
 
         # This should NOT raise an exception in the service
         # (the DB will enforce the length constraint)
-        ct_records, ta_records, skip_list = service._normalize_and_group(
-            distinct_tags, execution_timestamp
+        ct_records, ta_records, skip_list = await service._normalize_and_group(
+            empty_ct_session, distinct_tags, execution_timestamp
         )
 
         # Verify the normalization happened
@@ -354,6 +364,64 @@ class TestNormalizeAndGroup:
         normalized = ta_records[0]["normalized_form"]
         assert normalized == base_str + "ss"
         assert len(normalized) == 501
+
+    @pytest.mark.asyncio
+    async def test_reuses_existing_canonical_tag_ids(
+        self, service: TagBackfillService
+    ) -> None:
+        """Verify aliases reference existing canonical tag IDs on re-run."""
+        existing_ct_id = uuid.uuid4()
+        session = AsyncMock()
+        mock_result = MagicMock()
+        # Simulate "python" canonical tag already exists with known ID
+        mock_result.all.return_value = [("python", existing_ct_id)]
+        session.execute.return_value = mock_result
+
+        distinct_tags = {"Python": 100, "python": 50}
+        execution_timestamp = datetime.now(UTC)
+
+        ct_records, ta_records, skip_list = await service._normalize_and_group(
+            session, distinct_tags, execution_timestamp
+        )
+
+        # No new canonical tag should be created (it already exists)
+        assert len(ct_records) == 0
+
+        # Aliases should reference the existing ID, not a fresh one
+        assert len(ta_records) == 2
+        for record in ta_records:
+            assert record["canonical_tag_id"] == existing_ct_id
+
+    @pytest.mark.asyncio
+    async def test_mixed_existing_and_new_canonical_tags(
+        self, service: TagBackfillService
+    ) -> None:
+        """Verify mix of existing and new canonical tags works correctly."""
+        existing_ct_id = uuid.uuid4()
+        session = AsyncMock()
+        mock_result = MagicMock()
+        # "python" exists, "java" does not
+        mock_result.all.return_value = [("python", existing_ct_id)]
+        session.execute.return_value = mock_result
+
+        distinct_tags = {"Python": 100, "Java": 50}
+        execution_timestamp = datetime.now(UTC)
+
+        ct_records, ta_records, skip_list = await service._normalize_and_group(
+            session, distinct_tags, execution_timestamp
+        )
+
+        # Only "Java" should create a new canonical tag
+        assert len(ct_records) == 1
+        assert ct_records[0]["normalized_form"] == "java"
+
+        # Both should have aliases
+        assert len(ta_records) == 2
+        python_alias = next(r for r in ta_records if r["raw_form"] == "Python")
+        java_alias = next(r for r in ta_records if r["raw_form"] == "Java")
+
+        assert python_alias["canonical_tag_id"] == existing_ct_id
+        assert java_alias["canonical_tag_id"] == ct_records[0]["id"]
 
 
 # =========================================================================

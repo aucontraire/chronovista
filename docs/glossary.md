@@ -131,6 +131,18 @@ Project-specific terminology used throughout chronovista documentation and code.
 **Effective Text**
 :   The text currently displayed for a transcript segment. If the segment has an active correction, this is the corrected text; otherwise, it is the original auto-generated text. The `text` field in API responses always returns the effective text.
 
+**Batch Correction**
+:   A correction applied to multiple transcript segments in a single CLI invocation using `chronovista corrections find-replace`. Contrast with the inline web UI which edits one segment at a time.
+
+**Correction Pattern**
+:   A recurring (original_text, corrected_text) pair discovered by `chronovista corrections patterns`. Patterns with remaining matches indicate segments still containing the error that could be batch-corrected.
+
+**Transaction Batch**
+:   A configurable group of segments (default: 100) processed in a single database transaction during batch operations. If a batch fails, only that batch is rolled back — previously committed batches are preserved.
+
+**Actor String**
+:   A prefix:detail identifier recording who performed a correction. Values: `"user:local"` (web UI), `"cli:batch"` (batch CLI commands), `"cli:interactive"` (interactive CLI). Stored in `corrected_by_user_id`.
+
 ## Technical Concepts
 
 **Development Mode**

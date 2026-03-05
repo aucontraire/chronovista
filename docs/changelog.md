@@ -10,6 +10,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
+
+## [0.39.0] - 2026-03-05
+
+### Added
+- **Feature 036: Batch Correction Tools (ADR-005 Increment 6)**
+  - 6 new CLI commands under `chronovista corrections` sub-app for batch transcript correction operations
+  - `corrections find-replace --pattern X --replacement Y` — batch find-and-replace across all transcript segments with database-side pattern matching (SQL LIKE/ILIKE/~ operators), `--regex`, `--case-insensitive`, `--language`/`--channel`/`--video-id` filters, `--dry-run` preview with Rich table (context-window truncated, match bold-highlighted), confirmation prompt showing scope, `--yes` for scripting, Rich progress bar and summary table
+  - `corrections rebuild-text` — regenerate `video_transcripts.transcript_text` from corrected segments (space-separated, matching original assembly), `--dry-run` preview showing current vs new text length, Rich progress bar
+  - `corrections export --format csv|json` — export correction audit records with `--video-id`, `--correction-type`, `--since`/`--until` (ISO 8601) filters, `--output` file or stdout (pipe-friendly), `--compact` for JSON, summary to stderr
+  - `corrections stats` — aggregate correction statistics: totals (excluding reverts), type breakdown table, top N most-corrected videos with titles, `--language` filter, `--top` option (default: 10), max 3 SQL round-trips
+  - `corrections patterns` — discover recurring correction patterns grouped by (original, corrected) pairs with remaining match counts, copy-paste suggested commands, `--min-occurrences`, `--limit`, `--show-completed`
+  - `corrections batch-revert --pattern X` — batch revert corrections matching a pattern via `TranscriptCorrectionService.revert_correction`, `--dry-run`, `--yes`, same filter options as find-replace
+  - Configurable transaction batching (default: 100 segments per commit) with per-batch rollback — failed batches don't affect previously committed batches (NFR-1)
+  - Actor string constants module: `ACTOR_USER_LOCAL` ("user:local"), `ACTOR_CLI_BATCH` ("cli:batch"), `ACTOR_CLI_INTERACTIVE` ("cli:interactive") with `auto_actor()` helper
+  - 6 Pydantic V2 frozen models: `BatchCorrectionResult`, `CorrectionExportRecord`, `CorrectionPattern`, `CorrectionStats`, `TypeCount`, `VideoCount`
+  - 3 new repository query methods on `TranscriptSegmentRepository`: `find_by_text_pattern()`, `count_filtered()`
+  - 3 new repository query methods on `TranscriptCorrectionRepository`: `get_all_filtered()`, `get_stats()`, `get_correction_patterns()`
+  - API endpoint now defaults `corrected_by_user_id` to `"user:local"` when client omits the field
+
+### Fixed
+- `corrected_by_user_id` defaulting to NULL in correction submission API — now defaults to `ACTOR_USER_LOCAL`
+- Pre-existing channel video test failures from Feature 035's corrections batch query missing mock result
+
+### Technical
+- 277 new tests (7 actor + 46 model + 33 segment repo + 47 correction repo + 84 service + 60 CLI + 13 integration + 2 API)
+- 6,026 total tests passing with 0 regressions
+- mypy strict compliance (0 errors)
+- No new dependencies, no database migrations (uses Features 033-035 tables)
+- Structured INFO logging on all batch operations with duration (NFR-4)
+- Idempotency verified: second find-replace run reports "0 corrections applied" (NFR-5)
+- Database-side filtering — no full table load into Python (NFR-2)
+- Rich progress bars on all batch operations (NFR-3)
 - Architecture documentation
 
 ## [0.38.0] - 2026-03-03

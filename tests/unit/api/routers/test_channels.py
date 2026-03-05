@@ -481,10 +481,11 @@ def _create_channel_videos_mock_session(
 ) -> AsyncMock:
     """Create a mock session for channel videos endpoint.
 
-    Handles three db.execute() calls:
+    Handles four db.execute() calls:
     1. Channel existence check -> scalar_one_or_none()
     2. Count query -> scalar()
     3. Data query -> scalars().all()
+    4. Corrections batch query (Feature 035) -> fetchall()
     """
     if videos is None:
         videos = []
@@ -507,7 +508,18 @@ def _create_channel_videos_mock_session(
     scalars_mock.all.return_value = videos
     data_result.scalars.return_value = scalars_mock
 
-    mock_session.execute.side_effect = [channel_result, count_result, data_result]
+    # 4. Corrections batch query (Feature 035): SELECT video_id FROM transcript_segments
+    #    WHERE has_correction IS TRUE — returns rows via fetchall().
+    #    No videos have corrections in unit tests, so return empty list.
+    corrections_result = MagicMock()
+    corrections_result.fetchall.return_value = []
+
+    mock_session.execute.side_effect = [
+        channel_result,
+        count_result,
+        data_result,
+        corrections_result,
+    ]
 
     return mock_session
 

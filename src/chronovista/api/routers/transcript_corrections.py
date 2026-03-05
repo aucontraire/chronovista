@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.deps import get_db, require_auth
+from chronovista.models.correction_actors import ACTOR_USER_LOCAL
 from chronovista.api.schemas.responses import ApiResponse, PaginationMeta
 from chronovista.api.schemas.transcript_corrections import (
     CorrectionAuditRecord,
@@ -134,7 +135,7 @@ async def submit_correction(
             corrected_text=body.corrected_text,
             correction_type=body.correction_type,
             correction_note=body.correction_note,
-            corrected_by_user_id=body.corrected_by_user_id,
+            corrected_by_user_id=body.corrected_by_user_id or ACTOR_USER_LOCAL,
         )
     except ValueError as e:
         raise _map_correction_error(e) from e

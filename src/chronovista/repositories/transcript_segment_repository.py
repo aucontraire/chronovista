@@ -10,12 +10,14 @@ User Story 6: Repository Methods and Tests (T019-T025).
 
 from __future__ import annotations
 
+import re
 from typing import List, Optional, Sequence
 
-from sqlalchemy import and_, delete, select
+from sqlalchemy import ColumnElement, and_, case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
+from chronovista.db.models import Video as VideoDB
 from chronovista.models.transcript_segment import TranscriptSegmentCreate
 from chronovista.models.youtube_types import VideoId
 from chronovista.repositories.base import BaseSQLAlchemyRepository
@@ -417,14 +419,181 @@ class TranscriptSegmentRepository(
         int
             Number of segments for the transcript.
         """
-        from sqlalchemy import func
-
         stmt = select(func.count()).where(
             and_(
                 TranscriptSegmentDB.video_id == str(video_id),
                 TranscriptSegmentDB.language_code == language_code,
             )
         )
+        result = await session.execute(stmt)
+        return result.scalar() or 0
+
+    async def find_by_text_pattern(
+        self,
+        session: AsyncSession,
+        *,
+        pattern: str,
+        regex: bool = False,
+        case_insensitive: bool = False,
+        language: Optional[str] = None,
+        channel: Optional[str] = None,
+        video_ids: Optional[List[str]] = None,
+    ) -> Sequence[TranscriptSegmentDB]:
+        """
+        Find segments whose effective text matches a pattern.
+
+        Effective text is defined as: corrected_text if has_correction is True,
+        otherwise the original text. Filtering is done database-side using SQL
+        CASE expressions for efficiency.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        pattern : str
+            The search pattern (substring or regex).
+        regex : bool, optional
+            If True, use PostgreSQL regex operators (~ or ~*).
+            If False (default), use LIKE/ILIKE substring matching.
+        case_insensitive : bool, optional
+            If True, use case-insensitive matching (ILIKE or ~*).
+            If False (default), use case-sensitive matching (LIKE or ~).
+        language : str, optional
+            Filter by language_code column.
+        channel : str, optional
+            Filter by channel_id via join to videos table.
+        video_ids : list of str, optional
+            Filter by video_id column (list of video IDs).
+
+        Returns
+        -------
+        Sequence[TranscriptSegmentDB]
+            Matching segment ORM objects, ordered by video_id and
+            sequence_number.
+
+        Raises
+        ------
+        ValueError
+            If regex=True and the pattern is not a valid regular expression.
+        """
+        # Pre-validate regex pattern before constructing SQL query
+        if regex:
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                raise ValueError(
+                    f"Invalid regex pattern '{pattern}': {exc}"
+                ) from exc
+
+        # Build the effective text expression using SQL CASE
+        effective_text = case(
+            (TranscriptSegmentDB.has_correction, TranscriptSegmentDB.corrected_text),
+            else_=TranscriptSegmentDB.text,
+        )
+
+        # Build pattern matching condition
+        if regex:
+            if case_insensitive:
+                text_condition = effective_text.op("~*")(pattern)
+            else:
+                text_condition = effective_text.op("~")(pattern)
+        else:
+            like_pattern = f"%{pattern}%"
+            if case_insensitive:
+                text_condition = effective_text.ilike(like_pattern)
+            else:
+                text_condition = effective_text.like(like_pattern)
+
+        # Start building the query
+        conditions: list[ColumnElement[bool]] = [text_condition]
+
+        if language is not None:
+            conditions.append(TranscriptSegmentDB.language_code == language)
+
+        if video_ids is not None:
+            conditions.append(TranscriptSegmentDB.video_id.in_(video_ids))
+
+        # Build query — join to videos table only when channel filter is needed
+        if channel is not None:
+            stmt = (
+                select(TranscriptSegmentDB)
+                .join(
+                    VideoDB,
+                    TranscriptSegmentDB.video_id == VideoDB.video_id,
+                )
+                .where(and_(*conditions, VideoDB.channel_id == channel))
+                .order_by(
+                    TranscriptSegmentDB.video_id,
+                    TranscriptSegmentDB.sequence_number,
+                )
+            )
+        else:
+            stmt = (
+                select(TranscriptSegmentDB)
+                .where(and_(*conditions))
+                .order_by(
+                    TranscriptSegmentDB.video_id,
+                    TranscriptSegmentDB.sequence_number,
+                )
+            )
+
+        result = await session.execute(stmt)
+        return result.scalars().all()
+
+    async def count_filtered(
+        self,
+        session: AsyncSession,
+        *,
+        language: Optional[str] = None,
+        channel: Optional[str] = None,
+        video_ids: Optional[List[str]] = None,
+    ) -> int:
+        """
+        Count segments matching the given filter criteria.
+
+        Returns the total number of segments that match the filter parameters
+        before any text pattern matching. This count is used to populate
+        the ``total_scanned`` field in batch correction summaries.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        language : str, optional
+            Filter by language_code column.
+        channel : str, optional
+            Filter by channel_id via join to videos table.
+        video_ids : list of str, optional
+            Filter by video_id column (list of video IDs).
+
+        Returns
+        -------
+        int
+            Total number of segments matching the filters.
+        """
+        conditions: list[ColumnElement[bool]] = []
+
+        if language is not None:
+            conditions.append(TranscriptSegmentDB.language_code == language)
+
+        if video_ids is not None:
+            conditions.append(TranscriptSegmentDB.video_id.in_(video_ids))
+
+        if channel is not None:
+            stmt = (
+                select(func.count())
+                .select_from(TranscriptSegmentDB)
+                .join(
+                    VideoDB,
+                    TranscriptSegmentDB.video_id == VideoDB.video_id,
+                )
+                .where(and_(*conditions, VideoDB.channel_id == channel))
+            )
+        else:
+            stmt = select(func.count()).select_from(TranscriptSegmentDB)
+            if conditions:
+                stmt = stmt.where(and_(*conditions))
+
         result = await session.execute(stmt)
         return result.scalar() or 0
 

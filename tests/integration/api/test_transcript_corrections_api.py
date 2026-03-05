@@ -231,7 +231,7 @@ class TestSubmitCorrection:
         assert "id" in correction
         assert "corrected_at" in correction
         assert correction["correction_note"] is None
-        assert correction["corrected_by_user_id"] is None
+        assert correction["corrected_by_user_id"] == "user:local"
 
         # Segment state
         segment_state = data["segment_state"]
@@ -268,6 +268,70 @@ class TestSubmitCorrection:
         correction = response.json()["data"]["correction"]
         assert correction["correction_note"] == "Fixed common ASR mistake"
         assert correction["corrected_by_user_id"] == "user_test_001"
+
+    async def test_submit_correction_defaults_corrected_by_user_id_to_actor_user_local(
+        self,
+        async_client: AsyncClient,
+        seed_test_data: dict[str, Any],
+    ) -> None:
+        """Submit a correction without corrected_by_user_id — it must default to 'user:local'.
+
+        When the client omits corrected_by_user_id (or sends null), the endpoint
+        must substitute ACTOR_USER_LOCAL ("user:local") so audit records always
+        have a non-null actor identifier.
+        """
+        video_id = seed_test_data["video_id"]
+        segment_id = seed_test_data["segment_id"]
+        language_code = seed_test_data["language_code"]
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.post(
+                _corrections_url(video_id, segment_id),
+                params={"language_code": language_code},
+                json={
+                    "corrected_text": "the quick brown fox",
+                    "correction_type": "spelling",
+                },
+            )
+
+        assert response.status_code == 201, response.text
+        correction = response.json()["data"]["correction"]
+        assert correction["corrected_by_user_id"] == "user:local", (
+            f"Expected 'user:local' default, got: {correction['corrected_by_user_id']}"
+        )
+
+    async def test_submit_correction_explicit_null_corrected_by_user_id_defaults(
+        self,
+        async_client: AsyncClient,
+        seed_test_data: dict[str, Any],
+    ) -> None:
+        """Submit a correction with explicit corrected_by_user_id=null — must default to 'user:local'.
+
+        Explicitly sending null for corrected_by_user_id should trigger the same
+        default as omitting the field entirely.
+        """
+        video_id = seed_test_data["video_id"]
+        segment_id = seed_test_data["segment_id"]
+        language_code = seed_test_data["language_code"]
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.post(
+                _corrections_url(video_id, segment_id),
+                params={"language_code": language_code},
+                json={
+                    "corrected_text": "the quick brown fox",
+                    "correction_type": "spelling",
+                    "corrected_by_user_id": None,
+                },
+            )
+
+        assert response.status_code == 201, response.text
+        correction = response.json()["data"]["correction"]
+        assert correction["corrected_by_user_id"] == "user:local", (
+            f"Expected 'user:local' for explicit null, got: {correction['corrected_by_user_id']}"
+        )
 
     async def test_submit_correction_404_nonexistent_video(
         self,

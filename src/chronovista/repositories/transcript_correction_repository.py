@@ -11,13 +11,22 @@ FR-018, NFR-005).
 
 from __future__ import annotations
 
+import datetime
 from typing import Any, Optional, Union
 from uuid import UUID
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, case, distinct, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
+from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
+from chronovista.db.models import Video as VideoDB
+from chronovista.models.batch_correction_models import (
+    CorrectionPattern,
+    TypeCount,
+    VideoCount,
+)
+from chronovista.models.enums import CorrectionType
 from chronovista.models.transcript_correction import TranscriptCorrectionCreate
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 
@@ -283,6 +292,303 @@ class TranscriptCorrectionRepository(
         ).select_from(TranscriptCorrectionDB)
         result = await session.execute(stmt)
         return result.scalar_one()
+
+    async def get_all_filtered(
+        self,
+        session: AsyncSession,
+        *,
+        video_ids: Optional[list[str]] = None,
+        correction_type: Optional[CorrectionType] = None,
+        since: Optional[datetime.datetime] = None,
+        until: Optional[datetime.datetime] = None,
+    ) -> list[TranscriptCorrectionDB]:
+        """
+        Get corrections matching the provided filters.
+
+        All filters are optional and combined with AND semantics.  When no
+        filters are supplied every correction record is returned.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_ids : list[str] or None, optional
+            If provided, restrict results to these YouTube video IDs.
+        correction_type : CorrectionType or None, optional
+            If provided, restrict results to this correction type.
+        since : datetime or None, optional
+            Inclusive lower bound (``>=``) on ``corrected_at``.
+        until : datetime or None, optional
+            Inclusive upper bound (``<=``) on ``corrected_at``.  Date-only
+            values (``time() == 00:00:00``) are interpreted as end-of-day
+            (``23:59:59.999999``).
+
+        Returns
+        -------
+        list[TranscriptCorrectionDB]
+            Matching corrections ordered by ``corrected_at`` ascending.
+        """
+        conditions: list[Any] = []
+
+        if video_ids is not None:
+            conditions.append(TranscriptCorrectionDB.video_id.in_(video_ids))
+
+        if correction_type is not None:
+            conditions.append(
+                TranscriptCorrectionDB.correction_type == correction_type.value
+            )
+
+        if since is not None:
+            conditions.append(TranscriptCorrectionDB.corrected_at >= since)
+
+        if until is not None:
+            # Interpret date-only values (midnight) as end-of-day
+            effective_until = until
+            if until.time() == datetime.time(0, 0, 0):
+                effective_until = until.replace(
+                    hour=23, minute=59, second=59, microsecond=999999
+                )
+            conditions.append(TranscriptCorrectionDB.corrected_at <= effective_until)
+
+        stmt = select(TranscriptCorrectionDB)
+        if conditions:
+            stmt = stmt.where(and_(*conditions))
+        stmt = stmt.order_by(TranscriptCorrectionDB.corrected_at.asc())
+
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+    # ------------------------------------------------------------------
+    # Aggregate statistics (Feature 036 — T007)
+    # ------------------------------------------------------------------
+
+    async def get_stats(
+        self,
+        session: AsyncSession,
+        *,
+        language: Optional[str] = None,
+        top: int = 10,
+    ) -> dict[str, Any]:
+        """
+        Compute aggregate correction statistics.
+
+        Returns a dict whose keys match the ``CorrectionStats`` model fields
+        so the service layer can construct the model via
+        ``CorrectionStats(**result)``.
+
+        Uses at most 3 SQL round-trips:
+        1. Conditional aggregation for totals (corrections, reverts,
+           unique segments, unique videos).
+        2. GROUP BY correction_type for the ``by_type`` breakdown.
+        3. Top-N most-corrected videos with LEFT JOIN for title.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        language : str or None, optional
+            If provided, restrict statistics to corrections with this
+            ``language_code``.
+        top : int, optional
+            Number of top videos to return (default 10).
+
+        Returns
+        -------
+        dict[str, Any]
+            Keys: ``total_corrections``, ``total_reverts``,
+            ``unique_segments``, ``unique_videos``, ``by_type``,
+            ``top_videos``.
+        """
+        revert_value = CorrectionType.REVERT.value
+
+        # Shared language filter condition
+        lang_conditions: list[Any] = []
+        if language is not None:
+            lang_conditions.append(
+                TranscriptCorrectionDB.language_code == language
+            )
+
+        # ---- Query 1: conditional aggregation for scalar totals ----
+        is_not_revert = TranscriptCorrectionDB.correction_type != revert_value
+        is_revert = TranscriptCorrectionDB.correction_type == revert_value
+
+        totals_stmt = select(
+            func.count(case((is_not_revert, 1))).label("total_corrections"),
+            func.count(case((is_revert, 1))).label("total_reverts"),
+            func.count(
+                distinct(case((is_not_revert, TranscriptCorrectionDB.segment_id)))
+            ).label("unique_segments"),
+            func.count(
+                distinct(case((is_not_revert, TranscriptCorrectionDB.video_id)))
+            ).label("unique_videos"),
+        ).select_from(TranscriptCorrectionDB)
+        if lang_conditions:
+            totals_stmt = totals_stmt.where(and_(*lang_conditions))
+
+        totals_result = await session.execute(totals_stmt)
+        totals_row = totals_result.one()
+
+        # ---- Query 2: by_type breakdown (excluding reverts) ----
+        by_type_conditions = [is_not_revert] + lang_conditions
+        by_type_stmt = (
+            select(
+                TranscriptCorrectionDB.correction_type,
+                func.count().label("cnt"),
+            )
+            .where(and_(*by_type_conditions))
+            .group_by(TranscriptCorrectionDB.correction_type)
+            .order_by(func.count().desc())
+            .select_from(TranscriptCorrectionDB)
+        )
+
+        by_type_result = await session.execute(by_type_stmt)
+        by_type = [
+            TypeCount(correction_type=row.correction_type, count=row.cnt)
+            for row in by_type_result.all()
+        ]
+
+        # ---- Query 3: top N most-corrected videos (excluding reverts) ----
+        top_conditions = [is_not_revert] + lang_conditions
+        top_subq = (
+            select(
+                TranscriptCorrectionDB.video_id,
+                func.count().label("cnt"),
+            )
+            .where(and_(*top_conditions))
+            .group_by(TranscriptCorrectionDB.video_id)
+            .order_by(func.count().desc())
+            .limit(top)
+            .subquery()
+        )
+
+        top_stmt = (
+            select(
+                top_subq.c.video_id,
+                VideoDB.title,
+                top_subq.c.cnt,
+            )
+            .outerjoin(VideoDB, top_subq.c.video_id == VideoDB.video_id)
+            .order_by(top_subq.c.cnt.desc())
+        )
+
+        top_result = await session.execute(top_stmt)
+        top_videos = [
+            VideoCount(video_id=row.video_id, title=row.title, count=row.cnt)
+            for row in top_result.all()
+        ]
+
+        return {
+            "total_corrections": totals_row.total_corrections,
+            "total_reverts": totals_row.total_reverts,
+            "unique_segments": totals_row.unique_segments,
+            "unique_videos": totals_row.unique_videos,
+            "by_type": by_type,
+            "top_videos": top_videos,
+        }
+
+    # ------------------------------------------------------------------
+    # Pattern discovery (Feature 036 — T008)
+    # ------------------------------------------------------------------
+
+    async def get_correction_patterns(
+        self,
+        session: AsyncSession,
+        *,
+        min_occurrences: int = 2,
+        limit: int = 25,
+        show_completed: bool = False,
+    ) -> list[CorrectionPattern]:
+        """
+        Discover recurring correction patterns across all transcripts.
+
+        Groups transcript corrections by ``(original_text, corrected_text)``
+        pairs (excluding reverts) and counts how many distinct segments share
+        each pattern.  For each pair a ``remaining_matches`` count is computed
+        by scanning transcript segments whose *effective text* (respecting
+        ``has_correction``) still contains the original text — i.e. segments
+        that have not yet been corrected.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        min_occurrences : int, optional
+            Minimum number of distinct segments with this correction before
+            the pattern is included (default 2).
+        limit : int, optional
+            Maximum number of patterns to return (default 25).
+        show_completed : bool, optional
+            If ``False`` (default), exclude patterns where
+            ``remaining_matches == 0`` (all instances already corrected).
+
+        Returns
+        -------
+        list[CorrectionPattern]
+            Patterns sorted by ``remaining_matches`` DESC (highest-impact
+            first), limited to *limit* rows.
+        """
+        revert_value = CorrectionType.REVERT.value
+
+        # ---- Step 1: grouped pairs with occurrence counts ----
+        pairs_stmt = (
+            select(
+                TranscriptCorrectionDB.original_text,
+                TranscriptCorrectionDB.corrected_text,
+                func.count(
+                    distinct(TranscriptCorrectionDB.segment_id)
+                ).label("occurrences"),
+            )
+            .where(TranscriptCorrectionDB.correction_type != revert_value)
+            .group_by(
+                TranscriptCorrectionDB.original_text,
+                TranscriptCorrectionDB.corrected_text,
+            )
+            .having(
+                func.count(distinct(TranscriptCorrectionDB.segment_id))
+                >= min_occurrences
+            )
+        )
+
+        pairs_result = await session.execute(pairs_stmt)
+        pairs = pairs_result.all()
+
+        if not pairs:
+            return []
+
+        # ---- Step 2: remaining_matches for each pair ----
+        # Build the effective text expression for transcript segments
+        effective_text = case(
+            (TranscriptSegmentDB.has_correction, TranscriptSegmentDB.corrected_text),
+            else_=TranscriptSegmentDB.text,
+        )
+
+        patterns: list[CorrectionPattern] = []
+        for row in pairs:
+            remaining_stmt = (
+                select(func.count())
+                .select_from(TranscriptSegmentDB)
+                .where(
+                    effective_text.contains(row.original_text)
+                )
+            )
+            remaining_result = await session.execute(remaining_stmt)
+            remaining = remaining_result.scalar_one()
+
+            if not show_completed and remaining == 0:
+                continue
+
+            patterns.append(
+                CorrectionPattern(
+                    original_text=row.original_text,
+                    corrected_text=row.corrected_text,
+                    occurrences=row.occurrences,
+                    remaining_matches=remaining,
+                )
+            )
+
+        # Sort by remaining_matches DESC, then limit
+        patterns.sort(key=lambda p: p.remaining_matches, reverse=True)
+        return patterns[:limit]
 
     async def get_latest_version(
         self,

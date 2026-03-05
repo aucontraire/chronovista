@@ -51,6 +51,12 @@ chronovista is a CLI application that enables users to access, store, and explor
 
     Language-aware export to CSV, JSON with filtering by channel and language
 
+-   :material-find-replace:{ .lg .middle } **Transcript Corrections**
+
+    ---
+
+    Edit, revert, and audit transcript corrections via inline web UI or batch CLI tools with full audit trail
+
 -   :material-api:{ .lg .middle } **REST API**
 
     ---
@@ -68,7 +74,7 @@ chronovista is a CLI application that enables users to access, store, and explor
 ## Project Status
 
 !!! success "Current Status"
-    - **5,500+ tests** (4,500+ backend, 1,500+ frontend) with **90%+ coverage**
+    - **6,000+ tests** (5,700+ backend, 2,300+ frontend) with **90%+ coverage**
     - **Comprehensive Pydantic models** with advanced validation and type safety
     - **Real API integration testing** with YouTube API data validation
     - **Advanced repository pattern** with async support and composite keys

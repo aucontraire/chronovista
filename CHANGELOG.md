@@ -9,6 +9,115 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.39.0] - 2026-03-05
+
+### Added
+
+#### Feature 036: Batch Correction Tools (ADR-005 Increment 6)
+
+CLI batch tools for finding, replacing, reverting, exporting, and analyzing transcript corrections at scale. Enables pattern-based bulk correction of recurring ASR errors across the entire transcript library with transaction safety, dry-run preview, and full audit trail. CLI only — no frontend changes, no new API endpoints, no database migrations.
+
+**6 New CLI Commands (`chronovista corrections`):**
+
+| Command | Description |
+|---------|-------------|
+| `corrections find-replace --pattern X --replacement Y` | Batch find-and-replace across all transcript segments with dry-run, confirmation prompt, regex/case-insensitive modes, and filter options |
+| `corrections rebuild-text` | Regenerate `video_transcripts.transcript_text` from corrected segments (space-separated, matching original assembly) |
+| `corrections export --format csv\|json` | Export correction audit records to CSV or JSON with date/video/type filters and stdout support |
+| `corrections stats` | Aggregate correction statistics with type breakdown and top corrected videos |
+| `corrections patterns` | Discover recurring correction patterns with copy-paste suggested commands |
+| `corrections batch-revert --pattern X` | Batch revert corrections matching a pattern with dry-run and confirmation |
+
+**Batch Find-Replace (US-1, US-2, US-8):**
+- Database-side pattern matching using SQL `LIKE`/`ILIKE`/`~`/`~*` on effective text (`CASE WHEN has_correction THEN corrected_text ELSE text END`) — no full table load into Python (NFR-2)
+- `--regex` flag for Python regular expression patterns; `--case-insensitive` / `-i` for case-insensitive matching
+- `--language`, `--channel`, `--video-id` (repeatable) filter options
+- `--correction-type` (default: `asr_error`) and `--correction-note` for audit trail metadata
+- `--dry-run` preview with Rich table: video_id, segment_id, start_time, current text (context-window truncated to 80 chars with match bold-highlighted), proposed text (end-truncated to 80 chars)
+- `--limit` option caps dry-run preview rows (default: 50)
+- Confirmation prompt showing pattern, replacement, correction type, active filters, and scope ("This will correct N segments across M videos. Proceed? [y/N]")
+- `--yes` / `-y` flag skips confirmation for scripting
+- Rich summary table: segments scanned, matches found, corrections applied, skipped (no-op), failed, unique videos
+- Rich progress bar updating per transaction batch (NFR-3)
+
+**Transaction Safety (NFR-1):**
+- Configurable transaction batches via `--batch-size` (default: 100 segments per commit)
+- Per-batch commit/rollback: failed batches are rolled back independently; previously committed batches remain applied
+- Summary reports both successful and failed batch counts
+
+**Rebuild Corrected Full Text (US-3):**
+- Scans `video_transcripts` where `has_corrections = True`, concatenates segment effective texts ordered by `start_time`, separated by spaces (matching original transcript assembly format)
+- `--video-id` and `--language` filter options
+- `--dry-run` preview showing video_id, language_code, current text length, and new text length
+- Rich progress bar (one tick per transcript rebuilt)
+- Skips transcripts with no corrected segments (no unnecessary writes)
+
+**Export Corrections (US-4, US-5):**
+- `--format csv` writes CSV with columns: id, video_id, language_code, segment_id, correction_type, original_text, corrected_text, correction_note, corrected_by_user_id, corrected_at, version_number
+- `--format json` writes JSON array with 2-space indentation (or `--compact` for no indentation)
+- `--output` writes to file; omitted writes to stdout (pipe-friendly)
+- `--video-id`, `--correction-type`, `--since`, `--until` (ISO 8601) date filters
+- `--since` inclusive (`>=`), `--until` inclusive (`<=`, date-only interpreted as end-of-day)
+- Summary line to stderr: "Exported N correction records"
+
+**Correction Statistics (US-6):**
+- Rich panel with: total corrections (excluding reverts), total reverts, unique segments, unique videos
+- Breakdown by `correction_type` table (type and count columns) with separate "Reverts" row
+- Top N most-corrected videos table (video_id, title, correction count) via `--top` option (default: 10)
+- `--language` filter option
+- Aggregate SQL queries (max 3 round-trips) — no full record load into memory
+
+**Correction Patterns Discovery (US-7):**
+- Groups `transcript_corrections` by (original_text, corrected_text) pairs, excluding reverts
+- Rich table: original_text, corrected_text, occurrences, remaining_matches (segments still containing the error)
+- Sorted by `remaining_matches` descending (highest-impact patterns first)
+- Each row includes suggested command: `corrections find-replace --pattern "<original>" --replacement "<corrected>"`
+- `--min-occurrences` (default: 2), `--limit` (default: 25), `--show-completed` flag
+- Patterns with `remaining_matches = 0` hidden by default
+
+**Batch Revert (US-9):**
+- Finds segments whose `corrected_text` matches pattern, reverts each via `TranscriptCorrectionService.revert_correction`
+- Same filter and safety options as find-replace: `--video-id`, `--language`, `--regex`, `--case-insensitive`, `--dry-run`, `--yes`, `--batch-size`
+- Each revert creates proper audit record with `correction_type = 'revert'`
+- Summary: total reverted, total skipped, total errors
+
+**Actor String Convention (FR-030, FR-031):**
+- `correction_actors.py` module with constants: `ACTOR_USER_LOCAL` ("user:local"), `ACTOR_CLI_BATCH` ("cli:batch"), `ACTOR_CLI_INTERACTIVE` ("cli:interactive")
+- `auto_actor(engine)` helper for engine-based actor selection
+- API endpoint defaults `corrected_by_user_id` to `ACTOR_USER_LOCAL` when client omits the field (previously NULL)
+- CLI batch commands use `ACTOR_CLI_BATCH` for all audit records
+
+**New Source Files (4):**
+
+| File | Description |
+|------|-------------|
+| `models/correction_actors.py` | Actor string constants and `auto_actor()` helper |
+| `models/batch_correction_models.py` | 6 Pydantic V2 frozen models: BatchCorrectionResult, CorrectionExportRecord, CorrectionPattern, CorrectionStats, TypeCount, VideoCount |
+| `services/batch_correction_service.py` | BatchCorrectionService with find_and_replace, rebuild_text, export_corrections, get_statistics, get_patterns, batch_revert, and shared _process_in_batches helper |
+| `cli/correction_commands.py` | 6 Typer commands registered as `corrections` sub-app |
+
+**Modified Files (4):**
+- `cli/main.py` — Registered `correction_app` as `corrections` sub-app
+- `repositories/transcript_segment_repository.py` — Added `find_by_text_pattern()` and `count_filtered()` with database-side pattern matching
+- `repositories/transcript_correction_repository.py` — Added `get_all_filtered()`, `get_stats()`, and `get_correction_patterns()` aggregate query methods
+- `api/routers/transcript_corrections.py` — Default `corrected_by_user_id` to `ACTOR_USER_LOCAL` when omitted
+
+### Fixed
+- `corrected_by_user_id` defaulting to NULL in correction submission API when client omits the field — now defaults to `"user:local"` via `ACTOR_USER_LOCAL` constant
+- Pre-existing channel video test failures (`StopAsyncIteration`) caused by Feature 035's corrections batch query adding a 4th `db.execute()` call that existing mock sessions didn't account for — added missing mock result to `_create_channel_videos_mock_session`
+
+### Technical
+- 277 new tests: 7 unit (actors), 46 unit (models), 33 unit (segment repo), 47 unit (correction repo), 84 unit (service), 60 unit (CLI), 13 integration (batch workflow + cross-feature contracts), 2 API (actor default)
+- 6,026 total tests passing with 0 regressions
+- Coverage: 90%+ on all new source files
+- mypy strict compliance (0 errors on all new and modified files)
+- No new dependencies, no database migrations (uses existing tables from Features 033-035)
+- All commands registered on `corrections` Typer sub-app following existing CLI conventions (NFR-6)
+- Structured INFO logging at start/completion of every batch operation with duration (NFR-4)
+- Idempotency verified: running find-replace twice with same pattern reports "0 corrections applied" on second run (NFR-5)
+- Database-side filtering via SQL LIKE/ILIKE/~ operators — no full table load into Python memory (NFR-2)
+- Rich progress bars on all batch operations updating per transaction batch (NFR-3)
+
 ## [0.38.0] - 2026-03-03
 
 ### Added

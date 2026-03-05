@@ -152,8 +152,9 @@ class TagBackfillService:
         )
         return dict(groups), skip_list
 
-    def _normalize_and_group(
+    async def _normalize_and_group(
         self,
+        session: AsyncSession,
         distinct_tags: dict[str, int],
         execution_timestamp: datetime,
     ) -> tuple[
@@ -164,11 +165,15 @@ class TagBackfillService:
         """Normalize, group, and build batch insert records for the backfill.
 
         Delegates to ``_normalize_and_group_core`` for the normalization step,
-        then generates UUIDv7 primary keys and assembles the batch dictionaries
-        required by ``_batch_insert_canonical_tags`` and ``_batch_insert_tag_aliases``.
+        then looks up existing canonical tag IDs (to avoid FK violations on
+        re-runs) and assembles the batch dictionaries required by
+        ``_batch_insert_canonical_tags`` and ``_batch_insert_tag_aliases``.
 
         Parameters
         ----------
+        session : AsyncSession
+            An active SQLAlchemy async session used to look up existing
+            canonical tags.
         distinct_tags : dict[str, int]
             Mapping of raw tag strings to their occurrence counts.
         execution_timestamp : datetime
@@ -187,25 +192,37 @@ class TagBackfillService:
         """
         groups, skip_list = self._normalize_and_group_core(distinct_tags)
 
+        # Look up existing canonical tags so aliases reference the correct IDs
+        existing_ct_stmt = select(
+            CanonicalTagDB.normalized_form, CanonicalTagDB.id
+        )
+        result = await session.execute(existing_ct_stmt)
+        existing_ct_ids: dict[str, uuid.UUID] = {
+            row[0]: row[1] for row in result.all()
+        }
+        logger.info(
+            "Found %d existing canonical tags in DB", len(existing_ct_ids)
+        )
+
         canonical_tags_batch: list[dict[str, Any]] = []
         tag_aliases_batch: list[dict[str, Any]] = []
 
         for normalized_form, aliases in groups.items():
-            # Pre-generate a UUIDv7 for the canonical tag (convert for Pydantic compat)
-            ct_id = uuid.UUID(bytes=uuid7().bytes)
-
-            canonical_form = self._normalization_service.select_canonical_form(aliases)
-
-            canonical_tags_batch.append(
-                {
-                    "id": ct_id,
-                    "canonical_form": canonical_form,
-                    "normalized_form": normalized_form,
-                    "alias_count": len(aliases),
-                    "video_count": 0,
-                    "status": "active",
-                }
-            )
+            # Use existing ID if canonical tag already exists, otherwise generate new
+            ct_id = existing_ct_ids.get(normalized_form)
+            if ct_id is None:
+                ct_id = uuid.UUID(bytes=uuid7().bytes)
+                canonical_form = self._normalization_service.select_canonical_form(aliases)
+                canonical_tags_batch.append(
+                    {
+                        "id": ct_id,
+                        "canonical_form": canonical_form,
+                        "normalized_form": normalized_form,
+                        "alias_count": len(aliases),
+                        "video_count": 0,
+                        "status": "active",
+                    }
+                )
 
             for raw_form, occ_count in aliases:
                 alias_id = uuid.UUID(bytes=uuid7().bytes)
@@ -413,8 +430,8 @@ class TagBackfillService:
 
         # Step 3: Normalize, group, and prepare batch records
         execution_timestamp = datetime.now(UTC)
-        ct_records, ta_records, skip_list = self._normalize_and_group(
-            distinct_tags, execution_timestamp
+        ct_records, ta_records, skip_list = await self._normalize_and_group(
+            session, distinct_tags, execution_timestamp
         )
 
         # Step 4: Batch insert with Rich progress bar

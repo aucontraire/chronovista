@@ -345,7 +345,91 @@ The entire correction workflow is keyboard-accessible:
 - Only one segment can be edited at a time
 - Revert goes back one version only (not to a specific earlier version)
 - The Full Text view does not reflect corrections (it uses the original transcript text)
-- No batch correction across multiple segments
+- For batch corrections across multiple segments, use the CLI — see [Batch Transcript Corrections (CLI)](#batch-transcript-corrections-cli-v0390) below
+
+## Batch Transcript Corrections (CLI) (v0.39.0)
+
+The `chronovista corrections` CLI commands enable bulk correction operations across your entire transcript library. While the inline web UI edits one segment at a time, the CLI tools can find and replace patterns across thousands of segments in a single command.
+
+### Quick Start
+
+```bash
+# Find a recurring ASR error and preview what would change
+chronovista corrections find-replace --pattern "Chsky" --replacement "Chomsky" --dry-run
+
+# Apply the correction (with confirmation prompt)
+chronovista corrections find-replace --pattern "Chsky" --replacement "Chomsky"
+
+# Rebuild full transcript text to reflect corrections
+chronovista corrections rebuild-text
+```
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `find-replace` | Batch find-and-replace text patterns across transcript segments |
+| `rebuild-text` | Regenerate full transcript text from corrected segments |
+| `export` | Export correction audit records as CSV or JSON |
+| `stats` | Display aggregate correction statistics |
+| `patterns` | Discover recurring correction patterns with suggested fix commands |
+| `batch-revert` | Batch revert corrections matching a pattern |
+
+### Pattern Matching
+
+The `find-replace` and `batch-revert` commands support several matching modes:
+
+- **Substring match** (default): `--pattern "Chsky"` matches any segment containing "Chsky"
+- **Case-insensitive**: `--pattern "chsky" --case-insensitive` matches "Chsky", "CHSKY", etc.
+- **Regex**: `--pattern "finkel(state|stein)" --regex` matches Python regular expressions
+
+Pattern matching is performed database-side using SQL operators (`LIKE`, `ILIKE`, `~`, `~*`), so scans are efficient even for large transcript libraries (500,000+ segments).
+
+### Safety Features
+
+All batch operations include safety mechanisms to prevent accidental changes:
+
+- **Dry-run mode**: Add `--dry-run` to any write command to preview changes without modifying the database
+- **Confirmation prompt**: Write operations display the scope ("This will correct N segments across M videos. Proceed? [y/N]") before executing
+- **Transaction batching**: Segments are processed in configurable batches (default: 100). If a batch fails, only that batch is rolled back — previously committed batches are preserved
+- **Idempotency**: Running the same find-replace twice is safe — the second run finds zero matches and reports "0 corrections applied"
+- **Full audit trail**: Every correction creates a `transcript_corrections` audit record, just like inline edits
+
+### Rebuilding Full Text
+
+After applying corrections to individual segments, the `video_transcripts.transcript_text` column may be out of date. The `rebuild-text` command regenerates it by concatenating each segment's effective text (corrected if available, otherwise original), ordered by timestamp and separated by spaces.
+
+```bash
+# Preview which transcripts would change
+chronovista corrections rebuild-text --dry-run
+
+# Rebuild all corrected transcripts
+chronovista corrections rebuild-text
+```
+
+### Discovering Patterns
+
+The `patterns` command analyzes your existing corrections to find recurring error patterns. Each result includes a copy-paste command to fix remaining instances:
+
+```bash
+chronovista corrections patterns
+```
+
+This is useful for discovering ASR errors that you've corrected one at a time via the web UI and want to batch-fix across the rest of your library.
+
+### Exporting and Statistics
+
+Back up your correction work or analyze patterns:
+
+```bash
+# Export all corrections as CSV
+chronovista corrections export --format csv --output corrections.csv
+
+# View aggregate statistics
+chronovista corrections stats
+```
+
+For full command options, see the [CLI Overview](cli-overview.md#corrections-commands).
 
 ## Filtering and Search
 

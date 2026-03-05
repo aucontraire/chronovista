@@ -191,6 +191,21 @@ chronovista recover [COMMAND]
 
 Video recovery also attempts to recover the associated channel's metadata when the channel is unavailable. In batch mode (`--all`), the summary report includes channel recovery statistics showing how many channels were attempted, recovered, and which fields were restored.
 
+### Corrections Commands
+
+```bash
+chronovista corrections [COMMAND]
+```
+
+| Command | Description |
+|---------|-------------|
+| `find-replace` | Batch find-and-replace text patterns across transcript segments |
+| `rebuild-text` | Regenerate full transcript text from corrected segments |
+| `export` | Export correction audit records as CSV or JSON |
+| `stats` | Display aggregate correction statistics |
+| `patterns` | Discover recurring correction patterns with suggested commands |
+| `batch-revert` | Batch revert corrections matching a pattern |
+
 ### API Commands
 
 ```bash
@@ -1047,6 +1062,191 @@ Export viewing history.
 - `--date-range <start,end>` - Date range filter
 - `--channel <id>` - Filter by channel
 
+### Transcript Corrections
+
+#### Find and Replace
+
+```bash
+chronovista corrections find-replace --pattern <PATTERN> --replacement <REPLACEMENT> [OPTIONS]
+```
+
+Batch find-and-replace text patterns across transcript segments with full audit trail.
+
+**Options:**
+
+- `--pattern, -p <TEXT>` - Text pattern to search for (required)
+- `--replacement, -r <TEXT>` - Replacement text (required)
+- `--regex` - Treat pattern as Python regular expression
+- `--case-insensitive, -i` - Enable case-insensitive matching
+- `--language <CODE>` - Filter by language code (e.g., en, es)
+- `--channel <CHANNEL_ID>` - Filter by channel ID
+- `--video-id <VIDEO_ID>` - Filter by video ID (repeatable)
+- `--correction-type <TYPE>` - Correction type for audit trail (default: asr_error)
+- `--correction-note <TEXT>` - Note to attach to every audit record
+- `--batch-size <INT>` - Segments per transaction batch (default: 100)
+- `--dry-run` - Preview changes without writing to database
+- `--yes, -y` - Skip confirmation prompt
+- `--limit <INT>` - Max preview rows in dry-run mode (default: 50)
+
+**Examples:**
+
+```bash
+# Preview what would change
+chronovista corrections find-replace --pattern "Chsky" --replacement "Chomsky" --dry-run
+
+# Apply corrections with confirmation prompt
+chronovista corrections find-replace --pattern "Chsky" --replacement "Chomsky"
+
+# Case-insensitive regex match, skip confirmation
+chronovista corrections find-replace -p "finkel(state|stein)" -r "Finkelstein" --regex -i -y
+
+# Filter to specific language and channel
+chronovista corrections find-replace -p "Ashwitz" -r "Auschwitz" --language en --channel UCxxxxxxx
+```
+
+#### Rebuild Text
+
+```bash
+chronovista corrections rebuild-text [OPTIONS]
+```
+
+Regenerates full transcript text from corrected segments.
+
+**Options:**
+
+- `--video-id <VIDEO_ID>` - Restrict to specific video (repeatable)
+- `--language <CODE>` - Restrict to specific language code
+- `--dry-run` - Preview which transcripts would change without writing
+
+**Examples:**
+
+```bash
+# Preview which transcripts would be rebuilt
+chronovista corrections rebuild-text --dry-run
+
+# Rebuild all corrected transcripts
+chronovista corrections rebuild-text
+
+# Rebuild specific video only
+chronovista corrections rebuild-text --video-id dQw4w9WgXcQ
+```
+
+#### Export Corrections
+
+```bash
+chronovista corrections export --format <csv|json> [OPTIONS]
+```
+
+Exports correction audit records as CSV or JSON.
+
+**Options:**
+
+- `--format <csv|json>` - Export format (required)
+- `--output <PATH>` - Output file path (omit for stdout)
+- `--video-id <VIDEO_ID>` - Filter by video ID (repeatable)
+- `--correction-type <TYPE>` - Filter by correction type
+- `--since <DATE>` - Include corrections after this ISO 8601 date
+- `--until <DATE>` - Include corrections before this ISO 8601 date
+- `--compact` - JSON only: remove indentation for smaller file size
+
+**Examples:**
+
+```bash
+# Export all corrections as CSV
+chronovista corrections export --format csv --output corrections.csv
+
+# Export as formatted JSON
+chronovista corrections export --format json --output corrections.json
+
+# Export ASR errors from March 2026 to stdout
+chronovista corrections export --format csv --correction-type asr_error --since 2026-03-01
+
+# Compact JSON for piping
+chronovista corrections export --format json --compact | jq '.[] | .original_text'
+```
+
+#### Correction Statistics
+
+```bash
+chronovista corrections stats [OPTIONS]
+```
+
+Displays aggregate correction statistics.
+
+**Options:**
+
+- `--language <CODE>` - Filter statistics to a specific language
+- `--top <INT>` - Number of most-corrected videos to show (default: 10)
+
+**Examples:**
+
+```bash
+# Show all correction statistics
+chronovista corrections stats
+
+# Show stats for English transcripts, top 20 videos
+chronovista corrections stats --language en --top 20
+```
+
+#### Discover Patterns
+
+```bash
+chronovista corrections patterns [OPTIONS]
+```
+
+Discovers recurring correction patterns with suggested commands.
+
+**Options:**
+
+- `--min-occurrences <INT>` - Minimum times a pattern must appear (default: 2)
+- `--limit <INT>` - Maximum rows to display (default: 25)
+- `--show-completed` - Include patterns with zero remaining matches
+
+**Examples:**
+
+```bash
+# Discover recurring correction patterns
+chronovista corrections patterns
+
+# Show patterns that occurred at least 5 times
+chronovista corrections patterns --min-occurrences 5
+
+# Include fully resolved patterns
+chronovista corrections patterns --show-completed
+```
+
+#### Batch Revert
+
+```bash
+chronovista corrections batch-revert --pattern <PATTERN> [OPTIONS]
+```
+
+Batch reverts corrections matching a pattern.
+
+**Options:**
+
+- `--pattern, -p <TEXT>` - Pattern to match in corrected text (required)
+- `--video-id <VIDEO_ID>` - Filter by video ID (repeatable)
+- `--language <CODE>` - Filter by language code
+- `--regex` - Treat pattern as Python regular expression
+- `--case-insensitive, -i` - Enable case-insensitive matching
+- `--batch-size <INT>` - Segments per transaction batch (default: 100)
+- `--dry-run` - Preview which segments would be reverted
+- `--yes, -y` - Skip confirmation prompt
+
+**Examples:**
+
+```bash
+# Preview what would be reverted
+chronovista corrections batch-revert --pattern "Chomsky" --dry-run
+
+# Revert corrections, skip confirmation
+chronovista corrections batch-revert --pattern "Chomsky" -y
+
+# Revert only in a specific video
+chronovista corrections batch-revert --pattern "Chomsky" --video-id dQw4w9WgXcQ
+```
+
 ## Examples
 
 ### Basic Workflow
@@ -1184,6 +1384,31 @@ curl http://localhost:8765/api/v1/videos?limit=10
 
 # 4. View interactive docs
 open http://localhost:8765/docs
+```
+
+### Batch Transcript Corrections
+
+```bash
+# 1. Discover patterns in existing corrections
+chronovista corrections patterns --min-occurrences 2
+
+# 2. Preview a batch correction
+chronovista corrections find-replace --pattern "Chsky" --replacement "Chomsky" --dry-run
+
+# 3. Apply the correction
+chronovista corrections find-replace --pattern "Chsky" --replacement "Chomsky"
+
+# 4. Rebuild full transcript text
+chronovista corrections rebuild-text
+
+# 5. Check correction statistics
+chronovista corrections stats
+
+# 6. Export corrections for backup
+chronovista corrections export --format json --output corrections-backup.json
+
+# 7. If a correction was wrong, batch revert it
+chronovista corrections batch-revert --pattern "Chomsky" --dry-run
 ```
 
 ## Exit Codes

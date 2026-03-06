@@ -579,6 +579,21 @@ def _reason_callback(value: Optional[str]) -> Optional[str]:
     return value
 
 
+def _normalize_input(tag: str) -> str:
+    """Normalize user-provided tag input for lookup.
+
+    Users naturally type the display form they see in the UI (e.g.,
+    ``#ChasFreeman``), but the service layer expects the normalized form
+    (``chasfreeman``).  This helper bridges that gap.
+    """
+    from chronovista.services.tag_normalization import TagNormalizationService
+
+    result = TagNormalizationService().normalize(tag)
+    if result is None:
+        raise typer.BadParameter(f"Tag '{tag}' normalizes to an empty string.")
+    return result
+
+
 def _create_tag_management_service() -> "TagManagementService":
     """Create a TagManagementService with all required repositories."""
     from chronovista.repositories.canonical_tag_repository import (
@@ -608,10 +623,10 @@ def _create_tag_management_service() -> "TagManagementService":
 @tag_app.command("merge")
 def merge_tags(
     sources: List[str] = typer.Argument(
-        ..., help="Normalized form(s) of source tag(s) to merge"
+        ..., help="Tag name(s) to merge (e.g., '#ChasFreeman')"
     ),
     into: str = typer.Option(
-        ..., "--into", help="Normalized form of the target tag to merge into"
+        ..., "--into", help="Tag name to merge into (e.g., 'Chas Freeman')"
     ),
     reason: Optional[str] = typer.Option(
         None,
@@ -631,8 +646,8 @@ def merge_tags(
             try:
                 result: MergeResult = await service.merge(
                     session,
-                    source_normalized_forms=sources,
-                    target_normalized_form=into,
+                    source_normalized_forms=[_normalize_input(s) for s in sources],
+                    target_normalized_form=_normalize_input(into),
                     reason=reason,
                 )
                 await session.commit()
@@ -672,7 +687,7 @@ def merge_tags(
 @tag_app.command("split")
 def split_tag(
     normalized_form: str = typer.Argument(
-        help="Normalized form of the canonical tag to split."
+        help="Tag name to split (e.g., 'Chas Freeman')."
     ),
     aliases: str = typer.Option(
         ...,
@@ -698,7 +713,7 @@ def split_tag(
             try:
                 result: SplitResult = await service.split(
                     session,
-                    normalized_form=normalized_form,
+                    normalized_form=_normalize_input(normalized_form),
                     alias_raw_forms=alias_list,
                     reason=reason,
                 )
@@ -740,7 +755,7 @@ def split_tag(
 @tag_app.command("rename")
 def rename_tag(
     normalized_form: str = typer.Argument(
-        help="Normalized form of the canonical tag to rename."
+        help="Tag name to rename (e.g., 'Chas Freeman')."
     ),
     to: str = typer.Option(
         ..., "--to", help="New display form for the canonical tag."
@@ -763,7 +778,7 @@ def rename_tag(
             try:
                 result: RenameResult = await service.rename(
                     session,
-                    normalized_form=normalized_form,
+                    normalized_form=_normalize_input(normalized_form),
                     new_display_form=to,
                     reason=reason,
                 )
@@ -800,7 +815,7 @@ def rename_tag(
 @tag_app.command("deprecate")
 def deprecate_tag(
     normalized_form: Optional[str] = typer.Argument(
-        None, help="Normalized form of the canonical tag to deprecate."
+        None, help="Tag name to deprecate (e.g., 'Chas Freeman')."
     ),
     list_deprecated: bool = typer.Option(
         False,
@@ -882,7 +897,7 @@ def deprecate_tag(
 
                     result: DeprecateResult = await service.deprecate(
                         session,
-                        normalized_form=normalized_form,
+                        normalized_form=_normalize_input(normalized_form),
                         reason=reason,
                     )
                     await session.commit()
@@ -1057,7 +1072,7 @@ def undo_operation(
 @tag_app.command("classify")
 def classify_tag(
     normalized_form: Optional[str] = typer.Argument(
-        None, help="Normalized form of the canonical tag to classify."
+        None, help="Tag name to classify (e.g., 'Chas Freeman')."
     ),
     entity_type: Optional[str] = typer.Option(
         None,
@@ -1194,7 +1209,7 @@ def classify_tag(
                 try:
                     result: ClassifyResult = await service.classify(
                         session,
-                        normalized_form=normalized_form,
+                        normalized_form=_normalize_input(normalized_form),
                         entity_type=parsed_type,
                         force=force,
                         reason=reason,

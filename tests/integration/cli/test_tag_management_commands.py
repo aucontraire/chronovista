@@ -1670,3 +1670,279 @@ class TestDeprecateCommand:
         assert result.exit_code == 0
         assert "Undo Successful" in result.output
         assert "Restored" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Input normalization tests (bugfix/tag-cli-normalize-input)
+# ---------------------------------------------------------------------------
+
+
+class TestInputNormalization:
+    """Verify CLI commands normalize user input before service lookup.
+
+    Users type the display form they see in the UI (e.g., ``#ChasFreeman``),
+    but the service layer expects the normalized form (``chasfreeman``).
+    """
+
+    def test_merge_normalizes_hashtag_source(self) -> None:
+        """Merge normalizes '#ChasFreeman' to 'chasfreeman' before service call."""
+        from chronovista.services.tag_management import MergeResult
+
+        mock_result = MergeResult(
+            source_tags=["chasfreeman"],
+            target_tag="chas freeman",
+            aliases_moved=1,
+            new_alias_count=2,
+            new_video_count=10,
+            operation_id=_OP_ID,
+        )
+
+        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
+            "chronovista.cli.tag_commands._create_tag_management_service"
+        ) as mock_factory:
+            mock_session = AsyncMock()
+            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_service = AsyncMock()
+            mock_service.merge.return_value = mock_result
+            mock_factory.return_value = mock_service
+
+            result = runner.invoke(
+                app,
+                ["tags", "merge", "#ChasFreeman", "--into", "Chas Freeman"],
+            )
+
+        assert result.exit_code == 0, f"Output: {result.output}"
+        call_kwargs = mock_service.merge.call_args[1]
+        assert call_kwargs["source_normalized_forms"] == ["chasfreeman"]
+        assert call_kwargs["target_normalized_form"] == "chas freeman"
+
+    def test_merge_normalizes_mixed_case_target(self) -> None:
+        """Merge normalizes 'Chas Freeman' to 'chas freeman' before service call."""
+        from chronovista.services.tag_management import MergeResult
+
+        mock_result = MergeResult(
+            source_tags=["chasfreeman"],
+            target_tag="chas freeman",
+            aliases_moved=1,
+            new_alias_count=2,
+            new_video_count=10,
+            operation_id=_OP_ID,
+        )
+
+        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
+            "chronovista.cli.tag_commands._create_tag_management_service"
+        ) as mock_factory:
+            mock_session = AsyncMock()
+            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_service = AsyncMock()
+            mock_service.merge.return_value = mock_result
+            mock_factory.return_value = mock_service
+
+            result = runner.invoke(
+                app,
+                ["tags", "merge", "CHASFREEMAN", "--into", "CHAS FREEMAN"],
+            )
+
+        assert result.exit_code == 0, f"Output: {result.output}"
+        call_kwargs = mock_service.merge.call_args[1]
+        assert call_kwargs["source_normalized_forms"] == ["chasfreeman"]
+        assert call_kwargs["target_normalized_form"] == "chas freeman"
+
+    def test_merge_normalizes_multiple_sources(self) -> None:
+        """Merge normalizes all source arguments."""
+        from chronovista.services.tag_management import MergeResult
+
+        mock_result = MergeResult(
+            source_tags=["chasfreeman", "chas freeman latest"],
+            target_tag="chas freeman",
+            aliases_moved=2,
+            new_alias_count=4,
+            new_video_count=20,
+            operation_id=_OP_ID,
+        )
+
+        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
+            "chronovista.cli.tag_commands._create_tag_management_service"
+        ) as mock_factory:
+            mock_session = AsyncMock()
+            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_service = AsyncMock()
+            mock_service.merge.return_value = mock_result
+            mock_factory.return_value = mock_service
+
+            result = runner.invoke(
+                app,
+                [
+                    "tags", "merge",
+                    "#ChasFreeman", "Chas Freeman Latest",
+                    "--into", "Chas Freeman",
+                ],
+            )
+
+        assert result.exit_code == 0, f"Output: {result.output}"
+        call_kwargs = mock_service.merge.call_args[1]
+        assert call_kwargs["source_normalized_forms"] == [
+            "chasfreeman", "chas freeman latest"
+        ]
+
+    def test_split_normalizes_input(self) -> None:
+        """Split normalizes the tag argument before service call."""
+        from chronovista.services.tag_management import SplitResult
+
+        mock_result = SplitResult(
+            original_tag="chas freeman",
+            new_tag="chas freeman latest",
+            new_canonical_form="chas freeman latest",
+            new_normalized_form="chas freeman latest",
+            aliases_moved=1,
+            original_alias_count=3,
+            original_video_count=10,
+            new_alias_count=1,
+            new_video_count=2,
+            operation_id=_OP_ID,
+        )
+
+        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
+            "chronovista.cli.tag_commands._create_tag_management_service"
+        ) as mock_factory:
+            mock_session = AsyncMock()
+            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_service = AsyncMock()
+            mock_service.split.return_value = mock_result
+            mock_factory.return_value = mock_service
+
+            result = runner.invoke(
+                app,
+                [
+                    "tags", "split", "#ChasFreeman",
+                    "--aliases", "ChasFreeman",
+                ],
+            )
+
+        assert result.exit_code == 0, f"Output: {result.output}"
+        call_kwargs = mock_service.split.call_args[1]
+        assert call_kwargs["normalized_form"] == "chasfreeman"
+
+    def test_rename_normalizes_input(self) -> None:
+        """Rename normalizes the tag argument before service call."""
+        from chronovista.services.tag_management import RenameResult
+
+        mock_result = RenameResult(
+            old_form="#ChasFreeman",
+            new_form="Chas W. Freeman",
+            normalized_form="chasfreeman",
+            operation_id=_OP_ID,
+        )
+
+        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
+            "chronovista.cli.tag_commands._create_tag_management_service"
+        ) as mock_factory:
+            mock_session = AsyncMock()
+            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_service = AsyncMock()
+            mock_service.rename.return_value = mock_result
+            mock_factory.return_value = mock_service
+
+            result = runner.invoke(
+                app,
+                [
+                    "tags", "rename", "#ChasFreeman",
+                    "--to", "Chas W. Freeman",
+                ],
+            )
+
+        assert result.exit_code == 0, f"Output: {result.output}"
+        call_kwargs = mock_service.rename.call_args[1]
+        assert call_kwargs["normalized_form"] == "chasfreeman"
+
+    def test_deprecate_normalizes_input(self) -> None:
+        """Deprecate normalizes the tag argument before service call."""
+        from chronovista.services.tag_management import DeprecateResult
+
+        mock_result = DeprecateResult(
+            normalized_form="chasfreeman",
+            canonical_form="#ChasFreeman",
+            alias_count=1,
+            operation_id=_OP_ID,
+        )
+
+        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
+            "chronovista.cli.tag_commands._create_tag_management_service"
+        ) as mock_factory:
+            mock_session = AsyncMock()
+            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_service = AsyncMock()
+            mock_service.deprecate.return_value = mock_result
+            mock_factory.return_value = mock_service
+
+            result = runner.invoke(
+                app,
+                ["tags", "deprecate", "#ChasFreeman"],
+            )
+
+        assert result.exit_code == 0, f"Output: {result.output}"
+        call_kwargs = mock_service.deprecate.call_args[1]
+        assert call_kwargs["normalized_form"] == "chasfreeman"
+
+    def test_classify_normalizes_input(self) -> None:
+        """Classify normalizes the tag argument before service call."""
+        from chronovista.services.tag_management import ClassifyResult
+
+        mock_result = ClassifyResult(
+            normalized_form="chasfreeman",
+            canonical_form="#ChasFreeman",
+            entity_type="person",
+            entity_created=True,
+            entity_alias_count=1,
+            operation_id=_OP_ID,
+        )
+
+        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
+            "chronovista.cli.tag_commands._create_tag_management_service"
+        ) as mock_factory:
+            mock_session = AsyncMock()
+            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_service = AsyncMock()
+            mock_service.classify.return_value = mock_result
+            mock_factory.return_value = mock_service
+
+            result = runner.invoke(
+                app,
+                ["tags", "classify", "#ChasFreeman", "--type", "person"],
+            )
+
+        assert result.exit_code == 0, f"Output: {result.output}"
+        call_kwargs = mock_service.classify.call_args[1]
+        assert call_kwargs["normalized_form"] == "chasfreeman"
+
+    def test_normalize_strips_diacritics_and_casefolding(self) -> None:
+        """Input with accents and mixed case is properly normalized."""
+        from chronovista.services.tag_management import MergeResult
+
+        mock_result = MergeResult(
+            source_tags=["mexico"],
+            target_tag="mexico",
+            aliases_moved=1,
+            new_alias_count=2,
+            new_video_count=5,
+            operation_id=_OP_ID,
+        )
+
+        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
+            "chronovista.cli.tag_commands._create_tag_management_service"
+        ) as mock_factory:
+            mock_session = AsyncMock()
+            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_service = AsyncMock()
+            mock_service.merge.return_value = mock_result
+            mock_factory.return_value = mock_service
+
+            result = runner.invoke(
+                app,
+                ["tags", "merge", "MÉXICO", "--into", "México"],
+            )
+
+        assert result.exit_code == 0, f"Output: {result.output}"
+        call_kwargs = mock_service.merge.call_args[1]
+        assert call_kwargs["source_normalized_forms"] == ["mexico"]
+        assert call_kwargs["target_normalized_form"] == "mexico"

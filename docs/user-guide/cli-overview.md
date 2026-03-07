@@ -191,6 +191,18 @@ chronovista recover [COMMAND]
 
 Video recovery also attempts to recover the associated channel's metadata when the channel is unavailable. In batch mode (`--all`), the summary report includes channel recovery statistics showing how many channels were attempted, recovered, and which fields were restored.
 
+### Entity Commands
+
+```bash
+chronovista entities [COMMAND]
+```
+
+| Command | Description |
+|---------|-------------|
+| `create` | Create a standalone named entity with aliases |
+| `list` | Browse named entities in a Rich table |
+| `backfill-descriptions` | Copy classify reason text into entity descriptions |
+
 ### Corrections Commands
 
 ```bash
@@ -724,12 +736,20 @@ With `--top N`, displays the N highest-video_count unclassified canonical tags f
 - `--top <n>` - Show top N unclassified tags by video count
 - `--force` - Reclassify an already-classified tag
 - `--reason <text>` - Reason for the classification (max 1000 chars)
+- `--description <text>` - Description for the named entity (falls back to --reason if omitted)
+- `--no-auto-case` - Disable auto-title-casing of canonical form for entity-producing types
 
 **Examples:**
 
 ```bash
 # Classify as a person (creates named entity + entity aliases)
 chronovista tags classify "aaron mate" --type person --reason "journalist, The Grayzone"
+
+# Classify with a separate description (falls back to --reason if omitted)
+chronovista tags classify "noam chomsky" --type person --description "Linguist and political commentator" --reason "MIT linguistics professor"
+
+# Disable auto-title-casing of canonical form
+chronovista tags classify "iPhone" --type technical_term --no-auto-case
 
 # Classify as a topic (no entity record created)
 chronovista tags classify "politics" --type topic --reason "general subject area"
@@ -832,6 +852,97 @@ chronovista tags undo 019c9d80-8242-70c0-88ed-537e3acd6bc4
 - For merge undo: aliases are reassigned back, source tags restored to `active`
 - For split undo: aliases moved back, created canonical tag deleted
 - For classify undo: entity_type cleared; created entity/aliases deleted (only if `discovery_method='user_created'`)
+
+### Named Entity Management
+
+#### Create Entity
+
+```bash
+chronovista entities create <NAME> --type <TYPE> [OPTIONS]
+```
+
+Creates a standalone named entity (not linked to an existing canonical tag). The name is auto-title-cased and normalized for duplicate detection.
+
+**Arguments:**
+
+- `NAME` - Canonical name for the entity (e.g., "Noam Chomsky")
+
+**Options:**
+
+- `--type <type>` - Entity type (required): `person`, `organization`, `place`, `event`, `work`, `technical_term`
+- `--description <text>` - Human-readable description of the entity
+- `--alias <name>` - Additional alias name (repeatable for multiple aliases)
+
+**Examples:**
+
+```bash
+# Create a person entity with aliases
+chronovista entities create "Edward Snowden" --type person --description "NSA whistleblower" --alias "Ed Snowden" --alias "Snowden"
+
+# Create an organization
+chronovista entities create "Electronic Frontier Foundation" --type organization --alias "EFF"
+
+# Create a place
+chronovista entities create "Gaza Strip" --type place --description "Palestinian territory"
+```
+
+**Notes:**
+
+- Only entity-producing types are allowed (topic and descriptor are tag-only types — use `tags classify` instead)
+- Duplicate detection: same normalized name + entity type → error
+- The canonical name alias is automatically created (same pattern as `tags classify`)
+
+#### List Entities
+
+```bash
+chronovista entities list [OPTIONS]
+```
+
+Lists named entities in a Rich table with columns: ID, Name, Type, Description, Alias count, Created date.
+
+**Options:**
+
+- `--type <type>` - Filter by entity type
+- `--search, -q <text>` - Search by canonical name (case-insensitive)
+- `--limit, -l <n>` - Maximum entities to show (default: 50)
+
+**Examples:**
+
+```bash
+# List all entities
+chronovista entities list
+
+# Filter by type
+chronovista entities list --type person
+
+# Search by name
+chronovista entities list --search "chomsky"
+
+# Combine filters
+chronovista entities list --type organization --limit 20
+```
+
+#### Backfill Descriptions
+
+```bash
+chronovista entities backfill-descriptions [OPTIONS]
+```
+
+Copies `classify --reason` text from `tag_operation_logs` into `named_entities.description` for entities that have NULL descriptions. Useful for retroactively populating descriptions from existing classify operations.
+
+**Options:**
+
+- `--dry-run` - Preview which entities would be updated without writing
+
+**Examples:**
+
+```bash
+# Preview what would be backfilled
+chronovista entities backfill-descriptions --dry-run
+
+# Apply the backfill
+chronovista entities backfill-descriptions
+```
 
 ### Playlist Management
 
@@ -1384,6 +1495,26 @@ curl http://localhost:8765/api/v1/videos?limit=10
 
 # 4. View interactive docs
 open http://localhost:8765/docs
+```
+
+### Entity Management
+
+```bash
+# Create a standalone entity with aliases
+chronovista entities create "Noam Chomsky" --type person --description "Linguist and political commentator" --alias "Chomsky"
+
+# List all person entities
+chronovista entities list --type person
+
+# Search entities by name
+chronovista entities list --search "chomsky"
+
+# Backfill descriptions from classify --reason text
+chronovista entities backfill-descriptions --dry-run
+chronovista entities backfill-descriptions
+
+# Classify a tag as an entity (creates entity + aliases from tag)
+chronovista tags classify "aaron mate" --type person --description "Journalist, The Grayzone" --reason "The Grayzone reporter"
 ```
 
 ### Batch Transcript Corrections

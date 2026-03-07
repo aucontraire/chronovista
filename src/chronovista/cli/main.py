@@ -12,6 +12,7 @@ from chronovista import __version__
 from chronovista.cli.auth_commands import auth_app
 from chronovista.cli.category_commands import category_app
 from chronovista.cli.correction_commands import correction_app
+from chronovista.cli.entity_commands import entity_app
 from chronovista.cli.commands.api import api_app
 from chronovista.cli.commands.cache import app as cache_app
 from chronovista.cli.commands.enrich import app as enrich_app
@@ -44,6 +45,7 @@ app.add_typer(
 app.add_typer(
     correction_app, name="corrections", help="🔧 Batch transcript correction tools"
 )
+app.add_typer(entity_app, name="entities", help="🧑 Named entity management")
 app.add_typer(enrich_app, name="enrich", help="🔄 Enrich video metadata from YouTube API")
 app.add_typer(language_app, name="languages", help="🌐 Manage language preferences for transcripts")
 app.add_typer(playlist_app, name="playlist", help="📋 Playlist management commands")

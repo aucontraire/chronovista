@@ -11,6 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.40.0] - 2026-03-06
+
+### Added
+- **Feature 037: Entity Classify Improvements (#69)**
+  - New `chronovista entities` sub-app with 3 CLI commands for standalone named entity management
+  - `entities create <name> --type <type>` — create a standalone named entity (not linked to a canonical tag) with auto-title-case, name normalization, duplicate detection, `--description`, and `--alias` (repeatable) for additional name variants
+  - `entities list` — browse named entities in a Rich table with `--type`, `--search`, `--limit` filters showing ID, name, type, description, alias count, and created date
+  - `entities backfill-descriptions` — copy `classify --reason` text from `tag_operation_logs` into `named_entities.description` for entities with NULL descriptions, with `--dry-run` preview
+  - `classify --description` flag to directly populate `named_entities.description` during entity classification (falls back to `--reason` when not provided)
+  - Auto-title-case for `canonical_form` on entity-producing types during `classify` (person, organization, place, event, work, technical_term); `--no-auto-case` flag to opt out
+
+### Fixed
+- 4 lowercase person entity names (Camila Escalante, Dena Takruri, Lara Sheehi, Margaret Kimberley) corrected via one-time INITCAP update across `canonical_tags`, `named_entities`, and `entity_aliases` tables
+
+### Technical
+- 42 new tests (29 entity CLI + 6 tag management CLI + 7 tag management service)
+- mypy strict compliance (0 errors)
+- No new dependencies, no database migrations (uses Feature 028a tables)
+
 ## [0.39.0] - 2026-03-05
 
 ### Added

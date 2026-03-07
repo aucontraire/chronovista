@@ -3488,3 +3488,381 @@ class TestDeprecate:
 
         with pytest.raises(ValueError, match="Cannot undo deprecate"):
             await service._undo_deprecate(mock_session, log_entry)
+
+
+# ===========================================================================
+# TestClassifyDescriptionAndAutoCase
+# ===========================================================================
+
+
+class TestClassifyDescriptionAndAutoCase:
+    """
+    Tests for the ``description`` and ``auto_case`` parameters added to
+    ``TagManagementService.classify``.
+
+    Covers:
+    - ``description`` takes priority over ``reason`` when populating the entity
+      description field of ``NamedEntityCreate``.
+    - ``description=None`` falls back to ``reason``.
+    - Both None results in ``description=None`` on the created entity.
+    - ``auto_case=True`` (default) title-cases a lowercase canonical form and
+      calls ``session.add`` to persist the change.
+    - ``auto_case=False`` leaves the canonical form unchanged.
+    - Already title-cased canonical forms are not mutated by ``auto_case=True``.
+    - ``auto_case`` has no effect for tag-only entity types (topic, descriptor).
+    """
+
+    def _setup_classify_mocks(
+        self,
+        mock_canonical_tag_repo: AsyncMock,
+        mock_named_entity_repo: AsyncMock,
+        mock_entity_alias_repo: AsyncMock,
+        mock_operation_log_repo: AsyncMock,
+        mock_session: AsyncMock,
+        *,
+        tag_canonical_form: str = "Vanessa Beeley",
+        tag_normalized_form: str = "vanessa beeley",
+    ) -> tuple[MagicMock, MagicMock]:
+        """
+        Shared setup for classify tests that create a new NamedEntity.
+
+        Returns
+        -------
+        tuple[MagicMock, MagicMock]
+            (tag mock, new_entity mock)
+        """
+        tag = _make_canonical_tag(
+            normalized_form=tag_normalized_form,
+            canonical_form=tag_canonical_form,
+            status="active",
+        )
+        tag.entity_type = None
+        tag.entity_id = None
+        mock_canonical_tag_repo.get_by_normalized_form.return_value = tag
+
+        alias_a = _make_tag_alias(
+            raw_form=tag_canonical_form,
+            normalized_form=tag_normalized_form,
+            canonical_tag_id=tag.id,
+        )
+        new_entity = _make_named_entity(
+            normalized_form=tag_normalized_form,
+            entity_type="person",
+            discovery_method="user_created",
+        )
+        mock_named_entity_repo.create.return_value = new_entity
+
+        ea = _make_entity_alias(entity_id=new_entity.id)
+        mock_entity_alias_repo.create.return_value = ea
+
+        op_id = uuid.uuid4()
+        log_entry = _make_operation_log(operation_type="create")
+        log_entry.id = op_id
+        mock_operation_log_repo.create.return_value = log_entry
+
+        mock_session.execute = AsyncMock(
+            side_effect=[
+                MagicMock(**{"scalar_one_or_none.return_value": None}),  # existing entity check
+                _make_scalars_result([alias_a]),                          # tag aliases
+                MagicMock(**{"scalar_one_or_none.return_value": None}),  # alias upsert check
+            ]
+        )
+        mock_session.add = MagicMock()
+
+        return tag, new_entity
+
+    async def test_classify_description_populates_entity_description(
+        self,
+        service: TagManagementService,
+        mock_canonical_tag_repo: AsyncMock,
+        mock_named_entity_repo: AsyncMock,
+        mock_entity_alias_repo: AsyncMock,
+        mock_operation_log_repo: AsyncMock,
+        mock_session: AsyncMock,
+    ) -> None:
+        """
+        When ``description`` is provided, it takes priority over ``reason``
+        and is stored as the entity description in ``NamedEntityCreate``.
+
+        Expected behaviour:
+        - ``NamedEntityCreate.description`` equals the ``description`` argument
+          ("British journalist"), not the ``reason`` argument ("War reporter").
+        """
+        from chronovista.models.enums import EntityType
+
+        self._setup_classify_mocks(
+            mock_canonical_tag_repo,
+            mock_named_entity_repo,
+            mock_entity_alias_repo,
+            mock_operation_log_repo,
+            mock_session,
+        )
+
+        await service.classify(
+            mock_session,
+            normalized_form="vanessa beeley",
+            entity_type=EntityType.PERSON,
+            description="British journalist",
+            reason="War reporter",
+        )
+
+        create_call = mock_named_entity_repo.create.call_args
+        obj_in = create_call.kwargs["obj_in"]
+        assert obj_in.description == "British journalist", (
+            "description argument should take priority over reason"
+        )
+
+    async def test_classify_description_falls_back_to_reason_when_none(
+        self,
+        service: TagManagementService,
+        mock_canonical_tag_repo: AsyncMock,
+        mock_named_entity_repo: AsyncMock,
+        mock_entity_alias_repo: AsyncMock,
+        mock_operation_log_repo: AsyncMock,
+        mock_session: AsyncMock,
+    ) -> None:
+        """
+        When ``description=None`` and ``reason`` is provided, the entity
+        description falls back to ``reason``.
+
+        Expected behaviour:
+        - ``NamedEntityCreate.description`` equals the ``reason`` value
+          ("War reporter").
+        """
+        from chronovista.models.enums import EntityType
+
+        self._setup_classify_mocks(
+            mock_canonical_tag_repo,
+            mock_named_entity_repo,
+            mock_entity_alias_repo,
+            mock_operation_log_repo,
+            mock_session,
+        )
+
+        await service.classify(
+            mock_session,
+            normalized_form="vanessa beeley",
+            entity_type=EntityType.PERSON,
+            description=None,
+            reason="War reporter",
+        )
+
+        create_call = mock_named_entity_repo.create.call_args
+        obj_in = create_call.kwargs["obj_in"]
+        assert obj_in.description == "War reporter", (
+            "description should fall back to reason when description is None"
+        )
+
+    async def test_classify_description_none_and_reason_none(
+        self,
+        service: TagManagementService,
+        mock_canonical_tag_repo: AsyncMock,
+        mock_named_entity_repo: AsyncMock,
+        mock_entity_alias_repo: AsyncMock,
+        mock_operation_log_repo: AsyncMock,
+        mock_session: AsyncMock,
+    ) -> None:
+        """
+        When both ``description`` and ``reason`` are None, the entity
+        description field should be None.
+
+        Expected behaviour:
+        - ``NamedEntityCreate.description`` is ``None``.
+        """
+        from chronovista.models.enums import EntityType
+
+        self._setup_classify_mocks(
+            mock_canonical_tag_repo,
+            mock_named_entity_repo,
+            mock_entity_alias_repo,
+            mock_operation_log_repo,
+            mock_session,
+        )
+
+        await service.classify(
+            mock_session,
+            normalized_form="vanessa beeley",
+            entity_type=EntityType.PERSON,
+            description=None,
+            reason=None,
+        )
+
+        create_call = mock_named_entity_repo.create.call_args
+        obj_in = create_call.kwargs["obj_in"]
+        assert obj_in.description is None, (
+            "description should be None when both description and reason are None"
+        )
+
+    async def test_classify_auto_case_title_cases_canonical_form(
+        self,
+        service: TagManagementService,
+        mock_canonical_tag_repo: AsyncMock,
+        mock_named_entity_repo: AsyncMock,
+        mock_entity_alias_repo: AsyncMock,
+        mock_operation_log_repo: AsyncMock,
+        mock_session: AsyncMock,
+    ) -> None:
+        """
+        When ``auto_case=True`` (the default) and the canonical form is not
+        already title-cased, the service must title-case it and persist the
+        change via ``session.add``.
+
+        Expected behaviour:
+        - ``tag.canonical_form`` is mutated to ``"Vanessa Beeley"``.
+        - ``mock_session.add`` is called with the tag object.
+        """
+        from chronovista.models.enums import EntityType
+
+        tag, _ = self._setup_classify_mocks(
+            mock_canonical_tag_repo,
+            mock_named_entity_repo,
+            mock_entity_alias_repo,
+            mock_operation_log_repo,
+            mock_session,
+            tag_canonical_form="vanessa beeley",
+            tag_normalized_form="vanessa beeley",
+        )
+
+        await service.classify(
+            mock_session,
+            normalized_form="vanessa beeley",
+            entity_type=EntityType.PERSON,
+            auto_case=True,
+        )
+
+        assert tag.canonical_form == "Vanessa Beeley", (
+            "auto_case=True should title-case a lowercase canonical_form"
+        )
+        # session.add must have been called with the tag to persist the mutation
+        mock_session.add.assert_any_call(tag)
+
+    async def test_classify_auto_case_false_preserves_canonical_form(
+        self,
+        service: TagManagementService,
+        mock_canonical_tag_repo: AsyncMock,
+        mock_named_entity_repo: AsyncMock,
+        mock_entity_alias_repo: AsyncMock,
+        mock_operation_log_repo: AsyncMock,
+        mock_session: AsyncMock,
+    ) -> None:
+        """
+        When ``auto_case=False``, the canonical form must not be mutated
+        regardless of its current casing.
+
+        Expected behaviour:
+        - ``tag.canonical_form`` remains ``"vanessa beeley"`` (unchanged).
+        """
+        from chronovista.models.enums import EntityType
+
+        tag, _ = self._setup_classify_mocks(
+            mock_canonical_tag_repo,
+            mock_named_entity_repo,
+            mock_entity_alias_repo,
+            mock_operation_log_repo,
+            mock_session,
+            tag_canonical_form="vanessa beeley",
+            tag_normalized_form="vanessa beeley",
+        )
+
+        await service.classify(
+            mock_session,
+            normalized_form="vanessa beeley",
+            entity_type=EntityType.PERSON,
+            auto_case=False,
+        )
+
+        assert tag.canonical_form == "vanessa beeley", (
+            "auto_case=False should leave canonical_form unchanged"
+        )
+
+    async def test_classify_auto_case_skips_already_title_cased(
+        self,
+        service: TagManagementService,
+        mock_canonical_tag_repo: AsyncMock,
+        mock_named_entity_repo: AsyncMock,
+        mock_entity_alias_repo: AsyncMock,
+        mock_operation_log_repo: AsyncMock,
+        mock_session: AsyncMock,
+    ) -> None:
+        """
+        When ``auto_case=True`` but the canonical form is already title-cased,
+        the service must not mutate it (``istitle()`` returns True, so the
+        title-casing branch is skipped).
+
+        Expected behaviour:
+        - ``tag.canonical_form`` remains ``"Vanessa Beeley"`` (no change).
+        - ``mock_session.add`` may still be called for other reasons (e.g.
+          updating entity_type) but the canonical_form value itself is stable.
+        """
+        from chronovista.models.enums import EntityType
+
+        tag, _ = self._setup_classify_mocks(
+            mock_canonical_tag_repo,
+            mock_named_entity_repo,
+            mock_entity_alias_repo,
+            mock_operation_log_repo,
+            mock_session,
+            tag_canonical_form="Vanessa Beeley",
+            tag_normalized_form="vanessa beeley",
+        )
+
+        await service.classify(
+            mock_session,
+            normalized_form="vanessa beeley",
+            entity_type=EntityType.PERSON,
+            auto_case=True,
+        )
+
+        assert tag.canonical_form == "Vanessa Beeley", (
+            "auto_case=True must not alter a canonical_form that is already title-cased"
+        )
+
+    async def test_classify_auto_case_no_effect_for_tag_only_types(
+        self,
+        service: TagManagementService,
+        mock_canonical_tag_repo: AsyncMock,
+        mock_named_entity_repo: AsyncMock,
+        mock_entity_alias_repo: AsyncMock,
+        mock_operation_log_repo: AsyncMock,
+        mock_session: AsyncMock,
+    ) -> None:
+        """
+        For tag-only entity types (topic, descriptor) the ``auto_case``
+        parameter has no effect: no entity is created and the canonical form
+        is never mutated by the auto-case branch.
+
+        Expected behaviour:
+        - ``tag.canonical_form`` remains ``"machine learning"`` (lowercase,
+          unchanged) after classifying with ``EntityType.TOPIC``.
+        - No ``NamedEntity`` is created.
+        """
+        from chronovista.models.enums import EntityType
+        from chronovista.services.tag_management import ClassifyResult
+
+        tag = _make_canonical_tag(
+            normalized_form="machine learning",
+            canonical_form="machine learning",
+            status="active",
+        )
+        tag.entity_type = None
+        tag.entity_id = None
+        mock_canonical_tag_repo.get_by_normalized_form.return_value = tag
+
+        op_id = uuid.uuid4()
+        log_entry = _make_operation_log(operation_type="create")
+        log_entry.id = op_id
+        mock_operation_log_repo.create.return_value = log_entry
+        mock_session.add = MagicMock()
+
+        result = await service.classify(
+            mock_session,
+            normalized_form="machine learning",
+            entity_type=EntityType.TOPIC,
+            auto_case=True,
+        )
+
+        assert isinstance(result, ClassifyResult)
+        assert tag.canonical_form == "machine learning", (
+            "auto_case must have no effect for tag-only types such as TOPIC"
+        )
+        mock_named_entity_repo.create.assert_not_called()

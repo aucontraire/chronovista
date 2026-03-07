@@ -832,6 +832,8 @@ class TagManagementService:
         *,
         force: bool = False,
         reason: Optional[str] = None,
+        description: Optional[str] = None,
+        auto_case: bool = True,
     ) -> ClassifyResult:
         """
         Classify a canonical tag with an entity type.
@@ -853,6 +855,11 @@ class TagManagementService:
             If True, override existing classification.
         reason : Optional[str]
             Human-readable reason for the classification.
+        description : Optional[str]
+            Entity description. If not provided, falls back to reason.
+        auto_case : bool
+            If True (default), auto-title-case the canonical form for
+            entity-producing types when it is not already title-cased.
 
         Returns
         -------
@@ -923,6 +930,11 @@ class TagManagementService:
         entity_created = False
 
         if entity_type in entity_producing_types:
+            # 3b. Auto-title-case for entity-producing types
+            if auto_case and not tag.canonical_form.istitle():
+                tag.canonical_form = tag.canonical_form.title()
+                session.add(tag)
+
             # 4. Check if a named_entity already exists with same name and type
             existing_entity_result = await session.execute(
                 select(NamedEntityDB).where(
@@ -940,10 +952,12 @@ class TagManagementService:
                 linked_existing_entity_id = existing_entity.id
             else:
                 # Create new NamedEntity
+                entity_description = description or reason
                 entity_create = NamedEntityCreate(
                     canonical_name=tag.canonical_form,
                     canonical_name_normalized=tag.normalized_form,
                     entity_type=entity_type,
+                    description=entity_description,
                     discovery_method=DiscoveryMethod.USER_CREATED,
                     confidence=1.0,
                 )

@@ -9,6 +9,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.40.0] - 2026-03-06
+
+### Added
+
+#### Feature 037: Entity Classify Improvements (#69)
+
+Standalone named entity management CLI and improvements to the `classify` command. Adds 3 new `chronovista entities` commands for creating, listing, and backfilling entity descriptions independently of canonical tags. Enhances `classify` with `--description` flag and auto-title-case for entity-producing types. CLI only — no frontend changes, no new API endpoints, no database migrations.
+
+**3 New CLI Commands (`chronovista entities`):**
+
+| Command | Description |
+|---------|-------------|
+| `entities create <name> --type <type>` | Create a standalone named entity with aliases, description, auto-title-case, and duplicate detection |
+| `entities list` | Browse named entities in a Rich table with type, search, and limit filters |
+| `entities backfill-descriptions` | Copy classify `--reason` text into entity descriptions for entities with NULL descriptions |
+
+**Entity Create (Issue #69):**
+- Takes a canonical name and `--type` (person, organization, place, event, work, technical_term)
+- Normalizes the name via `TagNormalizationService.normalize()` for duplicate detection
+- Auto-title-cases the canonical name for entity-producing types
+- `--description` option for a human-readable entity description
+- `--alias` option (repeatable) to add additional name variants as `entity_aliases` rows
+- Creates canonical name as an alias (same pattern as `classify`)
+- Validates against `_ENTITY_PRODUCING_TYPES` — rejects topic/descriptor (tag-only types)
+- Duplicate detection: same normalized name + entity type → error
+
+**Entity List:**
+- Rich table with columns: ID (truncated), Name, Type, Description (truncated), Aliases count, Created date
+- `--type` filter restricts to a specific entity type
+- `--search` / `-q` case-insensitive canonical name search
+- `--limit` / `-l` caps results (default: 50)
+- Footer shows "Showing N of M total entities"
+
+**Backfill Descriptions:**
+- Queries `tag_operation_logs` for classify operations (operation_type='create') with a reason
+- Joins against `named_entities` where description IS NULL
+- `--dry-run` shows a preview table (Entity ID, Name, Reason) without writing
+- Normal mode updates entities and commits
+
+**Classify Improvements (Issues #60, #62):**
+- `--description` flag populates `named_entities.description` directly during classification (falls back to `--reason` when `--description` is not provided)
+- Auto-title-case: `canonical_form` is automatically title-cased for entity-producing types (person, organization, place, event, work, technical_term); `--no-auto-case` flag opts out
+- Auto-title-case prevents future lowercase person entity names caused by YouTube creators never capitalizing a tag
+
+**New Source File (1):**
+
+| File | Description |
+|------|-------------|
+| `cli/entity_commands.py` | 3 Typer commands registered as `entities` sub-app: create, list, backfill-descriptions |
+
+**Modified Files (3):**
+- `cli/main.py` — Registered `entity_app` as `entities` sub-app
+- `cli/tag_commands.py` — Added `--description` and `--no-auto-case` flags to `classify` command
+- `services/tag_management.py` — Added `description` and `auto_case` parameters to `classify()` method
+
+### Fixed
+- 4 lowercase person entity names (Camila Escalante, Dena Takruri, Lara Sheehi, Margaret Kimberley) corrected via one-time `INITCAP()` update across `canonical_tags`, `named_entities`, and `entity_aliases` tables — root cause: no YouTube creator ever title-cased those tags, so canonical form election selected lowercase
+
+### Technical
+- 42 new tests: 29 integration (entity CLI), 6 integration (tag management CLI), 7 unit (tag management service)
+- mypy strict compliance (0 errors)
+- No new dependencies, no database migrations (uses Feature 028a tables)
+
 ## [0.39.0] - 2026-03-05
 
 ### Added

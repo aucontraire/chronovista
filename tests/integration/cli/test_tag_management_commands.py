@@ -1946,3 +1946,222 @@ class TestInputNormalization:
         call_kwargs = mock_service.merge.call_args[1]
         assert call_kwargs["source_normalized_forms"] == ["mexico"]
         assert call_kwargs["target_normalized_form"] == "mexico"
+
+
+# ---------------------------------------------------------------------------
+# Classify --description and --no-auto-case tests (Feature 037)
+# ---------------------------------------------------------------------------
+
+
+class TestClassifyDescriptionAndAutoCase:
+    """Verify the --description and --no-auto-case flags on `tags classify`.
+
+    Feature 037 added two new options to the classify command:
+    - ``--description``: entity description forwarded directly to service.classify()
+    - ``--no-auto-case``: when set, passes ``auto_case=False`` to service.classify()
+    """
+
+    def test_classify_passes_description_to_service(self) -> None:
+        """--description is forwarded to service.classify() as description kwarg."""
+        from chronovista.services.tag_management import ClassifyResult
+
+        mock_result = ClassifyResult(
+            normalized_form="vanessa beeley",
+            canonical_form="Vanessa Beeley",
+            entity_type="person",
+            entity_created=True,
+            entity_alias_count=1,
+            operation_id=_OP_ID,
+        )
+
+        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
+            "chronovista.cli.tag_commands._create_tag_management_service"
+        ) as mock_factory:
+            mock_session = AsyncMock()
+            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_service = AsyncMock()
+            mock_service.classify.return_value = mock_result
+            mock_factory.return_value = mock_service
+
+            result = runner.invoke(
+                app,
+                [
+                    "tags",
+                    "classify",
+                    "vanessa beeley",
+                    "--type",
+                    "person",
+                    "--description",
+                    "British journalist",
+                ],
+            )
+
+        assert result.exit_code == 0, f"Output: {result.output}"
+        call_kwargs = mock_service.classify.call_args[1]
+        assert call_kwargs["description"] == "British journalist"
+
+    def test_classify_without_description_passes_none_to_service(self) -> None:
+        """When --description is omitted, service.classify() receives description=None."""
+        from chronovista.services.tag_management import ClassifyResult
+
+        mock_result = ClassifyResult(
+            normalized_form="vanessa beeley",
+            canonical_form="Vanessa Beeley",
+            entity_type="person",
+            entity_created=True,
+            entity_alias_count=1,
+            operation_id=_OP_ID,
+        )
+
+        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
+            "chronovista.cli.tag_commands._create_tag_management_service"
+        ) as mock_factory:
+            mock_session = AsyncMock()
+            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_service = AsyncMock()
+            mock_service.classify.return_value = mock_result
+            mock_factory.return_value = mock_service
+
+            result = runner.invoke(
+                app,
+                [
+                    "tags",
+                    "classify",
+                    "vanessa beeley",
+                    "--type",
+                    "person",
+                    "--reason",
+                    "Journalist",
+                ],
+            )
+
+        assert result.exit_code == 0, f"Output: {result.output}"
+        call_kwargs = mock_service.classify.call_args[1]
+        # No --description provided: service receives None
+        assert call_kwargs["description"] is None
+        # --reason is still forwarded separately
+        assert call_kwargs["reason"] == "Journalist"
+
+    def test_classify_no_auto_case_passes_false_to_service(self) -> None:
+        """--no-auto-case flag causes service.classify() to receive auto_case=False."""
+        from chronovista.services.tag_management import ClassifyResult
+
+        mock_result = ClassifyResult(
+            normalized_form="noamchomsky",
+            canonical_form="noamchomsky",
+            entity_type="person",
+            entity_created=True,
+            entity_alias_count=1,
+            operation_id=_OP_ID,
+        )
+
+        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
+            "chronovista.cli.tag_commands._create_tag_management_service"
+        ) as mock_factory:
+            mock_session = AsyncMock()
+            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_service = AsyncMock()
+            mock_service.classify.return_value = mock_result
+            mock_factory.return_value = mock_service
+
+            result = runner.invoke(
+                app,
+                [
+                    "tags",
+                    "classify",
+                    "noamchomsky",
+                    "--type",
+                    "person",
+                    "--no-auto-case",
+                ],
+            )
+
+        assert result.exit_code == 0, f"Output: {result.output}"
+        call_kwargs = mock_service.classify.call_args[1]
+        assert call_kwargs["auto_case"] is False
+
+    def test_classify_default_auto_case_is_true(self) -> None:
+        """Without --no-auto-case, service.classify() receives auto_case=True."""
+        from chronovista.services.tag_management import ClassifyResult
+
+        mock_result = ClassifyResult(
+            normalized_form="noamchomsky",
+            canonical_form="Noamchomsky",
+            entity_type="person",
+            entity_created=True,
+            entity_alias_count=1,
+            operation_id=_OP_ID,
+        )
+
+        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
+            "chronovista.cli.tag_commands._create_tag_management_service"
+        ) as mock_factory:
+            mock_session = AsyncMock()
+            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_service = AsyncMock()
+            mock_service.classify.return_value = mock_result
+            mock_factory.return_value = mock_service
+
+            result = runner.invoke(
+                app,
+                [
+                    "tags",
+                    "classify",
+                    "noamchomsky",
+                    "--type",
+                    "person",
+                ],
+            )
+
+        assert result.exit_code == 0, f"Output: {result.output}"
+        call_kwargs = mock_service.classify.call_args[1]
+        assert call_kwargs["auto_case"] is True
+
+    def test_classify_description_and_no_auto_case_together(self) -> None:
+        """--description and --no-auto-case can be combined; both are forwarded correctly."""
+        from chronovista.services.tag_management import ClassifyResult
+
+        mock_result = ClassifyResult(
+            normalized_form="vanessa beeley",
+            canonical_form="vanessa beeley",
+            entity_type="person",
+            entity_created=True,
+            entity_alias_count=1,
+            operation_id=_OP_ID,
+        )
+
+        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
+            "chronovista.cli.tag_commands._create_tag_management_service"
+        ) as mock_factory:
+            mock_session = AsyncMock()
+            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_service = AsyncMock()
+            mock_service.classify.return_value = mock_result
+            mock_factory.return_value = mock_service
+
+            result = runner.invoke(
+                app,
+                [
+                    "tags",
+                    "classify",
+                    "vanessa beeley",
+                    "--type",
+                    "person",
+                    "--description",
+                    "British journalist and blogger",
+                    "--no-auto-case",
+                ],
+            )
+
+        assert result.exit_code == 0, f"Output: {result.output}"
+        call_kwargs = mock_service.classify.call_args[1]
+        assert call_kwargs["description"] == "British journalist and blogger"
+        assert call_kwargs["auto_case"] is False
+
+    def test_classify_help_shows_description_and_no_auto_case_flags(self) -> None:
+        """--help output lists --description and --no-auto-case options."""
+        result = runner.invoke(app, ["tags", "classify", "--help"])
+
+        assert result.exit_code == 0
+        assert "--description" in result.output
+        assert "--no-auto-case" in result.output

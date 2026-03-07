@@ -1099,6 +1099,18 @@ def classify_tag(
         callback=_reason_callback,
         help="Reason for the classification (max 1000 chars).",
     ),
+    description: Optional[str] = typer.Option(
+        None,
+        "--description",
+        help="Entity description (e.g., 'Mexican journalist'). "
+        "Falls back to --reason if not provided.",
+    ),
+    no_auto_case: bool = typer.Option(
+        False,
+        "--no-auto-case",
+        is_flag=True,
+        help="Skip auto-title-casing of the canonical form.",
+    ),
 ) -> None:
     """Classify a canonical tag with an entity type, or list top unclassified tags."""
 
@@ -1213,6 +1225,8 @@ def classify_tag(
                         entity_type=parsed_type,
                         force=force,
                         reason=reason,
+                        description=description,
+                        auto_case=not no_auto_case,
                     )
                     await session.commit()
 

@@ -9,14 +9,18 @@ All database I/O is mocked — these are pure unit tests that validate
 service-layer logic without any real database connection.
 
 Feature 036 — Batch Correction Tools (T009, T010, T011)
+Feature 038 — Entity Mention Detection (ASR alias hook)
 """
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+
+from chronovista.models.enums import EntityAliasType
 
 # ---------------------------------------------------------------------------
 # CRITICAL: Module-level asyncio marker ensures async tests run properly
@@ -2085,3 +2089,366 @@ class TestBatchRevert:
         await service.batch_revert(mock_session, pattern="fix", dry_run=True)
 
         mock_correction_service.revert_correction.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TestRecordAsrAliasForBatchReplacement (Feature 038)
+# ---------------------------------------------------------------------------
+
+
+def _mock_execute_returns(*results: Any) -> AsyncMock:
+    """Build a mock session.execute that returns results in sequence.
+
+    Each *result* is a value to return from ``scalar_one_or_none()`` or
+    ``scalars().first()``.  The helper wraps them in MagicMock chains
+    matching SQLAlchemy's async result API.
+    """
+    side_effects: list[MagicMock] = []
+    for r in results:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = r
+        mock_result.scalars.return_value.first.return_value = r
+        side_effects.append(mock_result)
+    session = AsyncMock()
+    session.execute.side_effect = side_effects
+    return session
+
+
+class TestRecordAsrAliasForBatchReplacement:
+    """Tests for BatchCorrectionService._record_asr_alias_for_batch_replacement().
+
+    The hook auto-registers ASR error aliases when find-and-replace
+    replacement text matches a known entity name or alias.
+
+    Feature 038 -- Entity Mention Detection
+    """
+
+    async def test_alias_created_when_replacement_matches_entity_canonical_name(
+        self,
+        service: Any,
+    ) -> None:
+        """New alias created when replacement matches entity canonical_name."""
+        entity_mock = MagicMock()
+        entity_mock.id = uuid.uuid4()
+        entity_mock.canonical_name = "Claudia Sheinbaum"
+
+        # execute sequence: entity lookup → existing alias check → (create via repo)
+        session = _mock_execute_returns(entity_mock, None)
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityAliasRepository"
+        ) as MockRepo:
+            mock_repo_instance = AsyncMock()
+            MockRepo.return_value = mock_repo_instance
+
+            with patch(
+                "chronovista.services.tag_normalization.TagNormalizationService"
+            ) as MockNorm:
+                MockNorm.return_value.normalize.return_value = "claudia shainbom"
+
+                await service._record_asr_alias_for_batch_replacement(
+                    session,
+                    pattern="Claudia Shainbom",
+                    replacement="Claudia Sheinbaum",
+                    total_applied=5,
+                )
+
+            mock_repo_instance.create.assert_called_once()
+            call_kwargs = mock_repo_instance.create.call_args
+            alias_create = call_kwargs[1]["obj_in"]
+            assert alias_create.entity_id == entity_mock.id
+            assert alias_create.alias_name == "Claudia Shainbom"
+            assert alias_create.occurrence_count == 5
+            assert alias_create.alias_type == EntityAliasType.ASR_ERROR
+
+    async def test_alias_created_when_replacement_matches_existing_alias(
+        self,
+        service: Any,
+    ) -> None:
+        """New alias created when replacement matches an existing entity alias."""
+        alias_mock = MagicMock()
+        alias_mock.entity_id = uuid.uuid4()
+
+        # execute sequence: entity lookup (None) → alias lookup → existing alias check → (create)
+        session = _mock_execute_returns(None, alias_mock, None)
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityAliasRepository"
+        ) as MockRepo:
+            mock_repo_instance = AsyncMock()
+            MockRepo.return_value = mock_repo_instance
+
+            with patch(
+                "chronovista.services.tag_normalization.TagNormalizationService"
+            ) as MockNorm:
+                MockNorm.return_value.normalize.return_value = "seon"
+
+                await service._record_asr_alias_for_batch_replacement(
+                    session,
+                    pattern="Seon",
+                    replacement="Sheinbaum",
+                    total_applied=3,
+                )
+
+            mock_repo_instance.create.assert_called_once()
+            call_kwargs = mock_repo_instance.create.call_args
+            alias_create = call_kwargs[1]["obj_in"]
+            assert alias_create.entity_id == alias_mock.entity_id
+            assert alias_create.alias_name == "Seon"
+            assert alias_create.occurrence_count == 3
+
+    async def test_existing_alias_occurrence_count_incremented(
+        self,
+        service: Any,
+    ) -> None:
+        """If pattern already exists as alias, occurrence_count is incremented."""
+        entity_mock = MagicMock()
+        entity_mock.id = uuid.uuid4()
+        entity_mock.canonical_name = "Claudia Sheinbaum"
+
+        existing_alias = MagicMock()
+        existing_alias.occurrence_count = 2
+
+        # execute sequence: entity lookup → existing alias check (found)
+        session = _mock_execute_returns(entity_mock, existing_alias)
+
+        await service._record_asr_alias_for_batch_replacement(
+            session,
+            pattern="Claudia Shainbom",
+            replacement="Claudia Sheinbaum",
+            total_applied=7,
+        )
+
+        assert existing_alias.occurrence_count == 9  # 2 + 7
+        session.flush.assert_called()
+        session.commit.assert_called()
+
+    async def test_no_alias_when_replacement_matches_no_entity(
+        self,
+        service: Any,
+    ) -> None:
+        """No alias created when replacement matches neither entity nor alias."""
+        # execute sequence: entity lookup (None) → alias lookup (None)
+        session = _mock_execute_returns(None, None)
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityAliasRepository"
+        ) as MockRepo:
+            mock_repo_instance = AsyncMock()
+            MockRepo.return_value = mock_repo_instance
+
+            await service._record_asr_alias_for_batch_replacement(
+                session,
+                pattern="Shainbom",
+                replacement="Unknown Person",
+                total_applied=5,
+            )
+
+            mock_repo_instance.create.assert_not_called()
+
+    async def test_regex_mode_extracts_distinct_matched_forms(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """Regex find-replace extracts actual matched forms and registers each as alias."""
+        seg1 = _make_segment(
+            video_id="v1", segment_id=1,
+            text="presidenta Claudia Shambom también", start_time=0.0,
+        )
+        seg2 = _make_segment(
+            video_id="v1", segment_id=2,
+            text="presidenta Claudia Shamon equipara", start_time=1.0,
+        )
+        seg3 = _make_segment(
+            video_id="v2", segment_id=3,
+            text="presidenta Claudia Shambom quien", start_time=2.0,
+        )
+
+        mock_segment_repo.count_filtered.return_value = 50
+        mock_segment_repo.find_by_text_pattern.return_value = [seg1, seg2, seg3]
+        mock_correction_service.apply_correction.return_value = MagicMock()
+
+        with patch.object(
+            service, "_record_asr_alias_for_batch_replacement", new_callable=AsyncMock,
+        ) as mock_hook:
+            await service.find_and_replace(
+                mock_session,
+                pattern=r"Claudia Sham\w*",
+                replacement="Claudia Sheinbaum",
+                regex=True,
+            )
+
+            # Should be called once per distinct matched form
+            assert mock_hook.call_count == 2
+
+            # Collect calls by pattern
+            calls_by_pattern = {
+                c.kwargs["pattern"]: c.kwargs["total_applied"]
+                for c in mock_hook.call_args_list
+            }
+            assert calls_by_pattern["Claudia Shambom"] == 2
+            assert calls_by_pattern["Claudia Shamon"] == 1
+
+    async def test_regex_mode_single_form_calls_hook(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """Regex find-replace with a single matched form calls hook once."""
+        seg = _make_segment(
+            video_id="v1", segment_id=1,
+            text="Claudia Shainbom here", start_time=0.0,
+        )
+
+        mock_segment_repo.count_filtered.return_value = 10
+        mock_segment_repo.find_by_text_pattern.return_value = [seg]
+        mock_correction_service.apply_correction.return_value = MagicMock()
+
+        with patch.object(
+            service, "_record_asr_alias_for_batch_replacement", new_callable=AsyncMock,
+        ) as mock_hook:
+            await service.find_and_replace(
+                mock_session,
+                pattern=r"Claudia Shain\w*",
+                replacement="Claudia Sheinbaum",
+                regex=True,
+            )
+            mock_hook.assert_called_once_with(
+                mock_session,
+                pattern="Claudia Shainbom",
+                replacement="Claudia Sheinbaum",
+                total_applied=1,
+            )
+
+    async def test_no_alias_when_dry_run(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+    ) -> None:
+        """find_and_replace with dry_run=True does not call the alias hook."""
+        seg = _make_segment(
+            video_id="v1", segment_id=1, text="Shainbom", start_time=0.0,
+        )
+
+        mock_segment_repo.count_filtered.return_value = 10
+        mock_segment_repo.find_by_text_pattern.return_value = [seg]
+
+        with patch.object(
+            service, "_record_asr_alias_for_batch_replacement", new_callable=AsyncMock,
+        ) as mock_hook:
+            await service.find_and_replace(
+                mock_session,
+                pattern="Shainbom",
+                replacement="Sheinbaum",
+                dry_run=True,
+            )
+            mock_hook.assert_not_called()
+
+    async def test_no_alias_when_zero_applied(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+    ) -> None:
+        """find_and_replace with zero matches does not call the alias hook."""
+        mock_segment_repo.count_filtered.return_value = 100
+        mock_segment_repo.find_by_text_pattern.return_value = []
+
+        with patch.object(
+            service, "_record_asr_alias_for_batch_replacement", new_callable=AsyncMock,
+        ) as mock_hook:
+            await service.find_and_replace(
+                mock_session,
+                pattern="nonexistent",
+                replacement="anything",
+            )
+            mock_hook.assert_not_called()
+
+    async def test_hook_failure_does_not_propagate(
+        self,
+        service: Any,
+    ) -> None:
+        """Exception in hook is caught and logged, not propagated."""
+        session = AsyncMock()
+        session.execute.side_effect = RuntimeError("DB connection lost")
+
+        # Should not raise
+        await service._record_asr_alias_for_batch_replacement(
+            session,
+            pattern="bad",
+            replacement="good",
+            total_applied=1,
+        )
+
+    async def test_alias_normalized_via_tag_normalization_service(
+        self,
+        service: Any,
+    ) -> None:
+        """New alias uses TagNormalizationService for normalized name."""
+        entity_mock = MagicMock()
+        entity_mock.id = uuid.uuid4()
+        entity_mock.canonical_name = "Max Blumenthal"
+
+        session = _mock_execute_returns(entity_mock, None)
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityAliasRepository"
+        ) as MockRepo:
+            mock_repo_instance = AsyncMock()
+            MockRepo.return_value = mock_repo_instance
+
+            with patch(
+                "chronovista.services.tag_normalization.TagNormalizationService"
+            ) as MockNorm:
+                MockNorm.return_value.normalize.return_value = "max blumenthal typo"
+
+                await service._record_asr_alias_for_batch_replacement(
+                    session,
+                    pattern="Max Blumenthal Typo",
+                    replacement="Max Blumenthal",
+                    total_applied=2,
+                )
+
+                MockNorm.return_value.normalize.assert_called_once_with(
+                    "Max Blumenthal Typo"
+                )
+
+            alias_create = mock_repo_instance.create.call_args[1]["obj_in"]
+            assert alias_create.alias_name_normalized == "max blumenthal typo"
+
+    async def test_find_and_replace_calls_hook_on_success(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """find_and_replace calls the alias hook after successful live corrections."""
+        seg = _make_segment(
+            video_id="v1", segment_id=1, text="Claudia Shainbom", start_time=0.0,
+        )
+
+        mock_segment_repo.count_filtered.return_value = 10
+        mock_segment_repo.find_by_text_pattern.return_value = [seg]
+        mock_correction_service.apply_correction.return_value = MagicMock()
+
+        with patch.object(
+            service, "_record_asr_alias_for_batch_replacement", new_callable=AsyncMock,
+        ) as mock_hook:
+            await service.find_and_replace(
+                mock_session,
+                pattern="Claudia Shainbom",
+                replacement="Claudia Sheinbaum",
+            )
+            mock_hook.assert_called_once_with(
+                mock_session,
+                pattern="Claudia Shainbom",
+                replacement="Claudia Sheinbaum",
+                total_applied=1,
+            )

@@ -196,6 +196,15 @@ from .tag_operation_log_factory import (
     create_split_operation_log,
     create_tag_operation_log,
 )
+from .entity_mention_factory import (
+    EntityMentionBaseFactory,
+    EntityMentionCreateFactory,
+    EntityMentionFactory,
+    EntityMentionTestData,
+    create_entity_mention,
+    create_entity_mention_base,
+    create_entity_mention_create,
+)
 
 __all__ = [
     # VideoTag factories
@@ -372,4 +381,12 @@ __all__ = [
     "create_tag_operation_log",
     "create_merge_operation_log",
     "create_split_operation_log",
+    # EntityMention factories
+    "EntityMentionBaseFactory",
+    "EntityMentionCreateFactory",
+    "EntityMentionFactory",
+    "EntityMentionTestData",
+    "create_entity_mention",
+    "create_entity_mention_base",
+    "create_entity_mention_create",
 ]

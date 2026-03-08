@@ -17,6 +17,7 @@ from chronovista.api.routers import (
     canonical_tags,
     categories,
     channels,
+    entity_mentions,
     health,
     images,
     playlists,
@@ -204,3 +205,4 @@ app.include_router(preferences.router, prefix="/api/v1", tags=["preferences"])
 app.include_router(sync.router, prefix="/api/v1", tags=["sync"])
 app.include_router(sidebar.router, prefix="/api/v1", tags=["sidebar"])
 app.include_router(images.router, prefix="/api/v1", tags=["images"])
+app.include_router(entity_mentions.router, prefix="/api/v1", tags=["entity-mentions"])

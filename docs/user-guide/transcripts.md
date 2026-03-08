@@ -431,6 +431,90 @@ chronovista corrections stats
 
 For full command options, see the [CLI Overview](cli-overview.md#corrections-commands).
 
+### Limitations and Edge Cases
+
+When running bulk corrections, be aware of these known limitations:
+
+**Cross-segment matches (issue [#71](https://github.com/chronovista/chronovista/issues/71)):**
+YouTube's auto-generated transcripts split text into small overlapping segments (typically 2–5 seconds). If a misspelling spans two adjacent segments (e.g., "Claudia" at the end of one segment and "Shembun" at the start of the next), `find-replace` will not match it because each segment is searched independently. You must correct such cases manually via the inline web UI.
+
+**Regex pattern safety:**
+Broad regex patterns can match unintended text. For example, `--pattern "Sham\w*" --regex` will match "Shambo", "Shamado", but also "Shame", "Sham", etc. Always run with `--dry-run` first and review every match before applying. Consider adding more specificity to your pattern (e.g., `Claudia Sham\w+` instead of just `Sham\w*`).
+
+**Substring mode vs. word boundaries:**
+The default substring mode uses SQL `LIKE '%pattern%'`, which matches anywhere inside a word. For example, `--pattern "art"` matches "art", "start", "party", etc. If you need exact word matching, use `--regex` with word boundaries: `--pattern '\bart\b' --regex`.
+
+**Order of operations after corrections:**
+After running `find-replace`, you should:
+
+1. Run `rebuild-text` to regenerate the full transcript text column
+2. Then run `entities scan` to pick up new entity mentions from corrected text
+
+The entity scan reads segment-level effective text (corrected_text if available), but `rebuild-text` keeps the full-text search index and the "Full Text" view in the web UI in sync.
+
+**ASR alias registration (v0.41.0+):**
+When `find-replace` corrects text that matches a known entity name, the original misspelling form is automatically registered as an `asr_error` alias on that entity. In regex mode, each distinct matched form (e.g., "Shambo", "Shamado", "Shambom") is registered as a separate alias. This means a subsequent `entities scan` will find more mentions because the alias list has grown. This is the intended closed-loop pipeline: corrections → aliases → expanded mention coverage.
+
+## Entity Mention Scanning (v0.41.0+)
+
+After correcting transcripts, you can scan your library to discover where named entities are mentioned. The scanner matches entity names and all their known aliases (including ASR error aliases) against transcript segments using word-boundary regex.
+
+### Quick Start
+
+```bash
+# Preview what the scanner would find
+chronovista entities scan --dry-run
+
+# Run the scan
+chronovista entities scan
+
+# View statistics
+chronovista entities stats
+```
+
+### Recommended Workflow
+
+The most effective workflow combines corrections with scanning:
+
+```bash
+# 1. Fix a recurring ASR error across all transcripts
+chronovista corrections find-replace \
+  --pattern 'Claudia Sham\w+' \
+  --replacement 'Claudia Sheinbaum' \
+  --regex --dry-run
+
+# Review the dry-run output, then apply:
+chronovista corrections find-replace \
+  --pattern 'Claudia Sham\w+' \
+  --replacement 'Claudia Sheinbaum' \
+  --regex
+
+# 2. Rebuild full transcript text
+chronovista corrections rebuild-text
+
+# 3. Scan for entity mentions (new aliases were auto-created in step 1)
+chronovista entities scan --full
+
+# 4. Check results
+chronovista entities stats
+chronovista entities list --has-mentions --sort mentions
+```
+
+### Scan Modes
+
+| Mode | Flag | Behavior |
+|------|------|----------|
+| Incremental (default) | _(none)_ | Skips segments with existing mentions |
+| Full rescan | `--full` | Deletes existing `rule_match` mentions, then rescans |
+| New entities only | `--new-entities-only` | Only scans entities with zero existing mentions |
+
+### Limitations
+
+- **Segment-level only**: The scanner currently matches against transcript segments only — not video titles or descriptions (planned in issue #73)
+- **Short aliases skipped**: Aliases shorter than 3 characters are excluded to avoid excessive false positives
+- **Word boundaries**: Uses `\b` (word boundary) matching, so "Aaron" will not match "Aaronson" — this is by design to prevent false positives
+- **Cross-segment names**: A name split across two adjacent segments will not be detected
+
 ## Filtering and Search
 
 ### Filter by Properties

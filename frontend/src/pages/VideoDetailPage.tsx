@@ -20,12 +20,14 @@ import { Link, useParams, useBlocker } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { ClassificationSection } from "../components/ClassificationSection";
+import { EntityMentionsPanel } from "../components/EntityMentionsPanel";
 import { LoadingState } from "../components/LoadingState";
 import { TranscriptPanel } from "../components/transcript";
 import { UnavailabilityBanner } from "../components/UnavailabilityBanner";
 import { useDeepLinkParams } from "../hooks/useDeepLinkParams";
 import { useVideoDetail } from "../hooks/useVideoDetail";
 import { useVideoPlaylists } from "../hooks/useVideoPlaylists";
+import { useVideoEntities } from "../hooks/useEntityMentions";
 import { CONTRAST_SAFE_COLORS } from "../styles/tokens";
 import { API_BASE_URL, apiFetch, RECOVERY_TIMEOUT } from "../api/config";
 import type { RecoveryResultData } from "../types/recovery";
@@ -490,6 +492,10 @@ export function VideoDetailPage() {
   // Fetch playlists containing this video (T026)
   const { playlists: containingPlaylists } = useVideoPlaylists(videoId ?? "");
 
+  // Fetch entity mentions for this video (T029, Feature 038 US7)
+  const { entities: videoEntities, isLoading: entitiesLoading } =
+    useVideoEntities(videoId ?? "", lang ?? undefined);
+
   // Recovery store actions and session
   const { startRecovery, updatePhase, setResult, setError, setAbortController } = useRecoveryStore();
 
@@ -909,6 +915,14 @@ export function VideoDetailPage() {
           categoryName={category_name}
           topics={topics}
           playlists={containingPlaylists}
+        />
+      </div>
+
+      {/* Entity Mentions Panel (Feature 038, T029, US7) */}
+      <div className="mt-6">
+        <EntityMentionsPanel
+          entities={videoEntities}
+          isLoading={entitiesLoading}
         />
       </div>
 

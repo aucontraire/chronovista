@@ -201,6 +201,8 @@ chronovista entities [COMMAND]
 |---------|-------------|
 | `create` | Create a standalone named entity with aliases |
 | `list` | Browse named entities in a Rich table |
+| `scan` | Scan transcript segments for entity mentions |
+| `stats` | Display aggregate entity mention statistics |
 | `backfill-descriptions` | Copy classify reason text into entity descriptions |
 
 ### Corrections Commands
@@ -1516,6 +1518,57 @@ chronovista entities backfill-descriptions
 # Classify a tag as an entity (creates entity + aliases from tag)
 chronovista tags classify "aaron mate" --type person --description "Journalist, The Grayzone" --reason "The Grayzone reporter"
 ```
+
+### Entity Mention Scanning (v0.41.0+)
+
+Scan your transcript library to discover where known entities are mentioned, building a searchable cross-reference between entities and the specific video segments where they appear.
+
+```bash
+# Preview entity mentions without writing (dry-run)
+chronovista entities scan --dry-run --limit 100
+
+# Run a full scan across all transcripts
+chronovista entities scan
+
+# Scan only person entities in a specific video
+chronovista entities scan --entity-type person --video-id VIDEO_ID
+
+# Full rescan (deletes existing rule_match mentions first)
+chronovista entities scan --full
+
+# Scan only entities with zero existing mentions
+chronovista entities scan --new-entities-only
+
+# Custom batch size for large libraries
+chronovista entities scan --batch-size 1000
+
+# View entity mention statistics
+chronovista entities stats --top 20
+
+# List entities filtered by mention status
+chronovista entities list --has-mentions --sort mentions
+chronovista entities list --no-mentions
+```
+
+**Recommended workflow after bulk corrections:**
+
+```bash
+# 1. Apply corrections (e.g., fix ASR errors for an entity name)
+chronovista corrections find-replace --pattern 'Claudia Sham\w+' --replacement 'Claudia Sheinbaum' --regex
+
+# 2. Rebuild full transcript text to reflect corrections
+chronovista corrections rebuild-text
+
+# 3. Rescan for entity mentions (corrections create new aliases automatically)
+chronovista entities scan --full
+```
+
+**Limitations:**
+
+- Entity scanning uses word-boundary regex matching — partial word matches inside larger words are excluded (e.g., "Aaron" won't match "Aaronson")
+- Short aliases (<3 characters) are skipped with a warning to avoid excessive false positives
+- Cross-segment matches (a name split across two adjacent segments) are not detected; these must be corrected manually
+- The scan processes segments independently; it does not yet scan video titles or descriptions (see issue #73)
 
 ### Batch Transcript Corrections
 

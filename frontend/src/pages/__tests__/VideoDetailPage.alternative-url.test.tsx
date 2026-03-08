@@ -70,6 +70,28 @@ vi.mock('../../components/UnavailabilityBanner', () => ({
   UnavailabilityBanner: () => <div data-testid="unavailability-banner" />,
 }));
 
+// Mock EntityMentionsPanel to prevent real API calls from useEntityMentions
+vi.mock('../../components/EntityMentionsPanel', () => ({
+  EntityMentionsPanel: () => <div data-testid="entity-mentions-panel" />,
+}));
+
+// Mock useEntityMentions to prevent unintended network requests
+vi.mock('../../hooks/useEntityMentions', () => ({
+  useVideoEntities: vi.fn(() => ({ entities: [], isLoading: false, isError: false, error: null })),
+  useEntityVideos: vi.fn(() => ({
+    videos: [],
+    total: null,
+    pagination: null,
+    isLoading: false,
+    isError: false,
+    error: null,
+    hasNextPage: false,
+    isFetchingNextPage: false,
+    fetchNextPage: vi.fn(),
+    loadMoreRef: { current: null },
+  })),
+}));
+
 // Import mocked functions
 import { useVideoDetail } from '../../hooks/useVideoDetail';
 import { apiFetch } from '../../api/config';

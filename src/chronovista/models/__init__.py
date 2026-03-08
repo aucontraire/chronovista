@@ -83,7 +83,12 @@ from .enrichment_report import (
     EnrichmentReport,
     EnrichmentSummary,
 )
-from .enums import DownloadReason, LanguagePreferenceType, TrackKind, TranscriptType
+from .enums import DetectionMethod, DownloadReason, LanguagePreferenceType, TrackKind, TranscriptType
+from .entity_mention import (
+    EntityMention,
+    EntityMentionBase,
+    EntityMentionCreate,
+)
 from .playlist import (
     Playlist,
     PlaylistAnalytics,
@@ -251,6 +256,7 @@ __all__ = [
     "TranscriptType",
     "DownloadReason",
     "TrackKind",
+    "DetectionMethod",
     # User Language Preferences
     "UserLanguagePreference",
     "UserLanguagePreferenceCreate",
@@ -380,6 +386,10 @@ __all__ = [
     "TagOperationLogCreate",
     "TagOperationLogUpdate",
     "TagOperationLogBase",
+    # Entity Mentions (Feature 038 - Entity Mention Detection)
+    "EntityMention",
+    "EntityMentionCreate",
+    "EntityMentionBase",
     # Utility functions
     "get_model_count",
 ]

@@ -304,3 +304,12 @@ class CorrectionType(str, Enum):
     FORMATTING = "formatting"
     ASR_ERROR = "asr_error"
     REVERT = "revert"
+
+
+class DetectionMethod(str, Enum):
+    """Methods by which an entity mention was detected in transcript text."""
+
+    RULE_MATCH = "rule_match"
+    SPACY_NER = "spacy_ner"
+    LLM_EXTRACTION = "llm_extraction"
+    MANUAL = "manual"

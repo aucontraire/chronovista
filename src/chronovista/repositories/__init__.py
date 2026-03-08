@@ -10,6 +10,7 @@ from .canonical_tag_repository import CanonicalTagRepository
 from .channel_repository import ChannelRepository
 from .channel_topic_repository import ChannelTopicRepository
 from .entity_alias_repository import EntityAliasRepository
+from .entity_mention_repository import EntityMentionRepository
 from .named_entity_repository import NamedEntityRepository
 from .playlist_membership_repository import PlaylistMembershipRepository
 from .playlist_repository import PlaylistRepository
@@ -34,6 +35,7 @@ __all__ = [
     "ChannelRepository",
     "ChannelTopicRepository",
     "EntityAliasRepository",
+    "EntityMentionRepository",
     "NamedEntityRepository",
     "PlaylistMembershipRepository",
     "PlaylistRepository",

@@ -65,6 +65,7 @@ def _make_mock_entity(
     entity.description = description
     entity.created_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
     entity.status = "active"
+    entity.mention_count = 0
     return entity
 
 

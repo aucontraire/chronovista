@@ -13,6 +13,8 @@ import {
 import { AppShell } from "../components/layout";
 import { ChannelDetailPage } from "../pages/ChannelDetailPage";
 import { ChannelsPage } from "../pages/ChannelsPage";
+import { EntitiesPage } from "../pages/EntitiesPage";
+import { EntityDetailPage } from "../pages/EntityDetailPage";
 import { HomePage } from "../pages/HomePage";
 import { NotFoundPage } from "../pages/NotFoundPage";
 import { PlaylistDetailPage } from "../pages/PlaylistDetailPage";
@@ -89,6 +91,14 @@ export const router = createBrowserRouter([
       {
         path: "playlists/:playlistId",
         element: <PlaylistDetailPage />,
+      },
+      {
+        path: "entities",
+        element: <EntitiesPage />,
+      },
+      {
+        path: "entities/:entityId",
+        element: <EntityDetailPage />,
       },
       {
         path: "*",

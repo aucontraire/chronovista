@@ -1,22 +1,24 @@
 """
 Entity CLI commands for chronovista.
 
-Commands for creating and browsing named entities. Entities represent
+Commands for creating, browsing, and scanning named entities. Entities represent
 real-world people, organizations, places, events, and other typed objects
 discovered from or associated with video tags.
 
 Feature 037 — Entity Classify Improvements (#69)
+Feature 038 — Entity Mention Detection (scan command)
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 from rich.table import Table
 from sqlalchemy import func, select, update
 
@@ -32,7 +34,9 @@ from chronovista.models.enums import (
 from chronovista.models.entity_alias import EntityAliasCreate
 from chronovista.models.named_entity import NamedEntityCreate
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
+from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
+from chronovista.services.entity_mention_scan_service import EntityMentionScanService
 from chronovista.services.tag_normalization import TagNormalizationService
 
 logger = logging.getLogger(__name__)
@@ -237,8 +241,31 @@ def list_entities(
         "-q",
         help="Search by canonical name (case-insensitive).",
     ),
+    has_mentions: Annotated[
+        bool,
+        typer.Option("--has-mentions", help="Show only entities with mentions"),
+    ] = False,
+    no_mentions: Annotated[
+        bool,
+        typer.Option("--no-mentions", help="Show only entities without mentions"),
+    ] = False,
+    sort: Annotated[
+        Optional[str],
+        typer.Option("--sort", help="Sort by: name (default), mentions"),
+    ] = None,
 ) -> None:
     """List named entities in a table."""
+
+    # Validate mutually exclusive flags
+    if has_mentions and no_mentions:
+        console.print(
+            Panel(
+                "[red]Cannot use --has-mentions and --no-mentions together.[/red]",
+                title="Invalid Options",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(code=1)
 
     async def _run() -> None:
         # Validate entity type filter if provided
@@ -274,7 +301,19 @@ def list_entities(
                     NamedEntityDB.canonical_name.ilike(f"%{search}%")
                 )
 
-            query = query.order_by(NamedEntityDB.canonical_name.asc())
+            if has_mentions:
+                query = query.where(NamedEntityDB.mention_count > 0)
+            if no_mentions:
+                query = query.where(NamedEntityDB.mention_count == 0)
+
+            if sort == "mentions":
+                query = query.order_by(
+                    NamedEntityDB.mention_count.desc(),
+                    NamedEntityDB.canonical_name.asc(),
+                )
+            else:
+                query = query.order_by(NamedEntityDB.canonical_name.asc())
+
             query = query.limit(limit)
 
             result = await session.execute(query)
@@ -291,6 +330,14 @@ def list_entities(
             if search is not None:
                 count_query = count_query.where(
                     NamedEntityDB.canonical_name.ilike(f"%{search}%")
+                )
+            if has_mentions:
+                count_query = count_query.where(
+                    NamedEntityDB.mention_count > 0
+                )
+            if no_mentions:
+                count_query = count_query.where(
+                    NamedEntityDB.mention_count == 0
                 )
             total_result = await session.execute(count_query)
             total_count = total_result.scalar() or 0
@@ -316,6 +363,9 @@ def list_entities(
             entity_table.add_column("Type", style="magenta", width=16)
             entity_table.add_column("Description", style="white", width=50)
             entity_table.add_column("Aliases", style="green", width=8)
+            entity_table.add_column(
+                "Mentions", style="yellow", justify="right", width=10
+            )
             entity_table.add_column("Created", style="dim", width=12)
 
             for entity in entities:
@@ -343,6 +393,9 @@ def list_entities(
                     entity.entity_type,
                     short_desc,
                     str(alias_count),
+                    f"{entity.mention_count:,}"
+                    if entity.mention_count
+                    else "0",
                     created,
                 )
 
@@ -467,6 +520,303 @@ def backfill_descriptions(
                         f"entity not found, or invalid ID)",
                         title="[green]Backfill Complete[/green]",
                         border_style="green",
+                    )
+                )
+
+    asyncio.run(_run())
+
+
+@entity_app.command("scan")
+def scan_entities(
+    entity_type: Annotated[
+        Optional[str],
+        typer.Option("--entity-type", help="Filter by entity type"),
+    ] = None,
+    video_id: Annotated[
+        Optional[List[str]],
+        typer.Option("--video-id", help="Filter by video ID (repeatable)"),
+    ] = None,
+    language: Annotated[
+        Optional[str],
+        typer.Option("--language", help="Filter by language code"),
+    ] = None,
+    batch_size: Annotated[
+        int,
+        typer.Option("--batch-size", help="Segments per batch", min=100, max=5000),
+    ] = 500,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Preview without writing"),
+    ] = False,
+    full: Annotated[
+        bool,
+        typer.Option("--full", help="Delete and rescan all"),
+    ] = False,
+    new_entities_only: Annotated[
+        bool,
+        typer.Option("--new-entities-only", help="Scan only new entities"),
+    ] = False,
+    limit: Annotated[
+        int,
+        typer.Option("--limit", help="Dry-run preview row limit"),
+    ] = 50,
+) -> None:
+    """Scan transcript segments for named entity mentions."""
+
+    # Validate entity type if provided
+    if entity_type is not None:
+        try:
+            EntityType(entity_type)
+        except ValueError:
+            valid_types = ", ".join(t.value for t in EntityType)
+            console.print(
+                Panel(
+                    f"[red]Invalid entity type '{entity_type}'. "
+                    f"Valid values: {valid_types}[/red]",
+                    title="Invalid --entity-type",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(code=1)
+
+    session_factory = db_manager.get_session_factory()
+    service = EntityMentionScanService(session_factory=session_factory)
+
+    async def _run() -> None:
+        if dry_run:
+            # Dry-run mode: show preview table
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task("Scanning (dry run)...", total=None)
+
+                result = await service.scan(
+                    entity_type=entity_type,
+                    video_ids=video_id,
+                    language_code=language,
+                    batch_size=batch_size,
+                    dry_run=True,
+                    full_rescan=full,
+                    new_entities_only=new_entities_only,
+                    limit=limit,
+                )
+
+            if not result.dry_run_matches:
+                console.print(
+                    "[yellow]No entity mentions found matching the criteria.[/yellow]"
+                )
+                raise typer.Exit(code=0)
+
+            preview_table = Table(
+                title="Entity Mention Scan Preview (dry run)",
+                show_header=True,
+                header_style="bold blue",
+            )
+            preview_table.add_column("video_id", style="dim", width=14)
+            preview_table.add_column("segment_id", style="dim", width=12)
+            preview_table.add_column("start_time", style="dim", width=10)
+            preview_table.add_column("entity_name", style="cyan", width=24)
+            preview_table.add_column("entity_type", style="magenta", width=16)
+            preview_table.add_column("matched_text", style="green", width=20)
+            preview_table.add_column("context", style="white", width=40)
+
+            for match in result.dry_run_matches:
+                context_text = match.get("context", "")
+                if len(context_text) > 40:
+                    context_text = context_text[:37] + "..."
+
+                preview_table.add_row(
+                    match["video_id"],
+                    str(match["segment_id"]),
+                    f"{match['start_time']:.1f}",
+                    match["entity_name"],
+                    match["entity_type"],
+                    match["matched_text"],
+                    context_text,
+                )
+
+            console.print(preview_table)
+            console.print(
+                f"\nDry run complete: [bold]{result.mentions_found:,}[/bold] mentions "
+                f"would be created across [bold]{result.unique_videos:,}[/bold] videos "
+                f"for [bold]{result.unique_entities:,}[/bold] entities "
+                f"({result.segments_scanned:,} segments scanned, "
+                f"{result.duration_seconds:.1f}s)"
+            )
+        else:
+            # Live mode: scan with progress bar
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                console=console,
+            ) as progress:
+                task = progress.add_task("Scanning segments...", total=None)
+
+                def _progress_callback(scanned: int, found: int) -> None:
+                    progress.update(
+                        task,
+                        completed=scanned,
+                        description=f"Scanning segments... ({found:,} mentions found)",
+                    )
+
+                result = await service.scan(
+                    entity_type=entity_type,
+                    video_ids=video_id,
+                    language_code=language,
+                    batch_size=batch_size,
+                    dry_run=False,
+                    full_rescan=full,
+                    new_entities_only=new_entities_only,
+                    progress_callback=_progress_callback,
+                )
+
+            # Summary panel
+            summary_lines = [
+                f"[bold]Segments scanned:[/bold] {result.segments_scanned:,}",
+                f"[bold]Mentions found:[/bold] {result.mentions_found:,}",
+                f"[bold]Mentions skipped:[/bold] {result.mentions_skipped:,}",
+                f"[bold]Unique entities:[/bold] {result.unique_entities:,}",
+                f"[bold]Unique videos:[/bold] {result.unique_videos:,}",
+                f"[bold]Duration:[/bold] {result.duration_seconds:.1f}s",
+            ]
+            if result.failed_batches > 0:
+                summary_lines.append(
+                    f"[bold red]Failed batches:[/bold red] {result.failed_batches:,}"
+                )
+
+            border = "green" if result.failed_batches == 0 else "yellow"
+            title = (
+                "[green]Scan Complete[/green]"
+                if result.failed_batches == 0
+                else "[yellow]Scan Complete (with failures)[/yellow]"
+            )
+
+            console.print(
+                Panel(
+                    "\n".join(summary_lines),
+                    title=title,
+                    border_style=border,
+                )
+            )
+
+    asyncio.run(_run())
+
+
+@entity_app.command("stats")
+def entity_stats(
+    entity_type: Annotated[
+        Optional[str],
+        typer.Option("--entity-type", help="Filter statistics by entity type."),
+    ] = None,
+    top: Annotated[
+        int,
+        typer.Option("--top", help="Number of top entities to display."),
+    ] = 10,
+) -> None:
+    """Display aggregate entity mention statistics."""
+
+    async def _run() -> None:
+        # Validate entity type if provided
+        if entity_type is not None:
+            try:
+                EntityType(entity_type)
+            except ValueError:
+                valid_types = ", ".join(t.value for t in EntityType)
+                console.print(
+                    Panel(
+                        f"[red]Invalid entity type '{entity_type}'. "
+                        f"Valid values: {valid_types}[/red]",
+                        title="Invalid --entity-type",
+                        border_style="red",
+                    )
+                )
+                raise typer.Exit(code=1)
+
+        repo = EntityMentionRepository()
+
+        async for session in db_manager.get_session(echo=False):
+            stats = await repo.get_statistics(session, entity_type=entity_type)
+
+            # Overview panel
+            filter_note = (
+                f"\n[bold]Filter:[/bold] entity_type = {entity_type}"
+                if entity_type is not None
+                else ""
+            )
+            overview = (
+                f"[bold]Total mentions:[/bold] {stats['total_mentions']:,}\n"
+                f"[bold]Entities with mentions:[/bold] "
+                f"{stats['unique_entities_with_mentions']:,} / {stats['total_entities']:,}\n"
+                f"[bold]Videos with mentions:[/bold] {stats['unique_videos_with_mentions']:,}\n"
+                f"[bold]Coverage:[/bold] {stats['coverage_pct']:.1f}%"
+                f"{filter_note}"
+            )
+            console.print(
+                Panel(
+                    overview,
+                    title="Entity Mention Statistics",
+                    border_style="blue",
+                )
+            )
+
+            # Type breakdown table
+            if stats["type_breakdown"]:
+                type_table = Table(
+                    title="By Entity Type",
+                    show_header=True,
+                    header_style="bold blue",
+                )
+                type_table.add_column("Type", style="magenta", width=20)
+                type_table.add_column(
+                    "Entities", style="green", justify="right", width=10
+                )
+                type_table.add_column(
+                    "Mentions", style="cyan", justify="right", width=12
+                )
+                for tb in stats["type_breakdown"]:
+                    type_table.add_row(
+                        tb["entity_type"],
+                        str(tb["entity_count"]),
+                        f"{tb['mention_count']:,}",
+                    )
+                console.print(type_table)
+
+            # Top entities table
+            top_entities = stats["top_entities"][:top]
+            if top_entities:
+                top_table = Table(
+                    title=f"Top {len(top_entities)} Entities by Video Count",
+                    show_header=True,
+                    header_style="bold blue",
+                )
+                top_table.add_column("Name", style="cyan", width=30)
+                top_table.add_column("Type", style="magenta", width=16)
+                top_table.add_column(
+                    "Mentions", style="green", justify="right", width=10
+                )
+                top_table.add_column(
+                    "Videos", style="yellow", justify="right", width=10
+                )
+                for ent in top_entities:
+                    top_table.add_row(
+                        ent["canonical_name"],
+                        ent["entity_type"],
+                        f"{ent['mention_count']:,}",
+                        f"{ent['video_count']:,}",
+                    )
+                console.print(top_table)
+
+            if not stats["type_breakdown"] and not top_entities:
+                console.print(
+                    Panel(
+                        "[yellow]No entity mentions found. "
+                        "Run 'entities scan' first.[/yellow]",
+                        title="No Data",
+                        border_style="yellow",
                     )
                 )
 

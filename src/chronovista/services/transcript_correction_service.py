@@ -15,13 +15,17 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from sqlalchemy import exists, select, text
+from sqlalchemy import exists, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chronovista.db.models import EntityAlias as EntityAliasDB
+from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
-from chronovista.models.enums import CorrectionType
+from chronovista.models.entity_alias import EntityAliasCreate
+from chronovista.models.enums import CorrectionType, EntityAliasType
 from chronovista.models.transcript_correction import TranscriptCorrectionCreate
+from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.transcript_correction_repository import (
     TranscriptCorrectionRepository,
 )
@@ -186,6 +190,13 @@ class TranscriptCorrectionService:
             corrected_by_user_id,
         )
 
+        # Step 10.5: B-lite hook — auto-record ASR error alias if correction matches entity
+        await self._record_asr_alias_if_entity_match(
+            session,
+            original_text=effective_text,
+            corrected_text=corrected_text,
+        )
+
         # Step 11: Return created record
         return correction_record
 
@@ -340,6 +351,98 @@ class TranscriptCorrectionService:
 
         # Step 8: Return the revert audit record
         return revert_record
+
+
+    async def _record_asr_alias_if_entity_match(
+        self,
+        session: AsyncSession,
+        *,
+        original_text: str,
+        corrected_text: str,
+    ) -> None:
+        """Best-effort hook: auto-record ASR error alias when correction matches an entity.
+
+        If corrected_text matches a known entity name/alias (case-insensitive exact
+        match), record original_text as an ``asr_error`` alias for that entity.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session (caller manages transaction).
+        original_text : str
+            The text that was replaced (potential ASR error).
+        corrected_text : str
+            The corrected text that may match an entity name.
+        """
+        try:
+            # Query entities whose canonical_name matches corrected_text (case-insensitive)
+            entity_stmt = select(NamedEntityDB).where(
+                NamedEntityDB.status == "active",
+                func.lower(NamedEntityDB.canonical_name) == corrected_text.lower().strip(),
+            )
+            result = await session.execute(entity_stmt)
+            entity = result.scalar_one_or_none()
+
+            if entity is None:
+                # Check aliases for a match
+                alias_stmt = select(EntityAliasDB).where(
+                    func.lower(EntityAliasDB.alias_name) == corrected_text.lower().strip(),
+                )
+                alias_result = await session.execute(alias_stmt)
+                matched_alias = alias_result.scalars().first()
+                if matched_alias is None:
+                    return
+                entity_id = matched_alias.entity_id
+            else:
+                entity_id = entity.id
+
+            # Check if original_text is already an alias for this entity
+            existing_alias_stmt = select(EntityAliasDB).where(
+                EntityAliasDB.entity_id == entity_id,
+                func.lower(EntityAliasDB.alias_name) == original_text.lower().strip(),
+            )
+            existing_result = await session.execute(existing_alias_stmt)
+            existing_alias = existing_result.scalar_one_or_none()
+
+            if existing_alias is not None:
+                # Increment occurrence_count
+                existing_alias.occurrence_count = (existing_alias.occurrence_count or 0) + 1
+                await session.flush()
+                logger.debug(
+                    "B-lite: incremented occurrence_count for alias '%s' on entity %s",
+                    original_text,
+                    entity_id,
+                )
+            else:
+                # Create new alias
+                from chronovista.services.tag_normalization import TagNormalizationService
+
+                normalizer = TagNormalizationService()
+                normalized = normalizer.normalize(original_text) or original_text.lower()
+
+                new_alias = EntityAliasCreate(
+                    entity_id=entity_id,
+                    alias_name=original_text,
+                    alias_name_normalized=normalized,
+                    alias_type=EntityAliasType.ASR_ERROR,
+                    occurrence_count=1,
+                )
+                alias_repo = EntityAliasRepository()
+                await alias_repo.create(session, obj_in=new_alias)
+                await session.flush()
+                logger.debug(
+                    "B-lite: created asr_error alias '%s' for entity %s",
+                    original_text,
+                    entity_id,
+                )
+
+        except Exception:
+            logger.warning(
+                "B-lite hook failed (non-blocking): original_text='%s', corrected_text='%s'",
+                original_text,
+                corrected_text,
+                exc_info=True,
+            )
 
 
 __all__ = ["TranscriptCorrectionService"]

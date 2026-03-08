@@ -6,6 +6,7 @@ import type React from "react";
 
 import {
   ChannelIcon,
+  EntityIcon,
   PlaylistIcon,
   SearchIcon,
   VideoIcon,
@@ -52,5 +53,11 @@ export const navRoutes: NavRoute[] = [
     label: "Playlists",
     tooltip: "Browse your playlists",
     icon: PlaylistIcon,
+  },
+  {
+    path: "/entities",
+    label: "Entities",
+    tooltip: "Browse named entities",
+    icon: EntityIcon,
   },
 ];

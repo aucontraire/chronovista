@@ -19,6 +19,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     String,
     Text,
@@ -384,9 +385,12 @@ class TranscriptSegment(Base):
         CheckConstraint("sequence_number >= 0", name="chk_segment_sequence_non_negative"),
     )
 
-    # Relationship
+    # Relationships
     transcript: Mapped["VideoTranscript"] = relationship(
         "VideoTranscript", back_populates="segments"
+    )
+    entity_mentions: Mapped[list["EntityMention"]] = relationship(
+        "EntityMention", back_populates="segment", lazy="select"
     )
 
 
@@ -810,6 +814,9 @@ class NamedEntity(Base):
     merged_into: Mapped[Optional["NamedEntity"]] = relationship(
         "NamedEntity", remote_side="NamedEntity.id"
     )
+    mentions: Mapped[list["EntityMention"]] = relationship(
+        "EntityMention", back_populates="entity", lazy="select"
+    )
 
 
 class EntityAlias(Base):
@@ -1078,6 +1085,80 @@ class TranscriptCorrection(Base):
     )
 
 
+class EntityMention(Base):
+    """Entity mention records linking named entities to transcript segments.
+
+    Tracks every occurrence of a named entity within a transcript segment,
+    including the detection method and confidence score.
+    """
+
+    __tablename__ = "entity_mentions"
+
+    # Primary key (UUIDv7, time-ordered)
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
+
+    # Foreign key to named_entities
+    entity_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("named_entities.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # Foreign key to transcript_segments
+    segment_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("transcript_segments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # Denormalized for direct querying without segment join
+    video_id: Mapped[str] = mapped_column(String(20), nullable=False)
+    language_code: Mapped[str] = mapped_column(String(10), nullable=False)
+
+    # Mention content
+    mention_text: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    # Detection metadata
+    detection_method: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="rule_match"
+    )
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+
+    # Timestamps
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    # Table constraints and indexes
+    __table_args__ = (
+        UniqueConstraint(
+            "entity_id", "segment_id", "mention_text",
+            name="uq_entity_mention_entity_segment_text",
+        ),
+        CheckConstraint(
+            "detection_method IN ('rule_match', 'spacy_ner', 'llm_extraction', 'manual')",
+            name="chk_entity_mention_detection_method_valid",
+        ),
+        CheckConstraint(
+            "confidence >= 0.0 AND confidence <= 1.0",
+            name="chk_entity_mention_confidence_range",
+        ),
+        Index("ix_entity_mentions_entity_id", "entity_id"),
+        Index("ix_entity_mentions_segment_id", "segment_id"),
+        Index("ix_entity_mentions_video_id", "video_id"),
+        Index("ix_entity_mentions_video_language", "video_id", "language_code"),
+        Index("ix_entity_mentions_detection_method", "detection_method"),
+    )
+
+    # Relationships
+    entity: Mapped["NamedEntity"] = relationship(
+        "NamedEntity", back_populates="mentions"
+    )
+    segment: Mapped["TranscriptSegment"] = relationship(
+        "TranscriptSegment", back_populates="entity_mentions"
+    )
+
+
 # Export all models
 __all__ = [
     "Base",
@@ -1103,4 +1184,5 @@ __all__ = [
     "TagAlias",
     "TagOperationLog",
     "TranscriptCorrection",
+    "EntityMention",
 ]

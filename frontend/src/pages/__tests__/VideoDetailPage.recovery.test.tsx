@@ -78,6 +78,28 @@ vi.mock('../../components/LoadingState', () => ({
   LoadingState: () => <div data-testid="loading-state" />,
 }));
 
+// Mock EntityMentionsPanel to prevent real API calls from useEntityMentions
+vi.mock('../../components/EntityMentionsPanel', () => ({
+  EntityMentionsPanel: () => <div data-testid="entity-mentions-panel" />,
+}));
+
+// Mock useEntityMentions to prevent unintended network requests
+vi.mock('../../hooks/useEntityMentions', () => ({
+  useVideoEntities: vi.fn(() => ({ entities: [], isLoading: false, isError: false, error: null })),
+  useEntityVideos: vi.fn(() => ({
+    videos: [],
+    total: null,
+    pagination: null,
+    isLoading: false,
+    isError: false,
+    error: null,
+    hasNextPage: false,
+    isFetchingNextPage: false,
+    fetchNextPage: vi.fn(),
+    loadMoreRef: { current: null },
+  })),
+}));
+
 // Mock recoveryStore with state tracking
 vi.mock('../../stores/recoveryStore', () => {
   // Track sessions in the mock

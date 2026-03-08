@@ -11,6 +11,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.41.0] - 2026-03-08
+
+### Added
+- **Feature 038: Entity Mention Detection (ADR-006 Increment B)**
+  - `chronovista entities scan` — scan transcript segments for entity name/alias mentions using word-boundary regex matching, with `--dry-run` preview, `--full` rescan, `--new-entities-only`, `--entity-type`/`--video-id`/`--language` filters, configurable `--batch-size` (100–5000), Rich progress bar and summary panel
+  - `chronovista entities stats` — aggregate entity mention statistics with overview panel, type breakdown table, and top entities by video count (`--entity-type`, `--top` filters)
+  - Enhanced `chronovista entities list` with `--has-mentions`, `--no-mentions` filter flags, `--sort mentions` option, and "Mentions" column
+  - New `entity_mentions` table (Alembic migration 038) with UUIDv7 PKs, FKs to `named_entities` and `transcript_segments`, unique constraint on (entity_id, segment_id, mention_text), 5 performance indexes
+  - `DetectionMethod` enum (rule_match, spacy_ner, llm_extraction, manual) for extensible mention detection
+  - `EntityMentionRepository` with bulk insert (ON CONFLICT DO NOTHING), scoped delete, counter updates, video/entity summary queries
+  - `EntityMentionScanService` with batch processing, pattern construction, incremental/full rescan modes, progress callbacks
+  - ASR alias auto-registration hook in `corrections find-replace`: captures actual matched misspelling forms from regex patterns and registers each as a separate `asr_error` entity alias with occurrence counts
+  - Correction-to-alias-to-mention closed-loop pipeline: `find-replace` → `rebuild-text` → `entities scan` → expanded mention coverage
+  - API response schemas: `VideoEntitySummary`, `MentionPreview`, `EntityVideoResult`, `EntityVideoResponse`, `VideoEntitiesResponse`
+
+### Known Limitations
+- **Cross-segment matches**: `find-replace` cannot match patterns that span two adjacent transcript segments (e.g., a name split across segment boundaries). Correct these manually via the web UI or await cross-segment support (issue #71)
+- **Regex greediness**: Broad regex patterns may match unintended text — always use `--dry-run` first
+- **Substring mode partial matches**: Default substring mode (`LIKE '%pattern%'`) matches inside larger words; use `--regex` with `\b` word boundaries for precision
+- **Order of operations**: After `find-replace`, run `rebuild-text` before `entities scan` to keep full-text search and API responses in sync
+
+### Technical
+- 200 new tests (81 model + 54 repository + 46 service + 19 integration)
+- mypy strict compliance (0 errors)
+- No new dependencies, new Alembic migration for `entity_mentions` table
+- Frontend version: 0.11.0 → 0.12.0
+
 ## [0.40.0] - 2026-03-06
 
 ### Added

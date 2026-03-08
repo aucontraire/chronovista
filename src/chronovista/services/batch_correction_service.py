@@ -20,9 +20,11 @@ from datetime import datetime
 from typing import Any, Awaitable, Callable, Sequence, TypeVar
 from uuid import UUID
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chronovista.db.models import EntityAlias as EntityAliasDB
+from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.db.models import VideoTranscript as VideoTranscriptDB
 from chronovista.models.batch_correction_models import (
@@ -32,7 +34,9 @@ from chronovista.models.batch_correction_models import (
     CorrectionStats,
 )
 from chronovista.models.correction_actors import ACTOR_CLI_BATCH
-from chronovista.models.enums import CorrectionType
+from chronovista.models.entity_alias import EntityAliasCreate
+from chronovista.models.enums import CorrectionType, EntityAliasType
+from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.transcript_correction_repository import (
     TranscriptCorrectionRepository,
 )
@@ -259,8 +263,21 @@ class BatchCorrectionService:
                 unique_videos=0,
             )
 
+        # Collect distinct matched forms for ASR alias registration.
+        # For substring mode this is just {pattern: count}; for regex mode
+        # re.findall() extracts the actual matched text from each segment.
+        matched_form_counts: dict[str, int] = {}
+
         # Per-item processing function for _process_in_batches
         async def _apply_one(session: AsyncSession, segment: Any) -> str:
+            # Capture effective text BEFORE apply_correction mutates the ORM object
+            # (apply_correction sets segment.corrected_text and has_correction=True).
+            effective_text: str = (
+                segment.corrected_text
+                if segment.has_correction
+                else segment.text
+            ) or ""
+
             new_text = _compute_new_text(segment)
             try:
                 await self._correction_service.apply_correction(
@@ -276,6 +293,14 @@ class BatchCorrectionService:
             except ValueError:
                 # No-op: corrected_text == effective text → skip
                 return "skipped"
+
+            # Track actual matched forms for alias registration
+            if regex:
+                for match in re.findall(pattern, effective_text, flags=re_flags):
+                    matched_form_counts[match] = matched_form_counts.get(match, 0) + 1
+            else:
+                matched_form_counts[pattern] = matched_form_counts.get(pattern, 0) + 1
+
             return "applied"
 
         total_applied, total_skipped, total_failed, failed_batches = (
@@ -287,6 +312,17 @@ class BatchCorrectionService:
                 progress_callback=progress_callback,
             )
         )
+
+        # Auto-register ASR aliases: each distinct matched form is registered
+        # as a separate alias with its own occurrence count.
+        if total_applied > 0:
+            for form, count in matched_form_counts.items():
+                await self._record_asr_alias_for_batch_replacement(
+                    session,
+                    pattern=form,
+                    replacement=replacement,
+                    total_applied=count,
+                )
 
         _elapsed = time.monotonic() - _start_time
         logger.info(
@@ -917,6 +953,117 @@ class BatchCorrectionService:
                 progress_callback(len(chunk))
 
         return total_applied, total_skipped, total_failed, failed_batches
+
+    async def _record_asr_alias_for_batch_replacement(
+        self,
+        session: AsyncSession,
+        *,
+        pattern: str,
+        replacement: str,
+        total_applied: int,
+    ) -> None:
+        """Best-effort hook: register the search pattern as an ASR error alias.
+
+        If ``replacement`` matches a known entity canonical name or alias
+        (case-insensitive exact match), register ``pattern`` as an
+        ``asr_error`` alias for that entity.  If the alias already exists,
+        increment its ``occurrence_count`` by ``total_applied``.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        pattern : str
+            The search text (potential ASR error form).
+        replacement : str
+            The replacement text that may match an entity name.
+        total_applied : int
+            Number of corrections applied (used for occurrence_count).
+        """
+        try:
+            # Resolve entity from replacement text
+            entity_id: UUID | None = None
+            entity_name: str | None = None
+
+            entity_stmt = select(NamedEntityDB).where(
+                NamedEntityDB.status == "active",
+                func.lower(NamedEntityDB.canonical_name) == replacement.lower().strip(),
+            )
+            result = await session.execute(entity_stmt)
+            entity = result.scalar_one_or_none()
+
+            if entity is not None:
+                entity_id = entity.id
+                entity_name = entity.canonical_name
+            else:
+                # Check aliases for a match
+                alias_stmt = select(EntityAliasDB).where(
+                    func.lower(EntityAliasDB.alias_name) == replacement.lower().strip(),
+                )
+                alias_result = await session.execute(alias_stmt)
+                matched_alias = alias_result.scalars().first()
+                if matched_alias is None:
+                    return
+                entity_id = matched_alias.entity_id
+                entity_name = replacement
+
+            # Check if pattern is already an alias for this entity
+            existing_alias_stmt = select(EntityAliasDB).where(
+                EntityAliasDB.entity_id == entity_id,
+                func.lower(EntityAliasDB.alias_name) == pattern.lower().strip(),
+            )
+            existing_result = await session.execute(existing_alias_stmt)
+            existing_alias = existing_result.scalar_one_or_none()
+
+            if existing_alias is not None:
+                existing_alias.occurrence_count = (
+                    existing_alias.occurrence_count or 0
+                ) + total_applied
+                await session.flush()
+                await session.commit()
+                logger.info(
+                    "find-replace alias hook: incremented occurrence_count for "
+                    "alias '%s' on entity '%s' (+%d)",
+                    pattern,
+                    entity_name,
+                    total_applied,
+                )
+            else:
+                from chronovista.services.tag_normalization import (
+                    TagNormalizationService,
+                )
+
+                normalizer = TagNormalizationService()
+                normalized = normalizer.normalize(pattern) or pattern.lower()
+
+                new_alias = EntityAliasCreate(
+                    entity_id=entity_id,
+                    alias_name=pattern,
+                    alias_name_normalized=normalized,
+                    alias_type=EntityAliasType.ASR_ERROR,
+                    occurrence_count=total_applied,
+                )
+                alias_repo = EntityAliasRepository()
+                await alias_repo.create(session, obj_in=new_alias)
+                await session.flush()
+                await session.commit()
+                logger.info(
+                    "find-replace alias hook: registered ASR alias '%s' for "
+                    "entity '%s' (occurrence_count=%d). Run "
+                    "'chronovista entities scan' to update entity mentions.",
+                    pattern,
+                    entity_name,
+                    total_applied,
+                )
+
+        except Exception:
+            logger.warning(
+                "find-replace alias hook failed (non-blocking): "
+                "pattern='%s', replacement='%s'",
+                pattern,
+                replacement,
+                exc_info=True,
+            )
 
     @staticmethod
     def _validate_pattern(pattern: str, *, regex: bool) -> None:

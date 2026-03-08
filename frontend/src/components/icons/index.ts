@@ -3,6 +3,7 @@
  */
 
 export { ChannelIcon } from "./ChannelIcon";
+export { EntityIcon } from "./EntityIcon";
 export { PlaylistIcon } from "./PlaylistIcon";
 export { SearchIcon } from "./SearchIcon";
 export { VideoIcon } from "./VideoIcon";

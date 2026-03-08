@@ -9,6 +9,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [0.41.0] - 2026-03-08
+
+### Added
+
+#### Feature 038: Entity Mention Detection (ADR-006 Increment B)
+
+Scans transcript segments for mentions of known entities using PostgreSQL word-boundary regex matching. Creates an `entity_mentions` junction table linking entities to the specific segments and videos where they appear. Includes an ASR alias auto-registration hook on `find-replace` that captures actual misspelling forms from regex patterns for expanded mention coverage.
+
+**3 New CLI Commands (`chronovista entities`):**
+
+| Command | Description |
+|---------|-------------|
+| `entities scan` | Scan transcript segments for entity name/alias mentions with dry-run, batch processing, and progress feedback |
+| `entities stats` | Display aggregate entity mention statistics with type breakdown and top entities |
+| `entities list` (enhanced) | New `--has-mentions`, `--no-mentions` filters and `--sort mentions` option with "Mentions" column |
+
+**Entity Mention Scanning (`entities scan`):**
+- Loads all active entities + aliases, builds escaped regex patterns with `\b` word boundaries
+- Scans transcript segments in configurable batches (100–5000, default 500)
+- Uses effective text (corrected_text if has_correction=True, otherwise text)
+- `--dry-run` previews matches in a Rich table (video_id, segment_id, start_time, entity_name, matched_text, context)
+- `--full` deletes existing `rule_match` mentions before rescanning (respects filter scope)
+- `--new-entities-only` scans only entities with zero existing mentions
+- `--entity-type`, `--video-id` (repeatable), `--language` filters
+- ON CONFLICT (entity_id, segment_id, mention_text) DO NOTHING for deduplication
+- Updates `named_entities.mention_count` and `video_count` via aggregate queries after scan
+- Progress bar with spinner in live mode; summary panel with segments scanned, mentions found, unique entities, unique videos, duration
+
+**Entity Stats (`entities stats`):**
+- Overview panel: total mentions, unique entities with mentions, unique videos, coverage %
+- Type breakdown table: mentions per entity type
+- Top entities table: top N entities by video count (default: 10)
+- `--entity-type` and `--top` filters
+
+**ASR Alias Auto-Registration Hook (in `corrections find-replace`):**
+- When a `find-replace` correction matches an entity name, the original misspelling form is auto-registered as an `asr_error` alias
+- Regex mode extracts each distinct matched form via `re.findall()` and registers separately with per-form occurrence counts
+- Captures effective text BEFORE `apply_correction()` mutates the ORM object (prevents timing bug where corrected text no longer matches the pattern)
+- Enables the closed-loop pipeline: corrections → rebuild-text → entity scan → expanded mention coverage
+
+**New Source Files (5):**
+
+| File | Description |
+|------|-------------|
+| `models/entity_mention.py` | `EntityMentionBase`, `EntityMentionCreate`, `EntityMention` Pydantic V2 models |
+| `repositories/entity_mention_repository.py` | Repository with bulk insert (ON CONFLICT DO NOTHING), scoped delete, counter updates, video/entity summary queries |
+| `services/entity_mention_scan_service.py` | Scanning orchestration with batch processing, pattern construction, incremental/full rescan modes |
+| `api/schemas/entity_mentions.py` | API response schemas: `VideoEntitySummary`, `MentionPreview`, `EntityVideoResult`, `EntityVideoResponse` |
+| `db/migrations/versions/038_add_entity_mentions_table.py` | Alembic migration: `entity_mentions` table with UUIDv7 PK, FKs, unique + CHECK constraints, 5 indexes |
+
+**New Enum:**
+
+| Enum | Values | Purpose |
+|------|--------|---------|
+| `DetectionMethod` | `rule_match`, `spacy_ner`, `llm_extraction`, `manual` | Discriminator for how a mention was detected (extensible for future NLP/LLM methods) |
+
+### Known Limitations
+
+#### Bulk Correction Edge Cases
+
+When using `chronovista corrections find-replace`, be aware of the following limitations:
+
+- **Cross-segment matches**: If a misspelling spans two adjacent transcript segments (e.g., "Claudia" at the end of segment #152 and "Shembun" at the start of segment #153), `find-replace` will not match it because each segment is searched independently. You must correct such cases manually via the inline web UI on each segment, or wait for cross-segment pattern matching support (GitHub issue #71).
+- **Regex greediness**: Broad regex patterns (e.g., `Sham\w*`) may match unintended text in other contexts. Always use `--dry-run` first to review all matches before applying.
+- **Partial word matches in substring mode**: Without `--regex`, the default substring mode uses SQL `LIKE '%pattern%'`, which can match inside larger words. For example, `--pattern "art"` would match "art", "start", "party", etc. Use `--regex` with word boundaries (`\bart\b`) for precise matching.
+- **Order of operations matters**: After running `find-replace`, always run `rebuild-text` before `entities scan` to ensure the full transcript text reflects corrections. The scan reads segment-level effective text (not `transcript_text`), but `rebuild-text` keeps the full-text search index and API responses in sync.
+- **Idempotency after revert**: If you `batch-revert` a correction and then re-run the same `find-replace`, it will re-apply. This is by design (idempotency applies to consecutive runs, not revert-then-reapply cycles).
+
+### Technical
+- 200 new tests (81 model + 54 repository + 46 service + 19 integration)
+- mypy strict compliance (0 errors)
+- No new dependencies (uses existing SQLAlchemy, Pydantic V2, uuid_utils)
+- New Alembic migration for `entity_mentions` table (fully reversible)
+- Frontend version: 0.11.0 → 0.12.0
+
 ## [0.40.0] - 2026-03-06
 
 ### Added

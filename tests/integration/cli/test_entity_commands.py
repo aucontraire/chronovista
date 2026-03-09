@@ -883,3 +883,203 @@ class TestBackfillDescriptionsCommand:
 
         assert result.exit_code == 0
         assert "--dry-run" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Add alias command tests
+# ---------------------------------------------------------------------------
+
+
+class TestAddAliasCommand:
+    """Integration tests for `chronovista entities add-alias`."""
+
+    def test_add_alias_exit_code_zero(self) -> None:
+        """Adding an alias to an existing entity returns exit code 0."""
+        mock_entity = _make_mock_entity()
+
+        with (
+            patch("chronovista.cli.entity_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.entity_commands.EntityAliasRepository"
+            ) as MockAliasRepo,
+        ):
+            mock_session = AsyncMock()
+            mock_db.get_session.return_value = _make_get_session(mock_session)
+
+            # First execute: entity lookup returns entity
+            entity_result = MagicMock()
+            entity_result.scalar_one_or_none.return_value = mock_entity
+
+            # Second execute: duplicate alias check returns None
+            dup_check_result = MagicMock()
+            dup_check_result.scalar_one_or_none.return_value = None
+
+            mock_session.execute.side_effect = [entity_result, dup_check_result]
+
+            mock_alias_repo = AsyncMock()
+            mock_alias_repo.create.return_value = MagicMock()
+            MockAliasRepo.return_value = mock_alias_repo
+
+            result = runner.invoke(
+                app,
+                ["entities", "add-alias", "Noam Chomsky", "--alias", "N. Chomsky"],
+            )
+
+        assert result.exit_code == 0, f"Output: {result.output}"
+        assert "Alias" in result.output
+        assert "Added" in result.output
+
+    def test_add_alias_output_shows_entity_name_and_count(self) -> None:
+        """Output contains entity name and alias added count."""
+        mock_entity = _make_mock_entity(name="Jairo Calixto")
+
+        with (
+            patch("chronovista.cli.entity_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.entity_commands.EntityAliasRepository"
+            ) as MockAliasRepo,
+        ):
+            mock_session = AsyncMock()
+            mock_db.get_session.return_value = _make_get_session(mock_session)
+
+            entity_result = MagicMock()
+            entity_result.scalar_one_or_none.return_value = mock_entity
+
+            dup_check_result = MagicMock()
+            dup_check_result.scalar_one_or_none.return_value = None
+
+            mock_session.execute.side_effect = [entity_result, dup_check_result]
+
+            mock_alias_repo = AsyncMock()
+            mock_alias_repo.create.return_value = MagicMock()
+            MockAliasRepo.return_value = mock_alias_repo
+
+            result = runner.invoke(
+                app,
+                [
+                    "entities",
+                    "add-alias",
+                    "Jairo Calixto",
+                    "--alias",
+                    "Jairo Calixto Albarrán",
+                ],
+            )
+
+        assert result.exit_code == 0, f"Output: {result.output}"
+        assert "Jairo Calixto" in result.output
+        assert "Aliases added" in result.output
+
+    def test_add_alias_multiple_aliases(self) -> None:
+        """Multiple --alias flags add multiple aliases."""
+        mock_entity = _make_mock_entity()
+
+        with (
+            patch("chronovista.cli.entity_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.entity_commands.EntityAliasRepository"
+            ) as MockAliasRepo,
+        ):
+            mock_session = AsyncMock()
+            mock_db.get_session.return_value = _make_get_session(mock_session)
+
+            entity_result = MagicMock()
+            entity_result.scalar_one_or_none.return_value = mock_entity
+
+            # Two duplicate checks, both return None (no duplicates)
+            dup_check_1 = MagicMock()
+            dup_check_1.scalar_one_or_none.return_value = None
+            dup_check_2 = MagicMock()
+            dup_check_2.scalar_one_or_none.return_value = None
+
+            mock_session.execute.side_effect = [
+                entity_result,
+                dup_check_1,
+                dup_check_2,
+            ]
+
+            mock_alias_repo = AsyncMock()
+            mock_alias_repo.create.return_value = MagicMock()
+            MockAliasRepo.return_value = mock_alias_repo
+
+            result = runner.invoke(
+                app,
+                [
+                    "entities",
+                    "add-alias",
+                    "Noam Chomsky",
+                    "--alias",
+                    "N. Chomsky",
+                    "--alias",
+                    "Prof. Chomsky",
+                ],
+            )
+
+        assert result.exit_code == 0, f"Output: {result.output}"
+        assert mock_alias_repo.create.call_count == 2
+
+    def test_add_alias_entity_not_found_exits_code_1(self) -> None:
+        """When entity does not exist, exits with code 1."""
+        with patch("chronovista.cli.entity_commands.db_manager") as mock_db:
+            mock_session = AsyncMock()
+            mock_db.get_session.return_value = _make_get_session(mock_session)
+
+            entity_result = MagicMock()
+            entity_result.scalar_one_or_none.return_value = None
+            mock_session.execute.return_value = entity_result
+
+            result = runner.invoke(
+                app,
+                ["entities", "add-alias", "Nonexistent Entity", "--alias", "foo"],
+            )
+
+        assert result.exit_code == 1, f"Output: {result.output}"
+        assert "Entity Not Found" in result.output
+
+    def test_add_alias_duplicate_skipped(self) -> None:
+        """An alias that already exists is skipped with a warning."""
+        mock_entity = _make_mock_entity()
+        existing_alias = MagicMock()
+
+        with (
+            patch("chronovista.cli.entity_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.entity_commands.EntityAliasRepository"
+            ) as MockAliasRepo,
+        ):
+            mock_session = AsyncMock()
+            mock_db.get_session.return_value = _make_get_session(mock_session)
+
+            entity_result = MagicMock()
+            entity_result.scalar_one_or_none.return_value = mock_entity
+
+            # Duplicate check returns existing alias
+            dup_check_result = MagicMock()
+            dup_check_result.scalar_one_or_none.return_value = existing_alias
+
+            mock_session.execute.side_effect = [entity_result, dup_check_result]
+
+            mock_alias_repo = AsyncMock()
+            MockAliasRepo.return_value = mock_alias_repo
+
+            result = runner.invoke(
+                app,
+                [
+                    "entities",
+                    "add-alias",
+                    "Noam Chomsky",
+                    "--alias",
+                    "Noam Chomsky",
+                ],
+            )
+
+        assert result.exit_code == 0, f"Output: {result.output}"
+        assert "already exists" in result.output
+        assert "No Aliases Added" in result.output
+        mock_alias_repo.create.assert_not_called()
+
+    def test_add_alias_help_flag(self) -> None:
+        """--help shows usage text and exits 0."""
+        result = runner.invoke(app, ["entities", "add-alias", "--help"])
+
+        assert result.exit_code == 0
+        assert "--alias" in result.output

@@ -200,6 +200,7 @@ chronovista entities [COMMAND]
 | Command | Description |
 |---------|-------------|
 | `create` | Create a standalone named entity with aliases |
+| `add-alias` | Add one or more aliases to an existing entity |
 | `list` | Browse named entities in a Rich table |
 | `scan` | Scan transcript segments for entity mentions |
 | `stats` | Display aggregate entity mention statistics |
@@ -893,6 +894,34 @@ chronovista entities create "Gaza Strip" --type place --description "Palestinian
 - Only entity-producing types are allowed (topic and descriptor are tag-only types — use `tags classify` instead)
 - Duplicate detection: same normalized name + entity type → error
 - The canonical name alias is automatically created (same pattern as `tags classify`)
+
+#### Add Alias (v0.41.1+)
+
+```bash
+chronovista entities add-alias <ENTITY_NAME> --alias <ALIAS> [--alias <ALIAS> ...]
+```
+
+Adds one or more aliases to an existing named entity. Useful when ASR produces new misspellings or you discover alternate names for an entity already in the system.
+
+**Options:**
+
+- `--alias <name>` - Alias name to add (repeatable, required)
+
+**Examples:**
+
+```bash
+# Add a single alias
+chronovista entities add-alias "Jairo Calixto" --alias "Jairo Calixto Albarrán"
+
+# Add multiple aliases at once
+chronovista entities add-alias "Jairo Calixto" --alias "Jairo Calixto Albarrán" --alias "Jairo Calixtro"
+```
+
+**Notes:**
+
+- Entity is matched by normalized canonical name
+- Duplicate aliases are skipped with a warning
+- Aliases that normalize to empty are skipped
 
 #### List Entities
 

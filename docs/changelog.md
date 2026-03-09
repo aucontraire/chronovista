@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.41.1] - 2026-03-08
+
+### Added
+- `entities add-alias` CLI command — add one or more aliases to an existing named entity without recreating it
+
 ## [0.41.0] - 2026-03-08
 
 ### Added

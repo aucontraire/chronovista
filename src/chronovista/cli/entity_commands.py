@@ -225,6 +225,120 @@ def create_entity(
     asyncio.run(_run())
 
 
+@entity_app.command("add-alias")
+def add_alias(
+    entity_name: str = typer.Argument(
+        ..., help="Canonical name of the entity to add alias to."
+    ),
+    alias: List[str] = typer.Option(
+        ...,
+        "--alias",
+        help="Alias name to add (repeatable).",
+    ),
+) -> None:
+    """Add one or more aliases to an existing named entity."""
+
+    async def _run() -> None:
+        normalizer = TagNormalizationService()
+        alias_repo = EntityAliasRepository()
+
+        normalized_entity = normalizer.normalize(entity_name)
+        if normalized_entity is None:
+            console.print(
+                Panel(
+                    "[red]Entity name normalizes to empty string.[/red]",
+                    title="Invalid Name",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(code=1)
+
+        async for session in db_manager.get_session(echo=False):
+            # Look up entity by normalized name
+            result = await session.execute(
+                select(NamedEntityDB).where(
+                    NamedEntityDB.canonical_name_normalized == normalized_entity,
+                )
+            )
+            entity = result.scalar_one_or_none()
+
+            if entity is None:
+                console.print(
+                    Panel(
+                        f"[red]No entity found with name '{entity_name}'.[/red]",
+                        title="Entity Not Found",
+                        border_style="red",
+                    )
+                )
+                raise typer.Exit(code=1)
+
+            added = 0
+            skipped = 0
+
+            for alias_text in alias:
+                normalized_alias = normalizer.normalize(alias_text)
+                if normalized_alias is None:
+                    console.print(
+                        f"[yellow]Skipping alias '{alias_text}' "
+                        f"(normalizes to empty).[/yellow]"
+                    )
+                    skipped += 1
+                    continue
+
+                # Check for duplicate alias on this entity
+                existing = await session.execute(
+                    select(EntityAliasDB).where(
+                        EntityAliasDB.entity_id == entity.id,
+                        EntityAliasDB.alias_name_normalized == normalized_alias,
+                    )
+                )
+                if existing.scalar_one_or_none() is not None:
+                    console.print(
+                        f"[yellow]Alias '{alias_text}' already exists "
+                        f"for '{entity.canonical_name}', skipping.[/yellow]"
+                    )
+                    skipped += 1
+                    continue
+
+                alias_create = EntityAliasCreate(
+                    entity_id=entity.id,
+                    alias_name=alias_text,
+                    alias_name_normalized=normalized_alias,
+                    alias_type=EntityAliasType.NAME_VARIANT,
+                    occurrence_count=0,
+                )
+                await alias_repo.create(session, obj_in=alias_create)
+                added += 1
+
+            await session.commit()
+
+            details = (
+                f"[bold]Entity:[/bold] {entity.canonical_name}\n"
+                f"[bold]Type:[/bold] {entity.entity_type}\n"
+                f"[bold]Aliases added:[/bold] {added}\n"
+                f"[bold]Skipped:[/bold] {skipped}"
+            )
+
+            if added > 0:
+                console.print(
+                    Panel(
+                        details,
+                        title="[green]Alias(es) Added[/green]",
+                        border_style="green",
+                    )
+                )
+            else:
+                console.print(
+                    Panel(
+                        details,
+                        title="[yellow]No Aliases Added[/yellow]",
+                        border_style="yellow",
+                    )
+                )
+
+    asyncio.run(_run())
+
+
 @entity_app.command("list")
 def list_entities(
     type_str: Optional[str] = typer.Option(

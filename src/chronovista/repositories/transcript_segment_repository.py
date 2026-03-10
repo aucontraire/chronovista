@@ -11,7 +11,7 @@ User Story 6: Repository Methods and Tests (T019-T025).
 from __future__ import annotations
 
 import re
-from typing import List, Optional, Sequence
+from collections.abc import Sequence
 
 from sqlalchemy import ColumnElement, and_, case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +21,76 @@ from chronovista.db.models import Video as VideoDB
 from chronovista.models.transcript_segment import TranscriptSegmentCreate
 from chronovista.models.youtube_types import VideoId
 from chronovista.repositories.base import BaseSQLAlchemyRepository
+
+
+def translate_python_regex_to_posix(pattern: str) -> str:
+    """Translate Python regex word-boundary syntax to PostgreSQL POSIX equivalents.
+
+    Python's ``re`` module uses ``\\b`` and ``\\B`` for word-boundary and
+    non-word-boundary assertions respectively.  PostgreSQL's POSIX ``~``
+    operator uses ``\\y`` and ``\\Y`` instead.
+
+    The function validates the pattern with ``re.compile()`` first and
+    raises ``ValueError`` for malformed patterns.
+
+    Parameters
+    ----------
+    pattern : str
+        A Python-flavoured regular expression string.
+
+    Returns
+    -------
+    str
+        The pattern with ``\\b`` → ``\\y`` and ``\\B`` → ``\\Y`` outside
+        character classes.  ``\\b`` inside ``[...]`` (backspace) and
+        escaped backslashes (``\\\\b``) are left unchanged.
+
+    Raises
+    ------
+    ValueError
+        If the pattern is not a valid regular expression.
+    """
+    try:
+        re.compile(pattern)
+    except re.error as exc:
+        raise ValueError(
+            f"Invalid regex pattern '{pattern}': {exc}"
+        ) from exc
+
+    result: list[str] = []
+    i = 0
+    in_char_class = False
+
+    while i < len(pattern):
+        ch = pattern[i]
+
+        if ch == "\\" and i + 1 < len(pattern):
+            next_ch = pattern[i + 1]
+            if next_ch == "\\":
+                # Escaped backslash — emit both and skip ahead
+                result.append("\\\\")
+                i += 2
+                continue
+            if not in_char_class and next_ch in ("b", "B"):
+                # Word-boundary assertion outside char class
+                result.append("\\y" if next_ch == "b" else "\\Y")
+                i += 2
+                continue
+            # Any other escape sequence — pass through unchanged
+            result.append(ch)
+            result.append(next_ch)
+            i += 2
+            continue
+
+        if ch == "[" and not in_char_class:
+            in_char_class = True
+        elif ch == "]" and in_char_class:
+            in_char_class = False
+
+        result.append(ch)
+        i += 1
+
+    return "".join(result)
 
 
 class TranscriptSegmentRepository(
@@ -58,7 +128,7 @@ class TranscriptSegmentRepository(
 
     async def get(
         self, session: AsyncSession, id: int
-    ) -> Optional[TranscriptSegmentDB]:
+    ) -> TranscriptSegmentDB | None:
         """
         Get segment by primary key (id).
 
@@ -106,7 +176,7 @@ class TranscriptSegmentRepository(
         video_id: VideoId,
         language_code: str,
         timestamp: float,
-    ) -> Optional[TranscriptSegmentDB]:
+    ) -> TranscriptSegmentDB | None:
         """
         Get the segment containing the given timestamp.
 
@@ -278,7 +348,7 @@ class TranscriptSegmentRepository(
     async def bulk_create_segments(
         self,
         session: AsyncSession,
-        segments: List[TranscriptSegmentCreate],
+        segments: list[TranscriptSegmentCreate],
     ) -> int:
         """
         Create multiple segments in bulk.
@@ -435,9 +505,9 @@ class TranscriptSegmentRepository(
         pattern: str,
         regex: bool = False,
         case_insensitive: bool = False,
-        language: Optional[str] = None,
-        channel: Optional[str] = None,
-        video_ids: Optional[List[str]] = None,
+        language: str | None = None,
+        channel: str | None = None,
+        video_ids: list[str] | None = None,
     ) -> Sequence[TranscriptSegmentDB]:
         """
         Find segments whose effective text matches a pattern.
@@ -485,6 +555,9 @@ class TranscriptSegmentRepository(
                     f"Invalid regex pattern '{pattern}': {exc}"
                 ) from exc
 
+        # Translate Python word-boundary syntax to PostgreSQL POSIX equivalent
+        sql_pattern = translate_python_regex_to_posix(pattern) if regex else pattern
+
         # Build the effective text expression using SQL CASE
         effective_text = case(
             (TranscriptSegmentDB.has_correction, TranscriptSegmentDB.corrected_text),
@@ -494,9 +567,9 @@ class TranscriptSegmentRepository(
         # Build pattern matching condition
         if regex:
             if case_insensitive:
-                text_condition = effective_text.op("~*")(pattern)
+                text_condition = effective_text.op("~*")(sql_pattern)
             else:
-                text_condition = effective_text.op("~")(pattern)
+                text_condition = effective_text.op("~")(sql_pattern)
         else:
             like_pattern = f"%{pattern}%"
             if case_insensitive:
@@ -544,9 +617,9 @@ class TranscriptSegmentRepository(
         self,
         session: AsyncSession,
         *,
-        language: Optional[str] = None,
-        channel: Optional[str] = None,
-        video_ids: Optional[List[str]] = None,
+        language: str | None = None,
+        channel: str | None = None,
+        video_ids: list[str] | None = None,
     ) -> int:
         """
         Count segments matching the given filter criteria.
@@ -596,6 +669,73 @@ class TranscriptSegmentRepository(
 
         result = await session.execute(stmt)
         return result.scalar() or 0
+
+    async def find_segments_in_scope(
+        self,
+        session: AsyncSession,
+        *,
+        language: str | None = None,
+        channel: str | None = None,
+        video_ids: list[str] | None = None,
+    ) -> Sequence[TranscriptSegmentDB]:
+        """
+        Return all segments matching filter criteria without pattern filtering.
+
+        This method retrieves every segment within the specified scope,
+        ordered for cross-segment pairing. It applies the same filter
+        logic as ``find_by_text_pattern()`` (language, channel, video_ids)
+        but omits the text/pattern matching step, returning all segments
+        in scope.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        language : str, optional
+            Filter by language_code column.
+        channel : str, optional
+            Filter by channel_id via join to videos table.
+        video_ids : list of str, optional
+            Filter by video_id column (list of video IDs).
+
+        Returns
+        -------
+        Sequence[TranscriptSegmentDB]
+            All segments matching the filters, ordered by
+            ``(video_id, language_code, sequence_number)`` for
+            cross-segment pairing.
+        """
+        conditions: list[ColumnElement[bool]] = []
+
+        if language is not None:
+            conditions.append(TranscriptSegmentDB.language_code == language)
+
+        if video_ids is not None:
+            conditions.append(TranscriptSegmentDB.video_id.in_(video_ids))
+
+        order = (
+            TranscriptSegmentDB.video_id,
+            TranscriptSegmentDB.language_code,
+            TranscriptSegmentDB.sequence_number,
+        )
+
+        if channel is not None:
+            stmt = (
+                select(TranscriptSegmentDB)
+                .join(
+                    VideoDB,
+                    TranscriptSegmentDB.video_id == VideoDB.video_id,
+                )
+                .where(and_(*conditions, VideoDB.channel_id == channel))
+                .order_by(*order)
+            )
+        else:
+            stmt = select(TranscriptSegmentDB).order_by(*order)
+            if conditions:
+                stmt = stmt.where(and_(*conditions))
+
+        result = await session.execute(stmt)
+        return result.scalars().all()
 
 
 __all__ = ["TranscriptSegmentRepository"]

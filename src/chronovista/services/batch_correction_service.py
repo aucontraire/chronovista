@@ -16,15 +16,14 @@ import json
 import logging
 import re
 import time
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime
-from typing import Any, Awaitable, Callable, Sequence, TypeVar
+from typing import Any, TypeVar
 from uuid import UUID
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.db.models import EntityAlias as EntityAliasDB
-from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.db.models import VideoTranscript as VideoTranscriptDB
 from chronovista.models.batch_correction_models import (
@@ -32,11 +31,11 @@ from chronovista.models.batch_correction_models import (
     CorrectionExportRecord,
     CorrectionPattern,
     CorrectionStats,
+    CrossSegmentMatch,
+    SegmentPair,
 )
 from chronovista.models.correction_actors import ACTOR_CLI_BATCH
-from chronovista.models.entity_alias import EntityAliasCreate
-from chronovista.models.enums import CorrectionType, EntityAliasType
-from chronovista.repositories.entity_alias_repository import EntityAliasRepository
+from chronovista.models.enums import CorrectionType
 from chronovista.repositories.transcript_correction_repository import (
     TranscriptCorrectionRepository,
 )
@@ -101,6 +100,7 @@ class BatchCorrectionService:
         batch_size: int = 100,
         dry_run: bool = False,
         progress_callback: Callable[[int], None] | None = None,
+        cross_segment: bool = False,
     ) -> BatchCorrectionResult | list[tuple[str, int, float, str, str]]:
         """
         Find segments matching *pattern* and replace with *replacement*.
@@ -159,7 +159,8 @@ class BatchCorrectionService:
         _start_time = time.monotonic()
         logger.info(
             "find_and_replace started: pattern=%r, regex=%s, case_insensitive=%s, "
-            "language=%s, channel=%s, video_ids=%s, dry_run=%s, batch_size=%d",
+            "language=%s, channel=%s, video_ids=%s, dry_run=%s, batch_size=%d, "
+            "cross_segment=%s",
             pattern,
             regex,
             case_insensitive,
@@ -168,6 +169,7 @@ class BatchCorrectionService:
             video_ids,
             dry_run,
             batch_size,
+            cross_segment,
         )
 
         # Step 1: Validate pattern
@@ -181,7 +183,7 @@ class BatchCorrectionService:
             video_ids=video_ids,
         )
 
-        # Step 3: Find matching segments
+        # Step 3: Find matching segments (single-segment matching)
         matched_segments = await self._segment_repo.find_by_text_pattern(
             session,
             pattern=pattern,
@@ -215,9 +217,29 @@ class BatchCorrectionService:
                 )
             return effective_text.replace(pattern, replacement)
 
+        # ------------------------------------------------------------------
+        # Cross-segment matching (T020-T025)
+        # ------------------------------------------------------------------
+        cross_segment_matches: list[CrossSegmentMatch] = []
+
+        if cross_segment:
+            cross_segment_matches = await self._find_cross_segment_matches(
+                session,
+                pattern=pattern,
+                replacement=replacement,
+                regex=regex,
+                case_insensitive=case_insensitive,
+                re_flags=re_flags,
+                language=language,
+                channel=channel,
+                video_ids=video_ids,
+                single_segment_ids={seg.id for seg in matched_segments},
+            )
+
         # ------ Dry-run mode ------
         if dry_run:
             previews: list[tuple[str, int, float, str, str]] = []
+            # Single-segment previews
             for segment in matched_segments:
                 effective_text = (
                     segment.corrected_text
@@ -232,10 +254,37 @@ class BatchCorrectionService:
                     effective_text,
                     new_text,
                 ))
+            # Cross-segment previews (two rows per pair)
+            for csm in cross_segment_matches:
+                pair = csm.pair
+                seg_a = pair.segment_a
+                seg_b = pair.segment_b
+                eff_a: str = (
+                    seg_a.corrected_text if seg_a.has_correction else seg_a.text
+                ) or ""
+                eff_b: str = (
+                    seg_b.corrected_text if seg_b.has_correction else seg_b.text
+                ) or ""
+                previews.append((
+                    seg_a.video_id,
+                    seg_a.id,
+                    seg_a.start_time,
+                    eff_a,
+                    csm.text_for_seg_a,
+                ))
+                previews.append((
+                    seg_b.video_id,
+                    seg_b.id,
+                    seg_b.start_time,
+                    eff_b,
+                    csm.text_for_seg_b,
+                ))
             _elapsed = time.monotonic() - _start_time
             logger.info(
-                "find_and_replace completed (dry_run): matched=%d, duration=%.2fs",
+                "find_and_replace completed (dry_run): matched=%d, "
+                "cross_segment_pairs=%d, duration=%.2fs",
                 len(previews),
+                len(cross_segment_matches),
                 _elapsed,
             )
             return previews
@@ -243,7 +292,14 @@ class BatchCorrectionService:
         # ------ Live mode ------
         # Count unique videos among matched segments
         unique_video_ids = {seg.video_id for seg in matched_segments}
+        # Include cross-segment matches in unique video count
+        for csm in cross_segment_matches:
+            unique_video_ids.add(csm.pair.segment_a.video_id)
         unique_videos = len(unique_video_ids)
+
+        # Add cross-segment matched segments to total_matched count
+        # Each segment in a pair counts as 1
+        total_matched += len(cross_segment_matches) * 2
 
         # Zero matches → short-circuit
         if total_matched == 0:
@@ -313,6 +369,33 @@ class BatchCorrectionService:
             )
         )
 
+        # ------------------------------------------------------------------
+        # Apply cross-segment corrections (T023-T025)
+        # ------------------------------------------------------------------
+        if cross_segment_matches:
+            cs_applied, cs_skipped, cs_failed, cs_failed_batches = (
+                await self._apply_cross_segment_corrections(
+                    session,
+                    cross_segment_matches,
+                    correction_type=correction_type,
+                    correction_note=correction_note,
+                    batch_size=batch_size,
+                    progress_callback=progress_callback,
+                )
+            )
+            total_applied += cs_applied
+            total_skipped += cs_skipped
+            total_failed += cs_failed
+            failed_batches += cs_failed_batches
+
+            # Track matched forms for cross-segment alias registration
+            for csm in cross_segment_matches:
+                combined = csm.pair.combined_text
+                matched_text = combined[csm.match_start:csm.match_end]
+                matched_form_counts[matched_text] = (
+                    matched_form_counts.get(matched_text, 0) + 1
+                )
+
         # Auto-register ASR aliases: each distinct matched form is registered
         # as a separate alias with its own occurrence count.
         if total_applied > 0:
@@ -328,7 +411,7 @@ class BatchCorrectionService:
         logger.info(
             "find_and_replace completed: scanned=%d, matched=%d, applied=%d, "
             "skipped=%d, failed=%d, failed_batches=%d, unique_videos=%d, "
-            "duration=%.2fs",
+            "cross_segment_pairs=%d, duration=%.2fs",
             total_scanned,
             total_matched,
             total_applied,
@@ -336,6 +419,7 @@ class BatchCorrectionService:
             total_failed,
             failed_batches,
             unique_videos,
+            len(cross_segment_matches),
             _elapsed,
         )
 
@@ -557,7 +641,7 @@ class BatchCorrectionService:
         if format == "json":
             # Custom serializer for UUID and datetime
             def _json_default(obj: Any) -> str:
-                if isinstance(obj, (UUID, datetime)):
+                if isinstance(obj, UUID | datetime):
                     return str(obj)
                 raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
@@ -697,7 +781,7 @@ class BatchCorrectionService:
         batch_size: int = 100,
         dry_run: bool = False,
         progress_callback: Callable[[int], None] | None = None,
-    ) -> BatchCorrectionResult | list[tuple[str, int, float, str]]:
+    ) -> BatchCorrectionResult | list[tuple[str, int, float, str, bool]]:
         """
         Revert corrections on segments whose corrected_text matches *pattern*.
 
@@ -777,28 +861,74 @@ class BatchCorrectionService:
             seg for seg in matched_segments if seg.has_correction
         ]
 
-        total_matched = len(corrected_matches)
+        # Step 5: Discover cross-segment partners (T038)
+        # For each matched segment, check if its latest correction has a
+        # [cross-segment:partner=N] marker.  If so, include the partner
+        # in the revert set even if it didn't match the search pattern.
+        seen_segment_ids = {seg.id for seg in corrected_matches}
+        partner_segments: list[Any] = []
+        # Maps segment_id → partner_segment_id for display purposes
+        partner_map: dict[int, int] = {}
+
+        for seg in corrected_matches:
+            partner_id = await self._get_cross_segment_partner_id(
+                session, seg
+            )
+            if partner_id is not None and partner_id not in seen_segment_ids:
+                partner_seg = await session.get(
+                    TranscriptSegmentDB, partner_id
+                )
+                if partner_seg is not None and partner_seg.has_correction:
+                    partner_segments.append(partner_seg)
+                    seen_segment_ids.add(partner_id)
+                    partner_map[seg.id] = partner_id
+                elif partner_seg is None:
+                    # T039: Missing partner — log warning, continue
+                    logger.warning(
+                        "Cross-segment partner segment %d not found "
+                        "(may have been re-downloaded). Reverting only "
+                        "the surviving segment %d.",
+                        partner_id,
+                        seg.id,
+                    )
+
+        all_to_revert = list(corrected_matches) + partner_segments
+        total_matched = len(all_to_revert)
+        partner_cascade_count = len(partner_segments)
 
         # ------ Dry-run mode ------
         if dry_run:
-            previews: list[tuple[str, int, float, str]] = []
+            # Return tuples with 5 elements: the 5th is a bool indicating
+            # whether the segment was added via partner cascade.
+            previews: list[tuple[str, int, float, str, bool]] = []
             for seg in corrected_matches:
                 previews.append((
                     seg.video_id,
                     seg.id,
                     seg.start_time,
                     seg.corrected_text or "",
+                    False,
+                ))
+            for seg in partner_segments:
+                previews.append((
+                    seg.video_id,
+                    seg.id,
+                    seg.start_time,
+                    seg.corrected_text or "",
+                    True,
                 ))
             _elapsed = time.monotonic() - _start_time
             logger.info(
-                "batch_revert completed (dry_run): matched=%d, duration=%.2fs",
+                "batch_revert completed (dry_run): matched=%d, "
+                "partner_cascade=%d, duration=%.2fs",
                 len(previews),
+                partner_cascade_count,
                 _elapsed,
             )
             return previews
 
         # ------ Live mode ------
-        unique_video_ids = {seg.video_id for seg in corrected_matches}
+        unique_video_ids = {seg.video_id for seg in all_to_revert}
         unique_videos = len(unique_video_ids)
 
         if total_matched == 0:
@@ -818,12 +948,19 @@ class BatchCorrectionService:
                 unique_videos=0,
             )
 
+        # Track which segments have already been reverted (to avoid
+        # double-reverting when both segments in a pair match the pattern).
+        reverted_ids: set[int] = set()
+
         async def _revert_one(session: AsyncSession, segment: Any) -> str:
+            if segment.id in reverted_ids:
+                return "skipped"
             try:
                 await self._correction_service.revert_correction(
                     session,
                     segment_id=segment.id,
                 )
+                reverted_ids.add(segment.id)
             except ValueError:
                 return "skipped"
             return "applied"
@@ -831,7 +968,7 @@ class BatchCorrectionService:
         total_applied, total_skipped, total_failed, failed_batches = (
             await self._process_in_batches(
                 session,
-                list(corrected_matches),
+                all_to_revert,
                 _revert_one,
                 batch_size=batch_size,
                 progress_callback=progress_callback,
@@ -842,7 +979,7 @@ class BatchCorrectionService:
         logger.info(
             "batch_revert completed: scanned=%d, matched=%d, applied=%d, "
             "skipped=%d, failed=%d, failed_batches=%d, unique_videos=%d, "
-            "duration=%.2fs",
+            "partner_cascade=%d, duration=%.2fs",
             total_scanned,
             total_matched,
             total_applied,
@@ -850,6 +987,7 @@ class BatchCorrectionService:
             total_failed,
             failed_batches,
             unique_videos,
+            partner_cascade_count,
             _elapsed,
         )
 
@@ -866,6 +1004,399 @@ class BatchCorrectionService:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    _CROSS_SEGMENT_PARTNER_RE = re.compile(
+        r"\[cross-segment:partner=(\d+)\]"
+    )
+
+    async def _get_cross_segment_partner_id(
+        self,
+        session: AsyncSession,
+        segment: Any,
+    ) -> int | None:
+        """
+        Check whether a segment's latest correction has a cross-segment
+        partner marker and return the partner segment ID if found.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        segment : TranscriptSegmentDB
+            The segment to inspect.
+
+        Returns
+        -------
+        int or None
+            The partner segment ID, or ``None`` if no marker is present.
+        """
+        # Query the latest correction record for this segment
+        latest_records = await self._correction_repo.get_by_segment(
+            session,
+            segment.video_id,
+            segment.language_code,
+            segment.id,
+            limit=1,
+        )
+        if not latest_records:
+            return None
+
+        latest = latest_records[0]
+        if not latest.correction_note:
+            return None
+
+        match = self._CROSS_SEGMENT_PARTNER_RE.search(
+            latest.correction_note
+        )
+        if match:
+            return int(match.group(1))
+        return None
+
+    async def _find_cross_segment_matches(
+        self,
+        session: AsyncSession,
+        *,
+        pattern: str,
+        replacement: str,
+        regex: bool,
+        case_insensitive: bool,
+        re_flags: int,
+        language: str | None,
+        channel: str | None,
+        video_ids: list[str] | None,
+        single_segment_ids: set[int],
+    ) -> list[CrossSegmentMatch]:
+        """
+        Find cross-segment pattern matches (T020-T022).
+
+        Fetches all segments in scope, groups by (video_id, language_code),
+        pairs strictly consecutive segments, and matches the pattern against
+        the combined text of each pair. Only matches that span the boundary
+        between the two segments are considered cross-segment matches.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        pattern : str
+            Search pattern (substring or regex).
+        replacement : str
+            Replacement text.
+        regex : bool
+            Whether pattern is a regex.
+        case_insensitive : bool
+            Whether to use case-insensitive matching.
+        re_flags : int
+            Pre-computed regex flags.
+        language : str or None
+            Language filter.
+        channel : str or None
+            Channel filter.
+        video_ids : list[str] or None
+            Video ID filter.
+        single_segment_ids : set[int]
+            IDs of segments already matched by single-segment matching.
+            These segments are excluded from cross-segment pairing.
+
+        Returns
+        -------
+        list[CrossSegmentMatch]
+            Cross-segment matches found, with replacement text split
+            across the two segments.
+        """
+        # T020: Fetch all segments in scope
+        all_segments = await self._segment_repo.find_segments_in_scope(
+            session,
+            language=language,
+            channel=channel,
+            video_ids=video_ids,
+        )
+
+        # Group by (video_id, language_code)
+        from collections import defaultdict
+
+        groups: dict[tuple[str, str], list[Any]] = defaultdict(list)
+        for seg in all_segments:
+            groups[(seg.video_id, seg.language_code)].append(seg)
+
+        # Build pairs of strictly consecutive segments
+        pairs: list[SegmentPair] = []
+        for _key, segs in groups.items():
+            # Segments are already ordered by sequence_number from the repo
+            for i in range(len(segs) - 1):
+                seg_a = segs[i]
+                seg_b = segs[i + 1]
+
+                # Strictly consecutive: seq_b == seq_a + 1
+                if seg_b.sequence_number != seg_a.sequence_number + 1:
+                    continue
+
+                # Exclude pairs where either segment has a single-segment match
+                if seg_a.id in single_segment_ids or seg_b.id in single_segment_ids:
+                    continue
+
+                # Get effective text
+                eff_a: str = (
+                    seg_a.corrected_text if seg_a.has_correction else seg_a.text
+                ) or ""
+                eff_b: str = (
+                    seg_b.corrected_text if seg_b.has_correction else seg_b.text
+                ) or ""
+
+                # Strip whitespace at boundary
+                eff_a_stripped = eff_a.rstrip()
+                eff_b_stripped = eff_b.lstrip()
+
+                # Skip pairs where either segment has empty effective text
+                if not eff_a_stripped or not eff_b_stripped:
+                    continue
+
+                # Build combined text and boundary offset
+                combined = eff_a_stripped + " " + eff_b_stripped
+                boundary = len(eff_a_stripped)
+
+                pairs.append(SegmentPair(
+                    segment_a=seg_a,
+                    segment_b=seg_b,
+                    combined_text=combined,
+                    boundary_offset=boundary,
+                ))
+
+        # T021: Match pattern against combined text
+        # T022: Conflict detection — track claimed segment IDs
+        claimed_ids: set[int] = set()
+        matches: list[CrossSegmentMatch] = []
+
+        for pair in pairs:
+            # Skip if either segment already claimed by a prior cross-segment pair
+            if pair.segment_a.id in claimed_ids or pair.segment_b.id in claimed_ids:
+                logger.warning(
+                    "Cross-segment conflict: segment %d or %d already claimed "
+                    "by an earlier pair — skipping pair (seq %d, %d)",
+                    pair.segment_a.id,
+                    pair.segment_b.id,
+                    pair.segment_a.sequence_number,
+                    pair.segment_b.sequence_number,
+                )
+                continue
+
+            combined = pair.combined_text
+            boundary = pair.boundary_offset
+
+            # Find matches in combined text
+            if regex:
+                found_matches = list(
+                    re.finditer(pattern, combined, flags=re_flags)
+                )
+            else:
+                # Build match objects for substring search
+                search_pattern = re.escape(pattern)
+                flags = re.IGNORECASE if case_insensitive else 0
+                found_matches = list(
+                    re.finditer(search_pattern, combined, flags=flags)
+                )
+
+            # Filter to matches that span the boundary
+            # A match spans the boundary if it starts at or before boundary
+            # AND ends after boundary (the space at position boundary)
+            cross_matches = [
+                m for m in found_matches
+                if m.start() <= boundary and m.end() > boundary
+            ]
+
+            if not cross_matches:
+                continue
+
+            # Take the first boundary-spanning match (non-overlapping patterns
+            # can produce at most one match spanning any given position)
+            match = cross_matches[0]
+            ms, me = match.start(), match.end()
+
+            # Compute replacement text for each segment
+            # For regex with backreferences, use match.expand()
+            actual_replacement = match.expand(replacement) if regex else replacement
+
+            # Decompose: replacement goes entirely into seg A,
+            # matched fragment removed from seg B
+            eff_a_stripped = combined[:boundary]
+            eff_b_stripped = combined[boundary + 1:]  # skip the space
+
+            new_a = eff_a_stripped[:ms] + actual_replacement
+            b_consumed = me - (boundary + 1)  # chars of seg B consumed by match
+            new_b = eff_b_stripped[b_consumed:]
+
+            # Whitespace normalize
+            new_a = " ".join(new_a.split()).strip()
+            new_b = " ".join(new_b.split()).strip()
+
+            # Warn if seg B becomes empty (FR-008)
+            if not new_b.strip():
+                logger.warning(
+                    "Cross-segment correction left segment %d "
+                    "(seq %d) empty or whitespace-only (FR-008)",
+                    pair.segment_b.id,
+                    pair.segment_b.sequence_number,
+                )
+
+            csm = CrossSegmentMatch(
+                pair=pair,
+                match_start=ms,
+                match_end=me,
+                text_for_seg_a=new_a,
+                text_for_seg_b=new_b,
+            )
+            matches.append(csm)
+
+            # Claim both segments
+            claimed_ids.add(pair.segment_a.id)
+            claimed_ids.add(pair.segment_b.id)
+
+        logger.info(
+            "Cross-segment matching: %d pairs evaluated, %d matches found",
+            len(pairs),
+            len(matches),
+        )
+        return matches
+
+    async def _apply_cross_segment_corrections(
+        self,
+        session: AsyncSession,
+        matches: list[CrossSegmentMatch],
+        *,
+        correction_type: CorrectionType,
+        correction_note: str | None,
+        batch_size: int,
+        progress_callback: Callable[[int], None] | None = None,
+    ) -> tuple[int, int, int, int]:
+        """
+        Apply cross-segment corrections (T023-T025).
+
+        For each cross-segment match, applies corrections to both segments
+        in the pair using ``TranscriptCorrectionService.apply_correction``.
+        Each segment gets a correction note indicating its cross-segment
+        partner.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        matches : list[CrossSegmentMatch]
+            Cross-segment matches to apply.
+        correction_type : CorrectionType
+            Category of correction.
+        correction_note : str or None
+            Base correction note.
+        batch_size : int
+            Number of pairs per transaction chunk.
+        progress_callback : Callable or None
+            Progress callback.
+
+        Returns
+        -------
+        tuple[int, int, int, int]
+            ``(total_applied, total_skipped, total_failed, failed_batches)``
+        """
+        total_applied = 0
+        total_skipped = 0
+        total_failed = 0
+        failed_batches = 0
+
+        # Process in batches (batch_size counts pairs)
+        for offset in range(0, len(matches), batch_size):
+            chunk = matches[offset:offset + batch_size]
+            try:
+                chunk_applied = 0
+                chunk_skipped = 0
+
+                for csm in chunk:
+                    pair = csm.pair
+                    seg_a = pair.segment_a
+                    seg_b = pair.segment_b
+
+                    # T025: Correction notes with cross-segment partner info
+                    note_a = (
+                        f"{correction_note} " if correction_note else ""
+                    ) + f"[cross-segment:partner={seg_b.id}]"
+                    note_b = (
+                        f"{correction_note} " if correction_note else ""
+                    ) + f"[cross-segment:partner={seg_a.id}]"
+
+                    # Apply correction to segment A
+                    a_applied = False
+                    try:
+                        await self._correction_service.apply_correction(
+                            session,
+                            video_id=seg_a.video_id,
+                            language_code=seg_a.language_code,
+                            segment_id=seg_a.id,
+                            corrected_text=csm.text_for_seg_a,
+                            correction_type=correction_type,
+                            correction_note=note_a,
+                            corrected_by_user_id=ACTOR_CLI_BATCH,
+                        )
+                        a_applied = True
+                    except ValueError:
+                        # No-op: text unchanged
+                        pass
+
+                    # Apply correction to segment B
+                    # FR-008: if correction empties seg B, use a single space
+                    # to preserve truthiness (Python "" is falsy, which breaks
+                    # the standard ``corrected_text or text`` pattern used in
+                    # downstream reads).
+                    b_corrected_text = csm.text_for_seg_b or " "
+                    b_applied = False
+                    try:
+                        await self._correction_service.apply_correction(
+                            session,
+                            video_id=seg_b.video_id,
+                            language_code=seg_b.language_code,
+                            segment_id=seg_b.id,
+                            corrected_text=b_corrected_text,
+                            correction_type=correction_type,
+                            correction_note=note_b,
+                            corrected_by_user_id=ACTOR_CLI_BATCH,
+                        )
+                        b_applied = True
+                    except ValueError:
+                        # No-op: text unchanged
+                        pass
+
+                    if a_applied or b_applied:
+                        chunk_applied += (1 if a_applied else 0) + (
+                            1 if b_applied else 0
+                        )
+                    else:
+                        chunk_skipped += 2
+
+                await session.commit()
+                total_applied += chunk_applied
+                total_skipped += chunk_skipped
+
+                logger.debug(
+                    "Cross-segment batch committed: offset=%d, applied=%d, "
+                    "skipped=%d",
+                    offset,
+                    chunk_applied,
+                    chunk_skipped,
+                )
+            except Exception:
+                await session.rollback()
+                failed_batches += 1
+                total_failed += len(chunk) * 2  # 2 segments per pair
+
+                logger.warning(
+                    "Cross-segment batch failed and rolled back: "
+                    "offset=%d, chunk_size=%d",
+                    offset,
+                    len(chunk),
+                    exc_info=True,
+                )
+
+            if progress_callback is not None:
+                progress_callback(len(chunk))
+
+        return total_applied, total_skipped, total_failed, failed_batches
 
     async def _process_in_batches(
         self,
@@ -964,106 +1495,18 @@ class BatchCorrectionService:
     ) -> None:
         """Best-effort hook: register the search pattern as an ASR error alias.
 
-        If ``replacement`` matches a known entity canonical name or alias
-        (case-insensitive exact match), register ``pattern`` as an
-        ``asr_error`` alias for that entity.  If the alias already exists,
-        increment its ``occurrence_count`` by ``total_applied``.
-
-        Parameters
-        ----------
-        session : AsyncSession
-            Database session.
-        pattern : str
-            The search text (potential ASR error form).
-        replacement : str
-            The replacement text that may match an entity name.
-        total_applied : int
-            Number of corrections applied (used for occurrence_count).
+        Delegates to :func:`~chronovista.services.asr_alias_registry.register_asr_alias`.
         """
-        try:
-            # Resolve entity from replacement text
-            entity_id: UUID | None = None
-            entity_name: str | None = None
+        from chronovista.services.asr_alias_registry import register_asr_alias
 
-            entity_stmt = select(NamedEntityDB).where(
-                NamedEntityDB.status == "active",
-                func.lower(NamedEntityDB.canonical_name) == replacement.lower().strip(),
-            )
-            result = await session.execute(entity_stmt)
-            entity = result.scalar_one_or_none()
-
-            if entity is not None:
-                entity_id = entity.id
-                entity_name = entity.canonical_name
-            else:
-                # Check aliases for a match
-                alias_stmt = select(EntityAliasDB).where(
-                    func.lower(EntityAliasDB.alias_name) == replacement.lower().strip(),
-                )
-                alias_result = await session.execute(alias_stmt)
-                matched_alias = alias_result.scalars().first()
-                if matched_alias is None:
-                    return
-                entity_id = matched_alias.entity_id
-                entity_name = replacement
-
-            # Check if pattern is already an alias for this entity
-            existing_alias_stmt = select(EntityAliasDB).where(
-                EntityAliasDB.entity_id == entity_id,
-                func.lower(EntityAliasDB.alias_name) == pattern.lower().strip(),
-            )
-            existing_result = await session.execute(existing_alias_stmt)
-            existing_alias = existing_result.scalar_one_or_none()
-
-            if existing_alias is not None:
-                existing_alias.occurrence_count = (
-                    existing_alias.occurrence_count or 0
-                ) + total_applied
-                await session.flush()
-                await session.commit()
-                logger.info(
-                    "find-replace alias hook: incremented occurrence_count for "
-                    "alias '%s' on entity '%s' (+%d)",
-                    pattern,
-                    entity_name,
-                    total_applied,
-                )
-            else:
-                from chronovista.services.tag_normalization import (
-                    TagNormalizationService,
-                )
-
-                normalizer = TagNormalizationService()
-                normalized = normalizer.normalize(pattern) or pattern.lower()
-
-                new_alias = EntityAliasCreate(
-                    entity_id=entity_id,
-                    alias_name=pattern,
-                    alias_name_normalized=normalized,
-                    alias_type=EntityAliasType.ASR_ERROR,
-                    occurrence_count=total_applied,
-                )
-                alias_repo = EntityAliasRepository()
-                await alias_repo.create(session, obj_in=new_alias)
-                await session.flush()
-                await session.commit()
-                logger.info(
-                    "find-replace alias hook: registered ASR alias '%s' for "
-                    "entity '%s' (occurrence_count=%d). Run "
-                    "'chronovista entities scan' to update entity mentions.",
-                    pattern,
-                    entity_name,
-                    total_applied,
-                )
-
-        except Exception:
-            logger.warning(
-                "find-replace alias hook failed (non-blocking): "
-                "pattern='%s', replacement='%s'",
-                pattern,
-                replacement,
-                exc_info=True,
-            )
+        await register_asr_alias(
+            session,
+            original_text=pattern,
+            corrected_text=replacement,
+            occurrence_count=total_applied,
+            commit=True,
+            log_prefix="find-replace",
+        )
 
     @staticmethod
     def _validate_pattern(pattern: str, *, regex: bool) -> None:

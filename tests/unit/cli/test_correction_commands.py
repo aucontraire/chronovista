@@ -152,12 +152,6 @@ class TestFindReplaceCommand:
         self, mock_asyncio: MagicMock, runner: CliRunner
     ) -> None:
         """Test dry-run displays Rich preview table and summary line."""
-        previews = [
-            ("vid1", 10, 5.0, "the quick brown fox", "the slow brown fox"),
-            ("vid1", 20, 12.5, "quick test", "slow test"),
-            ("vid2", 30, 8.0, "another quick example", "another slow example"),
-        ]
-
         async def _fake_run() -> None:
             pass
 
@@ -192,9 +186,9 @@ class TestFindReplaceCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc_instance = MagicMock()
-            MockService.return_value = mock_svc_instance
+            mock_service_cls.return_value = mock_svc_instance
             mock_svc_instance.find_and_replace = AsyncMock(return_value=[])
 
             result = runner.invoke(
@@ -228,9 +222,9 @@ class TestFindReplaceCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc_instance = MagicMock()
-            MockService.return_value = mock_svc_instance
+            mock_service_cls.return_value = mock_svc_instance
             mock_svc_instance.find_and_replace = AsyncMock(
                 return_value=previews
             )
@@ -271,9 +265,9 @@ class TestFindReplaceCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc_instance = MagicMock()
-            MockService.return_value = mock_svc_instance
+            mock_service_cls.return_value = mock_svc_instance
             mock_svc_instance.find_and_replace = AsyncMock(
                 return_value=previews
             )
@@ -314,9 +308,9 @@ class TestFindReplaceCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc_instance = MagicMock()
-            MockService.return_value = mock_svc_instance
+            mock_service_cls.return_value = mock_svc_instance
             mock_svc_instance.find_and_replace = AsyncMock(
                 return_value=previews
             )
@@ -360,9 +354,9 @@ class TestFindReplaceCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc_instance = MagicMock()
-            MockService.return_value = mock_svc_instance
+            mock_service_cls.return_value = mock_svc_instance
             # First call (dry-run scan for count) returns previews,
             # second call (live) returns BatchCorrectionResult
             mock_svc_instance.find_and_replace = AsyncMock(
@@ -412,9 +406,9 @@ class TestFindReplaceCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc_instance = MagicMock()
-            MockService.return_value = mock_svc_instance
+            mock_service_cls.return_value = mock_svc_instance
             mock_svc_instance.find_and_replace = AsyncMock(
                 side_effect=[previews, live_result]
             )
@@ -461,9 +455,9 @@ class TestFindReplaceCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc_instance = MagicMock()
-            MockService.return_value = mock_svc_instance
+            mock_service_cls.return_value = mock_svc_instance
             mock_svc_instance.find_and_replace = AsyncMock(
                 side_effect=[previews, live_result]
             )
@@ -494,9 +488,9 @@ class TestFindReplaceCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc_instance = MagicMock()
-            MockService.return_value = mock_svc_instance
+            mock_service_cls.return_value = mock_svc_instance
             mock_svc_instance.find_and_replace = AsyncMock(return_value=[])
 
             result = runner.invoke(
@@ -531,9 +525,9 @@ class TestFindReplaceCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc_instance = MagicMock()
-            MockService.return_value = mock_svc_instance
+            mock_service_cls.return_value = mock_svc_instance
             mock_svc_instance.find_and_replace = AsyncMock(
                 return_value=previews
             )
@@ -675,9 +669,9 @@ class TestRebuildTextCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.rebuild_text = AsyncMock(return_value=previews)
 
             result = runner.invoke(
@@ -701,9 +695,9 @@ class TestRebuildTextCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.rebuild_text = AsyncMock(return_value=[])
 
             result = runner.invoke(
@@ -732,9 +726,9 @@ class TestRebuildTextCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             # First call (dry-run for count), second call (live)
             mock_svc.rebuild_text = AsyncMock(
                 side_effect=[previews, (1, 42)]
@@ -760,9 +754,9 @@ class TestRebuildTextCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.rebuild_text = AsyncMock(return_value=[])
 
             result = runner.invoke(
@@ -782,9 +776,9 @@ class TestRebuildTextCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.rebuild_text = AsyncMock(return_value=[])
 
             runner.invoke(
@@ -845,9 +839,9 @@ class TestExportCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.export_corrections = AsyncMock(
                 return_value=(1, csv_data)
             )
@@ -872,9 +866,9 @@ class TestExportCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.export_corrections = AsyncMock(
                 return_value=(1, json_data)
             )
@@ -899,9 +893,9 @@ class TestExportCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.export_corrections = AsyncMock(
                 return_value=(1, csv_data)
             )
@@ -990,9 +984,9 @@ class TestStatsCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.get_statistics = AsyncMock(return_value=stats)
 
             result = runner.invoke(
@@ -1028,9 +1022,9 @@ class TestStatsCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.get_statistics = AsyncMock(return_value=stats)
 
             result = runner.invoke(correction_app, ["stats"])
@@ -1060,9 +1054,9 @@ class TestStatsCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.get_statistics = AsyncMock(return_value=stats)
 
             result = runner.invoke(correction_app, ["stats"])
@@ -1092,9 +1086,9 @@ class TestStatsCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.get_statistics = AsyncMock(return_value=stats)
 
             result = runner.invoke(correction_app, ["stats"])
@@ -1118,9 +1112,9 @@ class TestStatsCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.get_statistics = AsyncMock(return_value=stats)
 
             runner.invoke(correction_app, ["stats", "--language", "es"])
@@ -1173,9 +1167,9 @@ class TestPatternsCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.get_patterns = AsyncMock(return_value=patterns)
 
             result = runner.invoke(correction_app, ["patterns"])
@@ -1205,9 +1199,9 @@ class TestPatternsCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.get_patterns = AsyncMock(return_value=patterns)
 
             # Use wider terminal to avoid column truncation in Rich table
@@ -1232,9 +1226,9 @@ class TestPatternsCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.get_patterns = AsyncMock(return_value=[])
 
             result = runner.invoke(correction_app, ["patterns"])
@@ -1251,9 +1245,9 @@ class TestPatternsCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.get_patterns = AsyncMock(return_value=[])
 
             runner.invoke(
@@ -1282,9 +1276,9 @@ class TestPatternsCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.get_patterns = AsyncMock(return_value=patterns)
 
             result = runner.invoke(correction_app, ["patterns"])
@@ -1350,9 +1344,9 @@ class TestBatchRevertCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.batch_revert = AsyncMock(return_value=previews)
 
             result = runner.invoke(
@@ -1377,9 +1371,9 @@ class TestBatchRevertCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.batch_revert = AsyncMock(return_value=[])
 
             result = runner.invoke(
@@ -1401,9 +1395,9 @@ class TestBatchRevertCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.batch_revert = AsyncMock(return_value=previews)
 
             result = runner.invoke(
@@ -1435,9 +1429,9 @@ class TestBatchRevertCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             # First call (dry-run scan), second call (live)
             mock_svc.batch_revert = AsyncMock(
                 side_effect=[previews, live_result]
@@ -1472,9 +1466,9 @@ class TestBatchRevertCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.batch_revert = AsyncMock(
                 side_effect=[previews, live_result]
             )
@@ -1501,9 +1495,9 @@ class TestBatchRevertCommand:
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
-        ) as MockService:
+        ) as mock_service_cls:
             mock_svc = MagicMock()
-            MockService.return_value = mock_svc
+            mock_service_cls.return_value = mock_svc
             mock_svc.batch_revert = AsyncMock(return_value=[])
 
             result = runner.invoke(
@@ -1512,3 +1506,246 @@ class TestBatchRevertCommand:
             )
             assert result.exit_code == 0
             assert "No corrected segments matched" in result.stdout
+
+
+# ======================================================================
+# T029–T030: Cross-segment dry-run display (Feature 040)
+# ======================================================================
+
+
+class TestCrossSegmentDryRunDisplay:
+    """Test suite for ``corrections find-replace --cross-segment --dry-run`` display.
+
+    Verifies that the dry-run preview table correctly annotates cross-segment
+    pairs with box-drawing characters in the "Type" column, and that the
+    summary line includes the cross-segment pair count.
+
+    Feature 040 — Correction Pattern Matching (T029–T030)
+    """
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create CLI test runner."""
+        return CliRunner()
+
+    # ------------------------------------------------------------------
+    # T029: Type column box-drawing markers for cross-segment pairs
+    # ------------------------------------------------------------------
+
+    @patch("chronovista.cli.correction_commands.db_manager")
+    def test_cross_segment_dry_run_type_column_markers(
+        self, mock_db: MagicMock, runner: CliRunner
+    ) -> None:
+        """T029: Dry-run Type column shows box-drawing markers for pairs.
+
+        When --cross-segment is active and the service returns two consecutive
+        segments from the same video (adjacent segment IDs), the table's "Type"
+        column must display:
+          - ``╶─┐`` (U+2576 U+2500 U+2510) for the first segment in the pair
+          - ``╶─┘`` (U+2576 U+2500 U+2518) for the second segment in the pair
+          - empty string for single-segment rows
+        The column header "Type" must appear in the output.
+        """
+        mock_session = AsyncMock()
+        mock_db.get_session = _mock_session_gen(mock_session)
+
+        # Two consecutive segments from same video form a cross-segment pair
+        # (vid001, seg 156 → seg 157). vid002 seg 42 is standalone.
+        mock_previews = [
+            ("vid001", 156, 342.0, "Claudia Shane", "Claudia Sheinbaum"),
+            ("vid001", 157, 345.0, "Bound también", "también siendo"),
+            ("vid002", 42, 123.0, "amlo said", "AMLO said"),
+        ]
+
+        with patch(
+            "chronovista.cli.correction_commands.BatchCorrectionService"
+        ) as mock_service_cls:
+            mock_svc_instance = MagicMock()
+            mock_service_cls.return_value = mock_svc_instance
+            mock_svc_instance.find_and_replace = AsyncMock(
+                return_value=mock_previews
+            )
+
+            # Use a wide terminal so Rich does not truncate column headers or
+            # cell content. The box-drawing characters (╶─┐, ╶─┘) are 3 chars
+            # wide; with the default narrow CliRunner terminal they are
+            # abbreviated to whitespace by Rich's overflow handling.
+            result = runner.invoke(
+                correction_app,
+                [
+                    "find-replace",
+                    "--pattern", "Shane",
+                    "--replacement", "Sheinbaum",
+                    "--dry-run",
+                    "--cross-segment",
+                    "--video-id", "vid001",
+                    "--video-id", "vid002",
+                ],
+                env={"COLUMNS": "200"},
+            )
+
+        assert result.exit_code == 0, (
+            f"Expected exit code 0, got {result.exit_code}. Output:\n{result.output}"
+        )
+        output = result.output
+
+        # "Type" column header must appear (only visible at wide terminal width)
+        assert "Type" in output, (
+            f"Expected 'Type' column header in output.\nOutput:\n{output}"
+        )
+
+        # First segment of pair: U+2576 U+2500 U+2510  →  ╶─┐
+        assert "\u2576\u2500\u2510" in output, (
+            f"Expected '╶─┐' (U+2576 U+2500 U+2510) in output for pair-first marker.\n"
+            f"Output:\n{output}"
+        )
+
+        # Second segment of pair: U+2576 U+2500 U+2518  →  ╶─┘
+        assert "\u2576\u2500\u2518" in output, (
+            f"Expected '╶─┘' (U+2576 U+2500 U+2518) in output for pair-second marker.\n"
+            f"Output:\n{output}"
+        )
+
+        # The standalone row (vid002, seg 42) must appear but without a pair marker.
+        # We verify it appears in the table output.
+        assert "vid002" in output, (
+            f"Expected 'vid002' (standalone segment) in output.\nOutput:\n{output}"
+        )
+
+    # ------------------------------------------------------------------
+    # T030: Mixed summary line format with cross-segment pair count
+    # ------------------------------------------------------------------
+
+    @patch("chronovista.cli.correction_commands.db_manager")
+    def test_cross_segment_dry_run_summary_with_pairs(
+        self, mock_db: MagicMock, runner: CliRunner
+    ) -> None:
+        """T030a: Summary line includes cross-segment pair count when pairs exist.
+
+        When --cross-segment produces at least one pair, the dry-run summary line
+        must contain the segment count, the video count, and the pair count in
+        parentheses, e.g. "(1 cross-segment pairs)".
+        """
+        mock_session = AsyncMock()
+        mock_db.get_session = _mock_session_gen(mock_session)
+
+        # One cross-segment pair (vid001, seg 156–157) + one standalone (vid002, seg 42)
+        mock_previews = [
+            ("vid001", 156, 342.0, "Claudia Shane", "Claudia Sheinbaum"),
+            ("vid001", 157, 345.0, "Bound también", "también siendo"),
+            ("vid002", 42, 123.0, "amlo said", "AMLO said"),
+        ]
+
+        with patch(
+            "chronovista.cli.correction_commands.BatchCorrectionService"
+        ) as mock_service_cls:
+            mock_svc_instance = MagicMock()
+            mock_service_cls.return_value = mock_svc_instance
+            mock_svc_instance.find_and_replace = AsyncMock(
+                return_value=mock_previews
+            )
+
+            result = runner.invoke(
+                correction_app,
+                [
+                    "find-replace",
+                    "--pattern", "Shane",
+                    "--replacement", "Sheinbaum",
+                    "--dry-run",
+                    "--cross-segment",
+                    "--video-id", "vid001",
+                    "--video-id", "vid002",
+                ],
+            )
+
+        assert result.exit_code == 0, (
+            f"Expected exit code 0, got {result.exit_code}. Output:\n{result.output}"
+        )
+        output = result.output
+
+        # Summary must contain the segment count
+        assert "3" in output, (
+            f"Expected segment count '3' in summary.\nOutput:\n{output}"
+        )
+
+        # Summary must name the video count (2 unique videos: vid001 and vid002)
+        assert "2" in output, (
+            f"Expected video count '2' in summary.\nOutput:\n{output}"
+        )
+
+        # Summary must include the cross-segment pair count annotation.
+        # Rich may wrap the summary line so "cross-segment" and "pairs" may be
+        # on separate lines. Normalise newlines before asserting.
+        normalised = output.replace("\n", " ")
+        assert "cross-segment pairs" in normalised, (
+            f"Expected 'cross-segment pairs' in summary line.\nOutput:\n{output}"
+        )
+
+        # Specifically 1 pair was detected (156 and 157 are consecutive)
+        assert "1" in normalised, (
+            f"Expected '1' (pair count) in summary.\nOutput:\n{output}"
+        )
+
+        # The full dry-run completion message must be present
+        assert "Dry run complete" in output, (
+            f"Expected 'Dry run complete' in output.\nOutput:\n{output}"
+        )
+
+    @patch("chronovista.cli.correction_commands.db_manager")
+    def test_cross_segment_dry_run_summary_zero_pairs(
+        self, mock_db: MagicMock, runner: CliRunner
+    ) -> None:
+        """T030b: Summary shows "(0 cross-segment pairs)" when no pairs found.
+
+        When --cross-segment is active but no adjacent segment pairs are
+        returned, the summary must still include the "(0 cross-segment pairs)"
+        suffix to confirm that cross-segment matching was attempted.
+        """
+        mock_session = AsyncMock()
+        mock_db.get_session = _mock_session_gen(mock_session)
+
+        # All standalone segments — no adjacent same-video consecutive pairs
+        mock_previews = [
+            ("vid001", 10, 50.0, "amlo said hello", "AMLO said hello"),
+            ("vid002", 20, 100.0, "amlo spoke again", "AMLO spoke again"),
+        ]
+
+        with patch(
+            "chronovista.cli.correction_commands.BatchCorrectionService"
+        ) as mock_service_cls:
+            mock_svc_instance = MagicMock()
+            mock_service_cls.return_value = mock_svc_instance
+            mock_svc_instance.find_and_replace = AsyncMock(
+                return_value=mock_previews
+            )
+
+            result = runner.invoke(
+                correction_app,
+                [
+                    "find-replace",
+                    "--pattern", "amlo",
+                    "--replacement", "AMLO",
+                    "--dry-run",
+                    "--cross-segment",
+                    "--video-id", "vid001",
+                    "--video-id", "vid002",
+                ],
+            )
+
+        assert result.exit_code == 0, (
+            f"Expected exit code 0, got {result.exit_code}. Output:\n{result.output}"
+        )
+        output = result.output
+
+        # Even with 0 pairs, the cross-segment pair count should appear.
+        # Rich may wrap the summary line, so normalise newlines before asserting.
+        normalised = output.replace("\n", " ")
+        assert "cross-segment pairs" in normalised, (
+            f"Expected 'cross-segment pairs' in summary even with P=0.\n"
+            f"Output:\n{output}"
+        )
+
+        # Pair count should be 0
+        assert "0" in normalised, (
+            f"Expected '0' pair count in summary.\nOutput:\n{output}"
+        )

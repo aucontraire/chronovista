@@ -14,12 +14,18 @@ import logging
 import re
 import sys
 from datetime import datetime
-from typing import List, Optional
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskID,
+    TaskProgressColumn,
+    TextColumn,
+)
 from rich.table import Table
 
 from chronovista.config.database import db_manager
@@ -142,11 +148,11 @@ def _parse_correction_type(value: str) -> CorrectionType:
     """
     try:
         return CorrectionType(value)
-    except ValueError:
+    except ValueError as err:
         valid = ", ".join(ct.value for ct in CorrectionType)
         raise typer.BadParameter(
             f"Invalid correction type '{value}'. Valid types: {valid}"
-        )
+        ) from err
 
 
 def _create_batch_correction_service() -> BatchCorrectionService:
@@ -195,19 +201,19 @@ def find_replace(
     case_insensitive: bool = typer.Option(
         False, "--case-insensitive", "-i", help="Case-insensitive matching"
     ),
-    language: Optional[str] = typer.Option(
+    language: str | None = typer.Option(
         None, "--language", help="Filter by language code"
     ),
-    channel: Optional[str] = typer.Option(
+    channel: str | None = typer.Option(
         None, "--channel", help="Filter by channel ID"
     ),
-    video_id: Optional[List[str]] = typer.Option(
+    video_id: list[str] | None = typer.Option(
         None, "--video-id", help="Filter by video ID (repeatable)"
     ),
     correction_type: str = typer.Option(
         "asr_error", "--correction-type", help="Correction type value"
     ),
-    correction_note: Optional[str] = typer.Option(
+    correction_note: str | None = typer.Option(
         None, "--correction-note", help="Note for audit records"
     ),
     batch_size: int = typer.Option(
@@ -222,6 +228,9 @@ def find_replace(
     limit: int = typer.Option(
         50, "--limit", help="Max preview rows in dry-run mode"
     ),
+    cross_segment: bool = typer.Option(
+        False, "--cross-segment", help="Enable matching across adjacent segment pairs"
+    ),
 ) -> None:
     """Find and replace text patterns across transcript segments."""
 
@@ -234,12 +243,28 @@ def find_replace(
             re.compile(pattern)
         except re.error as exc:
             console.print(f"[red]Invalid regex pattern: {exc}[/red]")
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from exc
 
     service = _create_batch_correction_service()
 
     async def _run() -> None:
         async for session in db_manager.get_session(echo=False):
+            # ---- T027: Unscoped cross-segment warning (FR-014) ----
+            if cross_segment and not language and not channel and not video_id:
+                segment_repo = TranscriptSegmentRepository()
+                total_count = await segment_repo.count_filtered(session)
+                if total_count > 5000 and not yes:
+                    console.print(
+                        f"[yellow]Warning: --cross-segment with no scope filter will load "
+                        f"~{total_count:,} segments into memory.\n"
+                        f"For large libraries this may be slow. Use --video-id, --language, "
+                        f"or --channel to narrow the scope, or pass --yes to proceed.[/yellow]"
+                    )
+                    confirmed = typer.confirm("Continue?", default=False)
+                    if not confirmed:
+                        console.print("[yellow]Cancelled.[/yellow]")
+                        raise typer.Exit(code=0)
+
             if dry_run:
                 # ---- Dry-run mode (T013) ----
                 previews = await service.find_and_replace(
@@ -255,6 +280,7 @@ def find_replace(
                     correction_note=correction_note,
                     batch_size=batch_size,
                     dry_run=True,
+                    cross_segment=cross_segment,
                 )
 
                 # previews is list[tuple[str, int, float, str, str]]
@@ -267,39 +293,112 @@ def find_replace(
                     raise typer.Exit(code=0)
 
                 # Build Rich preview table
-                preview_table = Table(
-                    title="Dry-Run Preview",
-                    show_header=True,
-                    header_style="bold blue",
-                )
-                preview_table.add_column("video_id", style="dim", width=14)
-                preview_table.add_column("segment_id", style="dim", width=12)
-                preview_table.add_column("start_time", style="dim", width=10)
-                preview_table.add_column("Current Text", style="cyan", width=40)
-                preview_table.add_column("Proposed Text", style="green", width=40)
-
-                display_pattern = pattern if not regex else pattern
-                for row in previews[:limit]:
-                    vid, seg_id, start, current, proposed = row
-                    current_display = _truncate_with_context(
-                        current, display_pattern, max_len=80
+                if cross_segment:
+                    preview_table = Table(
+                        title="Dry-Run Preview",
+                        show_header=True,
+                        header_style="bold blue",
                     )
-                    proposed_display = _truncate_end(proposed, max_len=80)
-                    preview_table.add_row(
-                        vid,
-                        str(seg_id),
-                        f"{start:.1f}",
-                        current_display,
-                        proposed_display,
+                    preview_table.add_column("video_id", style="dim", width=14)
+                    preview_table.add_column("segment_id", style="dim", width=12)
+                    preview_table.add_column("start_time", style="dim", width=10)
+                    preview_table.add_column("Type", style="dim", width=6)
+                    preview_table.add_column("Current Text", style="cyan", width=40)
+                    preview_table.add_column("Proposed Text", style="green", width=40)
+
+                    # Detect cross-segment pairs by checking for consecutive
+                    # segment_ids originating from the same video in sequence.
+                    # The service returns rows sorted by video/start_time, and
+                    # cross-segment pair rows share a common boundary marker stored
+                    # in the tuple's 5th element (proposed text prefix "[cross-segment").
+                    # We use a simpler heuristic: track which row indices form pairs
+                    # by looking at consecutive rows from the same video where the
+                    # proposed text of the first starts matching the combined text.
+                    # Since the service does not currently annotate pair membership
+                    # in the dry-run tuples, we identify pairs by consecutive rows
+                    # from the same video with adjacent segment IDs.
+                    pair_indices: set[int] = set()
+                    for idx in range(len(previews) - 1):
+                        curr_vid, curr_seg, _, curr_text, curr_proposed = previews[idx]
+                        next_vid, next_seg, _, next_text, next_proposed = previews[idx + 1]
+                        if curr_vid == next_vid and next_seg == curr_seg + 1:
+                            pair_indices.add(idx)
+                            pair_indices.add(idx + 1)
+
+                    cross_pair_count = len(pair_indices) // 2
+
+                    for idx, row in enumerate(previews[:limit]):
+                        vid, seg_id, start, current, proposed = row
+                        if idx in pair_indices:
+                            # Determine if first or second in pair
+                            is_first = idx not in {j + 1 for j in pair_indices if j < idx and j in pair_indices}
+                            pair_marker = "\u2576\u2500\u2510" if is_first else "\u2576\u2500\u2518"
+                            # Tail truncation for first; head truncation for second
+                            if is_first:
+                                current_display = _truncate_end(current, max_len=80)
+                            else:
+                                current_display = (
+                                    "..." + current[-(80 - 3):] if len(current) > 80 else current
+                                )
+                            proposed_display = _truncate_end(proposed, max_len=80)
+                        else:
+                            pair_marker = ""
+                            current_display = _truncate_with_context(
+                                current, pattern if not regex else pattern, max_len=80
+                            )
+                            proposed_display = _truncate_end(proposed, max_len=80)
+
+                        preview_table.add_row(
+                            vid,
+                            str(seg_id),
+                            f"{start:.1f}",
+                            pair_marker,
+                            current_display,
+                            proposed_display,
+                        )
+
+                    console.print(preview_table)
+
+                    unique_videos = len({r[0] for r in previews})
+                    console.print(
+                        f"\nDry run complete: [bold]{len(previews)}[/bold] segments "
+                        f"would be corrected across [bold]{unique_videos}[/bold] videos "
+                        f"([bold]{cross_pair_count}[/bold] cross-segment pairs)."
                     )
+                else:
+                    preview_table = Table(
+                        title="Dry-Run Preview",
+                        show_header=True,
+                        header_style="bold blue",
+                    )
+                    preview_table.add_column("video_id", style="dim", width=14)
+                    preview_table.add_column("segment_id", style="dim", width=12)
+                    preview_table.add_column("start_time", style="dim", width=10)
+                    preview_table.add_column("Current Text", style="cyan", width=40)
+                    preview_table.add_column("Proposed Text", style="green", width=40)
 
-                console.print(preview_table)
+                    display_pattern = pattern if not regex else pattern
+                    for row in previews[:limit]:
+                        vid, seg_id, start, current, proposed = row
+                        current_display = _truncate_with_context(
+                            current, display_pattern, max_len=80
+                        )
+                        proposed_display = _truncate_end(proposed, max_len=80)
+                        preview_table.add_row(
+                            vid,
+                            str(seg_id),
+                            f"{start:.1f}",
+                            current_display,
+                            proposed_display,
+                        )
 
-                unique_videos = len({r[0] for r in previews})
-                console.print(
-                    f"\nDry run complete: [bold]{len(previews)}[/bold] segments "
-                    f"would be corrected across [bold]{unique_videos}[/bold] videos."
-                )
+                    console.print(preview_table)
+
+                    unique_videos = len({r[0] for r in previews})
+                    console.print(
+                        f"\nDry run complete: [bold]{len(previews)}[/bold] segments "
+                        f"would be corrected across [bold]{unique_videos}[/bold] videos."
+                    )
                 return
 
             # ---- Live mode: scan first for confirmation (T014) ----
@@ -316,6 +415,7 @@ def find_replace(
                 correction_note=correction_note,
                 batch_size=batch_size,
                 dry_run=True,
+                cross_segment=cross_segment,
             )
             assert isinstance(previews_for_count, list)
 
@@ -329,6 +429,15 @@ def find_replace(
 
             unique_videos = len({r[0] for r in previews_for_count})
 
+            # Count cross-segment pairs for confirmation message
+            cross_pair_count = 0
+            if cross_segment:
+                for idx in range(len(previews_for_count) - 1):
+                    curr_vid, curr_seg = previews_for_count[idx][0], previews_for_count[idx][1]
+                    next_vid, next_seg = previews_for_count[idx + 1][0], previews_for_count[idx + 1][1]
+                    if curr_vid == next_vid and next_seg == curr_seg + 1:
+                        cross_pair_count += 1
+
             # Show confirmation info
             console.print(f"\n[bold]Pattern:[/bold]      {pattern}")
             console.print(f"[bold]Replacement:[/bold]  {replacement}")
@@ -340,6 +449,8 @@ def find_replace(
                 filters.append(f"channel={channel}")
             if video_id:
                 filters.append(f"video_ids={video_id}")
+            if cross_segment:
+                filters.append("cross-segment=enabled")
             if filters:
                 console.print(
                     f"[bold]Filters:[/bold]      {', '.join(filters)}"
@@ -347,11 +458,18 @@ def find_replace(
             console.print()
 
             if not yes:
-                confirmed = typer.confirm(
-                    f"This will correct {total_matches} segments "
-                    f"across {unique_videos} videos. Proceed?",
-                    default=False,
-                )
+                if cross_segment:
+                    confirm_msg = (
+                        f"This will correct {total_matches} segments "
+                        f"across {unique_videos} videos "
+                        f"({cross_pair_count} cross-segment pairs). Proceed?"
+                    )
+                else:
+                    confirm_msg = (
+                        f"This will correct {total_matches} segments "
+                        f"across {unique_videos} videos. Proceed?"
+                    )
+                confirmed = typer.confirm(confirm_msg, default=False)
                 if not confirmed:
                     console.print("[yellow]Cancelled.[/yellow]")
                     raise typer.Exit(code=0)
@@ -368,8 +486,8 @@ def find_replace(
                     "Applying corrections...", total=total_matches
                 )
 
-                def _advance(n: int) -> None:
-                    progress.advance(task, advance=n)
+                def _advance(n: int, _task: TaskID = task) -> None:
+                    progress.advance(_task, advance=n)
 
                 result = await service.find_and_replace(
                     session,
@@ -385,6 +503,7 @@ def find_replace(
                     batch_size=batch_size,
                     dry_run=False,
                     progress_callback=_advance,
+                    cross_segment=cross_segment,
                 )
 
             assert isinstance(result, BatchCorrectionResult)
@@ -422,6 +541,43 @@ def find_replace(
 
             console.print(summary_table)
 
+            # ---- T028: Empty segment warning after cross-segment correction ----
+            if cross_segment and result.total_applied > 0:
+                from sqlalchemy import or_
+                from sqlalchemy import select as sa_select
+
+                from chronovista.db.models import (
+                    TranscriptSegment as TranscriptSegmentDB,
+                )
+
+                empty_stmt = sa_select(
+                    TranscriptSegmentDB.id, TranscriptSegmentDB.video_id
+                ).where(
+                    TranscriptSegmentDB.has_correction.is_(True),
+                    or_(
+                        TranscriptSegmentDB.corrected_text.is_(None),
+                        TranscriptSegmentDB.corrected_text == "",
+                        TranscriptSegmentDB.corrected_text == " ",
+                    ),
+                )
+                if video_id:
+                    empty_stmt = empty_stmt.where(
+                        TranscriptSegmentDB.video_id.in_(video_id)
+                    )
+
+                empty_result = await session.execute(empty_stmt)
+                empty_segments = list(empty_result.all())
+
+                if empty_segments:
+                    seg_ids = [str(row.id) for row in empty_segments]
+                    ids_display = ", ".join(seg_ids[:10])
+                    suffix = "..." if len(seg_ids) > 10 else ""
+                    console.print(
+                        f"\n[yellow]Warning: {len(empty_segments)} segment(s) were left "
+                        f"empty or whitespace-only after cross-segment correction: "
+                        f"segment IDs {ids_display}{suffix}[/yellow]"
+                    )
+
     asyncio.run(_run())
 
 
@@ -432,10 +588,10 @@ def find_replace(
 
 @correction_app.command("rebuild-text")
 def rebuild_text(
-    video_id: Optional[List[str]] = typer.Option(
+    video_id: list[str] | None = typer.Option(
         None, "--video-id", help="Filter by video ID (repeatable)"
     ),
-    language: Optional[str] = typer.Option(
+    language: str | None = typer.Option(
         None, "--language", help="Filter by language code"
     ),
     dry_run: bool = typer.Option(
@@ -515,8 +671,8 @@ def rebuild_text(
                     "Rebuilding transcripts...", total=total
                 )
 
-                def _advance(n: int) -> None:
-                    progress.advance(task, advance=n)
+                def _advance(n: int, _task: TaskID = task) -> None:
+                    progress.advance(_task, advance=n)
 
                 result = await service.rebuild_text(
                     session,
@@ -547,19 +703,19 @@ def export_corrections(
     format: str = typer.Option(
         ..., "--format", help="Output format: csv or json"
     ),
-    output: Optional[str] = typer.Option(
+    output: str | None = typer.Option(
         None, "--output", help="Output file path (stdout if omitted)"
     ),
-    video_id: Optional[List[str]] = typer.Option(
+    video_id: list[str] | None = typer.Option(
         None, "--video-id", help="Filter by video ID (repeatable)"
     ),
-    correction_type: Optional[str] = typer.Option(
+    correction_type: str | None = typer.Option(
         None, "--correction-type", help="Filter by correction type"
     ),
-    since: Optional[str] = typer.Option(
+    since: str | None = typer.Option(
         None, "--since", help="Inclusive lower bound (ISO 8601)"
     ),
-    until: Optional[str] = typer.Option(
+    until: str | None = typer.Option(
         None, "--until", help="Inclusive upper bound (ISO 8601)"
     ),
     compact: bool = typer.Option(
@@ -585,19 +741,19 @@ def export_corrections(
     if since is not None:
         try:
             since_dt = datetime.fromisoformat(since)
-        except ValueError:
+        except ValueError as err:
             console.print(
                 f"[red]Invalid --since date: '{since}'. Use ISO 8601 format.[/red]"
             )
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from err
     if until is not None:
         try:
             until_dt = datetime.fromisoformat(until)
-        except ValueError:
+        except ValueError as err:
             console.print(
                 f"[red]Invalid --until date: '{until}'. Use ISO 8601 format.[/red]"
             )
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from err
 
     # Validate since < until
     if since_dt is not None and until_dt is not None and since_dt >= until_dt:
@@ -648,7 +804,7 @@ def export_corrections(
 
 @correction_app.command("stats")
 def stats(
-    language: Optional[str] = typer.Option(
+    language: str | None = typer.Option(
         None, "--language", help="Filter by language code"
     ),
     top: int = typer.Option(
@@ -795,10 +951,10 @@ def batch_revert(
     pattern: str = typer.Option(
         ..., "--pattern", help="Text pattern to match for revert"
     ),
-    video_id: Optional[List[str]] = typer.Option(
+    video_id: list[str] | None = typer.Option(
         None, "--video-id", help="Filter by video ID (repeatable)"
     ),
-    language: Optional[str] = typer.Option(
+    language: str | None = typer.Option(
         None, "--language", help="Filter by language code"
     ),
     regex: bool = typer.Option(
@@ -824,7 +980,7 @@ def batch_revert(
             re.compile(pattern)
         except re.error as exc:
             console.print(f"[red]Invalid regex pattern: {exc}[/red]")
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from exc
 
     service = _create_batch_correction_service()
 
@@ -858,22 +1014,40 @@ def batch_revert(
                 preview_table.add_column("segment_id", style="dim", width=12)
                 preview_table.add_column("start_time", style="dim", width=10)
                 preview_table.add_column("Corrected Text", style="cyan", width=40)
+                preview_table.add_column("Note", style="dim", width=12)
 
-                for vid, seg_id, start, corrected in previews:
+                # T041: Count partner cascade segments
+                partner_cascade_count = 0
+                for row in previews:
+                    # Previews are 5-tuples: (vid, seg_id, start, text, is_partner)
+                    vid, seg_id, start, corrected = row[0], row[1], row[2], row[3]
+                    is_partner = row[4] if len(row) > 4 else False
+                    note_label = "(partner)" if is_partner else ""
+                    if is_partner:
+                        partner_cascade_count += 1
                     preview_table.add_row(
                         vid,
                         str(seg_id),
                         f"{start:.1f}",
                         _truncate_end(corrected, 80),
+                        note_label,
                     )
 
                 console.print(preview_table)
 
                 unique_videos = len({r[0] for r in previews})
-                console.print(
-                    f"\nDry run complete: [bold]{len(previews)}[/bold] segments "
-                    f"would be reverted across [bold]{unique_videos}[/bold] videos."
-                )
+                if partner_cascade_count > 0:
+                    console.print(
+                        f"\nDry run complete: [bold]{len(previews)}[/bold] segments "
+                        f"would be reverted across [bold]{unique_videos}[/bold] videos "
+                        f"([bold]{partner_cascade_count}[/bold] via cross-segment "
+                        f"partner cascade)."
+                    )
+                else:
+                    console.print(
+                        f"\nDry run complete: [bold]{len(previews)}[/bold] segments "
+                        f"would be reverted across [bold]{unique_videos}[/bold] videos."
+                    )
                 return
 
             # ---- Live mode: scan first for confirmation ----
@@ -921,8 +1095,8 @@ def batch_revert(
                     "Reverting corrections...", total=total_matches
                 )
 
-                def _advance(n: int) -> None:
-                    progress.advance(task, advance=n)
+                def _advance(n: int, _task: TaskID = task) -> None:
+                    progress.advance(_task, advance=n)
 
                 result = await service.batch_revert(
                     session,

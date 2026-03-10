@@ -11,6 +11,8 @@ since they represent computed outputs that should not be mutated after creation.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -315,6 +317,102 @@ class CorrectionStats(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 
+class SegmentPair(BaseModel):
+    """Two adjacent transcript segments concatenated for cross-segment matching.
+
+    Represents a conceptual pair of consecutive segments whose effective texts
+    are joined with a single space separator.  The ``boundary_offset`` marks
+    where segment A's text ends and the space separator sits in
+    ``combined_text``.
+
+    Attributes
+    ----------
+    segment_a : Any
+        The first segment (lower ``sequence_number``).
+        Expected type: ``chronovista.db.models.TranscriptSegmentDB``.
+    segment_b : Any
+        The second segment (higher ``sequence_number``).
+        Expected type: ``chronovista.db.models.TranscriptSegmentDB``.
+    combined_text : str
+        ``effective_text(a) + " " + effective_text(b)``.
+    boundary_offset : int
+        ``len(effective_text(a))`` — position of the space separator
+        in ``combined_text`` (must be >= 0).
+    """
+
+    segment_a: Any = Field(
+        ...,
+        description=(
+            "The first segment (lower sequence_number). "
+            "Expected type: chronovista.db.models.TranscriptSegmentDB"
+        ),
+    )
+    segment_b: Any = Field(
+        ...,
+        description=(
+            "The second segment (higher sequence_number). "
+            "Expected type: chronovista.db.models.TranscriptSegmentDB"
+        ),
+    )
+    combined_text: str = Field(
+        ...,
+        description="effective_text(a) + ' ' + effective_text(b)",
+    )
+    boundary_offset: int = Field(
+        ...,
+        ge=0,
+        description="len(effective_text(a)), position of space separator",
+    )
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+
+class CrossSegmentMatch(BaseModel):
+    """A pattern match that spans the boundary between two adjacent segments.
+
+    Captures the match location within the combined text of a
+    :class:`SegmentPair` and the replacement text split across both segments.
+
+    Attributes
+    ----------
+    pair : SegmentPair
+        The matched segment pair.
+    match_start : int
+        Start position in ``combined_text`` (must be >= 0).
+    match_end : int
+        End position in ``combined_text`` (must be >= 0).
+    text_for_seg_a : str
+        Replacement text placed in segment A.
+    text_for_seg_b : str
+        Remaining replacement text for segment B.
+    """
+
+    pair: SegmentPair = Field(
+        ...,
+        description="The matched segment pair",
+    )
+    match_start: int = Field(
+        ...,
+        ge=0,
+        description="Start position in combined_text",
+    )
+    match_end: int = Field(
+        ...,
+        ge=0,
+        description="End position in combined_text",
+    )
+    text_for_seg_a: str = Field(
+        ...,
+        description="Replacement text placed in segment A",
+    )
+    text_for_seg_b: str = Field(
+        ...,
+        description="Remaining replacement text for segment B",
+    )
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+
 __all__ = [
     "TypeCount",
     "VideoCount",
@@ -322,4 +420,6 @@ __all__ = [
     "CorrectionExportRecord",
     "CorrectionPattern",
     "CorrectionStats",
+    "SegmentPair",
+    "CrossSegmentMatch",
 ]

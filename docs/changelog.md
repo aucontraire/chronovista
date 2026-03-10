@@ -11,6 +11,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.42.0] - 2026-03-10
+
+### Added
+- **Feature 040: Correction Pattern Matching Robustness (#76, #71)**
+  - `--cross-segment` flag on `corrections find-replace` — matches patterns spanning two adjacent transcript segments (e.g., ASR splitting "Claudia Sheinbaum" across segment boundaries as "Claudia Shane" + "Bound")
+  - Cross-segment dry-run preview with box-drawing pair markers (`╶─┐`/`╶─┘`) and pair count in summary
+  - Cross-segment correction application: replacement placed in segment A, consumed fragment removed from segment B, leading whitespace normalized on segment B
+  - Cross-segment partner cascade revert: reverting one segment of a cross-segment pair automatically reverts its partner via `[cross-segment:partner=N]` audit marker
+  - Single-segment precedence: patterns matching entirely within one segment are corrected first, excluding those segments from cross-segment pairing
+  - Conflict detection: overlapping cross-segment pairs resolved by lower sequence number, later pair skipped with warning
+  - Python-to-PostgreSQL regex translation: `\b`→`\y`, `\B`→`\Y` state machine in `translate_python_regex_to_posix()` so users write Python regex syntax and it works consistently in both DB queries and Python-side replacement
+  - Unscoped `--cross-segment` warning when no `--video-id`/`--language`/`--channel` filter is provided and segment count exceeds 5,000
+  - Empty segment warning after cross-segment corrections that may leave segment B with empty text
+  - `--cross-segment` composes with `--regex`, `--case-insensitive`, `--language`, `--video-id`, `--channel` filters
+  - `find_segments_in_scope()` repository method for fetching segments with scope filters
+  - `SegmentPair` and `CrossSegmentMatch` Pydantic V2 models
+  - User guide documentation: `docs/user-guide/corrections.md` covering all correction workflows
+
+### Fixed
+- ASR alias hook `UniqueViolationError` crashing batch corrections — duplicate check now uses `alias_name_normalized` (matching the unique constraint) instead of `alias_name`, and INSERT wrapped in savepoint to prevent session poisoning
+- `batch_revert` return type annotation updated for 5-element tuples (added `bool` partner cascade flag)
+
+### Changed
+- **Refactored** ASR alias registration into shared `asr_alias_registry.py` module — `register_asr_alias()` and `resolve_entity_id_from_text()` replace duplicated logic in `TranscriptCorrectionService` and `BatchCorrectionService` (DRY)
+
+### Technical
+- 27 new tests for `asr_alias_registry` shared utility (8 resolve + 19 register)
+- Integration tests for cross-segment matching, revert, partner cascade, conflict detection
+- CLI unit tests for dry-run display formatting (pair markers, summary counts)
+- mypy strict compliance (0 errors)
+- No new dependencies, no database migrations
+
 ## [0.41.1] - 2026-03-08
 
 ### Added

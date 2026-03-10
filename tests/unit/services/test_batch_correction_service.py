@@ -1831,8 +1831,9 @@ class TestBatchRevert:
         service: Any,
         mock_session: AsyncMock,
         mock_segment_repo: AsyncMock,
+        mock_correction_repo: AsyncMock,
     ) -> None:
-        """Dry-run returns list of (video_id, segment_id, start_time, corrected_text)."""
+        """Dry-run returns list of (video_id, segment_id, start_time, corrected_text, is_partner)."""
         seg = _make_segment(
             video_id="v1", segment_id=10, text="original",
             corrected_text="fixed text", has_correction=True, start_time=5.5,
@@ -1840,6 +1841,8 @@ class TestBatchRevert:
 
         mock_segment_repo.count_filtered.return_value = 100
         mock_segment_repo.find_by_text_pattern.return_value = [seg]
+        # No cross-segment partner for this segment
+        mock_correction_repo.get_by_segment.return_value = []
 
         result = await service.batch_revert(
             mock_session, pattern="fixed", dry_run=True,
@@ -1847,17 +1850,19 @@ class TestBatchRevert:
 
         assert isinstance(result, list)
         assert len(result) == 1
-        video_id, segment_id, start_time, corrected_text = result[0]
+        video_id, segment_id, start_time, corrected_text, is_partner = result[0]
         assert video_id == "v1"
         assert segment_id == 10
         assert start_time == 5.5
         assert corrected_text == "fixed text"
+        assert is_partner is False
 
     async def test_dry_run_filters_has_correction(
         self,
         service: Any,
         mock_session: AsyncMock,
         mock_segment_repo: AsyncMock,
+        mock_correction_repo: AsyncMock,
     ) -> None:
         """Dry-run only includes segments with has_correction=True."""
         seg_corrected = _make_segment(
@@ -1873,6 +1878,8 @@ class TestBatchRevert:
         mock_segment_repo.find_by_text_pattern.return_value = [
             seg_corrected, seg_uncorrected,
         ]
+        # No cross-segment partner
+        mock_correction_repo.get_by_segment.return_value = []
 
         result = await service.batch_revert(
             mock_session, pattern="fixed", dry_run=True,
@@ -1887,6 +1894,7 @@ class TestBatchRevert:
         mock_session: AsyncMock,
         mock_segment_repo: AsyncMock,
         mock_correction_service: AsyncMock,
+        mock_correction_repo: AsyncMock,
     ) -> None:
         """Live mode returns BatchCorrectionResult."""
         from chronovista.models.batch_correction_models import BatchCorrectionResult
@@ -1899,6 +1907,7 @@ class TestBatchRevert:
         mock_segment_repo.count_filtered.return_value = 100
         mock_segment_repo.find_by_text_pattern.return_value = [seg]
         mock_correction_service.revert_correction.return_value = MagicMock()
+        mock_correction_repo.get_by_segment.return_value = []
 
         result = await service.batch_revert(
             mock_session, pattern="fixed",
@@ -1915,6 +1924,7 @@ class TestBatchRevert:
         mock_session: AsyncMock,
         mock_segment_repo: AsyncMock,
         mock_correction_service: AsyncMock,
+        mock_correction_repo: AsyncMock,
     ) -> None:
         """Live mode calls revert_correction for each matched segment."""
         seg = _make_segment(
@@ -1925,6 +1935,7 @@ class TestBatchRevert:
         mock_segment_repo.count_filtered.return_value = 10
         mock_segment_repo.find_by_text_pattern.return_value = [seg]
         mock_correction_service.revert_correction.return_value = MagicMock()
+        mock_correction_repo.get_by_segment.return_value = []
 
         await service.batch_revert(mock_session, pattern="fixed")
 
@@ -1938,6 +1949,7 @@ class TestBatchRevert:
         mock_session: AsyncMock,
         mock_segment_repo: AsyncMock,
         mock_correction_service: AsyncMock,
+        mock_correction_repo: AsyncMock,
     ) -> None:
         """ValueError from revert_correction is handled as skip."""
         seg1 = _make_segment(
@@ -1955,6 +1967,7 @@ class TestBatchRevert:
             MagicMock(),
             ValueError("no active correction"),
         ]
+        mock_correction_repo.get_by_segment.return_value = []
 
         result = await service.batch_revert(mock_session, pattern="fixed")
 
@@ -2003,6 +2016,7 @@ class TestBatchRevert:
         mock_session: AsyncMock,
         mock_segment_repo: AsyncMock,
         mock_correction_service: AsyncMock,
+        mock_correction_repo: AsyncMock,
     ) -> None:
         """unique_videos counts distinct video_ids from corrected matches."""
         seg1 = _make_segment(
@@ -2021,6 +2035,7 @@ class TestBatchRevert:
         mock_segment_repo.count_filtered.return_value = 50
         mock_segment_repo.find_by_text_pattern.return_value = [seg1, seg2, seg3]
         mock_correction_service.revert_correction.return_value = MagicMock()
+        mock_correction_repo.get_by_segment.return_value = []
 
         result = await service.batch_revert(mock_session, pattern="fix")
 
@@ -2032,6 +2047,7 @@ class TestBatchRevert:
         mock_session: AsyncMock,
         mock_segment_repo: AsyncMock,
         mock_correction_service: AsyncMock,
+        mock_correction_repo: AsyncMock,
     ) -> None:
         """Progress callback is invoked during batch processing."""
         seg1 = _make_segment(
@@ -2046,6 +2062,7 @@ class TestBatchRevert:
         mock_segment_repo.count_filtered.return_value = 10
         mock_segment_repo.find_by_text_pattern.return_value = [seg1, seg2]
         mock_correction_service.revert_correction.return_value = MagicMock()
+        mock_correction_repo.get_by_segment.return_value = []
 
         callback = MagicMock()
         await service.batch_revert(
@@ -2076,6 +2093,7 @@ class TestBatchRevert:
         mock_session: AsyncMock,
         mock_segment_repo: AsyncMock,
         mock_correction_service: AsyncMock,
+        mock_correction_repo: AsyncMock,
     ) -> None:
         """Dry-run mode does not call revert_correction."""
         seg = _make_segment(
@@ -2085,6 +2103,7 @@ class TestBatchRevert:
 
         mock_segment_repo.count_filtered.return_value = 10
         mock_segment_repo.find_by_text_pattern.return_value = [seg]
+        mock_correction_repo.get_by_segment.return_value = []
 
         await service.batch_revert(mock_session, pattern="fix", dry_run=True)
 
@@ -2111,6 +2130,12 @@ def _mock_execute_returns(*results: Any) -> AsyncMock:
         side_effects.append(mock_result)
     session = AsyncMock()
     session.execute.side_effect = side_effects
+    # begin_nested() returns an async context manager (savepoint).
+    # Use a non-async mock so calling it doesn't return a coroutine.
+    nested_cm = MagicMock()
+    nested_cm.__aenter__ = AsyncMock(return_value=None)
+    nested_cm.__aexit__ = AsyncMock(return_value=False)
+    session.begin_nested = MagicMock(return_value=nested_cm)
     return session
 
 
@@ -2136,13 +2161,13 @@ class TestRecordAsrAliasForBatchReplacement:
         session = _mock_execute_returns(entity_mock, None)
 
         with patch(
-            "chronovista.services.batch_correction_service.EntityAliasRepository"
+            "chronovista.services.asr_alias_registry.EntityAliasRepository"
         ) as MockRepo:
             mock_repo_instance = AsyncMock()
             MockRepo.return_value = mock_repo_instance
 
             with patch(
-                "chronovista.services.tag_normalization.TagNormalizationService"
+                "chronovista.services.asr_alias_registry.TagNormalizationService"
             ) as MockNorm:
                 MockNorm.return_value.normalize.return_value = "claudia shainbom"
 
@@ -2173,13 +2198,13 @@ class TestRecordAsrAliasForBatchReplacement:
         session = _mock_execute_returns(None, alias_mock, None)
 
         with patch(
-            "chronovista.services.batch_correction_service.EntityAliasRepository"
+            "chronovista.services.asr_alias_registry.EntityAliasRepository"
         ) as MockRepo:
             mock_repo_instance = AsyncMock()
             MockRepo.return_value = mock_repo_instance
 
             with patch(
-                "chronovista.services.tag_normalization.TagNormalizationService"
+                "chronovista.services.asr_alias_registry.TagNormalizationService"
             ) as MockNorm:
                 MockNorm.return_value.normalize.return_value = "seon"
 
@@ -2232,7 +2257,7 @@ class TestRecordAsrAliasForBatchReplacement:
         session = _mock_execute_returns(None, None)
 
         with patch(
-            "chronovista.services.batch_correction_service.EntityAliasRepository"
+            "chronovista.services.asr_alias_registry.EntityAliasRepository"
         ) as MockRepo:
             mock_repo_instance = AsyncMock()
             MockRepo.return_value = mock_repo_instance
@@ -2398,13 +2423,13 @@ class TestRecordAsrAliasForBatchReplacement:
         session = _mock_execute_returns(entity_mock, None)
 
         with patch(
-            "chronovista.services.batch_correction_service.EntityAliasRepository"
+            "chronovista.services.asr_alias_registry.EntityAliasRepository"
         ) as MockRepo:
             mock_repo_instance = AsyncMock()
             MockRepo.return_value = mock_repo_instance
 
             with patch(
-                "chronovista.services.tag_normalization.TagNormalizationService"
+                "chronovista.services.asr_alias_registry.TagNormalizationService"
             ) as MockNorm:
                 MockNorm.return_value.normalize.return_value = "max blumenthal typo"
 

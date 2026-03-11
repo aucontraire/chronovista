@@ -258,7 +258,7 @@ class TestSubmitCorrection:
                 params={"language_code": language_code},
                 json={
                     "corrected_text": "the quick brown fox",
-                    "correction_type": "asr_error",
+                    "correction_type": "proper_noun",
                     "correction_note": "Fixed common ASR mistake",
                     "corrected_by_user_id": "user_test_001",
                 },

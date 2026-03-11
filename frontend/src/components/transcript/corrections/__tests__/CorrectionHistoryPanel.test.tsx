@@ -139,15 +139,15 @@ describe("CorrectionHistoryPanel", () => {
       expect(screen.getByText("Spelling")).toBeInTheDocument();
     });
 
-    it('shows "ASR Error" badge for correction_type="asr_error"', () => {
-      const record = createRecord({ correction_type: "asr_error" });
+    it('shows "Proper Noun" badge for correction_type="proper_noun"', () => {
+      const record = createRecord({ correction_type: "proper_noun" });
       render(
         <CorrectionHistoryPanel
           {...createDefaultProps({ records: [record] })}
         />
       );
 
-      expect(screen.getByText("ASR Error")).toBeInTheDocument();
+      expect(screen.getByText("Proper Noun")).toBeInTheDocument();
     });
 
     it('shows "Context Correction" badge for correction_type="context_correction"', () => {
@@ -161,7 +161,18 @@ describe("CorrectionHistoryPanel", () => {
       expect(screen.getByText("Context Correction")).toBeInTheDocument();
     });
 
-    it('shows "Profanity Fix" badge for correction_type="profanity_fix"', () => {
+    it('shows "Word Boundary" badge for correction_type="word_boundary"', () => {
+      const record = createRecord({ correction_type: "word_boundary" });
+      render(
+        <CorrectionHistoryPanel
+          {...createDefaultProps({ records: [record] })}
+        />
+      );
+
+      expect(screen.getByText("Word Boundary")).toBeInTheDocument();
+    });
+
+    it('shows "Profanity Restoration" badge for correction_type="profanity_fix"', () => {
       const record = createRecord({ correction_type: "profanity_fix" });
       render(
         <CorrectionHistoryPanel
@@ -169,7 +180,7 @@ describe("CorrectionHistoryPanel", () => {
         />
       );
 
-      expect(screen.getByText("Profanity Fix")).toBeInTheDocument();
+      expect(screen.getByText("Profanity Restoration")).toBeInTheDocument();
     });
 
     it('shows "Formatting" badge for correction_type="formatting"', () => {
@@ -181,6 +192,17 @@ describe("CorrectionHistoryPanel", () => {
       );
 
       expect(screen.getByText("Formatting")).toBeInTheDocument();
+    });
+
+    it('shows "Other" badge for correction_type="other"', () => {
+      const record = createRecord({ correction_type: "other" });
+      render(
+        <CorrectionHistoryPanel
+          {...createDefaultProps({ records: [record] })}
+        />
+      );
+
+      expect(screen.getByText("Other")).toBeInTheDocument();
     });
 
     it('shows "Revert" badge for correction_type="revert"', () => {

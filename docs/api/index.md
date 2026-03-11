@@ -36,6 +36,11 @@ All endpoints except `/health` require authentication. The API shares OAuth toke
 | `/videos/{id}/transcript` | GET | Get transcript |
 | `/videos/{id}/transcript/segments` | GET | Paginated segments |
 | `/videos/{id}/transcript/languages` | GET | Available languages |
+| `/videos/{id}/transcript/segments/{seg_id}/corrections` | GET, POST | Segment correction history / submit correction |
+| `/videos/{id}/transcript/segments/{seg_id}/corrections/revert` | POST | Revert latest segment correction |
+| `/videos/{id}/playlists` | GET | Playlists containing video |
+| `/videos/{id}/entities` | GET | Entity mentions in video |
+| `/videos/{id}/alternative-url` | PATCH | Set alternative URL for unavailable video |
 | `/channels` | GET | List channels |
 | `/channels/{id}` | GET | Get channel details |
 | `/channels/{id}/videos` | GET | Videos by channel |
@@ -54,7 +59,18 @@ All endpoints except `/health` require authentication. The API shares OAuth toke
 | `/canonical-tags` | GET | List canonical tags (with prefix search and fuzzy suggestions) |
 | `/canonical-tags/{normalized_form}` | GET | Get canonical tag detail with aliases |
 | `/canonical-tags/{normalized_form}/videos` | GET | Videos across all raw tag variations |
+| `/canonical-tags/resolve` | GET | Resolve raw tag form to canonical tag |
+| `/entities` | GET | List named entities |
+| `/entities/{id}` | GET | Get entity details |
+| `/entities/{id}/videos` | GET | Videos mentioning entity |
+| `/corrections/batch/preview` | POST | Preview batch find-replace matches |
+| `/corrections/batch/apply` | POST | Apply batch corrections to selected segments |
+| `/corrections/batch/rebuild-text` | POST | Rebuild transcript text for affected videos |
 | `/search/segments` | GET | Search transcripts |
+| `/search/titles` | GET | Search video titles |
+| `/search/descriptions` | GET | Search video descriptions |
+| `/images/channels/{id}` | GET | Proxied channel avatar (cached locally) |
+| `/images/videos/{id}` | GET | Proxied video thumbnail (cached locally) |
 | `/preferences/languages` | GET, PUT | Language preferences |
 | `/sync/{operation}` | POST | Trigger sync |
 | `/sync/status` | GET | Sync status |

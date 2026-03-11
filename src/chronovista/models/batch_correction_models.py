@@ -25,14 +25,14 @@ class TypeCount(BaseModel):
     Attributes
     ----------
     correction_type : str
-        The correction type label (e.g. ``"spelling"``, ``"asr_error"``).
+        The correction type label (e.g. ``"spelling"``, ``"proper_noun"``).
     count : int
         Number of corrections of this type (must be >= 0).
     """
 
     correction_type: str = Field(
         ...,
-        description="The correction type label (e.g. 'spelling', 'asr_error')",
+        description="The correction type label (e.g. 'spelling', 'proper_noun')",
     )
     count: int = Field(
         ...,

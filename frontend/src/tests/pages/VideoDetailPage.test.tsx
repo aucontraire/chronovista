@@ -46,6 +46,7 @@ describe("VideoDetailPage", () => {
       count: 1,
       languages: ["en"],
       has_manual: true,
+      has_corrections: false,
     },
     availability_status: "available",
     alternative_url: null,

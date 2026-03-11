@@ -5,20 +5,34 @@
 
 export type CorrectionType =
   | "spelling"
-  | "asr_error"
+  | "proper_noun"
   | "context_correction"
+  | "word_boundary"
+  | "formatting"
   | "profanity_fix"
-  | "formatting";
+  | "other";
 
 export const CORRECTION_TYPE_LABELS: Record<CorrectionType, string> = {
   spelling: "Spelling",
-  asr_error: "ASR Error",
+  proper_noun: "Proper Noun",
   context_correction: "Context Correction",
-  profanity_fix: "Profanity Fix",
+  word_boundary: "Word Boundary",
   formatting: "Formatting",
+  profanity_fix: "Profanity Restoration",
+  other: "Other",
 };
 
-export const DEFAULT_CORRECTION_TYPE: CorrectionType = "asr_error";
+export const CORRECTION_TYPE_DESCRIPTIONS: Record<CorrectionType, string> = {
+  spelling: "Non-name orthographic errors (typos, misspellings of common words)",
+  proper_noun: "Names of people, places, or organizations that ASR misrecognized",
+  context_correction: "Right sound, wrong word — ASR picked a valid word that doesn't fit the context",
+  word_boundary: "Run-together words or wrongly split compounds (e.g., 'alotof' → 'a lot of')",
+  formatting: "Punctuation, capitalization, or spacing corrections",
+  profanity_fix: "ASR garbled or censored profanity that needs restoration",
+  other: "Corrections that don't fit other categories",
+};
+
+export const DEFAULT_CORRECTION_TYPE: CorrectionType = "proper_noun";
 
 export interface CorrectionSubmitRequest {
   corrected_text: string;

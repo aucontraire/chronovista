@@ -770,3 +770,197 @@ class TestCountFiltered:
         result = await repository.count_filtered(mock_session)
 
         assert isinstance(result, int)
+
+
+# ---------------------------------------------------------------------------
+# TestFindCandidateVideoIdsForCrossSegment
+# ---------------------------------------------------------------------------
+
+
+class TestFindCandidateVideoIdsForCrossSegment:
+    """
+    Unit tests for find_candidate_video_ids_for_cross_segment().
+
+    The method returns DISTINCT video_ids whose effective segment text
+    contains at least one of the supplied tokens.  Database I/O is fully
+    mocked — we validate that the correct SQL is executed and that results
+    are returned as a plain list.
+    """
+
+    @pytest.fixture
+    def repository(self) -> TranscriptSegmentRepository:
+        return TranscriptSegmentRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> AsyncMock:
+        return AsyncMock(spec=AsyncSession)
+
+    def _setup_scalars_result(
+        self, mock_session: AsyncMock, video_ids: List[str]
+    ) -> None:
+        """Configure mock session to return video_id strings via scalars().all()."""
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = video_ids
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+    # ------------------------------------------------------------------
+    # Guard: empty tokens list
+    # ------------------------------------------------------------------
+
+    async def test_empty_tokens_returns_empty_list_without_querying(
+        self,
+        repository: TranscriptSegmentRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """No SQL is executed when tokens is empty."""
+        result = await repository.find_candidate_video_ids_for_cross_segment(
+            mock_session,
+            tokens=[],
+        )
+
+        assert result == []
+        mock_session.execute.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # Basic token matching
+    # ------------------------------------------------------------------
+
+    async def test_single_token_returns_matching_video_ids(
+        self,
+        repository: TranscriptSegmentRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """A single token produces a DISTINCT video_id query and returns a list."""
+        self._setup_scalars_result(mock_session, ["vid1", "vid2"])
+
+        result = await repository.find_candidate_video_ids_for_cross_segment(
+            mock_session,
+            tokens=["Shine"],
+        )
+
+        assert result == ["vid1", "vid2"]
+        mock_session.execute.assert_called_once()
+
+    async def test_multiple_tokens_issues_single_query(
+        self,
+        repository: TranscriptSegmentRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Multiple tokens are combined into one OR query, not multiple queries."""
+        self._setup_scalars_result(mock_session, ["vid3"])
+
+        result = await repository.find_candidate_video_ids_for_cross_segment(
+            mock_session,
+            tokens=["Shine", "Bomb"],
+        )
+
+        assert result == ["vid3"]
+        # Only one execute call regardless of number of tokens
+        assert mock_session.execute.call_count == 1
+
+    async def test_no_matching_videos_returns_empty_list(
+        self,
+        repository: TranscriptSegmentRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Returns an empty list when no segments match any token."""
+        self._setup_scalars_result(mock_session, [])
+
+        result = await repository.find_candidate_video_ids_for_cross_segment(
+            mock_session,
+            tokens=["xyzzy"],
+        )
+
+        assert result == []
+
+    # ------------------------------------------------------------------
+    # Optional filter parameters
+    # ------------------------------------------------------------------
+
+    async def test_language_filter_passes_through(
+        self,
+        repository: TranscriptSegmentRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """language filter is accepted and a SQL query is executed."""
+        self._setup_scalars_result(mock_session, ["vid_es"])
+
+        result = await repository.find_candidate_video_ids_for_cross_segment(
+            mock_session,
+            tokens=["hola"],
+            language="es",
+        )
+
+        assert result == ["vid_es"]
+        mock_session.execute.assert_called_once()
+
+    async def test_channel_filter_passes_through(
+        self,
+        repository: TranscriptSegmentRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """channel filter triggers the JOIN branch; SQL is still executed once."""
+        self._setup_scalars_result(mock_session, ["vid_ch"])
+
+        result = await repository.find_candidate_video_ids_for_cross_segment(
+            mock_session,
+            tokens=["hello"],
+            channel="UCxxxxxxxxxxxxxx",
+        )
+
+        assert result == ["vid_ch"]
+        mock_session.execute.assert_called_once()
+
+    async def test_case_insensitive_flag_accepted(
+        self,
+        repository: TranscriptSegmentRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """case_insensitive=True is accepted and executes a query."""
+        self._setup_scalars_result(mock_session, ["vid_ci"])
+
+        result = await repository.find_candidate_video_ids_for_cross_segment(
+            mock_session,
+            tokens=["shine"],
+            case_insensitive=True,
+        )
+
+        assert result == ["vid_ci"]
+        mock_session.execute.assert_called_once()
+
+    async def test_all_filters_combined(
+        self,
+        repository: TranscriptSegmentRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """All optional filters can be combined without error."""
+        self._setup_scalars_result(mock_session, ["vid_all"])
+
+        result = await repository.find_candidate_video_ids_for_cross_segment(
+            mock_session,
+            tokens=["test", "phrase"],
+            language="fr",
+            channel="UCyyyy",
+            case_insensitive=True,
+        )
+
+        assert result == ["vid_all"]
+        mock_session.execute.assert_called_once()
+
+    async def test_returns_plain_list_not_sequence(
+        self,
+        repository: TranscriptSegmentRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Return type is list, not a SQLAlchemy sequence."""
+        self._setup_scalars_result(mock_session, ["v1", "v2", "v3"])
+
+        result = await repository.find_candidate_video_ids_for_cross_segment(
+            mock_session,
+            tokens=["word"],
+        )
+
+        assert isinstance(result, list)
+        assert len(result) == 3

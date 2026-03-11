@@ -99,7 +99,9 @@ class TranscriptCorrectionTestData:
         CorrectionType.PROFANITY_FIX,
         CorrectionType.CONTEXT_CORRECTION,
         CorrectionType.FORMATTING,
-        CorrectionType.ASR_ERROR,
+        CorrectionType.PROPER_NOUN,
+        CorrectionType.WORD_BOUNDARY,
+        CorrectionType.OTHER,
         CorrectionType.REVERT,
     ]
 
@@ -135,18 +137,18 @@ class TranscriptCorrectionTestData:
         return dict(cls.VALID_CORRECTION_DATA)
 
     @classmethod
-    def asr_error_data(cls) -> dict[str, Any]:
-        """Get valid correction data for an ASR error correction.
+    def proper_noun_data(cls) -> dict[str, Any]:
+        """Get valid correction data for a proper noun correction.
 
         Returns
         -------
         dict[str, Any]
-            Correction data with correction_type set to ASR_ERROR.
+            Correction data with correction_type set to PROPER_NOUN.
         """
         data = cls.valid_correction_data()
         data.update(
             {
-                "correction_type": CorrectionType.ASR_ERROR.value,
+                "correction_type": CorrectionType.PROPER_NOUN.value,
                 "original_text": "i went two the store",
                 "corrected_text": "i went to the store",
                 "correction_note": "ASR confused homophone",

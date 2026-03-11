@@ -35,7 +35,7 @@ function makeCorrectionRecord(
     video_id: VIDEO_ID,
     language_code: LANGUAGE_CODE,
     segment_id: SEGMENT_ID,
-    correction_type: "asr_error",
+    correction_type: "proper_noun",
     original_text: "Original text",
     corrected_text: "Corrected text",
     correction_note: null,

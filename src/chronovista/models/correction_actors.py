@@ -14,6 +14,9 @@ from __future__ import annotations
 ACTOR_USER_LOCAL: str = "user:local"
 """Web UI (human) correction submitted from the local browser session."""
 
+ACTOR_USER_BATCH: str = "user:batch"
+"""Web UI batch correction submitted from the batch corrections page."""
+
 ACTOR_CLI_BATCH: str = "cli:batch"
 """Batch CLI operation (e.g., ``chronovista corrections apply --file ...``)."""
 

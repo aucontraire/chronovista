@@ -1,7 +1,7 @@
 # API Error Responses
 
 > **Version**: 1.0.0
-> **Last Updated**: 2026-02-05
+> **Last Updated**: 2026-03-11
 > **RFC**: [RFC 7807 - Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc7807)
 
 ## Overview
@@ -104,6 +104,12 @@ The `code` field contains one of these application-specific error codes:
 | `CONFLICT` | 409 | Resource state conflict |
 | `MUTUALLY_EXCLUSIVE` | 400 | Incompatible parameters provided |
 | `RATE_LIMITED` | 429 | Too many requests |
+| `SEGMENT_NOT_FOUND` | 404 | Transcript segment does not exist |
+| `NO_CHANGE_DETECTED` | 422 | Submitted correction text matches current text |
+| `INVALID_CORRECTION_TYPE` | 422 | Invalid correction type (e.g., `revert` on submit) |
+| `NO_ACTIVE_CORRECTION` | 422 | Segment has no active correction to revert |
+| `INVALID_PATTERN` | 422 | Batch correction regex pattern is malformed |
+| `PATTERN_TIMEOUT` | 422 | Batch correction regex pattern timed out during validation |
 | `INTERNAL_ERROR` | 500 | Unexpected server error |
 | `DATABASE_ERROR` | 500 | Database operation failed |
 | `EXTERNAL_SERVICE_ERROR` | 502 | External service (YouTube API) unavailable |

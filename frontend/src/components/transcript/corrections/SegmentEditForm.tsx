@@ -13,6 +13,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  CORRECTION_TYPE_DESCRIPTIONS,
   CORRECTION_TYPE_LABELS,
   DEFAULT_CORRECTION_TYPE,
 } from "../../../types/corrections";
@@ -214,6 +215,9 @@ export function SegmentEditForm({
             </option>
           ))}
         </select>
+        <p className="text-xs text-slate-500 mt-1">
+          {CORRECTION_TYPE_DESCRIPTIONS[correctionType]}
+        </p>
       </div>
 
       {/* Correction note input with character counter */}

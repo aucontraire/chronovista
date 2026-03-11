@@ -14,6 +14,7 @@ from starlette.responses import Response
 from chronovista.api.exception_handlers import register_exception_handlers
 from chronovista.api.middleware import RequestIdFilter, RequestIdMiddleware, get_request_id
 from chronovista.api.routers import (
+    batch_corrections,
     canonical_tags,
     categories,
     channels,
@@ -206,3 +207,4 @@ app.include_router(sync.router, prefix="/api/v1", tags=["sync"])
 app.include_router(sidebar.router, prefix="/api/v1", tags=["sidebar"])
 app.include_router(images.router, prefix="/api/v1", tags=["images"])
 app.include_router(entity_mentions.router, prefix="/api/v1", tags=["entity-mentions"])
+app.include_router(batch_corrections.router, prefix="/api/v1/corrections/batch", tags=["batch-corrections"])

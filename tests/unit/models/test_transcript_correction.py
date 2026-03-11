@@ -120,7 +120,7 @@ class TestTranscriptCorrectionCreate:
             video_id=_VALID_VIDEO_ID,
             language_code="en-US",
             segment_id=42,
-            correction_type=CorrectionType.ASR_ERROR,
+            correction_type=CorrectionType.PROPER_NOUN,
             original_text="i went two the store",
             corrected_text="i went to the store",
             correction_note="ASR confused homophone 'to'/'two'",
@@ -153,16 +153,16 @@ class TestTranscriptCorrectionCreate:
         assert correction.video_id == orm_obj.video_id
         assert correction.version_number == orm_obj.version_number
 
-    def test_valid_create_test_data_asr_error(self) -> None:
-        """TranscriptCorrectionTestData.asr_error_data() produces a valid model."""
-        data = TranscriptCorrectionTestData.asr_error_data()
+    def test_valid_create_test_data_proper_noun(self) -> None:
+        """TranscriptCorrectionTestData.proper_noun_data() produces a valid model."""
+        data = TranscriptCorrectionTestData.proper_noun_data()
         # Remove ORM-only field not present on Create model
         data.pop("corrected_at", None)
         data.pop("id", None)
 
         correction = TranscriptCorrectionCreate(**data)
 
-        assert correction.correction_type == CorrectionType.ASR_ERROR
+        assert correction.correction_type == CorrectionType.PROPER_NOUN
         assert correction.version_number == 2
 
     def test_valid_create_test_data_revert(self) -> None:
@@ -184,18 +184,22 @@ class TestTranscriptCorrectionCreate:
         "correction_type",
         [
             CorrectionType.SPELLING,
-            CorrectionType.PROFANITY_FIX,
+            CorrectionType.PROPER_NOUN,
             CorrectionType.CONTEXT_CORRECTION,
+            CorrectionType.WORD_BOUNDARY,
             CorrectionType.FORMATTING,
-            CorrectionType.ASR_ERROR,
+            CorrectionType.PROFANITY_FIX,
+            CorrectionType.OTHER,
             CorrectionType.REVERT,
         ],
         ids=[
             "SPELLING",
-            "PROFANITY_FIX",
+            "PROPER_NOUN",
             "CONTEXT_CORRECTION",
+            "WORD_BOUNDARY",
             "FORMATTING",
-            "ASR_ERROR",
+            "PROFANITY_FIX",
+            "OTHER",
             "REVERT",
         ],
     )
@@ -481,7 +485,7 @@ class TestTranscriptCorrectionRead:
         object built via the factory (which mirrors the ORM model structure).
         """
         orm_obj = create_transcript_correction(
-            correction_type=CorrectionType.ASR_ERROR.value,
+            correction_type=CorrectionType.PROPER_NOUN.value,
             original_text="i went two the store",
             corrected_text="i went to the store",
             correction_note="ASR homophone error",
@@ -493,7 +497,7 @@ class TestTranscriptCorrectionRead:
         assert pydantic_obj.id == orm_obj.id
         assert pydantic_obj.video_id == orm_obj.video_id
         assert pydantic_obj.language_code == orm_obj.language_code
-        assert pydantic_obj.correction_type == CorrectionType.ASR_ERROR
+        assert pydantic_obj.correction_type == CorrectionType.PROPER_NOUN
         assert pydantic_obj.original_text == orm_obj.original_text
         assert pydantic_obj.corrected_text == orm_obj.corrected_text
         assert pydantic_obj.correction_note == orm_obj.correction_note

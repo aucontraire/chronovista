@@ -103,6 +103,7 @@ const mockVideo: VideoDetail = {
     count: 2,
     languages: ['en', 'es'],
     has_manual: true,
+    has_corrections: false,
   },
   availability_status: 'available',
   alternative_url: null,

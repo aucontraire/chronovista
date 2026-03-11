@@ -91,6 +91,9 @@ function createTestSegment(overrides: Partial<TranscriptSegment> = {}): Transcri
     start_time: 0,
     end_time: 5,
     duration: 5,
+    has_correction: false,
+    corrected_at: null,
+    correction_count: 0,
     ...overrides,
   };
 }

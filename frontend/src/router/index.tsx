@@ -11,6 +11,7 @@ import {
 } from "react-router-dom";
 
 import { AppShell } from "../components/layout";
+import { BatchCorrectionsPage } from "../pages/BatchCorrectionsPage";
 import { ChannelDetailPage } from "../pages/ChannelDetailPage";
 import { ChannelsPage } from "../pages/ChannelsPage";
 import { EntitiesPage } from "../pages/EntitiesPage";
@@ -99,6 +100,10 @@ export const router = createBrowserRouter([
       {
         path: "entities/:entityId",
         element: <EntityDetailPage />,
+      },
+      {
+        path: "corrections/batch",
+        element: <BatchCorrectionsPage />,
       },
       {
         path: "*",

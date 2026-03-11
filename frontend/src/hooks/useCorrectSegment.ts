@@ -66,7 +66,7 @@ interface CorrectSegmentApiResponse {
  * mutation.mutate({
  *   segmentId: 42,
  *   corrected_text: "Corrected text here",
- *   correction_type: "asr_error",
+ *   correction_type: "proper_noun",
  *   correction_note: null,
  * });
  * ```

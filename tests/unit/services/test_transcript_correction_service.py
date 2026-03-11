@@ -735,7 +735,7 @@ class TestApplyCorrection:
             language_code="en",
             segment_id=1,
             corrected_text="corrected",
-            correction_type=CorrectionType.ASR_ERROR,
+            correction_type=CorrectionType.PROPER_NOUN,
             correction_note="ASR confused homophone 'teh' → 'the'",
         )
 

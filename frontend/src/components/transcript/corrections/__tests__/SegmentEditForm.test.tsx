@@ -3,7 +3,7 @@
  *
  * Test coverage:
  * 1. Renders textarea pre-filled with initialText
- * 2. Correction type select defaults to "asr_error" with all 5 options
+ * 2. Correction type select defaults to "proper_noun" with all 7 options
  * 3. Note input visible with 500-char maxLength and character counter
  * 4. Save triggers onSave with form data when text is valid
  * 5. Cancel triggers onCancel
@@ -59,21 +59,23 @@ describe("SegmentEditForm", () => {
   });
 
   describe("Test 2 — Correction type select defaults and options", () => {
-    it("defaults to asr_error option", () => {
+    it("defaults to proper_noun option", () => {
       render(<SegmentEditForm {...createDefaultProps()} />);
 
       const select = screen.getByRole("combobox", { name: /correction type/i });
-      expect(select).toHaveValue("asr_error");
+      expect(select).toHaveValue("proper_noun");
     });
 
-    it("renders all 5 correction type options", () => {
+    it("renders all 7 correction type options", () => {
       render(<SegmentEditForm {...createDefaultProps()} />);
 
       expect(screen.getByRole("option", { name: "Spelling" })).toBeInTheDocument();
-      expect(screen.getByRole("option", { name: "ASR Error" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Proper Noun" })).toBeInTheDocument();
       expect(screen.getByRole("option", { name: "Context Correction" })).toBeInTheDocument();
-      expect(screen.getByRole("option", { name: "Profanity Fix" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Word Boundary" })).toBeInTheDocument();
       expect(screen.getByRole("option", { name: "Formatting" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Profanity Restoration" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Other" })).toBeInTheDocument();
     });
   });
 

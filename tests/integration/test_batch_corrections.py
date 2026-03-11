@@ -571,7 +571,7 @@ class TestBatchCorrectionIntegration:
             language_code=language_code,
             segment_id=seg.id,
             corrected_text="the lazy dog",
-            correction_type=CorrectionType.ASR_ERROR,
+            correction_type=CorrectionType.PROPER_NOUN,
             corrected_by_user_id=ACTOR_CLI_BATCH,
         )
         await db_session.flush()
@@ -657,7 +657,7 @@ class TestBatchCorrectionIntegration:
             language_code=language_code,
             segment_id=seg_b.id,
             corrected_text="world peace",
-            correction_type=CorrectionType.ASR_ERROR,
+            correction_type=CorrectionType.PROPER_NOUN,
         )
         await db_session.flush()
 
@@ -951,7 +951,7 @@ class TestCrossFeatureDataContract:
             pattern="teh",
             replacement="the",
             video_ids=[video_id],
-            correction_type=CorrectionType.ASR_ERROR,
+            correction_type=CorrectionType.PROPER_NOUN,
         )
         assert isinstance(result, BatchCorrectionResult)
         assert result.total_applied == 1
@@ -974,7 +974,7 @@ class TestCrossFeatureDataContract:
         assert correction.segment_id is not None, (
             "Correction must reference a segment_id"
         )
-        assert correction.correction_type == CorrectionType.ASR_ERROR.value, (
+        assert correction.correction_type == CorrectionType.PROPER_NOUN.value, (
             f"correction_type must be a valid CorrectionType value, "
             f"got {correction.correction_type!r}"
         )

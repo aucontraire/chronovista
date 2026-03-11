@@ -318,7 +318,7 @@ class TestApplyCorrectionIntegration:
             language_code=language_code,
             segment_id=segment_id,
             corrected_text="i went to the store",
-            correction_type=CorrectionType.ASR_ERROR,
+            correction_type=CorrectionType.PROPER_NOUN,
             correction_note="ASR confused homophone 'two' → 'to'",
         )
         await db_session.flush()

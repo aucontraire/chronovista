@@ -32,6 +32,9 @@ describe("useTranscriptSegments", () => {
       start_time: (start + i) * 5,
       end_time: (start + i) * 5 + 4.5,
       duration: 4.5,
+      has_correction: false,
+      corrected_at: null,
+      correction_count: 0,
     }));
   };
 

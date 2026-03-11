@@ -394,7 +394,7 @@ class TestCorrectionStats:
         stats = _make_correction_stats(
             by_type=[
                 TypeCount(correction_type="spelling", count=50),
-                TypeCount(correction_type="asr_error", count=30),
+                TypeCount(correction_type="proper_noun", count=30),
             ],
             top_videos=[
                 VideoCount(video_id="vid1", title="Video One", count=25),

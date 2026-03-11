@@ -548,7 +548,7 @@ class TestFindReplaceCommand:
             assert "old" in result.stdout
             assert "Replacement:" in result.stdout
             assert "new" in result.stdout
-            assert "asr_error" in result.stdout
+            assert "proper_noun" in result.stdout
             assert "language=en" in result.stdout
             assert "channel=UC123" in result.stdout
 
@@ -595,7 +595,7 @@ class TestHelperFunctions:
 
     def test_parse_correction_type_valid(self) -> None:
         """Test parsing valid correction type strings."""
-        assert _parse_correction_type("asr_error") == CorrectionType.ASR_ERROR
+        assert _parse_correction_type("proper_noun") == CorrectionType.PROPER_NOUN
         assert _parse_correction_type("spelling") == CorrectionType.SPELLING
         assert (
             _parse_correction_type("profanity_fix")
@@ -973,7 +973,7 @@ class TestStatsCommand:
             unique_segments=120,
             unique_videos=25,
             by_type=[
-                TypeCount(correction_type="asr_error", count=100),
+                TypeCount(correction_type="proper_noun", count=100),
                 TypeCount(correction_type="spelling", count=50),
             ],
             top_videos=[
@@ -1014,7 +1014,7 @@ class TestStatsCommand:
             unique_segments=40,
             unique_videos=10,
             by_type=[
-                TypeCount(correction_type="asr_error", count=30),
+                TypeCount(correction_type="proper_noun", count=30),
                 TypeCount(correction_type="spelling", count=20),
             ],
             top_videos=[],
@@ -1030,7 +1030,7 @@ class TestStatsCommand:
             result = runner.invoke(correction_app, ["stats"])
             assert result.exit_code == 0
             assert "Corrections by Type" in result.stdout
-            assert "asr_error" in result.stdout
+            assert "proper_noun" in result.stdout
             assert "spelling" in result.stdout
 
     @patch("chronovista.cli.correction_commands.db_manager")

@@ -28,8 +28,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import React from "react";
-
 import { ClassificationSection } from "../../components/ClassificationSection";
 import { VideoFilters } from "../../components/VideoFilters";
 import type {
@@ -187,13 +185,9 @@ describe("Tag Link Migration (US5 — Phase 7)", () => {
     it("canonical tag badge links to /?canonical_tag={normalizedForm}, not /?tag={rawTag}", async () => {
       // Resolve "JavaScript" as canonical for raw tag "javascript"
       fetchMock.mockImplementation((url: string) => {
-        if (url.includes("/canonical-tags?q=")) {
+        if (url.includes("/canonical-tags/resolve?raw_form=")) {
           return Promise.resolve(
-            mockResponse(
-              makeListResponse([
-                makeListItem("JavaScript", "javascript", 1, 42),
-              ])
-            )
+            mockResponse(makeDetailResponse(makeDetail("JavaScript", "javascript", 1, [])))
           );
         }
         if (url.includes("/canonical-tags/javascript")) {
@@ -223,13 +217,9 @@ describe("Tag Link Migration (US5 — Phase 7)", () => {
     it("canonical tag badge href encodes normalized_form (not canonical_form)", async () => {
       // normalizedForm and canonicalForm are different — link must use normalized_form
       fetchMock.mockImplementation((url: string) => {
-        if (url.includes("/canonical-tags?q=")) {
+        if (url.includes("/canonical-tags/resolve?raw_form=")) {
           return Promise.resolve(
-            mockResponse(
-              makeListResponse([
-                makeListItem("C++", "c++", 2, 15),
-              ])
-            )
+            mockResponse(makeDetailResponse(makeDetail("C++", "c++", 2, [])))
           );
         }
         if (url.includes("/canonical-tags/c")) {
@@ -254,13 +244,9 @@ describe("Tag Link Migration (US5 — Phase 7)", () => {
 
     it("canonical tag badge does NOT include raw tag as ?tag= param", async () => {
       fetchMock.mockImplementation((url: string) => {
-        if (url.includes("/canonical-tags?q=")) {
+        if (url.includes("/canonical-tags/resolve?raw_form=")) {
           return Promise.resolve(
-            mockResponse(
-              makeListResponse([
-                makeListItem("React", "react", 3, 100),
-              ])
-            )
+            mockResponse(makeDetailResponse(makeDetail("React", "react", 3, [])))
           );
         }
         if (url.includes("/canonical-tags/react")) {
@@ -290,9 +276,9 @@ describe("Tag Link Migration (US5 — Phase 7)", () => {
   // -------------------------------------------------------------------------
   describe("ClassificationSection — orphaned tag links (FR-013)", () => {
     it("orphaned tag links to /videos?tag={rawTag}, not /?canonical_tag=", async () => {
-      // Return empty list: tag cannot be resolved to any canonical tag
+      // Return 404: tag cannot be resolved to any canonical tag
       fetchMock.mockResolvedValue(
-        mockResponse(makeListResponse([]))
+        mockResponse("{}", 404)
       );
 
       renderClassificationSection(["mystery-tag-xyz"]);
@@ -309,8 +295,9 @@ describe("Tag Link Migration (US5 — Phase 7)", () => {
     });
 
     it("orphaned tag link does NOT use canonical_tag param", async () => {
+      // Return 404: tag cannot be resolved to any canonical tag
       fetchMock.mockResolvedValue(
-        mockResponse(makeListResponse([]))
+        mockResponse("{}", 404)
       );
 
       renderClassificationSection(["unresolved-tag"]);

@@ -1110,7 +1110,7 @@ POST /api/v1/videos/{video_id}/transcript/segments/{segment_id}/corrections
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `corrected_text` | string | Yes | Corrected text (min 1 character after whitespace stripping) |
-| `correction_type` | string | Yes | One of: `spelling`, `profanity_fix`, `context_correction`, `formatting`, `asr_error` |
+| `correction_type` | string | Yes | One of: `spelling`, `proper_noun`, `context_correction`, `word_boundary`, `formatting`, `profanity_fix`, `other` |
 | `correction_note` | string | No | Optional explanation for the correction |
 | `corrected_by_user_id` | string | No | Optional user identifier (max 100 chars) |
 
@@ -1285,6 +1285,166 @@ GET /api/v1/videos/{video_id}/transcript/segments/{segment_id}/corrections
 
 !!! note "Empty History"
     Returns an empty `data` array (not 404) when a segment has no corrections or when the segment ID doesn't exist.
+
+---
+
+### Batch Corrections
+
+Bulk find-and-replace operations across transcript segments. These endpoints power both the CLI `corrections find-replace` command and the web UI batch corrections page. All batch endpoints require authentication.
+
+#### Preview Batch Matches
+
+Search for segments matching a pattern and preview proposed replacements without applying changes.
+
+```
+POST /api/v1/corrections/batch/preview
+```
+
+##### Request Body
+
+```json
+{
+  "pattern": "amlo",
+  "replacement": "AMLO",
+  "is_regex": false,
+  "case_insensitive": true,
+  "cross_segment": false,
+  "language": "es",
+  "channel_id": null,
+  "video_ids": null
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `pattern` | string | Yes | Search pattern (max 500 chars) |
+| `replacement` | string | Yes | Replacement text |
+| `is_regex` | boolean | No | Treat pattern as regex (default: false) |
+| `case_insensitive` | boolean | No | Case-insensitive matching (default: false) |
+| `cross_segment` | boolean | No | Match across adjacent segment pairs (default: false) |
+| `language` | string | No | Filter by language code |
+| `channel_id` | string | No | Filter by channel ID |
+| `video_ids` | string[] | No | Filter by video IDs (max 50) |
+
+##### Response (200 OK)
+
+```json
+{
+  "data": {
+    "matches": [
+      {
+        "segment_id": 1234,
+        "video_id": "dQw4w9WgXcQ",
+        "video_title": "Example Video",
+        "channel_title": "Example Channel",
+        "language_code": "es",
+        "start_time": 245.6,
+        "current_text": "el presidente amlo dijo",
+        "proposed_text": "el presidente AMLO dijo",
+        "context_before": "en la conferencia matutina",
+        "context_after": "que las reformas son necesarias",
+        "has_existing_correction": false,
+        "is_cross_segment": false
+      }
+    ],
+    "total_count": 42,
+    "pattern": "amlo",
+    "replacement": "AMLO",
+    "is_regex": false,
+    "case_insensitive": true,
+    "cross_segment": false
+  }
+}
+```
+
+!!! note "Match Cap"
+    The preview endpoint returns at most 100 matches. The `total_count` field reflects the true count, allowing the UI to display "Showing 100 of 42 matches — refine your pattern to narrow results."
+
+#### Apply Batch Corrections
+
+Apply corrections to a specific set of segment IDs previously identified through the preview endpoint.
+
+```
+POST /api/v1/corrections/batch/apply
+```
+
+##### Request Body
+
+```json
+{
+  "pattern": "amlo",
+  "replacement": "AMLO",
+  "is_regex": false,
+  "case_insensitive": true,
+  "cross_segment": false,
+  "segment_ids": [1234, 1235, 1240],
+  "correction_type": "proper_noun",
+  "correction_note": "Fixed ASR misrecognition of AMLO",
+  "auto_rebuild": true
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `pattern` | string | Yes | Original search pattern (max 500 chars) |
+| `replacement` | string | Yes | Replacement text |
+| `is_regex` | boolean | No | Treat pattern as regex (default: false) |
+| `case_insensitive` | boolean | No | Case-insensitive matching (default: false) |
+| `cross_segment` | boolean | No | Cross-segment matching (default: false) |
+| `segment_ids` | integer[] | Yes | Segment IDs to apply corrections to (1–200) |
+| `correction_type` | string | Yes | One of: `spelling`, `proper_noun`, `context_correction`, `word_boundary`, `formatting`, `profanity_fix`, `other` |
+| `correction_note` | string | No | Optional correction note (max 500 chars) |
+| `auto_rebuild` | boolean | No | Auto-rebuild full transcript text after apply (default: true) |
+
+##### Response (200 OK)
+
+```json
+{
+  "data": {
+    "total_applied": 3,
+    "total_skipped": 0,
+    "total_failed": 0,
+    "failed_segment_ids": [],
+    "affected_video_ids": ["dQw4w9WgXcQ"],
+    "rebuild_triggered": true
+  }
+}
+```
+
+!!! info "Explicit Inclusion List"
+    The apply endpoint accepts an explicit `segment_ids` inclusion list (not an exclusion list). This ensures the user confirms exactly what gets corrected, even if database state changed between preview and apply.
+
+#### Rebuild Transcript Text
+
+Re-concatenate segment text to rebuild the full `transcript_text` for specified videos.
+
+```
+POST /api/v1/corrections/batch/rebuild-text
+```
+
+##### Request Body
+
+```json
+{
+  "video_ids": ["dQw4w9WgXcQ", "abc123def45"]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `video_ids` | string[] | Yes | Video IDs to rebuild (1–50) |
+
+##### Response (200 OK)
+
+```json
+{
+  "data": {
+    "videos_rebuilt": 2,
+    "video_ids": ["dQw4w9WgXcQ", "abc123def45"],
+    "failed_video_ids": []
+  }
+}
+```
 
 ---
 
@@ -1958,6 +2118,25 @@ curl "http://localhost:8000/api/v1/videos/dQw4w9WgXcQ/transcript/segments/1234/c
 
 # With pagination
 curl "http://localhost:8000/api/v1/videos/dQw4w9WgXcQ/transcript/segments/1234/corrections?language_code=en&limit=10&offset=0"
+```
+
+#### Batch Find-Replace
+
+```bash
+# Preview batch corrections
+curl -X POST "http://localhost:8000/api/v1/corrections/batch/preview" \
+  -H "Content-Type: application/json" \
+  -d '{"pattern": "amlo", "replacement": "AMLO", "is_regex": false, "case_insensitive": true}'
+
+# Apply to selected segments
+curl -X POST "http://localhost:8000/api/v1/corrections/batch/apply" \
+  -H "Content-Type: application/json" \
+  -d '{"pattern": "amlo", "replacement": "AMLO", "segment_ids": [1234, 1235], "correction_type": "proper_noun", "auto_rebuild": true}'
+
+# Rebuild transcript text for affected videos
+curl -X POST "http://localhost:8000/api/v1/corrections/batch/rebuild-text" \
+  -H "Content-Type: application/json" \
+  -d '{"video_ids": ["dQw4w9WgXcQ"]}'
 ```
 
 #### Recover Video Metadata

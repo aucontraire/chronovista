@@ -216,15 +216,15 @@ class TestGetAllFiltered:
         mock_session: MagicMock,
     ) -> None:
         """Filtering by correction_type restricts results to that type."""
-        c1 = _make_correction_db(correction_type=CorrectionType.ASR_ERROR.value)
+        c1 = _make_correction_db(correction_type=CorrectionType.PROPER_NOUN.value)
         _setup_scalars_return(mock_session, [c1])
 
         results = await repository.get_all_filtered(
-            mock_session, correction_type=CorrectionType.ASR_ERROR
+            mock_session, correction_type=CorrectionType.PROPER_NOUN
         )
 
         assert len(results) == 1
-        assert results[0].correction_type == CorrectionType.ASR_ERROR.value
+        assert results[0].correction_type == CorrectionType.PROPER_NOUN.value
 
         # Verify correction_type appears in WHERE clause
         stmt = mock_session.execute.call_args.args[0]
@@ -609,7 +609,7 @@ class TestGetStats:
         session = _make_mock_session_for_stats(
             by_type_rows=[
                 (CorrectionType.SPELLING.value, 20),
-                (CorrectionType.ASR_ERROR.value, 15),
+                (CorrectionType.PROPER_NOUN.value, 15),
             ],
         )
 
@@ -627,7 +627,7 @@ class TestGetStats:
         session = _make_mock_session_for_stats(
             by_type_rows=[
                 (CorrectionType.SPELLING.value, 20),
-                (CorrectionType.ASR_ERROR.value, 15),
+                (CorrectionType.PROPER_NOUN.value, 15),
                 (CorrectionType.FORMATTING.value, 3),
             ],
         )
@@ -635,7 +635,7 @@ class TestGetStats:
         result = await repository.get_stats(session)
 
         assert result["by_type"][0] == TypeCount(correction_type="spelling", count=20)
-        assert result["by_type"][1] == TypeCount(correction_type="asr_error", count=15)
+        assert result["by_type"][1] == TypeCount(correction_type="proper_noun", count=15)
         assert result["by_type"][2] == TypeCount(correction_type="formatting", count=3)
 
     async def test_by_type_empty_when_no_non_revert_corrections(
@@ -719,7 +719,7 @@ class TestGetStats:
         """get_stats() executes exactly 3 SQL queries (well within the 5-query limit)."""
         session = _make_mock_session_for_stats(
             totals_row=(10, 2, 8, 3),
-            by_type_rows=[("spelling", 7), ("asr_error", 3)],
+            by_type_rows=[("spelling", 7), ("proper_noun", 3)],
             top_video_rows=[("vid1", "Title", 7)],
         )
 
@@ -825,7 +825,7 @@ class TestGetStats:
             totals_row=(15, 3, 10, 4),
             by_type_rows=[
                 ("spelling", 10),
-                ("asr_error", 5),
+                ("proper_noun", 5),
             ],
             top_video_rows=[
                 ("vid1", "Top Video", 10),

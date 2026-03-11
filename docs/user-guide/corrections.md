@@ -342,3 +342,56 @@ chronovista corrections find-replace \
   --pattern 'shane baum' --replacement 'Sheinbaum' \
   --language es --dry-run
 ```
+
+---
+
+## Web UI: Batch Find & Replace
+
+The web frontend provides a visual batch correction interface at `/corrections/batch` that mirrors the CLI workflow with additional features.
+
+### Search & Preview
+
+1. Enter a pattern and replacement text
+2. Toggle modes: **Regex**, **Case-insensitive**, **Cross-segment**
+3. Optionally filter by language, channel, or specific video IDs
+4. Click **Preview** to search — up to 100 matches are displayed
+
+Each match card shows:
+
+- **Video title** as a clickable link to the exact segment in the video detail page
+- **Channel name** and **timestamp**
+- **Before/after preview** with the matched text highlighted (strikethrough for removed, bold for added)
+- **Context segments** (previous and next) always visible for verifying accuracy
+- **Cross-segment indicator** (amber connector) for matches spanning adjacent segments
+- **"Previously corrected" badge** for segments that already have an active correction
+
+### Selection & Apply
+
+- All matches are **selected by default** with individual checkboxes for deselection
+- **Select all / Deselect all** controls in the header
+- Cross-segment pairs are linked — toggling one automatically toggles its partner
+- The **Apply** button shows a live count: "Apply to N selected"
+- Clicking Apply shows an **inline confirmation strip** (not a modal) with pattern, replacement, count, and a reminder that corrections can be individually reverted from the video page
+- Choose a **correction type** (spelling, proper_noun, word_boundary, etc.) and optional **note**
+- **Auto-rebuild** is on by default — full transcript text is rebuilt after corrections are applied
+
+### Result Summary
+
+After applying, a persistent summary shows:
+
+- **Applied / Skipped / Failed** counts with color coding
+- **Deep links** to failed segments for individual review
+- **Retry** button for failed segments
+- Number of affected videos
+
+### Correction Types
+
+| Type | Description |
+|------|-------------|
+| `spelling` | Non-name orthographic errors (typos, misspellings) |
+| `proper_noun` | Names of people, places, or organizations that ASR misrecognized |
+| `context_correction` | Right sound, wrong word — ASR picked a valid word that doesn't fit |
+| `word_boundary` | Run-together words or wrongly split compounds (e.g., 'alotof' → 'a lot of') |
+| `formatting` | Punctuation, capitalization, or spacing corrections |
+| `profanity_fix` | ASR garbled or censored profanity that needs restoration |
+| `other` | Corrections that don't fit other categories |

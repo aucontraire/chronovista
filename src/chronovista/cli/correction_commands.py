@@ -134,7 +134,7 @@ def _parse_correction_type(value: str) -> CorrectionType:
     Parameters
     ----------
     value : str
-        Raw string value (e.g. ``"asr_error"``, ``"spelling"``).
+        Raw string value (e.g. ``"proper_noun"``, ``"spelling"``).
 
     Returns
     -------
@@ -211,7 +211,7 @@ def find_replace(
         None, "--video-id", help="Filter by video ID (repeatable)"
     ),
     correction_type: str = typer.Option(
-        "asr_error", "--correction-type", help="Correction type value"
+        "proper_noun", "--correction-type", help="Correction type value"
     ),
     correction_note: str | None = typer.Option(
         None, "--correction-note", help="Note for audit records"

@@ -59,6 +59,27 @@ Command-line interface modules.
       show_root_heading: true
       show_source: true
 
+## Correction Commands
+
+::: chronovista.cli.correction_commands
+    options:
+      show_root_heading: true
+      show_source: true
+
+## Entity Commands
+
+::: chronovista.cli.entity_commands
+    options:
+      show_root_heading: true
+      show_source: true
+
+## Language Commands
+
+::: chronovista.cli.language_commands
+    options:
+      show_root_heading: true
+      show_source: true
+
 ## Transcript Commands
 
 ::: chronovista.cli.transcript_commands

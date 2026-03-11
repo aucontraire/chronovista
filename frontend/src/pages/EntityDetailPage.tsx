@@ -20,7 +20,6 @@ import { Link, useParams } from "react-router-dom";
 import { useEntityVideos } from "../hooks/useEntityMentions";
 import { apiFetch } from "../api/config";
 import { useQuery } from "@tanstack/react-query";
-import type { VideoEntitySummary } from "../api/entityMentions";
 
 /** Default page title to restore on unmount */
 const DEFAULT_PAGE_TITLE = "Chronovista";

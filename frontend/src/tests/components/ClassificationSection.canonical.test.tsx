@@ -15,7 +15,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, within, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import React from "react";
 import { ClassificationSection } from "../../components/ClassificationSection";
 import type { CanonicalTagDetail } from "../../types/canonical-tags";
 

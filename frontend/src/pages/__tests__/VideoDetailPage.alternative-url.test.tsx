@@ -120,6 +120,7 @@ const mockDeletedVideo: VideoDetail = {
     count: 0,
     languages: [],
     has_manual: false,
+    has_corrections: false,
   },
   availability_status: 'deleted',
   alternative_url: null,

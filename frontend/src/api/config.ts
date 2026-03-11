@@ -23,6 +23,12 @@ export const API_TIMEOUT = 10000;
 export const RECOVERY_TIMEOUT = 660000;
 
 /**
+ * Timeout for batch preview requests in milliseconds.
+ * Unfiltered cross-segment scans can take ~12-15s on the backend.
+ */
+export const BATCH_PREVIEW_TIMEOUT = 30000;
+
+/**
  * Classifies an error into a specific error type.
  */
 function classifyError(error: unknown, response?: Response): ApiErrorType {

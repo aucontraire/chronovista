@@ -484,6 +484,21 @@ class TestValidatePattern:
 # ---------------------------------------------------------------------------
 
 
+def _make_empty_execute_result(*args: Any, **kwargs: Any) -> MagicMock:
+    """Return a synchronous MagicMock that satisfies all session.execute() call
+    patterns used inside find_matching_segments():
+
+    - ``video_result.all()``       → empty list (video title lookup)
+    - ``channel_result.all()``     → empty list (channel title lookup)
+    - ``result.all()``             → empty list (context neighbour query)
+    - ``result.scalars().all()``   → empty list (fallback scalar patterns)
+    """
+    result = MagicMock()
+    result.all.return_value = []
+    result.scalars.return_value.all.return_value = []
+    return result
+
+
 def _make_segment(
     *,
     video_id: str = "vid1",
@@ -493,6 +508,7 @@ def _make_segment(
     corrected_text: str | None = None,
     has_correction: bool = False,
     start_time: float = 0.0,
+    sequence_number: int = 1,
 ) -> MagicMock:
     """Create a mock TranscriptSegmentDB for testing."""
     seg = MagicMock()
@@ -503,6 +519,9 @@ def _make_segment(
     seg.corrected_text = corrected_text
     seg.has_correction = has_correction
     seg.start_time = start_time
+    # sequence_number must be an int so _batch_fetch_context_segments can
+    # perform arithmetic (seq - 1, seq + 1) and the int comparison (seq >= 0).
+    seg.sequence_number = sequence_number
     return seg
 
 
@@ -852,6 +871,10 @@ class TestFindAndReplaceDryRun:
         )
         mock_segment_repo.count_filtered.return_value = 10
         mock_segment_repo.find_by_text_pattern.return_value = [seg]
+        # find_matching_segments() calls session.execute() for video titles,
+        # channel titles, and context neighbour segments. Return empty results
+        # so the mock session doesn't raise on .all().
+        mock_session.execute.side_effect = _make_empty_execute_result
 
         result = await service.find_and_replace(
             mock_session,
@@ -875,6 +898,7 @@ class TestFindAndReplaceDryRun:
         seg = _make_segment(segment_id=1, text="foo bar")
         mock_segment_repo.count_filtered.return_value = 1
         mock_segment_repo.find_by_text_pattern.return_value = [seg]
+        mock_session.execute.side_effect = _make_empty_execute_result
 
         await service.find_and_replace(
             mock_session,
@@ -903,6 +927,7 @@ class TestFindAndReplaceDryRun:
         )
         mock_segment_repo.count_filtered.return_value = 1
         mock_segment_repo.find_by_text_pattern.return_value = [seg]
+        mock_session.execute.side_effect = _make_empty_execute_result
 
         result = await service.find_and_replace(
             mock_session,
@@ -934,6 +959,7 @@ class TestFindAndReplaceDryRun:
         )
         mock_segment_repo.count_filtered.return_value = 1
         mock_segment_repo.find_by_text_pattern.return_value = [seg]
+        mock_session.execute.side_effect = _make_empty_execute_result
 
         result = await service.find_and_replace(
             mock_session,
@@ -979,6 +1005,7 @@ class TestFindAndReplaceDryRun:
         )
         mock_segment_repo.count_filtered.return_value = 1
         mock_segment_repo.find_by_text_pattern.return_value = [seg]
+        mock_session.execute.side_effect = _make_empty_execute_result
 
         result = await service.find_and_replace(
             mock_session,
@@ -1038,7 +1065,7 @@ def _make_correction_db(
     video_id: str = "vid1",
     language_code: str = "en",
     segment_id: int = 1,
-    correction_type: str = "asr_error",
+    correction_type: str = "proper_noun",
     original_text: str = "old",
     corrected_text: str = "new",
     correction_note: str | None = None,
@@ -1586,13 +1613,13 @@ class TestGetStatistics:
             "total_reverts": 0,
             "unique_segments": 3,
             "unique_videos": 1,
-            "by_type": [TypeCount(correction_type="asr_error", count=3)],
+            "by_type": [TypeCount(correction_type="proper_noun", count=3)],
             "top_videos": [],
         }
 
         result = await service.get_statistics(mock_session)
         assert len(result.by_type) == 1
-        assert result.by_type[0].correction_type == "asr_error"
+        assert result.by_type[0].correction_type == "proper_noun"
 
     async def test_top_videos_populated(
         self,
@@ -2363,6 +2390,10 @@ class TestRecordAsrAliasForBatchReplacement:
 
         mock_segment_repo.count_filtered.return_value = 10
         mock_segment_repo.find_by_text_pattern.return_value = [seg]
+        # find_matching_segments() executes session queries for video/channel
+        # titles and context neighbours; configure the mock to return empty
+        # results for all of them.
+        mock_session.execute.side_effect = _make_empty_execute_result
 
         with patch.object(
             service, "_record_asr_alias_for_batch_replacement", new_callable=AsyncMock,
@@ -2477,3 +2508,396 @@ class TestRecordAsrAliasForBatchReplacement:
                 replacement="Claudia Sheinbaum",
                 total_applied=1,
             )
+
+
+# ---------------------------------------------------------------------------
+# TestExtractPatternTokens
+# ---------------------------------------------------------------------------
+
+
+class TestExtractPatternTokens:
+    """
+    Unit tests for BatchCorrectionService._extract_pattern_tokens().
+
+    This static helper converts a search pattern into a list of substring
+    tokens used to pre-filter videos before loading all segments.
+    """
+
+    @pytest.fixture
+    def service_cls(self) -> Any:
+        from chronovista.services.batch_correction_service import BatchCorrectionService
+        return BatchCorrectionService
+
+    # ------------------------------------------------------------------
+    # Plain (non-regex) patterns
+    # ------------------------------------------------------------------
+
+    def test_plain_multi_word_splits_on_spaces(self, service_cls: Any) -> None:
+        """Multi-word plain pattern splits into its constituent words."""
+        tokens = service_cls._extract_pattern_tokens("Shine Bomb", regex=False)
+        assert tokens == ["Shine", "Bomb"]
+
+    def test_plain_single_word_returns_list_with_that_word(
+        self, service_cls: Any
+    ) -> None:
+        """Single-word plain pattern returns a one-element list."""
+        tokens = service_cls._extract_pattern_tokens("hello", regex=False)
+        assert tokens == ["hello"]
+
+    def test_plain_three_words(self, service_cls: Any) -> None:
+        """Three-word pattern splits into three tokens."""
+        tokens = service_cls._extract_pattern_tokens("one two three", regex=False)
+        assert tokens == ["one", "two", "three"]
+
+    def test_plain_extra_whitespace_ignored(self, service_cls: Any) -> None:
+        """Extra internal spaces do not produce empty tokens."""
+        tokens = service_cls._extract_pattern_tokens("a  b", regex=False)
+        assert "" not in tokens
+        assert "a" in tokens
+        assert "b" in tokens
+
+    def test_plain_empty_string_returns_list_with_empty(
+        self, service_cls: Any
+    ) -> None:
+        """An empty string falls back to [pattern] (the empty string itself)."""
+        tokens = service_cls._extract_pattern_tokens("", regex=False)
+        assert tokens == [""]
+
+    # ------------------------------------------------------------------
+    # Regex patterns
+    # ------------------------------------------------------------------
+
+    def test_regex_word_boundary_pattern_extracts_word(
+        self, service_cls: Any
+    ) -> None:
+        r"""Regex \bShine\b yields at least ['Shine'] after metachar stripping."""
+        tokens = service_cls._extract_pattern_tokens(r"\bShine\b", regex=True)
+        assert "Shine" in tokens
+
+    def test_regex_metachar_only_pattern_falls_back(self, service_cls: Any) -> None:
+        r"""Pattern composed entirely of metacharacters falls back to [pattern]."""
+        tokens = service_cls._extract_pattern_tokens(r"\b\b", regex=True)
+        # No alphanumeric runs of length >= 3, so falls back to the raw pattern
+        assert len(tokens) >= 1
+
+    def test_regex_mixed_pattern_keeps_long_words(self, service_cls: Any) -> None:
+        """Long alphanumeric runs are kept; short runs are discarded."""
+        tokens = service_cls._extract_pattern_tokens(r"(hello|world)", regex=True)
+        assert "hello" in tokens
+        assert "world" in tokens
+
+    def test_regex_two_char_words_excluded(self, service_cls: Any) -> None:
+        """Words shorter than 3 characters are excluded from regex tokens."""
+        tokens = service_cls._extract_pattern_tokens(r"ab|cde", regex=True)
+        # "ab" is 2 chars — excluded; "cde" is 3 chars — kept
+        assert "ab" not in tokens
+        assert "cde" in tokens
+
+    def test_regex_single_long_word(self, service_cls: Any) -> None:
+        """Simple regex with a single long word is extracted correctly."""
+        tokens = service_cls._extract_pattern_tokens(r"^hello$", regex=True)
+        assert "hello" in tokens
+
+    def test_returns_list_type(self, service_cls: Any) -> None:
+        """Return type is always list."""
+        tokens = service_cls._extract_pattern_tokens("test", regex=False)
+        assert isinstance(tokens, list)
+
+
+# ---------------------------------------------------------------------------
+# TestGetCandidateVideoIds
+# ---------------------------------------------------------------------------
+
+
+class TestGetCandidateVideoIds:
+    """
+    Unit tests for BatchCorrectionService._get_candidate_video_ids().
+
+    Verifies that the helper delegates to the repository's
+    find_candidate_video_ids_for_cross_segment() with correctly extracted
+    tokens and forwarded filter parameters.
+    """
+
+    async def test_delegates_to_repo_with_extracted_tokens(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+    ) -> None:
+        """Tokens extracted from the pattern are forwarded to the repository."""
+        mock_segment_repo.find_candidate_video_ids_for_cross_segment.return_value = [
+            "vid1"
+        ]
+
+        result = await service._get_candidate_video_ids(
+            mock_session,
+            pattern="Shine Bomb",
+            regex=False,
+            case_insensitive=False,
+            language=None,
+            channel=None,
+        )
+
+        mock_segment_repo.find_candidate_video_ids_for_cross_segment.assert_called_once_with(
+            mock_session,
+            tokens=["Shine", "Bomb"],
+            language=None,
+            channel=None,
+            case_insensitive=False,
+        )
+        assert result == ["vid1"]
+
+    async def test_forwards_language_filter(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+    ) -> None:
+        """language parameter is forwarded to the repository call."""
+        mock_segment_repo.find_candidate_video_ids_for_cross_segment.return_value = []
+
+        await service._get_candidate_video_ids(
+            mock_session,
+            pattern="hello",
+            regex=False,
+            case_insensitive=False,
+            language="es",
+            channel=None,
+        )
+
+        call_kwargs = (
+            mock_segment_repo.find_candidate_video_ids_for_cross_segment.call_args.kwargs
+        )
+        assert call_kwargs["language"] == "es"
+
+    async def test_forwards_channel_filter(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+    ) -> None:
+        """channel parameter is forwarded to the repository call."""
+        mock_segment_repo.find_candidate_video_ids_for_cross_segment.return_value = []
+
+        await service._get_candidate_video_ids(
+            mock_session,
+            pattern="hello",
+            regex=False,
+            case_insensitive=False,
+            language=None,
+            channel="UCxxxxxx",
+        )
+
+        call_kwargs = (
+            mock_segment_repo.find_candidate_video_ids_for_cross_segment.call_args.kwargs
+        )
+        assert call_kwargs["channel"] == "UCxxxxxx"
+
+    async def test_forwards_case_insensitive_flag(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+    ) -> None:
+        """case_insensitive flag is forwarded to the repository call."""
+        mock_segment_repo.find_candidate_video_ids_for_cross_segment.return_value = []
+
+        await service._get_candidate_video_ids(
+            mock_session,
+            pattern="hello",
+            regex=False,
+            case_insensitive=True,
+            language=None,
+            channel=None,
+        )
+
+        call_kwargs = (
+            mock_segment_repo.find_candidate_video_ids_for_cross_segment.call_args.kwargs
+        )
+        assert call_kwargs["case_insensitive"] is True
+
+    async def test_returns_empty_list_when_no_candidates(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+    ) -> None:
+        """Returns empty list propagated from the repository."""
+        mock_segment_repo.find_candidate_video_ids_for_cross_segment.return_value = []
+
+        result = await service._get_candidate_video_ids(
+            mock_session,
+            pattern="xyzzy",
+            regex=False,
+            case_insensitive=False,
+            language=None,
+            channel=None,
+        )
+
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
+# TestFindCrossSegmentMatchesPreFilter
+# ---------------------------------------------------------------------------
+
+
+class TestFindCrossSegmentMatchesPreFilter:
+    """
+    Unit tests for the pre-filter optimization in _find_cross_segment_matches().
+
+    These tests validate the branching logic: when video_ids is None the
+    service must call find_candidate_video_ids_for_cross_segment() first;
+    when video_ids is already provided by the caller the pre-filter is skipped.
+    """
+
+    # ------------------------------------------------------------------
+    # Pre-filter skipped when caller supplies video_ids
+    # ------------------------------------------------------------------
+
+    async def test_pre_filter_skipped_when_video_ids_provided(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+    ) -> None:
+        """When the caller passes video_ids the candidate query is NOT issued."""
+        mock_segment_repo.find_segments_in_scope.return_value = []
+
+        await service._find_cross_segment_matches(
+            mock_session,
+            pattern="Shine Bomb",
+            replacement="ShineBomb",
+            regex=False,
+            case_insensitive=False,
+            re_flags=0,
+            language=None,
+            channel=None,
+            video_ids=["vid1"],
+            single_segment_ids=set(),
+        )
+
+        mock_segment_repo.find_candidate_video_ids_for_cross_segment.assert_not_called()
+        mock_segment_repo.find_segments_in_scope.assert_called_once_with(
+            mock_session,
+            language=None,
+            channel=None,
+            video_ids=["vid1"],
+        )
+
+    # ------------------------------------------------------------------
+    # Pre-filter invoked when video_ids is None
+    # ------------------------------------------------------------------
+
+    async def test_pre_filter_called_when_no_video_ids_filter(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+    ) -> None:
+        """When video_ids is None the candidate pre-filter query is issued first."""
+        mock_segment_repo.find_candidate_video_ids_for_cross_segment.return_value = [
+            "vid_candidate"
+        ]
+        mock_segment_repo.find_segments_in_scope.return_value = []
+
+        await service._find_cross_segment_matches(
+            mock_session,
+            pattern="Shine Bomb",
+            replacement="ShineBomb",
+            regex=False,
+            case_insensitive=False,
+            re_flags=0,
+            language=None,
+            channel=None,
+            video_ids=None,
+            single_segment_ids=set(),
+        )
+
+        mock_segment_repo.find_candidate_video_ids_for_cross_segment.assert_called_once()
+        # find_segments_in_scope receives the narrowed video_ids
+        mock_segment_repo.find_segments_in_scope.assert_called_once_with(
+            mock_session,
+            language=None,
+            channel=None,
+            video_ids=["vid_candidate"],
+        )
+
+    async def test_pre_filter_early_return_when_no_candidates(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+    ) -> None:
+        """When pre-filter returns [] the method exits early without loading segments."""
+        mock_segment_repo.find_candidate_video_ids_for_cross_segment.return_value = []
+
+        result = await service._find_cross_segment_matches(
+            mock_session,
+            pattern="xyzzy plugh",
+            replacement="other",
+            regex=False,
+            case_insensitive=False,
+            re_flags=0,
+            language=None,
+            channel=None,
+            video_ids=None,
+            single_segment_ids=set(),
+        )
+
+        assert result == []
+        mock_segment_repo.find_segments_in_scope.assert_not_called()
+
+    async def test_pre_filter_forwards_language_to_candidate_query(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+    ) -> None:
+        """language filter is forwarded to the candidate pre-filter query."""
+        mock_segment_repo.find_candidate_video_ids_for_cross_segment.return_value = []
+
+        await service._find_cross_segment_matches(
+            mock_session,
+            pattern="foo bar",
+            replacement="baz",
+            regex=False,
+            case_insensitive=False,
+            re_flags=0,
+            language="es",
+            channel=None,
+            video_ids=None,
+            single_segment_ids=set(),
+        )
+
+        call_kwargs = (
+            mock_segment_repo.find_candidate_video_ids_for_cross_segment.call_args.kwargs
+        )
+        assert call_kwargs.get("language") == "es"
+
+    async def test_pre_filter_forwards_channel_to_candidate_query(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+    ) -> None:
+        """channel filter is forwarded to the candidate pre-filter query."""
+        mock_segment_repo.find_candidate_video_ids_for_cross_segment.return_value = []
+
+        await service._find_cross_segment_matches(
+            mock_session,
+            pattern="foo bar",
+            replacement="baz",
+            regex=False,
+            case_insensitive=False,
+            re_flags=0,
+            language=None,
+            channel="UCzzzz",
+            video_ids=None,
+            single_segment_ids=set(),
+        )
+
+        call_kwargs = (
+            mock_segment_repo.find_candidate_video_ids_for_cross_segment.call_args.kwargs
+        )
+        assert call_kwargs.get("channel") == "UCzzzz"

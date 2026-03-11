@@ -11,6 +11,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.43.0] - 2026-03-11
+
+### Added
+- **Feature 041: Batch Correction UI (ADR-005 Increment 7)**
+  - Full-featured web UI for batch find-and-replace transcript corrections at `/corrections/batch`
+  - Search & preview: pattern/replacement input with regex, case-insensitive, and cross-segment toggles; language, channel, and video ID filters; up to 100 match cards with before/after highlighting
+  - Match cards: video title deep link to exact segment, channel name, timestamp, context segments (always visible), amber boundary connector for cross-segment pairs, "previously corrected" badge
+  - Selection: all matches selected by default, individual checkboxes, select all/deselect all, pair-based selection (toggling a cross-segment match auto-toggles its partner)
+  - Apply workflow: inline confirmation strip (not modal) with correction type dropdown, optional note, auto-rebuild toggle (default on); controls locked during apply with spinner
+  - Result summary: applied/skipped/failed counts with color coding, deep links to failed segments, "Retry N failed" button, affected video count
+  - 5 React components: `PatternInput`, `MatchList`, `MatchCard`, `ApplyControls`, `ResultSummary`
+  - 3 TanStack Query mutation hooks: `useBatchPreview`, `useBatchApply`, `useBatchRebuild`
+  - State machine via `useReducer`: idle → previewing → applying → complete
+  - Focus management: first match card focused after preview, result summary focused after apply
+  - WCAG 2.1 AA: `role="switch"` toggles, `aria-live` selection announcements, strikethrough+bold diff (not color-only), 44×44px touch targets
+  - `BatchCorrectionsIcon` sidebar navigation icon
+  - 3 REST API endpoints: `POST /api/v1/corrections/batch/{preview,apply,rebuild-text}` with Pydantic V2 request/response schemas
+  - `ACTOR_USER_BATCH` ("user:batch") actor constant for web UI batch corrections audit trail (distinct from CLI's "cli:batch")
+- **Correction Type Taxonomy Redesign (Migration 039)**
+  - Replaced `asr_error` enum value with domain-specific types: `proper_noun`, `word_boundary`, `other`
+  - Full enum: `spelling`, `proper_noun`, `context_correction`, `word_boundary`, `formatting`, `profanity_fix`, `other`, `revert`
+  - Alembic migration 039 uses column-swap strategy (safe for PostgreSQL enum limitations)
+  - Migration maps existing `asr_error` rows to `other` (safe neutral default for all users)
+  - Post-migration reclassification script: `scripts/utilities/reclassify_asr_corrections.py` with `--audit` (preview), `--apply` (auto-classify), and `--batch-id` (manual batch review) modes; uses capitalization heuristic to detect proper noun corrections
+  - Updated frontend `CORRECTION_TYPE_DESCRIPTIONS` and `SegmentEditForm` dropdown
+
+### Changed
+- `BatchCorrectionService.apply_to_segments()` accepts `corrected_by_user_id` parameter instead of hardcoding actor (enables web vs CLI actor distinction)
+- `find_and_replace()` CLI path continues to use `ACTOR_CLI_BATCH` constant
+
+### Fixed
+- Web frontend batch corrections incorrectly attributed to "cli:batch" — now correctly uses "user:batch"
+- `correction_note` field added to `BatchApplyRequest` schema for user-provided correction notes
+
+### Technical
+- 5 new frontend components, 3 hooks, 1 types file, 1 page component
+- 7 Pydantic V2 API schemas for batch correction endpoints
+- Frontend version: 0.12.0 → 0.13.0
+- mypy strict compliance (0 errors)
+- TypeScript strict mode (0 errors)
+- No new dependencies
+- Alembic migration 039 for CorrectionType enum redesign
+
 ## [0.42.0] - 2026-03-10
 
 ### Added

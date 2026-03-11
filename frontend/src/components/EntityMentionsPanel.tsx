@@ -201,7 +201,7 @@ export function EntityMentionsPanel({
                 <div key={entity.entity_id} role="listitem">
                   <EntityChip
                     entity={entity}
-                    onEntityClick={onEntityClick}
+                    {...(onEntityClick !== undefined && { onEntityClick })}
                   />
                 </div>
               ))}

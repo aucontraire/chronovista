@@ -79,7 +79,7 @@ function makeSubmitApiResponse(
         video_id: VIDEO_ID,
         language_code: LANGUAGE_CODE,
         segment_id: 1,
-        correction_type: "asr_error",
+        correction_type: "proper_noun",
         original_text: "Original text",
         corrected_text: "Corrected text",
         correction_note: null,
@@ -147,7 +147,7 @@ describe("useCorrectSegment", () => {
       result.current.mutate({
         segmentId: 1,
         corrected_text: "Corrected text",
-        correction_type: "asr_error",
+        correction_type: "proper_noun",
         correction_note: null,
       });
     });
@@ -229,7 +229,7 @@ describe("useCorrectSegment", () => {
       result.current.mutate({
         segmentId: 1,
         corrected_text: "This correction will fail",
-        correction_type: "asr_error",
+        correction_type: "proper_noun",
         correction_note: null,
       });
     });
@@ -267,7 +267,7 @@ describe("useCorrectSegment", () => {
       result.current.mutate({
         segmentId: 1,
         corrected_text: "text",
-        correction_type: "asr_error",
+        correction_type: "proper_noun",
         correction_note: null,
       });
     });
@@ -286,7 +286,7 @@ describe("useCorrectSegment", () => {
       result.current.mutate({
         segmentId: 1,
         corrected_text: "text",
-        correction_type: "asr_error",
+        correction_type: "proper_noun",
         correction_note: null,
       });
     });

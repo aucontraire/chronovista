@@ -110,11 +110,11 @@ class TestCorrectionSubmitRequest:
         """Payload with only required fields and optional fields defaulting to None."""
         req = CorrectionSubmitRequest(
             corrected_text="corrected segment",
-            correction_type=CorrectionType.ASR_ERROR,
+            correction_type=CorrectionType.PROPER_NOUN,
         )
 
         assert req.corrected_text == "corrected segment"
-        assert req.correction_type == CorrectionType.ASR_ERROR
+        assert req.correction_type == CorrectionType.PROPER_NOUN
         assert req.correction_note is None
         assert req.corrected_by_user_id is None
 
@@ -190,13 +190,29 @@ class TestCorrectionSubmitRequest:
         )
         assert req.correction_type == CorrectionType.FORMATTING
 
-    def test_correction_type_asr_error_is_valid(self) -> None:
-        """CorrectionType.ASR_ERROR is a permitted correction type."""
+    def test_correction_type_proper_noun_is_valid(self) -> None:
+        """CorrectionType.PROPER_NOUN is a permitted correction type."""
         req = CorrectionSubmitRequest(
             corrected_text="speech recognition fix",
-            correction_type=CorrectionType.ASR_ERROR,
+            correction_type=CorrectionType.PROPER_NOUN,
         )
-        assert req.correction_type == CorrectionType.ASR_ERROR
+        assert req.correction_type == CorrectionType.PROPER_NOUN
+
+    def test_correction_type_word_boundary_is_valid(self) -> None:
+        """CorrectionType.WORD_BOUNDARY is a permitted correction type."""
+        req = CorrectionSubmitRequest(
+            corrected_text="a lot of",
+            correction_type=CorrectionType.WORD_BOUNDARY,
+        )
+        assert req.correction_type == CorrectionType.WORD_BOUNDARY
+
+    def test_correction_type_other_is_valid(self) -> None:
+        """CorrectionType.OTHER is a permitted correction type."""
+        req = CorrectionSubmitRequest(
+            corrected_text="miscellaneous fix",
+            correction_type=CorrectionType.OTHER,
+        )
+        assert req.correction_type == CorrectionType.OTHER
 
     def test_missing_corrected_text_raises_validation_error(self) -> None:
         """Omitting the required corrected_text field raises ValidationError."""

@@ -296,14 +296,34 @@ class TagOperationType(str, Enum):
 
 
 class CorrectionType(str, Enum):
-    """Types of corrections that can be applied to a transcript."""
+    """Types of corrections that can be applied to a transcript.
+
+    Each value represents a category of transcription error being fixed.
+    """
 
     SPELLING = "spelling"
-    PROFANITY_FIX = "profanity_fix"
+    """Non-name orthographic errors (typos, misspellings of common words)."""
+
+    PROPER_NOUN = "proper_noun"
+    """Names of people, places, or organizations that ASR misrecognized."""
+
     CONTEXT_CORRECTION = "context_correction"
+    """Right sound, wrong word — ASR picked a valid word that doesn't fit the context."""
+
+    WORD_BOUNDARY = "word_boundary"
+    """Run-together words or wrongly split compounds (e.g., 'alotof' → 'a lot of')."""
+
     FORMATTING = "formatting"
-    ASR_ERROR = "asr_error"
+    """Punctuation, capitalization, or spacing corrections."""
+
+    PROFANITY_FIX = "profanity_fix"
+    """ASR garbled or censored profanity that needs restoration."""
+
+    OTHER = "other"
+    """Corrections that don't fit other categories."""
+
     REVERT = "revert"
+    """System-only: marks a revert of a previous correction."""
 
 
 class DetectionMethod(str, Enum):

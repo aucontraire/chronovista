@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
-from sqlalchemy import ColumnElement, and_, case, delete, func, select
+from sqlalchemy import ColumnElement, and_, case, delete, distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
@@ -669,6 +669,88 @@ class TranscriptSegmentRepository(
 
         result = await session.execute(stmt)
         return result.scalar() or 0
+
+    async def find_candidate_video_ids_for_cross_segment(
+        self,
+        session: AsyncSession,
+        *,
+        tokens: list[str],
+        language: str | None = None,
+        channel: str | None = None,
+        case_insensitive: bool = False,
+    ) -> list[str]:
+        """
+        Return distinct video_ids that contain at least one of the given tokens.
+
+        This is a lightweight pre-filter for cross-segment search: instead of
+        loading every segment in the database, we first identify which videos
+        could possibly contribute to a cross-segment match by finding videos
+        that already contain any token from the search pattern. Only those
+        videos are then passed to ``find_segments_in_scope()``.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        tokens : list of str
+            Substring tokens to search for (e.g. individual words of the
+            pattern, or boundary fragments).  An empty list causes every
+            video_id to be returned — callers must guard against this.
+        language : str, optional
+            Filter by language_code column (applied before DISTINCT).
+        channel : str, optional
+            Filter by channel_id via join to the videos table.
+        case_insensitive : bool, optional
+            When True use ILIKE instead of LIKE for token matching.
+
+        Returns
+        -------
+        list of str
+            Distinct video_ids whose segments contain at least one token.
+            Returns an empty list when ``tokens`` is empty.
+        """
+        if not tokens:
+            return []
+
+        # Build effective-text expression (mirrors find_by_text_pattern)
+        effective_text = case(
+            (TranscriptSegmentDB.has_correction, TranscriptSegmentDB.corrected_text),
+            else_=TranscriptSegmentDB.text,
+        )
+
+        # OR together a LIKE/ILIKE condition for every token
+        like_conditions: list[ColumnElement[bool]] = []
+        for token in tokens:
+            like_pat = f"%{token}%"
+            if case_insensitive:
+                like_conditions.append(effective_text.ilike(like_pat))
+            else:
+                like_conditions.append(effective_text.like(like_pat))
+
+        token_condition: ColumnElement[bool] = or_(*like_conditions)
+
+        # Optional scope filters
+        scope_conditions: list[ColumnElement[bool]] = [token_condition]
+        if language is not None:
+            scope_conditions.append(TranscriptSegmentDB.language_code == language)
+
+        if channel is not None:
+            stmt = (
+                select(distinct(TranscriptSegmentDB.video_id))
+                .join(
+                    VideoDB,
+                    TranscriptSegmentDB.video_id == VideoDB.video_id,
+                )
+                .where(and_(*scope_conditions, VideoDB.channel_id == channel))
+            )
+        else:
+            stmt = (
+                select(distinct(TranscriptSegmentDB.video_id))
+                .where(and_(*scope_conditions))
+            )
+
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
 
     async def find_segments_in_scope(
         self,

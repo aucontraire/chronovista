@@ -5,6 +5,7 @@
 import type React from "react";
 
 import {
+  BatchCorrectionsIcon,
   ChannelIcon,
   EntityIcon,
   PlaylistIcon,
@@ -59,5 +60,11 @@ export const navRoutes: NavRoute[] = [
     label: "Entities",
     tooltip: "Browse named entities",
     icon: EntityIcon,
+  },
+  {
+    path: "/corrections/batch",
+    label: "Find & Replace",
+    tooltip: "Batch find and replace across all transcripts",
+    icon: BatchCorrectionsIcon,
   },
 ];

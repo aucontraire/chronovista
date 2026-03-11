@@ -144,6 +144,7 @@ function createDefaultCorrectSegmentReturn(overrides: Record<string, unknown> = 
     mutate: vi.fn(),
     mutateAsync: vi.fn(),
     isPending: false,
+    isPaused: false,
     isError: false,
     isSuccess: false,
     isIdle: true,
@@ -165,6 +166,7 @@ function createDefaultRevertSegmentReturn(overrides: Record<string, unknown> = {
     mutate: vi.fn(),
     mutateAsync: vi.fn(),
     isPending: false,
+    isPaused: false,
     isError: false,
     isSuccess: false,
     isIdle: true,
@@ -186,12 +188,29 @@ function createDefaultHistoryReturn(overrides: Record<string, unknown> = {}) {
     data: undefined,
     isLoading: false,
     isFetching: false,
+    isRefetching: false,
     isError: false,
     isSuccess: false,
-    error: null,
-    status: "pending" as const,
+    isPending: true,
+    isPaused: false,
+    isEnabled: true,
+    isLoadingError: false,
+    isRefetchError: false,
+    isPlaceholderData: false,
+    isFetched: false,
+    isFetchedAfterMount: false,
+    isStale: false,
+    isInitialLoading: false,
+    dataUpdatedAt: 0,
+    errorUpdatedAt: 0,
+    errorUpdateCount: 0,
+    failureCount: 0,
+    failureReason: null,
     fetchStatus: "idle" as const,
+    status: "pending" as const,
+    error: null,
     refetch: vi.fn(),
+    promise: Promise.resolve(undefined) as never,
     ...overrides,
   };
 }
@@ -316,6 +335,9 @@ describe("T030: Core integration tests", () => {
           data: [],
           pagination: { total: 0, offset: 0, limit: 50, has_more: false },
         },
+        status: "success" as const,
+        isSuccess: true,
+        isPending: false,
       } as ReturnType<typeof useSegmentCorrectionHistory>);
 
       renderTranscriptSegments();
@@ -364,7 +386,7 @@ describe("T030: Core integration tests", () => {
               video_id: "test-video",
               language_code: "en",
               segment_id: 1,
-              correction_type: "asr_error",
+              correction_type: "proper_noun",
               original_text: "Hello world",
               corrected_text: "Hello World",
               correction_note: null,
@@ -596,6 +618,9 @@ describe("T030: Core integration tests", () => {
           data: [],
           pagination: { total: 0, offset: 0, limit: 50, has_more: false },
         },
+        status: "success" as const,
+        isSuccess: true,
+        isPending: false,
       } as ReturnType<typeof useSegmentCorrectionHistory>);
 
       renderTranscriptSegments();
@@ -868,6 +893,9 @@ describe("T034: Edge cases", () => {
         data: [],
         pagination: { total: 0, offset: 0, limit: 50, has_more: false },
       },
+      status: "success" as const,
+      isSuccess: true,
+      isPending: false,
     } as ReturnType<typeof useSegmentCorrectionHistory>);
 
     renderTranscriptSegments();

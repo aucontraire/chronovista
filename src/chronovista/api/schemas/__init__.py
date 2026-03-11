@@ -4,6 +4,15 @@ This module provides a centralized export of all API schemas for convenient
 imports throughout the application.
 """
 
+from chronovista.api.schemas.batch_corrections import (
+    BatchApplyRequest,
+    BatchApplyResult,
+    BatchPreviewMatch,
+    BatchPreviewRequest,
+    BatchPreviewResponse,
+    BatchRebuildRequest,
+    BatchRebuildResult,
+)
 from chronovista.api.schemas.categories import (
     CategoryDetail,
     CategoryDetailResponse,
@@ -69,6 +78,14 @@ from chronovista.api.schemas.videos import (
 )
 
 __all__ = [
+    # Batch Corrections
+    "BatchApplyRequest",
+    "BatchApplyResult",
+    "BatchPreviewMatch",
+    "BatchPreviewRequest",
+    "BatchPreviewResponse",
+    "BatchRebuildRequest",
+    "BatchRebuildResult",
     # Categories
     "CategoryDetail",
     "CategoryDetailResponse",

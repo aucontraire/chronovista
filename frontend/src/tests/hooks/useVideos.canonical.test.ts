@@ -39,7 +39,7 @@ const mockVideoListResponse: VideoListResponse = {
       upload_date: "2024-01-15T10:30:00Z",
       duration: 240,
       view_count: 1000,
-      transcript_summary: { count: 1, languages: ["en"], has_manual: false },
+      transcript_summary: { count: 1, languages: ["en"], has_manual: false, has_corrections: false },
       tags: [],
       category_id: "10",
       category_name: "Music",

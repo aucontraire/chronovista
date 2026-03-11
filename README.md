@@ -110,20 +110,18 @@ DATABASE_URL=mysql+aiomysql://root:dev@localhost:3306/chronovista
 ```
 </details>
 
-<details>
-<summary>YouTube API Setup</summary>
+### YouTube API Setup
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a project and enable **YouTube Data API v3**
-3. Create **OAuth 2.0 Client ID** credentials
-4. Add redirect URI: `http://localhost:8080/auth/callback`
-5. Add credentials to `.env`:
-   ```env
-   YOUTUBE_API_KEY=your_api_key
-   YOUTUBE_CLIENT_ID=your_client_id
-   YOUTUBE_CLIENT_SECRET=your_client_secret
-   ```
-</details>
+You'll need a Google Cloud project with YouTube Data API v3 enabled and OAuth 2.0 credentials.
+
+**→ [Full setup guide](docs/getting-started/youtube-api-setup.md)** — covers consent screen configuration, test user setup, and common authentication errors.
+
+Quick reference for `.env`:
+```env
+YOUTUBE_API_KEY=your_api_key
+YOUTUBE_CLIENT_ID=your_client_id
+YOUTUBE_CLIENT_SECRET=your_client_secret
+```
 
 ## Usage
 

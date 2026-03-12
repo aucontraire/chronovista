@@ -9,15 +9,20 @@
  * - T040: localStorage hydration UX with backend polling
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Link, Outlet } from "react-router-dom";
 
 import { ErrorBoundary } from "../ErrorBoundary";
+import { AuthErrorState } from "../AuthErrorState";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 import { useRecoveryStore } from "../../stores/recoveryStore";
 import type { RecoverySession } from "../../stores/recoveryStore";
 import { apiFetch } from "../../api/config";
+import {
+  subscribeToAuthError,
+  getAuthErrorSnapshot,
+} from "../../lib/queryClient";
 
 /**
  * Toast notification for recovery completion/failure.
@@ -58,6 +63,15 @@ export function AppShell() {
   const hasActiveRecovery = useRecoveryStore((s) => s.hasActiveRecovery());
   // Don't subscribe to activeSessions in render - causes infinite loops with persist middleware
   // Instead, use getActiveSessions() directly when needed
+
+  // FR-001 / FR-023: Subscribe to global auth error state.
+  // useSyncExternalStore deduplicates simultaneous 401s — setAuthError() is
+  // idempotent and only transitions false → true once, so a single render
+  // is triggered regardless of how many concurrent queries received a 401.
+  const isAuthError = useSyncExternalStore(
+    subscribeToAuthError,
+    getAuthErrorSnapshot
+  );
 
   // Toast state (T039)
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -324,10 +338,17 @@ export function AppShell() {
           </div>
         )}
 
-        <main className="flex-1 overflow-auto bg-slate-50">
-          <ErrorBoundary>
-            <Outlet />
-          </ErrorBoundary>
+        {/* FR-002 / FR-023: Replace children with session-expired UI when auth error is set.
+            AuthErrorState is rendered outside the ErrorBoundary so a boundary reset
+            cannot accidentally hide the auth error message. */}
+        <main className="flex-1 overflow-auto bg-slate-50" id="main-content">
+          {isAuthError ? (
+            <AuthErrorState />
+          ) : (
+            <ErrorBoundary>
+              <Outlet />
+            </ErrorBoundary>
+          )}
         </main>
       </div>
     </div>

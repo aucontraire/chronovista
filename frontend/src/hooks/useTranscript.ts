@@ -18,14 +18,18 @@ import type { Transcript, TranscriptResponse } from "../types/transcript";
  *
  * @param videoId - The YouTube video ID
  * @param languageCode - The BCP-47 language code
+ * @param signal - Optional AbortSignal for cancellation (FR-005)
  * @returns Transcript data
  */
 async function fetchTranscript(
   videoId: string,
-  languageCode: string
+  languageCode: string,
+  signal?: AbortSignal
 ): Promise<Transcript> {
+  // FR-004/FR-005: externalSignal combines with the internal timeout guard.
   const response = await apiFetch<TranscriptResponse>(
-    `/videos/${videoId}/transcript?language=${encodeURIComponent(languageCode)}`
+    `/videos/${videoId}/transcript?language=${encodeURIComponent(languageCode)}`,
+    { ...(signal !== undefined ? { externalSignal: signal } : {}) }
   );
   return response.data;
 }
@@ -56,7 +60,7 @@ export function useTranscript(
 ): UseQueryResult<Transcript, ApiError> {
   return useQuery<Transcript, ApiError>({
     queryKey: ["transcript", videoId, languageCode],
-    queryFn: () => fetchTranscript(videoId, languageCode),
+    queryFn: ({ signal }) => fetchTranscript(videoId, languageCode, signal),
     staleTime: 10 * 1000, // 10 seconds (NFR-P01)
     enabled: !!videoId && !!languageCode, // Only run if both parameters are truthy
   });

@@ -144,7 +144,9 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
       if (likedOnly) params.set('liked_only', 'true');
       if (hasTranscript) params.set('has_transcript', 'true');
 
-      return apiFetch<VideoListResponse>(`/videos?${params.toString()}`, { signal });
+      // FR-004/FR-005: Pass TanStack Query signal as externalSignal so it is
+      // combined with the internal timeout guard via AbortSignal.any().
+      return apiFetch<VideoListResponse>(`/videos?${params.toString()}`, { externalSignal: signal });
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {

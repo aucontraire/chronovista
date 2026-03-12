@@ -657,7 +657,8 @@ describe('useChannelVideos', () => {
       });
 
       expect(mockApiFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/channels/UC123456789012345678901/videos')
+        expect.stringContaining('/channels/UC123456789012345678901/videos'),
+        expect.anything()
       );
     });
   });
@@ -685,7 +686,8 @@ describe('useChannelVideos', () => {
 
       await waitFor(() => {
         expect(mockApiFetch).toHaveBeenCalledWith(
-          expect.stringContaining('limit=10')
+          expect.stringContaining('limit=10'),
+          expect.anything()
         );
       });
     });

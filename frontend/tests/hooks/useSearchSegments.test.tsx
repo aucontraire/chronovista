@@ -715,7 +715,7 @@ describe("useSearchSegments", () => {
       expect(mockApiFetch).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          signal: expect.any(AbortSignal),
+          externalSignal: expect.any(AbortSignal),
         })
       );
     });

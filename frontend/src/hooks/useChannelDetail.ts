@@ -12,9 +12,13 @@ import type { ApiError } from "../types/video";
  * Fetches a channel's details from the API.
  */
 async function fetchChannelDetail(
-  channelId: string
+  channelId: string,
+  signal?: AbortSignal
 ): Promise<ChannelDetailResponse> {
-  return apiFetch<ChannelDetailResponse>(`/channels/${channelId}`);
+  // FR-004/FR-005: externalSignal combines with the internal timeout guard.
+  return apiFetch<ChannelDetailResponse>(`/channels/${channelId}`, {
+    ...(signal !== undefined ? { externalSignal: signal } : {}),
+  });
 }
 
 interface UseChannelDetailReturn {
@@ -56,11 +60,12 @@ export function useChannelDetail(
     refetch,
   } = useQuery({
     queryKey: ["channel", channelId],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!channelId) {
         throw new Error("Channel ID is required");
       }
-      return fetchChannelDetail(channelId);
+      // FR-004/FR-005: TanStack Query provides signal; cancelled on key change or unmount.
+      return fetchChannelDetail(channelId, signal);
     },
     enabled: Boolean(channelId),
     staleTime: 5 * 60 * 1000, // 5 minutes

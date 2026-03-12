@@ -58,7 +58,7 @@ describe("useSearchDescriptions", () => {
 
     expect(apiFetch).toHaveBeenCalledWith(
       "/search/descriptions?q=test+query&limit=50",
-      expect.objectContaining({ signal: expect.any(AbortSignal) })
+      expect.objectContaining({ externalSignal: expect.any(AbortSignal) })
     );
   });
 
@@ -176,7 +176,7 @@ describe("useSearchDescriptions", () => {
     await waitFor(() =>
       expect(apiFetch).toHaveBeenCalledWith(
         expect.any(String),
-        expect.objectContaining({ signal: expect.any(AbortSignal) })
+        expect.objectContaining({ externalSignal: expect.any(AbortSignal) })
       )
     );
   });

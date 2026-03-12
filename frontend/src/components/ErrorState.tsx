@@ -20,6 +20,7 @@ interface ErrorStateProps {
  * Error messages for each error type.
  */
 const errorMessages: Record<ApiErrorType, string> = {
+  auth: "You are not authorized to access this resource. Please check your credentials.",
   network:
     "Cannot reach the API server. Make sure the backend is running on port 8765.",
   timeout: "The server took too long to respond.",
@@ -94,6 +95,8 @@ export function ErrorState({ error, message: providedMessage, title, onRetry }: 
   // Use provided title or generate from error type
   const errorTitle = title || (() => {
     switch (errorType) {
+      case "auth":
+        return "Authentication Error";
       case "network":
         return "Connection Error";
       case "timeout":

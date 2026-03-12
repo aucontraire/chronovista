@@ -458,7 +458,8 @@ describe('useChannelDetail', () => {
       });
 
       expect(mockApiFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/channels/UC123456789012345678901')
+        expect.stringContaining('/channels/UC123456789012345678901'),
+        expect.anything()
       );
     });
   });

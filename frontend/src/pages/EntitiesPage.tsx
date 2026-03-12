@@ -11,13 +11,20 @@
  * - Click navigates to /entities/:entityId
  * - Infinite scroll pagination
  * - Loading skeleton, empty state, error state
+ *
+ * Feature 042, US7 (T036, T037):
+ * - SkipLink to main content area (FR-019, NFR-004, NFR-006)
  */
 
 import { useEffect, useCallback } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
+import { SkipLink } from "../components/SkipLink";
 import { useEntities } from "../hooks/useEntityMentions";
 import type { EntityListItem } from "../api/entityMentions";
+
+/** Stable ID used by SkipLink and main content container (T036, T037). */
+const MAIN_CONTENT_ID = "entities-main-content";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -531,18 +538,31 @@ export function EntitiesPage() {
   // Initial loading state
   if (isLoading) {
     return (
-      <main className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">Entities</h1>
-        {toolbar}
-        <EntityLoadingState count={8} />
-      </main>
+      <>
+        <SkipLink targetId={MAIN_CONTENT_ID} label="Skip to content" />
+        <main
+          id={MAIN_CONTENT_ID}
+          tabIndex={-1}
+          className="container mx-auto px-4 py-8"
+        >
+          <h1 className="text-3xl font-bold text-gray-900 mb-6">Entities</h1>
+          {toolbar}
+          <EntityLoadingState count={8} />
+        </main>
+      </>
     );
   }
 
   // Error state (only if no entities loaded)
   if (isError && entities.length === 0) {
     return (
-      <main className="container mx-auto px-4 py-8">
+      <>
+        <SkipLink targetId={MAIN_CONTENT_ID} label="Skip to content" />
+        <main
+          id={MAIN_CONTENT_ID}
+          tabIndex={-1}
+          className="container mx-auto px-4 py-8"
+        >
         <h1 className="text-3xl font-bold text-gray-900 mb-6">Entities</h1>
         {toolbar}
         <div
@@ -598,28 +618,42 @@ export function EntitiesPage() {
             Retry
           </button>
         </div>
-      </main>
+        </main>
+      </>
     );
   }
 
   // Empty state
   if (entities.length === 0) {
     return (
-      <main className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">Entities</h1>
-        {toolbar}
-        <EntitiesEmptyState
-          typeFilter={typeFilter}
-          hasMentions={hasMentions}
-          search={search}
-        />
-      </main>
+      <>
+        <SkipLink targetId={MAIN_CONTENT_ID} label="Skip to content" />
+        <main
+          id={MAIN_CONTENT_ID}
+          tabIndex={-1}
+          className="container mx-auto px-4 py-8"
+        >
+          <h1 className="text-3xl font-bold text-gray-900 mb-6">Entities</h1>
+          {toolbar}
+          <EntitiesEmptyState
+            typeFilter={typeFilter}
+            hasMentions={hasMentions}
+            search={search}
+          />
+        </main>
+      </>
     );
   }
 
   // Entities list with pagination
   return (
-    <main className="container mx-auto px-4 py-8">
+    <>
+      <SkipLink targetId={MAIN_CONTENT_ID} label="Skip to content" />
+      <main
+        id={MAIN_CONTENT_ID}
+        tabIndex={-1}
+        className="container mx-auto px-4 py-8"
+      >
       <div className="flex items-baseline justify-between mb-6">
         <h1 className="text-3xl font-bold text-gray-900">Entities</h1>
         {countText && (
@@ -696,6 +730,7 @@ export function EntitiesPage() {
           <AllLoadedMessage total={total} />
         )}
       </div>
-    </main>
+      </main>
+    </>
   );
 }

@@ -520,7 +520,8 @@ describe('useChannels', () => {
 
       await waitFor(() => {
         expect(mockApiFetch).toHaveBeenCalledWith(
-          expect.stringContaining('limit=10')
+          expect.stringContaining('limit=10'),
+          expect.anything()
         );
       });
     });

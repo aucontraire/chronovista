@@ -14,13 +14,17 @@ import type {
  * Fetches the playlists that contain a specific video.
  *
  * @param videoId - The YouTube video ID to fetch playlists for
+ * @param signal - Optional AbortSignal for cancellation (FR-005)
  * @returns Array of VideoPlaylistMembership objects
  */
 async function fetchVideoPlaylists(
-  videoId: string
+  videoId: string,
+  signal?: AbortSignal
 ): Promise<VideoPlaylistMembership[]> {
+  // FR-004/FR-005: externalSignal combines with the internal timeout guard.
   const response = await apiFetch<VideoPlaylistsResponse>(
-    `/videos/${videoId}/playlists`
+    `/videos/${videoId}/playlists`,
+    { ...(signal !== undefined ? { externalSignal: signal } : {}) }
   );
   return response.data;
 }
@@ -89,7 +93,7 @@ export function useVideoPlaylists(
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["videoPlaylists", videoId],
-    queryFn: () => fetchVideoPlaylists(videoId),
+    queryFn: ({ signal }) => fetchVideoPlaylists(videoId, signal),
     enabled: enabled && !!videoId, // Only run if enabled and videoId is truthy
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes

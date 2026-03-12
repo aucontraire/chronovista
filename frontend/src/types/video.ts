@@ -148,8 +148,14 @@ export interface VideoDetailResponse {
 
 /**
  * Error types for categorizing API failures.
+ *
+ * - "auth"    — HTTP 401 Unauthorized or 403 Forbidden (FR-001)
+ * - "network" — fetch TypeError (no response from server)
+ * - "timeout" — AbortError due to request timeout
+ * - "server"  — HTTP 5xx or other non-auth 4xx responses
+ * - "unknown" — unclassified errors
  */
-export type ApiErrorType = "network" | "timeout" | "server" | "unknown";
+export type ApiErrorType = "auth" | "network" | "timeout" | "server" | "unknown";
 
 /**
  * Structured API error with type classification.

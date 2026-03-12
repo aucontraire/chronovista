@@ -37,8 +37,11 @@ interface SidebarCategoriesResponse {
  * Returns categories ordered by video_count descending,
  * including only categories with at least one video by default.
  */
-async function fetchSidebarCategories(): Promise<SidebarCategoriesResponse> {
-  return apiFetch<SidebarCategoriesResponse>("/sidebar/categories");
+async function fetchSidebarCategories(signal?: AbortSignal): Promise<SidebarCategoriesResponse> {
+  // FR-004/FR-005: externalSignal combines with the internal timeout guard.
+  return apiFetch<SidebarCategoriesResponse>("/sidebar/categories", {
+    ...(signal !== undefined ? { externalSignal: signal } : {}),
+  });
 }
 
 interface UseSidebarCategoriesReturn {
@@ -77,7 +80,8 @@ interface UseSidebarCategoriesReturn {
 export function useSidebarCategories(): UseSidebarCategoriesReturn {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["sidebar", "categories"],
-    queryFn: fetchSidebarCategories,
+    // FR-004/FR-005: TanStack Query provides signal; cancelled on key change or unmount.
+    queryFn: ({ signal }) => fetchSidebarCategories(signal),
     staleTime: 30 * 60 * 1000, // 30 minutes
     gcTime: 60 * 60 * 1000, // 60 minutes
   });

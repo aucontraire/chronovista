@@ -147,7 +147,8 @@ describe("usePlaylistVideos", () => {
 
       // Verify API was called with include_unavailable=true
       expect(apiConfig.apiFetch).toHaveBeenCalledWith(
-        `/playlists/${mockPlaylistId}/videos?offset=0&limit=25&include_unavailable=true`
+        `/playlists/${mockPlaylistId}/videos?offset=0&limit=25&include_unavailable=true`,
+        expect.anything()
       );
 
       // Verify all videos (including unavailable) are included
@@ -195,7 +196,8 @@ describe("usePlaylistVideos", () => {
 
       // Verify API was called with include_unavailable=false
       expect(apiConfig.apiFetch).toHaveBeenCalledWith(
-        `/playlists/${mockPlaylistId}/videos?offset=0&limit=25&include_unavailable=false`
+        `/playlists/${mockPlaylistId}/videos?offset=0&limit=25&include_unavailable=false`,
+        expect.anything()
       );
 
       // Verify only available videos are included
@@ -219,7 +221,8 @@ describe("usePlaylistVideos", () => {
 
       // Verify API was called with custom limit
       expect(apiConfig.apiFetch).toHaveBeenCalledWith(
-        `/playlists/${mockPlaylistId}/videos?offset=0&limit=50&include_unavailable=true`
+        `/playlists/${mockPlaylistId}/videos?offset=0&limit=50&include_unavailable=true`,
+        expect.anything()
       );
     });
 

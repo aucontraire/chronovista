@@ -37,7 +37,8 @@ async function fetchPlaylistVideos(
   sortOrder?: SortOrder,
   likedOnly?: boolean,
   hasTranscript?: boolean,
-  unavailableOnly?: boolean
+  unavailableOnly?: boolean,
+  signal?: AbortSignal
 ): Promise<PlaylistVideoListResponse> {
   const params = new URLSearchParams({
     offset: offset.toString(),
@@ -61,8 +62,10 @@ async function fetchPlaylistVideos(
     params.set("unavailable_only", "true");
   }
 
+  // FR-004/FR-005: externalSignal combines with the internal timeout guard.
   return apiFetch<PlaylistVideoListResponse>(
-    `/playlists/${playlistId}/videos?${params.toString()}`
+    `/playlists/${playlistId}/videos?${params.toString()}`,
+    { ...(signal !== undefined ? { externalSignal: signal } : {}) }
   );
 }
 
@@ -171,7 +174,8 @@ export function usePlaylistVideos(
       hasTranscript,
       unavailableOnly,
     ],
-    queryFn: async ({ pageParam }) => {
+    queryFn: async ({ pageParam, signal }) => {
+      // FR-004/FR-005: TanStack Query provides signal; cancelled on key change or unmount.
       return fetchPlaylistVideos(
         playlistId,
         pageParam,
@@ -181,7 +185,8 @@ export function usePlaylistVideos(
         sortOrder,
         likedOnly,
         hasTranscript,
-        unavailableOnly
+        unavailableOnly,
+        signal
       );
     },
     initialPageParam: 0,

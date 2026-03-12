@@ -531,7 +531,8 @@ describe("usePlaylists", () => {
 
       await waitFor(() => {
         expect(mockApiFetch).toHaveBeenCalledWith(
-          expect.stringContaining("/playlists?")
+          expect.stringContaining("/playlists?"),
+          expect.anything()
         );
       });
 
@@ -570,7 +571,8 @@ describe("usePlaylists", () => {
 
       await waitFor(() => {
         expect(mockApiFetch).toHaveBeenCalledWith(
-          expect.stringContaining("linked=true")
+          expect.stringContaining("linked=true"),
+          expect.anything()
         );
       });
     });
@@ -603,7 +605,8 @@ describe("usePlaylists", () => {
 
       await waitFor(() => {
         expect(mockApiFetch).toHaveBeenCalledWith(
-          expect.stringContaining("linked=false")
+          expect.stringContaining("linked=false"),
+          expect.anything()
         );
       });
     });
@@ -627,7 +630,8 @@ describe("usePlaylists", () => {
 
       await waitFor(() => {
         expect(mockApiFetch).toHaveBeenCalledWith(
-          expect.stringContaining("/playlists?")
+          expect.stringContaining("/playlists?"),
+          expect.anything()
         );
       });
 
@@ -725,10 +729,12 @@ describe("usePlaylists", () => {
 
       // Verify both calls had the correct parameters
       expect(mockApiFetch).toHaveBeenCalledWith(
-        expect.stringContaining("limit=10")
+        expect.stringContaining("limit=10"),
+        expect.anything()
       );
       expect(mockApiFetch).toHaveBeenCalledWith(
-        expect.stringContaining("limit=25")
+        expect.stringContaining("limit=25"),
+        expect.anything()
       );
     });
   });
@@ -753,7 +759,8 @@ describe("usePlaylists", () => {
 
       await waitFor(() => {
         expect(mockApiFetch).toHaveBeenCalledWith(
-          expect.stringContaining("limit=10")
+          expect.stringContaining("limit=10"),
+          expect.anything()
         );
       });
     });
@@ -790,10 +797,12 @@ describe("usePlaylists", () => {
 
       await waitFor(() => {
         expect(mockApiFetch).toHaveBeenCalledWith(
-          expect.stringContaining("linked=true")
+          expect.stringContaining("linked=true"),
+          expect.anything()
         );
         expect(mockApiFetch).toHaveBeenCalledWith(
-          expect.stringContaining("limit=10")
+          expect.stringContaining("limit=10"),
+          expect.anything()
         );
       });
     });
@@ -879,14 +888,16 @@ describe("usePlaylists", () => {
       });
 
       expect(mockApiFetch).toHaveBeenCalledWith(
-        expect.stringContaining("offset=0")
+        expect.stringContaining("offset=0"),
+        expect.anything()
       );
 
       result.current.fetchNextPage();
 
       await waitFor(() => {
         expect(mockApiFetch).toHaveBeenCalledWith(
-          expect.stringContaining("offset=1")
+          expect.stringContaining("offset=1"),
+          expect.anything()
         );
       });
 

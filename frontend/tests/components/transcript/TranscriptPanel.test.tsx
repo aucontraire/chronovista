@@ -325,7 +325,7 @@ describe('TranscriptPanel', () => {
       await user.click(toggleButton);
 
       await waitFor(() => {
-        const announcement = screen.getByRole('status');
+        const announcement = screen.getByTestId('panel-announcement');
         expect(announcement).toHaveTextContent('Transcript panel expanded');
       });
     });

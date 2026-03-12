@@ -115,9 +115,12 @@ export function useSearchSegments({
         params.set("include_unavailable", "true");
       }
 
-      // T057: Pass signal for request cancellation (EC-019)
-      // TanStack Query automatically cancels when queryKey changes
-      return apiFetch<SearchResponse>(`/search/segments?${params}`, { signal });
+      // T057/FR-004/FR-005: Pass TanStack Query signal as externalSignal so it is
+      // combined with the internal timeout guard via AbortSignal.any().
+      // TanStack Query automatically cancels when queryKey changes.
+      return apiFetch<SearchResponse>(`/search/segments?${params}`, {
+        ...(signal !== undefined ? { externalSignal: signal } : {}),
+      });
     },
     getNextPageParam: (lastPage) => {
       // T059: Safely handle malformed backend response (EC-017)

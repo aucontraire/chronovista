@@ -14,11 +14,12 @@
  * @module components/transcript/TranscriptPanel
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { useTranscriptLanguages } from "../../hooks/useTranscriptLanguages";
-import type { TranscriptLanguage, TranscriptType } from "../../types/transcript";
+import { useTranscriptSearch } from "../../hooks/useTranscriptSearch";
+import type { TranscriptLanguage, TranscriptType, TranscriptSegment } from "../../types/transcript";
 import { LanguageSelector } from "./LanguageSelector";
 import { TranscriptFullText } from "./TranscriptFullText";
 import { TranscriptSegments } from "./TranscriptSegments";
@@ -175,6 +176,28 @@ export function TranscriptPanel({
   // Language fallback notice when deep link language is unavailable (FR-012)
   const [languageFallbackNotice, setLanguageFallbackNotice] = useState<string>("");
 
+  // Loaded segments from TranscriptSegments (for client-side search, Feature 042 US4)
+  const [loadedSegments, setLoadedSegments] = useState<TranscriptSegment[]>([]);
+
+  // Raw (un-debounced) search input value for the controlled input
+  const [searchInputValue, setSearchInputValue] = useState<string>("");
+
+  // Saved scroll position — restored when search is cleared (T025)
+  const savedScrollTopRef = useRef<number>(0);
+
+  // Whether search was active (used to detect clear event for scroll restore)
+  const wasSearchActiveRef = useRef<boolean>(false);
+
+  // Ref for the active match container — used for scrollIntoView (T025)
+  const activeMatchContainerRef = useRef<HTMLDivElement>(null);
+
+  // Debounced search announcement (FR-021: 500ms debounce on aria-live)
+  const [searchAnnouncement, setSearchAnnouncement] = useState<string>("");
+  const searchAnnouncementTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Search input ref for keyboard navigation focus detection (T026)
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   // Refs for focus management (NFR-A01, NFR-A02)
   const toggleButtonRef = useRef<HTMLButtonElement>(null);
   const languageSelectorRef = useRef<HTMLDivElement>(null);
@@ -185,6 +208,18 @@ export function TranscriptPanel({
 
   // State for aria-live announcements
   const [announcement, setAnnouncement] = useState<string>("");
+
+  // Client-side transcript search (Feature 042 US4, FR-011, FR-020)
+  const {
+    matches: searchMatches,
+    currentIndex: searchCurrentIndex,
+    total: searchTotal,
+    next: searchNext,
+    prev: searchPrev,
+    query: searchQuery,
+    setQuery: setSearchQuery,
+    reset: resetSearch,
+  } = useTranscriptSearch(loadedSegments, "");
 
   // Initialize selected language when languages load
   useEffect(() => {
@@ -215,6 +250,132 @@ export function TranscriptPanel({
       setViewMode("segments");
     }
   }, [targetSegmentId, targetTimestamp]);
+
+  // Save scroll position when search first activates (for restore on clear — T025).
+  // Actual scroll-to-match is handled by TranscriptSegments via activeSegmentIndex,
+  // which avoids re-scrolling on every page load during eager-fetch and correctly
+  // handles off-screen virtual segments that aren't in the DOM yet.
+  useEffect(() => {
+    if (searchMatches.length > 0 && !wasSearchActiveRef.current) {
+      wasSearchActiveRef.current = true;
+      if (transcriptContentRef.current) {
+        savedScrollTopRef.current = transcriptContentRef.current.scrollTop;
+      }
+    }
+  }, [searchMatches]);
+
+  // Restore scroll when search is cleared (T025)
+  useEffect(() => {
+    if (searchQuery === "" && wasSearchActiveRef.current) {
+      wasSearchActiveRef.current = false;
+      if (transcriptContentRef.current) {
+        transcriptContentRef.current.scrollTop = savedScrollTopRef.current;
+      }
+    }
+  }, [searchQuery]);
+
+  // Reset scroll position and clear active search when language or view mode changes (T027, T028).
+  // FR-015: Reset scroll to top on language/view mode switch.
+  // FR-025: Clear search highlights and search text on language/view mode switch.
+  //
+  // Scroll reset is immediate (no animation) per FR-015.
+  // The effect skips the very first value of selectedLanguage ("" → first language) by
+  // checking that selectedLanguage is non-empty before acting, which means the reset only
+  // fires on user-initiated language changes, not the initial auto-selection on mount.
+  // Deep-link scroll (FR-016) is preserved because TranscriptSegments performs its own
+  // scrollIntoView after data loads, which runs after this effect and takes precedence.
+  useEffect(() => {
+    // Do not act on the initial empty-string placeholder for selectedLanguage.
+    if (!selectedLanguage) return;
+
+    // Reset scroll container to top immediately (FR-015).
+    if (transcriptContentRef.current) {
+      transcriptContentRef.current.scrollTop = 0;
+    }
+
+    // Also reset the saved scroll position ref so a subsequent search-clear
+    // does not restore a stale pre-language-switch position (T027).
+    savedScrollTopRef.current = 0;
+    wasSearchActiveRef.current = false;
+
+    // Clear active search state (FR-025, T028).
+    setSearchInputValue("");
+    resetSearch();
+  }, [selectedLanguage, viewMode, resetSearch]);
+
+  // Update debounced aria-live search announcement (T024, FR-021: 500ms debounce)
+  useEffect(() => {
+    if (searchAnnouncementTimeoutRef.current !== null) {
+      clearTimeout(searchAnnouncementTimeoutRef.current);
+    }
+
+    if (searchQuery && searchTotal > 0) {
+      searchAnnouncementTimeoutRef.current = setTimeout(() => {
+        setSearchAnnouncement(
+          `${searchTotal} match${searchTotal !== 1 ? "es" : ""} found. Showing ${searchCurrentIndex + 1} of ${searchTotal}.`
+        );
+      }, 500);
+    } else if (searchQuery && searchTotal === 0) {
+      searchAnnouncementTimeoutRef.current = setTimeout(() => {
+        setSearchAnnouncement("No matches found.");
+      }, 500);
+    } else {
+      setSearchAnnouncement("");
+    }
+
+    return () => {
+      if (searchAnnouncementTimeoutRef.current !== null) {
+        clearTimeout(searchAnnouncementTimeoutRef.current);
+      }
+    };
+  }, [searchQuery, searchTotal, searchCurrentIndex]);
+
+  /**
+   * Handles search input change.
+   * Updates raw input state and forwards to debounced hook setter.
+   */
+  const handleSearchInput = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      setSearchInputValue(value);
+      setSearchQuery(value);
+    },
+    [setSearchQuery]
+  );
+
+  /**
+   * Handles keyboard navigation from the search input (T026).
+   * Enter → next match, Shift+Enter → previous match.
+   */
+  const handleSearchKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          searchPrev();
+        } else {
+          searchNext();
+        }
+      }
+    },
+    [searchNext, searchPrev]
+  );
+
+  /**
+   * Resets the search field and restores scroll position.
+   */
+  const handleSearchReset = useCallback(() => {
+    setSearchInputValue("");
+    resetSearch();
+    // Restore scroll handled by effect watching searchQuery
+  }, [resetSearch]);
+
+  /**
+   * Handles segments loaded from TranscriptSegments (used for search indexing).
+   */
+  const handleSegmentsChange = useCallback((segments: TranscriptSegment[]) => {
+    setLoadedSegments(segments);
+  }, []);
 
   /**
    * Handles expand/collapse toggle.
@@ -453,6 +614,154 @@ export function TranscriptPanel({
                 />
               </div>
 
+              {/* Search field — visible only in expanded segments view (FR-011, T023) */}
+              {viewMode === "segments" && (
+                <div className="pb-3">
+                  <div className="flex items-center gap-2">
+                    {/* Search input (NFR-002: accessible label) */}
+                    <label
+                      htmlFor="transcript-search-input"
+                      className="sr-only"
+                    >
+                      Search transcript
+                    </label>
+                    <input
+                      ref={searchInputRef}
+                      id="transcript-search-input"
+                      type="search"
+                      value={searchInputValue}
+                      onChange={handleSearchInput}
+                      onKeyDown={handleSearchKeyDown}
+                      placeholder="Search transcript…"
+                      aria-label="Search transcript"
+                      aria-controls="transcript-content"
+                      className="
+                        flex-1 min-w-0 px-3 py-1.5 text-sm
+                        border border-gray-300 rounded-md
+                        bg-white text-gray-900
+                        placeholder:text-gray-400
+                        focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:border-blue-500
+                      "
+                    />
+
+                    {/* Match counter "N of M" (FR-013) */}
+                    {searchQuery && (
+                      <span
+                        className="flex-shrink-0 text-xs text-gray-500 tabular-nums"
+                        aria-live="off"
+                      >
+                        {searchTotal === 0
+                          ? "0 of 0"
+                          : `${searchCurrentIndex + 1} of ${searchTotal}`}
+                      </span>
+                    )}
+
+                    {/* Previous button — NFR-001: min 44×44px touch target */}
+                    {searchTotal > 0 && (
+                      <button
+                        type="button"
+                        onClick={searchPrev}
+                        aria-label="Previous match"
+                        title="Previous match (Shift+Enter)"
+                        disabled={searchTotal === 0}
+                        className="
+                          flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center rounded
+                          text-gray-600 hover:text-gray-900 hover:bg-gray-100
+                          focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500
+                          disabled:opacity-40 disabled:cursor-not-allowed
+                        "
+                      >
+                        {/* Up chevron */}
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M5 15l7-7 7 7"
+                          />
+                        </svg>
+                      </button>
+                    )}
+
+                    {/* Next button — NFR-001: min 44×44px touch target */}
+                    {searchTotal > 0 && (
+                      <button
+                        type="button"
+                        onClick={searchNext}
+                        aria-label="Next match"
+                        title="Next match (Enter)"
+                        disabled={searchTotal === 0}
+                        className="
+                          flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center rounded
+                          text-gray-600 hover:text-gray-900 hover:bg-gray-100
+                          focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500
+                          disabled:opacity-40 disabled:cursor-not-allowed
+                        "
+                      >
+                        {/* Down chevron */}
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </button>
+                    )}
+
+                    {/* Clear/reset button — NFR-001: min 44×44px touch target */}
+                    {searchInputValue && (
+                      <button
+                        type="button"
+                        onClick={handleSearchReset}
+                        aria-label="Clear search"
+                        className="
+                          flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center rounded
+                          text-gray-500 hover:text-gray-700 hover:bg-gray-100
+                          focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500
+                        "
+                      >
+                        {/* X icon */}
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* "No matches" hint (shown when query exists but nothing found) */}
+                  {searchQuery && searchTotal === 0 && (
+                    <p className="mt-1 text-xs text-gray-500" role="status">
+                      No matches found
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Transcript Content */}
               <div
                 ref={transcriptContentRef}
@@ -469,6 +778,19 @@ export function TranscriptPanel({
                     targetTimestamp={targetTimestamp}
                     onDeepLinkComplete={onDeepLinkComplete}
                     isExpanded={isExpanded}
+                    searchProps={{
+                      matches: searchMatches,
+                      activeMatchIndex: searchCurrentIndex,
+                      onSegmentsChange: handleSegmentsChange,
+                      activeMatchContainerRef,
+                      searchQuery,
+                      // Segment-level index for the active match — used by
+                      // TranscriptSegments to scroll the virtual container
+                      // without relying on DOM refs that fail for off-screen
+                      // segments (bug fix: T025 scroll-to-match).
+                      activeSegmentIndex:
+                        searchMatches[searchCurrentIndex]?.segmentIndex,
+                    }}
                   />
                 ) : (
                   <TranscriptFullText
@@ -488,8 +810,20 @@ export function TranscriptPanel({
         aria-live="polite"
         aria-atomic="true"
         className="sr-only"
+        data-testid="panel-announcement"
       >
         {announcement}
+      </div>
+
+      {/* Screen reader announcement for search match count (T024, FR-021: 500ms debounce) */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+        data-testid="search-announcement"
+      >
+        {searchAnnouncement}
       </div>
 
       {/* Screen reader summary when collapsed */}

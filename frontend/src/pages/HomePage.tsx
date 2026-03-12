@@ -12,6 +12,7 @@ import { VideoList } from "../components/VideoList";
 import { VideoFilters } from "../components/VideoFilters";
 import { SortDropdown } from "../components/SortDropdown";
 import { FilterToggle } from "../components/FilterToggle";
+import { SkipLink } from "../components/SkipLink";
 import { useVideos } from "../hooks/useVideos";
 import type { VideoSortField, SortOrder, SortOption } from "../types/filters";
 
@@ -77,6 +78,9 @@ export function HomePage() {
 
   return (
     <div className="p-6 lg:p-8">
+      {/* NFR-006: Skip link targeting the main content area */}
+      <SkipLink targetId="main-content" label="Skip to content" />
+
       {/* Page Header */}
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-slate-900">Videos</h2>

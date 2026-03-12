@@ -43,6 +43,8 @@ import type {
   CorrectionType,
   CorrectionAuditRecord,
 } from "../../types/corrections";
+import type { TranscriptSearchMatch } from "../../hooks/useTranscriptSearch";
+import { TextHighlighter } from "./TextHighlighter";
 import {
   CorrectionBadge,
   SegmentEditForm,
@@ -68,6 +70,43 @@ export interface TranscriptSegmentsProps {
   onDeepLinkComplete?: (() => void) | undefined;
   /** Whether the parent panel is expanded (for deep link abort on collapse) */
   isExpanded?: boolean | undefined;
+  /**
+   * Search props for client-side transcript search (Feature 042 US4).
+   * When provided, segment text is rendered through TextHighlighter.
+   */
+  searchProps?: {
+    /** All search matches across all segments */
+    matches: TranscriptSearchMatch[];
+    /** Index of the currently active match (global, across all segments) */
+    activeMatchIndex: number;
+    /** Callback to expose loaded segments to the parent for search indexing */
+    onSegmentsChange: (segments: TranscriptSegment[]) => void;
+    /** Ref for the active match DOM element, used by parent for scrollIntoView */
+    activeMatchContainerRef: React.RefObject<HTMLDivElement | null>;
+    /** Current debounced search query — triggers eager page fetching when non-empty */
+    searchQuery: string;
+    /**
+     * Segment index (into the loaded segments array) of the active match.
+     * Used by TranscriptSegments to imperatively scroll the container to the
+     * match using scrollTop — avoids DOM-ref failures for off-screen virtual segments.
+     * undefined when there is no active match.
+     */
+    activeSegmentIndex: number | undefined;
+  } | undefined;
+}
+
+/**
+ * Search rendering props for a single segment, derived from parent searchProps.
+ */
+interface SegmentSearchProps {
+  /** All matches across all segments */
+  allMatches: TranscriptSearchMatch[];
+  /** Index of the globally active match */
+  activeMatchIndex: number;
+  /** Index of this segment in the segments array */
+  segmentIndex: number;
+  /** Ref to attach to the segment row when it contains the active match */
+  activeMatchContainerRef: React.RefObject<HTMLDivElement | null>;
 }
 
 /**
@@ -106,12 +145,14 @@ interface EditModeProps {
  *
  * Supports optional highlight state for deep link navigation (FR-008, FR-009, FR-015).
  * Supports inline edit mode (Feature 035): shows SegmentEditForm when this segment is active.
+ * Supports search highlighting (Feature 042 US4): renders text through TextHighlighter.
  */
 function SegmentItem({
   segment,
   isVirtualized,
   isHighlighted,
   highlightTransitionClass,
+  segmentSearchProps,
   editState,
   isPending,
   correctionError,
@@ -136,6 +177,7 @@ function SegmentItem({
   isVirtualized: boolean;
   isHighlighted?: boolean;
   highlightTransitionClass?: string;
+  segmentSearchProps?: SegmentSearchProps | undefined;
 } & EditModeProps) {
   const isEditing =
     editState.mode === "editing" && editState.segmentId === segment.id;
@@ -149,10 +191,19 @@ function SegmentItem({
     ? "bg-yellow-100 border-l-4 border-yellow-400"
     : "border-l-4 border-transparent";
 
+  // Determine if this segment contains the active search match (Feature 042 US4)
+  const activeMatch = segmentSearchProps?.allMatches[segmentSearchProps.activeMatchIndex];
+  const isActiveMatchSegment =
+    segmentSearchProps !== undefined &&
+    activeMatch !== undefined &&
+    activeMatch.segmentIndex === segmentSearchProps.segmentIndex;
+
   return (
     <div>
       {/* Segment row */}
       <div
+        // Attach ref when this segment row contains the active search match (T025)
+        ref={isActiveMatchSegment ? segmentSearchProps.activeMatchContainerRef : undefined}
         className={`group flex gap-4 py-2 hover:bg-slate-50 ${isVirtualized ? "px-2" : ""} ${highlightClasses} ${highlightTransitionClass ?? ""}`}
         data-segment-id={segment.id}
         // FR-015: Make highlighted segment focusable for programmatic focus
@@ -196,7 +247,17 @@ function SegmentItem({
               <p
                 className={`flex-1 ${CONTRAST_SAFE_COLORS.bodyText} ${RESPONSIVE_CONFIG.segmentTextSize.mobile} lg:${RESPONSIVE_CONFIG.segmentTextSize.desktop}`}
               >
-                {segment.text}
+                {segmentSearchProps && segmentSearchProps.allMatches.length > 0 ? (
+                  <TextHighlighter
+                    text={segment.text}
+                    matches={segmentSearchProps.allMatches}
+                    segmentIndex={segmentSearchProps.segmentIndex}
+                    activeMatchIndex={segmentSearchProps.activeMatchIndex}
+                    allMatches={segmentSearchProps.allMatches}
+                  />
+                ) : (
+                  segment.text
+                )}
               </p>
 
               {/* Correction badge — renders only when segment has an active correction (Feature 035) */}
@@ -417,6 +478,7 @@ function VirtualizedSegmentList({
   highlightedSegmentId,
   highlightTransitionClass,
   editModeProps,
+  searchProps,
 }: {
   segments: TranscriptSegment[];
   containerRef: React.RefObject<HTMLDivElement | null>;
@@ -424,6 +486,7 @@ function VirtualizedSegmentList({
   highlightedSegmentId: number | null;
   highlightTransitionClass: string;
   editModeProps: EditModeProps;
+  searchProps?: TranscriptSegmentsProps["searchProps"];
 }) {
   const virtualizer = useVirtualizer({
     count: segments.length,
@@ -448,6 +511,14 @@ function VirtualizedSegmentList({
         if (!segment) return null;
 
         const isHighlighted = segment.id === highlightedSegmentId;
+        const segmentSearchProps: SegmentSearchProps | undefined = searchProps
+          ? {
+              allMatches: searchProps.matches,
+              activeMatchIndex: searchProps.activeMatchIndex,
+              segmentIndex: virtualItem.index,
+              activeMatchContainerRef: searchProps.activeMatchContainerRef,
+            }
+          : undefined;
 
         return (
           <div
@@ -469,6 +540,7 @@ function VirtualizedSegmentList({
               isVirtualized={true}
               isHighlighted={isHighlighted}
               highlightTransitionClass={isHighlighted ? highlightTransitionClass : ""}
+              segmentSearchProps={segmentSearchProps}
               {...editModeProps}
             />
           </div>
@@ -486,16 +558,26 @@ function StandardSegmentList({
   highlightedSegmentId,
   highlightTransitionClass,
   editModeProps,
+  searchProps,
 }: {
   segments: TranscriptSegment[];
   highlightedSegmentId: number | null;
   highlightTransitionClass: string;
   editModeProps: EditModeProps;
+  searchProps?: TranscriptSegmentsProps["searchProps"];
 }) {
   return (
     <>
-      {segments.map((segment) => {
+      {segments.map((segment, segmentIndex) => {
         const isHighlighted = segment.id === highlightedSegmentId;
+        const segmentSearchProps: SegmentSearchProps | undefined = searchProps
+          ? {
+              allMatches: searchProps.matches,
+              activeMatchIndex: searchProps.activeMatchIndex,
+              segmentIndex,
+              activeMatchContainerRef: searchProps.activeMatchContainerRef,
+            }
+          : undefined;
         return (
           <SegmentItem
             key={segment.id}
@@ -503,6 +585,7 @@ function StandardSegmentList({
             isVirtualized={false}
             isHighlighted={isHighlighted}
             highlightTransitionClass={isHighlighted ? highlightTransitionClass : ""}
+            segmentSearchProps={segmentSearchProps}
             {...editModeProps}
           />
         );
@@ -578,6 +661,7 @@ export function TranscriptSegments({
   targetTimestamp,
   onDeepLinkComplete,
   isExpanded = true,
+  searchProps,
 }: TranscriptSegmentsProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -659,7 +743,26 @@ export function TranscriptSegments({
   } = useTranscriptSegments(videoId, languageCode);
 
   // Determine if virtualization should be used (NFR-P12)
-  const useVirtualization = segments.length > VIRTUALIZATION_CONFIG.threshold;
+  const useVirtualization = segments.length >= INFINITE_SCROLL_CONFIG.initialBatchSize;
+
+  // Notify parent of loaded segments so it can run client-side search (Feature 042 US4)
+  const onSegmentsChange = searchProps?.onSegmentsChange;
+  useEffect(() => {
+    if (onSegmentsChange && segments.length > 0) {
+      onSegmentsChange(segments);
+    }
+  }, [segments, onSegmentsChange]);
+
+  // Eager-fetch all remaining pages when a search query is active so the full
+  // transcript is available for client-side searching (Feature 042 — same pattern
+  // as ChannelsPage eager-load). Without this, only the initially-loaded 50
+  // segments are searched and later matches won't appear until the user scrolls.
+  const searchQuery = searchProps?.searchQuery ?? "";
+  useEffect(() => {
+    if (searchQuery.trim() && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [searchQuery, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   // Highlight transition: fade-out unless reduced motion (FR-009)
   const highlightTransitionClass = prefersReducedMotion
@@ -676,6 +779,39 @@ export function TranscriptSegments({
       previousLanguageRef.current = languageCode;
     }
   }, [languageCode, onScrollPositionReset]);
+
+  // Track the previously-scrolled activeSegmentIndex so we only scroll when
+  // the user navigates to a *different* match (not when new pages load and
+  // searchMatches changes while currentIndex stays the same).
+  const prevActiveSegmentIndexRef = useRef<number | undefined>(undefined);
+
+  // Scroll the virtualizer container to the active search match when the user
+  // navigates (next / prev). Uses containerRef.scrollTop instead of DOM
+  // scrollIntoView so it works even when the target segment is outside the
+  // virtual window and hasn't been rendered yet (fixes the "scroll fails for
+  // off-screen virtual segments" problem described in the bug report).
+  const activeSegmentIndex = searchProps?.activeSegmentIndex;
+  useEffect(() => {
+    if (activeSegmentIndex === undefined) {
+      prevActiveSegmentIndexRef.current = undefined;
+      return;
+    }
+
+    // Skip — same segment as last time (e.g. new pages loaded but user didn't
+    // press next/prev, so the active match index is unchanged).
+    if (activeSegmentIndex === prevActiveSegmentIndexRef.current) return;
+    prevActiveSegmentIndexRef.current = activeSegmentIndex;
+
+    if (!containerRef.current) return;
+
+    // Center the target segment in the viewport by calculating its approximate
+    // pixel position from the top of the list.
+    const containerHeight = containerRef.current.clientHeight;
+    const targetTop = activeSegmentIndex * VIRTUALIZATION_CONFIG.estimatedHeight;
+    const centeredTop = Math.max(0, targetTop - containerHeight / 2);
+
+    containerRef.current.scrollTop = centeredTop;
+  }, [activeSegmentIndex]);
 
   /**
    * Handles the deep link scroll, highlight, focus, and cleanup sequence.
@@ -1173,6 +1309,7 @@ export function TranscriptSegments({
           highlightedSegmentId={highlightedSegmentId}
           highlightTransitionClass={highlightTransitionClass}
           editModeProps={editModeProps}
+          searchProps={searchProps}
         />
       ) : (
         <StandardSegmentList
@@ -1180,6 +1317,7 @@ export function TranscriptSegments({
           highlightedSegmentId={highlightedSegmentId}
           highlightTransitionClass={highlightTransitionClass}
           editModeProps={editModeProps}
+          searchProps={searchProps}
         />
       )}
 

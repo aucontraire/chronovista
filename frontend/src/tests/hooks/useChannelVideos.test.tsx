@@ -139,7 +139,8 @@ describe("useChannelVideos", () => {
 
       // Verify API was called with include_unavailable=true
       expect(apiConfig.apiFetch).toHaveBeenCalledWith(
-        `/channels/${mockChannelId}/videos?offset=0&limit=25&include_unavailable=true`
+        `/channels/${mockChannelId}/videos?offset=0&limit=25&include_unavailable=true`,
+        expect.anything()
       );
 
       // Verify both available and unavailable videos are included
@@ -177,7 +178,8 @@ describe("useChannelVideos", () => {
 
       // Verify API was called with include_unavailable=false
       expect(apiConfig.apiFetch).toHaveBeenCalledWith(
-        `/channels/${mockChannelId}/videos?offset=0&limit=25&include_unavailable=false`
+        `/channels/${mockChannelId}/videos?offset=0&limit=25&include_unavailable=false`,
+        expect.anything()
       );
 
       // Verify only available videos are included
@@ -201,7 +203,8 @@ describe("useChannelVideos", () => {
 
       // Verify API was called with custom limit
       expect(apiConfig.apiFetch).toHaveBeenCalledWith(
-        `/channels/${mockChannelId}/videos?offset=0&limit=50&include_unavailable=true`
+        `/channels/${mockChannelId}/videos?offset=0&limit=50&include_unavailable=true`,
+        expect.anything()
       );
     });
   });

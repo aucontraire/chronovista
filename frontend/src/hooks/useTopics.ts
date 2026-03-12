@@ -78,8 +78,10 @@ export function useTopics(options: UseTopicsOptions = {}): UseTopicsReturn {
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["topics", "hierarchy"],
+    // FR-004/FR-005: Pass TanStack Query signal as externalSignal so it is
+    // combined with the internal timeout guard via AbortSignal.any().
     queryFn: ({ signal }) =>
-      apiFetch<TopicsHierarchyResponse>("/topics/hierarchy", { signal }),
+      apiFetch<TopicsHierarchyResponse>("/topics/hierarchy", { externalSignal: signal }),
     staleTime: 10 * 60 * 1000, // 10 minutes
     gcTime: 30 * 60 * 1000, // 30 minutes
     retry: 3,

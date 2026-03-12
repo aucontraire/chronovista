@@ -32,7 +32,8 @@ async function fetchPlaylists(
   limit: number,
   filter: PlaylistFilterType,
   sortBy: PlaylistSortField,
-  sortOrder: SortOrder
+  sortOrder: SortOrder,
+  signal?: AbortSignal
 ): Promise<PlaylistListResponse> {
   const params = new URLSearchParams({
     offset: offset.toString(),
@@ -49,7 +50,10 @@ async function fetchPlaylists(
   }
   // For "all", omit the linked parameter
 
-  return apiFetch<PlaylistListResponse>(`/playlists?${params.toString()}`);
+  // FR-004/FR-005: externalSignal combines with the internal timeout guard.
+  return apiFetch<PlaylistListResponse>(`/playlists?${params.toString()}`, {
+    ...(signal !== undefined ? { externalSignal: signal } : {}),
+  });
 }
 
 interface UsePlaylistsOptions {
@@ -132,8 +136,9 @@ export function usePlaylists(
     refetch,
   } = useInfiniteQuery({
     queryKey: ["playlists", filter, sortBy, sortOrder, limit],
-    queryFn: async ({ pageParam }) => {
-      return fetchPlaylists(pageParam, limit, filter, sortBy, sortOrder);
+    queryFn: async ({ pageParam, signal }) => {
+      // FR-004/FR-005: TanStack Query provides signal; cancelled on key change or unmount.
+      return fetchPlaylists(pageParam, limit, filter, sortBy, sortOrder, signal);
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {

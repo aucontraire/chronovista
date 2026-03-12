@@ -958,8 +958,8 @@ describe("TranscriptSegments - Deep Link Navigation", () => {
 
   describe("Integration with standard segment list", () => {
     it("should work correctly with standard (non-virtualized) list", () => {
-      // Use fewer than 100 segments to avoid virtualization
-      const segments = createTestSegments(50);
+      // Use fewer than 50 segments to avoid virtualization (threshold is initialBatchSize = 50)
+      const segments = createTestSegments(49);
       const targetSegment = segments[25]!;
 
       vi.mocked(useTranscriptSegments).mockReturnValue(
@@ -1337,7 +1337,7 @@ describe("TranscriptSegments - Deep Link Navigation", () => {
       });
       expect(mockFetchNextPage).toHaveBeenCalledTimes(1);
 
-      currentCount += 25;
+      currentCount += 10;
       updateMock(false);
       rerender(
         <TranscriptSegments

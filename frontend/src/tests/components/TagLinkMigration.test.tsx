@@ -30,10 +30,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { ClassificationSection } from "../../components/ClassificationSection";
 import { VideoFilters } from "../../components/VideoFilters";
-import type {
-  CanonicalTagListItem,
-  CanonicalTagDetail,
-} from "../../types/canonical-tags";
+import type { CanonicalTagDetail } from "../../types/canonical-tags";
 
 // ---------------------------------------------------------------------------
 // Mocks for VideoFilters dependencies
@@ -65,34 +62,8 @@ vi.mock("../../hooks/useOnlineStatus", () => ({
 // Helpers for ClassificationSection fetch mock
 // ---------------------------------------------------------------------------
 
-function makeListResponse(items: CanonicalTagListItem[]): string {
-  return JSON.stringify({
-    data: items,
-    pagination: {
-      total: items.length,
-      limit: 1,
-      offset: 0,
-      has_more: false,
-    },
-  });
-}
-
 function makeDetailResponse(detail: CanonicalTagDetail): string {
   return JSON.stringify({ data: detail });
-}
-
-function makeListItem(
-  canonicalForm: string,
-  normalizedForm: string,
-  aliasCount: number,
-  videoCount = 10
-): CanonicalTagListItem {
-  return {
-    canonical_form: canonicalForm,
-    normalized_form: normalizedForm,
-    alias_count: aliasCount,
-    video_count: videoCount,
-  };
 }
 
 function makeDetail(

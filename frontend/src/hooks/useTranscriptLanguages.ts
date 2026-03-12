@@ -15,13 +15,17 @@ import type {
  * Fetches available transcript languages for a video from the API.
  *
  * @param videoId - The YouTube video ID to fetch languages for
+ * @param signal - Optional AbortSignal for cancellation (FR-005)
  * @returns Array of TranscriptLanguage data
  */
 async function fetchTranscriptLanguages(
-  videoId: string
+  videoId: string,
+  signal?: AbortSignal
 ): Promise<TranscriptLanguage[]> {
+  // FR-004/FR-005: externalSignal combines with the internal timeout guard.
   const response = await apiFetch<TranscriptLanguagesResponse>(
-    `/videos/${videoId}/transcript/languages?include_unavailable=true`
+    `/videos/${videoId}/transcript/languages?include_unavailable=true`,
+    { ...(signal !== undefined ? { externalSignal: signal } : {}) }
   );
   return response.data;
 }
@@ -56,7 +60,7 @@ export function useTranscriptLanguages(
 ): UseQueryResult<TranscriptLanguage[], ApiError> {
   return useQuery<TranscriptLanguage[], ApiError>({
     queryKey: ["transcriptLanguages", videoId],
-    queryFn: () => fetchTranscriptLanguages(videoId),
+    queryFn: ({ signal }) => fetchTranscriptLanguages(videoId, signal),
     staleTime: 5 * 60 * 1000, // 5 minutes
     enabled: !!videoId, // Only run if videoId is truthy
   });

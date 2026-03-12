@@ -100,9 +100,11 @@ export function useSearchTitles({
         params.set("include_unavailable", "true");
       }
 
+      // FR-004/FR-005: Pass TanStack Query signal as externalSignal so it is
+      // combined with the internal timeout guard via AbortSignal.any().
       return apiFetch<TitleSearchResponse>(
         `${SEARCH_CONFIG.TITLE_SEARCH_ENDPOINT}?${params}`,
-        { signal }
+        { ...(signal !== undefined ? { externalSignal: signal } : {}) }
       );
     },
     enabled: enabled && query.length >= SEARCH_CONFIG.MIN_QUERY_LENGTH,

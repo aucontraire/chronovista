@@ -60,7 +60,8 @@ export function useVideoEntities(
 ): UseVideoEntitiesReturn {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["video-entities", videoId, languageCode ?? null],
-    queryFn: () => fetchVideoEntities(videoId, languageCode),
+    // FR-004/FR-005: TanStack Query provides signal; cancelled on key change or unmount.
+    queryFn: ({ signal }) => fetchVideoEntities(videoId, languageCode, signal),
     enabled: Boolean(videoId),
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000,
@@ -142,12 +143,13 @@ export function useEntityVideos(
     fetchNextPage,
   } = useInfiniteQuery({
     queryKey: ["entity-videos", entityId, params.language_code ?? null, limit],
-    queryFn: ({ pageParam }) =>
+    // FR-004/FR-005: TanStack Query provides signal; cancelled on key change or unmount.
+    queryFn: ({ pageParam, signal }) =>
       fetchEntityVideos(entityId, {
         ...params,
         limit,
         offset: pageParam,
-      }),
+      }, signal),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {
       if (!lastPage.pagination.has_more) return undefined;
@@ -277,12 +279,13 @@ export function useEntities(
       params.sort ?? null,
       limit,
     ],
-    queryFn: ({ pageParam }) =>
+    // FR-004/FR-005: TanStack Query provides signal; cancelled on key change or unmount.
+    queryFn: ({ pageParam, signal }) =>
       fetchEntities({
         ...params,
         limit,
         offset: pageParam,
-      }),
+      }, signal),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {
       if (!lastPage.pagination.has_more) return undefined;

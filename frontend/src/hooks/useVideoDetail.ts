@@ -11,10 +11,14 @@ import type { ApiError, VideoDetail, VideoDetailResponse } from "../types/video"
  * Fetches video details from the API.
  *
  * @param videoId - The YouTube video ID to fetch
+ * @param signal - Optional AbortSignal for cancellation (FR-005)
  * @returns VideoDetail data
  */
-async function fetchVideoDetail(videoId: string): Promise<VideoDetail> {
-  const response = await apiFetch<VideoDetailResponse>(`/videos/${videoId}`);
+async function fetchVideoDetail(videoId: string, signal?: AbortSignal): Promise<VideoDetail> {
+  // FR-004/FR-005: externalSignal combines with the internal timeout guard.
+  const response = await apiFetch<VideoDetailResponse>(`/videos/${videoId}`, {
+    ...(signal !== undefined ? { externalSignal: signal } : {}),
+  });
   return response.data;
 }
 
@@ -40,7 +44,7 @@ async function fetchVideoDetail(videoId: string): Promise<VideoDetail> {
 export function useVideoDetail(videoId: string): UseQueryResult<VideoDetail, ApiError> {
   return useQuery<VideoDetail, ApiError>({
     queryKey: ["video", videoId],
-    queryFn: () => fetchVideoDetail(videoId),
+    queryFn: ({ signal }) => fetchVideoDetail(videoId, signal),
     staleTime: 10 * 1000, // 10 seconds (NFR-P01)
     enabled: !!videoId, // Only run if videoId is truthy
   });

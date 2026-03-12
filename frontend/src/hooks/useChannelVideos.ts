@@ -29,7 +29,8 @@ async function fetchChannelVideos(
   includeUnavailable: boolean,
   sortBy?: ChannelVideoSortField,
   sortOrder?: SortOrder,
-  likedOnly?: boolean
+  likedOnly?: boolean,
+  signal?: AbortSignal
 ): Promise<VideoListResponse> {
   const params = new URLSearchParams({
     offset: offset.toString(),
@@ -47,8 +48,10 @@ async function fetchChannelVideos(
     params.set("liked_only", "true");
   }
 
+  // FR-004/FR-005: externalSignal combines with the internal timeout guard.
   return apiFetch<VideoListResponse>(
-    `/channels/${channelId}/videos?${params.toString()}`
+    `/channels/${channelId}/videos?${params.toString()}`,
+    { ...(signal !== undefined ? { externalSignal: signal } : {}) }
   );
 }
 
@@ -136,11 +139,12 @@ export function useChannelVideos(
     refetch,
   } = useInfiniteQuery({
     queryKey: ["channel-videos", channelId, limit, includeUnavailable, sortBy, sortOrder, likedOnly],
-    queryFn: async ({ pageParam }) => {
+    queryFn: async ({ pageParam, signal }) => {
       if (!channelId) {
         throw new Error("Channel ID is required");
       }
-      return fetchChannelVideos(channelId, pageParam, limit, includeUnavailable, sortBy, sortOrder, likedOnly);
+      // FR-004/FR-005: TanStack Query provides signal; cancelled on key change or unmount.
+      return fetchChannelVideos(channelId, pageParam, limit, includeUnavailable, sortBy, sortOrder, likedOnly, signal);
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {

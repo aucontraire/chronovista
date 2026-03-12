@@ -107,7 +107,7 @@ describe("useVideoDetail", () => {
       });
 
       await waitFor(() => {
-        expect(apiConfig.apiFetch).toHaveBeenCalledWith("/videos/dQw4w9WgXcQ");
+        expect(apiConfig.apiFetch).toHaveBeenCalledWith("/videos/dQw4w9WgXcQ", expect.anything());
       });
     });
 
@@ -280,7 +280,7 @@ describe("useVideoDetail", () => {
         expect(result.current.isSuccess).toBe(true);
       });
 
-      expect(apiConfig.apiFetch).toHaveBeenCalledWith("/videos/dQw4w9WgXcQ");
+      expect(apiConfig.apiFetch).toHaveBeenCalledWith("/videos/dQw4w9WgXcQ", expect.anything());
     });
   });
 

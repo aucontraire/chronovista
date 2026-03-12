@@ -37,7 +37,8 @@ async function fetchChannels(
   limit: number,
   sortBy: ChannelSortField,
   sortOrder: SortOrder,
-  isSubscribed: SubscriptionFilter
+  isSubscribed: SubscriptionFilter,
+  signal?: AbortSignal
 ): Promise<ChannelListResponse> {
   const params = new URLSearchParams({
     offset: offset.toString(),
@@ -54,7 +55,10 @@ async function fetchChannels(
   }
   // For "all", omit the is_subscribed parameter
 
-  return apiFetch<ChannelListResponse>(`/channels?${params.toString()}`);
+  // FR-004/FR-005: externalSignal combines with the internal timeout guard.
+  return apiFetch<ChannelListResponse>(`/channels?${params.toString()}`, {
+    ...(signal !== undefined ? { externalSignal: signal } : {}),
+  });
 }
 
 interface UseChannelsOptions {
@@ -140,8 +144,9 @@ export function useChannels(options: UseChannelsOptions = {}): UseChannelsReturn
     refetch,
   } = useInfiniteQuery({
     queryKey: ["channels", sortBy, sortOrder, isSubscribed, limit],
-    queryFn: async ({ pageParam }) => {
-      return fetchChannels(pageParam, limit, sortBy, sortOrder, isSubscribed);
+    queryFn: async ({ pageParam, signal }) => {
+      // FR-004/FR-005: TanStack Query provides signal; cancelled on key change or unmount.
+      return fetchChannels(pageParam, limit, sortBy, sortOrder, isSubscribed, signal);
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {

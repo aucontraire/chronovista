@@ -89,18 +89,22 @@ async function fetchSegments(
 
   const endpoint = `/videos/${videoId}/transcript/segments?${params.toString()}`;
 
-  // Create a timeout-specific AbortController for 5s timeout (NFR-P02)
+  // NFR-P02: 5s timeout for segment batch loads — stricter than the global 10s.
+  // FR-004/FR-005: The TanStack Query signal and the 5s timeout are combined via
+  // AbortSignal.any() inside apiFetch when both are passed as externalSignal.
+  // We use AbortSignal.any() here to merge the two external signals before
+  // passing them, keeping apiFetch's own timeout guard as the fallback.
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => timeoutController.abort(), 5000);
 
-  // Combine signals if we have an external abort signal
-  const combinedSignal = signal
-    ? combineAbortSignals(signal, timeoutController.signal)
+  // Merge the 5s segment timeout with the TanStack Query signal (if present).
+  const mergedExternal: AbortSignal = signal
+    ? AbortSignal.any([signal, timeoutController.signal])
     : timeoutController.signal;
 
   try {
     const response = await apiFetch<SegmentListResponse>(endpoint, {
-      signal: combinedSignal,
+      externalSignal: mergedExternal,
     });
     clearTimeout(timeoutId);
     return response;
@@ -108,23 +112,6 @@ async function fetchSegments(
     clearTimeout(timeoutId);
     throw error;
   }
-}
-
-/**
- * Combines multiple AbortSignals into one.
- */
-function combineAbortSignals(...signals: AbortSignal[]): AbortSignal {
-  const controller = new AbortController();
-
-  for (const signal of signals) {
-    if (signal.aborted) {
-      controller.abort();
-      break;
-    }
-    signal.addEventListener("abort", () => controller.abort(), { once: true });
-  }
-
-  return controller.signal;
 }
 
 /**

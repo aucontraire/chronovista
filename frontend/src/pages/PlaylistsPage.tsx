@@ -9,6 +9,9 @@
  * - CHK052: Error state with retry
  * - CHK053: Empty state with filter-aware messaging
  * - CHK054: Infinite scroll support
+ *
+ * Feature 042, US7 (T035, T037):
+ * - SkipLink to main content area (FR-019, NFR-004, NFR-006)
  */
 
 import { useEffect } from "react";
@@ -16,6 +19,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { PlaylistCard } from "../components/PlaylistCard";
 import { PlaylistFilterTabs } from "../components/PlaylistFilterTabs";
+import { SkipLink } from "../components/SkipLink";
 import { SortDropdown } from "../components/SortDropdown";
 import { ErrorState } from "../components/ErrorState";
 import { usePlaylists } from "../hooks/usePlaylists";
@@ -24,6 +28,9 @@ import type {
   PlaylistSortField,
 } from "../types/playlist";
 import type { SortOrder, SortOption } from "../types/filters";
+
+/** Stable ID used by SkipLink and main content container (T035, T037). */
+const MAIN_CONTENT_ID = "playlists-main-content";
 
 /**
  * Sort options for playlists (Feature 027).
@@ -290,72 +297,99 @@ export function PlaylistsPage() {
   // Initial loading state (CHK051)
   if (isLoading) {
     return (
-      <main className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">Playlists</h1>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <PlaylistFilterTabs
-            currentFilter={filter}
-            onFilterChange={handleFilterChange}
-          />
-          <SortDropdown
-            options={PLAYLIST_SORT_OPTIONS}
-            defaultField="video_count"
-            defaultOrder="desc"
-            label="Sort by"
-          />
-        </div>
-        <PlaylistLoadingState count={12} />
-      </main>
+      <>
+        <SkipLink targetId={MAIN_CONTENT_ID} label="Skip to content" />
+        <main
+          id={MAIN_CONTENT_ID}
+          tabIndex={-1}
+          className="container mx-auto px-4 py-8"
+        >
+          <h1 className="text-3xl font-bold text-gray-900 mb-6">Playlists</h1>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+            <PlaylistFilterTabs
+              currentFilter={filter}
+              onFilterChange={handleFilterChange}
+            />
+            <SortDropdown
+              options={PLAYLIST_SORT_OPTIONS}
+              defaultField="video_count"
+              defaultOrder="desc"
+              label="Sort by"
+            />
+          </div>
+          <PlaylistLoadingState count={12} />
+        </main>
+      </>
     );
   }
 
   // Error state (only if no playlists loaded) (CHK052)
   if (isError && playlists.length === 0) {
     return (
-      <main className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">Playlists</h1>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <PlaylistFilterTabs
-            currentFilter={filter}
-            onFilterChange={handleFilterChange}
-          />
-          <SortDropdown
-            options={PLAYLIST_SORT_OPTIONS}
-            defaultField="video_count"
-            defaultOrder="desc"
-            label="Sort by"
-          />
-        </div>
-        <ErrorState error={error} onRetry={retry} />
-      </main>
+      <>
+        <SkipLink targetId={MAIN_CONTENT_ID} label="Skip to content" />
+        <main
+          id={MAIN_CONTENT_ID}
+          tabIndex={-1}
+          className="container mx-auto px-4 py-8"
+        >
+          <h1 className="text-3xl font-bold text-gray-900 mb-6">Playlists</h1>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+            <PlaylistFilterTabs
+              currentFilter={filter}
+              onFilterChange={handleFilterChange}
+            />
+            <SortDropdown
+              options={PLAYLIST_SORT_OPTIONS}
+              defaultField="video_count"
+              defaultOrder="desc"
+              label="Sort by"
+            />
+          </div>
+          <ErrorState error={error} onRetry={retry} />
+        </main>
+      </>
     );
   }
 
   // Empty state (CHK053)
   if (playlists.length === 0) {
     return (
-      <main className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">Playlists</h1>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <PlaylistFilterTabs
-            currentFilter={filter}
-            onFilterChange={handleFilterChange}
-          />
-          <SortDropdown
-            options={PLAYLIST_SORT_OPTIONS}
-            defaultField="video_count"
-            defaultOrder="desc"
-            label="Sort by"
-          />
-        </div>
-        <PlaylistEmptyState filter={filter} />
-      </main>
+      <>
+        <SkipLink targetId={MAIN_CONTENT_ID} label="Skip to content" />
+        <main
+          id={MAIN_CONTENT_ID}
+          tabIndex={-1}
+          className="container mx-auto px-4 py-8"
+        >
+          <h1 className="text-3xl font-bold text-gray-900 mb-6">Playlists</h1>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+            <PlaylistFilterTabs
+              currentFilter={filter}
+              onFilterChange={handleFilterChange}
+            />
+            <SortDropdown
+              options={PLAYLIST_SORT_OPTIONS}
+              defaultField="video_count"
+              defaultOrder="desc"
+              label="Sort by"
+            />
+          </div>
+          <PlaylistEmptyState filter={filter} />
+        </main>
+      </>
     );
   }
 
   // Playlists list with pagination (CHK050, CHK054)
   return (
-    <main className="container mx-auto px-4 py-8">
+    <>
+      <SkipLink targetId={MAIN_CONTENT_ID} label="Skip to content" />
+      <main
+        id={MAIN_CONTENT_ID}
+        tabIndex={-1}
+        className="container mx-auto px-4 py-8"
+      >
       <h1 className="text-3xl font-bold text-gray-900 mb-6">Playlists</h1>
 
       {/* Filter Tabs and Sort Dropdown (CHK048) */}
@@ -435,6 +469,7 @@ export function PlaylistsPage() {
           <AllLoadedMessage total={total} />
         )}
       </div>
-    </main>
+      </main>
+    </>
   );
 }

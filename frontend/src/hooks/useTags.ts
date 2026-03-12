@@ -81,7 +81,9 @@ export function useTags(options: UseTagsOptions = {}): UseTagsReturn {
       const params = new URLSearchParams();
       if (debouncedSearch) params.set("q", debouncedSearch);
 
-      return apiFetch<TagsResponse>(`/tags?${params.toString()}`, { signal });
+      // FR-004/FR-005: Pass TanStack Query signal as externalSignal so it is
+      // combined with the internal timeout guard via AbortSignal.any().
+      return apiFetch<TagsResponse>(`/tags?${params.toString()}`, { externalSignal: signal });
     },
     enabled: debouncedSearch.length > 0,
     staleTime: 5 * 60 * 1000, // 5 minutes

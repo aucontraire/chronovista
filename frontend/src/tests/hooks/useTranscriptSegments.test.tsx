@@ -108,7 +108,7 @@ describe("useTranscriptSegments", () => {
       expect(result.current.hasNextPage).toBe(true);
       expect(apiConfig.apiFetch).toHaveBeenCalledWith(
         "/videos/dQw4w9WgXcQ/transcript/segments?language=en&offset=0&limit=50",
-        expect.objectContaining({ signal: expect.any(AbortSignal) })
+        expect.objectContaining({ externalSignal: expect.any(AbortSignal) })
       );
     });
 
@@ -167,7 +167,7 @@ describe("useTranscriptSegments", () => {
 
       expect(apiConfig.apiFetch).toHaveBeenCalledWith(
         "/videos/test-2/transcript/segments?language=en&offset=50&limit=25",
-        expect.objectContaining({ signal: expect.any(AbortSignal) })
+        expect.objectContaining({ externalSignal: expect.any(AbortSignal) })
       );
     });
 
@@ -454,7 +454,7 @@ describe("useTranscriptSegments", () => {
         () => {
           expect(apiConfig.apiFetch).toHaveBeenCalledWith(
             "/videos/test-video-5/transcript/segments?language=es&offset=0&limit=50",
-            expect.objectContaining({ signal: expect.any(AbortSignal) })
+            expect.objectContaining({ externalSignal: expect.any(AbortSignal) })
           );
         },
         { timeout: 10000 }
@@ -516,7 +516,7 @@ describe("useTranscriptSegments", () => {
         () => {
           expect(apiConfig.apiFetch).toHaveBeenCalledWith(
             expect.any(String),
-            expect.objectContaining({ signal: expect.any(AbortSignal) })
+            expect.objectContaining({ externalSignal: expect.any(AbortSignal) })
           );
         },
         { timeout: 10000 }

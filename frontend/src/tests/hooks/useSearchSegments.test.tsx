@@ -134,8 +134,8 @@ describe("useSearchSegments", () => {
       const callArgs = vi.mocked(apiFetch).mock.calls[0];
       if (callArgs) {
         const options = callArgs[1];
-        expect(options).toHaveProperty("signal");
-        expect(options?.signal).toBeInstanceOf(AbortSignal);
+        expect(options).toHaveProperty("externalSignal");
+        expect(options?.externalSignal).toBeInstanceOf(AbortSignal);
       }
     });
 

@@ -64,7 +64,9 @@ interface UseCategoriesReturn {
 export function useCategories(): UseCategoriesReturn {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["categories"],
-    queryFn: ({ signal }) => apiFetch<CategoriesResponse>("/categories", { signal }),
+    // FR-004/FR-005: Pass TanStack Query signal as externalSignal so it is
+    // combined with the internal timeout guard via AbortSignal.any().
+    queryFn: ({ signal }) => apiFetch<CategoriesResponse>("/categories", { externalSignal: signal }),
     staleTime: 30 * 60 * 1000, // 30 minutes (categories rarely change)
     gcTime: 60 * 60 * 1000, // 60 minutes
     retry: 3,

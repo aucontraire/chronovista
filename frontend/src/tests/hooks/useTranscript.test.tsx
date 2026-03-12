@@ -82,7 +82,7 @@ describe("useTranscript", () => {
       });
 
       await waitFor(() => {
-        expect(apiConfig.apiFetch).toHaveBeenCalledWith("/videos/dQw4w9WgXcQ/transcript?language=en");
+        expect(apiConfig.apiFetch).toHaveBeenCalledWith("/videos/dQw4w9WgXcQ/transcript?language=en", expect.anything());
       });
     });
 
@@ -96,7 +96,7 @@ describe("useTranscript", () => {
       });
 
       await waitFor(() => {
-        expect(apiConfig.apiFetch).toHaveBeenCalledWith("/videos/dQw4w9WgXcQ/transcript?language=zh-Hans");
+        expect(apiConfig.apiFetch).toHaveBeenCalledWith("/videos/dQw4w9WgXcQ/transcript?language=zh-Hans", expect.anything());
       });
     });
 
@@ -291,7 +291,7 @@ describe("useTranscript", () => {
         expect(result.current.isSuccess).toBe(true);
       });
 
-      expect(apiConfig.apiFetch).toHaveBeenCalledWith("/videos/dQw4w9WgXcQ/transcript?language=en");
+      expect(apiConfig.apiFetch).toHaveBeenCalledWith("/videos/dQw4w9WgXcQ/transcript?language=en", expect.anything());
     });
   });
 

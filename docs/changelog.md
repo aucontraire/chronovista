@@ -11,6 +11,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.43.1] - 2026-03-12
+
+### Fixed
+- **Feature 042: Frontend Polish & Video Detail UX**
+  - Channel search now eagerly loads all pages before filtering — previously only searched the first 25 channels, causing "No channels match" on fast typing
+  - "Searching all channels..." banner with `aria-live="polite"` while pages load during search
+  - Transcript virtualization threshold lowered from 500 to 50 segments — fixes scroll reset at ~25 minute mark when switching from standard to virtualized list mid-scroll
+  - Transcript segment search now eagerly loads all pages — previously showed "0 of 0" because search only ran against loaded segments
+  - Scroll-to-match moved from TranscriptPanel to TranscriptSegments using `containerRef.scrollTop` calculation — fixes scroll failing silently for off-screen virtualized segments where DOM refs are null
+  - Added `prevActiveSegmentIndexRef` guard to prevent scroll yanking back to active match during eager-fetch page loads
+  - Suppressed `PaginationStatus` during active channel search to avoid confusing "Showing 25 of 800" while filtering
+
+### Technical
+- Eager-fetch pattern: `useEffect` calling `fetchNextPage()` when search is active and `hasNextPage && !isFetchingNextPage` — TanStack Query cascades naturally until all pages load
+- Applied to both `ChannelsPage` and `TranscriptSegments` for consistent search-over-paginated-data behavior
+- Frontend version: 0.13.0 → 0.14.0
+- 2,491 frontend tests passing (0 failures)
+- TypeScript strict mode (0 errors)
+- No new dependencies, no backend changes
+
 ## [0.43.0] - 2026-03-11
 
 ### Added

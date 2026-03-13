@@ -11,6 +11,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.44.0] - 2026-03-13
+
+### Added
+- **Feature 043: Entity-Aware Corrections (ADR-006 Increment C)**
+  - Entity autocomplete on batch corrections page (`/corrections/batch`): debounced search against entity names and aliases via `GET /api/v1/entities?search=...&search_aliases=true&exclude_alias_types=asr_error`
+  - Selected entity pill/badge with canonical name, entity type badge, dismiss button, and external link to entity detail page (opens in new tab)
+  - Mismatch warning (amber, non-blocking) when replacement text does not match the selected entity's canonical name or any registered alias — warns that future scans may not match the text form, suggests adding an alias via the entity detail page
+  - Alias-aware mismatch check: `useEntityDetail` hook fetches entity detail (including aliases, `asr_error` filtered by backend) so registered aliases like "AMLO" for "Andrés Manuel López Obrador" correctly suppress the warning
+  - Entity summary row in ApplyControls showing linked entity before apply, with compact mismatch indicator
+  - Alias display on entity detail page: genuine aliases (not `asr_error`) shown in a dedicated section with color-coded type badges (name_variant, abbreviation, nickname, translated_name, former_name)
+  - Alias creation form on entity detail page: text input + alias type dropdown + "Add" button with TanStack Query cache invalidation and 3-second auto-clearing success message
+  - `POST /api/v1/entities/{entity_id}/aliases` endpoint: validates entity exists, normalizes alias name, rejects duplicates (409), creates alias with `EntityAliasRepository`; `CreateEntityAliasRequest` schema with `alias_name` (1-500 chars) and `alias_type` (Literal excluding `asr_error`)
+  - `fetchEntityDetail()` and `createEntityAlias()` API client functions
+  - `useEntityDetail` TanStack Query hook with 5-minute stale time for alias-aware mismatch checking
+  - `EntityDetail` and `CreateEntityAliasRequest`/`CreateEntityAliasResponse` TypeScript interfaces
+  - GitHub issue #87: `entities scan --audit` flag for detecting drift between `user_correction` mentions and registered aliases
+
+### Fixed
+- Transcript segment edit form transparency bug: virtual list items with `position: absolute` caused neighboring rows to paint on top of the edit form; fixed with `zIndex: 10` on active segment row
+- False positive mismatch warning for registered aliases (e.g., "AMLO" incorrectly triggering warning despite being a registered abbreviation alias)
+- `DuplicateTableError` for `ix_entity_mentions_correction_id`: removed duplicate `Index()` from `__table_args__` (column `index=True` already creates it)
+- 3 mypy errors in `test_batch_correction_service.py`: replaced lambda `append() or value` tricks with proper async helpers; removed unused `type: ignore` comment
+- 6 test failures after Feature 043 model changes: updated member count, expected keys, and mock attributes for `EntityMention` and entity detail response schema
+
+### Technical
+- 29 new backend tests for alias creation endpoint, 33 new frontend tests for AddAliasForm component
+- Frontend version: 0.14.0 → 0.15.0
+- 2,524 frontend tests passing (0 failures)
+- TypeScript strict mode (0 errors)
+- mypy strict compliance (0 errors)
+- No new dependencies, no new database migrations
+
 ## [0.43.1] - 2026-03-12
 
 ### Fixed

@@ -571,6 +571,102 @@ class TestDeleteByScope:
 
 
 # ---------------------------------------------------------------------------
+# TestDeleteByCorrectionIds (Feature 043 — T032)
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteByCorrectionIds:
+    """Tests for delete_by_correction_ids().
+
+    Deletes entity mentions linked to specific correction IDs.
+    """
+
+    @pytest.fixture
+    def repository(self) -> EntityMentionRepository:
+        """Provide a fresh repository instance for each test."""
+        return EntityMentionRepository()
+
+    async def test_deletes_by_correction_ids(self, repository: EntityMentionRepository) -> None:
+        """Deletes mentions whose correction_id is in the given list."""
+        session = MagicMock(spec=AsyncSession)
+        session.execute = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.rowcount = 5
+        session.execute.return_value = mock_result
+
+        corr_ids = [uuid.uuid4(), uuid.uuid4()]
+        count = await repository.delete_by_correction_ids(session, corr_ids)
+
+        assert count == 5
+        session.execute.assert_called_once()
+
+    async def test_empty_list_returns_zero(self, repository: EntityMentionRepository) -> None:
+        """Empty correction_ids list returns 0 without executing."""
+        session = MagicMock(spec=AsyncSession)
+        session.execute = AsyncMock()
+
+        count = await repository.delete_by_correction_ids(session, [])
+
+        assert count == 0
+        session.execute.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TestGetEntityIdsByCorrectionIds (Feature 043 — T033)
+# ---------------------------------------------------------------------------
+
+
+class TestGetEntityIdsByCorrectionIds:
+    """Tests for get_entity_ids_by_correction_ids().
+
+    Returns distinct entity IDs linked to the given correction IDs.
+    """
+
+    @pytest.fixture
+    def repository(self) -> EntityMentionRepository:
+        """Provide a fresh repository instance for each test."""
+        return EntityMentionRepository()
+
+    async def test_returns_distinct_entity_ids(self, repository: EntityMentionRepository) -> None:
+        """Returns entity IDs for mentions linked to given correction IDs."""
+        session = MagicMock(spec=AsyncSession)
+        session.execute = AsyncMock()
+        entity_id_1 = uuid.uuid4()
+        entity_id_2 = uuid.uuid4()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [entity_id_1, entity_id_2]
+        session.execute.return_value = mock_result
+
+        corr_ids = [uuid.uuid4()]
+        result = await repository.get_entity_ids_by_correction_ids(session, corr_ids)
+
+        assert result == [entity_id_1, entity_id_2]
+        session.execute.assert_called_once()
+
+    async def test_empty_correction_ids_returns_empty(self, repository: EntityMentionRepository) -> None:
+        """Empty correction_ids returns empty list without DB call."""
+        session = MagicMock(spec=AsyncSession)
+        session.execute = AsyncMock()
+
+        result = await repository.get_entity_ids_by_correction_ids(session, [])
+
+        assert result == []
+        session.execute.assert_not_called()
+
+    async def test_no_matching_mentions_returns_empty(self, repository: EntityMentionRepository) -> None:
+        """Returns empty list when no mentions match the correction IDs."""
+        session = MagicMock(spec=AsyncSession)
+        session.execute = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        session.execute.return_value = mock_result
+
+        result = await repository.get_entity_ids_by_correction_ids(session, [uuid.uuid4()])
+
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
 # TestGetEntitiesWithZeroMentions
 # ---------------------------------------------------------------------------
 

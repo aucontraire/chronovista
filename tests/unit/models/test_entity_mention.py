@@ -140,17 +140,18 @@ class TestDetectionMethodEnum:
         """DetectionMethod.MANUAL has value 'manual'."""
         assert DetectionMethod.MANUAL.value == "manual"
 
-    def test_exactly_four_members(self) -> None:
-        """DetectionMethod has exactly 4 members — no accidental additions."""
-        assert len(DetectionMethod) == 4
+    def test_exactly_five_members(self) -> None:
+        """DetectionMethod has exactly 5 members — no accidental additions."""
+        assert len(DetectionMethod) == 5
 
-    def test_all_four_members_are_present(self) -> None:
-        """All four expected DetectionMethod members exist in the enum."""
+    def test_all_five_members_are_present(self) -> None:
+        """All five expected DetectionMethod members exist in the enum."""
         members = set(DetectionMethod)
         assert DetectionMethod.RULE_MATCH in members
         assert DetectionMethod.SPACY_NER in members
         assert DetectionMethod.LLM_EXTRACTION in members
         assert DetectionMethod.MANUAL in members
+        assert DetectionMethod.USER_CORRECTION in members
 
     # -----------------------------------------------------------------------
     # Inheritance: DetectionMethod is both str and Enum
@@ -512,6 +513,9 @@ class TestEntityMentionBase:
             "mention_text",
             "detection_method",
             "confidence",
+            "match_start",
+            "match_end",
+            "correction_id",
         }
         assert expected_keys == set(data.keys())
 
@@ -756,6 +760,9 @@ class TestEntityMention:
         orm_like.mention_text = "Google DeepMind"
         orm_like.detection_method = DetectionMethod.SPACY_NER
         orm_like.confidence = 0.87
+        orm_like.match_start = None
+        orm_like.match_end = None
+        orm_like.correction_id = None
         orm_like.created_at = now
 
         mention = EntityMention.model_validate(orm_like)
@@ -787,6 +794,9 @@ class TestEntityMention:
         orm_like.mention_text = "Elon Musk"
         orm_like.detection_method = "spacy_ner"  # plain string, not enum member
         orm_like.confidence = 0.75
+        orm_like.match_start = None
+        orm_like.match_end = None
+        orm_like.correction_id = None
         orm_like.created_at = datetime.now(timezone.utc)
 
         mention = EntityMention.model_validate(orm_like)
@@ -805,6 +815,9 @@ class TestEntityMention:
             orm_like.mention_text = "Some entity"
             orm_like.detection_method = detection_method.value
             orm_like.confidence = 1.0
+            orm_like.match_start = None
+            orm_like.match_end = None
+            orm_like.correction_id = None
             orm_like.created_at = datetime.now(timezone.utc)
 
             mention = EntityMention.model_validate(orm_like)

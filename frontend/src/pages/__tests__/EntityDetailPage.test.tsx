@@ -54,6 +54,8 @@ const mockEntity = {
   description: "American linguist and political commentator.",
   status: "active",
   mention_count: 42,
+  video_count: 3,
+  aliases: [] as { alias_name: string; alias_type: string; occurrence_count: number }[],
 };
 
 function createMockVideo(overrides: Partial<EntityVideoResult> = {}): EntityVideoResult {

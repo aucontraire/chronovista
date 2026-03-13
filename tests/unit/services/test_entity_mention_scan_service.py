@@ -324,7 +324,7 @@ class TestEmptyTextSkip:
 
         svc = _build_service(MagicMock())
 
-        mentions, skipped, _ = await svc._scan_batch(
+        mentions, skipped, _, _, _ = await svc._scan_batch(
             session,
             batch_rows=[empty_seg, non_empty_seg],
             patterns=[pattern],
@@ -359,7 +359,7 @@ class TestEmptyTextSkip:
 
         svc = _build_service(MagicMock())
 
-        mentions, _, _ = await svc._scan_batch(
+        mentions, _, _, _, _ = await svc._scan_batch(
             session,
             batch_rows=[none_seg],
             patterns=[pattern],
@@ -401,7 +401,7 @@ class TestZeroAliasHandling:
 
         svc = _build_service(MagicMock())
 
-        mentions, _, _ = await svc._scan_batch(
+        mentions, _, _, _, _ = await svc._scan_batch(
             session,
             batch_rows=[seg],
             patterns=[pattern],
@@ -666,7 +666,7 @@ class TestBatchProcessing:
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=fetch_batches),
-            patch.object(svc, "_scan_batch", return_value=([], 0, [])),
+            patch.object(svc, "_scan_batch", return_value=([], 0, [], 0, 0)),
         ):
             result = await svc.scan()
 
@@ -705,7 +705,7 @@ class TestBatchProcessing:
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=one_batch_then_empty),
-            patch.object(svc, "_scan_batch", return_value=([], 0, [])),
+            patch.object(svc, "_scan_batch", return_value=([], 0, [], 0, 0)),
         ):
             await svc.scan()
 
@@ -762,7 +762,7 @@ class TestBulkCreateConflictSkip:
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=(mention_creates, 0, [])),
+            patch.object(svc, "_scan_batch", return_value=(mention_creates, 0, [], 0, 0)),
         ):
             result = await svc.scan()
 
@@ -805,7 +805,7 @@ class TestBulkCreateConflictSkip:
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=([mention], 0, [])),
+            patch.object(svc, "_scan_batch", return_value=([mention], 0, [], 0, 0)),
         ):
             await svc.scan()
         svc._mention_repo.bulk_create_with_conflict_skip.assert_called_once()
@@ -836,7 +836,7 @@ class TestBulkCreateConflictSkip:
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=([], 0, [])),
+            patch.object(svc, "_scan_batch", return_value=([], 0, [], 0, 0)),
         ):
             await svc.scan()
         svc._mention_repo.bulk_create_with_conflict_skip.assert_not_called()
@@ -885,7 +885,7 @@ class TestCounterUpdate:
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=([mention], 0, [])),
+            patch.object(svc, "_scan_batch", return_value=([mention], 0, [], 0, 0)),
         ):
             await svc.scan(dry_run=False)
         svc._mention_repo.update_entity_counters.assert_called_once()
@@ -928,7 +928,7 @@ class TestCounterUpdate:
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=([mention], 0, [])),
+            patch.object(svc, "_scan_batch", return_value=([mention], 0, [], 0, 0)),
         ):
             await svc.scan(dry_run=True)
         svc._mention_repo.update_entity_counters.assert_not_called()
@@ -956,7 +956,7 @@ class TestCounterUpdate:
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=([], 0, [])),
+            patch.object(svc, "_scan_batch", return_value=([], 0, [], 0, 0)),
         ):
             await svc.scan(dry_run=False)
         svc._mention_repo.update_entity_counters.assert_not_called()
@@ -1005,7 +1005,7 @@ class TestDryRunMode:
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=([mention], 0, [])),
+            patch.object(svc, "_scan_batch", return_value=([mention], 0, [], 0, 0)),
         ):
             result = await svc.scan(dry_run=True)
         svc._mention_repo.bulk_create_with_conflict_skip.assert_not_called()
@@ -1088,7 +1088,7 @@ class TestDryRunMode:
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=([mention], 0, [preview])),
+            patch.object(svc, "_scan_batch", return_value=([mention], 0, [preview], 0, 0)),
         ):
             result = await svc.scan(dry_run=True)
 
@@ -1321,7 +1321,7 @@ class TestScanResult:
         with (
             patch.object(svc, "_load_entity_patterns", return_value=fake_patterns),
             patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=(mentions, 0, [])),
+            patch.object(svc, "_scan_batch", return_value=(mentions, 0, [], 0, 0)),
         ):
             result = await svc.scan()
 
@@ -1490,7 +1490,7 @@ class TestFailedBatchHandling:
             scan_call += 1
             if scan_call == 1:
                 raise RuntimeError("first batch error")
-            return [], 0, []
+            return [], 0, [], 0, 0
 
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
@@ -1542,7 +1542,7 @@ class TestProgressCallback:
             patch.object(
                 svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]
             ),
-            patch.object(svc, "_scan_batch", return_value=([], 0, [])),
+            patch.object(svc, "_scan_batch", return_value=([], 0, [], 0, 0)),
         ):
             await svc.scan(progress_callback=callback)
 

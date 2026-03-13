@@ -7,7 +7,104 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No changes yet._
+### Added
+- MkDocs documentation setup with Material theme
+- Comprehensive user guide and API reference
+
+## [0.44.0] - 2026-03-13
+
+### Added
+- **Feature 043: Entity-Aware Corrections (ADR-006 Increment C)**
+  - Entity autocomplete on batch corrections page (`/corrections/batch`): debounced search against entity names and aliases via `GET /api/v1/entities?search=...&search_aliases=true&exclude_alias_types=asr_error`
+  - Selected entity pill/badge with canonical name, entity type badge, dismiss button, and external link to entity detail page (opens in new tab)
+  - Mismatch warning (amber, non-blocking) when replacement text does not match the selected entity's canonical name or any registered alias — warns that future scans may not match the text form, suggests adding an alias via the entity detail page
+  - Alias-aware mismatch check: `useEntityDetail` hook fetches entity detail (including aliases, `asr_error` filtered by backend) so registered aliases like "AMLO" for "Andrés Manuel López Obrador" correctly suppress the warning
+  - Entity summary row in ApplyControls showing linked entity before apply, with compact mismatch indicator
+  - Alias display on entity detail page: genuine aliases (not `asr_error`) shown in a dedicated section with color-coded type badges (name_variant, abbreviation, nickname, translated_name, former_name)
+  - Alias creation form on entity detail page: text input + alias type dropdown + "Add" button with TanStack Query cache invalidation and 3-second auto-clearing success message
+  - `POST /api/v1/entities/{entity_id}/aliases` endpoint: validates entity exists, normalizes alias name, rejects duplicates (409), creates alias with `EntityAliasRepository`; `CreateEntityAliasRequest` schema with `alias_name` (1-500 chars) and `alias_type` (Literal excluding `asr_error`)
+  - `fetchEntityDetail()` and `createEntityAlias()` API client functions
+  - `useEntityDetail` TanStack Query hook with 5-minute stale time for alias-aware mismatch checking
+  - `EntityDetail` and `CreateEntityAliasRequest`/`CreateEntityAliasResponse` TypeScript interfaces
+  - GitHub issue #87: `entities scan --audit` flag for detecting drift between `user_correction` mentions and registered aliases
+
+### Fixed
+- Transcript segment edit form transparency bug: virtual list items with `position: absolute` caused neighboring rows to paint on top of the edit form; fixed with `zIndex: 10` on active segment row
+- False positive mismatch warning for registered aliases (e.g., "AMLO" incorrectly triggering warning despite being a registered abbreviation alias)
+- `DuplicateTableError` for `ix_entity_mentions_correction_id`: removed duplicate `Index()` from `__table_args__` (column `index=True` already creates it)
+- 3 mypy errors in `test_batch_correction_service.py`: replaced lambda `append() or value` tricks with proper async helpers; removed unused `type: ignore` comment
+- 6 test failures after Feature 043 model changes: updated member count, expected keys, and mock attributes for `EntityMention` and entity detail response schema
+
+### Technical
+- 29 new backend tests for alias creation endpoint, 33 new frontend tests for AddAliasForm component
+- Frontend version: 0.14.0 → 0.15.0
+- 2,524 frontend tests passing (0 failures)
+- TypeScript strict mode (0 errors)
+- mypy strict compliance (0 errors)
+- No new dependencies, no new database migrations
+
+## [0.43.1] - 2026-03-12
+
+### Fixed
+- **Feature 042: Frontend Polish & Video Detail UX**
+  - Channel search now eagerly loads all pages before filtering — previously only searched the first 25 channels, causing "No channels match" on fast typing
+  - "Searching all channels..." banner with `aria-live="polite"` while pages load during search
+  - Transcript virtualization threshold lowered from 500 to 50 segments — fixes scroll reset at ~25 minute mark when switching from standard to virtualized list mid-scroll
+  - Transcript segment search now eagerly loads all pages — previously showed "0 of 0" because search only ran against loaded segments
+  - Scroll-to-match moved from TranscriptPanel to TranscriptSegments using `containerRef.scrollTop` calculation — fixes scroll failing silently for off-screen virtualized segments where DOM refs are null
+  - Added `prevActiveSegmentIndexRef` guard to prevent scroll yanking back to active match during eager-fetch page loads
+  - Suppressed `PaginationStatus` during active channel search to avoid confusing "Showing 25 of 800" while filtering
+
+### Technical
+- Eager-fetch pattern: `useEffect` calling `fetchNextPage()` when search is active and `hasNextPage && !isFetchingNextPage` — TanStack Query cascades naturally until all pages load
+- Applied to both `ChannelsPage` and `TranscriptSegments` for consistent search-over-paginated-data behavior
+- Frontend version: 0.13.0 → 0.14.0
+- 2,491 frontend tests passing (0 failures)
+- TypeScript strict mode (0 errors)
+- No new dependencies, no backend changes
+
+## [0.43.0] - 2026-03-11
+
+### Added
+- **Feature 041: Batch Correction UI (ADR-005 Increment 7)**
+  - Full-featured web UI for batch find-and-replace transcript corrections at `/corrections/batch`
+  - Search & preview: pattern/replacement input with regex, case-insensitive, and cross-segment toggles; language, channel, and video ID filters; up to 100 match cards with before/after highlighting
+  - Match cards: video title deep link to exact segment, channel name, timestamp, context segments (always visible), amber boundary connector for cross-segment pairs, "previously corrected" badge
+  - Selection: all matches selected by default, individual checkboxes, select all/deselect all, pair-based selection (toggling a cross-segment match auto-toggles its partner)
+  - Apply workflow: inline confirmation strip (not modal) with correction type dropdown, optional note, auto-rebuild toggle (default on); controls locked during apply with spinner
+  - Result summary: applied/skipped/failed counts with color coding, deep links to failed segments, "Retry N failed" button, affected video count
+  - 5 React components: `PatternInput`, `MatchList`, `MatchCard`, `ApplyControls`, `ResultSummary`
+  - 3 TanStack Query mutation hooks: `useBatchPreview`, `useBatchApply`, `useBatchRebuild`
+  - State machine via `useReducer`: idle → previewing → applying → complete
+  - Focus management: first match card focused after preview, result summary focused after apply
+  - WCAG 2.1 AA: `role="switch"` toggles, `aria-live` selection announcements, strikethrough+bold diff (not color-only), 44×44px touch targets
+  - `BatchCorrectionsIcon` sidebar navigation icon
+  - 3 REST API endpoints: `POST /api/v1/corrections/batch/{preview,apply,rebuild-text}` with Pydantic V2 request/response schemas
+  - `ACTOR_USER_BATCH` ("user:batch") actor constant for web UI batch corrections audit trail (distinct from CLI's "cli:batch")
+- **Correction Type Taxonomy Redesign (Migration 039)**
+  - Replaced `asr_error` enum value with domain-specific types: `proper_noun`, `word_boundary`, `other`
+  - Full enum: `spelling`, `proper_noun`, `context_correction`, `word_boundary`, `formatting`, `profanity_fix`, `other`, `revert`
+  - Alembic migration 039 uses column-swap strategy (safe for PostgreSQL enum limitations)
+  - Migration maps existing `asr_error` rows to `other` (safe neutral default for all users)
+  - Post-migration reclassification script: `scripts/utilities/reclassify_asr_corrections.py` with `--audit` (preview), `--apply` (auto-classify), and `--batch-id` (manual batch review) modes; uses capitalization heuristic to detect proper noun corrections
+  - Updated frontend `CORRECTION_TYPE_DESCRIPTIONS` and `SegmentEditForm` dropdown
+
+### Changed
+- `BatchCorrectionService.apply_to_segments()` accepts `corrected_by_user_id` parameter instead of hardcoding actor (enables web vs CLI actor distinction)
+- `find_and_replace()` CLI path continues to use `ACTOR_CLI_BATCH` constant
+
+### Fixed
+- Web frontend batch corrections incorrectly attributed to "cli:batch" — now correctly uses "user:batch"
+- `correction_note` field added to `BatchApplyRequest` schema for user-provided correction notes
+
+### Technical
+- 5 new frontend components, 3 hooks, 1 types file, 1 page component
+- 7 Pydantic V2 API schemas for batch correction endpoints
+- Frontend version: 0.12.0 → 0.13.0
+- mypy strict compliance (0 errors)
+- TypeScript strict mode (0 errors)
+- No new dependencies
+- Alembic migration 039 for CorrectionType enum redesign
 
 ## [0.42.0] - 2026-03-10
 

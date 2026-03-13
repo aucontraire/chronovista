@@ -11,11 +11,14 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, Path, Query
-from sqlalchemy import distinct, func, select
+from sqlalchemy import distinct, func, or_, select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.deps import get_db, require_auth
 from chronovista.api.schemas.entity_mentions import (
+    CreateEntityAliasRequest,
+    EntityAliasSummary,
     EntityVideoResponse,
     EntityVideoResult,
     MentionPreview,
@@ -23,15 +26,22 @@ from chronovista.api.schemas.entity_mentions import (
     VideoEntitySummary,
 )
 from chronovista.api.schemas.responses import PaginationMeta
+from chronovista.db.models import EntityAlias as EntityAliasDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import Video as VideoDB
-from chronovista.exceptions import NotFoundError
+from chronovista.exceptions import ConflictError, NotFoundError
+from chronovista.models.entity_alias import EntityAliasCreate
+from chronovista.models.enums import EntityAliasType
+from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
+from chronovista.services.tag_normalization import TagNormalizationService
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
-# Module-level repository instantiation (singleton pattern)
+# Module-level repository / service instantiation (singleton pattern)
 _mention_repo = EntityMentionRepository()
+_alias_repo = EntityAliasRepository()
+_normalizer = TagNormalizationService()
 
 
 @router.get(
@@ -50,6 +60,23 @@ async def list_entities(
     ),
     limit: int = Query(default=50, ge=1, le=200, description="Items per page"),
     offset: int = Query(default=0, ge=0, description="Pagination offset"),
+    status: str | None = Query(
+        default=None, description="Filter by entity status (active, merged, deprecated)"
+    ),
+    search_aliases: bool = Query(
+        default=False,
+        description=(
+            "When true, also search entity_aliases.alias_name (ILIKE) in addition to "
+            "canonical_name. Only aliases of active entities are searched."
+        ),
+    ),
+    exclude_alias_types: str | None = Query(
+        default=None,
+        description=(
+            "Comma-separated alias types to exclude from alias search when "
+            "search_aliases=true. E.g. 'asr_error' excludes ASR-error aliases."
+        ),
+    ),
     session: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """List named entities with optional filters, search, and sorting.
@@ -62,13 +89,27 @@ async def list_entities(
         If True, only entities with mention_count > 0.
         If False, only entities with mention_count = 0.
     search : str | None
-        Case-insensitive substring search on canonical_name.
+        Case-insensitive substring search on canonical_name (and alias_name
+        when search_aliases=true).
     sort : str | None
         Sort order: "name" (alphabetical, default) or "mentions" (desc).
     limit : int
         Maximum results per page (1-200, default 50).
     offset : int
         Pagination offset.
+    status : str | None
+        Filter by entity status. When omitted, only "active" entities are
+        returned (preserves backwards-compatible behaviour for callers that
+        do not pass the parameter).
+    search_aliases : bool
+        When True, JOIN entity_aliases and match on alias_name ILIKE as well
+        as canonical_name ILIKE. Excluded alias types (see exclude_alias_types)
+        are filtered out before the match is attempted. Only entities whose
+        status is 'active' are surfaced through the alias join path.
+    exclude_alias_types : str | None
+        Comma-separated list of alias_type values to exclude when
+        search_aliases=True. For example, ``asr_error`` prevents ASR-error
+        aliases from matching even if their text happens to match the query.
     session : AsyncSession
         Database session (injected).
 
@@ -77,10 +118,14 @@ async def list_entities(
     dict
         Paginated list of entity objects with pagination metadata.
     """
-    # Base query: active entities only
-    base = select(NamedEntityDB).where(NamedEntityDB.status == "active")
+    # Determine the effective status filter.
+    # Default to "active" to preserve backwards-compatible behaviour.
+    effective_status = status if status is not None else "active"
+
+    # Base query: filter by status
+    base = select(NamedEntityDB).where(NamedEntityDB.status == effective_status)
     count_base = select(func.count(NamedEntityDB.id)).where(
-        NamedEntityDB.status == "active"
+        NamedEntityDB.status == effective_status
     )
 
     # Apply filters
@@ -96,10 +141,35 @@ async def list_entities(
         count_base = count_base.where(NamedEntityDB.mention_count == 0)
 
     if search:
-        base = base.where(NamedEntityDB.canonical_name.ilike(f"%{search}%"))
-        count_base = count_base.where(
-            NamedEntityDB.canonical_name.ilike(f"%{search}%")
-        )
+        if search_aliases:
+            # Build the list of excluded alias types from the comma-separated param.
+            excluded_types: list[str] = (
+                [t.strip() for t in exclude_alias_types.split(",") if t.strip()]
+                if exclude_alias_types
+                else []
+            )
+
+            # Sub-select: entity IDs that have a matching alias (not excluded).
+            alias_select = select(EntityAliasDB.entity_id).where(
+                EntityAliasDB.alias_name.ilike(f"%{search}%")
+            )
+            if excluded_types:
+                alias_select = alias_select.where(
+                    EntityAliasDB.alias_type.notin_(excluded_types)
+                )
+            alias_scalar_subq = alias_select.scalar_subquery()
+
+            # Match on canonical_name OR matching alias.
+            name_filter = NamedEntityDB.canonical_name.ilike(f"%{search}%")
+            alias_filter = NamedEntityDB.id.in_(alias_scalar_subq)
+            combined_filter = or_(name_filter, alias_filter)
+            base = base.where(combined_filter)
+            count_base = count_base.where(combined_filter)
+        else:
+            base = base.where(NamedEntityDB.canonical_name.ilike(f"%{search}%"))
+            count_base = count_base.where(
+                NamedEntityDB.canonical_name.ilike(f"%{search}%")
+            )
 
     # Total count
     total = (await session.execute(count_base)).scalar() or 0
@@ -231,13 +301,30 @@ async def get_entity_detail(
     except ValueError:
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
 
-    entity_query = select(NamedEntityDB).where(
-        NamedEntityDB.id == parsed_entity_id
+    entity_query = (
+        select(NamedEntityDB)
+        .where(NamedEntityDB.id == parsed_entity_id)
+        .options(selectinload(NamedEntityDB.aliases))
     )
     entity_result = await session.execute(entity_query)
     entity = entity_result.scalar_one_or_none()
     if entity is None:
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    # Filter out asr_error aliases — those are internal detection noise and
+    # are not useful to display to users. Genuine alias types are:
+    # name_variant, abbreviation, nickname, translated_name, former_name.
+    genuine_aliases = [
+        EntityAliasSummary(
+            alias_name=a.alias_name,
+            alias_type=a.alias_type,
+            occurrence_count=a.occurrence_count,
+        )
+        for a in entity.aliases
+        if a.alias_type != "asr_error"
+    ]
+    # Sort by occurrence count descending, then alphabetically for stability
+    genuine_aliases.sort(key=lambda a: (-a.occurrence_count, a.alias_name))
 
     return {
         "data": {
@@ -247,6 +334,8 @@ async def get_entity_detail(
             "description": entity.description,
             "status": entity.status,
             "mention_count": entity.mention_count or 0,
+            "video_count": entity.video_count or 0,
+            "aliases": [a.model_dump() for a in genuine_aliases],
         }
     }
 
@@ -340,3 +429,98 @@ async def get_entity_videos(
             has_more=offset + limit < total,
         ),
     )
+
+
+@router.post(
+    "/entities/{entity_id}/aliases",
+    status_code=201,
+    summary="Add an alias to a named entity",
+)
+async def create_entity_alias(
+    entity_id: str = Path(..., description="Named entity UUID"),
+    body: CreateEntityAliasRequest = ...,
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Create a new alias for a named entity.
+
+    Normalizes the alias name, checks for duplicates, and persists the
+    new alias. Returns the created alias in the standard response envelope.
+
+    Parameters
+    ----------
+    entity_id : str
+        Named entity UUID (string representation).
+    body : CreateEntityAliasRequest
+        Request body with alias_name and optional alias_type.
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    dict
+        Created alias wrapped in a ``data`` envelope.
+
+    Raises
+    ------
+    NotFoundError
+        If the entity does not exist (404).
+    ConflictError
+        If an alias with the same normalized name already exists on
+        this entity (409).
+    """
+    # Parse entity_id
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    # Look up entity
+    entity_query = select(NamedEntityDB).where(NamedEntityDB.id == parsed_entity_id)
+    entity_result = await session.execute(entity_query)
+    entity = entity_result.scalar_one_or_none()
+    if entity is None:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    # Normalize alias name
+    normalized_alias = _normalizer.normalize(body.alias_name)
+    if normalized_alias is None:
+        raise ConflictError(
+            message="Alias name normalizes to an empty string",
+            details={"alias_name": body.alias_name},
+        )
+
+    # Check for duplicate (same entity + same normalized name)
+    dup_query = select(EntityAliasDB).where(
+        EntityAliasDB.entity_id == parsed_entity_id,
+        EntityAliasDB.alias_name_normalized == normalized_alias,
+    )
+    dup_result = await session.execute(dup_query)
+    if dup_result.scalar_one_or_none() is not None:
+        raise ConflictError(
+            message=f"Alias '{body.alias_name}' already exists for this entity",
+            details={
+                "entity_id": entity_id,
+                "alias_name": body.alias_name,
+                "normalized": normalized_alias,
+            },
+        )
+
+    # Create alias
+    alias_create = EntityAliasCreate(
+        entity_id=parsed_entity_id,
+        alias_name=body.alias_name,
+        alias_name_normalized=normalized_alias,
+        alias_type=EntityAliasType(body.alias_type),
+        occurrence_count=0,
+    )
+    db_alias = await _alias_repo.create(session, obj_in=alias_create)
+    await session.commit()
+    await session.refresh(db_alias)
+
+    return {
+        "data": EntityAliasSummary(
+            alias_name=db_alias.alias_name,
+            alias_type=db_alias.alias_type,
+            occurrence_count=db_alias.occurrence_count,
+        ).model_dump()
+    }

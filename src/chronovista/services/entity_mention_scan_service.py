@@ -60,6 +60,10 @@ class ScanResult:
         Number of segment batches that raised an exception.
     dry_run_matches : list[dict] | None
         Preview match data when ``dry_run=True``, else ``None``.
+    skipped_longest_match : int
+        Number of matches suppressed by longest-match-wins disambiguation.
+    skipped_exclusion_pattern : int
+        Number of matches suppressed by exclusion pattern overlap.
     """
 
     segments_scanned: int = 0
@@ -71,6 +75,8 @@ class ScanResult:
     dry_run: bool = False
     failed_batches: int = 0
     dry_run_matches: list[dict[str, Any]] | None = None
+    skipped_longest_match: int = 0
+    skipped_exclusion_pattern: int = 0
 
 
 @dataclass
@@ -82,6 +88,7 @@ class _EntityPattern:
     entity_type: str
     pg_pattern: str  # PostgreSQL regex (unescaped \m / \M boundaries)
     alias_names: list[str]  # all raw names contributing to pattern
+    exclusion_patterns: list[str] = field(default_factory=list)
 
 
 class EntityMentionScanService:
@@ -209,18 +216,22 @@ class EntityMentionScanService:
                 result.segments_scanned += len(batch_rows)
 
                 try:
-                    batch_mentions, batch_skipped, batch_previews = (
-                        await self._scan_batch(
-                            session,
-                            batch_rows=batch_rows,
-                            patterns=patterns,
-                            full_rescan=full_rescan,
-                            dry_run=dry_run,
-                            limit=limit,
-                            current_preview_count=(
-                                len(result.dry_run_matches) if result.dry_run_matches is not None else 0
-                            ),
-                        )
+                    (
+                        batch_mentions,
+                        batch_skipped,
+                        batch_previews,
+                        batch_lmw_skips,
+                        batch_ep_skips,
+                    ) = await self._scan_batch(
+                        session,
+                        batch_rows=batch_rows,
+                        patterns=patterns,
+                        full_rescan=full_rescan,
+                        dry_run=dry_run,
+                        limit=limit,
+                        current_preview_count=(
+                            len(result.dry_run_matches) if result.dry_run_matches is not None else 0
+                        ),
                     )
                 except Exception:
                     logger.warning(
@@ -252,6 +263,8 @@ class EntityMentionScanService:
                         result.dry_run_matches.extend(batch_previews)
 
                 result.mentions_skipped += batch_skipped
+                result.skipped_longest_match += batch_lmw_skips
+                result.skipped_exclusion_pattern += batch_ep_skips
 
                 if progress_callback:
                     progress_callback(result.segments_scanned, result.mentions_found)
@@ -288,7 +301,8 @@ class EntityMentionScanService:
             logger.info(
                 "Scan complete: segments_scanned=%d, mentions_found=%d, "
                 "mentions_skipped=%d, unique_entities=%d, unique_videos=%d, "
-                "duration=%.2fs, dry_run=%s, failed_batches=%d",
+                "duration=%.2fs, dry_run=%s, failed_batches=%d, "
+                "skipped_longest_match=%d, skipped_exclusion_pattern=%d",
                 result.segments_scanned,
                 result.mentions_found,
                 result.mentions_skipped,
@@ -297,6 +311,8 @@ class EntityMentionScanService:
                 result.duration_seconds,
                 result.dry_run,
                 result.failed_batches,
+                result.skipped_longest_match,
+                result.skipped_exclusion_pattern,
             )
 
             return result
@@ -400,6 +416,7 @@ class EntityMentionScanService:
                     entity_type=entity.entity_type,
                     pg_pattern=pg_pattern,
                     alias_names=names,
+                    exclusion_patterns=list(entity.exclusion_patterns or []),
                 )
             )
 
@@ -478,12 +495,13 @@ class EntityMentionScanService:
         dry_run: bool,
         limit: int | None,
         current_preview_count: int,
-    ) -> tuple[list[EntityMentionCreate], int, list[dict[str, Any]]]:
+    ) -> tuple[list[EntityMentionCreate], int, list[dict[str, Any]], int, int]:
         """Scan a batch of segments against all entity patterns.
 
-        For each entity pattern, we run a Python-side regex match against
-        the effective_text of each segment in the batch, then check for
-        existing mentions (incremental mode) via a DB query.
+        For each segment, all entity patterns are matched via ``finditer()``
+        to collect every occurrence.  Matches are then disambiguated with
+        longest-match-wins and filtered through exclusion patterns before
+        mention rows are created.
 
         Parameters
         ----------
@@ -504,97 +522,309 @@ class EntityMentionScanService:
 
         Returns
         -------
-        tuple[list[EntityMentionCreate], int, list[dict]]
-            (new_mentions, skipped_count, preview_data)
+        tuple[list[EntityMentionCreate], int, list[dict], int, int]
+            (new_mentions, skipped_count, preview_data,
+             longest_match_skips, exclusion_pattern_skips)
         """
         new_mentions: list[EntityMentionCreate] = []
         skipped = 0
         preview_data: list[dict[str, Any]] = []
+        longest_match_skips = 0
+        exclusion_pattern_skips = 0
 
+        # Pre-compile all Python regexes
+        compiled_patterns: list[tuple[_EntityPattern, re.Pattern[str]]] = []
         for pattern in patterns:
-            # Build a compiled Python regex for this entity
-            # Using word boundaries (\b) for Python-side matching
             try:
                 py_regex = re.compile(
                     r"\b(" + pattern.pg_pattern + r")\b",
                     re.IGNORECASE,
                 )
+                compiled_patterns.append((pattern, py_regex))
             except re.error:
                 logger.warning(
                     "Failed to compile regex for entity %s (%s), skipping",
                     pattern.canonical_name,
                     pattern.entity_id,
                 )
+
+        # Build a lookup from entity_id to pattern (for exclusion patterns)
+        pattern_by_entity: dict[uuid.UUID, _EntityPattern] = {
+            p.entity_id: p for p in patterns
+        }
+
+        for row in batch_rows:
+            effective_text = row.effective_text
+            if not effective_text:
                 continue
 
-            # Collect segment IDs that match this entity
-            matched_segments: list[tuple[Any, str]] = []  # (row, matched_text)
-            for row in batch_rows:
-                effective_text = row.effective_text
-                if not effective_text:
-                    continue
+            # ----------------------------------------------------------
+            # Step 1: Collect ALL (entity_id, start, end, text) via finditer
+            # ----------------------------------------------------------
+            raw_matches: list[tuple[uuid.UUID, int, int, str, _EntityPattern]] = []
+            for pattern, py_regex in compiled_patterns:
+                for match in py_regex.finditer(effective_text):
+                    raw_matches.append(
+                        (
+                            pattern.entity_id,
+                            match.start(),
+                            match.end(),
+                            match.group(0),
+                            pattern,
+                        )
+                    )
 
-                match = py_regex.search(effective_text)
-                if match:
-                    matched_segments.append((row, match.group(0)))
-
-            if not matched_segments:
+            if not raw_matches:
                 continue
 
-            # Incremental mode: check which segments already have mentions
-            # for this entity (skip the check if full_rescan)
-            existing_segment_ids: set[int] = set()
+            # ----------------------------------------------------------
+            # Step 2: Longest-match-wins disambiguation
+            # ----------------------------------------------------------
+            surviving_matches, lmw_skips = self._apply_longest_match_wins(
+                raw_matches, row, dry_run
+            )
+            longest_match_skips += lmw_skips
+
+            # ----------------------------------------------------------
+            # Step 3: Exclusion pattern filtering
+            # ----------------------------------------------------------
+            final_matches, ep_skips = self._apply_exclusion_patterns(
+                surviving_matches, effective_text, pattern_by_entity, row, dry_run
+            )
+            exclusion_pattern_skips += ep_skips
+
+            if not final_matches:
+                continue
+
+            # ----------------------------------------------------------
+            # Step 4: Incremental dedup check
+            # ----------------------------------------------------------
             if not full_rescan:
-                segment_ids_in_batch = [row.id for row, _ in matched_segments]
-                existing_stmt = select(EntityMentionDB.segment_id).where(
-                    EntityMentionDB.entity_id == pattern.entity_id,
-                    EntityMentionDB.segment_id.in_(segment_ids_in_batch),
+                entity_ids_in_segment = list(
+                    {entity_id for entity_id, _, _, _, _ in final_matches}
+                )
+                existing_stmt = select(
+                    EntityMentionDB.segment_id,
+                    EntityMentionDB.entity_id,
+                ).where(
+                    EntityMentionDB.segment_id == row.id,
+                    EntityMentionDB.entity_id.in_(entity_ids_in_segment),
                 )
                 existing_result = await session.execute(existing_stmt)
-                existing_segment_ids = set(existing_result.scalars().all())
+                existing_pairs = {
+                    (r.segment_id, r.entity_id) for r in existing_result.all()
+                }
+            else:
+                existing_pairs = set()
 
-            for row, matched_text in matched_segments:
-                if row.id in existing_segment_ids:
+            # ----------------------------------------------------------
+            # Step 5: Create mentions from surviving matches
+            # ----------------------------------------------------------
+            for entity_id, m_start, m_end, matched_text, pat in final_matches:
+                if (row.id, entity_id) in existing_pairs:
                     skipped += 1
                     continue
 
                 mention = EntityMentionCreate(
-                    entity_id=pattern.entity_id,
+                    entity_id=entity_id,
                     segment_id=row.id,
                     video_id=row.video_id,
                     language_code=row.language_code,
                     mention_text=matched_text,
                     detection_method=DetectionMethod.RULE_MATCH,
                     confidence=1.0,
+                    match_start=m_start,
+                    match_end=m_end,
                 )
                 new_mentions.append(mention)
 
                 if dry_run:
                     if limit is None or (current_preview_count + len(preview_data)) < limit:
-                        # Build context snippet (up to 80 chars around the match)
-                        effective_text = row.effective_text or ""
-                        context = effective_text[:120] if len(effective_text) > 120 else effective_text
+                        context = (
+                            effective_text[:120]
+                            if len(effective_text) > 120
+                            else effective_text
+                        )
                         preview_data.append(
                             {
                                 "video_id": row.video_id,
                                 "segment_id": row.id,
                                 "start_time": row.start_time,
-                                "entity_name": pattern.canonical_name,
-                                "entity_type": pattern.entity_type,
+                                "entity_name": pat.canonical_name,
+                                "entity_type": pat.entity_type,
                                 "matched_text": matched_text,
+                                "match_start": m_start,
+                                "match_end": m_end,
                                 "context": context,
                             }
                         )
 
                 logger.debug(
-                    "Match: entity=%s, segment_id=%d, video_id=%s, text='%s'",
-                    pattern.canonical_name,
+                    "Match: entity=%s, segment_id=%d, video_id=%s, "
+                    "text='%s', pos=%d-%d",
+                    pat.canonical_name,
                     row.id,
                     row.video_id,
                     matched_text,
+                    m_start,
+                    m_end,
                 )
 
-        return new_mentions, skipped, preview_data
+        return new_mentions, skipped, preview_data, longest_match_skips, exclusion_pattern_skips
+
+    # ------------------------------------------------------------------
+    # Disambiguation & filtering helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _apply_longest_match_wins(
+        raw_matches: list[tuple[uuid.UUID, int, int, str, _EntityPattern]],
+        row: Any,
+        dry_run: bool,
+    ) -> tuple[list[tuple[uuid.UUID, int, int, str, _EntityPattern]], int]:
+        """Disambiguate overlapping matches using longest-match-wins.
+
+        Parameters
+        ----------
+        raw_matches : list[tuple]
+            All ``(entity_id, start, end, text, pattern)`` tuples for one segment.
+        row : Any
+            The segment row (used for logging).
+        dry_run : bool
+            Whether this is a dry-run.
+
+        Returns
+        -------
+        tuple[list[tuple], int]
+            (surviving_matches, skip_count)
+        """
+        # Sort by length descending, then start ascending for stability
+        sorted_matches = sorted(
+            raw_matches,
+            key=lambda m: (-(m[2] - m[1]), m[1]),
+        )
+
+        # Store claimed intervals as (start, end) tuples for O(k) overlap checks
+        # where k = number of claimed intervals, avoiding O(n) set operations on
+        # character positions.
+        claimed_intervals: list[tuple[int, int]] = []
+        surviving: list[tuple[uuid.UUID, int, int, str, _EntityPattern]] = []
+        skip_count = 0
+
+        for entity_id, m_start, m_end, matched_text, pattern in sorted_matches:
+            # Check overlap against all claimed intervals
+            overlaps = any(
+                c_start < m_end and c_end > m_start
+                for c_start, c_end in claimed_intervals
+            )
+            if overlaps:
+                skip_count += 1
+                if dry_run:
+                    logger.info(
+                        "[DRY RUN] Segment %d: \"%s\" → SKIPPED "
+                        "(longest-match-wins: overlapping longer match preferred)",
+                        row.id,
+                        matched_text,
+                    )
+                else:
+                    logger.debug(
+                        "Segment %d: \"%s\" skipped (longest-match-wins)",
+                        row.id,
+                        matched_text,
+                    )
+                continue
+
+            claimed_intervals.append((m_start, m_end))
+            surviving.append((entity_id, m_start, m_end, matched_text, pattern))
+
+        return surviving, skip_count
+
+    @staticmethod
+    def _apply_exclusion_patterns(
+        matches: list[tuple[uuid.UUID, int, int, str, _EntityPattern]],
+        segment_text: str,
+        pattern_by_entity: dict[uuid.UUID, _EntityPattern],
+        row: Any,
+        dry_run: bool,
+    ) -> tuple[list[tuple[uuid.UUID, int, int, str, _EntityPattern]], int]:
+        """Filter matches against entity exclusion patterns.
+
+        For each surviving match, check if any of the entity's exclusion
+        patterns overlap the match position in the segment text.
+
+        Parameters
+        ----------
+        matches : list[tuple]
+            Surviving matches after longest-match-wins.
+        segment_text : str
+            The full effective text of the segment.
+        pattern_by_entity : dict
+            Lookup from entity_id to ``_EntityPattern``.
+        row : Any
+            The segment row (used for logging).
+        dry_run : bool
+            Whether this is a dry-run.
+
+        Returns
+        -------
+        tuple[list[tuple], int]
+            (final_matches, skip_count)
+        """
+        final: list[tuple[uuid.UUID, int, int, str, _EntityPattern]] = []
+        skip_count = 0
+
+        for entity_id, m_start, m_end, matched_text, pattern in matches:
+            ep = pattern_by_entity.get(entity_id)
+            exclusions = ep.exclusion_patterns if ep else []
+
+            suppressed = False
+            for excl_pattern_text in exclusions:
+                # Find all case-insensitive occurrences of the exclusion pattern
+                try:
+                    excl_regex = re.compile(re.escape(excl_pattern_text), re.IGNORECASE)
+                except re.error:
+                    logger.warning(
+                        "Invalid exclusion pattern '%s' for entity %s, skipping",
+                        excl_pattern_text,
+                        entity_id,
+                    )
+                    continue
+
+                for excl_match in excl_regex.finditer(segment_text):
+                    pattern_start = excl_match.start()
+                    pattern_end = excl_match.end()
+                    # Overlap check: pattern_start < match_end AND pattern_end > match_start
+                    if pattern_start < m_end and pattern_end > m_start:
+                        suppressed = True
+                        skip_count += 1
+                        if dry_run:
+                            logger.info(
+                                "[DRY RUN] Segment %d: \"%s\" at %d-%d → SKIPPED "
+                                "(exclusion pattern: \"%s\")",
+                                row.id,
+                                matched_text,
+                                m_start,
+                                m_end,
+                                excl_pattern_text,
+                            )
+                        else:
+                            logger.debug(
+                                "Segment %d: \"%s\" at %d-%d suppressed by "
+                                "exclusion pattern \"%s\"",
+                                row.id,
+                                matched_text,
+                                m_start,
+                                m_end,
+                                excl_pattern_text,
+                            )
+                        break  # One overlap is enough to suppress
+                if suppressed:
+                    break
+
+            if not suppressed:
+                final.append((entity_id, m_start, m_end, matched_text, pattern))
+
+        return final, skip_count
 
 
 __all__ = ["EntityMentionScanService", "ScanResult"]

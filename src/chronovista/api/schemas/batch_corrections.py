@@ -6,6 +6,8 @@ including preview, apply, and rebuild-text operations.
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -204,6 +206,8 @@ class BatchApplyRequest(BaseModel):
         Optional note explaining the correction (max 500 chars).
     auto_rebuild : bool
         Whether to automatically rebuild full text after applying.
+    entity_id : UUID | None
+        Optional named-entity ID to associate corrections with.
     """
 
     model_config = ConfigDict(strict=True, str_strip_whitespace=True)
@@ -232,6 +236,9 @@ class BatchApplyRequest(BaseModel):
     )
     auto_rebuild: bool = Field(
         default=True, description="Auto-rebuild full text after applying"
+    )
+    entity_id: UUID | None = Field(
+        default=None, description="Optional entity ID to associate corrections with"
     )
 
     @field_validator("segment_ids")

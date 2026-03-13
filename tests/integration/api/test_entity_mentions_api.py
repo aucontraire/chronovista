@@ -1487,8 +1487,8 @@ class TestGetEntityDetail:
         """``data`` object contains exactly the required entity detail fields.
 
         Validates that ``entity_id`` is a parseable UUID, ``mention_count`` is a
-        non-negative integer, and ``description`` may be None.  Also confirms
-        ``video_count`` is NOT present (the detail endpoint omits it).
+        non-negative integer, ``description`` may be None, ``video_count`` is a
+        non-negative integer, and ``aliases`` is a list.
         """
         entity_id = seed_entity_data["entity_id"]
 
@@ -1506,6 +1506,8 @@ class TestGetEntityDetail:
             "description",
             "status",
             "mention_count",
+            "video_count",
+            "aliases",
         }
         missing = required_fields - detail.keys()
         assert not missing, f"Missing fields in entity detail: {missing}"
@@ -1516,11 +1518,9 @@ class TestGetEntityDetail:
         assert isinstance(detail["entity_type"], str)
         assert isinstance(detail["mention_count"], int)
         assert detail["mention_count"] >= 0
-
-        # The detail endpoint does NOT include video_count (list endpoint only)
-        assert "video_count" not in detail, (
-            "entity detail endpoint must not expose video_count"
-        )
+        assert isinstance(detail["video_count"], int)
+        assert detail["video_count"] >= 0
+        assert isinstance(detail["aliases"], list)
 
     async def test_get_entity_detail_description_may_be_null(
         self,

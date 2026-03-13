@@ -477,6 +477,7 @@ def list_entities(
             entity_table.add_column("Type", style="magenta", width=16)
             entity_table.add_column("Description", style="white", width=50)
             entity_table.add_column("Aliases", style="green", width=8)
+            entity_table.add_column("Exclusions", style="red", justify="right", width=10)
             entity_table.add_column(
                 "Mentions", style="yellow", justify="right", width=10
             )
@@ -501,12 +502,15 @@ def list_entities(
                     else ""
                 )
 
+                exclusion_count = len(entity.exclusion_patterns or [])
+
                 entity_table.add_row(
                     short_id,
                     entity.canonical_name,
                     entity.entity_type,
                     short_desc,
                     str(alias_count),
+                    str(exclusion_count) if exclusion_count else "-",
                     f"{entity.mention_count:,}"
                     if entity.mention_count
                     else "0",
@@ -516,6 +520,181 @@ def list_entities(
             console.print(entity_table)
             console.print(
                 f"\nShowing {len(entities)} of {total_count} total entities"
+            )
+
+    asyncio.run(_run())
+
+
+@entity_app.command("add-exclusion")
+def add_exclusion(
+    entity_name: str = typer.Argument(
+        ..., help="Canonical name of the entity to add exclusion pattern(s) to."
+    ),
+    pattern: List[str] = typer.Option(
+        ...,
+        "--pattern",
+        help="Exclusion pattern to add (repeatable).",
+    ),
+) -> None:
+    """Add one or more exclusion patterns to a named entity.
+
+    Exclusion patterns prevent false-positive matches during entity mention
+    detection. For example, adding 'New Mexico' as an exclusion on the 'Mexico'
+    entity ensures that 'New Mexico' segments are not counted as mentions of Mexico.
+    """
+
+    async def _run() -> None:
+        normalizer = TagNormalizationService()
+        normalized_entity = normalizer.normalize(entity_name)
+
+        if normalized_entity is None:
+            console.print(
+                Panel(
+                    "[red]Entity name normalizes to empty string.[/red]",
+                    title="Invalid Name",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(code=1)
+
+        async for session in db_manager.get_session(echo=False):
+            # Look up entity by normalized canonical name (case-insensitive)
+            result = await session.execute(
+                select(NamedEntityDB).where(
+                    NamedEntityDB.canonical_name_normalized == normalized_entity,
+                )
+            )
+            entity = result.scalar_one_or_none()
+
+            if entity is None:
+                console.print(
+                    f'[red]Error: Entity "{entity_name}" not found[/red]'
+                )
+                raise typer.Exit(code=1)
+
+            # Validate all patterns before mutating state
+            for pat in pattern:
+                trimmed = pat.strip()
+                if not trimmed:
+                    console.print(
+                        "[red]Error: Exclusion pattern must not be empty[/red]"
+                    )
+                    raise typer.Exit(code=1)
+                if len(trimmed) > 500:
+                    console.print(
+                        "[red]Error: Exclusion pattern exceeds 500 character limit[/red]"
+                    )
+                    raise typer.Exit(code=1)
+
+            # Build updated list, checking for duplicates
+            current_patterns: List[str] = list(entity.exclusion_patterns or [])
+
+            if len(current_patterns) >= 10:
+                console.print(
+                    f'[yellow]Warning: Entity "{entity.canonical_name}" already has '
+                    f"{len(current_patterns)} exclusion patterns. Consider reviewing "
+                    f"whether all patterns are still necessary.[/yellow]"
+                )
+
+            added_patterns: List[str] = []
+            for pat in pattern:
+                trimmed = pat.strip()
+                if trimmed in current_patterns:
+                    console.print(
+                        f'[yellow]Warning: Pattern "{trimmed}" already exists '
+                        f'on entity "{entity.canonical_name}"[/yellow]'
+                    )
+                    continue
+                current_patterns.append(trimmed)
+                added_patterns.append(trimmed)
+
+            if added_patterns:
+                entity.exclusion_patterns = current_patterns
+                session.add(entity)
+                await session.commit()
+
+                for trimmed in added_patterns:
+                    console.print(
+                        f'Added exclusion pattern "{trimmed}" to entity '
+                        f'"{entity.canonical_name}"'
+                    )
+                console.print(
+                    f'Entity "{entity.canonical_name}" now has '
+                    f"{len(current_patterns)} exclusion pattern(s)"
+                )
+            else:
+                console.print(
+                    f'[yellow]No new exclusion patterns added to '
+                    f'"{entity.canonical_name}".[/yellow]'
+                )
+
+    asyncio.run(_run())
+
+
+@entity_app.command("remove-exclusion")
+def remove_exclusion(
+    entity_name: str = typer.Argument(
+        ..., help="Canonical name of the entity to remove an exclusion pattern from."
+    ),
+    pattern: str = typer.Option(
+        ...,
+        "--pattern",
+        help="Exclusion pattern to remove.",
+    ),
+) -> None:
+    """Remove an exclusion pattern from a named entity."""
+
+    async def _run() -> None:
+        normalizer = TagNormalizationService()
+        normalized_entity = normalizer.normalize(entity_name)
+
+        if normalized_entity is None:
+            console.print(
+                Panel(
+                    "[red]Entity name normalizes to empty string.[/red]",
+                    title="Invalid Name",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(code=1)
+
+        async for session in db_manager.get_session(echo=False):
+            # Look up entity by normalized canonical name (case-insensitive)
+            result = await session.execute(
+                select(NamedEntityDB).where(
+                    NamedEntityDB.canonical_name_normalized == normalized_entity,
+                )
+            )
+            entity = result.scalar_one_or_none()
+
+            if entity is None:
+                console.print(
+                    f'[red]Error: Entity "{entity_name}" not found[/red]'
+                )
+                raise typer.Exit(code=1)
+
+            trimmed = pattern.strip()
+            current_patterns: List[str] = list(entity.exclusion_patterns or [])
+
+            if trimmed not in current_patterns:
+                console.print(
+                    f'[yellow]Warning: Pattern "{trimmed}" not found '
+                    f'on entity "{entity.canonical_name}"[/yellow]'
+                )
+                return
+
+            current_patterns.remove(trimmed)
+            entity.exclusion_patterns = current_patterns
+            session.add(entity)
+            await session.commit()
+
+            console.print(
+                f'Removed exclusion pattern "{trimmed}" from entity '
+                f'"{entity.canonical_name}"'
+            )
+            console.print(
+                f'Entity "{entity.canonical_name}" now has '
+                f"{len(current_patterns)} exclusion pattern(s)"
             )
 
     asyncio.run(_run())
@@ -752,13 +931,19 @@ def scan_entities(
                 )
 
             console.print(preview_table)
-            console.print(
+            dry_run_summary = (
                 f"\nDry run complete: [bold]{result.mentions_found:,}[/bold] mentions "
                 f"would be created across [bold]{result.unique_videos:,}[/bold] videos "
                 f"for [bold]{result.unique_entities:,}[/bold] entities "
                 f"({result.segments_scanned:,} segments scanned, "
                 f"{result.duration_seconds:.1f}s)"
             )
+            if result.skipped_longest_match > 0 or result.skipped_exclusion_pattern > 0:
+                dry_run_summary += (
+                    f"\nSkipped (exclusion patterns): {result.skipped_exclusion_pattern:,}"
+                    f"  |  Skipped (longest-match-wins): {result.skipped_longest_match:,}"
+                )
+            console.print(dry_run_summary)
         else:
             # Live mode: scan with progress bar
             with Progress(
@@ -793,6 +978,8 @@ def scan_entities(
                 f"[bold]Segments scanned:[/bold] {result.segments_scanned:,}",
                 f"[bold]Mentions found:[/bold] {result.mentions_found:,}",
                 f"[bold]Mentions skipped:[/bold] {result.mentions_skipped:,}",
+                f"[bold]Skipped (exclusion patterns):[/bold] {result.skipped_exclusion_pattern:,}",
+                f"[bold]Skipped (longest-match-wins):[/bold] {result.skipped_longest_match:,}",
                 f"[bold]Unique entities:[/bold] {result.unique_entities:,}",
                 f"[bold]Unique videos:[/bold] {result.unique_videos:,}",
                 f"[bold]Duration:[/bold] {result.duration_seconds:.1f}s",

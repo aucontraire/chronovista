@@ -1935,6 +1935,8 @@ class TestBatchRevert:
         mock_segment_repo.find_by_text_pattern.return_value = [seg]
         mock_correction_service.revert_correction.return_value = MagicMock()
         mock_correction_repo.get_by_segment.return_value = []
+        # T033: session.execute() is called for correction ID query
+        mock_session.execute.return_value = _make_empty_execute_result()
 
         result = await service.batch_revert(
             mock_session, pattern="fixed",
@@ -1963,6 +1965,8 @@ class TestBatchRevert:
         mock_segment_repo.find_by_text_pattern.return_value = [seg]
         mock_correction_service.revert_correction.return_value = MagicMock()
         mock_correction_repo.get_by_segment.return_value = []
+        # T033: session.execute() is called for correction ID query
+        mock_session.execute.return_value = _make_empty_execute_result()
 
         await service.batch_revert(mock_session, pattern="fixed")
 
@@ -1995,6 +1999,8 @@ class TestBatchRevert:
             ValueError("no active correction"),
         ]
         mock_correction_repo.get_by_segment.return_value = []
+        # T033: session.execute() is called for correction ID query
+        mock_session.execute.return_value = _make_empty_execute_result()
 
         result = await service.batch_revert(mock_session, pattern="fixed")
 
@@ -2063,6 +2069,8 @@ class TestBatchRevert:
         mock_segment_repo.find_by_text_pattern.return_value = [seg1, seg2, seg3]
         mock_correction_service.revert_correction.return_value = MagicMock()
         mock_correction_repo.get_by_segment.return_value = []
+        # T033: session.execute() is called for correction ID query
+        mock_session.execute.return_value = _make_empty_execute_result()
 
         result = await service.batch_revert(mock_session, pattern="fix")
 
@@ -2090,6 +2098,8 @@ class TestBatchRevert:
         mock_segment_repo.find_by_text_pattern.return_value = [seg1, seg2]
         mock_correction_service.revert_correction.return_value = MagicMock()
         mock_correction_repo.get_by_segment.return_value = []
+        # T033: session.execute() is called for correction ID query
+        mock_session.execute.return_value = _make_empty_execute_result()
 
         callback = MagicMock()
         await service.batch_revert(
@@ -2135,6 +2145,220 @@ class TestBatchRevert:
         await service.batch_revert(mock_session, pattern="fix", dry_run=True)
 
         mock_correction_service.revert_correction.assert_not_called()
+
+    # -----------------------------------------------------------------------
+    # T033/T034: Entity mention cascade on revert
+    # -----------------------------------------------------------------------
+
+    async def test_revert_deletes_correction_linked_mentions(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+        mock_correction_service: AsyncMock,
+        mock_correction_repo: AsyncMock,
+    ) -> None:
+        """Revert cascade deletes entity mentions linked to reverted corrections."""
+        import uuid as _uuid
+
+        seg = _make_segment(
+            video_id="v1", segment_id=1, text="orig",
+            corrected_text="fixed", has_correction=True,
+        )
+
+        mock_segment_repo.count_filtered.return_value = 10
+        mock_segment_repo.find_by_text_pattern.return_value = [seg]
+        mock_correction_service.revert_correction.return_value = MagicMock()
+        mock_correction_repo.get_by_segment.return_value = []
+
+        # Simulate correction ID query returning a correction UUID
+        corr_id = _uuid.uuid4()
+        entity_id = _uuid.uuid4()
+        correction_result = MagicMock()
+        correction_result.scalars.return_value.all.return_value = [corr_id]
+        mock_session.execute.return_value = correction_result
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityMentionRepository"
+        ) as MockRepo:
+            mock_mention_repo = AsyncMock()
+            MockRepo.return_value = mock_mention_repo
+            mock_mention_repo.get_entity_ids_by_correction_ids.return_value = [entity_id]
+            mock_mention_repo.delete_by_correction_ids.return_value = 3
+
+            result = await service.batch_revert(mock_session, pattern="fixed")
+
+            # Verify mentions were deleted with the correct correction IDs
+            mock_mention_repo.delete_by_correction_ids.assert_called_once_with(
+                mock_session, [corr_id]
+            )
+            # Verify entity counters were recalculated
+            mock_mention_repo.update_entity_counters.assert_called_once_with(
+                mock_session, [entity_id]
+            )
+
+        assert result.total_applied == 1
+
+    async def test_revert_skips_cascade_when_no_correction_ids(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+        mock_correction_service: AsyncMock,
+        mock_correction_repo: AsyncMock,
+    ) -> None:
+        """No cascade when no correction IDs are found for segments."""
+        seg = _make_segment(
+            video_id="v1", segment_id=1, text="orig",
+            corrected_text="fixed", has_correction=True,
+        )
+
+        mock_segment_repo.count_filtered.return_value = 10
+        mock_segment_repo.find_by_text_pattern.return_value = [seg]
+        mock_correction_service.revert_correction.return_value = MagicMock()
+        mock_correction_repo.get_by_segment.return_value = []
+        # No correction IDs found
+        mock_session.execute.return_value = _make_empty_execute_result()
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityMentionRepository"
+        ) as MockRepo:
+            mock_mention_repo = AsyncMock()
+            MockRepo.return_value = mock_mention_repo
+
+            result = await service.batch_revert(mock_session, pattern="fixed")
+
+            # No cascade operations should be called
+            mock_mention_repo.delete_by_correction_ids.assert_not_called()
+            mock_mention_repo.update_entity_counters.assert_not_called()
+
+        assert result.total_applied == 1
+
+    async def test_partial_revert_only_deletes_reverted_correction_mentions(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+        mock_correction_service: AsyncMock,
+        mock_correction_repo: AsyncMock,
+    ) -> None:
+        """T034: Partial revert only deletes mentions for the specific corrections being reverted."""
+        import uuid as _uuid
+
+        # Only seg1 matches the revert pattern; seg2 does not
+        seg1 = _make_segment(
+            video_id="v1", segment_id=1, text="a",
+            corrected_text="fix", has_correction=True,
+        )
+
+        mock_segment_repo.count_filtered.return_value = 50
+        mock_segment_repo.find_by_text_pattern.return_value = [seg1]
+        mock_correction_service.revert_correction.return_value = MagicMock()
+        mock_correction_repo.get_by_segment.return_value = []
+
+        # Only one correction ID returned (for seg1's correction)
+        corr_id_seg1 = _uuid.uuid4()
+        entity_id = _uuid.uuid4()
+        correction_result = MagicMock()
+        correction_result.scalars.return_value.all.return_value = [corr_id_seg1]
+        mock_session.execute.return_value = correction_result
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityMentionRepository"
+        ) as MockRepo:
+            mock_mention_repo = AsyncMock()
+            MockRepo.return_value = mock_mention_repo
+            mock_mention_repo.get_entity_ids_by_correction_ids.return_value = [entity_id]
+            mock_mention_repo.delete_by_correction_ids.return_value = 2
+
+            result = await service.batch_revert(mock_session, pattern="fix")
+
+            # Should only pass seg1's correction ID — not seg2's
+            mock_mention_repo.delete_by_correction_ids.assert_called_once_with(
+                mock_session, [corr_id_seg1]
+            )
+
+        assert result.total_applied == 1
+
+    async def test_revert_cascade_happens_before_text_revert(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+        mock_correction_service: AsyncMock,
+        mock_correction_repo: AsyncMock,
+    ) -> None:
+        """FR-016: Mention deletion must happen BEFORE the text revert."""
+        import uuid as _uuid
+
+        seg = _make_segment(
+            video_id="v1", segment_id=1, text="orig",
+            corrected_text="fixed", has_correction=True,
+        )
+
+        mock_segment_repo.count_filtered.return_value = 10
+        mock_segment_repo.find_by_text_pattern.return_value = [seg]
+        mock_correction_service.revert_correction.return_value = MagicMock()
+        mock_correction_repo.get_by_segment.return_value = []
+
+        corr_id = _uuid.uuid4()
+        correction_result = MagicMock()
+        correction_result.scalars.return_value.all.return_value = [corr_id]
+        mock_session.execute.return_value = correction_result
+
+        # Track call order
+        call_order: list[str] = []
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityMentionRepository"
+        ) as MockRepo:
+            mock_mention_repo = AsyncMock()
+            MockRepo.return_value = mock_mention_repo
+            mock_mention_repo.get_entity_ids_by_correction_ids.return_value = [_uuid.uuid4()]
+            async def _track_delete(*a: object, **kw: object) -> int:
+                call_order.append("delete_mentions")
+                return 1
+
+            async def _track_revert(*a: object, **kw: object) -> MagicMock:
+                call_order.append("revert_correction")
+                return MagicMock()
+
+            mock_mention_repo.delete_by_correction_ids.side_effect = _track_delete
+            mock_correction_service.revert_correction.side_effect = _track_revert
+
+            await service.batch_revert(mock_session, pattern="fixed")
+
+        assert call_order.index("delete_mentions") < call_order.index(
+            "revert_correction"
+        ), "Mention deletion must happen before text revert (FR-016)"
+
+    async def test_dry_run_does_not_cascade_mentions(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+        mock_correction_repo: AsyncMock,
+    ) -> None:
+        """Dry-run mode should not delete entity mentions."""
+        seg = _make_segment(
+            video_id="v1", segment_id=1, text="a",
+            corrected_text="fix", has_correction=True,
+        )
+
+        mock_segment_repo.count_filtered.return_value = 10
+        mock_segment_repo.find_by_text_pattern.return_value = [seg]
+        mock_correction_repo.get_by_segment.return_value = []
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityMentionRepository"
+        ) as MockRepo:
+            result = await service.batch_revert(
+                mock_session, pattern="fix", dry_run=True,
+            )
+            # Repository should never be instantiated in dry-run mode
+            MockRepo.assert_not_called()
+
+        assert isinstance(result, list)
 
 
 # ---------------------------------------------------------------------------
@@ -2901,3 +3125,601 @@ class TestFindCrossSegmentMatchesPreFilter:
             mock_segment_repo.find_candidate_video_ids_for_cross_segment.call_args.kwargs
         )
         assert call_kwargs.get("channel") == "UCzzzz"
+
+
+# ---------------------------------------------------------------------------
+# Entity-Aware Corrections (T027-T031)
+# ---------------------------------------------------------------------------
+
+
+def _make_entity(
+    *,
+    entity_id: uuid.UUID | None = None,
+    canonical_name: str = "Test Entity",
+    status: str = "active",
+    exclusion_patterns: list[Any] | None = None,
+) -> MagicMock:
+    """Create a mock NamedEntityDB for testing."""
+    entity = MagicMock()
+    entity.id = entity_id or uuid.uuid4()
+    entity.canonical_name = canonical_name
+    entity.status = status
+    entity.exclusion_patterns = exclusion_patterns or []
+    return entity
+
+
+class TestFindAllOccurrences:
+    """Tests for the _find_all_occurrences static method."""
+
+    def test_simple_match(self) -> None:
+        from chronovista.services.batch_correction_service import (
+            BatchCorrectionService,
+        )
+
+        result = BatchCorrectionService._find_all_occurrences(
+            "hello world hello", "hello"
+        )
+        assert result == [(0, 5), (12, 17)]
+
+    def test_case_insensitive(self) -> None:
+        from chronovista.services.batch_correction_service import (
+            BatchCorrectionService,
+        )
+
+        result = BatchCorrectionService._find_all_occurrences(
+            "Hello HELLO hello", "hello"
+        )
+        assert result == [(0, 5), (6, 11), (12, 17)]
+
+    def test_no_match(self) -> None:
+        from chronovista.services.batch_correction_service import (
+            BatchCorrectionService,
+        )
+
+        result = BatchCorrectionService._find_all_occurrences(
+            "hello world", "xyz"
+        )
+        assert result == []
+
+    def test_empty_substring(self) -> None:
+        from chronovista.services.batch_correction_service import (
+            BatchCorrectionService,
+        )
+
+        result = BatchCorrectionService._find_all_occurrences(
+            "hello world", ""
+        )
+        assert result == []
+
+    def test_non_overlapping(self) -> None:
+        from chronovista.services.batch_correction_service import (
+            BatchCorrectionService,
+        )
+
+        # "aa" in "aaa" should yield only one match (non-overlapping)
+        result = BatchCorrectionService._find_all_occurrences("aaa", "aa")
+        assert result == [(0, 2)]
+
+    def test_single_occurrence(self) -> None:
+        from chronovista.services.batch_correction_service import (
+            BatchCorrectionService,
+        )
+
+        result = BatchCorrectionService._find_all_occurrences(
+            "the quick brown fox", "brown"
+        )
+        assert result == [(10, 15)]
+
+
+class TestIsExcludedByPatterns:
+    """Tests for the _is_excluded_by_patterns static method."""
+
+    def test_no_exclusion_patterns(self) -> None:
+        from chronovista.services.batch_correction_service import (
+            BatchCorrectionService,
+        )
+
+        assert not BatchCorrectionService._is_excluded_by_patterns(
+            0, 5, "hello world", []
+        )
+
+    def test_non_overlapping_exclusion(self) -> None:
+        from chronovista.services.batch_correction_service import (
+            BatchCorrectionService,
+        )
+
+        # Exclusion at "world" (6-11), mention at "hello" (0-5) — no overlap
+        assert not BatchCorrectionService._is_excluded_by_patterns(
+            0, 5, "hello world", ["world"]
+        )
+
+    def test_overlapping_exclusion(self) -> None:
+        from chronovista.services.batch_correction_service import (
+            BatchCorrectionService,
+        )
+
+        # Exclusion at "hello world" (0-11), mention at "hello" (0-5) — overlap
+        assert BatchCorrectionService._is_excluded_by_patterns(
+            0, 5, "hello world", ["hello world"]
+        )
+
+    def test_case_insensitive_exclusion(self) -> None:
+        from chronovista.services.batch_correction_service import (
+            BatchCorrectionService,
+        )
+
+        assert BatchCorrectionService._is_excluded_by_patterns(
+            0, 5, "Hello world", ["HELLO WORLD"]
+        )
+
+    def test_partial_overlap_excluded(self) -> None:
+        from chronovista.services.batch_correction_service import (
+            BatchCorrectionService,
+        )
+
+        # Text: "New York City", exclusion "York City" at 4-13,
+        # mention "New York" at 0-8 — overlap at 4-8
+        assert BatchCorrectionService._is_excluded_by_patterns(
+            0, 8, "New York City", ["York City"]
+        )
+
+    def test_invalid_exclusion_pattern_ignored(self) -> None:
+        from chronovista.services.batch_correction_service import (
+            BatchCorrectionService,
+        )
+
+        assert not BatchCorrectionService._is_excluded_by_patterns(
+            0, 5, "hello world", [None, "", 123]
+        )
+
+
+class TestApplyToSegmentsEntityValidation:
+    """Tests for T027: entity validation in apply_to_segments."""
+
+    async def test_entity_not_found_raises_value_error(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+    ) -> None:
+        """If entity_id is given but not found, ValueError is raised."""
+        eid = uuid.uuid4()
+        # Mock the session.execute for entity lookup
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        with pytest.raises(ValueError, match="not found"):
+            await service.apply_to_segments(
+                mock_session,
+                pattern="foo",
+                replacement="bar",
+                segment_ids=[1],
+                entity_id=eid,
+            )
+
+    async def test_entity_not_active_raises_value_error(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+    ) -> None:
+        """If entity exists but status is not active, ValueError is raised."""
+        entity = _make_entity(status="deprecated")
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = entity
+        mock_session.execute.return_value = mock_result
+
+        with pytest.raises(ValueError, match="not active"):
+            await service.apply_to_segments(
+                mock_session,
+                pattern="foo",
+                replacement="bar",
+                segment_ids=[1],
+                entity_id=entity.id,
+            )
+
+    async def test_no_entity_id_skips_validation(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+    ) -> None:
+        """When entity_id is None, entity validation is skipped entirely."""
+        # Set up mock to return empty segment list
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_session.execute.return_value = mock_result
+
+        result = await service.apply_to_segments(
+            mock_session,
+            pattern="foo",
+            replacement="bar",
+            segment_ids=[],
+        )
+        assert result.total_applied == 0
+
+
+class TestApplyToSegmentsEntityMentionCreation:
+    """Tests for T028/T029: entity mention creation after correction."""
+
+    async def test_mentions_created_after_correction(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """When entity_id is present, entity mentions are created."""
+        entity = _make_entity()
+        seg = _make_segment(
+            video_id="vid1_test_x", segment_id=10, text="bad text here"
+        )
+        correction_record = MagicMock()
+        correction_record.id = uuid.uuid4()
+        mock_correction_service.apply_correction.return_value = correction_record
+
+        # First execute: entity lookup
+        entity_result = MagicMock()
+        entity_result.scalar_one_or_none.return_value = entity
+        # Second execute: segment fetch
+        segment_result = MagicMock()
+        segment_result.scalars.return_value.all.return_value = [seg]
+
+        mock_session.execute.side_effect = [entity_result, segment_result]
+        # begin_nested must return an async context manager
+        nested_cm = AsyncMock()
+        mock_session.begin_nested = MagicMock(return_value=nested_cm)
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityMentionRepository"
+        ) as MockMentionRepo:
+            mock_repo_instance = AsyncMock()
+            MockMentionRepo.return_value = mock_repo_instance
+
+            result = await service.apply_to_segments(
+                mock_session,
+                pattern="bad",
+                replacement="good",
+                segment_ids=[10],
+                entity_id=entity.id,
+                auto_rebuild=False,
+            )
+
+            assert result.total_applied == 1
+            # Verify bulk_create_with_conflict_skip was called
+            mock_repo_instance.bulk_create_with_conflict_skip.assert_called_once()
+            mentions = mock_repo_instance.bulk_create_with_conflict_skip.call_args[0][1]
+            assert len(mentions) >= 1
+            assert mentions[0].entity_id == entity.id
+            assert mentions[0].detection_method.value == "user_correction"
+            assert mentions[0].confidence == 1.0
+
+    async def test_empty_replacement_skips_mention_creation(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """When replacement is empty (deletion), no mentions are created."""
+        entity = _make_entity()
+        seg = _make_segment(
+            video_id="vid1_test_x", segment_id=10, text="remove this"
+        )
+        correction_record = MagicMock()
+        correction_record.id = uuid.uuid4()
+        mock_correction_service.apply_correction.return_value = correction_record
+
+        entity_result = MagicMock()
+        entity_result.scalar_one_or_none.return_value = entity
+        segment_result = MagicMock()
+        segment_result.scalars.return_value.all.return_value = [seg]
+        mock_session.execute.side_effect = [entity_result, segment_result]
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityMentionRepository"
+        ) as MockMentionRepo:
+            mock_repo_instance = AsyncMock()
+            MockMentionRepo.return_value = mock_repo_instance
+
+            result = await service.apply_to_segments(
+                mock_session,
+                pattern="remove this",
+                replacement="",
+                segment_ids=[10],
+                entity_id=entity.id,
+                auto_rebuild=False,
+            )
+
+            assert result.total_applied == 1
+            # No mentions should be created for empty replacement
+            mock_repo_instance.bulk_create_with_conflict_skip.assert_not_called()
+
+    async def test_exclusion_pattern_suppresses_mention(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """T029: Exclusion patterns suppress overlapping mentions."""
+        entity = _make_entity(exclusion_patterns=["good text here"])
+        seg = _make_segment(
+            video_id="vid1_test_x", segment_id=10, text="bad text here"
+        )
+        correction_record = MagicMock()
+        correction_record.id = uuid.uuid4()
+        mock_correction_service.apply_correction.return_value = correction_record
+
+        entity_result = MagicMock()
+        entity_result.scalar_one_or_none.return_value = entity
+        segment_result = MagicMock()
+        segment_result.scalars.return_value.all.return_value = [seg]
+        mock_session.execute.side_effect = [entity_result, segment_result]
+        nested_cm = AsyncMock()
+        mock_session.begin_nested = MagicMock(return_value=nested_cm)
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityMentionRepository"
+        ) as MockMentionRepo:
+            mock_repo_instance = AsyncMock()
+            MockMentionRepo.return_value = mock_repo_instance
+
+            # Pattern "bad" → "good", result is "good text here"
+            # Exclusion pattern "good text here" overlaps mention "good" at 0-4
+            result = await service.apply_to_segments(
+                mock_session,
+                pattern="bad",
+                replacement="good",
+                segment_ids=[10],
+                entity_id=entity.id,
+                auto_rebuild=False,
+            )
+
+            assert result.total_applied == 1
+            # Mention should be suppressed due to exclusion pattern overlap
+            mock_repo_instance.bulk_create_with_conflict_skip.assert_not_called()
+
+
+class TestApplyToSegmentsEntityCounterUpdate:
+    """Tests for T031: entity counter update after all corrections."""
+
+    async def test_counter_update_called_when_entity_and_applied(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """T031: update_entity_counters is called after successful corrections."""
+        entity = _make_entity()
+        seg = _make_segment(
+            video_id="vid1_test_x", segment_id=10, text="bad text"
+        )
+        correction_record = MagicMock()
+        correction_record.id = uuid.uuid4()
+        mock_correction_service.apply_correction.return_value = correction_record
+
+        entity_result = MagicMock()
+        entity_result.scalar_one_or_none.return_value = entity
+        segment_result = MagicMock()
+        segment_result.scalars.return_value.all.return_value = [seg]
+        mock_session.execute.side_effect = [entity_result, segment_result]
+        nested_cm = AsyncMock()
+        mock_session.begin_nested = MagicMock(return_value=nested_cm)
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityMentionRepository"
+        ) as MockMentionRepo:
+            mock_repo_instance = AsyncMock()
+            MockMentionRepo.return_value = mock_repo_instance
+
+            result = await service.apply_to_segments(
+                mock_session,
+                pattern="bad",
+                replacement="good",
+                segment_ids=[10],
+                entity_id=entity.id,
+                auto_rebuild=False,
+            )
+
+            assert result.total_applied == 1
+            # update_entity_counters should have been called
+            mock_repo_instance.update_entity_counters.assert_called_once_with(
+                mock_session, [entity.id]
+            )
+
+    async def test_counter_update_not_called_without_entity(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """Counter update is not called when entity_id is None."""
+        seg = _make_segment(
+            video_id="vid1_test_x", segment_id=10, text="bad text"
+        )
+        correction_record = MagicMock()
+        correction_record.id = uuid.uuid4()
+        mock_correction_service.apply_correction.return_value = correction_record
+
+        segment_result = MagicMock()
+        segment_result.scalars.return_value.all.return_value = [seg]
+        mock_session.execute.return_value = segment_result
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityMentionRepository"
+        ) as MockMentionRepo:
+            mock_repo_instance = AsyncMock()
+            MockMentionRepo.return_value = mock_repo_instance
+
+            result = await service.apply_to_segments(
+                mock_session,
+                pattern="bad",
+                replacement="good",
+                segment_ids=[10],
+                auto_rebuild=False,
+            )
+
+            assert result.total_applied == 1
+            mock_repo_instance.update_entity_counters.assert_not_called()
+
+    async def test_counter_update_not_called_when_zero_applied(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Counter update is not called when no corrections are applied."""
+        entity = _make_entity()
+
+        entity_result = MagicMock()
+        entity_result.scalar_one_or_none.return_value = entity
+        segment_result = MagicMock()
+        segment_result.scalars.return_value.all.return_value = []
+        mock_session.execute.side_effect = [entity_result, segment_result]
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityMentionRepository"
+        ) as MockMentionRepo:
+            mock_repo_instance = AsyncMock()
+            MockMentionRepo.return_value = mock_repo_instance
+
+            result = await service.apply_to_segments(
+                mock_session,
+                pattern="foo",
+                replacement="bar",
+                segment_ids=[],
+                entity_id=entity.id,
+                auto_rebuild=False,
+            )
+
+            assert result.total_applied == 0
+            mock_repo_instance.update_entity_counters.assert_not_called()
+
+
+class TestCreateEntityMentionsForSegment:
+    """Tests for _create_entity_mentions_for_segment helper method."""
+
+    async def test_multiple_occurrences_create_multiple_mentions(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Multiple occurrences of replacement create multiple mentions."""
+        entity = _make_entity()
+        seg = _make_segment(video_id="vid1_test_x", segment_id=5)
+        correction_id = uuid.uuid4()
+
+        nested_cm = AsyncMock()
+        mock_session.begin_nested = MagicMock(return_value=nested_cm)
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityMentionRepository"
+        ) as MockMentionRepo:
+            mock_repo_instance = AsyncMock()
+            MockMentionRepo.return_value = mock_repo_instance
+
+            await service._create_entity_mentions_for_segment(
+                mock_session,
+                entity=entity,
+                segment=seg,
+                corrected_text="hello hello hello",
+                replacement="hello",
+                correction_id=correction_id,
+            )
+
+            mock_repo_instance.bulk_create_with_conflict_skip.assert_called_once()
+            mentions = mock_repo_instance.bulk_create_with_conflict_skip.call_args[0][1]
+            assert len(mentions) == 3
+            assert mentions[0].match_start == 0
+            assert mentions[0].match_end == 5
+            assert mentions[1].match_start == 6
+            assert mentions[1].match_end == 11
+            assert mentions[2].match_start == 12
+            assert mentions[2].match_end == 17
+
+    async def test_no_occurrences_skips_creation(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+    ) -> None:
+        """If replacement text not found in corrected text, no mentions created."""
+        entity = _make_entity()
+        seg = _make_segment(video_id="vid1_test_x", segment_id=5)
+        correction_id = uuid.uuid4()
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityMentionRepository"
+        ) as MockMentionRepo:
+            mock_repo_instance = AsyncMock()
+            MockMentionRepo.return_value = mock_repo_instance
+
+            await service._create_entity_mentions_for_segment(
+                mock_session,
+                entity=entity,
+                segment=seg,
+                corrected_text="completely different text",
+                replacement="xyz",
+                correction_id=correction_id,
+            )
+
+            mock_repo_instance.bulk_create_with_conflict_skip.assert_not_called()
+
+    async def test_mention_creation_failure_logs_warning(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Failures during mention creation are logged but don't propagate."""
+        entity = _make_entity()
+        seg = _make_segment(video_id="vid1_test_x", segment_id=5)
+        correction_id = uuid.uuid4()
+
+        # Make begin_nested raise an exception
+        mock_session.begin_nested.side_effect = RuntimeError("DB error")
+
+        with patch(
+            "chronovista.services.batch_correction_service.logger"
+        ) as mock_logger:
+            # Should not raise
+            await service._create_entity_mentions_for_segment(
+                mock_session,
+                entity=entity,
+                segment=seg,
+                corrected_text="hello world",
+                replacement="hello",
+                correction_id=correction_id,
+            )
+
+            # Warning should have been logged
+            mock_logger.warning.assert_called_once()
+
+    async def test_exclusion_filters_some_but_not_all(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Exclusion pattern filters only overlapping occurrences."""
+        entity = _make_entity(exclusion_patterns=["Mexico City"])
+        seg = _make_segment(video_id="vid1_test_x", segment_id=5)
+        correction_id = uuid.uuid4()
+
+        nested_cm = AsyncMock()
+        mock_session.begin_nested = MagicMock(return_value=nested_cm)
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityMentionRepository"
+        ) as MockMentionRepo:
+            mock_repo_instance = AsyncMock()
+            MockMentionRepo.return_value = mock_repo_instance
+
+            # Text has "Mexico" twice: once in "Mexico City" (excluded) and once standalone
+            await service._create_entity_mentions_for_segment(
+                mock_session,
+                entity=entity,
+                segment=seg,
+                corrected_text="visited Mexico City and then Mexico",
+                replacement="Mexico",
+                correction_id=correction_id,
+            )
+
+            mock_repo_instance.bulk_create_with_conflict_skip.assert_called_once()
+            mentions = mock_repo_instance.bulk_create_with_conflict_skip.call_args[0][1]
+            # First "Mexico" at 8-14 overlaps with "Mexico City" at 8-19 → excluded
+            # Second "Mexico" at 29-35 → included
+            assert len(mentions) == 1
+            assert mentions[0].match_start == 29

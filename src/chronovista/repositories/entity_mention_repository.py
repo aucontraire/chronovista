@@ -94,7 +94,7 @@ class EntityMentionRepository(
     ) -> int:
         """Bulk insert entity mentions, skipping duplicates on conflict.
 
-        Uses INSERT ... ON CONFLICT (entity_id, segment_id, mention_text) DO NOTHING
+        Uses INSERT ... ON CONFLICT (entity_id, segment_id, match_start) DO NOTHING
         for efficient bulk insertion with automatic deduplication.
 
         Parameters
@@ -122,7 +122,7 @@ class EntityMentionRepository(
             insert(EntityMentionDB)
             .values(values)
             .on_conflict_do_nothing(
-                constraint="uq_entity_mention_entity_segment_text"
+                constraint="uq_entity_mention_entity_segment_position"
             )
         )
         result = await session.execute(stmt)
@@ -171,6 +171,69 @@ class EntityMentionRepository(
 
         result = await session.execute(stmt)
         return int(result.rowcount)
+
+    async def delete_by_correction_ids(
+        self,
+        session: AsyncSession,
+        correction_ids: list[uuid.UUID],
+    ) -> int:
+        """Delete mentions linked to specific correction IDs.
+
+        Used when corrections are reverted to remove entity mentions that
+        were created as a result of those corrections.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        correction_ids : list[uuid.UUID]
+            Correction IDs whose linked mentions should be deleted.
+
+        Returns
+        -------
+        int
+            Count of deleted rows.
+        """
+        if not correction_ids:
+            return 0
+
+        stmt = delete(EntityMentionDB).where(
+            EntityMentionDB.correction_id.in_(correction_ids)
+        )
+        result = await session.execute(stmt)
+        return int(result.rowcount)
+
+    async def get_entity_ids_by_correction_ids(
+        self,
+        session: AsyncSession,
+        correction_ids: list[uuid.UUID],
+    ) -> list[uuid.UUID]:
+        """Return distinct entity IDs linked to the given correction IDs.
+
+        Used before deleting correction-linked mentions to know which entity
+        counters need recalculation after the deletion.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        correction_ids : list[uuid.UUID]
+            Correction IDs to look up.
+
+        Returns
+        -------
+        list[uuid.UUID]
+            Distinct entity IDs that have mentions linked to those corrections.
+        """
+        if not correction_ids:
+            return []
+
+        stmt = (
+            select(distinct(EntityMentionDB.entity_id))
+            .where(EntityMentionDB.correction_id.in_(correction_ids))
+        )
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
 
     async def get_entities_with_zero_mentions(
         self,

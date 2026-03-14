@@ -670,6 +670,9 @@ class BatchCorrectionService:
             await mention_repo.update_entity_counters(
                 session, [entity.id]
             )
+            await mention_repo.update_alias_counters(
+                session, [entity.id]
+            )
             await session.flush()
 
         # Step 6: Auto-rebuild
@@ -1639,6 +1642,9 @@ class BatchCorrectionService:
         # T033: Recalculate entity counters after revert completes
         if affected_entity_ids:
             await mention_repo.update_entity_counters(
+                session, affected_entity_ids
+            )
+            await mention_repo.update_alias_counters(
                 session, affected_entity_ids
             )
             await session.flush()

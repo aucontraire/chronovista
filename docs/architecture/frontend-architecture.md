@@ -29,20 +29,25 @@ frontend/src/
 │   ├── search/         # SearchPage, SearchFilters, SearchResults
 │   ├── video/          # VideoCard, VideoList, VideoDetailPage
 │   ├── channel/        # ChannelCard, ChannelList
+│   ├── batch/          # BatchCorrectionsPage components: PatternInput, MatchCard, EntityAutocomplete
 │   └── playlist/       # PlaylistCard, PlaylistNavigation
 ├── stores/             # Zustand state stores
 │   └── recoveryStore.ts           # Recovery session state with localStorage persist
 ├── hooks/              # Custom React hooks
 │   ├── useTranscriptSegments.ts   # Infinite scroll transcript loading
 │   ├── useDeepLinkParams.ts       # URL parameter handling for deep links
-│   └── useDebounce.ts             # Input debouncing
+│   ├── useDebounce.ts             # Input debouncing
+│   ├── useEntitySearch.ts           # Debounced entity name/alias search
+│   └── useEntityDetail.ts           # Entity detail with aliases for mismatch check
 ├── pages/              # Page-level components (route targets)
 │   ├── VideosPage.tsx
 │   ├── VideoDetailPage.tsx
 │   ├── ChannelsPage.tsx
 │   ├── PlaylistsPage.tsx
 │   ├── TranscriptSearchPage.tsx
-│   └── SearchPage.tsx
+│   ├── SearchPage.tsx
+│   ├── BatchCorrectionsPage.tsx
+│   └── EntityDetailPage.tsx
 ├── types/              # TypeScript type definitions
 │   ├── video.ts
 │   ├── channel.ts
@@ -69,6 +74,8 @@ Routes are defined in `App.tsx` using React Router v6:
 | `/playlists/:playlistId` | PlaylistDetailPage | Playlist videos |
 | `/search` | SearchPage | Multi-section search |
 | `/transcripts` | TranscriptSearchPage | Transcript-specific search |
+| `/corrections/batch` | BatchCorrectionsPage | Batch find-and-replace corrections |
+| `/entities/:entityId` | EntityDetailPage | Entity detail with aliases and videos |
 
 ## State Management
 
@@ -185,6 +192,18 @@ The correction UI (Feature 035) enables inline editing of transcript segments di
 - **Correction components** — Four components in `components/transcript/corrections/`: `CorrectionBadge` (visual indicator), `SegmentEditForm` (inline textarea + type select + validation), `RevertConfirmation` (confirm/cancel row), `CorrectionHistoryPanel` (audit record list with pagination)
 - **Focus management** — Edit mode focuses textarea, revert focuses Confirm button, Escape restores focus to the originating button. `stopPropagation` prevents parent scroll handler from intercepting keystrokes
 - **Screen reader support** — Dedicated `aria-live` region announces all state transitions (edit entered, saved, cancelled, revert shown/completed, history opened, errors)
+
+### Batch Corrections & Entity Linking (v0.44.0)
+
+The batch corrections page (Feature 041/043) provides a visual find-and-replace workflow with entity linking:
+
+- **`EntityAutocomplete`** — ARIA combobox driven by the replacement text field. Searches entities and aliases via `GET /entities?search=...&search_aliases=true&exclude_alias_types=asr_error`. 300ms debounce, 2-char minimum, keyboard navigation (ArrowDown/Up, Enter, Escape)
+- **Entity pill** — Selected entity displayed as a dismissible badge with canonical name, type label, external link to entity detail page (new tab), and dismiss button
+- **Mismatch warning** — Amber non-blocking warning when replacement text doesn't match canonical name or any registered alias. Uses `useEntityDetail` hook to fetch alias data (backend filters out `asr_error` aliases)
+- **`useEntitySearch`** — Debounced search hook returning `EntityListItem[]` from the entities list endpoint
+- **`useEntityDetail`** — TanStack Query hook fetching entity detail including aliases for mismatch checking. 5-minute stale time, disabled when no entity selected
+- **`AddAliasForm`** — Inline form on `EntityDetailPage` for creating new aliases via `POST /entities/{id}/aliases`. TanStack Query cache invalidation on success
+- **State flow** — `selectedEntity` state in `BatchCorrectionsPage` drives: autocomplete display, pill rendering, entity_id inclusion in apply request, mismatch computation. The `entityAliasNames` from `useEntityDetail` are passed down to `PatternInput` for local mismatch checking
 
 ### React Router v7 Future Flags
 

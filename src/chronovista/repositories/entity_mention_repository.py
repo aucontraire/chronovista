@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import (
     Channel,
+    EntityAlias as EntityAliasDB,
     EntityMention as EntityMentionDB,
     NamedEntity as NamedEntityDB,
     TranscriptSegment as TranscriptSegmentDB,
@@ -329,6 +330,79 @@ class EntityMentionRepository(
                 NamedEntityDB.id.notin_(entities_with_mentions),
             )
             .values(mention_count=0, video_count=0)
+        )
+        await session.execute(zero_stmt)
+
+    async def update_alias_counters(
+        self,
+        session: AsyncSession,
+        entity_ids: list[uuid.UUID],
+    ) -> None:
+        """Update occurrence_count on entity_aliases from entity_mentions.
+
+        For each alias belonging to the given entities, counts how many
+        mentions have a ``mention_text`` that matches the alias name
+        (case-insensitive) and writes the count back to
+        ``entity_aliases.occurrence_count``.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        entity_ids : list[uuid.UUID]
+            Entity IDs whose alias counters should be refreshed.
+        """
+        if not entity_ids:
+            return
+
+        # Aggregate mention_text counts per (entity_id, lower(mention_text))
+        mention_counts_subq = (
+            select(
+                EntityMentionDB.entity_id,
+                func.lower(EntityMentionDB.mention_text).label("mention_lower"),
+                func.count().label("cnt"),
+            )
+            .where(EntityMentionDB.entity_id.in_(entity_ids))
+            .group_by(
+                EntityMentionDB.entity_id,
+                func.lower(EntityMentionDB.mention_text),
+            )
+            .subquery()
+        )
+
+        # Join aliases to mention counts on (entity_id, lower(alias_name))
+        # and update occurrence_count
+        update_stmt = (
+            update(EntityAliasDB)
+            .where(
+                EntityAliasDB.entity_id == mention_counts_subq.c.entity_id,
+                func.lower(EntityAliasDB.alias_name)
+                == mention_counts_subq.c.mention_lower,
+            )
+            .values(occurrence_count=mention_counts_subq.c.cnt)
+        )
+        await session.execute(update_stmt)
+
+        # Zero out aliases that have no matching mentions
+        aliases_with_mentions = (
+            select(EntityAliasDB.id)
+            .join(
+                mention_counts_subq,
+                (EntityAliasDB.entity_id == mention_counts_subq.c.entity_id)
+                & (
+                    func.lower(EntityAliasDB.alias_name)
+                    == mention_counts_subq.c.mention_lower
+                ),
+            )
+            .scalar_subquery()
+        )
+        zero_stmt = (
+            update(EntityAliasDB)
+            .where(
+                EntityAliasDB.entity_id.in_(entity_ids),
+                EntityAliasDB.id.notin_(aliases_with_mentions),
+            )
+            .values(occurrence_count=0)
         )
         await session.execute(zero_stmt)
 

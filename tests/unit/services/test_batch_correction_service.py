@@ -2192,8 +2192,11 @@ class TestBatchRevert:
             mock_mention_repo.delete_by_correction_ids.assert_called_once_with(
                 mock_session, [corr_id]
             )
-            # Verify entity counters were recalculated
+            # Verify entity and alias counters were recalculated
             mock_mention_repo.update_entity_counters.assert_called_once_with(
+                mock_session, [entity_id]
+            )
+            mock_mention_repo.update_alias_counters.assert_called_once_with(
                 mock_session, [entity_id]
             )
 
@@ -2231,6 +2234,7 @@ class TestBatchRevert:
             # No cascade operations should be called
             mock_mention_repo.delete_by_correction_ids.assert_not_called()
             mock_mention_repo.update_entity_counters.assert_not_called()
+            mock_mention_repo.update_alias_counters.assert_not_called()
 
         assert result.total_applied == 1
 
@@ -3518,8 +3522,11 @@ class TestApplyToSegmentsEntityCounterUpdate:
             )
 
             assert result.total_applied == 1
-            # update_entity_counters should have been called
+            # update_entity_counters and update_alias_counters should have been called
             mock_repo_instance.update_entity_counters.assert_called_once_with(
+                mock_session, [entity.id]
+            )
+            mock_repo_instance.update_alias_counters.assert_called_once_with(
                 mock_session, [entity.id]
             )
 
@@ -3557,6 +3564,7 @@ class TestApplyToSegmentsEntityCounterUpdate:
 
             assert result.total_applied == 1
             mock_repo_instance.update_entity_counters.assert_not_called()
+            mock_repo_instance.update_alias_counters.assert_not_called()
 
     async def test_counter_update_not_called_when_zero_applied(
         self,
@@ -3589,6 +3597,7 @@ class TestApplyToSegmentsEntityCounterUpdate:
 
             assert result.total_applied == 0
             mock_repo_instance.update_entity_counters.assert_not_called()
+            mock_repo_instance.update_alias_counters.assert_not_called()
 
 
 class TestCreateEntityMentionsForSegment:

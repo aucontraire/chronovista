@@ -285,9 +285,12 @@ class EntityMentionScanService:
             result.unique_entities = len(matched_entity_ids)
             result.unique_videos = len(matched_video_ids)
 
-            # 4. Update entity counters (live mode only)
+            # 4. Update entity and alias counters (live mode only)
             if not dry_run and matched_entity_ids:
                 await self._mention_repo.update_entity_counters(
+                    session, list(matched_entity_ids)
+                )
+                await self._mention_repo.update_alias_counters(
                     session, list(matched_entity_ids)
                 )
                 await session.flush()

@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Body, Depends, Path, Query
 from sqlalchemy import distinct, func, or_, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -438,7 +438,7 @@ async def get_entity_videos(
 )
 async def create_entity_alias(
     entity_id: str = Path(..., description="Named entity UUID"),
-    body: CreateEntityAliasRequest = ...,
+    body: CreateEntityAliasRequest = Body(...),
     session: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Create a new alias for a named entity.

@@ -4,11 +4,9 @@ This module defines Pydantic V2 models for the batch corrections API endpoints,
 including preview, apply, and rebuild-text operations.
 """
 
-from __future__ import annotations
-
-from uuid import UUID
-
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from chronovista.api.schemas.types import CoercedUUID
 
 
 class BatchPreviewRequest(BaseModel):
@@ -237,7 +235,7 @@ class BatchApplyRequest(BaseModel):
     auto_rebuild: bool = Field(
         default=True, description="Auto-rebuild full text after applying"
     )
-    entity_id: UUID | None = Field(
+    entity_id: CoercedUUID | None = Field(
         default=None, description="Optional entity ID to associate corrections with"
     )
 

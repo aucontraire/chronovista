@@ -395,3 +395,46 @@ After applying, a persistent summary shows:
 | `formatting` | Punctuation, capitalization, or spacing corrections |
 | `profanity_fix` | ASR garbled or censored profanity that needs restoration |
 | `other` | Corrections that don't fit other categories |
+
+---
+
+### Entity Linking
+
+When correcting ASR errors for entity names, you can optionally link the correction to a named entity. This creates entity mentions for every corrected segment, so you don't have to run a separate `entities scan` afterward.
+
+#### How It Works
+
+1. Type a replacement in the "Replace with" field (e.g., "AMLO")
+2. The **entity autocomplete** appears below, showing matching entities from your database
+3. Select an entity to link — a **pill/badge** appears showing the entity name and type
+4. Click the external link icon on the pill to view the entity detail page (opens in a new tab)
+5. Click **×** on the pill to remove the entity link and revert to plain text replacement
+
+#### Mismatch Warning
+
+If the replacement text does not match the selected entity's canonical name or any of its registered aliases, an **amber warning** appears:
+
+> ⚠️ "AMLO" is not the canonical name or a registered alias for this entity.
+> The entity link will still be recorded, but future scans may not match this form.
+> To add it as an alias, click the 🔗 icon above to open the entity detail page. Or proceed as-is.
+
+This warning is **non-blocking** — you can still apply the correction. But the unregistered text form won't be picked up by `entities scan` later.
+
+To resolve the mismatch, open the entity detail page and add the replacement text as an alias (e.g., add "AMLO" as a `name_variant` alias for "Andrés Manuel López Obrador").
+
+#### What Happens on Apply
+
+- Entity mentions with `detection_method=user_correction` are created for each corrected segment
+- Mentions are created within the same transaction as the correction (wrapped in a savepoint — mention failure does not roll back the correction)
+- Duplicate mentions (same entity + same segment) are handled with `ON CONFLICT DO NOTHING`
+- A `correction_id` FK links mentions back to the correction that created them
+
+#### What Happens on Revert
+
+- When you revert a correction that was linked to an entity, all entity mentions with that `correction_id` are automatically deleted
+- Mention counters are recalculated after deletion
+- Mentions created by `entities scan` (`detection_method=rule_match`) are not affected by correction reverts
+
+#### Entity Linking is Optional
+
+The autocomplete is always optional. You can still type plain replacement text without selecting an entity. Entity linking only applies to the batch corrections page — the inline segment editor does not support it.

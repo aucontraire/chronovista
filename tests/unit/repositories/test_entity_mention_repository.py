@@ -166,6 +166,7 @@ class TestEntityMentionRepositoryInitialization:
             "delete_by_scope",
             "get_entities_with_zero_mentions",
             "update_entity_counters",
+            "update_alias_counters",
             "get_video_entity_summary",
             "get_entity_video_list",
             "get_statistics",
@@ -866,6 +867,105 @@ class TestUpdateEntityCounters:
         sql_str = str(first_stmt.compile(compile_kwargs={"literal_binds": False}))
         assert "mention_count" in sql_str
         assert "video_count" in sql_str
+
+
+# ---------------------------------------------------------------------------
+# TestUpdateAliasCounters
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateAliasCounters:
+    """Tests for update_alias_counters().
+
+    The method runs two UPDATE statements: one to set occurrence_count on
+    entity_aliases by matching lower(alias_name) to lower(mention_text) from
+    entity_mentions, and another to zero out aliases with no matching mentions.
+    """
+
+    @pytest.fixture
+    def repository(self) -> EntityMentionRepository:
+        """Provide a fresh repository instance for each test."""
+        return EntityMentionRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> MagicMock:
+        """Provide a mock async session for each test."""
+        return _make_mock_session()
+
+    async def test_empty_entity_ids_is_noop(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Calling update_alias_counters([]) must not touch the database.
+
+        When there are no entity IDs to refresh the method must return early
+        without issuing any SQL to avoid emitting unbounded UPDATE statements.
+        """
+        await repository.update_alias_counters(mock_session, entity_ids=[])
+
+        mock_session.execute.assert_not_called()
+
+    async def test_two_update_statements_executed_for_non_empty_list(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Two UPDATE statements are issued: one for real counts, one for zeroing.
+
+        The repository sets occurrence_count for aliases that have matching
+        mention_text rows, then separately zeros out aliases with no matches
+        for any alias belonging to the provided entity IDs.
+        """
+        entity_ids = [_uuid(), _uuid()]
+
+        mock_result = MagicMock()
+        mock_result.rowcount = 2
+        mock_session.execute.return_value = mock_result
+
+        await repository.update_alias_counters(mock_session, entity_ids=entity_ids)
+
+        # Exactly two UPDATE round-trips should have occurred
+        assert mock_session.execute.call_count == 2
+
+    async def test_update_statements_target_entity_aliases_table(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Both UPDATE statements must target the entity_aliases table."""
+        entity_id = _uuid()
+
+        mock_result = MagicMock()
+        mock_result.rowcount = 1
+        mock_session.execute.return_value = mock_result
+
+        await repository.update_alias_counters(mock_session, entity_ids=[entity_id])
+
+        for call_args in mock_session.execute.call_args_list:
+            stmt = call_args.args[0]
+            sql_str = str(stmt.compile(compile_kwargs={"literal_binds": False}))
+            assert "entity_aliases" in sql_str, (
+                f"Expected UPDATE to target entity_aliases; got SQL: {sql_str}"
+            )
+
+    async def test_first_update_sets_occurrence_count(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """The first UPDATE must set the occurrence_count column."""
+        entity_id = _uuid()
+
+        mock_result = MagicMock()
+        mock_result.rowcount = 1
+        mock_session.execute.return_value = mock_result
+
+        await repository.update_alias_counters(mock_session, entity_ids=[entity_id])
+
+        first_stmt = mock_session.execute.call_args_list[0].args[0]
+        sql_str = str(first_stmt.compile(compile_kwargs={"literal_binds": False}))
+        assert "occurrence_count" in sql_str
 
 
 # ---------------------------------------------------------------------------

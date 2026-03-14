@@ -520,6 +520,10 @@ function VirtualizedSegmentList({
             }
           : undefined;
 
+        const isActiveSegment =
+          editModeProps.editState.mode !== "read" &&
+          editModeProps.editState.segmentId === segment.id;
+
         return (
           <div
             key={virtualItem.key}
@@ -533,6 +537,8 @@ function VirtualizedSegmentList({
               left: 0,
               width: "100%",
               transform: `translateY(${virtualItem.start}px)`,
+              // Raise editing/confirming/history rows above neighboring virtual rows
+              zIndex: isActiveSegment ? 10 : undefined,
             }}
           >
             <SegmentItem

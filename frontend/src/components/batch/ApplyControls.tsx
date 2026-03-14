@@ -20,6 +20,7 @@ import {
   CORRECTION_TYPE_LABELS,
 } from '../../types/corrections';
 import type { CorrectionType } from '../../types/corrections';
+import type { EntityOption } from './EntityAutocomplete';
 
 // ---------------------------------------------------------------------------
 // Prop types
@@ -50,6 +51,17 @@ export interface ApplyControlsProps {
   correctionType?: CorrectionType;
   /** Called when the correction type selection changes. */
   onCorrectionTypeChange?: (type: CorrectionType) => void;
+  /**
+   * The entity linked to this correction session, if any.
+   * When provided, a compact read-only entity summary is shown above the
+   * Apply button.
+   */
+  linkedEntity?: EntityOption | null;
+  /**
+   * When true, the linked entity's canonical name does not match the
+   * replacement text. Triggers an amber inline warning in the summary row.
+   */
+  entityHasMismatch?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,6 +134,8 @@ export function ApplyControls({
   onCorrectionNoteChange,
   correctionType,
   onCorrectionTypeChange,
+  linkedEntity = null,
+  entityHasMismatch = false,
 }: ApplyControlsProps) {
   // Whether the inline confirmation strip is visible.
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -333,6 +347,30 @@ export function ApplyControls({
               isApplying ? 'opacity-50 cursor-not-allowed bg-slate-50' : '',
             ].join(' ')}
           />
+        </div>
+      )}
+
+      {/* Linked entity summary row — shown between the correction note and the
+          Apply button when an entity is linked (FR-010). Read-only; no dismiss. */}
+      {linkedEntity !== null && linkedEntity !== undefined && (
+        <div className="mb-3 border-t border-slate-100 pt-3 flex flex-wrap items-center gap-2">
+          <span className="text-sm text-slate-600">Linked entity:</span>
+          <span
+            className={[
+              "inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 text-sm",
+              entityHasMismatch ? "border border-amber-300" : "border border-indigo-200",
+            ].join(" ")}
+          >
+            {entityHasMismatch && (
+              <span aria-hidden="true" className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+            )}
+            <span className="font-medium text-indigo-800">{linkedEntity.name}</span>
+          </span>
+          {entityHasMismatch && (
+            <span className="text-sm text-amber-700">
+              &#9888; &ldquo;{replacement}&rdquo; is not a registered alias
+            </span>
+          )}
         </div>
       )}
 

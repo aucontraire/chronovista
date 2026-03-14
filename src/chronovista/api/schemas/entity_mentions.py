@@ -6,6 +6,8 @@ video entity summaries and entity-to-videos lookups.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from chronovista.api.schemas.responses import PaginationMeta
@@ -130,3 +132,71 @@ class EntityVideoResponse(BaseModel):
 
     data: list[EntityVideoResult]
     pagination: PaginationMeta
+
+
+class EntityAliasSummary(BaseModel):
+    """Summary of a single alias for a named entity.
+
+    Only genuine aliases are included in responses (asr_error aliases are
+    filtered out at the endpoint level as they are considered internal noise).
+
+    Attributes
+    ----------
+    alias_name : str
+        The alias text as stored.
+    alias_type : str
+        Alias category: name_variant, abbreviation, nickname, translated_name,
+        or former_name.
+    occurrence_count : int
+        Number of times this alias form has been observed.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    alias_name: str = Field(..., description="Alias text")
+    alias_type: str = Field(
+        ...,
+        description=(
+            "Alias category (name_variant, abbreviation, nickname, "
+            "translated_name, former_name)"
+        ),
+    )
+    occurrence_count: int = Field(
+        ..., description="Number of observed occurrences of this alias form"
+    )
+
+
+# Allowed alias types for user-facing creation (asr_error is system-only).
+_ALLOWED_ALIAS_TYPES = Literal[
+    "name_variant",
+    "abbreviation",
+    "nickname",
+    "translated_name",
+    "former_name",
+]
+
+
+class CreateEntityAliasRequest(BaseModel):
+    """Request body for creating a new alias on a named entity.
+
+    Attributes
+    ----------
+    alias_name : str
+        The alias text to add.
+    alias_type : str
+        Alias category. Must be one of: name_variant, abbreviation,
+        nickname, translated_name, former_name.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    alias_name: str = Field(
+        ..., min_length=1, max_length=500, description="Alias text to add"
+    )
+    alias_type: _ALLOWED_ALIAS_TYPES = Field(
+        default="name_variant",
+        description=(
+            "Alias type (name_variant, abbreviation, nickname, "
+            "translated_name, former_name)"
+        ),
+    )

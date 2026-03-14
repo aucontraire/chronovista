@@ -760,6 +760,11 @@ class NamedEntity(Base):
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
 
+    # Exclusion patterns for entity mention detection
+    exclusion_patterns: Mapped[List[Any]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb"), nullable=False
+    )
+
     # Statistics
     mention_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     video_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -1124,6 +1129,18 @@ class EntityMention(Base):
     )
     confidence: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
 
+    # Character-level position within segment text
+    match_start: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    match_end: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # Link to the correction that triggered this mention (if any)
+    correction_id: Mapped[Optional[UUID]] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("transcript_corrections.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     # Timestamps
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -1132,11 +1149,11 @@ class EntityMention(Base):
     # Table constraints and indexes
     __table_args__ = (
         UniqueConstraint(
-            "entity_id", "segment_id", "mention_text",
-            name="uq_entity_mention_entity_segment_text",
+            "entity_id", "segment_id", "match_start",
+            name="uq_entity_mention_entity_segment_position",
         ),
         CheckConstraint(
-            "detection_method IN ('rule_match', 'spacy_ner', 'llm_extraction', 'manual')",
+            "detection_method IN ('rule_match', 'spacy_ner', 'llm_extraction', 'manual', 'user_correction')",
             name="chk_entity_mention_detection_method_valid",
         ),
         CheckConstraint(
@@ -1148,6 +1165,7 @@ class EntityMention(Base):
         Index("ix_entity_mentions_video_id", "video_id"),
         Index("ix_entity_mentions_video_language", "video_id", "language_code"),
         Index("ix_entity_mentions_detection_method", "detection_method"),
+        # Note: correction_id index is created by index=True on the column definition
     )
 
     # Relationships
@@ -1156,6 +1174,9 @@ class EntityMention(Base):
     )
     segment: Mapped["TranscriptSegment"] = relationship(
         "TranscriptSegment", back_populates="entity_mentions"
+    )
+    correction: Mapped[Optional["TranscriptCorrection"]] = relationship(
+        "TranscriptCorrection", foreign_keys=[correction_id]
     )
 
 

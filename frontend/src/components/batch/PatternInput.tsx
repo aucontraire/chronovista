@@ -24,6 +24,8 @@
 
 import { useState, useId, useCallback } from 'react';
 import type { BatchPreviewRequest } from '../../types/batchCorrections';
+import { EntityAutocomplete } from './EntityAutocomplete';
+import type { EntityOption } from './EntityAutocomplete';
 
 // ---------------------------------------------------------------------------
 // Prop types
@@ -41,6 +43,19 @@ export interface PatternInputProps {
    * The parent uses this to clear a stale preview result (FR-029).
    */
   onPatternChange?: () => void;
+  /**
+   * Called when the user selects or clears an entity in EntityAutocomplete.
+   * The parent (BatchCorrectionsPage) stores this and passes entity_id into
+   * the apply mutation (T026 / FR-010).
+   */
+  onEntityChange?: (entity: EntityOption | null) => void;
+  /**
+   * Alias names for the currently selected entity (asr_error aliases already
+   * excluded by the backend). When provided, the mismatch warning is suppressed
+   * if the replacement text matches any alias (case-insensitive) in addition to
+   * the canonical name.
+   */
+  entityAliasNames?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -161,6 +176,8 @@ export function PatternInput({
   isLoading = false,
   isLocked = false,
   onPatternChange,
+  onEntityChange,
+  entityAliasNames = [],
 }: PatternInputProps) {
   // -------------------------------------------------------------------------
   // Form state
@@ -170,6 +187,9 @@ export function PatternInput({
   const [isRegex, setIsRegex] = useState(false);
   const [caseInsensitive, setCaseInsensitive] = useState(false);
   const [crossSegment, setCrossSegment] = useState(false);
+
+  // Entity link state (T025 / FR-011)
+  const [selectedEntity, setSelectedEntity] = useState<EntityOption | null>(null);
 
   // Filter section state
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -191,6 +211,22 @@ export function PatternInput({
   // -------------------------------------------------------------------------
   const isDisabled = isLocked;
   const isPreviewDisabled = !pattern.trim() || isLoading || isLocked;
+
+  /**
+   * True when an entity is selected but the replacement text matches neither
+   * the entity's canonical name nor any of its registered aliases
+   * (case-insensitive). Alias names are supplied by the parent from the entity
+   * detail endpoint, which already filters out `asr_error` aliases.
+   */
+  const hasMismatch =
+    selectedEntity !== null &&
+    (() => {
+      const normalizedReplacement = replacement.trim().toLowerCase();
+      if (normalizedReplacement === selectedEntity.name.toLowerCase()) return false;
+      return !entityAliasNames.some(
+        (alias) => normalizedReplacement === alias.toLowerCase()
+      );
+    })();
 
   // -------------------------------------------------------------------------
   // Handlers
@@ -217,8 +253,21 @@ export function PatternInput({
     (value: string) => {
       setReplacement(value);
       onPatternChange?.();
+      // FR-011: auto-clear entity link when replacement text is cleared
+      if (!value.trim()) {
+        setSelectedEntity(null);
+        onEntityChange?.(null);
+      }
     },
-    [onPatternChange]
+    [onPatternChange, onEntityChange]
+  );
+
+  const handleEntitySelect = useCallback(
+    (entity: EntityOption | null) => {
+      setSelectedEntity(entity);
+      onEntityChange?.(entity);
+    },
+    [onEntityChange]
   );
 
   const handlePreview = () => {
@@ -329,6 +378,15 @@ export function PatternInput({
             </p>
           </div>
         </div>
+
+        {/* Entity link — below the pattern/replacement row (T025 / FR-010) */}
+        <EntityAutocomplete
+          searchText={replacement}
+          selectedEntity={selectedEntity}
+          onEntitySelect={handleEntitySelect}
+          disabled={isDisabled}
+          hasMismatch={hasMismatch}
+        />
 
         {/* Toggle row */}
         <fieldset className="space-y-2">

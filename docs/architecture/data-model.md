@@ -86,6 +86,24 @@ Database schema and entity relationships.
 |    alias_name     |     |    normalized_form|
 |    alias_type     |     | FK canonical_tag_id|
 +-------------------+     +-------------------+
+
++-------------------+     +----------------------+
+| named_entities    |     | transcript_segments  |
++--------+----------+     +----------+-----------+
+         |  1:N                      |  1:N
+         |                           |
++--------+---------------------------+----------+
+|                entity_mentions                |
++-----------------------------------------------+
+| PK id (UUID)                                  |
+| FK entity_id      → named_entities.id         |
+| FK segment_id     → transcript_segments.id    |
+| FK correction_id  → transcript_corrections.id |
+|    video_id                                   |
+|    mention_text                               |
+|    detection_method                           |
+|    confidence_score                           |
++-----------------------------------------------+
 ```
 
 ## Core Tables
@@ -416,6 +434,29 @@ CREATE TABLE entity_aliases (
     CONSTRAINT uq_entity_alias_normalized UNIQUE (alias_name_normalized, entity_id)
 );
 ```
+
+### entity_mentions
+
+Tracks where named entities appear in transcript segments. Created by `entities scan` (rule_match) or batch corrections with entity linking (user_correction).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID (v7) | Primary key |
+| `entity_id` | UUID | FK → `named_entities.id` |
+| `segment_id` | INTEGER | FK → `transcript_segments.id` |
+| `video_id` | VARCHAR(11) | YouTube video ID |
+| `language_code` | VARCHAR(10) | BCP-47 language code |
+| `mention_text` | TEXT | Exact matched text |
+| `match_start` | INTEGER | Character offset start (nullable) |
+| `match_end` | INTEGER | Character offset end (nullable) |
+| `detection_method` | ENUM | `rule_match`, `spacy_ner`, `llm_extraction`, `manual`, `user_correction` |
+| `correction_id` | UUID | FK → `transcript_corrections.id` (nullable, links mention to correction) |
+| `confidence_score` | FLOAT | Detection confidence (0.0–1.0, nullable) |
+| `created_at` | TIMESTAMP | Creation timestamp |
+
+**Indexes**: entity_id, segment_id, video_id, detection_method, correction_id
+
+**Unique constraint**: `(entity_id, segment_id, mention_text)` — prevents duplicate mentions via `ON CONFLICT DO NOTHING`
 
 ### tag_operation_logs
 

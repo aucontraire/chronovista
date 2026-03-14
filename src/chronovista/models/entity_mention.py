@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -49,6 +50,18 @@ class EntityMentionBase(BaseModel):
         ge=0.0,
         le=1.0,
         description="Confidence score of the detection (0.0 to 1.0)",
+    )
+    match_start: Optional[int] = Field(
+        default=None,
+        description="Character offset where the mention starts in segment text",
+    )
+    match_end: Optional[int] = Field(
+        default=None,
+        description="Character offset where the mention ends in segment text",
+    )
+    correction_id: Optional[uuid.UUID] = Field(
+        default=None,
+        description="UUID of the correction that created or updated this mention",
     )
 
     @field_validator("confidence")

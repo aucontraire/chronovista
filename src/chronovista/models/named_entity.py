@@ -38,6 +38,10 @@ class NamedEntityBase(BaseModel):
     status: TagStatus = Field(
         default=TagStatus.ACTIVE, description="Lifecycle status of the entity"
     )
+    exclusion_patterns: list[str] = Field(
+        default_factory=list,
+        description="Patterns to exclude from entity mention detection",
+    )
 
     model_config = ConfigDict(
         validate_assignment=True,

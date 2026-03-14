@@ -333,3 +333,4 @@ class DetectionMethod(str, Enum):
     SPACY_NER = "spacy_ner"
     LLM_EXTRACTION = "llm_extraction"
     MANUAL = "manual"
+    USER_CORRECTION = "user_correction"

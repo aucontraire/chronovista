@@ -63,6 +63,7 @@ All endpoints except `/health` require authentication. The API shares OAuth toke
 | `/entities` | GET | List named entities |
 | `/entities/{id}` | GET | Get entity details |
 | `/entities/{id}/videos` | GET | Videos mentioning entity |
+| `/entities/{id}/aliases` | POST | Add alias to entity |
 | `/corrections/batch/preview` | POST | Preview batch find-replace matches |
 | `/corrections/batch/apply` | POST | Apply batch corrections to selected segments |
 | `/corrections/batch/rebuild-text` | POST | Rebuild transcript text for affected videos |

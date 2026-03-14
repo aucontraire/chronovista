@@ -41,6 +41,9 @@ class EntityMentionBaseFactory(factory.Factory[EntityMentionBase]):
     mention_text: Any = Sequence(lambda n: f"Entity mention {n}")
     detection_method: Any = LazyFunction(lambda: DetectionMethod.RULE_MATCH)
     confidence: Any = LazyFunction(lambda: 1.0)
+    match_start: Any = None
+    match_end: Any = None
+    correction_id: Any = None
 
 
 class EntityMentionCreateFactory(factory.Factory[EntityMentionCreate]):
@@ -56,6 +59,9 @@ class EntityMentionCreateFactory(factory.Factory[EntityMentionCreate]):
     mention_text: Any = Sequence(lambda n: f"Entity mention {n}")
     detection_method: Any = LazyFunction(lambda: DetectionMethod.RULE_MATCH)
     confidence: Any = LazyFunction(lambda: 1.0)
+    match_start: Any = None
+    match_end: Any = None
+    correction_id: Any = None
 
 
 class EntityMentionFactory(factory.Factory[EntityMention]):
@@ -72,6 +78,9 @@ class EntityMentionFactory(factory.Factory[EntityMention]):
     mention_text: Any = Sequence(lambda n: f"Entity mention {n}")
     detection_method: Any = LazyFunction(lambda: DetectionMethod.RULE_MATCH)
     confidence: Any = LazyFunction(lambda: 1.0)
+    match_start: Any = None
+    match_end: Any = None
+    correction_id: Any = None
     created_at: Any = LazyFunction(
         lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
     )

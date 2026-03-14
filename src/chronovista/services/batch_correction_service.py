@@ -7,6 +7,7 @@ live and dry-run modes.
 
 Feature 036 — Batch Correction Tools (T009, T010, T011, T017, T019, T021, T023, T025)
 Feature 038 — Entity Mention Detection (T005, T006, T007, T011, T012, T013)
+Feature 043 — Entity-Aware Corrections (T027, T028, T029, T030, T031)
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from datetime import datetime
 from typing import Any, TypeVar
 from uuid import UUID
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.schemas.batch_corrections import (
@@ -32,7 +33,9 @@ from chronovista.api.schemas.batch_corrections import (
     BatchPreviewMatch,
 )
 from chronovista.db.models import Channel as ChannelDB
+from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
+from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as VideoTranscriptDB
 from chronovista.models.batch_correction_models import (
@@ -44,7 +47,11 @@ from chronovista.models.batch_correction_models import (
     SegmentPair,
 )
 from chronovista.models.correction_actors import ACTOR_CLI_BATCH
-from chronovista.models.enums import CorrectionType
+from chronovista.models.entity_mention import EntityMentionCreate
+from chronovista.models.enums import CorrectionType, DetectionMethod
+from chronovista.repositories.entity_mention_repository import (
+    EntityMentionRepository,
+)
 from chronovista.repositories.transcript_correction_repository import (
     TranscriptCorrectionRepository,
 )
@@ -435,6 +442,7 @@ class BatchCorrectionService:
         correction_note: str | None = None,
         auto_rebuild: bool = True,
         corrected_by_user_id: str = ACTOR_CLI_BATCH,
+        entity_id: UUID | None = None,
     ) -> BatchApplyResult:
         """
         Apply find-replace corrections to an explicit set of segment IDs.
@@ -443,6 +451,10 @@ class BatchCorrectionService:
         still matches each segment's effective text, applies corrections
         via ``TranscriptCorrectionService``, and optionally rebuilds full
         transcript text for affected videos.
+
+        When *entity_id* is provided, entity mentions are created for each
+        occurrence of the replacement text in the corrected segment text,
+        with exclusion pattern filtering and counter updates (T027-T031).
 
         Parameters
         ----------
@@ -466,17 +478,28 @@ class BatchCorrectionService:
             Human-readable explanation for the correction.
         auto_rebuild : bool, optional
             If True, rebuild full text for affected videos (default True).
+        corrected_by_user_id : str, optional
+            Identifier of the user applying corrections.
+        entity_id : UUID or None, optional
+            Named-entity ID to associate corrections with. When provided,
+            entity mentions are created for replacement text occurrences.
 
         Returns
         -------
         BatchApplyResult
             Counts of applied, skipped, and failed corrections.
+
+        Raises
+        ------
+        ValueError
+            If *entity_id* is provided but the entity does not exist or
+            is not active.
         """
         _start_time = time.monotonic()
         logger.info(
             "apply_to_segments started: pattern=%r, segment_ids_count=%d, "
             "regex=%s, case_insensitive=%s, cross_segment=%s, "
-            "correction_type=%s, auto_rebuild=%s",
+            "correction_type=%s, auto_rebuild=%s, entity_id=%s",
             pattern,
             len(segment_ids),
             regex,
@@ -484,10 +507,28 @@ class BatchCorrectionService:
             cross_segment,
             correction_type,
             auto_rebuild,
+            entity_id,
         )
 
         # Step 1: Validate pattern
         self._validate_pattern(pattern, regex=regex)
+
+        # Step 1b (T027): Validate entity if provided
+        entity: NamedEntityDB | None = None
+        if entity_id is not None:
+            entity_result = await session.execute(
+                select(NamedEntityDB).where(NamedEntityDB.id == entity_id)
+            )
+            entity = entity_result.scalar_one_or_none()
+            if entity is None:
+                raise ValueError(
+                    f"Named entity with id={entity_id} not found"
+                )
+            if entity.status != "active":
+                raise ValueError(
+                    f"Named entity with id={entity_id} is not active "
+                    f"(status={entity.status!r})"
+                )
 
         re_flags = re.IGNORECASE if case_insensitive else 0
 
@@ -565,7 +606,7 @@ class BatchCorrectionService:
 
             # Apply correction
             try:
-                await self._correction_service.apply_correction(
+                correction_record = await self._correction_service.apply_correction(
                     session,
                     video_id=segment.video_id,
                     language_code=segment.language_code,
@@ -590,6 +631,17 @@ class BatchCorrectionService:
                     matched_form_counts[pattern] = (
                         matched_form_counts.get(pattern, 0) + 1
                     )
+
+                # T028/T029: Create entity mentions after correction
+                if entity is not None and replacement:
+                    await self._create_entity_mentions_for_segment(
+                        session,
+                        entity=entity,
+                        segment=segment,
+                        corrected_text=new_text,
+                        replacement=replacement,
+                        correction_id=correction_record.id,
+                    )
             except ValueError:
                 total_skipped += 1
             except Exception:
@@ -612,7 +664,18 @@ class BatchCorrectionService:
                     total_applied=count,
                 )
 
-        # Step 5: Auto-rebuild
+        # Step 5 (T031): Update entity counters after all mentions created
+        if entity is not None and total_applied > 0:
+            mention_repo = EntityMentionRepository()
+            await mention_repo.update_entity_counters(
+                session, [entity.id]
+            )
+            await mention_repo.update_alias_counters(
+                session, [entity.id]
+            )
+            await session.flush()
+
+        # Step 6: Auto-rebuild
         rebuild_triggered = False
         if auto_rebuild and affected_video_ids:
             await self.rebuild_text(
@@ -1489,6 +1552,66 @@ class BatchCorrectionService:
                 unique_videos=0,
             )
 
+        # ---- T033/T034: Entity mention cascade (FR-016) ----
+        # Before reverting corrections, collect the correction IDs for the
+        # segments being reverted, delete linked entity mentions, and record
+        # which entities need counter recalculation afterward.
+        #
+        # We collect the *latest non-revert* correction ID per segment.
+        # Using a lateral subquery avoids N+1 individual queries.
+        segment_ids_to_revert = [seg.id for seg in all_to_revert]
+
+        # Query: for each segment being reverted, find the latest correction
+        # record's ID (the one that will be reverted).
+        latest_correction_subq = (
+            select(
+                TranscriptCorrectionDB.id,
+                TranscriptCorrectionDB.segment_id,
+            )
+            .where(
+                TranscriptCorrectionDB.segment_id.in_(segment_ids_to_revert),
+                TranscriptCorrectionDB.correction_type != "revert",
+            )
+            .distinct(TranscriptCorrectionDB.segment_id)
+            .order_by(
+                TranscriptCorrectionDB.segment_id,
+                TranscriptCorrectionDB.version_number.desc(),
+            )
+            .subquery()
+        )
+        correction_id_result = await session.execute(
+            select(latest_correction_subq.c.id)
+        )
+        correction_ids_to_cascade: list[UUID] = list(
+            correction_id_result.scalars().all()
+        )
+
+        # Collect affected entity IDs and delete linked mentions BEFORE revert
+        mention_repo = EntityMentionRepository()
+        affected_entity_ids: list[UUID] = []
+        mentions_deleted = 0
+
+        if correction_ids_to_cascade:
+            affected_entity_ids = (
+                await mention_repo.get_entity_ids_by_correction_ids(
+                    session, correction_ids_to_cascade
+                )
+            )
+            mentions_deleted = await mention_repo.delete_by_correction_ids(
+                session, correction_ids_to_cascade
+            )
+            if mentions_deleted > 0:
+                logger.info(
+                    "batch_revert mention cascade: deleted %d mentions "
+                    "linked to %d corrections, %d entities affected",
+                    mentions_deleted,
+                    len(correction_ids_to_cascade),
+                    len(affected_entity_ids),
+                )
+                await session.flush()
+
+        # ---- End entity mention cascade ----
+
         # Track which segments have already been reverted (to avoid
         # double-reverting when both segments in a pair match the pattern).
         reverted_ids: set[int] = set()
@@ -1516,11 +1639,25 @@ class BatchCorrectionService:
             )
         )
 
+        # T033: Recalculate entity counters after revert completes
+        if affected_entity_ids:
+            await mention_repo.update_entity_counters(
+                session, affected_entity_ids
+            )
+            await mention_repo.update_alias_counters(
+                session, affected_entity_ids
+            )
+            await session.flush()
+            logger.info(
+                "batch_revert: recalculated counters for %d entities",
+                len(affected_entity_ids),
+            )
+
         _elapsed = time.monotonic() - _start_time
         logger.info(
             "batch_revert completed: scanned=%d, matched=%d, applied=%d, "
             "skipped=%d, failed=%d, failed_batches=%d, unique_videos=%d, "
-            "partner_cascade=%d, duration=%.2fs",
+            "partner_cascade=%d, mentions_deleted=%d, duration=%.2fs",
             total_scanned,
             total_matched,
             total_applied,
@@ -1529,6 +1666,7 @@ class BatchCorrectionService:
             failed_batches,
             unique_videos,
             partner_cascade_count,
+            mentions_deleted,
             _elapsed,
         )
 
@@ -2129,14 +2267,19 @@ class BatchCorrectionService:
         correction_note: str | None,
         batch_size: int,
         progress_callback: Callable[[int], None] | None = None,
+        entity: NamedEntityDB | None = None,
+        replacement: str = "",
     ) -> tuple[int, int, int, int]:
         """
-        Apply cross-segment corrections (T023-T025).
+        Apply cross-segment corrections (T023-T025, T030).
 
         For each cross-segment match, applies corrections to both segments
         in the pair using ``TranscriptCorrectionService.apply_correction``.
         Each segment gets a correction note indicating its cross-segment
         partner.
+
+        When *entity* is provided, entity mentions are created for each
+        occurrence of the replacement text in the corrected segment texts.
 
         Parameters
         ----------
@@ -2152,6 +2295,10 @@ class BatchCorrectionService:
             Number of pairs per transaction chunk.
         progress_callback : Callable or None
             Progress callback.
+        entity : NamedEntityDB or None
+            Validated named entity for mention creation (T030).
+        replacement : str
+            Replacement text for mention position calculation.
 
         Returns
         -------
@@ -2185,16 +2332,19 @@ class BatchCorrectionService:
 
                     # Apply correction to segment A
                     a_applied = False
+                    correction_record_a = None
                     try:
-                        await self._correction_service.apply_correction(
-                            session,
-                            video_id=seg_a.video_id,
-                            language_code=seg_a.language_code,
-                            segment_id=seg_a.id,
-                            corrected_text=csm.text_for_seg_a,
-                            correction_type=correction_type,
-                            correction_note=note_a,
-                            corrected_by_user_id=ACTOR_CLI_BATCH,
+                        correction_record_a = (
+                            await self._correction_service.apply_correction(
+                                session,
+                                video_id=seg_a.video_id,
+                                language_code=seg_a.language_code,
+                                segment_id=seg_a.id,
+                                corrected_text=csm.text_for_seg_a,
+                                correction_type=correction_type,
+                                correction_note=note_a,
+                                corrected_by_user_id=ACTOR_CLI_BATCH,
+                            )
                         )
                         a_applied = True
                     except ValueError:
@@ -2208,21 +2358,45 @@ class BatchCorrectionService:
                     # downstream reads).
                     b_corrected_text = csm.text_for_seg_b or " "
                     b_applied = False
+                    correction_record_b = None
                     try:
-                        await self._correction_service.apply_correction(
-                            session,
-                            video_id=seg_b.video_id,
-                            language_code=seg_b.language_code,
-                            segment_id=seg_b.id,
-                            corrected_text=b_corrected_text,
-                            correction_type=correction_type,
-                            correction_note=note_b,
-                            corrected_by_user_id=ACTOR_CLI_BATCH,
+                        correction_record_b = (
+                            await self._correction_service.apply_correction(
+                                session,
+                                video_id=seg_b.video_id,
+                                language_code=seg_b.language_code,
+                                segment_id=seg_b.id,
+                                corrected_text=b_corrected_text,
+                                correction_type=correction_type,
+                                correction_note=note_b,
+                                corrected_by_user_id=ACTOR_CLI_BATCH,
+                            )
                         )
                         b_applied = True
                     except ValueError:
                         # No-op: text unchanged
                         pass
+
+                    # T030: Create entity mentions on each corrected segment
+                    if entity is not None and replacement:
+                        if a_applied and correction_record_a is not None:
+                            await self._create_entity_mentions_for_segment(
+                                session,
+                                entity=entity,
+                                segment=seg_a,
+                                corrected_text=csm.text_for_seg_a,
+                                replacement=replacement,
+                                correction_id=correction_record_a.id,
+                            )
+                        if b_applied and correction_record_b is not None:
+                            await self._create_entity_mentions_for_segment(
+                                session,
+                                entity=entity,
+                                segment=seg_b,
+                                corrected_text=b_corrected_text,
+                                replacement=replacement,
+                                correction_id=correction_record_b.id,
+                            )
 
                     if a_applied or b_applied:
                         chunk_applied += (1 if a_applied else 0) + (
@@ -2346,6 +2520,167 @@ class BatchCorrectionService:
                 progress_callback(len(chunk))
 
         return total_applied, total_skipped, total_failed, failed_batches
+
+    # ------------------------------------------------------------------
+    # Entity mention helpers (T028, T029, T030)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _find_all_occurrences(
+        text: str, substring: str
+    ) -> list[tuple[int, int]]:
+        """Find all non-overlapping case-insensitive occurrences of substring.
+
+        Parameters
+        ----------
+        text : str
+            The text to search in.
+        substring : str
+            The substring to find.
+
+        Returns
+        -------
+        list[tuple[int, int]]
+            List of ``(start, end)`` positions.
+        """
+        positions: list[tuple[int, int]] = []
+        if not substring:
+            return positions
+        start = 0
+        sub_lower = substring.lower()
+        text_lower = text.lower()
+        while start < len(text_lower):
+            idx = text_lower.find(sub_lower, start)
+            if idx == -1:
+                break
+            positions.append((idx, idx + len(substring)))
+            start = idx + len(substring)  # non-overlapping
+        return positions
+
+    @staticmethod
+    def _is_excluded_by_patterns(
+        match_start: int,
+        match_end: int,
+        corrected_text: str,
+        exclusion_patterns: list[Any],
+    ) -> bool:
+        """Check if a mention position overlaps with any exclusion pattern.
+
+        Parameters
+        ----------
+        match_start : int
+            Start position of the candidate mention.
+        match_end : int
+            End position of the candidate mention.
+        corrected_text : str
+            The full corrected segment text.
+        exclusion_patterns : list[Any]
+            List of exclusion pattern strings from the entity.
+
+        Returns
+        -------
+        bool
+            True if the mention should be suppressed.
+        """
+        text_lower = corrected_text.lower()
+        for exc_pattern in exclusion_patterns:
+            if not isinstance(exc_pattern, str) or not exc_pattern:
+                continue
+            exc_lower = exc_pattern.lower()
+            search_start = 0
+            while search_start < len(text_lower):
+                idx = text_lower.find(exc_lower, search_start)
+                if idx == -1:
+                    break
+                pattern_start = idx
+                pattern_end = idx + len(exc_pattern)
+                # Overlap check: pattern_start < match_end AND pattern_end > match_start
+                if pattern_start < match_end and pattern_end > match_start:
+                    return True
+                search_start = idx + len(exc_pattern)
+        return False
+
+    async def _create_entity_mentions_for_segment(
+        self,
+        session: AsyncSession,
+        *,
+        entity: NamedEntityDB,
+        segment: Any,
+        corrected_text: str,
+        replacement: str,
+        correction_id: UUID,
+    ) -> None:
+        """Create entity mentions for replacement text occurrences in a segment.
+
+        Finds all non-overlapping occurrences of the replacement text,
+        filters out positions that overlap with exclusion patterns, and
+        bulk-inserts entity mentions in a savepoint (T028, T029).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        entity : NamedEntityDB
+            The validated named entity.
+        segment : Any
+            The transcript segment ORM object.
+        corrected_text : str
+            The corrected segment text (after replacement).
+        replacement : str
+            The replacement text to search for.
+        correction_id : UUID
+            The correction record's ID to link mentions to.
+        """
+        try:
+            # Find all occurrences of replacement text in corrected text
+            positions = self._find_all_occurrences(corrected_text, replacement)
+            if not positions:
+                return
+
+            # T029: Filter out positions overlapping with exclusion patterns
+            exclusion_patterns: list[Any] = entity.exclusion_patterns or []
+            mentions_to_create: list[EntityMentionCreate] = []
+
+            for match_start, match_end in positions:
+                if exclusion_patterns and self._is_excluded_by_patterns(
+                    match_start, match_end, corrected_text, exclusion_patterns
+                ):
+                    continue
+
+                mentions_to_create.append(
+                    EntityMentionCreate(
+                        entity_id=entity.id,
+                        segment_id=segment.id,
+                        video_id=segment.video_id,
+                        language_code=segment.language_code,
+                        mention_text=replacement,
+                        detection_method=DetectionMethod.USER_CORRECTION,
+                        confidence=1.0,
+                        match_start=match_start,
+                        match_end=match_end,
+                        correction_id=correction_id,
+                    )
+                )
+
+            if not mentions_to_create:
+                return
+
+            # Use a savepoint so failures don't roll back the correction
+            async with session.begin_nested():
+                mention_repo = EntityMentionRepository()
+                await mention_repo.bulk_create_with_conflict_skip(
+                    session, mentions_to_create
+                )
+
+        except Exception:
+            logger.warning(
+                "Failed to create entity mentions for entity_id=%s, "
+                "segment_id=%s: %s",
+                entity.id,
+                segment.id,
+                "see traceback below",
+                exc_info=True,
+            )
 
     async def _record_asr_alias_for_batch_replacement(
         self,

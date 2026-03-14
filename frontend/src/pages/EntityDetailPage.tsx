@@ -14,12 +14,14 @@
  * - T031: Loading skeleton
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { useEntityVideos } from "../hooks/useEntityMentions";
 import { apiFetch } from "../api/config";
-import { useQuery } from "@tanstack/react-query";
+import type { EntityDetail, EntityAliasSummary } from "../api/entityMentions";
+import { createEntityAlias } from "../api/entityMentions";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 /** Default page title to restore on unmount */
 const DEFAULT_PAGE_TITLE = "Chronovista";
@@ -28,15 +30,8 @@ const DEFAULT_PAGE_TITLE = "Chronovista";
 // Entity detail type (fetched from the named-entities endpoint)
 // ---------------------------------------------------------------------------
 
-/** Minimal named entity detail fetched from /api/v1/entities/{entity_id} */
-interface NamedEntityDetail {
-  entity_id: string;
-  canonical_name: string;
-  entity_type: string;
-  description: string | null;
-  status: string;
-  mention_count: number;
-}
+/** Re-export alias for clarity within this module. */
+type NamedEntityDetail = EntityDetail;
 
 interface NamedEntityDetailResponse {
   data: NamedEntityDetail;
@@ -83,6 +78,32 @@ function formatTimestamp(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+/** Human-readable label for each alias_type value. */
+const ALIAS_TYPE_LABELS: Record<string, string> = {
+  name_variant: "Name variant",
+  abbreviation: "Abbreviation",
+  nickname: "Nickname",
+  translated_name: "Translation",
+  former_name: "Former name",
+};
+
+function getAliasTypeLabel(aliasType: string): string {
+  return ALIAS_TYPE_LABELS[aliasType] ?? aliasType;
+}
+
+/** Badge colour class for each alias type. */
+const ALIAS_TYPE_COLORS: Record<string, string> = {
+  name_variant: "bg-slate-100 text-slate-600 border-slate-200",
+  abbreviation: "bg-blue-50 text-blue-600 border-blue-200",
+  nickname: "bg-violet-50 text-violet-600 border-violet-200",
+  translated_name: "bg-teal-50 text-teal-600 border-teal-200",
+  former_name: "bg-amber-50 text-amber-600 border-amber-200",
+};
+
+function getAliasTypeBadgeClass(aliasType: string): string {
+  return ALIAS_TYPE_COLORS[aliasType] ?? "bg-slate-100 text-slate-600 border-slate-200";
 }
 
 // ---------------------------------------------------------------------------
@@ -208,6 +229,165 @@ function EntityVideoCard({
 }
 
 // ---------------------------------------------------------------------------
+// Alias row
+// ---------------------------------------------------------------------------
+
+function AliasRow({ alias }: { alias: EntityAliasSummary }) {
+  return (
+    <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-slate-50 transition-colors">
+      <span className="text-sm font-medium text-gray-800">{alias.alias_name}</span>
+      <div className="flex items-center gap-3">
+        <span
+          className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded border ${getAliasTypeBadgeClass(alias.alias_type)}`}
+        >
+          {getAliasTypeLabel(alias.alias_type)}
+        </span>
+        <span className="text-xs text-gray-400 tabular-nums w-16 text-right">
+          {alias.occurrence_count.toLocaleString()}{" "}
+          {alias.occurrence_count === 1 ? "occurrence" : "occurrences"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Add alias form
+// ---------------------------------------------------------------------------
+
+/** Valid alias type values accepted by the backend. */
+const ALIAS_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "name_variant", label: "Name variant" },
+  { value: "abbreviation", label: "Abbreviation" },
+  { value: "nickname", label: "Nickname" },
+  { value: "translated_name", label: "Translation" },
+  { value: "former_name", label: "Former name" },
+];
+
+interface AddAliasFormProps {
+  entityId: string;
+  /** Called after a successful creation so the parent can refetch. */
+  onCreated: () => void;
+}
+
+/**
+ * Compact single-row form for adding a new alias to a named entity.
+ * Shows a brief green confirmation on success, and inline red error on failure.
+ */
+function AddAliasForm({ entityId, onCreated }: AddAliasFormProps) {
+  const [aliasName, setAliasName] = useState("");
+  const [aliasType, setAliasType] = useState("name_variant");
+  const [isPending, setIsPending] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Clear the success fade-out timer on unmount to avoid memory leaks.
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current !== null) {
+        clearTimeout(successTimerRef.current);
+      }
+    };
+  }, []);
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const trimmed = aliasName.trim();
+    if (!trimmed) return;
+
+    setIsPending(true);
+    setSuccessMsg(null);
+    setErrorMsg(null);
+
+    try {
+      await createEntityAlias(entityId, trimmed, aliasType);
+      setAliasName("");
+      setSuccessMsg(`"${trimmed}" added successfully.`);
+      onCreated();
+
+      // Auto-clear success message after 3 seconds.
+      successTimerRef.current = setTimeout(() => {
+        setSuccessMsg(null);
+      }, 3000);
+
+      // Return focus to the input so the user can add another alias.
+      inputRef.current?.focus();
+    } catch (err: unknown) {
+      const status = (err as { status?: number } | null)?.status;
+      if (status === 409) {
+        setErrorMsg("This alias already exists for the entity.");
+      } else if (status === 404) {
+        setErrorMsg("Entity not found. Please refresh the page.");
+      } else {
+        setErrorMsg("Failed to add alias. Please try again.");
+      }
+    } finally {
+      setIsPending(false);
+    }
+  }
+
+  return (
+    <div className="pt-3 mt-3 border-t border-slate-100">
+      <form
+        onSubmit={handleSubmit}
+        className="flex items-center gap-2"
+        aria-label="Add new alias"
+      >
+        <input
+          ref={inputRef}
+          type="text"
+          value={aliasName}
+          onChange={(e) => {
+            setAliasName(e.target.value);
+            // Clear error when the user starts typing again.
+            if (errorMsg) setErrorMsg(null);
+          }}
+          placeholder="Add new alias…"
+          className="flex-1 min-w-0 rounded-md border border-slate-300 px-3 py-1.5 text-sm text-gray-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          disabled={isPending}
+          aria-label="Alias name"
+          maxLength={200}
+        />
+        <select
+          value={aliasType}
+          onChange={(e) => setAliasType(e.target.value)}
+          className="rounded-md border border-slate-300 px-2 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          disabled={isPending}
+          aria-label="Alias type"
+        >
+          {ALIAS_TYPE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        <button
+          type="submit"
+          disabled={isPending || !aliasName.trim()}
+          className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {isPending ? "Adding…" : "Add"}
+        </button>
+      </form>
+
+      {/* Inline feedback */}
+      {successMsg && (
+        <p className="mt-1.5 text-xs text-green-600" role="status" aria-live="polite">
+          {successMsg}
+        </p>
+      )}
+      {errorMsg && (
+        <p className="mt-1.5 text-xs text-red-600" role="alert">
+          {errorMsg}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page component
 // ---------------------------------------------------------------------------
 
@@ -218,6 +398,7 @@ function EntityVideoCard({
  */
 export function EntityDetailPage() {
   const { entityId } = useParams<{ entityId: string }>();
+  const queryClient = useQueryClient();
 
   // Fetch entity detail — we reuse the video-entity summary shape to get
   // the canonical_name, entity_type, and description.  The backend exposes
@@ -365,6 +546,37 @@ export function EntityDetailPage() {
           )}
         </div>
       </article>
+
+      {/* Aliases section */}
+      <section aria-labelledby="entity-aliases-heading" className="mb-6">
+        <h2
+          id="entity-aliases-heading"
+          className="text-lg font-semibold text-gray-900 mb-3"
+        >
+          Aliases
+        </h2>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+          {entity.aliases.length > 0 ? (
+            <div className="divide-y divide-slate-100">
+              {entity.aliases.map((alias) => (
+                <AliasRow key={alias.alias_name} alias={alias} />
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 italic">No aliases registered.</p>
+          )}
+          {entityId && (
+            <AddAliasForm
+              entityId={entityId}
+              onCreated={() => {
+                void queryClient.invalidateQueries({
+                  queryKey: ["entity-detail", entityId],
+                });
+              }}
+            />
+          )}
+        </div>
+      </section>
 
       {/* Video list section */}
       <section aria-labelledby="entity-videos-heading">

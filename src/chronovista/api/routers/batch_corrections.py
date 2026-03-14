@@ -194,6 +194,7 @@ async def apply_batch_corrections(
             correction_note=request.correction_note,
             auto_rebuild=request.auto_rebuild,
             corrected_by_user_id=ACTOR_USER_BATCH,
+            entity_id=request.entity_id,
         )
     except ValueError as e:
         raise _map_batch_error(e) from e

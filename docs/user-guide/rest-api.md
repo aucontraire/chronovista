@@ -1448,6 +1448,185 @@ POST /api/v1/corrections/batch/rebuild-text
 
 ---
 
+### Entities
+
+#### List Named Entities
+
+Retrieve a paginated list of named entities.
+
+```
+GET /api/v1/entities
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `type` | string | Filter by entity type |
+| `has_mentions` | boolean | Filter to entities with/without mentions |
+| `search` | string | Search canonical_name |
+| `search_aliases` | boolean | Also search alias names |
+| `exclude_alias_types` | string | Comma-separated alias types to exclude (e.g., `asr_error`) |
+| `sort` | string | Sort order: `name` or `mentions` |
+| `status` | string | Entity status: `active`, `merged`, `deprecated` (default `active`) |
+| `limit` | integer | Results per page, 1–100 (default 20) |
+| `offset` | integer | Pagination offset (default 0) |
+
+**Response (200):**
+
+```json
+{
+  "data": [
+    {
+      "entity_id": "01936c8a-...",
+      "canonical_name": "Andrés Manuel López Obrador",
+      "entity_type": "person",
+      "description": "Former President of Mexico (2018–2024)",
+      "status": "active",
+      "mention_count": 342,
+      "video_count": 87
+    }
+  ],
+  "pagination": { "total": 1234, "limit": 20, "offset": 0, "has_more": true }
+}
+```
+
+---
+
+#### Get Entity Detail
+
+Retrieve full details for a single entity, including its aliases.
+
+```
+GET /api/v1/entities/{entity_id}
+```
+
+**Response (200):**
+
+```json
+{
+  "data": {
+    "entity_id": "01936c8a-...",
+    "canonical_name": "Andrés Manuel López Obrador",
+    "entity_type": "person",
+    "description": "Former President of Mexico (2018–2024)",
+    "status": "active",
+    "mention_count": 342,
+    "video_count": 87,
+    "aliases": [
+      { "alias_name": "AMLO", "alias_type": "abbreviation", "occurrence_count": 156 },
+      { "alias_name": "López Obrador", "alias_type": "name_variant", "occurrence_count": 89 }
+    ]
+  }
+}
+```
+
+> **Note:** Aliases with type `asr_error` are excluded from the detail response. These are auto-registered misspelling forms from the ASR correction pipeline.
+
+---
+
+#### Get Entity Videos
+
+Retrieve a paginated list of videos mentioning a given entity, with up to 5 mention previews per video.
+
+```
+GET /api/v1/entities/{entity_id}/videos
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `language_code` | string | BCP-47 language code filter |
+| `limit` | integer | Results per page, 1–100 (default 20) |
+| `offset` | integer | Pagination offset (default 0) |
+
+**Response (200):**
+
+```json
+{
+  "data": [
+    {
+      "video_id": "abc123",
+      "video_title": "Interview with AMLO",
+      "channel_name": "News Channel",
+      "mention_count": 12,
+      "mentions": [
+        { "segment_id": 456, "start_time": 123.5, "mention_text": "AMLO" }
+      ]
+    }
+  ],
+  "pagination": { "total": 87, "limit": 20, "offset": 0, "has_more": true }
+}
+```
+
+---
+
+#### Get Video Entities
+
+Retrieve all entities mentioned in a specific video, sorted by mention count descending.
+
+```
+GET /api/v1/videos/{video_id}/entities
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `language_code` | string | Optional BCP-47 language code filter |
+
+**Response (200):**
+
+```json
+{
+  "data": [
+    {
+      "entity_id": "01936c8a-...",
+      "canonical_name": "Andrés Manuel López Obrador",
+      "entity_type": "person",
+      "description": "Former President of Mexico (2018–2024)",
+      "mention_count": 12,
+      "first_mention_time": 45.2
+    }
+  ]
+}
+```
+
+---
+
+#### Create Entity Alias
+
+Add a new alias to an existing entity.
+
+```
+POST /api/v1/entities/{entity_id}/aliases
+```
+
+**Request body:**
+
+```json
+{
+  "alias_name": "AMLO",
+  "alias_type": "abbreviation"
+}
+```
+
+Valid alias types: `name_variant`, `abbreviation`, `nickname`, `translated_name`, `former_name`.
+
+**Response (201):**
+
+```json
+{
+  "data": {
+    "alias_name": "AMLO",
+    "alias_type": "abbreviation",
+    "occurrence_count": 0
+  }
+}
+```
+
+| Status | Description |
+|--------|-------------|
+| 404 | Entity not found |
+| 409 | Alias already exists |
+
+---
+
 ### Search
 
 #### Search Transcript Segments

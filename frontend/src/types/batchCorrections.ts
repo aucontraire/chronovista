@@ -108,6 +108,8 @@ export interface BatchApplyRequest {
   correction_note?: string | null;
   /** Trigger a full-text rebuild for affected videos after applying. Defaults to true on the backend. */
   auto_rebuild?: boolean;
+  /** Optional entity UUID to associate the correction with a named entity (Feature 043). */
+  entity_id?: string;
 }
 
 /** Response returned by the batch apply endpoint. */

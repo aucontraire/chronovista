@@ -324,7 +324,7 @@ class TestEmptyTextSkip:
 
         svc = _build_service(MagicMock())
 
-        mentions, skipped, _ = await svc._scan_batch(
+        mentions, skipped, _, _, _ = await svc._scan_batch(
             session,
             batch_rows=[empty_seg, non_empty_seg],
             patterns=[pattern],
@@ -359,7 +359,7 @@ class TestEmptyTextSkip:
 
         svc = _build_service(MagicMock())
 
-        mentions, _, _ = await svc._scan_batch(
+        mentions, _, _, _, _ = await svc._scan_batch(
             session,
             batch_rows=[none_seg],
             patterns=[pattern],
@@ -401,7 +401,7 @@ class TestZeroAliasHandling:
 
         svc = _build_service(MagicMock())
 
-        mentions, _, _ = await svc._scan_batch(
+        mentions, _, _, _, _ = await svc._scan_batch(
             session,
             batch_rows=[seg],
             patterns=[pattern],
@@ -663,10 +663,11 @@ class TestBatchProcessing:
             return result
 
         svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=fetch_batches),
-            patch.object(svc, "_scan_batch", return_value=([], 0, [])),
+            patch.object(svc, "_scan_batch", return_value=([], 0, [], 0, 0)),
         ):
             result = await svc.scan()
 
@@ -702,10 +703,11 @@ class TestBatchProcessing:
             return []
 
         svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=one_batch_then_empty),
-            patch.object(svc, "_scan_batch", return_value=([], 0, [])),
+            patch.object(svc, "_scan_batch", return_value=([], 0, [], 0, 0)),
         ):
             await svc.scan()
 
@@ -759,10 +761,11 @@ class TestBulkCreateConflictSkip:
         # Repository says only 2 were inserted (1 duplicate skipped)
         svc._mention_repo.bulk_create_with_conflict_skip = AsyncMock(return_value=2)
         svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=(mention_creates, 0, [])),
+            patch.object(svc, "_scan_batch", return_value=(mention_creates, 0, [], 0, 0)),
         ):
             result = await svc.scan()
 
@@ -802,10 +805,11 @@ class TestBulkCreateConflictSkip:
         )
         svc._mention_repo.bulk_create_with_conflict_skip = AsyncMock(return_value=1)
         svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=([mention], 0, [])),
+            patch.object(svc, "_scan_batch", return_value=([mention], 0, [], 0, 0)),
         ):
             await svc.scan()
         svc._mention_repo.bulk_create_with_conflict_skip.assert_called_once()
@@ -833,10 +837,11 @@ class TestBulkCreateConflictSkip:
         svc = _build_service(factory)
         svc._mention_repo.bulk_create_with_conflict_skip = AsyncMock(return_value=0)
         svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=([], 0, [])),
+            patch.object(svc, "_scan_batch", return_value=([], 0, [], 0, 0)),
         ):
             await svc.scan()
         svc._mention_repo.bulk_create_with_conflict_skip.assert_not_called()
@@ -847,7 +852,7 @@ class TestBulkCreateConflictSkip:
 
 
 class TestCounterUpdate:
-    """Verify that update_entity_counters is called only in live mode."""
+    """Verify that update_entity_counters and update_alias_counters are called only in live mode."""
 
     async def test_update_entity_counters_called_in_live_mode(self) -> None:
         """In live mode with matches, update_entity_counters must be called."""
@@ -882,15 +887,19 @@ class TestCounterUpdate:
         )
         svc._mention_repo.bulk_create_with_conflict_skip = AsyncMock(return_value=1)
         svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=([mention], 0, [])),
+            patch.object(svc, "_scan_batch", return_value=([mention], 0, [], 0, 0)),
         ):
             await svc.scan(dry_run=False)
         svc._mention_repo.update_entity_counters.assert_called_once()
         call_args = svc._mention_repo.update_entity_counters.call_args
         assert entity_id in call_args[0][1]
+        svc._mention_repo.update_alias_counters.assert_called_once()
+        alias_call_args = svc._mention_repo.update_alias_counters.call_args
+        assert entity_id in alias_call_args[0][1]
 
     async def test_update_entity_counters_not_called_in_dry_run(self) -> None:
         """In dry-run mode, update_entity_counters must NOT be called."""
@@ -925,13 +934,16 @@ class TestCounterUpdate:
         )
         svc._mention_repo.bulk_create_with_conflict_skip = AsyncMock(return_value=0)
         svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=([mention], 0, [])),
+            patch.object(svc, "_scan_batch", return_value=([mention], 0, [], 0, 0)),
         ):
             await svc.scan(dry_run=True)
         svc._mention_repo.update_entity_counters.assert_not_called()
+        svc._mention_repo.update_alias_counters.assert_not_called()
+
     async def test_update_entity_counters_not_called_when_no_matches(self) -> None:
         """When no entities produced mentions, update_entity_counters must not be called."""
         from chronovista.services.entity_mention_scan_service import _EntityPattern
@@ -953,13 +965,15 @@ class TestCounterUpdate:
         svc = _build_service(factory)
         svc._mention_repo.bulk_create_with_conflict_skip = AsyncMock(return_value=0)
         svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=([], 0, [])),
+            patch.object(svc, "_scan_batch", return_value=([], 0, [], 0, 0)),
         ):
             await svc.scan(dry_run=False)
         svc._mention_repo.update_entity_counters.assert_not_called()
+        svc._mention_repo.update_alias_counters.assert_not_called()
 
 # ---------------------------------------------------------------------------
 # TestDryRunMode
@@ -1002,10 +1016,11 @@ class TestDryRunMode:
         )
         svc._mention_repo.bulk_create_with_conflict_skip = AsyncMock(return_value=0)
         svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=([mention], 0, [])),
+            patch.object(svc, "_scan_batch", return_value=([mention], 0, [], 0, 0)),
         ):
             result = await svc.scan(dry_run=True)
         svc._mention_repo.bulk_create_with_conflict_skip.assert_not_called()
@@ -1085,10 +1100,11 @@ class TestDryRunMode:
         preview = {"entity_name": "Palantir", "video_id": "dQw4w9WgXcQ", "context": "..."}
 
         svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=([mention], 0, [preview])),
+            patch.object(svc, "_scan_batch", return_value=([mention], 0, [preview], 0, 0)),
         ):
             result = await svc.scan(dry_run=True)
 
@@ -1127,6 +1143,7 @@ class TestFullRescan:
         svc._mention_repo.delete_by_scope = AsyncMock(return_value=5)
         svc._mention_repo.bulk_create_with_conflict_skip = AsyncMock(return_value=0)
         svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", return_value=[]),
@@ -1159,6 +1176,7 @@ class TestFullRescan:
         svc._mention_repo.delete_by_scope = AsyncMock(return_value=0)
         svc._mention_repo.bulk_create_with_conflict_skip = AsyncMock(return_value=0)
         svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", return_value=[]),
@@ -1186,6 +1204,7 @@ class TestFullRescan:
         svc = _build_service(factory)
         svc._mention_repo.delete_by_scope = AsyncMock(return_value=0)
         svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", return_value=[]),
@@ -1318,10 +1337,11 @@ class TestScanResult:
 
         svc._mention_repo.bulk_create_with_conflict_skip = AsyncMock(return_value=2)
         svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=fake_patterns),
             patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=(mentions, 0, [])),
+            patch.object(svc, "_scan_batch", return_value=(mentions, 0, [], 0, 0)),
         ):
             result = await svc.scan()
 
@@ -1405,6 +1425,7 @@ class TestFailedBatchHandling:
             return []  # Second call ends the loop
 
         svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
             patch.object(svc, "_fetch_segment_batch", side_effect=failing_then_empty),
@@ -1433,6 +1454,7 @@ class TestFailedBatchHandling:
         factory = _make_session_factory(session)
         svc = _build_service(factory)
         svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
         scan_calls = 0
 
         async def first_scan_fails(*args: Any, **kwargs: Any) -> Any:
@@ -1472,6 +1494,7 @@ class TestFailedBatchHandling:
         svc = _build_service(factory)
         svc._mention_repo.bulk_create_with_conflict_skip = AsyncMock(return_value=0)
         svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
         fetch_call = 0
 
         async def two_batches_then_empty(*args: Any, **kwargs: Any) -> list[Any]:
@@ -1490,7 +1513,7 @@ class TestFailedBatchHandling:
             scan_call += 1
             if scan_call == 1:
                 raise RuntimeError("first batch error")
-            return [], 0, []
+            return [], 0, [], 0, 0
 
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
@@ -1532,6 +1555,7 @@ class TestProgressCallback:
         factory = _make_session_factory(session)
         svc = _build_service(factory)
         svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
         callback_calls: list[tuple[int, int]] = []
 
         def callback(scanned: int, found: int) -> None:
@@ -1542,7 +1566,7 @@ class TestProgressCallback:
             patch.object(
                 svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]
             ),
-            patch.object(svc, "_scan_batch", return_value=([], 0, [])),
+            patch.object(svc, "_scan_batch", return_value=([], 0, [], 0, 0)),
         ):
             await svc.scan(progress_callback=callback)
 
@@ -1570,6 +1594,7 @@ class TestProgressCallback:
         factory = _make_session_factory(session)
         svc = _build_service(factory)
         svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
         callback_calls: list[tuple[int, int]] = []
 
         def callback(scanned: int, found: int) -> None:

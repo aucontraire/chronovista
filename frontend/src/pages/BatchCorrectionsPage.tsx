@@ -38,12 +38,14 @@ import { ResultSummary } from "../components/batch/ResultSummary";
 import { useBatchApply } from "../hooks/useBatchApply";
 import { useBatchPreview } from "../hooks/useBatchPreview";
 import { useBatchRebuild } from "../hooks/useBatchRebuild";
+import { useEntityDetail } from "../hooks/useEntityDetail";
 import type {
   BatchApplyResult,
   BatchPreviewMatch,
   BatchPreviewRequest,
 } from "../types/batchCorrections";
 import type { CorrectionType } from "../types/corrections";
+import type { EntityOption } from "../components/batch/EntityAutocomplete";
 
 // ---------------------------------------------------------------------------
 // State machine
@@ -324,6 +326,31 @@ export function BatchCorrectionsPage() {
   }, []);
 
   // -------------------------------------------------------------------------
+  // Entity link (T026 / US5 / FR-010)
+  // -------------------------------------------------------------------------
+
+  /**
+   * The named entity the user has linked to this correction session via the
+   * EntityAutocomplete in PatternInput. When set, its UUID is forwarded to
+   * the apply mutation as entity_id so the backend can associate each audit
+   * record with the entity.
+   *
+   * Cleared whenever PatternInput fires onPatternChange (new session).
+   */
+  const [selectedEntity, setSelectedEntity] = useState<EntityOption | null>(null);
+
+  const handleEntityChange = useCallback((entity: EntityOption | null) => {
+    setSelectedEntity(entity);
+  }, []);
+
+  // Fetch alias names for the selected entity so the mismatch warning can
+  // check replacement text against both the canonical name and registered
+  // aliases (e.g. "AMLO" is a valid alias for "Andrés Manuel López Obrador").
+  const { aliasNames: selectedEntityAliasNames } = useEntityDetail(
+    selectedEntity?.id ?? null
+  );
+
+  // -------------------------------------------------------------------------
   // Mutation hooks
   // -------------------------------------------------------------------------
   const previewMutation = useBatchPreview();
@@ -411,6 +438,24 @@ export function BatchCorrectionsPage() {
   const applyControlsApplyTotal =
     state.phase === "applying" ? state.total : undefined;
 
+  /**
+   * Whether the replacement text does not match the selected entity's
+   * canonical name OR any of its registered aliases (case-insensitive).
+   * Used to show a mismatch warning in ApplyControls and PatternInput.
+   *
+   * Alias names are fetched from the entity detail endpoint which already
+   * filters out `asr_error` aliases — only genuine aliases are checked.
+   */
+  const entityHasMismatch =
+    selectedEntity !== null &&
+    (() => {
+      const normalizedReplacement = applyControlsReplacement.trim().toLowerCase();
+      if (normalizedReplacement === selectedEntity.name.toLowerCase()) return false;
+      return !selectedEntityAliasNames.some(
+        (alias) => normalizedReplacement === alias.toLowerCase()
+      );
+    })();
+
   // -------------------------------------------------------------------------
   // Page title
   // -------------------------------------------------------------------------
@@ -466,12 +511,14 @@ export function BatchCorrectionsPage() {
   /**
    * Called by PatternInput whenever pattern or replacement text changes.
    * Resets to idle so stale preview results are cleared (FR-029).
-   * Also clears the correction note since this constitutes a new session.
+   * Also clears the correction note and entity link since this constitutes
+   * a new session.
    */
   const handlePatternChange = useCallback(() => {
     dispatch({ type: "RESET" });
     previewMutation.reset();
     setCorrectionNote('');
+    setSelectedEntity(null);
   }, [previewMutation]);
 
   /** Toggle a single segment's selection state. */
@@ -512,12 +559,14 @@ export function BatchCorrectionsPage() {
         ...(case_insensitive !== undefined && { case_insensitive }),
         ...(cross_segment !== undefined && { cross_segment }),
         ...(correctionNote !== '' && { correction_note: correctionNote }),
+        // T026: forward entity_id when an entity is linked (FR-010)
+        ...(selectedEntity !== null && { entity_id: selectedEntity.id }),
       },
       {
         onSuccess: (result) => dispatch({ type: "APPLY_COMPLETE", result }),
       }
     );
-  }, [state, applyMutation, autoRebuild, correctionNote, correctionType]);
+  }, [state, applyMutation, autoRebuild, correctionNote, correctionType, selectedEntity]);
 
   /**
    * Re-submits the apply mutation for only the failed segment IDs (T029 / FR-026).
@@ -541,12 +590,14 @@ export function BatchCorrectionsPage() {
         ...(case_insensitive !== undefined && { case_insensitive }),
         ...(cross_segment !== undefined && { cross_segment }),
         ...(correctionNote !== '' && { correction_note: correctionNote }),
+        // T026: forward entity_id on retry as well (FR-010)
+        ...(selectedEntity !== null && { entity_id: selectedEntity.id }),
       },
       {
         onSuccess: (result) => dispatch({ type: "APPLY_COMPLETE", result }),
       }
     );
-  }, [state, applyMutation, autoRebuild, correctionNote, correctionType]);
+  }, [state, applyMutation, autoRebuild, correctionNote, correctionType, selectedEntity]);
 
   /**
    * Triggers a full-text rebuild for all affected video IDs (T039 / US5-AC3).
@@ -582,6 +633,8 @@ export function BatchCorrectionsPage() {
           isLoading={isPreviewLoading}
           isLocked={isLocked}
           onPatternChange={handlePatternChange}
+          onEntityChange={handleEntityChange}
+          entityAliasNames={selectedEntityAliasNames}
         />
 
         {/* Preview results section */}
@@ -634,6 +687,8 @@ export function BatchCorrectionsPage() {
                 onCorrectionNoteChange={handleCorrectionNoteChange}
                 correctionType={correctionType}
                 onCorrectionTypeChange={handleCorrectionTypeChange}
+                linkedEntity={selectedEntity}
+                entityHasMismatch={entityHasMismatch}
                 {...(applyControlsApplyTotal !== undefined && {
                   applyTotal: applyControlsApplyTotal,
                 })}

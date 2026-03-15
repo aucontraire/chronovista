@@ -853,8 +853,19 @@ def scan_entities(
         int,
         typer.Option("--limit", help="Dry-run preview row limit"),
     ] = 50,
+    audit: Annotated[
+        bool,
+        typer.Option(
+            "--audit",
+            help="Report user-correction mentions with unregistered text forms",
+        ),
+    ] = False,
 ) -> None:
     """Scan transcript segments for named entity mentions."""
+
+    # Validate mutual exclusivity: --audit and --full
+    if audit and full:
+        raise typer.BadParameter("--audit and --full are mutually exclusive")
 
     # Validate entity type if provided
     if entity_type is not None:
@@ -876,6 +887,49 @@ def scan_entities(
     service = EntityMentionScanService(session_factory=session_factory)
 
     async def _run() -> None:
+        if audit:
+            # Audit mode: report unregistered mention texts (read-only)
+            audit_results = await service.audit_unregistered_mentions()
+
+            if not audit_results:
+                console.print(
+                    "[green]No unregistered mention texts found.[/green]"
+                )
+                return
+
+            audit_table = Table(
+                title="Unregistered Mention Texts",
+                show_header=True,
+                header_style="bold blue",
+            )
+            audit_table.add_column("Entity", style="cyan", width=28)
+            audit_table.add_column("Mention Text", style="green", width=28)
+            audit_table.add_column(
+                "Segment Count", style="yellow", justify="right", width=14
+            )
+            audit_table.add_column("Suggestion", style="dim", width=60)
+
+            entity_ids_seen: set[str] = set()
+            for canonical_name, entity_id, mention_text, segment_count in audit_results:
+                entity_ids_seen.add(str(entity_id))
+                suggestion = (
+                    f'chronovista entities add-alias "{canonical_name}" '
+                    f'--alias "{mention_text}"'
+                )
+                audit_table.add_row(
+                    canonical_name,
+                    mention_text,
+                    str(segment_count),
+                    suggestion,
+                )
+
+            console.print(audit_table)
+            console.print(
+                f"\nFound {len(audit_results)} unregistered mention text(s) "
+                f"across {len(entity_ids_seen)} entity(ies)."
+            )
+            return
+
         if dry_run:
             # Dry-run mode: show preview table
             with Progress(

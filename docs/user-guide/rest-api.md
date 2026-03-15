@@ -1650,7 +1650,9 @@ GET /api/v1/search/segments
 ##### Search Behavior
 
 - Case-insensitive substring matching (ILIKE)
-- Multi-word queries use implicit AND (all terms must match)
+- Multi-word queries are treated as contiguous phrase searches (the entire query is matched as a single phrase, not split into independent terms)
+- Special characters (`_`, `%`, `\`) in search queries are escaped and matched literally
+- Queries containing NULL bytes (`\x00`) are rejected with `400 Bad Request`
 - Results ordered by video upload date (desc), then segment time (asc)
 - Context from adjacent segments included automatically
 

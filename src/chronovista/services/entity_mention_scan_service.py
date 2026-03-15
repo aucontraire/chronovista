@@ -17,7 +17,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from sqlalchemy import Select, literal_column, select, text
+from sqlalchemy import Select, func, literal_column, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from chronovista.db.models import EntityAlias as EntityAliasDB
@@ -319,6 +319,71 @@ class EntityMentionScanService:
             )
 
             return result
+
+    async def audit_unregistered_mentions(
+        self,
+    ) -> list[tuple[str, uuid.UUID, str, int]]:
+        """Find user-correction mentions whose text is not registered as an alias.
+
+        Queries all ``entity_mentions`` rows where
+        ``detection_method = 'user_correction'`` for active entities, then
+        LEFT JOINs against ``entity_aliases`` to find mention texts that do
+        **not** match any alias (case-insensitive) and also differ from the
+        entity's canonical name.
+
+        Returns
+        -------
+        list[tuple[str, uuid.UUID, str, int]]
+            List of ``(canonical_name, entity_id, mention_text, segment_count)``
+            tuples, ordered by canonical name ascending then segment count
+            descending.
+        """
+        async with self._session_factory() as session:
+            stmt = (
+                select(
+                    EntityMentionDB.entity_id,
+                    NamedEntityDB.canonical_name,
+                    EntityMentionDB.mention_text,
+                    func.count().label("segment_count"),
+                )
+                .join(
+                    NamedEntityDB,
+                    EntityMentionDB.entity_id == NamedEntityDB.id,
+                )
+                .outerjoin(
+                    EntityAliasDB,
+                    (EntityMentionDB.entity_id == EntityAliasDB.entity_id)
+                    & (
+                        func.lower(EntityMentionDB.mention_text)
+                        == func.lower(EntityAliasDB.alias_name)
+                    ),
+                )
+                .where(
+                    EntityMentionDB.detection_method
+                    == DetectionMethod.USER_CORRECTION.value,
+                    NamedEntityDB.status == "active",
+                    func.lower(EntityMentionDB.mention_text)
+                    != func.lower(NamedEntityDB.canonical_name),
+                    EntityAliasDB.id.is_(None),
+                )
+                .group_by(
+                    EntityMentionDB.entity_id,
+                    NamedEntityDB.canonical_name,
+                    EntityMentionDB.mention_text,
+                )
+                .order_by(
+                    NamedEntityDB.canonical_name.asc(),
+                    text("segment_count DESC"),
+                )
+            )
+
+            result = await session.execute(stmt)
+            rows = result.all()
+
+            return [
+                (row.canonical_name, row.entity_id, row.mention_text, row.segment_count)
+                for row in rows
+            ]
 
     # ------------------------------------------------------------------
     # Private helpers

@@ -11,6 +11,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.45.0] - 2026-03-14
+
+### Added
+- **Feature 044: Data Accuracy & Search Reliability**
+  - New `--audit` flag on `entities scan` command: reports user-correction mentions with unregistered text forms (text not matching any alias or canonical name); Rich table output showing Entity, Mention Text, Segment Count, and suggested CLI command to register the alias; read-only operation, mutually exclusive with `--full`, compatible with `--dry-run` (GitHub #87)
+
+### Fixed
+- **Special Character Search Fix (GitHub #84)**
+  - ILIKE wildcard escaping: `_`, `%`, and `\` in search queries now match literally instead of acting as SQL wildcards
+  - Phrase matching: multi-word queries like `[ __ ]` are treated as contiguous phrases, not split into independent terms
+  - Same escaping fix applied to batch find-replace literal mode (`find_by_text_pattern()`)
+  - NULL byte (`\x00`) rejection in search queries to prevent PostgreSQL silent truncation
+  - Shared `_escape_like_pattern()` helper in `transcript_segment_repository.py`
+- **Entity Mention Count Accuracy (GitHub #89)**
+  - `update_entity_counters()` now filters by visible names only (canonical name + non-ASR-error aliases via `union_all` JOIN)
+  - `mention_count` and `video_count` on `named_entities` exclude mentions matching ASR-error aliases
+  - Entities with only ASR-error-matched mentions correctly show `mention_count=0`
+  - `has_mentions` filter aligned with visible alias data (intentional behavior change)
+  - Consistent counting across all paths: scan, batch apply, batch revert
+
+### Technical
+- Files modified: `search.py`, `transcript_segment_repository.py`, `entity_mention_repository.py`, `entity_mention_scan_service.py`, `entity_commands.py`
+- No new dependencies, no schema changes, no migrations
+- 79 new tests added
+
 ## [0.44.0] - 2026-03-13
 
 ### Added

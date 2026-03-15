@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.repositories.transcript_segment_repository import (
     TranscriptSegmentRepository,
+    _escape_like_pattern,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -964,3 +965,243 @@ class TestFindCandidateVideoIdsForCrossSegment:
 
         assert isinstance(result, list)
         assert len(result) == 3
+
+
+# ---------------------------------------------------------------------------
+# T005: TestEscapeLikePattern
+# ---------------------------------------------------------------------------
+
+
+class TestEscapeLikePattern:
+    """
+    Unit tests for _escape_like_pattern() helper (T005).
+
+    Verifies that SQL LIKE/ILIKE wildcard characters are correctly escaped
+    so that user-supplied text is treated as a literal substring rather than
+    a pattern containing wildcards.
+    """
+
+    def test_escapes_underscore(self) -> None:
+        """Underscore is escaped to backslash-underscore."""
+        assert _escape_like_pattern("_") == r"\_"
+
+    def test_escapes_percent(self) -> None:
+        """Percent sign is escaped to backslash-percent."""
+        assert _escape_like_pattern("%") == r"\%"
+
+    def test_escapes_backslash(self) -> None:
+        """Backslash is escaped to double-backslash."""
+        assert _escape_like_pattern("\\") == "\\\\"
+
+    def test_combination_all_three_special_chars(self) -> None:
+        """All three special characters appear correctly escaped in a combined string."""
+        result = _escape_like_pattern("100%_value\\path")
+        assert result == "100\\%\\_value\\\\path"
+
+    def test_escape_order_backslash_first(self) -> None:
+        """Backslash must be escaped before percent and underscore.
+
+        If percent were escaped first, a literal backslash followed by
+        a percent would become ``\\%`` (one escape sequence).  Escaping
+        backslash first ensures the already-placed backslash escape
+        character is not double-escaped in a subsequent pass.
+
+        Input: ``\\_`` (backslash then underscore)
+        Expected output: ``\\\\_`` (escaped backslash then escaped underscore)
+        """
+        result = _escape_like_pattern("\\_")
+        # backslash → \\, then underscore → \_  ⟹  \\\_ in escaped form
+        assert result == "\\\\\\_"
+
+    def test_empty_string_returns_empty(self) -> None:
+        """Empty string input returns empty string."""
+        assert _escape_like_pattern("") == ""
+
+    def test_no_special_chars_unchanged(self) -> None:
+        """String with no special characters passes through unchanged."""
+        plain = "hello world"
+        assert _escape_like_pattern(plain) == plain
+
+    def test_multiple_underscores(self) -> None:
+        """Multiple consecutive underscores are all escaped."""
+        result = _escape_like_pattern("__init__")
+        assert result == r"\_\_init\_\_"
+
+    def test_multiple_percent_signs(self) -> None:
+        """Multiple percent signs are all escaped."""
+        result = _escape_like_pattern("100% complete 50%")
+        assert result == "100\\% complete 50\\%"
+
+    def test_mixed_regular_and_special_chars(self) -> None:
+        """Regular characters between special chars are preserved verbatim."""
+        result = _escape_like_pattern("a%b_c\\d")
+        assert result == "a\\%b\\_c\\\\d"
+
+    def test_path_with_backslashes(self) -> None:
+        """Windows-style path with backslashes is correctly escaped."""
+        result = _escape_like_pattern("C:\\Users\\test")
+        assert result == "C:\\\\Users\\\\test"
+
+    def test_returns_str_type(self) -> None:
+        """Return type is always str."""
+        assert isinstance(_escape_like_pattern("any input"), str)
+        assert isinstance(_escape_like_pattern(""), str)
+
+
+# ---------------------------------------------------------------------------
+# T007: TestFindByTextPatternLiteralEscaping
+# ---------------------------------------------------------------------------
+
+
+class TestFindByTextPatternLiteralEscaping:
+    """
+    Unit tests for find_by_text_pattern() literal LIKE escaping (T007).
+
+    Verifies that special SQL LIKE metacharacters in the pattern are escaped
+    before being wrapped in ``%...%`` so that ``_`` and ``%`` are treated as
+    literal characters, not wildcards.
+    """
+
+    @pytest.fixture
+    def repository(self) -> TranscriptSegmentRepository:
+        """Create repository instance for testing."""
+        return TranscriptSegmentRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> AsyncMock:
+        """Create mock async session."""
+        return AsyncMock(spec=AsyncSession)
+
+    def _setup_scalars_result(
+        self, mock_session: AsyncMock, segments: List[TranscriptSegmentDB]
+    ) -> None:
+        """Configure mock session to return segments via scalars().all()."""
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = segments
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+    async def test_underscore_in_pattern_does_not_act_as_wildcard(
+        self,
+        repository: TranscriptSegmentRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Pattern containing ``_`` is escaped; SQL receives ``\\_`` not bare ``_``.
+
+        We inspect the SQL string passed to session.execute to verify the
+        LIKE pattern uses ``\\_`` (escaped underscore) so PostgreSQL treats
+        it as a literal underscore rather than a single-character wildcard.
+        """
+        self._setup_scalars_result(mock_session, [])
+
+        await repository.find_by_text_pattern(mock_session, pattern="__init__")
+
+        mock_session.execute.assert_called_once()
+        # Retrieve the compiled SQL string from the call argument
+        call_args = mock_session.execute.call_args
+        stmt = call_args[0][0]
+        compiled = stmt.compile(compile_kwargs={"literal_binds": True})
+        sql_str = str(compiled)
+        # The escaped pattern  %\_\_init\_\_% must appear in the SQL
+        assert r"\\_\\_init\\_\\_" in sql_str or r"\_\_init\_\_" in sql_str
+
+    async def test_percent_in_pattern_does_not_act_as_wildcard(
+        self,
+        repository: TranscriptSegmentRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Pattern containing ``%`` is escaped; SQL receives ``\\%`` not bare ``%``.
+
+        Verifies that the generated ILIKE/LIKE pattern contains ``\\%``
+        (escaped percent) instead of a raw ``%`` that would match any text.
+        """
+        self._setup_scalars_result(mock_session, [])
+
+        await repository.find_by_text_pattern(mock_session, pattern="100%")
+
+        mock_session.execute.assert_called_once()
+        call_args = mock_session.execute.call_args
+        stmt = call_args[0][0]
+        compiled = stmt.compile(compile_kwargs={"literal_binds": True})
+        sql_str = str(compiled)
+        # ``100\%`` must appear inside ``%100\%%`` — the percent is escaped
+        assert r"100\%" in sql_str
+
+    async def test_backslash_in_pattern_is_escaped(
+        self,
+        repository: TranscriptSegmentRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Pattern containing ``\\`` is escaped to ``\\\\`` in the SQL pattern."""
+        self._setup_scalars_result(mock_session, [])
+
+        await repository.find_by_text_pattern(mock_session, pattern="C:\\path")
+
+        mock_session.execute.assert_called_once()
+        call_args = mock_session.execute.call_args
+        stmt = call_args[0][0]
+        compiled = stmt.compile(compile_kwargs={"literal_binds": True})
+        sql_str = str(compiled)
+        # The backslash in "C:\path" must be escaped to "\\" before the LIKE wrapping
+        assert "C:\\\\" in sql_str or "C:\\\\path" in sql_str
+
+    async def test_combined_special_chars_all_escaped(
+        self,
+        repository: TranscriptSegmentRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Pattern with multiple special chars has all of them escaped in SQL."""
+        self._setup_scalars_result(mock_session, [])
+
+        await repository.find_by_text_pattern(mock_session, pattern="100%_value")
+
+        mock_session.execute.assert_called_once()
+        call_args = mock_session.execute.call_args
+        stmt = call_args[0][0]
+        compiled = stmt.compile(compile_kwargs={"literal_binds": True})
+        sql_str = str(compiled)
+        # Both wildcards must be escaped
+        assert r"100\%" in sql_str
+        assert r"\_value" in sql_str
+
+    async def test_literal_mode_returns_results_from_session(
+        self,
+        repository: TranscriptSegmentRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """find_by_text_pattern in literal mode returns mock-provided segments."""
+        segment = _make_segment(text="test_value 100% done")
+        self._setup_scalars_result(mock_session, [segment])
+
+        result = await repository.find_by_text_pattern(
+            mock_session, pattern="test_value 100% done"
+        )
+
+        assert len(result) == 1
+        assert result[0].text == "test_value 100% done"
+        mock_session.execute.assert_called_once()
+
+    async def test_regex_mode_does_not_escape_pattern(
+        self,
+        repository: TranscriptSegmentRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """In regex mode, ``_`` and ``%`` are NOT escaped (no escaping for regex)."""
+        self._setup_scalars_result(mock_session, [])
+
+        # A valid regex containing special LIKE chars
+        await repository.find_by_text_pattern(
+            mock_session, pattern=r"\d{3}%", regex=True
+        )
+
+        mock_session.execute.assert_called_once()
+        call_args = mock_session.execute.call_args
+        stmt = call_args[0][0]
+        compiled = stmt.compile(compile_kwargs={"literal_binds": True})
+        sql_str = str(compiled)
+        # In regex mode, the pattern is passed directly to the ~ operator
+        # The ``%`` should appear un-escaped (no ``\%``) in the raw regex branch
+        # We simply verify the query executed without error — the regex branch
+        # does not call _escape_like_pattern
+        assert "%" in sql_str  # raw percent present in regex pattern

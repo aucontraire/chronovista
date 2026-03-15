@@ -11,12 +11,15 @@ import uuid
 from typing import Any, Optional
 
 from sqlalchemy import (
+    and_,
     delete,
     distinct,
     func,
     select,
+    union_all,
     update,
 )
+
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +32,7 @@ from chronovista.db.models import (
     Video as VideoDB,
 )
 from chronovista.models.entity_mention import EntityMentionCreate
+from chronovista.models.enums import EntityAliasType
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
@@ -294,19 +298,45 @@ class EntityMentionRepository(
         if not entity_ids:
             return
 
-        # Compute mention_count and video_count per entity
+        # Build a subquery of "visible names" per entity: canonical names
+        # plus non-ASR-error aliases.  Only mentions matching these names
+        # should be counted, so that ASR-error alias mentions are excluded.
+        canonical_names = select(
+            NamedEntityDB.id.label("entity_id"),
+            func.lower(NamedEntityDB.canonical_name).label("name_lower"),
+        ).where(NamedEntityDB.id.in_(entity_ids))
+
+        non_asr_aliases = select(
+            EntityAliasDB.entity_id,
+            func.lower(EntityAliasDB.alias_name).label("name_lower"),
+        ).where(
+            EntityAliasDB.entity_id.in_(entity_ids),
+            EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR,
+        )
+
+        visible_names = union_all(canonical_names, non_asr_aliases).subquery()
+
+        # Count only mentions whose mention_text matches a visible name
         agg_subq = (
             select(
                 EntityMentionDB.entity_id,
-                func.count().label("mention_count"),
+                func.count(distinct(EntityMentionDB.id)).label("mention_count"),
                 func.count(distinct(EntityMentionDB.video_id)).label("video_count"),
+            )
+            .join(
+                visible_names,
+                and_(
+                    EntityMentionDB.entity_id == visible_names.c.entity_id,
+                    func.lower(EntityMentionDB.mention_text)
+                    == visible_names.c.name_lower,
+                ),
             )
             .where(EntityMentionDB.entity_id.in_(entity_ids))
             .group_by(EntityMentionDB.entity_id)
             .subquery()
         )
 
-        # Update entities that have mentions
+        # Update entities that have visible mentions
         stmt = (
             update(NamedEntityDB)
             .where(NamedEntityDB.id == agg_subq.c.entity_id)
@@ -317,17 +347,15 @@ class EntityMentionRepository(
         )
         await session.execute(stmt)
 
-        # Set counters to 0 for entities in the list that have NO mentions
-        entities_with_mentions = (
-            select(distinct(EntityMentionDB.entity_id))
-            .where(EntityMentionDB.entity_id.in_(entity_ids))
-            .scalar_subquery()
+        # Set counters to 0 for entities with no visible mentions
+        entities_with_visible_mentions = (
+            select(agg_subq.c.entity_id).scalar_subquery()
         )
         zero_stmt = (
             update(NamedEntityDB)
             .where(
                 NamedEntityDB.id.in_(entity_ids),
-                NamedEntityDB.id.notin_(entities_with_mentions),
+                NamedEntityDB.id.notin_(entities_with_visible_mentions),
             )
             .values(mention_count=0, video_count=0)
         )

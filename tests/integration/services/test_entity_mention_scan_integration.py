@@ -10,6 +10,7 @@ the test session so all writes/reads participate in the same transaction that
 the test can inspect.
 
 Feature 038 -- Entity Mention Detection (T016)
+Feature 044 -- Data Accuracy & Search Reliability (T011)
 
 Test coverage:
 1. End-to-end scan: entities + aliases + segments → mention records
@@ -18,6 +19,7 @@ Test coverage:
 4. Word boundary matching: "Aaronson" must NOT match entity "Aaron"
 5. Multiple aliases: all aliases of an entity trigger mentions
 6. Incremental scan: new_entities_only scans only newly added entity
+7. ASR-error alias exclusion: asr_error alias mentions excluded from counters (T011)
 """
 
 from __future__ import annotations
@@ -924,3 +926,338 @@ class TestCorrectedSegmentText:
         # Match via corrected_text, not original text
         assert len(rows) == 1
         assert result.mentions_found == 1
+
+
+# ---------------------------------------------------------------------------
+# T011 (Feature 044 US2): ASR-error alias exclusion from entity counters
+# ---------------------------------------------------------------------------
+
+
+class TestASRErrorAliasCounterExclusion:
+    """Verify that ASR-error aliases are excluded from mention_count / video_count.
+
+    Feature 044 US2 modified ``update_entity_counters()`` so that only
+    mentions whose ``mention_text`` matches the entity's canonical name or a
+    non-ASR-error alias are counted.  Mentions matched via ``asr_error``
+    aliases contribute to the ``entity_mentions`` table but must NOT increment
+    ``mention_count`` or ``video_count`` on ``named_entities``.
+    """
+
+    async def test_asr_error_alias_mention_excluded_from_mention_count(
+        self, db_session: AsyncSession
+    ) -> None:
+        """
+        An entity whose mentions are all via ASR-error aliases must end up
+        with mention_count=0 after a full scan.
+
+        Setup:
+        - Entity "Elon Musk" with an ASR-error alias "Elan Musk"
+        - Segment text contains "Elan Musk" only (no canonical name)
+
+        Expected:
+        - One EntityMention row is created (detection still fires)
+        - mention_count=0 because "elan musk" is an asr_error alias
+        """
+        vid = video_id(seed="asr_ex_001")
+        await _seed_channel(db_session)
+        await _seed_video(db_session, vid)
+        await _seed_transcript(db_session, vid)
+
+        await _seed_segment(
+            db_session,
+            vid,
+            text="Elan Musk announced a new rocket",
+        )
+        entity = await _seed_entity(db_session, "Elon Musk", entity_type="person")
+        # Register the ASR-error alias so the scanner can match it
+        await _seed_alias(db_session, entity.id, "Elan Musk", alias_type="asr_error")
+
+        await db_session.commit()
+
+        factory = _make_session_factory_from_session(db_session)
+        service = EntityMentionScanService(session_factory=factory)
+        await service.scan()
+
+        await db_session.refresh(entity)
+
+        # The scan creates a mention row (scan still detects)
+        mention_rows = (
+            await db_session.execute(
+                select(EntityMentionDB).where(EntityMentionDB.entity_id == entity.id)
+            )
+        ).scalars().all()
+        assert len(mention_rows) >= 1, (
+            "Expected at least one EntityMention row for the ASR-alias match"
+        )
+
+        # But the counter must be 0 because all matches were via asr_error alias
+        assert entity.mention_count == 0, (
+            f"Expected mention_count=0 (ASR-error alias only), got {entity.mention_count}"
+        )
+        assert entity.video_count == 0, (
+            f"Expected video_count=0 (ASR-error alias only), got {entity.video_count}"
+        )
+
+    async def test_canonical_name_mention_included_in_mention_count(
+        self, db_session: AsyncSession
+    ) -> None:
+        """
+        An entity whose mentions match its canonical name must have
+        mention_count > 0 after a full scan.
+
+        Setup:
+        - Entity "Elon Musk" (canonical name)
+        - Segment text contains "Elon Musk"
+
+        Expected:
+        - mention_count=1 because canonical name is always visible
+        """
+        vid = video_id(seed="asr_ex_002")
+        await _seed_channel(db_session)
+        await _seed_video(db_session, vid)
+        await _seed_transcript(db_session, vid)
+
+        await _seed_segment(
+            db_session,
+            vid,
+            text="Elon Musk is the CEO of SpaceX",
+        )
+        entity = await _seed_entity(db_session, "Elon Musk", entity_type="person")
+
+        await db_session.commit()
+
+        factory = _make_session_factory_from_session(db_session)
+        service = EntityMentionScanService(session_factory=factory)
+        await service.scan()
+
+        await db_session.refresh(entity)
+
+        assert entity.mention_count == 1, (
+            f"Expected mention_count=1 (canonical name match), got {entity.mention_count}"
+        )
+        assert entity.video_count == 1, (
+            f"Expected video_count=1, got {entity.video_count}"
+        )
+
+    async def test_non_asr_alias_mention_included_in_mention_count(
+        self, db_session: AsyncSession
+    ) -> None:
+        """
+        Mentions matching a non-ASR-error alias must be counted.
+
+        Setup:
+        - Entity "Elon Musk" with a name_variant alias "Musk"
+        - Segment text contains "Musk" only
+
+        Expected:
+        - mention_count=1 because name_variant aliases are visible
+        """
+        vid = video_id(seed="asr_ex_003")
+        await _seed_channel(db_session)
+        await _seed_video(db_session, vid)
+        await _seed_transcript(db_session, vid)
+
+        await _seed_segment(
+            db_session,
+            vid,
+            text="Musk tweeted about the new model",
+        )
+        entity = await _seed_entity(db_session, "Elon Musk", entity_type="person")
+        await _seed_alias(db_session, entity.id, "Musk", alias_type="name_variant")
+
+        await db_session.commit()
+
+        factory = _make_session_factory_from_session(db_session)
+        service = EntityMentionScanService(session_factory=factory)
+        await service.scan()
+
+        await db_session.refresh(entity)
+
+        assert entity.mention_count == 1, (
+            f"Expected mention_count=1 (name_variant alias), got {entity.mention_count}"
+        )
+        assert entity.video_count == 1, (
+            f"Expected video_count=1, got {entity.video_count}"
+        )
+
+    async def test_mixed_mentions_count_excludes_asr_error_matches(
+        self, db_session: AsyncSession
+    ) -> None:
+        """
+        When an entity has both canonical-name matches and ASR-error-alias
+        matches, only canonical-name matches must be counted.
+
+        Setup:
+        - Entity "Google" with ASR-error alias "Googel"
+        - Three segments:
+            seg1: "Google announced new products"  (canonical → counted)
+            seg2: "Googel launched a service"      (asr_error → excluded)
+            seg3: "Google is a search engine"      (canonical → counted)
+
+        Expected:
+        - EntityMention rows: 3 (scanner detects all)
+        - mention_count: 2 (only the 2 canonical-name segments counted)
+        - video_count: 1 (all in same video)
+        """
+        vid = video_id(seed="asr_ex_004")
+        await _seed_channel(db_session)
+        await _seed_video(db_session, vid)
+        await _seed_transcript(db_session, vid)
+
+        await _seed_segment(
+            db_session,
+            vid,
+            text="Google announced new products",
+            start_time=0.0,
+            sequence_number=0,
+        )
+        await _seed_segment(
+            db_session,
+            vid,
+            text="Googel launched a service",
+            start_time=10.0,
+            sequence_number=1,
+        )
+        await _seed_segment(
+            db_session,
+            vid,
+            text="Google is a search engine",
+            start_time=20.0,
+            sequence_number=2,
+        )
+
+        entity = await _seed_entity(db_session, "Google", entity_type="organization")
+        await _seed_alias(db_session, entity.id, "Googel", alias_type="asr_error")
+
+        await db_session.commit()
+
+        factory = _make_session_factory_from_session(db_session)
+        service = EntityMentionScanService(session_factory=factory)
+        await service.scan()
+
+        await db_session.refresh(entity)
+
+        mention_rows = (
+            await db_session.execute(
+                select(EntityMentionDB).where(EntityMentionDB.entity_id == entity.id)
+            )
+        ).scalars().all()
+
+        # All three matches were detected
+        assert len(mention_rows) == 3, (
+            f"Expected 3 EntityMention rows (canonical + asr_error), got {len(mention_rows)}"
+        )
+
+        # Only the 2 canonical-name matches count
+        assert entity.mention_count == 2, (
+            f"Expected mention_count=2 (excluding asr_error alias), got {entity.mention_count}"
+        )
+        assert entity.video_count == 1, (
+            f"Expected video_count=1 (single video), got {entity.video_count}"
+        )
+
+    async def test_video_count_excludes_videos_with_only_asr_alias_matches(
+        self, db_session: AsyncSession
+    ) -> None:
+        """
+        video_count must not count videos where the only mentions are
+        ASR-error alias matches.
+
+        Setup:
+        - Entity "Tesla" with ASR-error alias "Tezla"
+        - Video 1: segment with "Tesla" (canonical — counted)
+        - Video 2: segment with "Tezla" (asr_error — excluded)
+
+        Expected:
+        - mention_count=1 (only Video 1's canonical match)
+        - video_count=1 (only Video 1 qualifies)
+        """
+        vid1 = video_id(seed="asr_vc_001")
+        vid2 = video_id(seed="asr_vc_002")
+        await _seed_channel(db_session)
+
+        for vid in [vid1, vid2]:
+            await _seed_video(db_session, vid)
+            await _seed_transcript(db_session, vid)
+
+        await _seed_segment(
+            db_session,
+            vid1,
+            text="Tesla released a new car",
+        )
+        await _seed_segment(
+            db_session,
+            vid2,
+            text="Tezla is an ASR error",
+        )
+
+        entity = await _seed_entity(db_session, "Tesla", entity_type="organization")
+        await _seed_alias(db_session, entity.id, "Tezla", alias_type="asr_error")
+
+        await db_session.commit()
+
+        factory = _make_session_factory_from_session(db_session)
+        service = EntityMentionScanService(session_factory=factory)
+        await service.scan()
+
+        await db_session.refresh(entity)
+
+        assert entity.mention_count == 1, (
+            f"Expected mention_count=1 (Video 1 canonical only), got {entity.mention_count}"
+        )
+        assert entity.video_count == 1, (
+            f"Expected video_count=1 (Video 2 excluded due to asr_error), got {entity.video_count}"
+        )
+
+    async def test_full_rescan_preserves_asr_exclusion_in_counters(
+        self, db_session: AsyncSession
+    ) -> None:
+        """
+        A full rescan (full_rescan=True) must also apply ASR-error alias
+        exclusion when recalculating counters.
+
+        After a first scan followed by a full rescan, an entity with only
+        ASR-error-alias mentions must still end up with mention_count=0.
+        """
+        vid = video_id(seed="asr_ex_005")
+        await _seed_channel(db_session)
+        await _seed_video(db_session, vid)
+        await _seed_transcript(db_session, vid)
+
+        await _seed_segment(
+            db_session,
+            vid,
+            text="Amazzon Prime delivery arrived",
+        )
+        entity = await _seed_entity(db_session, "Amazon", entity_type="organization")
+        await _seed_alias(db_session, entity.id, "Amazzon", alias_type="asr_error")
+
+        await db_session.commit()
+
+        factory = _make_session_factory_from_session(db_session)
+        service = EntityMentionScanService(session_factory=factory)
+
+        # First scan
+        await service.scan()
+        await db_session.refresh(entity)
+        assert entity.mention_count == 0, (
+            f"After first scan: expected mention_count=0 (ASR-error alias only), "
+            f"got {entity.mention_count}"
+        )
+
+        # Manually bump the counter to simulate drift (as if a bug had set it)
+        entity.mention_count = 99
+        entity.video_count = 99
+        await db_session.flush()
+
+        # Full rescan must recalculate and restore the correct 0
+        await service.scan(full_rescan=True)
+        await db_session.refresh(entity)
+        assert entity.mention_count == 0, (
+            f"After full rescan: expected mention_count=0 (ASR-error alias only), "
+            f"got {entity.mention_count}"
+        )
+        assert entity.video_count == 0, (
+            f"After full rescan: expected video_count=0 (ASR-error alias only), "
+            f"got {entity.video_count}"
+        )

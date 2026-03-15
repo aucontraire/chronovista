@@ -1568,6 +1568,9 @@ chronovista entities scan --full
 # Scan only entities with zero existing mentions
 chronovista entities scan --new-entities-only
 
+# Audit: report user-correction mentions with unregistered text forms
+chronovista entities scan --audit
+
 # Custom batch size for large libraries
 chronovista entities scan --batch-size 1000
 
@@ -1591,6 +1594,19 @@ chronovista corrections rebuild-text
 # 3. Rescan for entity mentions (corrections create new aliases automatically)
 chronovista entities scan --full
 ```
+
+**Scan Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Preview mentions without writing |
+| `--full` | Delete existing `rule_match` mentions and rescan |
+| `--audit` | Report user-correction mentions with unregistered text forms. Displays a Rich table showing entities with mention texts that don't match any registered alias or canonical name, along with suggested CLI commands to register them. Read-only operation. Mutually exclusive with `--full`. |
+| `--new-entities-only` | Scan only entities with zero existing mentions |
+| `--entity-type` | Filter by entity type (e.g., `person`) |
+| `--video-id` | Filter by video ID |
+| `--batch-size` | Custom batch size for large libraries |
+| `--limit` | Limit number of segments to scan |
 
 **Limitations:**
 

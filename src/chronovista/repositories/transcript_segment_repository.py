@@ -93,6 +93,22 @@ def translate_python_regex_to_posix(pattern: str) -> str:
     return "".join(result)
 
 
+def _escape_like_pattern(text: str) -> str:
+    """Escape SQL LIKE/ILIKE wildcard characters for literal matching.
+
+    Parameters
+    ----------
+    text : str
+        The text to escape.
+
+    Returns
+    -------
+    str
+        The escaped text safe for use in LIKE/ILIKE patterns.
+    """
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 class TranscriptSegmentRepository(
     BaseSQLAlchemyRepository[
         TranscriptSegmentDB,
@@ -571,7 +587,8 @@ class TranscriptSegmentRepository(
             else:
                 text_condition = effective_text.op("~")(sql_pattern)
         else:
-            like_pattern = f"%{pattern}%"
+            escaped = _escape_like_pattern(pattern)
+            like_pattern = f"%{escaped}%"
             if case_insensitive:
                 text_condition = effective_text.ilike(like_pattern)
             else:

@@ -16,8 +16,10 @@ All tests cover:
 - New entities only (zero-mention filter)
 - ScanResult field population
 - Failed batch handling (counted, scan continues)
+- ASR-error alias filtering delegation to repository (Feature 044 T010)
 
 Feature 038 -- Entity Mention Detection (T015)
+Feature 044 -- Data Accuracy & Search Reliability (T010)
 """
 
 from __future__ import annotations
@@ -975,6 +977,142 @@ class TestCounterUpdate:
         svc._mention_repo.update_entity_counters.assert_not_called()
         svc._mention_repo.update_alias_counters.assert_not_called()
 
+    # ------------------------------------------------------------------
+    # T010 — US2: Verify delegation of ASR filtering to repository
+    # ------------------------------------------------------------------
+
+    async def test_update_entity_counters_receives_all_matched_entity_ids(
+        self,
+    ) -> None:
+        """The service passes ALL matched entity IDs to update_entity_counters.
+
+        The ASR-error alias filtering is entirely the repository's
+        responsibility (Feature 044 T008).  The scan service must pass every
+        entity that produced at least one mention row — including those whose
+        mentions may later be filtered out by the repository.  This test
+        verifies that the service does not pre-filter entity IDs before
+        delegating to the repository.
+        """
+        from chronovista.services.entity_mention_scan_service import _EntityPattern
+        from chronovista.models.entity_mention import EntityMentionCreate
+        from chronovista.models.enums import DetectionMethod
+
+        entity_id_a = _make_uuid()
+        entity_id_b = _make_uuid()
+
+        fake_patterns = [
+            _EntityPattern(
+                entity_id=entity_id_a,
+                canonical_name="VisibleEntity",
+                entity_type="organization",
+                pg_pattern=re.escape("VisibleEntity"),
+                alias_names=["VisibleEntity"],
+            ),
+            _EntityPattern(
+                entity_id=entity_id_b,
+                canonical_name="ASROnlyEntity",
+                entity_type="organization",
+                pg_pattern=re.escape("asronlyform"),
+                alias_names=["asronlyform"],
+            ),
+        ]
+
+        session = AsyncMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+
+        factory = _make_session_factory(session)
+        svc = _build_service(factory)
+
+        # Two mentions: one for each entity
+        mentions = [
+            EntityMentionCreate(
+                entity_id=entity_id_a,
+                segment_id=1,
+                video_id="dQw4w9WgXcQ",
+                language_code="en",
+                mention_text="VisibleEntity",
+                detection_method=DetectionMethod.RULE_MATCH,
+                confidence=1.0,
+            ),
+            EntityMentionCreate(
+                entity_id=entity_id_b,
+                segment_id=2,
+                video_id="dQw4w9WgXcQ",
+                language_code="en",
+                mention_text="asronlyform",
+                detection_method=DetectionMethod.RULE_MATCH,
+                confidence=1.0,
+            ),
+        ]
+
+        svc._mention_repo.bulk_create_with_conflict_skip = AsyncMock(return_value=2)
+        svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
+        with (
+            patch.object(svc, "_load_entity_patterns", return_value=fake_patterns),
+            patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
+            patch.object(svc, "_scan_batch", return_value=(mentions, 0, [], 0, 0)),
+        ):
+            await svc.scan(dry_run=False)
+
+        svc._mention_repo.update_entity_counters.assert_called_once()
+        passed_entity_ids = svc._mention_repo.update_entity_counters.call_args[0][1]
+
+        # Both entities (including the ASR-only one) must be passed to the
+        # repository so the repository can apply its own ASR filtering.
+        assert entity_id_a in passed_entity_ids, (
+            "entity_id_a (visible name) must be in the update_entity_counters call"
+        )
+        assert entity_id_b in passed_entity_ids, (
+            "entity_id_b (ASR-alias-only) must also be passed to update_entity_counters "
+            "so the repository can zero it out if it has no visible-name mentions"
+        )
+
+    async def test_update_entity_counters_not_called_when_zero_inserts(
+        self,
+    ) -> None:
+        """When bulk_create_with_conflict_skip returns 0, counters are not updated.
+
+        If no new mention rows were actually inserted (all were conflicts),
+        the scan service must not call update_entity_counters, because the
+        matched_entity_ids set will be empty (no new matches contributed).
+
+        This preserves existing behaviour for the no-new-matches path.
+        """
+        from chronovista.services.entity_mention_scan_service import _EntityPattern
+
+        entity_id = _make_uuid()
+        fake_pattern = _EntityPattern(
+            entity_id=entity_id,
+            canonical_name="NoNewMatch",
+            entity_type="person",
+            pg_pattern=re.escape("NoNewMatch"),
+            alias_names=["NoNewMatch"],
+        )
+
+        session = AsyncMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+
+        factory = _make_session_factory(session)
+        svc = _build_service(factory)
+
+        svc._mention_repo.bulk_create_with_conflict_skip = AsyncMock(return_value=0)
+        svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
+        with (
+            patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
+            patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
+            # _scan_batch returns empty list → matched_entity_ids stays empty
+            patch.object(svc, "_scan_batch", return_value=([], 0, [], 0, 0)),
+        ):
+            await svc.scan(dry_run=False)
+
+        svc._mention_repo.update_entity_counters.assert_not_called()
+        svc._mention_repo.update_alias_counters.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # TestDryRunMode
 # ---------------------------------------------------------------------------
@@ -1607,3 +1745,311 @@ class TestProgressCallback:
             await svc.scan(progress_callback=callback)
 
         assert len(callback_calls) == 0
+
+
+# ---------------------------------------------------------------------------
+# TestAuditUnregisteredMentions  (T014 — Feature 044, US3)
+# ---------------------------------------------------------------------------
+
+
+def _make_audit_row(
+    canonical_name: str,
+    entity_id: uuid.UUID,
+    mention_text: str,
+    segment_count: int,
+) -> MagicMock:
+    """Create a mock SQLAlchemy Row for audit_unregistered_mentions results.
+
+    The service accesses attributes by name (``row.canonical_name``, etc.),
+    so a MagicMock with those attributes set directly is sufficient.
+    """
+    row = MagicMock()
+    row.canonical_name = canonical_name
+    row.entity_id = entity_id
+    row.mention_text = mention_text
+    row.segment_count = segment_count
+    return row
+
+
+class TestAuditUnregisteredMentions:
+    """Unit tests for EntityMentionScanService.audit_unregistered_mentions().
+
+    The method opens its own session via ``_session_factory``, executes a
+    single compound SELECT, and returns a list of 4-tuples.  These tests mock
+    the session and ``session.execute`` to inject canned query results without
+    touching the database.
+
+    Covered scenarios
+    -----------------
+    (a) Returns unmatched mention texts.
+    (b) Excludes matches against canonical name (case-insensitive) — the
+        query WHERE clause filters them out; simulated by returning no rows
+        for those cases.
+    (c) Excludes matches against registered aliases (case-insensitive) —
+        same mechanism as (b).
+    (d) Skips non-active entities — the WHERE clause filters ``status !=
+        'active'``; simulated by the query returning nothing for those rows.
+    (e) Returns empty list when all mentions match an alias or canonical name.
+    (f) Groups by entity and mention_text with correct segment counts.
+    """
+
+    # ------------------------------------------------------------------
+    # (a) Returns unmatched mention texts
+    # ------------------------------------------------------------------
+
+    async def test_returns_unmatched_mention_texts(self) -> None:
+        """audit_unregistered_mentions returns rows that have no alias match.
+
+        When the query finds a mention whose text does not match any alias
+        or canonical name, the tuple ``(canonical_name, entity_id,
+        mention_text, segment_count)`` must appear in the result.
+        """
+        entity_id = _make_uuid()
+        raw_row = _make_audit_row(
+            canonical_name="Noam Chomsky",
+            entity_id=entity_id,
+            mention_text="chomsky",
+            segment_count=3,
+        )
+
+        session = AsyncMock()
+        query_result = MagicMock()
+        query_result.all.return_value = [raw_row]
+        session.execute = AsyncMock(return_value=query_result)
+
+        factory = _make_session_factory(session)
+        svc = _build_service(factory)
+
+        results = await svc.audit_unregistered_mentions()
+
+        assert len(results) == 1
+        canonical, eid, text, count = results[0]
+        assert canonical == "Noam Chomsky"
+        assert eid == entity_id
+        assert text == "chomsky"
+        assert count == 3
+
+    # ------------------------------------------------------------------
+    # (b) Excludes matches against canonical name (case-insensitive)
+    # ------------------------------------------------------------------
+
+    async def test_excludes_canonical_name_matches(self) -> None:
+        """When mention_text equals canonical_name (any case), no row is returned.
+
+        The SQL WHERE clause ``func.lower(mention_text) !=
+        func.lower(canonical_name)`` filters these out before rows reach
+        Python.  We simulate this by the mock returning an empty result set,
+        matching the real database behavior.
+        """
+        session = AsyncMock()
+        query_result = MagicMock()
+        # The query itself excludes canonical-name matches — simulate empty result
+        query_result.all.return_value = []
+        session.execute = AsyncMock(return_value=query_result)
+
+        factory = _make_session_factory(session)
+        svc = _build_service(factory)
+
+        results = await svc.audit_unregistered_mentions()
+
+        assert results == []
+
+    # ------------------------------------------------------------------
+    # (c) Excludes matches against registered aliases (case-insensitive)
+    # ------------------------------------------------------------------
+
+    async def test_excludes_registered_alias_matches(self) -> None:
+        """When mention_text matches an alias (any case), no row is returned.
+
+        The SQL LEFT JOIN on ``EntityAliasDB`` and WHERE
+        ``EntityAliasDB.id.is_(None)`` ensures rows with a matching alias
+        are filtered out.  Simulated by returning an empty result.
+        """
+        session = AsyncMock()
+        query_result = MagicMock()
+        query_result.all.return_value = []
+        session.execute = AsyncMock(return_value=query_result)
+
+        factory = _make_session_factory(session)
+        svc = _build_service(factory)
+
+        results = await svc.audit_unregistered_mentions()
+
+        assert results == []
+
+    # ------------------------------------------------------------------
+    # (d) Skips non-active entities
+    # ------------------------------------------------------------------
+
+    async def test_skips_non_active_entities(self) -> None:
+        """Mentions for inactive entities must not appear in audit results.
+
+        The SQL WHERE clause ``NamedEntityDB.status == 'active'`` removes
+        inactive entities before grouping.  Simulated by the mock returning
+        an empty result when only inactive entity rows exist.
+        """
+        session = AsyncMock()
+        query_result = MagicMock()
+        # Non-active entity's row is filtered by the WHERE clause → empty
+        query_result.all.return_value = []
+        session.execute = AsyncMock(return_value=query_result)
+
+        factory = _make_session_factory(session)
+        svc = _build_service(factory)
+
+        results = await svc.audit_unregistered_mentions()
+
+        assert results == []
+
+    # ------------------------------------------------------------------
+    # (e) Returns empty list when all mentions match
+    # ------------------------------------------------------------------
+
+    async def test_returns_empty_when_all_mentions_match(self) -> None:
+        """When every user-correction mention matches an alias or canonical name,
+        the result list must be empty.
+        """
+        session = AsyncMock()
+        query_result = MagicMock()
+        query_result.all.return_value = []
+        session.execute = AsyncMock(return_value=query_result)
+
+        factory = _make_session_factory(session)
+        svc = _build_service(factory)
+
+        results = await svc.audit_unregistered_mentions()
+
+        assert results == []
+        assert isinstance(results, list)
+
+    # ------------------------------------------------------------------
+    # (f) Groups by entity and mention_text with correct segment counts
+    # ------------------------------------------------------------------
+
+    async def test_groups_by_entity_and_mention_text_with_segment_count(self) -> None:
+        """Multiple unregistered texts for the same entity each appear as
+        separate tuples with their own segment_count.
+        """
+        entity_id_a = _make_uuid()
+        entity_id_b = _make_uuid()
+
+        row1 = _make_audit_row("Ada Lovelace", entity_id_a, "lovelace", 5)
+        row2 = _make_audit_row("Ada Lovelace", entity_id_a, "ada", 2)
+        row3 = _make_audit_row("Alan Turing", entity_id_b, "turing", 8)
+
+        session = AsyncMock()
+        query_result = MagicMock()
+        query_result.all.return_value = [row1, row2, row3]
+        session.execute = AsyncMock(return_value=query_result)
+
+        factory = _make_session_factory(session)
+        svc = _build_service(factory)
+
+        results = await svc.audit_unregistered_mentions()
+
+        assert len(results) == 3
+
+        # Verify tuples for Ada Lovelace rows
+        ada_rows = [r for r in results if r[0] == "Ada Lovelace"]
+        assert len(ada_rows) == 2
+        ada_texts = {r[2] for r in ada_rows}
+        assert "lovelace" in ada_texts
+        assert "ada" in ada_texts
+
+        # Verify segment counts are preserved as returned by the query
+        lovelace_row = next(r for r in ada_rows if r[2] == "lovelace")
+        assert lovelace_row[3] == 5
+
+        # Verify Alan Turing row
+        turing_rows = [r for r in results if r[0] == "Alan Turing"]
+        assert len(turing_rows) == 1
+        assert turing_rows[0][1] == entity_id_b
+        assert turing_rows[0][3] == 8
+
+    async def test_result_tuple_fields_in_correct_order(self) -> None:
+        """Each result tuple must be (canonical_name, entity_id, mention_text,
+        segment_count) in that field order.
+        """
+        entity_id = _make_uuid()
+        raw_row = _make_audit_row(
+            canonical_name="Marie Curie",
+            entity_id=entity_id,
+            mention_text="curie",
+            segment_count=11,
+        )
+
+        session = AsyncMock()
+        query_result = MagicMock()
+        query_result.all.return_value = [raw_row]
+        session.execute = AsyncMock(return_value=query_result)
+
+        factory = _make_session_factory(session)
+        svc = _build_service(factory)
+
+        results = await svc.audit_unregistered_mentions()
+
+        assert len(results) == 1
+        # Positional field verification
+        assert results[0][0] == "Marie Curie"     # canonical_name
+        assert results[0][1] == entity_id          # entity_id
+        assert results[0][2] == "curie"            # mention_text
+        assert results[0][3] == 11                 # segment_count
+
+    async def test_execute_called_exactly_once(self) -> None:
+        """The method must issue exactly one database query per invocation."""
+        session = AsyncMock()
+        query_result = MagicMock()
+        query_result.all.return_value = []
+        session.execute = AsyncMock(return_value=query_result)
+
+        factory = _make_session_factory(session)
+        svc = _build_service(factory)
+
+        await svc.audit_unregistered_mentions()
+
+        session.execute.assert_called_once()
+
+    async def test_returns_multiple_entities_in_any_order(self) -> None:
+        """Multiple distinct entities each appear with their mention text and
+        segment_count; ordering is determined by SQL ORDER BY.
+        """
+        eid1 = _make_uuid()
+        eid2 = _make_uuid()
+
+        row1 = _make_audit_row("Bertrand Russell", eid1, "russell", 4)
+        row2 = _make_audit_row("Bertrand Russell", eid1, "b. russell", 1)
+        row3 = _make_audit_row("Ludwig Wittgenstein", eid2, "wittgenstein", 7)
+
+        session = AsyncMock()
+        query_result = MagicMock()
+        query_result.all.return_value = [row1, row2, row3]
+        session.execute = AsyncMock(return_value=query_result)
+
+        factory = _make_session_factory(session)
+        svc = _build_service(factory)
+
+        results = await svc.audit_unregistered_mentions()
+
+        assert len(results) == 3
+        entity_names = {r[0] for r in results}
+        assert "Bertrand Russell" in entity_names
+        assert "Ludwig Wittgenstein" in entity_names
+
+    async def test_session_context_manager_entered_and_exited(self) -> None:
+        """The method must open and close the session via __aenter__/__aexit__."""
+        session = AsyncMock()
+        query_result = MagicMock()
+        query_result.all.return_value = []
+        session.execute = AsyncMock(return_value=query_result)
+
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=session)
+        cm.__aexit__ = AsyncMock(return_value=False)
+
+        factory = MagicMock(return_value=cm)
+        svc = _build_service(factory)
+
+        await svc.audit_unregistered_mentions()
+
+        cm.__aenter__.assert_called_once()
+        cm.__aexit__.assert_called_once()

@@ -51,6 +51,8 @@ chronovista corrections find-replace \
 
 **When to use**: Simple word or phrase replacements where you know the exact text.
 
+**Special characters**: Characters with special meaning in SQL LIKE patterns (`_`, `%`, `\`) are automatically escaped and matched literally in substring mode. For example, searching for `[ __ ]` will match that exact string rather than treating `_` as a single-character wildcard.
+
 **Watch out**: Substring mode matches inside longer words. `--pattern 'amlo'` will also match "k**amlo**ops". Use regex with `\b` word boundaries to avoid this (see below).
 
 ### Regex Mode (`--regex`)

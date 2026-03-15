@@ -681,3 +681,459 @@ class TestTranscriptCorrectionRepositoryFactoryIntegration:
                 corrected_text="after",
             )
             assert correction.correction_type == ct.value
+
+
+# ---------------------------------------------------------------------------
+# TestTranscriptCorrectionRepositoryBatchId (Feature 045 — T014)
+# ---------------------------------------------------------------------------
+
+
+class TestTranscriptCorrectionRepositoryBatchId:
+    """Tests for the batch-id-specific query methods added in Feature 045.
+
+    Covers:
+    - get_by_batch_id()  — returns all corrections sharing a batch_id, asc order
+    - get_batch_list()   — paginated aggregated batch summaries, desc timestamp order
+
+    Mock strategy mirrors the rest of the file: MagicMock(spec=AsyncSession)
+    whose execute attribute is an AsyncMock.
+    """
+
+    @pytest.fixture
+    def repository(self) -> TranscriptCorrectionRepository:
+        """Provide a fresh repository instance for each test."""
+        return TranscriptCorrectionRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> MagicMock:
+        """Provide a mock async session for each test."""
+        return _make_mock_session()
+
+    # ------------------------------------------------------------------
+    # get_by_batch_id
+    # ------------------------------------------------------------------
+
+    async def test_get_by_batch_id_returns_matching_corrections(
+        self,
+        repository: TranscriptCorrectionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """get_by_batch_id() returns all corrections that share the given batch_id.
+
+        The repository must filter by batch_id and return the full list in
+        ascending corrected_at order (oldest first), as defined by the ORDER BY
+        clause in the implementation.
+        """
+        batch_id = _make_uuid()
+
+        correction_a = TranscriptCorrectionFactory.build(
+            video_id="dQw4w9WgXcQ",
+            language_code="en",
+            segment_id=10,
+            original_text="teh dog",
+            corrected_text="the dog",
+        )
+        correction_b = TranscriptCorrectionFactory.build(
+            video_id="dQw4w9WgXcQ",
+            language_code="en",
+            segment_id=11,
+            original_text="teh cat",
+            corrected_text="the cat",
+        )
+
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [correction_a, correction_b]
+        mock_result = MagicMock()
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        results = await repository.get_by_batch_id(mock_session, batch_id)
+
+        assert len(results) == 2
+        assert results[0] is correction_a
+        assert results[1] is correction_b
+        mock_session.execute.assert_called_once()
+
+    async def test_get_by_batch_id_returns_empty_for_nonexistent_batch(
+        self,
+        repository: TranscriptCorrectionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """get_by_batch_id() returns an empty list when no corrections share that batch_id.
+
+        A caller passing a batch_id that does not exist in the database must
+        receive an empty list rather than an error. This is the normal case
+        for freshly generated batch IDs not yet committed.
+        """
+        nonexistent_batch_id = _make_uuid()
+
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_result = MagicMock()
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        results = await repository.get_by_batch_id(mock_session, nonexistent_batch_id)
+
+        assert results == []
+        mock_session.execute.assert_called_once()
+
+    async def test_get_by_batch_id_issues_single_query(
+        self,
+        repository: TranscriptCorrectionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """get_by_batch_id() executes exactly one SQL statement.
+
+        The implementation must not issue multiple round-trips for a simple
+        batch_id lookup.
+        """
+        batch_id = _make_uuid()
+
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_result = MagicMock()
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        await repository.get_by_batch_id(mock_session, batch_id)
+
+        mock_session.execute.assert_called_once()
+
+    async def test_get_by_batch_id_uses_batch_id_filter_in_sql(
+        self,
+        repository: TranscriptCorrectionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """get_by_batch_id() generates SQL that filters by batch_id column.
+
+        This test inspects the compiled SQL statement to verify the WHERE
+        clause references batch_id, ensuring the query is correctly built
+        before it reaches the database.
+        """
+        batch_id = _make_uuid()
+
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_result = MagicMock()
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        await repository.get_by_batch_id(mock_session, batch_id)
+
+        stmt = mock_session.execute.call_args.args[0]
+        sql_string = str(stmt.compile(compile_kwargs={"literal_binds": False}))
+        assert "batch_id" in sql_string, (
+            f"Expected 'batch_id' in WHERE clause SQL; got: {sql_string}"
+        )
+
+    async def test_get_by_batch_id_result_uses_factory_built_corrections(
+        self,
+        repository: TranscriptCorrectionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Factory-built corrections with explicit batch_id work with get_by_batch_id().
+
+        Validates that TranscriptCorrectionFactory.build() is compatible with
+        the repository interface — no field name mismatches.
+        """
+        batch_id = _make_uuid()
+
+        # Build three corrections all sharing the same batch_id
+        corrections = [
+            TranscriptCorrectionFactory.build(
+                video_id="9bZkp7q19f0",
+                original_text=f"error_{i}",
+                corrected_text=f"fixed_{i}",
+                version_number=1,
+            )
+            for i in range(3)
+        ]
+
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = corrections
+        mock_result = MagicMock()
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        results = await repository.get_by_batch_id(mock_session, batch_id)
+
+        assert len(results) == 3
+        assert all(isinstance(c, TranscriptCorrectionDB) for c in results)
+
+    # ------------------------------------------------------------------
+    # get_batch_list
+    # ------------------------------------------------------------------
+
+    async def test_get_batch_list_returns_batch_list_items(
+        self,
+        repository: TranscriptCorrectionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """get_batch_list() returns BatchListItem rows aggregated by batch_id.
+
+        Each BatchListItem summarises a group of corrections sharing the same
+        batch_id: count, actor, pattern/replacement text, and timestamp.
+        """
+        from chronovista.models.batch_correction_models import BatchListItem
+        from tests.factories.batch_correction_factory import BatchListItemFactory
+
+        batch_id_a = _make_uuid()
+        batch_id_b = _make_uuid()
+
+        # Simulate the row objects returned by SQLAlchemy after GROUP BY aggregation
+        row_a = MagicMock()
+        row_a.batch_id = batch_id_a
+        row_a.correction_count = 5
+        row_a.corrected_by_user_id = "user:batch"
+        row_a.pattern = "Chomski"
+        row_a.replacement = "Chomsky"
+        row_a.batch_timestamp = datetime(2025, 2, 1, 10, 0, 0, tzinfo=timezone.utc)
+
+        row_b = MagicMock()
+        row_b.batch_id = batch_id_b
+        row_b.correction_count = 3
+        row_b.corrected_by_user_id = "cli"
+        row_b.pattern = "teh"
+        row_b.replacement = "the"
+        row_b.batch_timestamp = datetime(2025, 1, 15, 8, 0, 0, tzinfo=timezone.utc)
+
+        mock_result = MagicMock()
+        mock_result.all.return_value = [row_a, row_b]
+        mock_session.execute.return_value = mock_result
+
+        results = await repository.get_batch_list(mock_session)
+
+        assert len(results) == 2
+        assert all(isinstance(item, BatchListItem) for item in results)
+        assert results[0].batch_id == batch_id_a
+        assert results[0].correction_count == 5
+        assert results[0].corrected_by_user_id == "user:batch"
+        assert results[0].pattern == "Chomski"
+        assert results[0].replacement == "Chomsky"
+        assert results[1].batch_id == batch_id_b
+        assert results[1].correction_count == 3
+        mock_session.execute.assert_called_once()
+
+    async def test_get_batch_list_returns_empty_when_no_batches(
+        self,
+        repository: TranscriptCorrectionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """get_batch_list() returns an empty list when no batches exist.
+
+        Corrections in the database with batch_id=NULL are excluded entirely
+        from the result. When all corrections are individual (no batch), the
+        list is empty.
+        """
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        mock_session.execute.return_value = mock_result
+
+        results = await repository.get_batch_list(mock_session)
+
+        assert results == []
+        mock_session.execute.assert_called_once()
+
+    async def test_get_batch_list_pagination_offset_and_limit(
+        self,
+        repository: TranscriptCorrectionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """get_batch_list() respects the offset and limit pagination parameters.
+
+        The SQL statement must include OFFSET and LIMIT so callers can page
+        through large batch histories. This test inspects the compiled SQL
+        to verify the clauses are present.
+        """
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        mock_session.execute.return_value = mock_result
+
+        await repository.get_batch_list(mock_session, offset=10, limit=5)
+
+        stmt = mock_session.execute.call_args.args[0]
+        sql_string = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        assert "10" in sql_string, (
+            f"Expected OFFSET 10 in SQL; got: {sql_string}"
+        )
+        assert "5" in sql_string, (
+            f"Expected LIMIT 5 in SQL; got: {sql_string}"
+        )
+
+    async def test_get_batch_list_filters_by_corrected_by_user_id(
+        self,
+        repository: TranscriptCorrectionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """get_batch_list() filters results when corrected_by_user_id is provided.
+
+        When a user-id filter is supplied, the SQL WHERE clause must include
+        an equality predicate on corrected_by_user_id so that batches from
+        other actors are excluded.
+        """
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        mock_session.execute.return_value = mock_result
+
+        await repository.get_batch_list(
+            mock_session, corrected_by_user_id="user:batch"
+        )
+
+        stmt = mock_session.execute.call_args.args[0]
+        sql_string = str(stmt.compile(compile_kwargs={"literal_binds": False}))
+        assert "corrected_by_user_id" in sql_string, (
+            f"Expected corrected_by_user_id filter in SQL; got: {sql_string}"
+        )
+
+    async def test_get_batch_list_no_user_filter_returns_all_batches(
+        self,
+        repository: TranscriptCorrectionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """get_batch_list() without a user filter aggregates all batch actors.
+
+        When corrected_by_user_id is None (the default), batches from all
+        actors should be returned without an extra WHERE predicate on user.
+        """
+        batch_id_a = _make_uuid()
+        batch_id_b = _make_uuid()
+
+        # Two rows from different actors
+        row_a = MagicMock()
+        row_a.batch_id = batch_id_a
+        row_a.correction_count = 2
+        row_a.corrected_by_user_id = "user:batch"
+        row_a.pattern = "errr"
+        row_a.replacement = "err"
+        row_a.batch_timestamp = datetime(2025, 3, 1, tzinfo=timezone.utc)
+
+        row_b = MagicMock()
+        row_b.batch_id = batch_id_b
+        row_b.correction_count = 7
+        row_b.corrected_by_user_id = "cli"
+        row_b.pattern = "seperate"
+        row_b.replacement = "separate"
+        row_b.batch_timestamp = datetime(2025, 2, 1, tzinfo=timezone.utc)
+
+        mock_result = MagicMock()
+        mock_result.all.return_value = [row_a, row_b]
+        mock_session.execute.return_value = mock_result
+
+        results = await repository.get_batch_list(mock_session)
+
+        assert len(results) == 2
+        actors = {item.corrected_by_user_id for item in results}
+        assert "user:batch" in actors
+        assert "cli" in actors
+
+    async def test_get_batch_list_excludes_null_batch_id_in_sql(
+        self,
+        repository: TranscriptCorrectionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """get_batch_list() SQL excludes rows with NULL batch_id.
+
+        The implementation filters with ``batch_id IS NOT NULL`` so that
+        individual corrections (without a batch) are never aggregated into
+        batch list results. This test verifies the IS NOT NULL predicate
+        appears in the compiled SQL.
+        """
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        mock_session.execute.return_value = mock_result
+
+        await repository.get_batch_list(mock_session)
+
+        stmt = mock_session.execute.call_args.args[0]
+        sql_string = str(stmt.compile(compile_kwargs={"literal_binds": False}))
+        # The IS NOT NULL predicate must appear
+        assert "IS NOT NULL" in sql_string.upper(), (
+            f"Expected 'IS NOT NULL' predicate in SQL; got: {sql_string}"
+        )
+
+    async def test_get_batch_list_groups_by_batch_id_in_sql(
+        self,
+        repository: TranscriptCorrectionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """get_batch_list() SQL includes GROUP BY batch_id for aggregation.
+
+        The query must aggregate per batch, so a GROUP BY clause on batch_id
+        is required. This test inspects the compiled SQL to confirm it.
+        """
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        mock_session.execute.return_value = mock_result
+
+        await repository.get_batch_list(mock_session)
+
+        stmt = mock_session.execute.call_args.args[0]
+        sql_string = str(stmt.compile(compile_kwargs={"literal_binds": False}))
+        assert "GROUP BY" in sql_string.upper() or "group by" in sql_string, (
+            f"Expected GROUP BY clause in SQL; got: {sql_string}"
+        )
+
+    async def test_get_batch_list_batch_list_item_factory_builds_valid_items(
+        self,
+        repository: TranscriptCorrectionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """BatchListItemFactory produces models compatible with get_batch_list() results.
+
+        This integration test verifies that the factory-produced BatchListItem
+        matches the shape expected from the real repository's aggregation result.
+        """
+        from tests.factories.batch_correction_factory import (
+            BatchListItemFactory,
+            create_batch_list_item,
+        )
+
+        item = create_batch_list_item(
+            correction_count=10,
+            corrected_by_user_id="user:batch",
+            pattern="Shanebam",
+            replacement="Sheinbaum",
+        )
+
+        assert item.correction_count == 10
+        assert item.corrected_by_user_id == "user:batch"
+        assert item.pattern == "Shanebam"
+        assert item.replacement == "Sheinbaum"
+        assert isinstance(item.batch_id, uuid.UUID)
+
+    async def test_get_batch_list_items_have_correct_field_types(
+        self,
+        repository: TranscriptCorrectionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """BatchListItem fields returned by the repository have the correct types.
+
+        batch_id must be UUID, correction_count an int, batch_timestamp a datetime,
+        and the text fields strings.  These constraints come from the Pydantic
+        model definition.
+        """
+        batch_id = _make_uuid()
+        ts = datetime(2025, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+        row = MagicMock()
+        row.batch_id = batch_id
+        row.correction_count = 42
+        row.corrected_by_user_id = "user:batch"
+        row.pattern = "mistake"
+        row.replacement = "correct"
+        row.batch_timestamp = ts
+
+        mock_result = MagicMock()
+        mock_result.all.return_value = [row]
+        mock_session.execute.return_value = mock_result
+
+        results = await repository.get_batch_list(mock_session)
+
+        assert len(results) == 1
+        item = results[0]
+        assert isinstance(item.batch_id, uuid.UUID)
+        assert isinstance(item.correction_count, int)
+        assert isinstance(item.batch_timestamp, datetime)
+        assert isinstance(item.pattern, str)
+        assert isinstance(item.replacement, str)

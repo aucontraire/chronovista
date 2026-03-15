@@ -13,6 +13,7 @@ Feature 033 — Transcript Corrections Audit
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import exists, select, text
@@ -75,6 +76,7 @@ class TranscriptCorrectionService:
         correction_type: CorrectionType,
         correction_note: str | None = None,
         corrected_by_user_id: str | None = None,
+        batch_id: uuid.UUID | None = None,
     ) -> TranscriptCorrectionDB:
         """
         Apply a correction to a transcript segment.
@@ -101,6 +103,8 @@ class TranscriptCorrectionService:
             Human-readable explanation for the correction.
         corrected_by_user_id : str | None, optional
             Identifier of the user who made the correction.
+        batch_id : uuid.UUID or None, optional
+            UUIDv7 batch identifier for provenance tracking.
 
         Returns
         -------
@@ -151,6 +155,7 @@ class TranscriptCorrectionService:
             correction_note=correction_note,
             corrected_by_user_id=corrected_by_user_id,
             version_number=new_version,
+            batch_id=batch_id,
         )
 
         # Step 6: Persist audit record via repo (this flushes internally)

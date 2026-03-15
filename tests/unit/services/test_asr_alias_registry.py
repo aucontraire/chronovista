@@ -572,7 +572,16 @@ class TestRegisterAsrAlias:
                 corrected_text="Claudia Sheinbaum",
             )
 
-        mock_normalizer.normalize.assert_called_once_with("Claudia Shainbom")
+        # T022: normalize() is now called twice — once for the full-string alias
+        # ("Claudia Shainbom") and once for the minimal error token ("Shainbom").
+        calls = mock_normalizer.normalize.call_args_list
+        assert len(calls) == 2, f"Expected 2 normalize() calls, got {len(calls)}: {calls}"
+        assert calls[0].args[0] == "Claudia Shainbom", (
+            f"First call should normalize the full-string alias, got: {calls[0].args[0]}"
+        )
+        assert calls[1].args[0] == "Shainbom", (
+            f"Second call should normalize the minimal error token, got: {calls[1].args[0]}"
+        )
 
     async def test_falls_back_to_lower_when_normalize_returns_none(self) -> None:
         """If ``normalize()`` returns None/falsy, falls back to ``original_text.lower()``."""

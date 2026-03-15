@@ -1067,6 +1067,11 @@ class TranscriptCorrection(Base):
     )
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
 
+    # Batch grouping (Feature 045 — Correction Intelligence Pipeline)
+    # Groups corrections applied together in a single batch run. NULL for
+    # corrections that were not part of a batch operation.
+    batch_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+
     # Table constraints
     __table_args__ = (
         ForeignKeyConstraint(

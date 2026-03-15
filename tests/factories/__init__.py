@@ -205,6 +205,11 @@ from .entity_mention_factory import (
     create_entity_mention_base,
     create_entity_mention_create,
 )
+from .batch_correction_factory import (
+    BatchListItemFactory,
+    BatchListItemTestData,
+    create_batch_list_item,
+)
 
 __all__ = [
     # VideoTag factories
@@ -389,4 +394,8 @@ __all__ = [
     "create_entity_mention",
     "create_entity_mention_base",
     "create_entity_mention_create",
+    # BatchListItem factories
+    "BatchListItemFactory",
+    "BatchListItemTestData",
+    "create_batch_list_item",
 ]

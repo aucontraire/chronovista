@@ -73,6 +73,29 @@ class TestLevenshteinDistance:
         assert levenshtein_distance("ABC", "abc") == 3
         assert levenshtein_distance("Hello", "hello") == 1
 
+    def test_parity_with_known_distances(self) -> None:
+        """Verify C-backed implementation matches known edit distances.
+
+        These expected values were validated against the original hand-rolled
+        dynamic-programming implementation before it was replaced by
+        python-Levenshtein in Feature 045.
+        """
+        known_pairs: list[tuple[str, str, int]] = [
+            ("en", "es", 1),
+            ("fr", "de", 2),
+            ("kitten", "sitting", 3),
+            ("saturday", "sunday", 3),
+            ("gumbo", "gambol", 2),
+            ("", "abc", 3),
+            ("abc", "", 3),
+            ("flaw", "lawn", 2),
+            ("intention", "execution", 5),
+        ]
+        for s1, s2, expected in known_pairs:
+            assert levenshtein_distance(s1, s2) == expected, (
+                f"levenshtein_distance({s1!r}, {s2!r}) != {expected}"
+            )
+
 
 # -------------------------------------------------------------------------
 # Test: find_similar

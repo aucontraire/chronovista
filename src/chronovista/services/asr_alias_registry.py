@@ -152,6 +152,72 @@ async def register_asr_alias(
                 occurrence_count,
             )
 
+        # ----- Word-level diff: register minimal error tokens (T022) -----
+        # Only attempt sub-token alias registration when the full-string
+        # correction matched an entity.
+        try:
+            from chronovista.services.batch_correction_service import word_level_diff
+
+            diff = word_level_diff(original_text, corrected_text)
+            for error_token, canonical_token in diff.changed_pairs:
+                # Skip empty tokens (insertions/deletions) and duplicates of
+                # the full-string alias we just registered.
+                if (
+                    not error_token
+                    or not canonical_token
+                    or error_token.strip() == original_text.strip()
+                ):
+                    continue
+
+                sub_normalized = normalizer.normalize(error_token) or error_token.lower()
+
+                # Check if this sub-token alias already exists
+                sub_existing_stmt = select(EntityAliasDB).where(
+                    EntityAliasDB.entity_id == entity_id,
+                    EntityAliasDB.alias_name_normalized == sub_normalized,
+                )
+                sub_existing_result = await session.execute(sub_existing_stmt)
+                sub_existing = sub_existing_result.scalar_one_or_none()
+
+                if sub_existing is not None:
+                    sub_existing.occurrence_count = (
+                        sub_existing.occurrence_count or 0
+                    ) + occurrence_count
+                    await session.flush()
+                    logger.debug(
+                        "%s: incremented sub-token alias '%s' for entity '%s' (+%d)",
+                        log_prefix,
+                        error_token,
+                        entity_name,
+                        occurrence_count,
+                    )
+                else:
+                    async with session.begin_nested():
+                        sub_alias = EntityAliasCreate(
+                            entity_id=entity_id,
+                            alias_name=error_token,
+                            alias_name_normalized=sub_normalized,
+                            alias_type=EntityAliasType.ASR_ERROR,
+                            occurrence_count=occurrence_count,
+                        )
+                        alias_repo_sub = EntityAliasRepository()
+                        await alias_repo_sub.create(session, obj_in=sub_alias)
+                    logger.info(
+                        "%s: registered sub-token ASR alias '%s' for entity '%s'",
+                        log_prefix,
+                        error_token,
+                        entity_name,
+                    )
+
+            if commit:
+                await session.commit()
+        except Exception:
+            logger.debug(
+                "%s: word-level diff sub-token registration failed (non-blocking)",
+                log_prefix,
+                exc_info=True,
+            )
+
     except Exception:
         logger.warning(
             "%s hook failed (non-blocking): original_text='%s', corrected_text='%s'",

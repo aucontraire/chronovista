@@ -1,11 +1,12 @@
 """
-Tests for EntityMentionRepository (Feature 038 — T012).
+Tests for EntityMentionRepository (Feature 038 — T012; Feature 044 — T009).
 
 Covers all public methods with mocked AsyncSession:
 - bulk_create_with_conflict_skip() — INSERT ... ON CONFLICT DO NOTHING for bulk inserts
 - delete_by_scope()               — scoped deletion with optional entity/video/language filters
 - get_entities_with_zero_mentions() — entities with no mention rows
 - update_entity_counters()        — refreshes mention_count / video_count on named_entities
+                                    (Feature 044 T009: ASR-error alias exclusion tests added)
 - get_video_entity_summary()      — per-entity aggregation for a video
 - get_entity_video_list()         — paginated video list where an entity is mentioned
 - get_statistics()                — aggregate stats with optional entity_type filter
@@ -24,6 +25,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+from sqlalchemy.dialects import postgresql as pg_dialect
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
@@ -780,6 +782,13 @@ class TestUpdateEntityCounters:
     The method runs two UPDATE statements: one to set real counts for entities
     that have mentions, and another to zero-out counts for entities in the list
     that have no remaining mentions.
+
+    Feature 044 (T009) extends this class with tests that verify the ASR-error
+    alias exclusion logic introduced in US2.  The updated method builds a
+    ``visible_names`` subquery that unions canonical names and non-ASR-error
+    aliases; only mentions whose ``mention_text`` matches a visible name count
+    toward ``mention_count`` and ``video_count``.  Entities whose only matches
+    are against ASR-error aliases receive ``mention_count=0``.
     """
 
     @pytest.fixture
@@ -867,6 +876,204 @@ class TestUpdateEntityCounters:
         sql_str = str(first_stmt.compile(compile_kwargs={"literal_binds": False}))
         assert "mention_count" in sql_str
         assert "video_count" in sql_str
+
+    # ------------------------------------------------------------------
+    # T009 — US2: ASR-error alias exclusion from counter logic
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _compile_pg_sql(stmt: Any) -> str:
+        """Compile a SQLAlchemy statement to SQL string with the PostgreSQL dialect.
+
+        Uses ``literal_binds=True`` so that enum string values (like
+        ``'asr_error'``) appear literally in the output rather than as
+        ``__[POSTCOMPILE_...]`` placeholders.
+
+        Parameters
+        ----------
+        stmt : Any
+            A SQLAlchemy statement (UPDATE, SELECT, etc.).
+
+        Returns
+        -------
+        str
+            The fully rendered SQL string.
+        """
+        return str(
+            stmt.compile(
+                dialect=pg_dialect.dialect(),
+                compile_kwargs={"literal_binds": True},
+            )
+        )
+
+    async def test_sql_excludes_asr_error_alias_type(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """The generated SQL must filter out asr_error aliases from the visible-names set.
+
+        The updated ``update_entity_counters()`` builds a ``visible_names``
+        subquery that unions canonical names with non-ASR-error aliases.  The
+        first UPDATE statement's SQL must reference the ``entity_aliases`` table
+        and the ``asr_error`` string so that mentions matched only against ASR
+        noise forms are excluded from the counter.
+        """
+        entity_id = _uuid()
+
+        mock_result = MagicMock()
+        mock_result.rowcount = 1
+        mock_session.execute.return_value = mock_result
+
+        await repository.update_entity_counters(mock_session, entity_ids=[entity_id])
+
+        first_stmt = mock_session.execute.call_args_list[0].args[0]
+        sql_str = self._compile_pg_sql(first_stmt)
+
+        # The visible-names subquery must JOIN entity_aliases
+        assert "entity_aliases" in sql_str, (
+            "Expected entity_aliases to appear in the counter SQL; "
+            f"got: {sql_str[:500]}"
+        )
+        # The asr_error value must appear as a literal exclusion filter
+        assert "asr_error" in sql_str, (
+            "Expected 'asr_error' exclusion in counter SQL; "
+            f"got: {sql_str[:500]}"
+        )
+
+    async def test_sql_references_named_entities_canonical_name(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """The visible-names subquery must include canonical names from named_entities.
+
+        Canonical names count as visible regardless of alias type; the SQL must
+        SELECT from ``named_entities`` (for canonical names) as well as from
+        ``entity_aliases`` (for non-ASR-error aliases).
+        """
+        entity_id = _uuid()
+
+        mock_result = MagicMock()
+        mock_result.rowcount = 1
+        mock_session.execute.return_value = mock_result
+
+        await repository.update_entity_counters(mock_session, entity_ids=[entity_id])
+
+        first_stmt = mock_session.execute.call_args_list[0].args[0]
+        sql_str = self._compile_pg_sql(first_stmt)
+
+        # Both source tables of the visible-names union must appear in the SQL
+        assert "named_entities" in sql_str, (
+            "Expected named_entities to provide canonical name rows; "
+            f"got: {sql_str[:500]}"
+        )
+        assert "entity_aliases" in sql_str, (
+            "Expected entity_aliases to provide non-ASR alias rows; "
+            f"got: {sql_str[:500]}"
+        )
+
+    async def test_second_update_zeros_entities_with_no_visible_mentions(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """The second UPDATE must zero-out entities that have no visible-name mentions.
+
+        When an entity's only mentions are matched via ASR-error aliases (and
+        thus excluded from the visible-names join), the second UPDATE statement
+        must set mention_count=0 and video_count=0 for that entity.
+        """
+        entity_id = _uuid()
+
+        mock_result = MagicMock()
+        mock_result.rowcount = 1
+        mock_session.execute.return_value = mock_result
+
+        await repository.update_entity_counters(mock_session, entity_ids=[entity_id])
+
+        # Exactly two UPDATE calls must be made
+        assert mock_session.execute.call_count == 2
+
+        # The second statement must also reference named_entities (zero-out)
+        second_stmt = mock_session.execute.call_args_list[1].args[0]
+        sql_str = str(second_stmt.compile(compile_kwargs={"literal_binds": False}))
+        assert "named_entities" in sql_str, (
+            "Second UPDATE (zero-out) must target named_entities; "
+            f"got: {sql_str[:400]}"
+        )
+        # The zero-out branch must still set both counter columns to 0
+        assert "mention_count" in sql_str, (
+            "Zero-out UPDATE must include mention_count; "
+            f"got: {sql_str[:400]}"
+        )
+        assert "video_count" in sql_str, (
+            "Zero-out UPDATE must include video_count; "
+            f"got: {sql_str[:400]}"
+        )
+
+    async def test_visible_names_join_uses_lower_for_case_insensitive_match(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """The counter join must be case-insensitive via lower() on mention_text.
+
+        Mentions stored as 'elon musk' must match canonical name 'Elon Musk'
+        because the SQL uses ``lower(mention_text) = lower(name)`` in the join.
+        The compiled SQL must contain the lower() function.
+        """
+        entity_id = _uuid()
+
+        mock_result = MagicMock()
+        mock_result.rowcount = 1
+        mock_session.execute.return_value = mock_result
+
+        await repository.update_entity_counters(mock_session, entity_ids=[entity_id])
+
+        first_stmt = mock_session.execute.call_args_list[0].args[0]
+        sql_str = str(first_stmt.compile(compile_kwargs={"literal_binds": False}))
+
+        assert "lower" in sql_str.lower(), (
+            "Expected lower() function for case-insensitive counter join; "
+            f"got: {sql_str[:400]}"
+        )
+
+    async def test_empty_list_does_not_generate_zero_update(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """With an empty entity_ids list, the zero-out UPDATE must not be issued.
+
+        This is a guard against accidentally running unbounded UPDATE statements
+        when no entities are in scope for counter refresh.
+        """
+        await repository.update_entity_counters(mock_session, entity_ids=[])
+
+        # No SQL at all — not even the zero-out branch
+        mock_session.execute.assert_not_called()
+
+    async def test_multiple_entity_ids_accepted(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Passing multiple entity IDs must still produce exactly two UPDATEs.
+
+        The method batches all entity IDs into a single set of UPDATE statements
+        rather than issuing one pair per entity.
+        """
+        entity_ids = [_uuid() for _ in range(5)]
+
+        mock_result = MagicMock()
+        mock_result.rowcount = 5
+        mock_session.execute.return_value = mock_result
+
+        await repository.update_entity_counters(mock_session, entity_ids=entity_ids)
+
+        # Still exactly two round-trips, not 10 (5 entities × 2)
+        assert mock_session.execute.call_count == 2
 
 
 # ---------------------------------------------------------------------------

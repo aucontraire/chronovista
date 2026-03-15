@@ -24,6 +24,7 @@ from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as TranscriptDB
 from chronovista.exceptions import BadRequestError
 from chronovista.models.enums import AvailabilityStatus
+from chronovista.repositories.transcript_segment_repository import _escape_like_pattern
 
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -114,8 +115,15 @@ async def search_segments(
             details={"field": "q", "constraint": "non_empty"},
         )
 
-    # Split query into terms for multi-word search (implicit AND)
-    query_terms = query_text.split()
+    # Reject NULL bytes
+    if "\x00" in query_text:
+        raise BadRequestError(
+            message="Search query contains invalid characters",
+            details={"field": "q", "constraint": "no_null_bytes"},
+        )
+
+    # Escape special LIKE characters for literal phrase matching
+    escaped_query = _escape_like_pattern(query_text)
 
     # Build base query with joins (including Channel for eager loading)
     query = (
@@ -135,16 +143,14 @@ async def search_segments(
     if not include_unavailable:
         query = query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
 
-    # Apply ILIKE filter for each term (implicit AND)
+    # Apply ILIKE filter for the entire query as a single phrase
     # Search both original text and corrected text so corrections are findable
-    for term in query_terms:
-        escaped_term = term.replace("%", r"\%").replace("_", r"\_")
-        query = query.where(
-            or_(
-                SegmentDB.text.ilike(f"%{escaped_term}%"),
-                SegmentDB.corrected_text.ilike(f"%{escaped_term}%"),
-            )
+    query = query.where(
+        or_(
+            SegmentDB.text.ilike(f"%{escaped_query}%"),
+            SegmentDB.corrected_text.ilike(f"%{escaped_query}%"),
         )
+    )
 
     # Apply optional video filter (affects both available_languages and results)
     if video_id:
@@ -162,15 +168,13 @@ async def search_segments(
     if not include_unavailable:
         lang_base_query = lang_base_query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
 
-    # Apply the same text search filters (both original and corrected text)
-    for term in query_terms:
-        escaped_term = term.replace("%", r"\%").replace("_", r"\_")
-        lang_base_query = lang_base_query.where(
-            or_(
-                SegmentDB.text.ilike(f"%{escaped_term}%"),
-                SegmentDB.corrected_text.ilike(f"%{escaped_term}%"),
-            )
+    # Apply the same text search filter (single phrase, both original and corrected text)
+    lang_base_query = lang_base_query.where(
+        or_(
+            SegmentDB.text.ilike(f"%{escaped_query}%"),
+            SegmentDB.corrected_text.ilike(f"%{escaped_query}%"),
         )
+    )
 
     # Apply optional video filter
     if video_id:
@@ -251,7 +255,7 @@ async def search_segments(
                 end_time=segment.end_time,
                 context_before=context_before,
                 context_after=context_after,
-                match_count=count_query_matches(_display_text(segment), query_terms),
+                match_count=count_query_matches(_display_text(segment), [query_text]),
                 video_upload_date=video.upload_date,
                 availability_status=video.availability_status,
             )
@@ -316,16 +320,22 @@ async def search_titles(
             details={"field": "q", "constraint": "non_empty"},
         )
 
-    query_terms = query_text.split()
+    # Reject NULL bytes
+    if "\x00" in query_text:
+        raise BadRequestError(
+            message="Search query contains invalid characters",
+            details={"field": "q", "constraint": "no_null_bytes"},
+        )
+
+    # Escape special LIKE characters for literal phrase matching
+    escaped_query = _escape_like_pattern(query_text)
 
     # Build conditions for reuse (count + results)
     conditions = []
     # Apply availability filter unless include_unavailable is True
     if not include_unavailable:
         conditions.append(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
-    for term in query_terms:
-        escaped_term = term.replace("%", r"\%").replace("_", r"\_")
-        conditions.append(VideoDB.title.ilike(f"%{escaped_term}%"))
+    conditions.append(VideoDB.title.ilike(f"%{escaped_query}%"))
 
     # Get total count
     count_query = select(func.count()).select_from(
@@ -464,16 +474,22 @@ async def search_descriptions(
             details={"field": "q", "constraint": "non_empty"},
         )
 
-    query_terms = query_text.split()
+    # Reject NULL bytes
+    if "\x00" in query_text:
+        raise BadRequestError(
+            message="Search query contains invalid characters",
+            details={"field": "q", "constraint": "no_null_bytes"},
+        )
+
+    # Escape special LIKE characters for literal phrase matching
+    escaped_query = _escape_like_pattern(query_text)
 
     # Build conditions for reuse
     conditions: List[ColumnElement[bool]] = [VideoDB.description.isnot(None)]
     # Apply availability filter unless include_unavailable is True
     if not include_unavailable:
         conditions.append(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
-    for term in query_terms:
-        escaped_term = term.replace("%", r"\%").replace("_", r"\_")
-        conditions.append(VideoDB.description.ilike(f"%{escaped_term}%"))
+    conditions.append(VideoDB.description.ilike(f"%{escaped_query}%"))
 
     # Get total count
     count_query = select(func.count()).select_from(
@@ -506,7 +522,7 @@ async def search_descriptions(
             title=row.title,
             channel_title=row.channel_title,
             upload_date=row.upload_date,
-            snippet=_generate_snippet(row.description, query_terms),
+            snippet=_generate_snippet(row.description, [query_text]),
             availability_status=row.availability_status,
         )
         for row in rows

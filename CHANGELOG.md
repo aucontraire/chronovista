@@ -11,6 +11,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.45.0] - 2026-03-14
+
+### Added
+- **Feature 044: Data Accuracy & Search Reliability**
+  - `entities scan --audit` flag — reports user-correction mentions with unregistered text forms in a Rich table with registration suggestions
+  - `_escape_like_pattern()` shared helper for ILIKE wildcard escaping in `transcript_segment_repository.py`
+  - NULL byte (`\x00`) rejection in search endpoints with 400 Bad Request response
+  - 79 new tests across unit and integration suites
+
+### Fixed
+- Special character search (GitHub #84): `_`, `%`, `\` in search queries now match literally instead of acting as SQL ILIKE wildcards
+- Phrase matching (GitHub #84): multi-word queries like `[ __ ]` treated as contiguous phrases, not split into independent terms
+- Batch find-replace literal mode: same ILIKE escaping applied via `find_by_text_pattern()`
+- Entity mention count accuracy (GitHub #89): `mention_count` and `video_count` now exclude mentions matching ASR-error aliases, aligning with visible alias occurrence counts
+- `has_mentions` filter now correctly excludes entities with only ASR-error-matched mentions
+
+### Technical
+- No new dependencies, no schema changes, no migrations
+- Files modified: `search.py`, `transcript_segment_repository.py`, `entity_mention_repository.py`, `entity_mention_scan_service.py`, `entity_commands.py`
+- `update_entity_counters()` rewritten with `union_all` JOIN against visible names (canonical + non-ASR-error aliases)
+
 ## [0.44.0] - 2026-03-13
 
 ### Added

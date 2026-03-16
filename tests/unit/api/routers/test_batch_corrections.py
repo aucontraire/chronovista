@@ -674,3 +674,96 @@ class TestRevertBatch:
         # Empty segment either 404s (no route) or 405 (method not allowed on
         # the /batches route).  Either way it is not a successful revert.
         assert response.status_code in (404, 405, 422)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# POST /api/v1/corrections/batch/apply  — batch_id generation
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestApplyBatchId:
+    """Tests that POST /apply generates a batch_id for provenance tracking."""
+
+    @patch(
+        "chronovista.api.routers.batch_corrections._batch_service",
+        new_callable=MagicMock,
+    )
+    async def test_apply_generates_and_passes_batch_id(
+        self,
+        mock_svc: MagicMock,
+        client: AsyncClient,
+    ) -> None:
+        """POST /apply generates a UUIDv7 batch_id and passes it to apply_to_segments."""
+        from chronovista.api.schemas.batch_corrections import BatchApplyResult
+
+        mock_result = BatchApplyResult(
+            total_applied=1,
+            total_skipped=0,
+            total_failed=0,
+            failed_segment_ids=[],
+            affected_video_ids=["vid1"],
+            rebuild_triggered=True,
+        )
+        mock_svc.apply_to_segments = AsyncMock(return_value=mock_result)
+
+        response = await client.post(
+            "/api/v1/corrections/batch/apply",
+            json={
+                "pattern": "test",
+                "replacement": "fixed",
+                "segment_ids": [1],
+                "correction_type": "proper_noun",
+            },
+        )
+
+        assert response.status_code == 200
+        # Verify batch_id was generated and passed
+        call_kwargs = mock_svc.apply_to_segments.call_args.kwargs
+        assert "batch_id" in call_kwargs
+        assert isinstance(call_kwargs["batch_id"], uuid.UUID)
+
+    @patch(
+        "chronovista.api.routers.batch_corrections._batch_service",
+        new_callable=MagicMock,
+    )
+    async def test_apply_batch_id_is_unique_per_call(
+        self,
+        mock_svc: MagicMock,
+        client: AsyncClient,
+    ) -> None:
+        """Each POST /apply call generates a distinct batch_id."""
+        from chronovista.api.schemas.batch_corrections import BatchApplyResult
+
+        mock_result = BatchApplyResult(
+            total_applied=1,
+            total_skipped=0,
+            total_failed=0,
+            failed_segment_ids=[],
+            affected_video_ids=["vid1"],
+            rebuild_triggered=True,
+        )
+        mock_svc.apply_to_segments = AsyncMock(return_value=mock_result)
+
+        await client.post(
+            "/api/v1/corrections/batch/apply",
+            json={
+                "pattern": "test",
+                "replacement": "fixed",
+                "segment_ids": [1],
+                "correction_type": "proper_noun",
+            },
+        )
+        first_batch_id = mock_svc.apply_to_segments.call_args.kwargs["batch_id"]
+
+        await client.post(
+            "/api/v1/corrections/batch/apply",
+            json={
+                "pattern": "test",
+                "replacement": "fixed",
+                "segment_ids": [2],
+                "correction_type": "proper_noun",
+            },
+        )
+        second_batch_id = mock_svc.apply_to_segments.call_args.kwargs["batch_id"]
+
+        assert first_batch_id != second_batch_id

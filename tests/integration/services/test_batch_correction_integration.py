@@ -37,7 +37,7 @@ from chronovista.models.enums import CorrectionType
 from scripts.utilities.backfill_batch_ids import (
     assign_batch_id,
     fetch_unassigned_corrections,
-    identify_batches,
+    identify_batches_by_text as identify_batches,
 )
 
 # ---------------------------------------------------------------------------

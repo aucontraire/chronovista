@@ -47,11 +47,16 @@ from scripts.utilities.backfill_batch_ids import (  # noqa: E402
     assign_batch_id,
     build_parser,
     fetch_unassigned_corrections,
-    identify_batches,
+    identify_all_batches,
+    identify_batches_by_text,
+    identify_batches_by_timestamp,
     run_backfill,
     _group_key,
     _display_summary,
 )
+
+# Backward-compatible alias for existing tests
+identify_batches = identify_batches_by_text
 
 from tests.factories.transcript_correction_factory import (
     TranscriptCorrectionFactory,
@@ -984,3 +989,160 @@ class TestExitCodes:
             code = await run_backfill(dry_run=False, window_seconds=5.0)
 
         assert code == 1
+
+
+# ---------------------------------------------------------------------------
+# TestIdentifyBatchesByTimestamp (Strategy 2)
+# ---------------------------------------------------------------------------
+
+
+class TestIdentifyBatchesByTimestamp:
+    """Tests for Strategy 2: group by (actor, exact timestamp)."""
+
+    def test_empty_returns_empty(self) -> None:
+        """Empty input must return an empty list."""
+        assert identify_batches_by_timestamp([]) == []
+
+    def test_two_corrections_same_timestamp_form_batch(self) -> None:
+        """Two corrections with identical actor and timestamp form a batch."""
+        ts = _at(0)
+        rows = [
+            _make_row(id="a", corrected_by_user_id="user:batch", original_text="foo bar", corrected_text="foo baz", corrected_at=ts),
+            _make_row(id="b", corrected_by_user_id="user:batch", original_text="qux bar", corrected_text="qux baz", corrected_at=ts),
+        ]
+        batches = identify_batches_by_timestamp(rows)
+        assert len(batches) == 1
+        assert set(batches[0].correction_ids) == {"a", "b"}
+        assert batches[0].strategy == "timestamp"
+
+    def test_single_correction_no_batch(self) -> None:
+        """A single correction at a unique timestamp produces no batch."""
+        rows = [_make_row(id="solo", corrected_at=_at(0))]
+        batches = identify_batches_by_timestamp(rows)
+        assert batches == []
+
+    def test_different_timestamps_separate_batches(self) -> None:
+        """Corrections at different timestamps form separate batches."""
+        rows = [
+            _make_row(id="a1", corrected_at=_at(0)),
+            _make_row(id="a2", corrected_at=_at(0)),
+            _make_row(id="b1", corrected_at=_at(10)),
+            _make_row(id="b2", corrected_at=_at(10)),
+        ]
+        batches = identify_batches_by_timestamp(rows)
+        assert len(batches) == 2
+        batch_id_sets = [set(bg.correction_ids) for bg in batches]
+        assert {"a1", "a2"} in batch_id_sets
+        assert {"b1", "b2"} in batch_id_sets
+
+    def test_different_actors_same_timestamp_separate(self) -> None:
+        """Same timestamp but different actors must NOT be grouped together."""
+        ts = _at(0)
+        rows = [
+            _make_row(id="a", corrected_by_user_id="alice", corrected_at=ts),
+            _make_row(id="b", corrected_by_user_id="bob", corrected_at=ts),
+        ]
+        batches = identify_batches_by_timestamp(rows)
+        assert batches == []
+
+    def test_different_text_same_timestamp_grouped(self) -> None:
+        """Strategy 2 groups by timestamp regardless of text differences."""
+        ts = _at(0)
+        rows = [
+            _make_row(id="a", original_text="context A Kosigible", corrected_text="context A Khashoggi", corrected_at=ts),
+            _make_row(id="b", original_text="context B Kosigible", corrected_text="context B Khashoggi", corrected_at=ts),
+            _make_row(id="c", original_text="context C Kosigible", corrected_text="context C Khashoggi", corrected_at=ts),
+        ]
+        batches = identify_batches_by_timestamp(rows)
+        assert len(batches) == 1
+        assert set(batches[0].correction_ids) == {"a", "b", "c"}
+
+    def test_seven_corrections_same_timestamp_one_batch(self) -> None:
+        """Mirrors the real-world frontend batch apply scenario (7 segments)."""
+        ts = _at(0)
+        rows = [
+            _make_row(
+                id=f"r{i}",
+                corrected_by_user_id="user:batch",
+                original_text=f"segment {i} with Kosigible",
+                corrected_text=f"segment {i} with Khashoggi",
+                corrected_at=ts,
+            )
+            for i in range(7)
+        ]
+        batches = identify_batches_by_timestamp(rows)
+        assert len(batches) == 1
+        assert len(batches[0].correction_ids) == 7
+
+
+# ---------------------------------------------------------------------------
+# TestIdentifyAllBatches (combined strategies)
+# ---------------------------------------------------------------------------
+
+
+class TestIdentifyAllBatches:
+    """Tests for the combined identify_all_batches function."""
+
+    def test_cli_batches_found_by_strategy_1(self) -> None:
+        """Same-text corrections within window are found by Strategy 1."""
+        rows = [
+            _make_row(id="a", corrected_at=_at(0)),
+            _make_row(id="b", corrected_at=_at(2)),
+        ]
+        batches = identify_all_batches(rows, window_seconds=5.0)
+        assert len(batches) == 1
+        assert batches[0].strategy == "cli"
+
+    def test_frontend_batches_found_by_strategy_2(self) -> None:
+        """Different-text corrections at same timestamp are found by Strategy 2."""
+        ts = _at(0)
+        rows = [
+            _make_row(id="a", original_text="ctx A error", corrected_text="ctx A fix", corrected_at=ts),
+            _make_row(id="b", original_text="ctx B error", corrected_text="ctx B fix", corrected_at=ts),
+        ]
+        batches = identify_all_batches(rows, window_seconds=5.0)
+        assert len(batches) == 1
+        assert batches[0].strategy == "timestamp"
+
+    def test_no_double_assignment(self) -> None:
+        """Corrections grouped by Strategy 1 are excluded from Strategy 2."""
+        ts = _at(0)
+        # Same text, same timestamp → Strategy 1 catches them
+        rows = [
+            _make_row(id="a", corrected_at=ts),
+            _make_row(id="b", corrected_at=ts),
+        ]
+        batches = identify_all_batches(rows, window_seconds=5.0)
+        # Should be exactly 1 batch (from Strategy 1), not 2
+        assert len(batches) == 1
+        assert batches[0].strategy == "cli"
+        assert set(batches[0].correction_ids) == {"a", "b"}
+
+    def test_mixed_cli_and_frontend_batches(self) -> None:
+        """Both strategies find their respective batch types."""
+        ts_cli = _at(0)
+        ts_frontend = _at(100)
+        rows = [
+            # CLI batch: same text, within window
+            _make_row(id="cli1", original_text="teh", corrected_text="the", corrected_at=ts_cli),
+            _make_row(id="cli2", original_text="teh", corrected_text="the", corrected_at=_at(2)),
+            # Frontend batch: different text, same timestamp
+            _make_row(id="fe1", original_text="ctx A Shanebam", corrected_text="ctx A Sheinbaum", corrected_at=ts_frontend),
+            _make_row(id="fe2", original_text="ctx B Shanebam", corrected_text="ctx B Sheinbaum", corrected_at=ts_frontend),
+        ]
+        batches = identify_all_batches(rows, window_seconds=5.0)
+        assert len(batches) == 2
+        strategies = {bg.strategy for bg in batches}
+        assert strategies == {"cli", "timestamp"}
+
+    def test_singleton_excluded_from_both_strategies(self) -> None:
+        """A correction that is alone in both strategies gets no batch_id."""
+        rows = [
+            _make_row(id="solo", original_text="unique", corrected_text="fixed", corrected_at=_at(0)),
+        ]
+        batches = identify_all_batches(rows, window_seconds=5.0)
+        assert batches == []
+
+    def test_empty_input(self) -> None:
+        """Empty input returns empty from combined function."""
+        assert identify_all_batches([], window_seconds=5.0) == []

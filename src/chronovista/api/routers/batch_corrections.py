@@ -10,6 +10,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from uuid_utils import uuid7
 
 from chronovista.api.deps import get_db, require_auth
 from chronovista.api.schemas.batch_corrections import (
@@ -187,6 +188,10 @@ async def apply_batch_corrections(
         exc._error_code_value = "VALIDATION_ERROR"
         raise exc
 
+    # Generate a batch_id so all corrections from this API call share
+    # the same provenance identifier (mirrors CLI find_and_replace behaviour).
+    batch_id = uuid.UUID(bytes=uuid7().bytes)
+
     try:
         result = await _batch_service.apply_to_segments(
             session,
@@ -201,6 +206,7 @@ async def apply_batch_corrections(
             auto_rebuild=request.auto_rebuild,
             corrected_by_user_id=ACTOR_USER_BATCH,
             entity_id=request.entity_id,
+            batch_id=batch_id,
         )
     except ValueError as e:
         raise _map_batch_error(e) from e

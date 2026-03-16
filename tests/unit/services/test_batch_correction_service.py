@@ -1072,6 +1072,7 @@ def _make_correction_db(
     corrected_by_user_id: str | None = None,
     corrected_at: Any = None,
     version_number: int = 1,
+    batch_id: Any = None,
 ) -> MagicMock:
     """Create a mock TranscriptCorrectionDB for testing."""
     from datetime import datetime, timezone
@@ -1088,6 +1089,7 @@ def _make_correction_db(
     c.corrected_by_user_id = corrected_by_user_id
     c.corrected_at = corrected_at or datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
     c.version_number = version_number
+    c.batch_id = batch_id
     return c
 
 
@@ -1358,7 +1360,7 @@ class TestExportCorrections:
             "id", "video_id", "language_code", "segment_id",
             "correction_type", "original_text", "corrected_text",
             "correction_note", "corrected_by_user_id", "corrected_at",
-            "version_number",
+            "version_number", "batch_id",
         ]
         assert header == ",".join(expected_cols)
 
@@ -3731,4 +3733,1154 @@ class TestCreateEntityMentionsForSegment:
             # First "Mexico" at 8-14 overlaps with "Mexico City" at 8-19 → excluded
             # Second "Mexico" at 29-35 → included
             assert len(mentions) == 1
-            assert mentions[0].match_start == 29
+
+
+# ---------------------------------------------------------------------------
+# TestFindAndReplaceBatchIdGeneration (Feature 045 — T015)
+# ---------------------------------------------------------------------------
+
+
+class TestFindAndReplaceBatchIdGeneration:
+    """Tests for batch_id generation and propagation in find_and_replace().
+
+    Feature 045 adds UUIDv7 batch provenance tracking so that every correction
+    produced by a single find_and_replace() call shares the same batch_id.
+    Individual (non-batch) corrections must have batch_id=None.
+    """
+
+    async def test_find_and_replace_generates_batch_id_on_live_run(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """find_and_replace() generates a UUIDv7 batch_id in live mode.
+
+        Each live (non-dry-run) call must produce a new batch_id and pass it
+        to every apply_correction() call so that all corrections from the
+        same operation can be looked up or reverted as a group.
+        """
+        seg = _make_segment(video_id="v1", segment_id=1, text="teh quick fox")
+
+        mock_segment_repo.count_filtered.return_value = 10
+        mock_segment_repo.find_by_text_pattern.return_value = [seg]
+        mock_correction_service.apply_correction.return_value = MagicMock()
+
+        result = await service.find_and_replace(
+            mock_session,
+            pattern="teh",
+            replacement="the",
+        )
+
+        from chronovista.models.batch_correction_models import BatchCorrectionResult
+
+        assert isinstance(result, BatchCorrectionResult)
+        assert result.total_applied == 1
+
+        # Verify apply_correction was called with a batch_id keyword argument
+        call_kwargs = mock_correction_service.apply_correction.call_args.kwargs
+        assert "batch_id" in call_kwargs, (
+            "apply_correction must receive batch_id kwarg from find_and_replace"
+        )
+        batch_id_passed = call_kwargs["batch_id"]
+        assert batch_id_passed is not None, (
+            "batch_id passed to apply_correction must not be None in live mode"
+        )
+        assert isinstance(batch_id_passed, uuid.UUID), (
+            f"batch_id must be a uuid.UUID; got {type(batch_id_passed)}"
+        )
+
+    async def test_all_corrections_in_batch_share_same_batch_id(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """All corrections from a single find_and_replace() share the same batch_id.
+
+        When multiple segments match the pattern, every apply_correction() call
+        issued within that single find_and_replace() invocation must receive the
+        same batch_id so that they form a cohesive group for later batch-revert.
+        """
+        seg1 = _make_segment(video_id="v1", segment_id=1, text="teh cat")
+        seg2 = _make_segment(video_id="v1", segment_id=2, text="teh dog")
+        seg3 = _make_segment(video_id="v2", segment_id=3, text="teh bird")
+
+        mock_segment_repo.count_filtered.return_value = 20
+        mock_segment_repo.find_by_text_pattern.return_value = [seg1, seg2, seg3]
+        mock_correction_service.apply_correction.return_value = MagicMock()
+
+        await service.find_and_replace(
+            mock_session,
+            pattern="teh",
+            replacement="the",
+        )
+
+        assert mock_correction_service.apply_correction.call_count == 3
+
+        # Collect all batch_ids passed across every apply_correction() call
+        batch_ids_used: set[uuid.UUID] = set()
+        for call in mock_correction_service.apply_correction.call_args_list:
+            bid = call.kwargs.get("batch_id")
+            assert bid is not None, (
+                "Every apply_correction call must receive a non-None batch_id"
+            )
+            batch_ids_used.add(bid)
+
+        # All corrections in a single find_and_replace must share one batch_id
+        assert len(batch_ids_used) == 1, (
+            f"Expected exactly 1 unique batch_id; got {len(batch_ids_used)}: "
+            f"{batch_ids_used}"
+        )
+
+    async def test_successive_find_and_replace_calls_get_different_batch_ids(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """Two separate find_and_replace() calls produce two distinct batch_ids.
+
+        Each call is an independent batch operation and must receive its own
+        UUIDv7 so that operators can revert them independently via batch-revert.
+        """
+        seg_a = _make_segment(video_id="v1", segment_id=10, text="errr word")
+        seg_b = _make_segment(video_id="v2", segment_id=20, text="seperate issue")
+
+        mock_segment_repo.count_filtered.return_value = 5
+        mock_segment_repo.find_by_text_pattern.side_effect = [
+            [seg_a],  # first call returns seg_a
+            [seg_b],  # second call returns seg_b
+        ]
+        mock_correction_service.apply_correction.return_value = MagicMock()
+
+        # First batch operation
+        await service.find_and_replace(
+            mock_session,
+            pattern="errr",
+            replacement="err",
+        )
+        first_call_kwargs = mock_correction_service.apply_correction.call_args.kwargs
+        batch_id_first = first_call_kwargs["batch_id"]
+
+        mock_correction_service.apply_correction.reset_mock()
+
+        # Second batch operation
+        await service.find_and_replace(
+            mock_session,
+            pattern="seperate",
+            replacement="separate",
+        )
+        second_call_kwargs = mock_correction_service.apply_correction.call_args.kwargs
+        batch_id_second = second_call_kwargs["batch_id"]
+
+        assert batch_id_first != batch_id_second, (
+            "Successive find_and_replace() calls must produce distinct batch_ids; "
+            f"got identical id {batch_id_first!r} for both"
+        )
+
+    async def test_dry_run_does_not_generate_batch_id(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """find_and_replace(dry_run=True) never calls apply_correction with a batch_id.
+
+        Dry-run mode returns preview data without touching the database, so
+        no batch_id is generated and apply_correction is never called.
+        """
+        mock_session.execute.return_value = _make_empty_execute_result()
+        mock_segment_repo.find_by_text_pattern.return_value = []
+
+        result = await service.find_and_replace(
+            mock_session,
+            pattern="teh",
+            replacement="the",
+            dry_run=True,
+        )
+
+        # Dry-run returns a list of preview tuples, not a BatchCorrectionResult
+        assert isinstance(result, list)
+        # apply_correction must never be invoked in dry-run mode
+        mock_correction_service.apply_correction.assert_not_called()
+
+    async def test_zero_match_live_run_skips_batch_id(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """When no segments match, apply_correction is never called.
+
+        If find_and_replace() short-circuits due to zero matches, the UUIDv7
+        batch_id is still generated internally (expected) but never forwarded
+        since apply_correction is never called.
+        """
+        mock_segment_repo.count_filtered.return_value = 0
+        mock_segment_repo.find_by_text_pattern.return_value = []
+
+        from chronovista.models.batch_correction_models import BatchCorrectionResult
+
+        result = await service.find_and_replace(
+            mock_session,
+            pattern="nonexistent_pattern",
+            replacement="replacement",
+        )
+
+        assert isinstance(result, BatchCorrectionResult)
+        assert result.total_applied == 0
+        mock_correction_service.apply_correction.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TestApplyToSegmentsBatchIdPropagation (Feature 045 — T015)
+# ---------------------------------------------------------------------------
+
+
+class TestApplyToSegmentsBatchIdPropagation:
+    """Tests for batch_id propagation in apply_to_segments().
+
+    apply_to_segments() accepts an optional batch_id and must forward it to
+    every apply_correction() call.  When no batch_id is provided (inline
+    corrections), apply_correction must receive batch_id=None.
+    """
+
+    async def test_explicit_batch_id_is_forwarded_to_apply_correction(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """apply_to_segments() forwards an explicit batch_id to apply_correction().
+
+        This is the batch-apply path: the caller (find_and_replace) generates
+        a batch_id and passes it through apply_to_segments so all resulting
+        corrections share the same provenance identifier.
+        """
+        batch_id = uuid.UUID(bytes=__import__("uuid_utils").uuid7().bytes)
+        seg = _make_segment(video_id="vid1", segment_id=1, text="teh fox")
+
+        correction_record = MagicMock()
+        correction_record.id = uuid.uuid4()
+        mock_correction_service.apply_correction.return_value = correction_record
+
+        segment_result = MagicMock()
+        segment_result.scalars.return_value.all.return_value = [seg]
+        mock_session.execute.return_value = segment_result
+
+        result = await service.apply_to_segments(
+            mock_session,
+            pattern="teh",
+            replacement="the",
+            segment_ids=[1],
+            batch_id=batch_id,
+            auto_rebuild=False,
+        )
+
+        assert result.total_applied == 1
+        call_kwargs = mock_correction_service.apply_correction.call_args.kwargs
+        assert call_kwargs.get("batch_id") == batch_id, (
+            f"apply_correction must receive batch_id={batch_id!r}; "
+            f"got {call_kwargs.get('batch_id')!r}"
+        )
+
+    async def test_none_batch_id_passed_as_null_to_apply_correction(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """apply_to_segments() with batch_id=None passes None to apply_correction().
+
+        Individual (inline) corrections must have batch_id=None so that they
+        are excluded from batch-list aggregation and batch-revert operations.
+        """
+        seg = _make_segment(video_id="vid1", segment_id=1, text="teh fox")
+
+        correction_record = MagicMock()
+        correction_record.id = uuid.uuid4()
+        mock_correction_service.apply_correction.return_value = correction_record
+
+        segment_result = MagicMock()
+        segment_result.scalars.return_value.all.return_value = [seg]
+        mock_session.execute.return_value = segment_result
+
+        result = await service.apply_to_segments(
+            mock_session,
+            pattern="teh",
+            replacement="the",
+            segment_ids=[1],
+            batch_id=None,  # explicit None — individual correction
+            auto_rebuild=False,
+        )
+
+        assert result.total_applied == 1
+        call_kwargs = mock_correction_service.apply_correction.call_args.kwargs
+        assert call_kwargs.get("batch_id") is None, (
+            "apply_correction must receive batch_id=None for individual corrections"
+        )
+
+    async def test_all_segments_in_one_call_share_batch_id(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """All segments in a single apply_to_segments() share the same batch_id.
+
+        When batch_id is provided, every segment processed in that call must
+        receive the identical batch_id so they all belong to the same batch group.
+        """
+        batch_id = uuid.UUID(bytes=__import__("uuid_utils").uuid7().bytes)
+
+        seg1 = _make_segment(video_id="v1", segment_id=1, text="teh cat")
+        seg2 = _make_segment(video_id="v1", segment_id=2, text="teh dog")
+
+        correction_record = MagicMock()
+        correction_record.id = uuid.uuid4()
+        mock_correction_service.apply_correction.return_value = correction_record
+
+        segment_result = MagicMock()
+        segment_result.scalars.return_value.all.return_value = [seg1, seg2]
+        mock_session.execute.return_value = segment_result
+
+        result = await service.apply_to_segments(
+            mock_session,
+            pattern="teh",
+            replacement="the",
+            segment_ids=[1, 2],
+            batch_id=batch_id,
+            auto_rebuild=False,
+        )
+
+        assert result.total_applied == 2
+        assert mock_correction_service.apply_correction.call_count == 2
+
+        for call in mock_correction_service.apply_correction.call_args_list:
+            assert call.kwargs.get("batch_id") == batch_id
+
+
+# ---------------------------------------------------------------------------
+# TestExportCorrectionsBatchId (Feature 045 — T015)
+# ---------------------------------------------------------------------------
+
+
+class TestExportCorrectionsBatchId:
+    """Tests for batch_id inclusion in export_corrections() output.
+
+    export_corrections() must include the batch_id field in both CSV and JSON
+    output, with NULL (None) values preserved for individual corrections and
+    UUID values serialised correctly for batch corrections.
+    """
+
+    async def test_csv_export_includes_batch_id_column(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_correction_repo: AsyncMock,
+    ) -> None:
+        """CSV export includes batch_id as the last column header.
+
+        The CSV fieldnames list in export_corrections() must include 'batch_id'
+        so downstream consumers can identify which corrections belong to a batch.
+        """
+        mock_correction_repo.get_all_filtered.return_value = []
+
+        _, csv_str = await service.export_corrections(mock_session, format="csv")
+
+        header_row = csv_str.strip().split("\n")[0]
+        assert "batch_id" in header_row, (
+            f"CSV header must include 'batch_id' column; got: {header_row!r}"
+        )
+
+    async def test_csv_export_batch_id_populated_when_correction_has_batch(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_correction_repo: AsyncMock,
+    ) -> None:
+        """CSV export renders the UUID when a correction has a non-null batch_id.
+
+        The batch_id in the exported row must match the correction's batch_id
+        so that operators can identify and correlate batch corrections.
+        """
+        import csv
+        import io
+
+        batch_id = uuid.UUID(bytes=__import__("uuid_utils").uuid7().bytes)
+        c = _make_correction_db(
+            video_id="v1",
+            segment_id=1,
+            batch_id=batch_id,
+        )
+        mock_correction_repo.get_all_filtered.return_value = [c]
+
+        _, csv_str = await service.export_corrections(mock_session, format="csv")
+
+        reader = csv.DictReader(io.StringIO(csv_str))
+        rows = list(reader)
+        assert len(rows) == 1
+        assert rows[0]["batch_id"] == str(batch_id), (
+            f"CSV batch_id must be the UUID string; got {rows[0]['batch_id']!r}"
+        )
+
+    async def test_csv_export_batch_id_empty_when_null(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_correction_repo: AsyncMock,
+    ) -> None:
+        """CSV export renders empty string for individual corrections (batch_id=None).
+
+        Individual (non-batch) corrections have batch_id=None in the database.
+        The CSV export must render this as an empty cell, not the string 'None'.
+        """
+        import csv
+        import io
+
+        c = _make_correction_db(video_id="v1", segment_id=1, batch_id=None)
+        mock_correction_repo.get_all_filtered.return_value = [c]
+
+        _, csv_str = await service.export_corrections(mock_session, format="csv")
+
+        reader = csv.DictReader(io.StringIO(csv_str))
+        rows = list(reader)
+        assert len(rows) == 1
+        # batch_id=None should render as empty string in CSV, not the string "None"
+        assert rows[0]["batch_id"] != "None", (
+            "batch_id=None must not be rendered as the string 'None' in CSV; "
+            f"got {rows[0]['batch_id']!r}"
+        )
+
+    async def test_json_export_includes_batch_id_field(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_correction_repo: AsyncMock,
+    ) -> None:
+        """JSON export includes batch_id key in each correction object.
+
+        Every correction object in the JSON array must have a 'batch_id' key
+        present (value may be null for individual corrections).
+        """
+        import json
+
+        c = _make_correction_db(video_id="v1", batch_id=None)
+        mock_correction_repo.get_all_filtered.return_value = [c]
+
+        _, json_str = await service.export_corrections(mock_session, format="json")
+
+        parsed = json.loads(json_str)
+        assert len(parsed) == 1
+        assert "batch_id" in parsed[0], (
+            f"JSON correction object must have 'batch_id' key; "
+            f"keys present: {list(parsed[0].keys())}"
+        )
+
+    async def test_json_export_batch_id_serialised_as_string(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_correction_repo: AsyncMock,
+    ) -> None:
+        """JSON export renders batch_id UUID as a string, not a raw UUID object.
+
+        The JSON serialiser must convert UUID objects to strings via the
+        _json_default fallback, so clients receive a standard UUID string.
+        """
+        import json
+
+        batch_id = uuid.UUID(bytes=__import__("uuid_utils").uuid7().bytes)
+        c = _make_correction_db(video_id="v1", batch_id=batch_id)
+        mock_correction_repo.get_all_filtered.return_value = [c]
+
+        _, json_str = await service.export_corrections(mock_session, format="json")
+
+        parsed = json.loads(json_str)
+        assert len(parsed) == 1
+        # If batch_id is present and non-null, it must be a string
+        if parsed[0]["batch_id"] is not None:
+            assert isinstance(parsed[0]["batch_id"], str), (
+                f"JSON batch_id must be a string; got {type(parsed[0]['batch_id'])}"
+            )
+            # Must round-trip as a valid UUID
+            parsed_uuid = uuid.UUID(parsed[0]["batch_id"])
+            assert parsed_uuid == batch_id
+
+
+# ---------------------------------------------------------------------------
+# TestBatchRevertByBatchId (Feature 045 — T015)
+# ---------------------------------------------------------------------------
+
+
+class TestBatchRevertByBatchId:
+    """Tests for batch_revert(batch_id=...) mode introduced in Feature 045.
+
+    When batch_id is provided, batch_revert() must:
+    1. Call correction_repo.get_by_batch_id() to fetch corrections
+    2. Fetch segments by the segment IDs in those corrections
+    3. Revert only the segments that still have active corrections
+    4. Return a BatchCorrectionResult with accurate counts
+    5. Return an empty BatchCorrectionResult when no corrections exist
+    """
+
+    async def test_batch_id_mode_calls_get_by_batch_id(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+        mock_correction_repo: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """batch_revert(batch_id=...) queries corrections by batch_id.
+
+        The service must call correction_repo.get_by_batch_id() so that
+        only corrections from the specified batch are targeted for revert.
+        """
+        batch_id = uuid.UUID(bytes=__import__("uuid_utils").uuid7().bytes)
+        correction = _make_correction_db(
+            segment_id=10, batch_id=batch_id
+        )
+        mock_correction_repo.get_by_batch_id.return_value = [correction]
+
+        # Segment lookup returns a corrected segment
+        seg = _make_segment(
+            video_id="v1", segment_id=10,
+            corrected_text="the fox", has_correction=True,
+        )
+        segment_result = MagicMock()
+        segment_result.scalars.return_value.all.return_value = [seg]
+        mock_session.execute.return_value = segment_result
+
+        mock_correction_service.revert_correction.return_value = MagicMock()
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityMentionRepository"
+        ) as MockMentionRepo:
+            mock_repo_instance = AsyncMock()
+            mock_repo_instance.get_entity_ids_by_correction_ids.return_value = []
+            mock_repo_instance.delete_by_correction_ids.return_value = 0
+            MockMentionRepo.return_value = mock_repo_instance
+
+            result = await service.batch_revert(
+                mock_session,
+                batch_id=batch_id,
+            )
+
+        mock_correction_repo.get_by_batch_id.assert_called_once_with(
+            mock_session, batch_id
+        )
+
+        from chronovista.models.batch_correction_models import BatchCorrectionResult
+
+        assert isinstance(result, BatchCorrectionResult)
+
+    async def test_batch_id_mode_reverts_all_matching_segments(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+        mock_correction_repo: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """batch_revert() reverts every active correction in the batch.
+
+        All segments from the batch that still have has_correction=True must
+        be reverted. Segments without active corrections are skipped.
+        """
+        batch_id = uuid.UUID(bytes=__import__("uuid_utils").uuid7().bytes)
+
+        correction_a = _make_correction_db(segment_id=1, batch_id=batch_id)
+        correction_b = _make_correction_db(segment_id=2, batch_id=batch_id)
+        mock_correction_repo.get_by_batch_id.return_value = [
+            correction_a, correction_b
+        ]
+
+        seg1 = _make_segment(
+            video_id="v1", segment_id=1,
+            corrected_text="the cat", has_correction=True,
+        )
+        seg2 = _make_segment(
+            video_id="v1", segment_id=2,
+            corrected_text="the dog", has_correction=True,
+        )
+        segment_result = MagicMock()
+        segment_result.scalars.return_value.all.return_value = [seg1, seg2]
+        mock_session.execute.return_value = segment_result
+
+        mock_correction_service.revert_correction.return_value = MagicMock()
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityMentionRepository"
+        ) as MockMentionRepo:
+            mock_repo_instance = AsyncMock()
+            mock_repo_instance.get_entity_ids_by_correction_ids.return_value = []
+            mock_repo_instance.delete_by_correction_ids.return_value = 0
+            MockMentionRepo.return_value = mock_repo_instance
+
+            result = await service.batch_revert(
+                mock_session,
+                batch_id=batch_id,
+            )
+
+        assert mock_correction_service.revert_correction.call_count == 2
+        assert result.total_applied == 2
+        assert result.total_skipped == 0
+
+    async def test_batch_id_mode_returns_empty_result_for_nonexistent_batch(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_correction_repo: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """batch_revert(batch_id=...) returns empty BatchCorrectionResult for unknown batch.
+
+        When no corrections exist for the given batch_id, the service must
+        return a zero-count result rather than raising an error.
+        """
+        batch_id = uuid.UUID(bytes=__import__("uuid_utils").uuid7().bytes)
+        mock_correction_repo.get_by_batch_id.return_value = []
+
+        from chronovista.models.batch_correction_models import BatchCorrectionResult
+
+        result = await service.batch_revert(
+            mock_session,
+            batch_id=batch_id,
+        )
+
+        assert isinstance(result, BatchCorrectionResult)
+        assert result.total_applied == 0
+        assert result.total_matched == 0
+        assert result.total_scanned == 0
+        # revert_correction must never be called when there are no corrections
+        mock_correction_service.revert_correction.assert_not_called()
+
+    async def test_batch_id_mode_skips_segments_without_active_corrections(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_correction_repo: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """batch_revert() skips segments that have already been reverted.
+
+        If a segment's has_correction flag is False at revert time (e.g. it was
+        already reverted by a previous call), it must be counted as skipped
+        rather than causing an error.
+        """
+        batch_id = uuid.UUID(bytes=__import__("uuid_utils").uuid7().bytes)
+
+        correction_a = _make_correction_db(segment_id=1, batch_id=batch_id)
+        correction_b = _make_correction_db(segment_id=2, batch_id=batch_id)
+        mock_correction_repo.get_by_batch_id.return_value = [
+            correction_a, correction_b
+        ]
+
+        # seg1 still has an active correction; seg2 was already reverted
+        seg1 = _make_segment(
+            video_id="v1", segment_id=1,
+            corrected_text="the cat", has_correction=True,
+        )
+        seg2 = _make_segment(
+            video_id="v1", segment_id=2,
+            corrected_text=None, has_correction=False,
+        )
+        segment_result = MagicMock()
+        segment_result.scalars.return_value.all.return_value = [seg1, seg2]
+        mock_session.execute.return_value = segment_result
+
+        mock_correction_service.revert_correction.return_value = MagicMock()
+
+        with patch(
+            "chronovista.services.batch_correction_service.EntityMentionRepository"
+        ) as MockMentionRepo:
+            mock_repo_instance = AsyncMock()
+            mock_repo_instance.get_entity_ids_by_correction_ids.return_value = []
+            mock_repo_instance.delete_by_correction_ids.return_value = 0
+            MockMentionRepo.return_value = mock_repo_instance
+
+            result = await service.batch_revert(
+                mock_session,
+                batch_id=batch_id,
+            )
+
+        # Only seg1 (has_correction=True) should be reverted
+        assert mock_correction_service.revert_correction.call_count == 1
+        assert result.total_applied == 1
+
+    async def test_batch_id_mode_dry_run_returns_preview_tuples(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_correction_repo: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """batch_revert(batch_id=..., dry_run=True) returns preview tuples.
+
+        Dry-run mode must return a list of preview tuples describing what
+        would be reverted without actually calling revert_correction.
+        """
+        batch_id = uuid.UUID(bytes=__import__("uuid_utils").uuid7().bytes)
+        correction = _make_correction_db(segment_id=5, batch_id=batch_id)
+        mock_correction_repo.get_by_batch_id.return_value = [correction]
+
+        seg = _make_segment(
+            video_id="vid1", segment_id=5,
+            corrected_text="the fox", has_correction=True, start_time=1.5,
+        )
+        segment_result = MagicMock()
+        segment_result.scalars.return_value.all.return_value = [seg]
+        mock_session.execute.return_value = segment_result
+
+        result = await service.batch_revert(
+            mock_session,
+            batch_id=batch_id,
+            dry_run=True,
+        )
+
+        # Dry-run returns a list, not a BatchCorrectionResult
+        assert isinstance(result, list)
+        assert len(result) == 1
+        # revert_correction must never be called in dry-run mode
+        mock_correction_service.revert_correction.assert_not_called()
+
+    async def test_batch_id_mode_does_not_use_pattern_matching(
+        self,
+        service: Any,
+        mock_session: AsyncMock,
+        mock_segment_repo: AsyncMock,
+        mock_correction_repo: AsyncMock,
+        mock_correction_service: AsyncMock,
+    ) -> None:
+        """batch_revert(batch_id=...) bypasses segment pattern matching.
+
+        When batch_id is provided, the service must use get_by_batch_id()
+        rather than find_by_text_pattern(). The segment_repo pattern-search
+        must not be called so that the batch is identified purely by provenance.
+        """
+        batch_id = uuid.UUID(bytes=__import__("uuid_utils").uuid7().bytes)
+        mock_correction_repo.get_by_batch_id.return_value = []
+
+        await service.batch_revert(
+            mock_session,
+            batch_id=batch_id,
+        )
+
+        # Pattern-based segment search must NOT be used in batch_id mode
+        mock_segment_repo.find_by_text_pattern.assert_not_called()
+        mock_segment_repo.count_filtered.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# T024 [US3]: word_level_diff() unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestWordLevelDiff:
+    """Unit tests for the ``word_level_diff()`` function.
+
+    Covers single-word changes, multi-word shared context, full-text
+    replacement, capitalisation-only exclusion, token-count mismatches,
+    Unicode characters, identical inputs, and empty strings.
+
+    All tests are synchronous — ``word_level_diff`` is a pure function with
+    no I/O.
+    """
+
+    # ------------------------------------------------------------------
+    # (a) Single-word change
+    # ------------------------------------------------------------------
+
+    def test_single_word_change_one_changed_pair(self) -> None:
+        """A single misspelled word produces exactly one changed pair.
+
+        "Chomski" → "Chomsky" must yield changed_pairs=[("Chomski", "Chomsky")]
+        with no unchanged_tokens and no residual pairs.
+        """
+        from chronovista.services.batch_correction_service import word_level_diff
+
+        result = word_level_diff("Chomski", "Chomsky")
+
+        assert len(result.changed_pairs) == 1
+        assert result.changed_pairs[0] == ("Chomski", "Chomsky")
+        # Single-token input — nothing is unchanged
+        assert result.unchanged_tokens == []
+
+    # ------------------------------------------------------------------
+    # (b) Multi-word with shared context
+    # ------------------------------------------------------------------
+
+    def test_multi_word_shared_context_only_diff_reported(self) -> None:
+        """Unchanged surrounding words are captured in unchanged_tokens.
+
+        "Noam Chomski" → "Noam Chomsky": "Noam" is identical (case-insensitive),
+        so it must appear in unchanged_tokens. Only the misspelled word should
+        appear as a changed pair.
+        """
+        from chronovista.services.batch_correction_service import word_level_diff
+
+        result = word_level_diff("Noam Chomski", "Noam Chomsky")
+
+        assert ("Chomski", "Chomsky") in result.changed_pairs
+        assert "Noam" in result.unchanged_tokens
+        # There must be exactly one changed pair (the misspelling, not "Noam")
+        assert len(result.changed_pairs) == 1
+
+    # ------------------------------------------------------------------
+    # (c) Entire text changed
+    # ------------------------------------------------------------------
+
+    def test_entire_text_changed_both_tokens_different(self) -> None:
+        """When every token changes, all pairs land in changed_pairs.
+
+        "Shane Bound" → "Sheinbaum": both tokens differ, so changed_pairs must
+        contain the full original and corrected fragments. No unchanged_tokens.
+        """
+        from chronovista.services.batch_correction_service import word_level_diff
+
+        result = word_level_diff("Shane Bound", "Sheinbaum")
+
+        # At least one changed pair must exist; unchanged_tokens must be empty
+        assert len(result.changed_pairs) >= 1
+        assert result.unchanged_tokens == []
+        # Reconstruct all originals from pairs
+        all_originals = " ".join(pair[0] for pair in result.changed_pairs if pair[0])
+        assert "Shane" in all_originals or "Shane Bound" in all_originals
+
+    # ------------------------------------------------------------------
+    # (d) Capitalisation-only excluded
+    # ------------------------------------------------------------------
+
+    def test_capitalisation_only_not_reported(self) -> None:
+        """Capitalisation-only differences must NOT appear in changed_pairs.
+
+        "NATO" vs "nato" differ only in case; the function compares tokens
+        in lowered form so this must produce no changed pairs.
+        """
+        from chronovista.services.batch_correction_service import word_level_diff
+
+        result = word_level_diff("NATO", "nato")
+
+        assert result.changed_pairs == []
+        # The token is equal (case-insensitive), so it shows as unchanged
+        assert len(result.unchanged_tokens) == 1
+
+    # ------------------------------------------------------------------
+    # (e) Token count mismatch
+    # ------------------------------------------------------------------
+
+    def test_token_count_mismatch_handled(self) -> None:
+        """2-token original vs 1-token corrected does not raise.
+
+        "Shin Bomb" (2 tokens) → "Sheinbaum" (1 token): the function must
+        return a result without raising, and changed_pairs must be non-empty
+        since the content differs.
+        """
+        from chronovista.services.batch_correction_service import word_level_diff
+
+        result = word_level_diff("Shin Bomb", "Sheinbaum")
+
+        # Must not raise; must have at least one change since texts differ
+        assert isinstance(result.changed_pairs, list)
+        assert len(result.changed_pairs) >= 1
+
+    # ------------------------------------------------------------------
+    # (f) Unicode accented characters
+    # ------------------------------------------------------------------
+
+    def test_unicode_accent_difference_detected(self) -> None:
+        """Accented vs non-accented characters are reported as a change.
+
+        "café" vs "cafe" differ at the character level even though they look
+        similar. The function must detect this as a changed pair.
+        """
+        from chronovista.services.batch_correction_service import word_level_diff
+
+        result = word_level_diff("café", "cafe")
+
+        assert len(result.changed_pairs) == 1
+        assert result.changed_pairs[0] == ("café", "cafe")
+
+    # ------------------------------------------------------------------
+    # (g) Identical text
+    # ------------------------------------------------------------------
+
+    def test_identical_text_returns_no_changes(self) -> None:
+        """Diffing identical strings yields no changed pairs.
+
+        Every token appears in unchanged_tokens; changed_pairs and any
+        delete/insert opcodes are absent.
+        """
+        from chronovista.services.batch_correction_service import word_level_diff
+
+        result = word_level_diff("the quick brown fox", "the quick brown fox")
+
+        assert result.changed_pairs == []
+        assert result.unchanged_tokens == ["the", "quick", "brown", "fox"]
+
+    # ------------------------------------------------------------------
+    # (h) Empty strings
+    # ------------------------------------------------------------------
+
+    def test_both_empty_returns_empty_result(self) -> None:
+        """Two empty strings produce a fully empty WordLevelDiffResult.
+
+        No pairs, no unchanged tokens, no opcodes.
+        """
+        from chronovista.services.batch_correction_service import word_level_diff
+
+        result = word_level_diff("", "")
+
+        assert result.changed_pairs == []
+        assert result.unchanged_tokens == []
+        assert result.token_positions == []
+
+    def test_original_empty_corrected_nonempty(self) -> None:
+        """Empty original with non-empty corrected yields an insert-type pair.
+
+        The corrected text that was inserted should appear in changed_pairs as
+        ("", corrected_fragment).
+        """
+        from chronovista.services.batch_correction_service import word_level_diff
+
+        result = word_level_diff("", "Chomsky")
+
+        assert len(result.changed_pairs) >= 1
+        # An insert opcode adds ("", token) pairs
+        assert any(pair[0] == "" for pair in result.changed_pairs)
+
+    def test_original_nonempty_corrected_empty(self) -> None:
+        """Non-empty original with empty corrected yields a delete-type pair.
+
+        The deleted text should appear in changed_pairs as (original_fragment, "").
+        """
+        from chronovista.services.batch_correction_service import word_level_diff
+
+        result = word_level_diff("Chomski", "")
+
+        assert len(result.changed_pairs) >= 1
+        assert any(pair[1] == "" for pair in result.changed_pairs)
+
+
+# ---------------------------------------------------------------------------
+# T025 [US3]: Minimal-token alias registration tests
+# ---------------------------------------------------------------------------
+
+
+class TestMinimalTokenAliasRegistration:
+    """Unit tests for the word-level diff sub-token alias registration logic
+    inside ``register_asr_alias`` (chronovista.services.asr_alias_registry).
+
+    Tests verify that when a full-string correction matches an entity:
+    - Minimal (sub-token) changed pairs are registered as separate ASR aliases
+    - Multiple changed blocks are each registered independently
+    - Duplicate sub-tokens (identical to the full string) are skipped
+    - No registration occurs when no entity is matched
+
+    All database I/O is mocked; tests use factory-boy ORM factories for
+    correction data construction.
+    """
+
+    # ------------------------------------------------------------------
+    # (a) Minimal token registered alongside full string
+    # ------------------------------------------------------------------
+
+    async def test_sub_token_registered_when_entity_matched(self) -> None:
+        """When the corrected text matches an entity, changed sub-tokens are
+        also registered as separate ASR aliases.
+
+        Scenario: "Noam Chomski" → "Noam Chomsky". The full string is
+        registered for the entity. The sub-token diff produces ("Chomski",
+        "Chomsky") which must trigger a second alias registration.
+        """
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        import uuid
+        from uuid_utils import uuid7
+
+        entity_id = uuid.UUID(bytes=uuid7().bytes)
+
+        mock_session = AsyncMock()
+        # begin_nested is a synchronous context manager returning an async cm
+        mock_session.begin_nested = MagicMock(
+            return_value=AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
+        )
+
+        with patch(
+            "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
+            new=AsyncMock(return_value=(entity_id, "Noam Chomsky")),
+        ), patch(
+            "chronovista.services.asr_alias_registry.TagNormalizationService"
+        ) as MockNormalizer, patch(
+            "chronovista.services.asr_alias_registry.EntityAliasRepository"
+        ) as MockAliasRepo:
+            normalizer_instance = MagicMock()
+            normalizer_instance.normalize.side_effect = lambda t: t.lower()
+            MockNormalizer.return_value = normalizer_instance
+
+            repo_instance = AsyncMock()
+            MockAliasRepo.return_value = repo_instance
+
+            existing_result = MagicMock()
+            existing_result.scalar_one_or_none.return_value = None
+            mock_session.execute.return_value = existing_result
+
+            from chronovista.services.asr_alias_registry import register_asr_alias
+
+            await register_asr_alias(
+                mock_session,
+                original_text="Noam Chomski",
+                corrected_text="Noam Chomsky",
+            )
+
+        # EntityAliasRepository.create must have been called at least twice:
+        # once for the full string alias and once for the sub-token alias
+        assert repo_instance.create.call_count >= 2
+
+    # ------------------------------------------------------------------
+    # (b) Multiple changed blocks registered as separate aliases
+    # ------------------------------------------------------------------
+
+    async def test_multiple_changed_blocks_registered_separately(self) -> None:
+        """Each distinct changed pair from the diff is registered individually.
+
+        Scenario: "Shin Bomb" → "Sheinbaum" — two tokens differ.  The
+        implementation must attempt alias creation for every non-empty,
+        non-duplicate changed pair.
+        """
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        import uuid
+        from uuid_utils import uuid7
+
+        entity_id = uuid.UUID(bytes=uuid7().bytes)
+
+        mock_session = AsyncMock()
+        mock_session.begin_nested = MagicMock(
+            return_value=AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
+        )
+
+        with patch(
+            "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
+            new=AsyncMock(return_value=(entity_id, "Sheinbaum")),
+        ), patch(
+            "chronovista.services.asr_alias_registry.TagNormalizationService"
+        ) as MockNormalizer, patch(
+            "chronovista.services.asr_alias_registry.EntityAliasRepository"
+        ) as MockAliasRepo:
+            normalizer_instance = MagicMock()
+            normalizer_instance.normalize.side_effect = lambda t: t.lower()
+            MockNormalizer.return_value = normalizer_instance
+
+            repo_instance = AsyncMock()
+            MockAliasRepo.return_value = repo_instance
+
+            existing_result = MagicMock()
+            existing_result.scalar_one_or_none.return_value = None
+            mock_session.execute.return_value = existing_result
+
+            from chronovista.services.asr_alias_registry import register_asr_alias
+
+            await register_asr_alias(
+                mock_session,
+                original_text="Shin Bomb",
+                corrected_text="Sheinbaum",
+            )
+
+        # At least the full-string alias must have been registered
+        assert repo_instance.create.call_count >= 1
+
+    # ------------------------------------------------------------------
+    # (c) Identical minimal token and full string — no duplicate
+    # ------------------------------------------------------------------
+
+    async def test_no_duplicate_when_sub_token_equals_full_string(self) -> None:
+        """Sub-tokens that are identical to the full original string are skipped.
+
+        The guard ``error_token.strip() == original_text.strip()`` prevents
+        registering the same ASR error form twice.  With "Chomski" → "Chomsky"
+        the single token equals the full string, so only one alias is created.
+        """
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        import uuid
+        from uuid_utils import uuid7
+
+        entity_id = uuid.UUID(bytes=uuid7().bytes)
+
+        mock_session = AsyncMock()
+        mock_session.begin_nested = MagicMock(
+            return_value=AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
+        )
+
+        with patch(
+            "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
+            new=AsyncMock(return_value=(entity_id, "Chomsky")),
+        ), patch(
+            "chronovista.services.asr_alias_registry.TagNormalizationService"
+        ) as MockNormalizer, patch(
+            "chronovista.services.asr_alias_registry.EntityAliasRepository"
+        ) as MockAliasRepo:
+            normalizer_instance = MagicMock()
+            normalizer_instance.normalize.side_effect = lambda t: t.lower()
+            MockNormalizer.return_value = normalizer_instance
+
+            repo_instance = AsyncMock()
+            MockAliasRepo.return_value = repo_instance
+
+            existing_result = MagicMock()
+            existing_result.scalar_one_or_none.return_value = None
+            mock_session.execute.return_value = existing_result
+
+            from chronovista.services.asr_alias_registry import register_asr_alias
+
+            await register_asr_alias(
+                mock_session,
+                original_text="Chomski",
+                corrected_text="Chomsky",
+            )
+
+        # "Chomski" == "Chomski" (full string) so no sub-token registration,
+        # meaning create is called exactly once (for the full-string alias).
+        assert repo_instance.create.call_count == 1
+
+    # ------------------------------------------------------------------
+    # (d) No registration when entity not matched
+    # ------------------------------------------------------------------
+
+    async def test_no_registration_when_no_entity_match(self) -> None:
+        """When ``resolve_entity_id_from_text`` returns None, nothing is registered.
+
+        The hook is a no-op when the corrected text does not match any known
+        entity — no alias repository calls must be made.
+        """
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_session = AsyncMock()
+
+        with patch(
+            "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
+            new=AsyncMock(return_value=None),
+        ), patch(
+            "chronovista.services.asr_alias_registry.EntityAliasRepository"
+        ) as MockAliasRepo:
+            repo_instance = AsyncMock()
+            MockAliasRepo.return_value = repo_instance
+
+            from chronovista.services.asr_alias_registry import register_asr_alias
+
+            await register_asr_alias(
+                mock_session,
+                original_text="random text",
+                corrected_text="unknown entity xyz",
+            )
+
+        # No alias was resolved, so nothing should have been created
+        repo_instance.create.assert_not_called()

@@ -901,7 +901,7 @@ class TestUpdateEntityCounters:
         """
         return str(
             stmt.compile(
-                dialect=pg_dialect.dialect(),
+                dialect=pg_dialect.dialect(),  # type: ignore[no-untyped-call]
                 compile_kwargs={"literal_binds": True},
             )
         )
@@ -1920,3 +1920,226 @@ class TestEntityMentionRepositoryFactoryIntegration:
         assert mention.id is not None
         assert mention.entity_id is not None
         assert mention.created_at is not None
+
+
+# ---------------------------------------------------------------------------
+# TestGetEntityVideoIds  (Feature 045 — T030)
+# ---------------------------------------------------------------------------
+
+
+class TestGetEntityVideoIds:
+    """Tests for get_entity_video_ids().
+
+    The method performs a UNION of two SQL paths:
+
+    Path 1 — Direct entity mentions:
+        SELECT DISTINCT video_id FROM entity_mentions WHERE entity_id = :eid
+
+    Path 2 — Tag-based association:
+        SELECT DISTINCT video_tags.video_id
+        FROM video_tags
+        JOIN tag_aliases ON video_tags.tag = tag_aliases.raw_form
+        JOIN canonical_tags ON tag_aliases.canonical_tag_id = canonical_tags.id
+        WHERE canonical_tags.entity_id = :eid
+
+    The result is a ``set[str]`` that deduplicates across both paths.
+
+    Mock strategy: ``session.execute`` is configured to return a mock whose
+    ``scalars().all()`` yields the video IDs that the combined UNION should
+    produce.  Because ``get_entity_video_ids`` executes a single combined
+    ``union()`` statement, one ``execute`` call is expected.
+    """
+
+    @pytest.fixture
+    def repository(self) -> EntityMentionRepository:
+        """Provide a fresh repository instance for each test."""
+        return EntityMentionRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> MagicMock:
+        """Provide a mock async session for each test."""
+        return _make_mock_session()
+
+    # ---- helper ----
+
+    def _make_scalars_result(self, video_ids: list[str]) -> MagicMock:
+        """Build a mock result whose .scalars().all() returns video_ids."""
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = video_ids
+        mock_result = MagicMock()
+        mock_result.scalars.return_value = mock_scalars
+        return mock_result
+
+    # ---- (a) path 1 — direct entity mention video IDs ----
+
+    async def test_returns_video_ids_from_entity_mentions_path(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Video IDs in entity_mentions for the given entity_id are returned.
+
+        When the UNION result contains video IDs originating from direct
+        entity_mentions rows, all of them must appear in the returned set.
+        """
+        entity_id = _uuid()
+        expected_ids = ["dQw4w9WgXcQ", "9bZkp7q19f0"]
+
+        mock_session.execute.return_value = self._make_scalars_result(expected_ids)
+
+        result = await repository.get_entity_video_ids(mock_session, entity_id)
+
+        assert result == set(expected_ids)
+        mock_session.execute.assert_called_once()
+
+    # ---- (b) path 2 — canonical_tags → tag_aliases → video_tags ----
+
+    async def test_returns_video_ids_from_canonical_tag_path(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Video IDs reached via canonical_tags → tag_aliases → video_tags are returned.
+
+        When the entity has canonical tag associations but no direct entity
+        mention rows, the tag-based path must still contribute its video IDs to
+        the result set.
+        """
+        entity_id = _uuid()
+        tag_video_ids = ["3tmd-ClpJxA", "jNQXAC9IVRw"]
+
+        mock_session.execute.return_value = self._make_scalars_result(tag_video_ids)
+
+        result = await repository.get_entity_video_ids(mock_session, entity_id)
+
+        assert result == set(tag_video_ids)
+        mock_session.execute.assert_called_once()
+
+    # ---- (c) union of both paths with deduplication ----
+
+    async def test_union_deduplicates_video_ids_across_both_paths(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Video IDs present in both paths appear only once in the result.
+
+        The UNION (not UNION ALL) must deduplicate so that a video with both a
+        direct entity mention and a canonical-tag association is not counted
+        twice.  We simulate this by having the mock return a list that already
+        represents the deduplicated union output — matching what the DB would
+        produce.
+        """
+        entity_id = _uuid()
+        # Simulate DB returning the union-deduplicated set: vid A appears in
+        # both paths but is returned only once.
+        union_result = ["dQw4w9WgXcQ", "9bZkp7q19f0", "3tmd-ClpJxA"]
+
+        mock_session.execute.return_value = self._make_scalars_result(union_result)
+
+        result = await repository.get_entity_video_ids(mock_session, entity_id)
+
+        # Result is a set — no duplicates regardless of what the mock returned
+        assert len(result) == len(set(union_result))
+        assert result == {"dQw4w9WgXcQ", "9bZkp7q19f0", "3tmd-ClpJxA"}
+
+    async def test_duplicate_ids_in_scalars_are_deduplicated_by_set_conversion(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """The repository must return a set, eliminating any duplicate values.
+
+        Even if the underlying query returned duplicates (e.g., from UNION ALL
+        used in a future refactor), the method's return type ``set[str]``
+        guarantees uniqueness.
+        """
+        entity_id = _uuid()
+        # Deliberately supply a list with a repeated ID
+        raw_result = ["dQw4w9WgXcQ", "dQw4w9WgXcQ", "9bZkp7q19f0"]
+
+        mock_session.execute.return_value = self._make_scalars_result(raw_result)
+
+        result = await repository.get_entity_video_ids(mock_session, entity_id)
+
+        assert isinstance(result, set)
+        assert len(result) == 2
+        assert "dQw4w9WgXcQ" in result
+        assert "9bZkp7q19f0" in result
+
+    # ---- (d) entity with no associations returns empty set ----
+
+    async def test_entity_with_no_associations_returns_empty_set(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """An entity with no mention rows and no tag associations returns an empty set.
+
+        This is the case for newly created entities that have never been scanned.
+        The method must return an empty ``set``, not ``None`` or an empty list.
+        """
+        entity_id = _uuid()
+
+        mock_session.execute.return_value = self._make_scalars_result([])
+
+        result = await repository.get_entity_video_ids(mock_session, entity_id)
+
+        assert isinstance(result, set)
+        assert result == set()
+        mock_session.execute.assert_called_once()
+
+    # ---- return type and execute call count ----
+
+    async def test_return_type_is_always_a_set(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """get_entity_video_ids() always returns a set[str], never a list."""
+        entity_id = _uuid()
+        mock_session.execute.return_value = self._make_scalars_result(
+            ["dQw4w9WgXcQ"]
+        )
+
+        result = await repository.get_entity_video_ids(mock_session, entity_id)
+
+        assert isinstance(result, set)
+
+    async def test_executes_exactly_one_combined_query(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """The method must fire only one execute() call for the combined UNION.
+
+        Both paths are united in a single SQL UNION statement rather than two
+        separate round-trips.
+        """
+        entity_id = _uuid()
+        mock_session.execute.return_value = self._make_scalars_result(
+            ["dQw4w9WgXcQ"]
+        )
+
+        await repository.get_entity_video_ids(mock_session, entity_id)
+
+        mock_session.execute.assert_called_once()
+
+    async def test_compiled_sql_contains_union(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """The SQL emitted by get_entity_video_ids contains a UNION keyword.
+
+        This validates that both paths are combined at the SQL level rather than
+        via in-memory Python set operations.
+        """
+        entity_id = _uuid()
+        mock_session.execute.return_value = self._make_scalars_result([])
+
+        await repository.get_entity_video_ids(mock_session, entity_id)
+
+        stmt = mock_session.execute.call_args.args[0]
+        sql_str = str(stmt.compile(compile_kwargs={"literal_binds": False}))
+        assert "UNION" in sql_str.upper()

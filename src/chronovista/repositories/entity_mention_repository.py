@@ -16,6 +16,7 @@ from sqlalchemy import (
     distinct,
     func,
     select,
+    union,
     union_all,
     update,
 )
@@ -24,12 +25,15 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import (
+    CanonicalTag as CanonicalTagDB,
     Channel,
     EntityAlias as EntityAliasDB,
     EntityMention as EntityMentionDB,
     NamedEntity as NamedEntityDB,
+    TagAlias as TagAliasDB,
     TranscriptSegment as TranscriptSegmentDB,
     Video as VideoDB,
+    VideoTag as VideoTagDB,
 )
 from chronovista.models.entity_mention import EntityMentionCreate
 from chronovista.models.enums import EntityAliasType
@@ -761,3 +765,56 @@ class EntityMentionRepository(
             "type_breakdown": type_breakdown,
             "top_entities": top_entities,
         }
+
+    async def get_entity_video_ids(
+        self,
+        session: AsyncSession,
+        entity_id: uuid.UUID,
+    ) -> set[str]:
+        """Return all video IDs associated with an entity via two paths.
+
+        Path 1: Direct entity mentions — ``entity_mentions.video_id``
+        where ``entity_id`` matches.
+
+        Path 2: Tag-based — canonical tags linked to the entity, through
+        ``canonical_tags`` -> ``tag_aliases`` -> ``video_tags``.
+
+        The union of both paths ensures forward-compatibility: any new
+        association type adding rows to ``entity_mentions`` automatically
+        expands scope.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        entity_id : uuid.UUID
+            The named entity UUID.
+
+        Returns
+        -------
+        set[str]
+            Unique video IDs associated with the entity.
+        """
+        # Path 1: direct entity mentions
+        path1 = (
+            select(distinct(EntityMentionDB.video_id).label("video_id"))
+            .where(EntityMentionDB.entity_id == entity_id)
+        )
+
+        # Path 2: tag-based — canonical_tags → tag_aliases → video_tags
+        path2 = (
+            select(distinct(VideoTagDB.video_id).label("video_id"))
+            .join(
+                TagAliasDB,
+                VideoTagDB.tag == TagAliasDB.raw_form,
+            )
+            .join(
+                CanonicalTagDB,
+                TagAliasDB.canonical_tag_id == CanonicalTagDB.id,
+            )
+            .where(CanonicalTagDB.entity_id == entity_id)
+        )
+
+        combined = union(path1, path2)
+        result = await session.execute(combined)
+        return set(result.scalars().all())

@@ -1,8 +1,13 @@
 """Batch correction API request/response schemas.
 
 This module defines Pydantic V2 models for the batch corrections API endpoints,
-including preview, apply, and rebuild-text operations.
+including preview, apply, rebuild-text, batch listing, and batch revert operations.
 """
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -357,3 +362,49 @@ class BatchRebuildResult(BaseModel):
     videos_rebuilt: int
     video_ids: list[str]
     failed_video_ids: list[str]
+
+
+class BatchListItemResponse(BaseModel):
+    """Response model for a single batch in the batch list.
+
+    Attributes
+    ----------
+    batch_id : uuid.UUID
+        UUIDv7 identifying the batch.
+    correction_count : int
+        Number of corrections in this batch.
+    corrected_by_user_id : str
+        Identifier of the user/actor who submitted the batch.
+    pattern : str
+        The search pattern used for the batch find-replace.
+    replacement : str
+        The replacement text applied by the batch.
+    batch_timestamp : datetime
+        Timestamp of the batch operation.
+    """
+
+    model_config = ConfigDict(strict=True, from_attributes=True)
+
+    batch_id: uuid.UUID
+    correction_count: int
+    corrected_by_user_id: str
+    pattern: str
+    replacement: str
+    batch_timestamp: datetime
+
+
+class BatchRevertResponse(BaseModel):
+    """Response model for the batch revert (DELETE) endpoint.
+
+    Attributes
+    ----------
+    reverted_count : int
+        Number of corrections successfully reverted.
+    skipped_count : int
+        Number of corrections skipped (already reverted or missing segments).
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    reverted_count: int
+    skipped_count: int

@@ -11,6 +11,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.46.0] - 2026-03-15
+
+### Added
+- **Feature 045: Correction Intelligence Pipeline**
+  - **Batch Correction Provenance (US1)**: Nullable `batch_id` (UUIDv7) column on `transcript_corrections` table with index; `BatchCorrectionService` assigns a single batch ID per find-replace invocation; `batch-revert` CLI subcommand reverts all corrections sharing a batch ID with effective text recalculation and entity mention counter updates; `GET /api/v1/corrections/batches` lists all batch metadata; `DELETE /api/v1/corrections/batch/{batch_id}` reverts a batch via API; corrections export (CSV/JSON) includes `batch_id` column (GitHub #81)
+  - **Historical Batch Backfill (US2)**: `scripts/utilities/backfill_batch_ids.py` retroactively assigns `batch_id` values to existing corrections using sliding-window heuristic (same actor, original/corrected text, timestamps within configurable window); supports `--dry-run` and `--window` flags; idempotent — re-running makes no changes; Rich progress bar and summary table output (GitHub #81)
+  - **Word-Level Diff Analysis (US3)**: `word_level_diff()` function compares original and corrected text token-by-token via `difflib.SequenceMatcher`; `corrections analyze-diffs` CLI command reports error tokens, canonical forms, frequency, and associated entities across all corrections; minimal-token ASR alias registration alongside full-string aliases when corrections match entities (GitHub #80)
+  - **ASR Error Boundary Detection (US4)**: `PhoneticMatcher` service using Double Metaphone and Soundex algorithms to identify single-word corruptions, truncations, and multi-word corruptions with spaces; confidence scoring based on phonetic distance with configurable threshold; corroborating evidence requirements to distinguish ASR errors from legitimate similar-sounding names; `corrections detect-boundaries` CLI command (GitHub #77)
+  - **Cross-Segment Candidate Discovery (US5)**: `CrossSegmentDiscovery` service mines recurring correction patterns to find ASR errors split across adjacent transcript segments; generates word-boundary split hypotheses and searches for prefix-at-end/suffix-at-start pairs; confidence-ranked output; `corrections suggest-cross-segment` CLI command with `--min-corrections` threshold (GitHub #78)
+  - **Fuzzy Utils Refactor (FR-025)**: Replaced hand-rolled fuzzy matching in `fuzzy.py` with `python-Levenshtein` for performance; existing consumers (canonical tag autocomplete) unaffected
+
+### Changed
+- `corrections export` CSV/JSON output now includes `batch_id` column
+
+### Technical
+- New Alembic migration: `045_add_batch_id_to_corrections`
+- New files: `phonetic_matcher.py`, `cross_segment_discovery.py`, `word_level_diff.py`, `backfill_batch_ids.py`, `batch_corrections_router.py`, `batch_correction_schemas.py`
+- New dependencies: `fuzzywuzzy`, `python-Levenshtein`, `jellyfish`, `metaphone`
+- 200+ new tests across unit and integration suites
+- GitHub issue #91 created for wiring cross-segment discovery into the frontend
+
 ## [0.45.0] - 2026-03-14
 
 ### Added

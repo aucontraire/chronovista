@@ -522,7 +522,7 @@ class TestBatchCorrectionIntegration:
             "id", "video_id", "language_code", "segment_id",
             "correction_type", "original_text", "corrected_text",
             "correction_note", "corrected_by_user_id", "corrected_at",
-            "version_number",
+            "version_number", "batch_id",
         }
         assert reader.fieldnames is not None
         assert set(reader.fieldnames) == expected_columns, (
@@ -592,7 +592,7 @@ class TestBatchCorrectionIntegration:
             "id", "video_id", "language_code", "segment_id",
             "correction_type", "original_text", "corrected_text",
             "correction_note", "corrected_by_user_id", "corrected_at",
-            "version_number",
+            "version_number", "batch_id",
         }
         assert set(record.keys()) == expected_keys, (
             f"JSON keys mismatch: {set(record.keys())} != {expected_keys}"

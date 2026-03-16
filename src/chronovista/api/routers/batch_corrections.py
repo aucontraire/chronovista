@@ -1,24 +1,30 @@
 """Batch correction endpoints for bulk find-replace operations on transcripts.
 
 This module handles the REST API endpoints for batch correction operations,
-including previewing matches, applying corrections in bulk, and rebuilding
-full transcript text from corrected segments.
+including previewing matches, applying corrections in bulk, rebuilding
+full transcript text from corrected segments, listing batches, and
+reverting entire batches.
 """
 
-from fastapi import APIRouter, Depends
+import uuid
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from uuid_utils import uuid7
 
 from chronovista.api.deps import get_db, require_auth
 from chronovista.api.schemas.batch_corrections import (
     BatchApplyRequest,
     BatchApplyResult,
+    BatchListItemResponse,
     BatchPreviewRequest,
     BatchPreviewResponse,
     BatchRebuildRequest,
     BatchRebuildResult,
+    BatchRevertResponse,
 )
-from chronovista.api.schemas.responses import ApiResponse
-from chronovista.exceptions import APIValidationError
+from chronovista.api.schemas.responses import ApiResponse, PaginationMeta
+from chronovista.exceptions import APIValidationError, ConflictError, NotFoundError
 from chronovista.models.correction_actors import ACTOR_USER_BATCH
 from chronovista.models.enums import CorrectionType
 from chronovista.repositories.transcript_correction_repository import (
@@ -30,6 +36,7 @@ from chronovista.repositories.transcript_segment_repository import (
 from chronovista.repositories.video_transcript_repository import (
     VideoTranscriptRepository,
 )
+from chronovista.models.batch_correction_models import BatchCorrectionResult
 from chronovista.services.batch_correction_service import BatchCorrectionService
 from chronovista.services.transcript_correction_service import (
     TranscriptCorrectionService,
@@ -181,6 +188,10 @@ async def apply_batch_corrections(
         exc._error_code_value = "VALIDATION_ERROR"
         raise exc
 
+    # Generate a batch_id so all corrections from this API call share
+    # the same provenance identifier (mirrors CLI find_and_replace behaviour).
+    batch_id = uuid.UUID(bytes=uuid7().bytes)
+
     try:
         result = await _batch_service.apply_to_segments(
             session,
@@ -195,6 +206,7 @@ async def apply_batch_corrections(
             auto_rebuild=request.auto_rebuild,
             corrected_by_user_id=ACTOR_USER_BATCH,
             entity_id=request.entity_id,
+            batch_id=batch_id,
         )
     except ValueError as e:
         raise _map_batch_error(e) from e
@@ -252,3 +264,152 @@ async def rebuild_text(
         )
 
     return ApiResponse[BatchRebuildResult](data=response_data)
+
+
+@router.get(
+    "/batches",
+    response_model=ApiResponse[list[BatchListItemResponse]],
+    status_code=200,
+    summary="List batch correction groups",
+)
+async def list_batches(
+    offset: int = Query(default=0, ge=0, description="Number of rows to skip"),
+    limit: int = Query(default=20, ge=1, le=100, description="Maximum rows to return"),
+    corrected_by_user_id: str | None = Query(
+        default=None, description="Filter batches by user/actor ID"
+    ),
+    session: AsyncSession = Depends(get_db),
+) -> ApiResponse[list[BatchListItemResponse]]:
+    """List batch correction groups with aggregated metadata.
+
+    Returns a paginated list of batch correction groups, sorted by
+    ``corrected_at`` descending (most recent first). Each item includes
+    the batch ID, correction count, actor, pattern/replacement, and timestamp.
+
+    Parameters
+    ----------
+    offset : int
+        Number of rows to skip (default 0).
+    limit : int
+        Maximum rows to return (default 20, max 100).
+    corrected_by_user_id : str or None
+        If provided, restrict to batches by this user/actor.
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    ApiResponse[list[BatchListItemResponse]]
+        Paginated list of batch summary items.
+    """
+    items = await _correction_repo.get_batch_list(
+        session,
+        offset=offset,
+        limit=limit,
+        corrected_by_user_id=corrected_by_user_id,
+    )
+
+    response_items = [
+        BatchListItemResponse(
+            batch_id=item.batch_id,
+            correction_count=item.correction_count,
+            corrected_by_user_id=item.corrected_by_user_id,
+            pattern=item.pattern,
+            replacement=item.replacement,
+            batch_timestamp=item.batch_timestamp,
+        )
+        for item in items
+    ]
+
+    # Build pagination metadata — total is not provided by get_batch_list,
+    # so we indicate has_more based on whether we got a full page.
+    pagination = PaginationMeta(
+        total=offset + len(response_items) + (1 if len(response_items) == limit else 0),
+        limit=limit,
+        offset=offset,
+        has_more=len(response_items) == limit,
+    )
+
+    return ApiResponse[list[BatchListItemResponse]](
+        data=response_items,
+        pagination=pagination,
+    )
+
+
+@router.delete(
+    "/{batch_id}",
+    response_model=ApiResponse[BatchRevertResponse],
+    status_code=200,
+    summary="Revert all corrections in a batch",
+)
+async def revert_batch(
+    batch_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+) -> ApiResponse[BatchRevertResponse]:
+    """Revert all corrections belonging to a specific batch.
+
+    Atomically reverts every correction sharing the given ``batch_id``.
+    Returns HTTP 404 if no corrections exist for the batch ID,
+    and HTTP 409 if all corrections in the batch have already been reverted.
+
+    Parameters
+    ----------
+    batch_id : uuid.UUID
+        The batch identifier (UUIDv7).
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    ApiResponse[BatchRevertResponse]
+        Summary of reverted and skipped corrections.
+
+    Raises
+    ------
+    NotFoundError
+        If no corrections exist for the given batch_id (404).
+    ConflictError
+        If all corrections in the batch are already reverted (409).
+    """
+    # Check if the batch exists at all
+    corrections = await _correction_repo.get_by_batch_id(session, batch_id)
+    if not corrections:
+        raise NotFoundError(
+            resource_type="Batch",
+            identifier=str(batch_id),
+        )
+
+    # Check if all corrections are already reverted (no active corrections)
+    # A correction is "active" if the segment still has has_correction=True
+    # We rely on batch_revert to determine this; if total_applied == 0
+    # and total_matched == 0 after the call, everything was already reverted.
+
+    result = await _batch_service.batch_revert(
+        session,
+        batch_id=batch_id,
+    )
+
+    # batch_revert returns BatchCorrectionResult when dry_run=False
+    if isinstance(result, BatchCorrectionResult):
+        reverted_count = result.total_applied
+        skipped_count = result.total_skipped + result.total_failed
+
+        # If nothing was reverted and nothing matched, all were already reverted
+        if reverted_count == 0 and result.total_matched == 0:
+            raise ConflictError(
+                message=f"Batch '{batch_id}' has already been fully reverted.",
+                details={"batch_id": str(batch_id)},
+            )
+
+        response_data = BatchRevertResponse(
+            reverted_count=reverted_count,
+            skipped_count=skipped_count,
+        )
+        return ApiResponse[BatchRevertResponse](data=response_data)
+
+    # Shouldn't reach here since dry_run=False, but handle gracefully
+    response_data = BatchRevertResponse(
+        reverted_count=0,
+        skipped_count=0,
+    )
+    return ApiResponse[BatchRevertResponse](data=response_data)

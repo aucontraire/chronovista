@@ -13,6 +13,8 @@ Use Cases:
 from collections.abc import Iterable
 from typing import List, Tuple
 
+import Levenshtein as _levenshtein
+
 
 def levenshtein_distance(s1: str, s2: str) -> int:
     """
@@ -21,6 +23,9 @@ def levenshtein_distance(s1: str, s2: str) -> int:
     The Levenshtein distance is the minimum number of single-character edits
     (insertions, deletions, or substitutions) required to change one string
     into the other.
+
+    Delegates to the C-optimised ``python-Levenshtein`` library for
+    performance.
 
     Parameters
     ----------
@@ -43,21 +48,7 @@ def levenshtein_distance(s1: str, s2: str) -> int:
     >>> levenshtein_distance("kitten", "sitting")
     3
     """
-    if len(s1) < len(s2):
-        return levenshtein_distance(s2, s1)
-    if len(s2) == 0:
-        return len(s1)
-
-    previous_row: List[int] = list(range(len(s2) + 1))
-    for i, c1 in enumerate(s1):
-        current_row: List[int] = [i + 1]
-        for j, c2 in enumerate(s2):
-            insertions = previous_row[j + 1] + 1
-            deletions = current_row[j] + 1
-            substitutions = previous_row[j] + (c1 != c2)
-            current_row.append(min(insertions, deletions, substitutions))
-        previous_row = current_row
-    return previous_row[-1]
+    return _levenshtein.distance(s1, s2)
 
 
 def find_similar(

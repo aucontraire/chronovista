@@ -70,6 +70,10 @@ class TranscriptCorrectionBase(BaseModel):
         ge=1,
         description="Version number of this correction (must be >= 1)",
     )
+    batch_id: uuid.UUID | None = Field(
+        default=None,
+        description="Optional batch ID linking corrections from the same batch operation",
+    )
 
     @field_validator("version_number")
     @classmethod

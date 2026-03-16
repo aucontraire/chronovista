@@ -22,6 +22,7 @@ from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.models.batch_correction_models import (
+    BatchListItem,
     CorrectionPattern,
     TypeCount,
     VideoCount,
@@ -589,6 +590,107 @@ class TranscriptCorrectionRepository(
         # Sort by remaining_matches DESC, then limit
         patterns.sort(key=lambda p: p.remaining_matches, reverse=True)
         return patterns[:limit]
+
+    async def get_by_batch_id(
+        self,
+        session: AsyncSession,
+        batch_id: UUID,
+    ) -> list[TranscriptCorrectionDB]:
+        """
+        Get all corrections belonging to a specific batch.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        batch_id : UUID
+            The batch identifier (UUIDv7).
+
+        Returns
+        -------
+        list[TranscriptCorrectionDB]
+            Corrections sharing the given batch_id, ordered by
+            ``corrected_at`` ascending.
+        """
+        stmt = (
+            select(TranscriptCorrectionDB)
+            .where(TranscriptCorrectionDB.batch_id == batch_id)
+            .order_by(TranscriptCorrectionDB.corrected_at.asc())
+        )
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_batch_list(
+        self,
+        session: AsyncSession,
+        *,
+        offset: int = 0,
+        limit: int = 20,
+        corrected_by_user_id: str | None = None,
+    ) -> list[BatchListItem]:
+        """
+        List batch correction groups with aggregated metadata.
+
+        Aggregates corrections by ``batch_id`` (excluding NULLs), returning
+        summary rows sorted by earliest ``corrected_at`` descending (most
+        recent batches first).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        offset : int, optional
+            Number of rows to skip (default 0).
+        limit : int, optional
+            Maximum rows to return (default 20).
+        corrected_by_user_id : str or None, optional
+            If provided, restrict to batches by this user/actor.
+
+        Returns
+        -------
+        list[BatchListItem]
+            Summary rows for each batch group.
+        """
+        conditions: list[Any] = [
+            TranscriptCorrectionDB.batch_id.isnot(None),
+        ]
+        if corrected_by_user_id is not None:
+            conditions.append(
+                TranscriptCorrectionDB.corrected_by_user_id == corrected_by_user_id
+            )
+
+        stmt = (
+            select(
+                TranscriptCorrectionDB.batch_id,
+                func.count().label("correction_count"),
+                func.min(TranscriptCorrectionDB.corrected_by_user_id).label(
+                    "corrected_by_user_id"
+                ),
+                func.min(TranscriptCorrectionDB.original_text).label("pattern"),
+                func.min(TranscriptCorrectionDB.corrected_text).label("replacement"),
+                func.min(TranscriptCorrectionDB.corrected_at).label(
+                    "batch_timestamp"
+                ),
+            )
+            .where(and_(*conditions))
+            .group_by(TranscriptCorrectionDB.batch_id)
+            .order_by(func.min(TranscriptCorrectionDB.corrected_at).desc())
+            .offset(offset)
+            .limit(limit)
+        )
+
+        result = await session.execute(stmt)
+        return [
+            BatchListItem(
+                batch_id=row.batch_id,
+                correction_count=row.correction_count,
+                corrected_by_user_id=row.corrected_by_user_id or "",
+                pattern=row.pattern or "",
+                replacement=row.replacement or "",
+                batch_timestamp=row.batch_timestamp,
+            )
+            for row in result.all()
+        ]
 
     async def get_latest_version(
         self,

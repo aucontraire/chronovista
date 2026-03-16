@@ -11,6 +11,8 @@ since they represent computed outputs that should not be mutated after creation.
 
 from __future__ import annotations
 
+import uuid
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -217,6 +219,10 @@ class CorrectionExportRecord(BaseModel):
         ge=1,
         description="Version number of this correction (must be >= 1)",
     )
+    batch_id: uuid.UUID | None = Field(
+        default=None,
+        description="Optional batch ID linking corrections from the same batch operation",
+    )
 
     model_config = ConfigDict(frozen=True)
 
@@ -413,6 +419,58 @@ class CrossSegmentMatch(BaseModel):
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
 
+class BatchListItem(BaseModel):
+    """Summary row for a batch correction group.
+
+    Represents a single batch of corrections sharing the same ``batch_id``,
+    aggregating the correction count, actor, pattern/replacement pair, and
+    timestamp.  This is a read-only aggregation result — not a database entity.
+
+    Attributes
+    ----------
+    batch_id : uuid.UUID
+        UUIDv7 identifying the batch.
+    correction_count : int
+        Number of corrections in this batch (must be >= 1).
+    corrected_by_user_id : str
+        Identifier of the user/actor who submitted the batch.
+    pattern : str
+        The search pattern used for the batch find-replace.
+    replacement : str
+        The replacement text applied by the batch.
+    batch_timestamp : datetime
+        Timestamp of the batch operation.
+    """
+
+    batch_id: uuid.UUID = Field(
+        ...,
+        description="UUIDv7 identifying the batch",
+    )
+    correction_count: int = Field(
+        ...,
+        ge=1,
+        description="Number of corrections in this batch",
+    )
+    corrected_by_user_id: str = Field(
+        ...,
+        description="Identifier of the user/actor who submitted the batch",
+    )
+    pattern: str = Field(
+        ...,
+        description="The search pattern used for the batch find-replace",
+    )
+    replacement: str = Field(
+        ...,
+        description="The replacement text applied by the batch",
+    )
+    batch_timestamp: datetime = Field(
+        ...,
+        description="Timestamp of the batch operation",
+    )
+
+    model_config = ConfigDict(frozen=True)
+
+
 __all__ = [
     "TypeCount",
     "VideoCount",
@@ -422,4 +480,5 @@ __all__ = [
     "CorrectionStats",
     "SegmentPair",
     "CrossSegmentMatch",
+    "BatchListItem",
 ]

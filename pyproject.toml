@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "chronovista"
-version = "0.45.0"
+version = "0.46.0"
 description = "Personal YouTube data analytics tool for comprehensive access to your YouTube engagement history"
 authors = ["chronovista <noreply@chronovista.dev>"]
 maintainers = ["chronovista <noreply@chronovista.dev>"]
@@ -48,6 +48,10 @@ fastapi = "^0.109.0"
 uvicorn = {extras = ["standard"], version = "^0.27.0"}
 beautifulsoup4 = "^4.12.0"
 uuid-utils = "^0.14.1"
+fuzzywuzzy = "^0.18.0"
+python-levenshtein = "^0.27.3"
+jellyfish = "^1.2.1"
+metaphone = "^0.6"
 
 [tool.poetry.group.recovery]
 optional = true
@@ -173,7 +177,11 @@ module = [
     "factory_boy.*",
     "selenium.*",
     "webdriver_manager.*",
-    "bs4.*"
+    "bs4.*",
+    "fuzzywuzzy.*",
+    "Levenshtein.*",
+    "jellyfish.*",
+    "metaphone.*"
 ]
 ignore_missing_imports = true
 

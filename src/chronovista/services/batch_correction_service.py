@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import difflib
 import io
 import json
 import logging
@@ -21,9 +22,12 @@ import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, TypeVar
 from uuid import UUID
+
+from uuid_utils import uuid7
 
 from sqlalchemy import and_, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,6 +69,96 @@ from chronovista.services.transcript_correction_service import (
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+
+# ---------------------------------------------------------------------------
+# Word-level diff analysis (Feature 045 — T021)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class WordLevelDiffResult:
+    """Result of a word-level diff between an original and corrected string.
+
+    Attributes
+    ----------
+    changed_pairs : list[tuple[str, str]]
+        Contiguous replace blocks expressed as ``(original_fragment, corrected_fragment)``
+        using the *original* casing of the tokens.  Capitalization-only differences
+        (e.g., ``"NATO"`` vs ``"nato"``) are excluded.
+    unchanged_tokens : list[str]
+        Tokens that were identical (case-insensitive) between the two strings.
+    token_positions : list[tuple[str, int, int, int, int]]
+        Raw opcodes from :func:`difflib.SequenceMatcher.get_opcodes` for
+        positional information (tag, i1, i2, j1, j2).
+    """
+
+    changed_pairs: list[tuple[str, str]] = field(default_factory=list)
+    unchanged_tokens: list[str] = field(default_factory=list)
+    token_positions: list[tuple[str, int, int, int, int]] = field(default_factory=list)
+
+
+def word_level_diff(original: str, corrected: str) -> WordLevelDiffResult:
+    """Compute a word-level diff between *original* and *corrected* text.
+
+    Tokenisation is performed by ``str.split()``.  Comparison is
+    case-insensitive (via lowered token lists) so that capitalisation-only
+    differences are **not** reported as changes.  The returned
+    ``changed_pairs`` preserve the original casing of the tokens.
+
+    Parameters
+    ----------
+    original : str
+        The original (pre-correction) text.
+    corrected : str
+        The corrected text.
+
+    Returns
+    -------
+    WordLevelDiffResult
+        Structured result with changed pairs, unchanged tokens, and raw
+        positional opcodes.
+    """
+    if not original and not corrected:
+        return WordLevelDiffResult()
+
+    orig_tokens = original.split()
+    corr_tokens = corrected.split()
+
+    orig_lower = [t.lower() for t in orig_tokens]
+    corr_lower = [t.lower() for t in corr_tokens]
+
+    matcher = difflib.SequenceMatcher(None, orig_lower, corr_lower, autojunk=False)
+    opcodes = matcher.get_opcodes()
+
+    changed_pairs: list[tuple[str, str]] = []
+    unchanged_tokens: list[str] = []
+    token_positions: list[tuple[str, int, int, int, int]] = []
+
+    for tag, i1, i2, j1, j2 in opcodes:
+        token_positions.append((tag, i1, i2, j1, j2))
+
+        if tag == "equal":
+            unchanged_tokens.extend(orig_tokens[i1:i2])
+        elif tag == "replace":
+            orig_fragment = " ".join(orig_tokens[i1:i2])
+            corr_fragment = " ".join(corr_tokens[j1:j2])
+            # Only record if the lowered forms actually differ (skip
+            # capitalisation-only changes).
+            if orig_fragment.lower() != corr_fragment.lower():
+                changed_pairs.append((orig_fragment, corr_fragment))
+        elif tag == "delete":
+            orig_fragment = " ".join(orig_tokens[i1:i2])
+            changed_pairs.append((orig_fragment, ""))
+        elif tag == "insert":
+            corr_fragment = " ".join(corr_tokens[j1:j2])
+            changed_pairs.append(("", corr_fragment))
+
+    return WordLevelDiffResult(
+        changed_pairs=changed_pairs,
+        unchanged_tokens=unchanged_tokens,
+        token_positions=token_positions,
+    )
 
 
 class BatchCorrectionService:
@@ -443,6 +537,7 @@ class BatchCorrectionService:
         auto_rebuild: bool = True,
         corrected_by_user_id: str = ACTOR_CLI_BATCH,
         entity_id: UUID | None = None,
+        batch_id: uuid.UUID | None = None,
     ) -> BatchApplyResult:
         """
         Apply find-replace corrections to an explicit set of segment IDs.
@@ -483,6 +578,9 @@ class BatchCorrectionService:
         entity_id : UUID or None, optional
             Named-entity ID to associate corrections with. When provided,
             entity mentions are created for replacement text occurrences.
+        batch_id : uuid.UUID or None, optional
+            UUIDv7 batch identifier for provenance tracking. When provided,
+            all corrections in this call share the same batch_id.
 
         Returns
         -------
@@ -615,6 +713,7 @@ class BatchCorrectionService:
                     correction_type=correction_type,
                     correction_note=correction_note,
                     corrected_by_user_id=corrected_by_user_id,
+                    batch_id=batch_id,
                 )
                 total_applied += 1
                 affected_video_ids.add(segment.video_id)
@@ -832,6 +931,9 @@ class BatchCorrectionService:
 
         # ------ Live mode: keep existing apply logic for CLI ------
 
+        # Generate a UUIDv7 batch identifier for provenance tracking
+        batch_id = uuid.UUID(bytes=uuid7().bytes)
+
         # Step 2: Count total segments in filter scope
         total_scanned = await self._segment_repo.count_filtered(
             session,
@@ -949,6 +1051,7 @@ class BatchCorrectionService:
                     correction_type=correction_type,
                     correction_note=correction_note,
                     corrected_by_user_id=ACTOR_CLI_BATCH,
+                    batch_id=batch_id,
                 )
             except ValueError:
                 # No-op: corrected_text == effective text → skip
@@ -985,6 +1088,7 @@ class BatchCorrectionService:
                     correction_note=correction_note,
                     batch_size=batch_size,
                     progress_callback=progress_callback,
+                    batch_id=batch_id,
                 )
             )
             total_applied += cs_applied
@@ -1237,6 +1341,7 @@ class BatchCorrectionService:
                 corrected_by_user_id=c.corrected_by_user_id,
                 corrected_at=c.corrected_at.isoformat() if c.corrected_at else "",
                 version_number=c.version_number,
+                batch_id=c.batch_id,
             )
             records.append(record)
             if progress_callback is not None:
@@ -1259,7 +1364,7 @@ class BatchCorrectionService:
                 "id", "video_id", "language_code", "segment_id",
                 "correction_type", "original_text", "corrected_text",
                 "correction_note", "corrected_by_user_id", "corrected_at",
-                "version_number",
+                "version_number", "batch_id",
             ]
             writer = csv.DictWriter(output, fieldnames=fieldnames)
             writer.writeheader()
@@ -1377,7 +1482,7 @@ class BatchCorrectionService:
         self,
         session: AsyncSession,
         *,
-        pattern: str,
+        pattern: str = "",
         regex: bool = False,
         case_insensitive: bool = False,
         language: str | None = None,
@@ -1385,9 +1490,14 @@ class BatchCorrectionService:
         batch_size: int = 100,
         dry_run: bool = False,
         progress_callback: Callable[[int], None] | None = None,
+        batch_id: uuid.UUID | None = None,
     ) -> BatchCorrectionResult | list[tuple[str, int, float, str, bool]]:
         """
         Revert corrections on segments whose corrected_text matches *pattern*.
+
+        When *batch_id* is provided, reverts all corrections from that batch
+        instead of pattern matching.  Segments that no longer exist are
+        silently skipped.
 
         In **live mode**, each matched segment is reverted via
         ``TranscriptCorrectionService.revert_correction`` in transaction-safe
@@ -1398,7 +1508,8 @@ class BatchCorrectionService:
         session : AsyncSession
             Database session.
         pattern : str
-            The search pattern (substring or regex).
+            The search pattern (substring or regex). Ignored when
+            *batch_id* is provided.
         regex : bool, optional
             If True, treat *pattern* as a regular expression (default False).
         case_insensitive : bool, optional
@@ -1413,6 +1524,9 @@ class BatchCorrectionService:
             If True, return preview tuples (default False).
         progress_callback : Callable[[int], None] or None, optional
             Called with the chunk length after each batch.
+        batch_id : uuid.UUID or None, optional
+            If provided, revert all corrections from this batch instead of
+            pattern matching.
 
         Returns
         -------
@@ -1430,7 +1544,7 @@ class BatchCorrectionService:
         _start_time = time.monotonic()
         logger.info(
             "batch_revert started: pattern=%r, regex=%s, case_insensitive=%s, "
-            "language=%s, video_ids=%s, dry_run=%s, batch_size=%d",
+            "language=%s, video_ids=%s, dry_run=%s, batch_size=%d, batch_id=%s",
             pattern,
             regex,
             case_insensitive,
@@ -1438,7 +1552,158 @@ class BatchCorrectionService:
             video_ids,
             dry_run,
             batch_size,
+            batch_id,
         )
+
+        # ------ batch_id mode: revert by batch provenance ------
+        if batch_id is not None:
+            corrections = await self._correction_repo.get_by_batch_id(
+                session, batch_id
+            )
+            if not corrections:
+                _elapsed = time.monotonic() - _start_time
+                logger.info(
+                    "batch_revert completed (batch_id, no corrections found): "
+                    "batch_id=%s, duration=%.2fs",
+                    batch_id,
+                    _elapsed,
+                )
+                return BatchCorrectionResult(
+                    total_scanned=0,
+                    total_matched=0,
+                    total_applied=0,
+                    total_skipped=0,
+                    total_failed=0,
+                    failed_batches=0,
+                    unique_videos=0,
+                )
+
+            # Collect unique segment IDs from the batch corrections
+            batch_segment_ids = list({c.segment_id for c in corrections if c.segment_id is not None})
+
+            # Fetch segments — skip deleted ones
+            segments_result = await session.execute(
+                select(TranscriptSegmentDB).where(
+                    TranscriptSegmentDB.id.in_(batch_segment_ids)
+                )
+            )
+            segment_map = {seg.id: seg for seg in segments_result.scalars().all()}
+
+            total_skipped_deleted = len(batch_segment_ids) - len(segment_map)
+            if total_skipped_deleted > 0:
+                logger.warning(
+                    "batch_revert (batch_id=%s): skipping %d corrections "
+                    "for deleted/missing segments",
+                    batch_id,
+                    total_skipped_deleted,
+                )
+
+            # Filter to segments that exist and have active corrections
+            corrected_matches = [
+                segment_map[sid]
+                for sid in batch_segment_ids
+                if sid in segment_map and segment_map[sid].has_correction
+            ]
+            total_scanned = len(batch_segment_ids)
+            total_matched = len(corrected_matches)
+
+            # Dry-run mode for batch_id
+            if dry_run:
+                previews_batch: list[tuple[str, int, float, str, bool]] = []
+                for seg in corrected_matches:
+                    previews_batch.append((
+                        seg.video_id,
+                        seg.id,
+                        seg.start_time,
+                        seg.corrected_text or "",
+                        False,
+                    ))
+                return previews_batch
+
+            # Skip further partner/cross-segment logic — go straight to revert
+            unique_video_ids = {seg.video_id for seg in corrected_matches}
+            unique_videos = len(unique_video_ids)
+
+            # Entity mention cascade
+            correction_ids_for_cascade = [c.id for c in corrections]
+            mention_repo = EntityMentionRepository()
+            affected_entity_ids_batch: list[UUID] = []
+            mentions_deleted_batch = 0
+
+            if correction_ids_for_cascade:
+                affected_entity_ids_batch = (
+                    await mention_repo.get_entity_ids_by_correction_ids(
+                        session, correction_ids_for_cascade
+                    )
+                )
+                mentions_deleted_batch = await mention_repo.delete_by_correction_ids(
+                    session, correction_ids_for_cascade
+                )
+                if mentions_deleted_batch > 0:
+                    await session.flush()
+
+            reverted_ids_batch: set[int] = set()
+
+            async def _revert_one_batch(session: AsyncSession, segment: Any) -> str:
+                if segment.id in reverted_ids_batch:
+                    return "skipped"
+                try:
+                    await self._correction_service.revert_correction(
+                        session,
+                        segment_id=segment.id,
+                    )
+                    reverted_ids_batch.add(segment.id)
+                except ValueError:
+                    return "skipped"
+                return "applied"
+
+            total_applied, total_skipped_revert, total_failed, failed_batches = (
+                await self._process_in_batches(
+                    session,
+                    corrected_matches,
+                    _revert_one_batch,
+                    batch_size=batch_size,
+                    progress_callback=progress_callback,
+                )
+            )
+
+            # Recalculate entity counters
+            if affected_entity_ids_batch:
+                await mention_repo.update_entity_counters(
+                    session, affected_entity_ids_batch
+                )
+                await mention_repo.update_alias_counters(
+                    session, affected_entity_ids_batch
+                )
+                await session.flush()
+
+            _elapsed = time.monotonic() - _start_time
+            logger.info(
+                "batch_revert completed (batch_id): batch_id=%s, matched=%d, "
+                "applied=%d, skipped=%d (+ %d deleted segments), failed=%d, "
+                "unique_videos=%d, mentions_deleted=%d, duration=%.2fs",
+                batch_id,
+                total_matched,
+                total_applied,
+                total_skipped_revert + total_skipped_deleted,
+                total_skipped_deleted,
+                total_failed,
+                unique_videos,
+                mentions_deleted_batch,
+                _elapsed,
+            )
+
+            return BatchCorrectionResult(
+                total_scanned=total_scanned,
+                total_matched=total_matched,
+                total_applied=total_applied,
+                total_skipped=total_skipped_revert + total_skipped_deleted,
+                total_failed=total_failed,
+                failed_batches=failed_batches,
+                unique_videos=unique_videos,
+            )
+
+        # ------ Pattern-based revert (original behavior) ------
 
         # Step 1: Validate pattern
         self._validate_pattern(pattern, regex=regex)
@@ -2269,6 +2534,7 @@ class BatchCorrectionService:
         progress_callback: Callable[[int], None] | None = None,
         entity: NamedEntityDB | None = None,
         replacement: str = "",
+        batch_id: uuid.UUID | None = None,
     ) -> tuple[int, int, int, int]:
         """
         Apply cross-segment corrections (T023-T025, T030).
@@ -2299,6 +2565,8 @@ class BatchCorrectionService:
             Validated named entity for mention creation (T030).
         replacement : str
             Replacement text for mention position calculation.
+        batch_id : uuid.UUID or None, optional
+            UUIDv7 batch identifier for provenance tracking.
 
         Returns
         -------
@@ -2344,6 +2612,7 @@ class BatchCorrectionService:
                                 correction_type=correction_type,
                                 correction_note=note_a,
                                 corrected_by_user_id=ACTOR_CLI_BATCH,
+                                batch_id=batch_id,
                             )
                         )
                         a_applied = True
@@ -2370,6 +2639,7 @@ class BatchCorrectionService:
                                 correction_type=correction_type,
                                 correction_note=note_b,
                                 corrected_by_user_id=ACTOR_CLI_BATCH,
+                                batch_id=batch_id,
                             )
                         )
                         b_applied = True
@@ -2738,4 +3008,4 @@ class BatchCorrectionService:
             ) from exc
 
 
-__all__ = ["BatchCorrectionService"]
+__all__ = ["BatchCorrectionService", "WordLevelDiffResult", "word_level_diff"]

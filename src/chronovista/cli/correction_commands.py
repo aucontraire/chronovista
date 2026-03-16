@@ -13,6 +13,7 @@ import asyncio
 import logging
 import re
 import sys
+import uuid
 from datetime import datetime
 
 import typer
@@ -29,8 +30,12 @@ from rich.progress import (
 from rich.table import Table
 
 from chronovista.config.database import db_manager
+from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.models.batch_correction_models import BatchCorrectionResult
 from chronovista.models.enums import CorrectionType
+from chronovista.repositories.entity_mention_repository import (
+    EntityMentionRepository,
+)
 from chronovista.repositories.transcript_correction_repository import (
     TranscriptCorrectionRepository,
 )
@@ -41,6 +46,7 @@ from chronovista.repositories.video_transcript_repository import (
     VideoTranscriptRepository,
 )
 from chronovista.services.batch_correction_service import BatchCorrectionService
+from chronovista.services.phonetic_matcher import PhoneticMatcher
 from chronovista.services.transcript_correction_service import (
     TranscriptCorrectionService,
 )
@@ -948,20 +954,34 @@ def patterns(
 
 @correction_app.command("batch-revert")
 def batch_revert(
-    pattern: str = typer.Option(
-        ..., "--pattern", help="Text pattern to match for revert"
+    pattern: str | None = typer.Option(
+        None,
+        "--pattern",
+        help=(
+            "Text pattern to match corrected segments for revert. "
+            "Mutually exclusive with --batch-id."
+        ),
+    ),
+    batch_id_str: str | None = typer.Option(
+        None,
+        "--batch-id",
+        help=(
+            "UUID of a prior batch to revert entirely. "
+            "Mutually exclusive with --pattern. "
+            "Obtain batch IDs from 'corrections stats'."
+        ),
     ),
     video_id: list[str] | None = typer.Option(
-        None, "--video-id", help="Filter by video ID (repeatable)"
+        None, "--video-id", help="Filter by video ID (repeatable; pattern mode only)"
     ),
     language: str | None = typer.Option(
-        None, "--language", help="Filter by language code"
+        None, "--language", help="Filter by language code (pattern mode only)"
     ),
     regex: bool = typer.Option(
-        False, "--regex", help="Treat pattern as a regular expression"
+        False, "--regex", help="Treat --pattern as a regular expression (pattern mode only)"
     ),
     case_insensitive: bool = typer.Option(
-        False, "--case-insensitive", "-i", help="Case-insensitive matching"
+        False, "--case-insensitive", "-i", help="Case-insensitive matching (pattern mode only)"
     ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Preview without writing"
@@ -973,14 +993,64 @@ def batch_revert(
         100, "--batch-size", help="Transaction batch size"
     ),
 ) -> None:
-    """Revert corrections matching a pattern."""
-    # Validate regex pattern early
-    if regex:
+    """Revert corrections by pattern or by batch ID.
+
+    Provide exactly one of --pattern or --batch-id:
+
+    \b
+      --pattern TEXT    Match corrected segments by text substring or regex.
+      --batch-id UUID   Revert every correction that belongs to a prior batch.
+
+    Examples:
+
+    \b
+      # Revert all corrections containing "gonna" in their corrected text
+      chronovista corrections batch-revert --pattern "gonna"
+
+    \b
+      # Revert an entire batch by its UUID
+      chronovista corrections batch-revert --batch-id 01932f4a-dead-7000-beef-000000000001
+
+    \b
+      # Dry-run a batch-id revert first
+      chronovista corrections batch-revert --batch-id <uuid> --dry-run
+    """
+    # ---- Mutual exclusivity guard ----
+    if pattern is not None and batch_id_str is not None:
+        console.print(
+            "[red]Error:[/red] --pattern and --batch-id are mutually exclusive. "
+            "Provide exactly one."
+        )
+        raise typer.Exit(code=1)
+
+    if pattern is None and batch_id_str is None:
+        console.print(
+            "[red]Error:[/red] One of --pattern or --batch-id is required."
+        )
+        raise typer.Exit(code=1)
+
+    # ---- Resolve batch_id when provided ----
+    batch_id: uuid.UUID | None = None
+    if batch_id_str is not None:
+        try:
+            batch_id = uuid.UUID(batch_id_str)
+        except ValueError:
+            console.print(
+                f"[red]Error:[/red] '{batch_id_str}' is not a valid UUID. "
+                "Expected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+            )
+            raise typer.Exit(code=1)
+
+    # ---- Validate regex pattern early (pattern mode only) ----
+    if pattern is not None and regex:
         try:
             re.compile(pattern)
         except re.error as exc:
             console.print(f"[red]Invalid regex pattern: {exc}[/red]")
             raise typer.Exit(code=1) from exc
+
+    # Normalise: pattern must be a str for service calls in pattern mode
+    effective_pattern: str = pattern or ""
 
     service = _create_batch_correction_service()
 
@@ -989,20 +1059,26 @@ def batch_revert(
             if dry_run:
                 previews = await service.batch_revert(
                     session,
-                    pattern=pattern,
+                    pattern=effective_pattern,
                     regex=regex,
                     case_insensitive=case_insensitive,
                     language=language,
                     video_ids=video_id,
                     batch_size=batch_size,
                     dry_run=True,
+                    batch_id=batch_id,
                 )
                 assert isinstance(previews, list)
 
                 if not previews:
-                    console.print(
-                        "[yellow]No corrected segments matched the pattern[/yellow]"
-                    )
+                    if batch_id is not None:
+                        console.print(
+                            f"[yellow]No corrections found for batch {batch_id}[/yellow]"
+                        )
+                    else:
+                        console.print(
+                            "[yellow]No corrected segments matched the pattern[/yellow]"
+                        )
                     raise typer.Exit(code=0)
 
                 preview_table = Table(
@@ -1036,7 +1112,13 @@ def batch_revert(
                 console.print(preview_table)
 
                 unique_videos = len({r[0] for r in previews})
-                if partner_cascade_count > 0:
+                if batch_id is not None:
+                    console.print(
+                        f"\nDry run complete: [bold]{len(previews)}[/bold] corrections "
+                        f"from batch [bold]{batch_id}[/bold] would be reverted "
+                        f"across [bold]{unique_videos}[/bold] videos."
+                    )
+                elif partner_cascade_count > 0:
                     console.print(
                         f"\nDry run complete: [bold]{len(previews)}[/bold] segments "
                         f"would be reverted across [bold]{unique_videos}[/bold] videos "
@@ -1053,32 +1135,44 @@ def batch_revert(
             # ---- Live mode: scan first for confirmation ----
             previews_for_count = await service.batch_revert(
                 session,
-                pattern=pattern,
+                pattern=effective_pattern,
                 regex=regex,
                 case_insensitive=case_insensitive,
                 language=language,
                 video_ids=video_id,
                 batch_size=batch_size,
                 dry_run=True,
+                batch_id=batch_id,
             )
             assert isinstance(previews_for_count, list)
 
             total_matches = len(previews_for_count)
 
             if total_matches == 0:
-                console.print(
-                    "[yellow]No corrected segments matched the pattern[/yellow]"
-                )
+                if batch_id is not None:
+                    console.print(
+                        f"[yellow]No corrections found for batch {batch_id}[/yellow]"
+                    )
+                else:
+                    console.print(
+                        "[yellow]No corrected segments matched the pattern[/yellow]"
+                    )
                 raise typer.Exit(code=0)
 
             unique_videos = len({r[0] for r in previews_for_count})
 
             if not yes:
-                confirmed = typer.confirm(
-                    f"This will revert {total_matches} corrections "
-                    f"across {unique_videos} videos. Proceed?",
-                    default=False,
-                )
+                if batch_id is not None:
+                    prompt = (
+                        f"This will revert {total_matches} corrections "
+                        f"from batch {batch_id} across {unique_videos} videos. Proceed?"
+                    )
+                else:
+                    prompt = (
+                        f"This will revert {total_matches} corrections "
+                        f"across {unique_videos} videos. Proceed?"
+                    )
+                confirmed = typer.confirm(prompt, default=False)
                 if not confirmed:
                     console.print("[yellow]Cancelled.[/yellow]")
                     raise typer.Exit(code=0)
@@ -1100,7 +1194,7 @@ def batch_revert(
 
                 result = await service.batch_revert(
                     session,
-                    pattern=pattern,
+                    pattern=effective_pattern,
                     regex=regex,
                     case_insensitive=case_insensitive,
                     language=language,
@@ -1108,13 +1202,19 @@ def batch_revert(
                     batch_size=batch_size,
                     dry_run=False,
                     progress_callback=_advance,
+                    batch_id=batch_id,
                 )
 
             assert isinstance(result, BatchCorrectionResult)
 
             # ---- Summary table ----
+            title = (
+                f"Batch Revert Results (batch {batch_id})"
+                if batch_id is not None
+                else "Batch Revert Results"
+            )
             summary_table = Table(
-                title="Batch Revert Results",
+                title=title,
                 show_header=True,
                 header_style="bold blue",
             )
@@ -1144,5 +1244,391 @@ def batch_revert(
                 )
 
             console.print(summary_table)
+
+    asyncio.run(_run())
+
+
+# ---------------------------------------------------------------------------
+# analyze-diffs command  (T023 — Feature 045)
+# ---------------------------------------------------------------------------
+
+
+@correction_app.command("analyze-diffs")
+def analyze_diffs(
+    limit: int = typer.Option(
+        50, "--limit", help="Maximum rows to display"
+    ),
+    min_frequency: int = typer.Option(
+        1, "--min-frequency", help="Minimum frequency to include"
+    ),
+) -> None:
+    """Analyze word-level diffs across all corrections.
+
+    Iterates all non-revert corrections, computes word-level diffs, and
+    aggregates by (error_token, canonical_form) with frequency counts.
+    Displays associated entities for each error token.
+    """
+    from collections import defaultdict
+
+    from chronovista.services.asr_alias_registry import resolve_entity_id_from_text
+    from chronovista.services.batch_correction_service import word_level_diff
+
+    correction_repo = TranscriptCorrectionRepository()
+
+    async def _run() -> None:
+        async for session in db_manager.get_session(echo=False):
+            # Fetch all non-revert corrections
+            corrections = await correction_repo.get_all_filtered(session)
+
+            # Filter out reverts and no-ops
+            active_corrections = [
+                c
+                for c in corrections
+                if c.correction_type != "revert"
+                and c.correction_type != "revert_to_original"
+                and c.correction_type != "revert_to_prior"
+                and c.original_text != c.corrected_text
+            ]
+
+            if not active_corrections:
+                console.print(
+                    "[yellow]No corrections found to analyze[/yellow]"
+                )
+                raise typer.Exit(code=0)
+
+            # Aggregate: (error_token, canonical_form) -> frequency
+            pair_freq: dict[tuple[str, str], int] = defaultdict(int)
+            # Track entity associations per error token
+            token_entities: dict[str, set[str]] = defaultdict(set)
+
+            for correction in active_corrections:
+                diff = word_level_diff(
+                    correction.original_text, correction.corrected_text
+                )
+                for error_token, canonical_token in diff.changed_pairs:
+                    if not error_token or not canonical_token:
+                        continue
+                    pair_freq[(error_token, canonical_token)] += 1
+
+                    # Try to resolve entity for the canonical token
+                    match = await resolve_entity_id_from_text(
+                        session, canonical_token
+                    )
+                    if match is not None:
+                        _, entity_name = match
+                        token_entities[error_token].add(entity_name)
+
+            if not pair_freq:
+                console.print(
+                    "[yellow]No word-level differences found in corrections[/yellow]"
+                )
+                raise typer.Exit(code=0)
+
+            # Sort by frequency descending
+            sorted_pairs = sorted(
+                pair_freq.items(), key=lambda x: x[1], reverse=True
+            )
+
+            # Apply min_frequency filter
+            sorted_pairs = [
+                (pair, freq)
+                for pair, freq in sorted_pairs
+                if freq >= min_frequency
+            ]
+
+            if not sorted_pairs:
+                console.print(
+                    f"[yellow]No word-level diffs with frequency >= {min_frequency}[/yellow]"
+                )
+                raise typer.Exit(code=0)
+
+            # Limit output
+            display_pairs = sorted_pairs[:limit]
+
+            diff_table = Table(
+                title="Word-Level Diff Analysis",
+                show_header=True,
+                header_style="bold blue",
+            )
+            diff_table.add_column("Error Token", style="red", width=25)
+            diff_table.add_column("Canonical Form", style="green", width=25)
+            diff_table.add_column("Frequency", style="dim", width=10)
+            diff_table.add_column(
+                "Associated Entities", style="cyan", width=40
+            )
+
+            for (error_token, canonical_token), freq in display_pairs:
+                entities = token_entities.get(error_token, set())
+                entities_str = ", ".join(sorted(entities)) if entities else "—"
+                diff_table.add_row(
+                    _truncate_end(error_token, 25),
+                    _truncate_end(canonical_token, 25),
+                    f"{freq:,}",
+                    _truncate_end(entities_str, 40),
+                )
+
+            console.print(diff_table)
+
+            # Summary
+            total_unique = len(sorted_pairs)
+            total_occurrences = sum(freq for _, freq in sorted_pairs)
+            console.print(
+                f"\n[bold]{total_unique:,}[/bold] unique error\u2192canonical pairs "
+                f"([bold]{total_occurrences:,}[/bold] total occurrences) "
+                f"from [bold]{len(active_corrections):,}[/bold] corrections analyzed."
+            )
+
+    asyncio.run(_run())
+
+
+# ---------------------------------------------------------------------------
+# detect-boundaries command  (T029 — US4)
+# ---------------------------------------------------------------------------
+
+
+@correction_app.command("detect-boundaries")
+def detect_boundaries(
+    entity: str | None = typer.Option(
+        None,
+        "--entity",
+        help="Filter by entity canonical name (substring match, case-insensitive)",
+    ),
+    threshold: float = typer.Option(
+        0.5,
+        "--threshold",
+        help="Minimum confidence score to include a match (0.0-1.0)",
+    ),
+    limit: int = typer.Option(
+        50,
+        "--limit",
+        help="Maximum matches to display per entity",
+    ),
+) -> None:
+    """Detect ASR error boundaries using phonetic matching against named entities.
+
+    Scans transcript segments associated with each entity and identifies
+    N-grams that phonetically resemble entity names or aliases, suggesting
+    potential ASR transcription errors.
+
+    \b
+    Examples:
+      chronovista corrections detect-boundaries
+      chronovista corrections detect-boundaries --entity "Chomsky" --threshold 0.6
+    """
+    from sqlalchemy import func as sqla_func
+    from sqlalchemy import select as sa_select
+
+    entity_mention_repo = EntityMentionRepository()
+    matcher = PhoneticMatcher(entity_mention_repo=entity_mention_repo)
+
+    async def _run() -> None:
+        async for session in db_manager.get_session(echo=False):
+            # Load entities (optionally filtered by name)
+            stmt = (
+                sa_select(NamedEntityDB)
+                .where(NamedEntityDB.status == "active")
+                .order_by(NamedEntityDB.canonical_name)
+            )
+            if entity is not None:
+                stmt = stmt.where(
+                    sqla_func.lower(NamedEntityDB.canonical_name).contains(
+                        entity.lower()
+                    )
+                )
+
+            result = await session.execute(stmt)
+            entities = list(result.scalars().all())
+
+            if not entities:
+                console.print(
+                    "[yellow]No entities found matching the filter.[/yellow]"
+                )
+                raise typer.Exit(code=0)
+
+            console.print(
+                f"[blue]Scanning {len(entities)} entit{'y' if len(entities) == 1 else 'ies'} "
+                f"with threshold {threshold}...[/blue]"
+            )
+
+            total_candidates = 0
+            entities_skipped = 0
+
+            for ent in entities:
+                matches = await matcher.match_entity(
+                    entity_id=ent.id,
+                    session=session,
+                    threshold=threshold,
+                )
+
+                if not matches:
+                    entities_skipped += 1
+                    continue
+
+                # Limit displayed matches per entity
+                displayed = matches[:limit]
+                total_candidates += len(matches)
+
+                # Build table for this entity
+                match_table = Table(
+                    title=(
+                        f"Entity: {ent.canonical_name} ({ent.entity_type})"
+                        f" -- {len(matches)} candidate(s)"
+                    ),
+                    show_header=True,
+                    header_style="bold blue",
+                )
+                match_table.add_column("Original Text", style="cyan", width=30)
+                match_table.add_column("Proposed Correction", style="green", width=25)
+                match_table.add_column("Confidence", style="yellow", width=12)
+                match_table.add_column("Evidence", style="dim", width=40)
+
+                for m in displayed:
+                    match_table.add_row(
+                        _truncate_end(m.original_text, 30),
+                        m.proposed_correction,
+                        f"{m.confidence:.4f}",
+                        _truncate_end(m.evidence_description, 40),
+                    )
+
+                console.print(match_table)
+
+                if len(matches) > limit:
+                    console.print(
+                        f"  [dim]... and {len(matches) - limit} more matches"
+                        f" (use --limit to show more)[/dim]"
+                    )
+
+            # Summary
+            summary_lines = [
+                f"Entities scanned: [bold]{len(entities)}[/bold]",
+                f"Entities skipped (no associated videos): [bold]{entities_skipped}[/bold]",
+                f"Total candidates found: [bold]{total_candidates:,}[/bold]",
+            ]
+            console.print(
+                Panel(
+                    "\n".join(summary_lines),
+                    title="ASR Error Boundary Detection Summary",
+                    border_style="blue",
+                )
+            )
+
+    asyncio.run(_run())
+
+
+# ---------------------------------------------------------------------------
+# suggest-cross-segment command  (T034)
+# ---------------------------------------------------------------------------
+
+
+@correction_app.command("suggest-cross-segment")
+def suggest_cross_segment(
+    min_corrections: int = typer.Option(
+        3,
+        "--min-corrections",
+        help="Minimum correction occurrences for a pattern to be considered",
+    ),
+    entity: str | None = typer.Option(
+        None,
+        "--entity",
+        help="Filter by entity name (case-insensitive substring match)",
+    ),
+    limit: int = typer.Option(
+        50,
+        "--limit",
+        help="Maximum candidates to display",
+    ),
+) -> None:
+    """Discover cross-segment ASR error candidates from correction patterns.
+
+    Analyses recurring correction patterns and finds adjacent segment pairs
+    where an error form is split across the segment boundary. Candidates are
+    scored and ranked by confidence.
+
+    \b
+    Examples:
+      chronovista corrections suggest-cross-segment
+      chronovista corrections suggest-cross-segment --min-corrections 5
+      chronovista corrections suggest-cross-segment --entity "Chomsky"
+    """
+    from chronovista.services.cross_segment_discovery import (
+        CrossSegmentDiscovery,
+    )
+
+    service = _create_batch_correction_service()
+    discovery = CrossSegmentDiscovery(batch_service=service)
+
+    async def _run() -> None:
+        async for session in db_manager.get_session(echo=False):
+            candidates = await discovery.discover(
+                session,
+                min_corrections=min_corrections,
+                entity_name=entity,
+            )
+
+            if not candidates:
+                console.print(
+                    "[yellow]No cross-segment candidates found.[/yellow]"
+                )
+                if min_corrections > 2:
+                    console.print(
+                        f"[dim]Tip: Try lowering --min-corrections "
+                        f"(currently {min_corrections}) to broaden the search.[/dim]"
+                    )
+                raise typer.Exit(code=0)
+
+            displayed = candidates[:limit]
+
+            candidate_table = Table(
+                title=f"Cross-Segment Candidates ({len(candidates)} total)",
+                show_header=True,
+                header_style="bold blue",
+            )
+            candidate_table.add_column("Seg N", style="dim", width=8)
+            candidate_table.add_column("Segment N Text", style="cyan", width=25)
+            candidate_table.add_column("Seg N+1", style="dim", width=8)
+            candidate_table.add_column("Segment N+1 Text", style="cyan", width=25)
+            candidate_table.add_column("Source Pattern", style="red", width=20)
+            candidate_table.add_column("Proposed Fix", style="green", width=20)
+            candidate_table.add_column("Conf.", style="yellow", width=8)
+            candidate_table.add_column("Flag", style="magenta", width=6)
+
+            for c in displayed:
+                flag = "PARTIAL" if c.is_partially_corrected else ""
+                candidate_table.add_row(
+                    str(c.segment_n_id),
+                    _truncate_end(c.segment_n_text, 25),
+                    str(c.segment_n1_id),
+                    _truncate_end(c.segment_n1_text, 25),
+                    _truncate_end(c.source_pattern, 20),
+                    _truncate_end(c.proposed_correction, 20),
+                    f"{c.confidence:.4f}",
+                    flag,
+                )
+
+            console.print(candidate_table)
+
+            if len(candidates) > limit:
+                console.print(
+                    f"  [dim]... and {len(candidates) - limit} more candidates"
+                    f" (use --limit to show more)[/dim]"
+                )
+
+            # Summary panel
+            partial_count = sum(
+                1 for c in candidates if c.is_partially_corrected
+            )
+            unique_videos = len({c.video_id for c in candidates})
+            summary_lines = [
+                f"Total candidates: [bold]{len(candidates):,}[/bold]",
+                f"Partially corrected: [bold]{partial_count:,}[/bold]",
+                f"Unique videos: [bold]{unique_videos:,}[/bold]",
+            ]
+            console.print(
+                Panel(
+                    "\n".join(summary_lines),
+                    title="Cross-Segment Discovery Summary",
+                    border_style="blue",
+                )
+            )
 
     asyncio.run(_run())

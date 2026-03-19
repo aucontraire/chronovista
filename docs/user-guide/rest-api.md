@@ -1414,6 +1414,143 @@ POST /api/v1/corrections/batch/apply
 !!! info "Explicit Inclusion List"
     The apply endpoint accepts an explicit `segment_ids` inclusion list (not an exclusion list). This ensures the user confirms exactly what gets corrected, even if database state changed between preview and apply.
 
+#### List Batch Groups
+
+Retrieve a paginated list of past batch correction operations, sorted by most recent first.
+
+```
+GET /api/v1/corrections/batch/batches
+```
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `offset` | integer | Number of rows to skip | 0 |
+| `limit` | integer | Maximum rows to return (1-100) | 20 |
+| `corrected_by_user_id` | string | Filter by user/actor ID | - |
+
+##### Response (200 OK)
+
+```json
+{
+  "data": [
+    {
+      "batch_id": "01936c8a-...",
+      "correction_count": 12,
+      "corrected_by_user_id": "user:batch",
+      "pattern": "amlo",
+      "replacement": "AMLO",
+      "batch_timestamp": "2026-03-15T10:30:00Z"
+    }
+  ],
+  "pagination": {
+    "total": 45,
+    "limit": 20,
+    "offset": 0,
+    "has_more": true
+  }
+}
+```
+
+#### Revert a Batch
+
+Atomically revert all corrections belonging to a specific batch.
+
+```
+DELETE /api/v1/corrections/batch/{batch_id}
+```
+
+##### Response (200 OK)
+
+```json
+{
+  "data": {
+    "reverted_count": 12,
+    "skipped_count": 0
+  }
+}
+```
+
+| Status | Description |
+|--------|-------------|
+| 404 | No corrections exist for the given batch ID |
+| 409 | All corrections in the batch have already been reverted |
+
+#### Get ASR Error Patterns (Diff Analysis)
+
+Retrieve recurring word-level ASR error patterns extracted from past corrections, enriched with entity associations.
+
+```
+GET /api/v1/corrections/batch/diff-analysis
+```
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `min_occurrences` | integer | Minimum occurrences for a pattern to appear (1-50) | 2 |
+| `limit` | integer | Maximum patterns to return (1-500) | 100 |
+| `show_completed` | boolean | Include patterns with no remaining un-corrected matches | true |
+| `entity_name` | string | Filter to patterns whose matched entity name contains this string (case-insensitive) | - |
+
+##### Response (200 OK)
+
+```json
+{
+  "data": [
+    {
+      "error_token": "Shane Baum",
+      "canonical_form": "Sheinbaum",
+      "frequency": 14,
+      "remaining_matches": 23,
+      "entity_id": "01936c8a-...",
+      "entity_name": "Claudia Sheinbaum"
+    }
+  ]
+}
+```
+
+Results are sorted by `remaining_matches` descending so actionable patterns appear first. The `entity_id` and `entity_name` fields are `null` when no named entity matches the canonical form.
+
+#### Get Cross-Segment Candidates
+
+Discover adjacent segment pairs where a known ASR error is split across a boundary, based on recurring correction patterns.
+
+```
+GET /api/v1/corrections/batch/cross-segment/candidates
+```
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `min_corrections` | integer | Minimum correction occurrences for a pattern to be considered (1-20) | 3 |
+| `entity_name` | string | Only consider patterns related to this entity name | - |
+
+##### Response (200 OK)
+
+```json
+{
+  "data": [
+    {
+      "segment_n_id": 934,
+      "segment_n_text": "...una entrevista, Claudia Shane",
+      "segment_n1_id": 935,
+      "segment_n1_text": "Bound también siendo candidata...",
+      "proposed_correction": "Sheinbaum",
+      "source_pattern": "Shane Bound",
+      "confidence": 0.85,
+      "is_partially_corrected": false,
+      "video_id": "JIMXfrMtHas",
+      "discovery_source": "correction_pattern"
+    }
+  ]
+}
+```
+
+Each candidate includes the text of both segments, the proposed corrected form, the original error pattern, and a confidence score between 0.0 and 1.0.
+
 #### Rebuild Transcript Text
 
 Re-concatenate segment text to rebuild the full `transcript_text` for specified videos.
@@ -1624,6 +1761,46 @@ Valid alias types: `name_variant`, `abbreviation`, `nickname`, `translated_name`
 |--------|-------------|
 | 404 | Entity not found |
 | 409 | Alias already exists |
+
+---
+
+#### Get Phonetic ASR Variants
+
+Find suspected phonetic ASR misrecognitions of an entity's name by scanning transcript segments from videos where the entity is mentioned.
+
+```
+GET /api/v1/entities/{entity_id}/phonetic-matches
+```
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `threshold` | float | Minimum confidence score to include a match (0.0-1.0) | 0.5 |
+
+##### Response (200 OK)
+
+```json
+{
+  "data": [
+    {
+      "original_text": "Shane Baum",
+      "proposed_correction": "Sheinbaum",
+      "confidence": 0.78,
+      "evidence_description": "Phonetic similarity via Soundex + Metaphone",
+      "video_id": "JIMXfrMtHas",
+      "segment_id": 934,
+      "video_title": "Interview with President Sheinbaum"
+    }
+  ]
+}
+```
+
+Each match includes the original transcript N-gram, the entity name it likely represents, a confidence score, and the video/segment location. The `video_title` field is enriched from the videos table.
+
+| Status | Description |
+|--------|-------------|
+| 404 | Entity not found |
 
 ---
 
@@ -2318,6 +2495,24 @@ curl -X POST "http://localhost:8000/api/v1/corrections/batch/apply" \
 curl -X POST "http://localhost:8000/api/v1/corrections/batch/rebuild-text" \
   -H "Content-Type: application/json" \
   -d '{"video_ids": ["dQw4w9WgXcQ"]}'
+
+# List batch history
+curl "http://localhost:8000/api/v1/corrections/batch/batches?limit=10"
+
+# Revert an entire batch
+curl -X DELETE "http://localhost:8000/api/v1/corrections/batch/01936c8a-1234-7000-8000-000000000001"
+
+# Get ASR error patterns (diff analysis)
+curl "http://localhost:8000/api/v1/corrections/batch/diff-analysis?show_completed=false"
+
+# Filter error patterns by entity name
+curl "http://localhost:8000/api/v1/corrections/batch/diff-analysis?entity_name=Sheinbaum"
+
+# Get cross-segment correction candidates
+curl "http://localhost:8000/api/v1/corrections/batch/cross-segment/candidates?min_corrections=3"
+
+# Get phonetic ASR variants for an entity
+curl "http://localhost:8000/api/v1/entities/01936c8a-1234-7000-8000-000000000001/phonetic-matches?threshold=0.5"
 ```
 
 #### Recover Video Metadata

@@ -24,6 +24,64 @@ from chronovista.services.tag_normalization import TagNormalizationService
 
 logger = logging.getLogger(__name__)
 
+# Common English function words.  When every token in a candidate alias
+# belongs to this set the alias is almost certainly a false positive
+# (e.g. "be out" from "Rick Beato").
+_HIGH_FREQUENCY_WORDS: frozenset[str] = frozenset({
+    "a", "an", "the", "and", "or", "but", "not", "no", "so",
+    "is", "am", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did",
+    "will", "would", "shall", "should", "may", "might", "can", "could",
+    "i", "me", "my", "we", "us", "our", "you", "your",
+    "he", "him", "his", "she", "her", "it", "its", "they", "them", "their",
+    "this", "that", "these", "those",
+    "in", "on", "at", "to", "of", "for", "by", "with", "from",
+    "up", "out", "off", "over", "into", "onto", "upon",
+    "if", "then", "than", "as", "while", "when", "where", "how", "what",
+    "who", "whom", "which", "why",
+    "all", "each", "every", "both", "few", "more", "most", "some", "any",
+    "much", "many", "such", "own", "other",
+    "just", "also", "very", "too", "quite", "about", "still",
+    "here", "there", "now", "well", "back",
+    "get", "got", "go", "going", "gone", "come", "came",
+    "make", "made", "take", "took", "put", "let", "say", "said",
+    "know", "think", "see", "look", "want", "give", "use",
+})
+
+# Minimum character length for an alias to be worth registering.
+_MIN_ALIAS_LENGTH = 4
+
+
+def is_valid_asr_alias(alias_text: str) -> bool:
+    """Check whether an alias candidate is worth registering.
+
+    Rejects aliases that are too short or consist entirely of common
+    English function words — these produce overwhelming false-positive
+    entity mentions when scanned across a large transcript corpus.
+
+    Parameters
+    ----------
+    alias_text : str
+        The candidate alias text (the ASR error form).
+
+    Returns
+    -------
+    bool
+        ``True`` if the alias passes quality gates, ``False`` otherwise.
+    """
+    stripped = alias_text.strip()
+    if len(stripped) < _MIN_ALIAS_LENGTH:
+        return False
+
+    tokens = stripped.lower().split()
+    if not tokens:
+        return False
+
+    if all(t in _HIGH_FREQUENCY_WORDS for t in tokens):
+        return False
+
+    return True
+
 
 async def resolve_entity_id_from_text(
     session: AsyncSession,
@@ -99,6 +157,16 @@ async def register_asr_alias(
         Prefix for log messages to distinguish callers.
     """
     try:
+        # Quality gate: reject aliases that are too short or consist
+        # entirely of common English function words.
+        if not is_valid_asr_alias(original_text):
+            logger.debug(
+                "%s: rejected alias '%s' (failed quality gate)",
+                log_prefix,
+                original_text,
+            )
+            return
+
         match = await resolve_entity_id_from_text(session, corrected_text)
         if match is None:
             return
@@ -160,12 +228,14 @@ async def register_asr_alias(
 
             diff = word_level_diff(original_text, corrected_text)
             for error_token, canonical_token in diff.changed_pairs:
-                # Skip empty tokens (insertions/deletions) and duplicates of
-                # the full-string alias we just registered.
+                # Skip empty tokens (insertions/deletions), duplicates of
+                # the full-string alias, and sub-tokens that fail the
+                # quality gate.
                 if (
                     not error_token
                     or not canonical_token
                     or error_token.strip() == original_text.strip()
+                    or not is_valid_asr_alias(error_token)
                 ):
                     continue
 

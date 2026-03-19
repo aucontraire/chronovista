@@ -98,3 +98,50 @@ export interface SegmentEditFormState {
   correctionNote: string;
   validationError: string | null;
 }
+
+// --- Feature 046: Correction Intelligence Frontend ---
+
+/** Past batch correction operation for the Batch History panel. */
+export interface BatchSummary {
+  batch_id: string;
+  correction_count: number;
+  corrected_by_user_id: string;
+  pattern: string;
+  replacement: string;
+  batch_timestamp: string; // ISO 8601
+}
+
+/** Recurring ASR error identified by word-level diff analysis. */
+export interface DiffErrorPattern {
+  error_token: string;
+  canonical_form: string;
+  frequency: number;
+  remaining_matches: number;
+  entity_id: string | null;
+  entity_name: string | null;
+}
+
+/** Adjacent segment pair with ASR error spanning the boundary. */
+export interface CrossSegmentCandidate {
+  segment_n_id: number;
+  segment_n_text: string;
+  segment_n1_id: number;
+  segment_n1_text: string;
+  proposed_correction: string;
+  source_pattern: string;
+  confidence: number;
+  is_partially_corrected: boolean;
+  video_id: string;
+  discovery_source: "entity_alias" | "correction_pattern";
+}
+
+/** Suspected phonetic ASR variant of an entity name. */
+export interface PhoneticMatch {
+  original_text: string;
+  proposed_correction: string;
+  confidence: number;
+  evidence_description: string;
+  video_id: string;
+  segment_id: number;
+  video_title: string | null;
+}

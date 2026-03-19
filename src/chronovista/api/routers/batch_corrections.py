@@ -13,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
 from chronovista.api.deps import get_db, require_auth
+from sqlalchemy import case, func, select
+
 from chronovista.api.schemas.batch_corrections import (
     BatchApplyRequest,
     BatchApplyResult,
@@ -22,6 +24,8 @@ from chronovista.api.schemas.batch_corrections import (
     BatchRebuildRequest,
     BatchRebuildResult,
     BatchRevertResponse,
+    CrossSegmentCandidateResponse,
+    DiffErrorPatternResponse,
 )
 from chronovista.api.schemas.responses import ApiResponse, PaginationMeta
 from chronovista.exceptions import APIValidationError, ConflictError, NotFoundError
@@ -36,8 +40,16 @@ from chronovista.repositories.transcript_segment_repository import (
 from chronovista.repositories.video_transcript_repository import (
     VideoTranscriptRepository,
 )
+from chronovista.db.models import EntityAlias as EntityAliasDB
+from chronovista.db.models import NamedEntity as NamedEntityDB
+from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.models.batch_correction_models import BatchCorrectionResult
-from chronovista.services.batch_correction_service import BatchCorrectionService
+from chronovista.services.batch_correction_service import (
+    BatchCorrectionService,
+    word_level_diff,
+)
+from chronovista.services.cross_segment_discovery import CrossSegmentDiscovery
+from chronovista.utils.text import strip_boundary_punctuation
 from chronovista.services.transcript_correction_service import (
     TranscriptCorrectionService,
 )
@@ -413,3 +425,230 @@ async def revert_batch(
         skipped_count=0,
     )
     return ApiResponse[BatchRevertResponse](data=response_data)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Helpers
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+async def _find_entity_by_name(
+    session: AsyncSession,
+    name: str,
+) -> tuple[uuid.UUID | None, str | None]:
+    """Look up a named entity by canonical name or alias.
+
+    Parameters
+    ----------
+    session : AsyncSession
+        Database session.
+    name : str
+        The text to match against canonical_name or alias_name.
+
+    Returns
+    -------
+    tuple[uuid.UUID | None, str | None]
+        ``(entity_id, entity_name)`` if found, otherwise ``(None, None)``.
+    """
+    # Try canonical name first
+    stmt = (
+        select(NamedEntityDB.id, NamedEntityDB.canonical_name)
+        .where(NamedEntityDB.canonical_name.ilike(name))
+        .limit(1)
+    )
+    row = (await session.execute(stmt)).first()
+    if row is not None:
+        return row.id, row.canonical_name
+
+    # Try alias name
+    alias_stmt = (
+        select(EntityAliasDB.entity_id, EntityAliasDB.alias_name)
+        .where(EntityAliasDB.alias_name.ilike(name))
+        .limit(1)
+    )
+    alias_row = (await session.execute(alias_stmt)).first()
+    if alias_row is not None:
+        # Fetch the entity's canonical name
+        entity_stmt = (
+            select(NamedEntityDB.canonical_name)
+            .where(NamedEntityDB.id == alias_row.entity_id)
+        )
+        entity_name_val = (await session.execute(entity_stmt)).scalar_one_or_none()
+        return alias_row.entity_id, entity_name_val
+
+    return None, None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# GET /diff-analysis
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.get(
+    "/diff-analysis",
+    response_model=ApiResponse[list[DiffErrorPatternResponse]],
+    status_code=200,
+    summary="Get word-level diff error patterns with entity associations",
+)
+async def get_diff_analysis(
+    min_occurrences: int = Query(default=2, ge=1, le=50),
+    limit: int = Query(default=100, ge=1, le=500),
+    show_completed: bool = Query(default=True),
+    entity_name: str | None = Query(default=None),
+    session: AsyncSession = Depends(get_db),
+) -> ApiResponse[list[DiffErrorPatternResponse]]:
+    """Get recurring correction patterns enriched with entity associations.
+
+    Wraps ``BatchCorrectionService.get_patterns()`` and enriches each
+    pattern with an entity lookup based on the corrected text.
+
+    Parameters
+    ----------
+    min_occurrences : int
+        Minimum number of occurrences for a pattern to be included (1-50).
+    limit : int
+        Maximum number of patterns to return (1-500).
+    show_completed : bool
+        Whether to include patterns with no remaining un-corrected matches.
+    entity_name : str | None
+        If provided, filter results to patterns whose matched entity name
+        contains this string (case-insensitive).
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    ApiResponse[list[DiffErrorPatternResponse]]
+        List of error patterns with optional entity associations.
+    """
+    # Always fetch all patterns (including completed) so we can extract
+    # word-level tokens and recompute remaining_matches at the token level.
+    patterns = await _batch_service.get_patterns(
+        session,
+        min_occurrences=min_occurrences,
+        limit=limit,
+        show_completed=True,
+    )
+
+    # Aggregate word-level token pairs across all patterns.
+    # Key: (error_token, canonical_form) -> frequency
+    aggregated: dict[tuple[str, str], int] = {}
+
+    for p in patterns:
+        diff_result = word_level_diff(p.original_text, p.corrected_text)
+
+        if not diff_result.changed_pairs:
+            continue
+
+        for error_frag, canon_frag in diff_result.changed_pairs:
+            error_token = strip_boundary_punctuation(error_frag)
+            canonical_form = strip_boundary_punctuation(canon_frag)
+
+            # Skip empty tokens after stripping
+            if not error_token and not canonical_form:
+                continue
+
+            key = (error_token, canonical_form)
+            aggregated[key] = aggregated.get(key, 0) + p.occurrences
+
+    # Recompute remaining_matches at the token level: count segments whose
+    # effective text (corrected_text if corrected, else text) still contains
+    # the error token.  This replaces the repository's full-segment-level
+    # remaining_matches which doesn't work after word-level extraction.
+    effective_text = case(
+        (TranscriptSegmentDB.has_correction, TranscriptSegmentDB.corrected_text),
+        else_=TranscriptSegmentDB.text,
+    )
+
+    # Build response items with entity enrichment.
+    results: list[DiffErrorPatternResponse] = []
+    for (error_token, canonical_form), freq in aggregated.items():
+        # Token-level remaining_matches query
+        remaining_stmt = (
+            select(func.count())
+            .select_from(TranscriptSegmentDB)
+            .where(effective_text.contains(error_token))
+        )
+        remaining_result = await session.execute(remaining_stmt)
+        remaining = remaining_result.scalar_one()
+
+        # Apply show_completed filter at the token level
+        if not show_completed and remaining == 0:
+            continue
+
+        lookup_text = canonical_form if canonical_form else error_token
+        entity_id, matched_entity_name = await _find_entity_by_name(
+            session, lookup_text
+        )
+
+        # If entity_name filter is set, skip non-matching entries
+        if entity_name is not None:
+            if matched_entity_name is None:
+                continue
+            if entity_name.lower() not in matched_entity_name.lower():
+                continue
+
+        results.append(
+            DiffErrorPatternResponse(
+                error_token=error_token,
+                canonical_form=canonical_form,
+                frequency=freq,
+                remaining_matches=remaining,
+                entity_id=entity_id,
+                entity_name=matched_entity_name,
+            )
+        )
+
+    # Sort by remaining_matches DESC so actionable patterns come first
+    results.sort(key=lambda r: r.remaining_matches, reverse=True)
+
+    return ApiResponse[list[DiffErrorPatternResponse]](data=results)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# GET /cross-segment/candidates
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.get(
+    "/cross-segment/candidates",
+    response_model=ApiResponse[list[CrossSegmentCandidateResponse]],
+    status_code=200,
+    summary="Discover cross-segment ASR error candidates",
+)
+async def get_cross_segment_candidates(
+    min_corrections: int = Query(default=3, ge=1, le=20),
+    entity_name: str | None = Query(default=None),
+    session: AsyncSession = Depends(get_db),
+) -> ApiResponse[list[CrossSegmentCandidateResponse]]:
+    """Discover adjacent segment pairs where a known error is split across a boundary.
+
+    Uses ``CrossSegmentDiscovery`` to analyse recurring correction patterns
+    and find segment pairs matching prefix/suffix combinations.
+
+    Parameters
+    ----------
+    min_corrections : int
+        Minimum correction occurrences for a pattern to be considered (1-20).
+    entity_name : str | None
+        If provided, only consider patterns related to this entity name.
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    ApiResponse[list[CrossSegmentCandidateResponse]]
+        List of cross-segment ASR error candidates.
+    """
+    discovery = CrossSegmentDiscovery(batch_service=_batch_service)
+    candidates = await discovery.discover(
+        session,
+        min_corrections=min_corrections,
+        entity_name=entity_name,
+    )
+
+    results = [
+        CrossSegmentCandidateResponse(**c.model_dump()) for c in candidates
+    ]
+
+    return ApiResponse[list[CrossSegmentCandidateResponse]](data=results)

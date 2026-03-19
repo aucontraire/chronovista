@@ -7,9 +7,12 @@
  * Implements User Story 5: Responsive Sidebar Layout
  * - FR-014: Responsive sidebar with full labels at >=1024px, icons-only below
  * - VD-006: Width 64px (icons-only) or 240px (full labels)
+ *
+ * Feature 046 (US0): Supports collapsible NavGroup entries alongside flat NavItem entries.
  */
 
 import { navRoutes } from "../../router/routes";
+import { NavGroup } from "./NavGroup";
 import { NavItem } from "./NavItem";
 
 /**
@@ -26,7 +29,7 @@ import { NavItem } from "./NavItem";
  * Accessibility:
  * - AR-001: <nav aria-label="Main navigation">
  * - AR-003: Icons have aria-hidden="true" (handled in icon components)
- * - AR-005: Keyboard navigable (Tab/Shift+Tab) via NavLink
+ * - AR-005: Keyboard navigable (Tab/Shift+Tab) via NavLink / button
  *
  * Layout:
  * - Fixed height: min-h-screen
@@ -56,16 +59,32 @@ export function Sidebar() {
     >
       {/* Navigation items */}
       <ul className="flex flex-col" role="list">
-        {navRoutes.map((route) => (
-          <li key={route.path}>
-            <NavItem
-              to={route.path}
-              icon={route.icon}
-              label={route.label}
-              tooltip={route.tooltip}
-            />
-          </li>
-        ))}
+        {navRoutes.map((entry) => {
+          if (entry.kind === "group") {
+            return (
+              <NavGroup
+                key={entry.label}
+                label={entry.label}
+                tooltip={entry.tooltip}
+                icon={entry.icon}
+                routes={entry.children}
+                defaultExpanded={entry.defaultExpanded}
+                storageKey={entry.storageKey}
+              />
+            );
+          }
+
+          return (
+            <li key={entry.path}>
+              <NavItem
+                to={entry.path}
+                icon={entry.icon}
+                label={entry.label}
+                tooltip={entry.tooltip}
+              />
+            </li>
+          );
+        })}
       </ul>
     </nav>
   );

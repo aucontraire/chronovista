@@ -30,11 +30,13 @@
  */
 
 import { useEffect, useReducer, useCallback, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 import { ApplyControls } from "../components/batch/ApplyControls";
 import { MatchList } from "../components/batch/MatchList";
 import { PatternInput } from "../components/batch/PatternInput";
 import { ResultSummary } from "../components/batch/ResultSummary";
+import { CrossSegmentPanel } from "../components/corrections/CrossSegmentPanel";
 import { useBatchApply } from "../hooks/useBatchApply";
 import { useBatchPreview } from "../hooks/useBatchPreview";
 import { useBatchRebuild } from "../hooks/useBatchRebuild";
@@ -281,6 +283,66 @@ function IdleInstructions() {
  */
 export function BatchCorrectionsPage() {
   // -------------------------------------------------------------------------
+  // Router location state — cross-page pre-fill (T014 / US2)
+  // -------------------------------------------------------------------------
+
+  /**
+   * When navigating from DiffAnalysisPage via the "Find & Replace" action,
+   * the router state carries `pattern`, `replacement`, and optionally
+   * `crossSegment`. We consume them once on mount (via useState initializers
+   * on PatternInput), then clear the history state so back-navigation does
+   * not re-apply the pre-fill.
+   */
+  const location = useLocation();
+  const locationState = location.state as
+    | { pattern?: string; replacement?: string; crossSegment?: boolean; isRegex?: boolean }
+    | null
+    | undefined;
+
+  // Capture the initial values synchronously from location state so they can
+  // be used as useState initial values inside PatternInput. Using refs means
+  // the values are stable across renders and do not cause PatternInput to
+  // re-mount if the parent re-renders.
+  const prefillPattern = locationState?.pattern ?? "";
+  const prefillReplacement = locationState?.replacement ?? "";
+  const prefillCrossSegment = locationState?.crossSegment ?? false;
+  const prefillIsRegex = locationState?.isRegex ?? false;
+
+  // Clear history state after consuming it so back-navigation does not
+  // re-apply the pre-fill (T014 spec requirement).
+  useEffect(() => {
+    if (locationState?.pattern || locationState?.replacement) {
+      window.history.replaceState({}, document.title);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // -------------------------------------------------------------------------
+  // Cross-segment panel open/closed state
+  // -------------------------------------------------------------------------
+
+  /** Whether the CrossSegmentPanel is expanded. Starts open; collapses on preview. */
+  const [crossSegmentOpen, setCrossSegmentOpen] = useState(true);
+
+  // -------------------------------------------------------------------------
+  // Cross-segment panel pre-fill state (T017–T019 / US3)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Tracks the active initial values for PatternInput. When a cross-segment
+   * candidate is selected from CrossSegmentPanel, we increment `patternInputKey`
+   * to remount PatternInput with the new initial values, which is the only
+   * reliable way to drive an uncontrolled form field to a new value.
+   *
+   * The key starts at 0 (equivalent to the router-state-driven initial render).
+   * Each call to handlePrefill bumps it so PatternInput mounts fresh.
+   */
+  const [patternInputKey, setPatternInputKey] = useState(0);
+  const [panelPrefillPattern, setPanelPrefillPattern] = useState(prefillPattern);
+  const [panelPrefillReplacement, setPanelPrefillReplacement] = useState(prefillReplacement);
+  const [panelPrefillCrossSegment, setPanelPrefillCrossSegment] = useState(prefillCrossSegment);
+  const [panelPrefillIsRegex, setPanelPrefillIsRegex] = useState(prefillIsRegex);
+
+  // -------------------------------------------------------------------------
   // State machine
   // -------------------------------------------------------------------------
   const [state, dispatch] = useReducer(batchReducer, { phase: "idle" });
@@ -494,6 +556,8 @@ export function BatchCorrectionsPage() {
   /** Called by PatternInput when user clicks "Preview matches". */
   const handlePreview = useCallback(
     (request: BatchPreviewRequest) => {
+      // Auto-collapse the cross-segment panel so the match results are visible.
+      setCrossSegmentOpen(false);
       previewMutation.mutate(request, {
         onSuccess: (data) => {
           dispatch({
@@ -511,14 +575,15 @@ export function BatchCorrectionsPage() {
   /**
    * Called by PatternInput whenever pattern or replacement text changes.
    * Resets to idle so stale preview results are cleared (FR-029).
-   * Also clears the correction note and entity link since this constitutes
-   * a new session.
+   * Entity selection is intentionally preserved — the user may be correcting
+   * another misspelling variant of the same entity (second-round workflow).
+   * Entity is cleared via FR-011 (replacement emptied) or handlePrefill
+   * (cross-segment candidate selected).
    */
   const handlePatternChange = useCallback(() => {
     dispatch({ type: "RESET" });
     previewMutation.reset();
     setCorrectionNote('');
-    setSelectedEntity(null);
   }, [previewMutation]);
 
   /** Toggle a single segment's selection state. */
@@ -609,6 +674,28 @@ export function BatchCorrectionsPage() {
     rebuildMutation.mutate({ video_ids: state.result.affected_video_ids });
   }, [state, rebuildMutation]);
 
+  /**
+   * Called by CrossSegmentPanel when the user clicks a candidate card (T019).
+   * Pre-fills PatternInput by remounting it with new initial values, then
+   * resets the state machine to idle so any stale preview results are cleared.
+   */
+  const handlePrefill = useCallback(
+    (values: { pattern: string; replacement: string; crossSegment: boolean }) => {
+      setPanelPrefillPattern(values.pattern);
+      setPanelPrefillReplacement(values.replacement);
+      setPanelPrefillCrossSegment(values.crossSegment);
+      setPanelPrefillIsRegex(false);
+      // Remount PatternInput so the new initial values take effect.
+      setPatternInputKey((k) => k + 1);
+      // Clear any stale preview state.
+      dispatch({ type: "RESET" });
+      previewMutation.reset();
+      setCorrectionNote("");
+      setSelectedEntity(null);
+    },
+    [previewMutation]
+  );
+
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
@@ -629,13 +716,27 @@ export function BatchCorrectionsPage() {
       <div className="space-y-6">
         {/* Pattern configuration card — always visible */}
         <PatternInput
+          key={patternInputKey}
           onPreview={handlePreview}
           isLoading={isPreviewLoading}
           isLocked={isLocked}
           onPatternChange={handlePatternChange}
           onEntityChange={handleEntityChange}
           entityAliasNames={selectedEntityAliasNames}
+          initialPattern={panelPrefillPattern}
+          initialReplacement={panelPrefillReplacement}
+          initialCrossSegment={panelPrefillCrossSegment}
+          initialIsRegex={panelPrefillIsRegex}
         />
+
+        {/* Cross-segment candidates panel (T019) */}
+        <div className="border-t border-slate-200 pt-6">
+          <CrossSegmentPanel
+            prefillForm={handlePrefill}
+            isOpen={crossSegmentOpen}
+            onToggle={() => setCrossSegmentOpen((prev) => !prev)}
+          />
+        </div>
 
         {/* Preview results section */}
         {showMatchList ? (

@@ -440,3 +440,116 @@ To resolve the mismatch, open the entity detail page and add the replacement tex
 #### Entity Linking is Optional
 
 The autocomplete is always optional. You can still type plain replacement text without selecting an entity. Entity linking only applies to the batch corrections page — the inline segment editor does not support it.
+
+---
+
+## Web UI: Batch History
+
+View and manage past batch correction operations at `/corrections/batch/history`.
+
+### Viewing Past Batches
+
+The batch history page shows a paginated list of all batch operations, sorted by most recent first. Each entry displays:
+
+- **Pattern and replacement** used in the batch
+- **Correction count** (number of segments affected)
+- **Actor** who submitted the batch (e.g., `user:batch`)
+- **Timestamp** of when the batch was applied
+
+Pagination controls at the bottom let you navigate through older batches.
+
+### Reverting a Batch
+
+Each batch entry has a **Revert** button that undoes all corrections in that batch atomically. Clicking it reverts every segment to its pre-correction text in a single operation.
+
+| Outcome | Behavior |
+|---------|----------|
+| Success | The batch is fully reverted; a confirmation shows the reverted and skipped counts |
+| Already reverted (409) | An error message indicates the batch has already been fully reverted |
+| Not found (404) | An error message indicates no corrections exist for that batch ID |
+
+---
+
+## Web UI: ASR Error Patterns Dashboard
+
+The diff analysis page at `/corrections/diff-analysis` surfaces recurring ASR misrecognition patterns extracted from your past corrections.
+
+### How It Works
+
+The dashboard aggregates word-level diffs from all previously applied corrections and groups them by error token and canonical (corrected) form. Each row shows:
+
+- **Error token** — the original ASR-produced text (e.g., "Shane Baum")
+- **Canonical form** — the corrected text (e.g., "Sheinbaum")
+- **Frequency** — how many times this specific correction has been applied
+- **Remaining matches** — how many un-corrected instances of the error token still exist in your transcripts
+- **Entity association** — if the canonical form matches a named entity, the entity name is shown
+
+### Sorting and Filtering
+
+- Results are sorted by **remaining matches** descending, so actionable patterns appear first
+- **Client-side filter**: type in the search box to filter rows by error token text (instant, no server request)
+- **Server-side filter**: filter by entity name using the entity filter input (debounced — waits for you to stop typing before querying the server via the `entityName` query parameter)
+- **"Show completed" toggle**: when off, patterns with zero remaining matches are hidden; when on, all patterns are shown (including fully corrected ones)
+
+### Find & Replace Action
+
+Each row has a **Find & Replace** button that navigates to the batch corrections page (`/corrections/batch`) and pre-fills the form with:
+
+- The error token as the search pattern
+- The canonical form as the replacement
+- Regex mode enabled with `\b` word boundaries wrapping the pattern (e.g., `\bShane Baum\b`)
+
+This lets you quickly apply a known correction pattern to all remaining instances.
+
+---
+
+## Web UI: Cross-Segment Candidates Panel
+
+The Find & Replace page (`/corrections/batch`) includes a collapsible **Cross-Segment Candidates** panel that shows AI-suggested corrections for names split across adjacent transcript segments.
+
+### How It Works
+
+Candidates are discovered by analyzing your existing correction history. When the system finds a recurring correction pattern (e.g., "Shane Bound" corrected to "Sheinbaum" at least 3 times), it scans for uncorrected segment pairs where that same error is split across a boundary.
+
+Each candidate shows:
+
+- **Segment pair text** — the text of both adjacent segments
+- **Proposed correction** — the corrected form derived from the pattern
+- **Source pattern** — the original error text that was matched
+- **Confidence score** — how likely the match is correct (0.0 to 1.0)
+- **Partially corrected flag** — whether one of the two segments already has a correction
+
+### Using Candidates
+
+- Click a candidate to **pre-fill the find-replace form** with the source pattern and proposed correction, with cross-segment mode enabled
+- The panel **auto-collapses** when you click Preview to run a search, keeping the focus on your results
+- Expand the panel again at any time to browse other candidates
+
+---
+
+## Phonetic ASR Variant Suggestions
+
+The entity detail page includes a collapsible **Phonetic ASR Variants** section that helps you discover transcript text that may be a phonetic misrecognition of the entity's name.
+
+### How It Works
+
+The system scans transcript segments from videos where the entity is mentioned, extracts N-grams, and scores them against the entity's canonical name and aliases using phonetic similarity algorithms (Soundex, Metaphone). Results are lazy-loaded when you expand the section.
+
+Each suggested variant shows:
+
+- **Original text** — the N-gram from the transcript that looks like a phonetic match
+- **Proposed correction** — the entity name (or alias) it likely represents
+- **Confidence score** — a weighted score between 0.0 and 1.0
+- **Evidence description** — a human-readable explanation of why the match was flagged
+- **Video title** — the video where the variant was found
+
+### Confidence Threshold
+
+A slider lets you adjust the minimum confidence threshold (default 0.5). Lower values show more results with more false positives; higher values show fewer, more confident matches.
+
+### Actions
+
+Each variant has two action buttons:
+
+- **Register as Alias** — adds the original text as a new alias on the entity, so future `entities scan` runs will detect it automatically
+- **Find & Replace** — navigates to the batch corrections page with the original text as the search pattern and the proposed correction as the replacement, with regex mode and `\b` word boundaries enabled

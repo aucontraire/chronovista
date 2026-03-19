@@ -334,3 +334,32 @@ class DetectionMethod(str, Enum):
     LLM_EXTRACTION = "llm_extraction"
     MANUAL = "manual"
     USER_CORRECTION = "user_correction"
+
+
+class TaskStatus(str, Enum):
+    """Status of a background task."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class PipelineStepStatus(str, Enum):
+    """Status of a pipeline step in the onboarding flow."""
+
+    NOT_STARTED = "not_started"
+    AVAILABLE = "available"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    BLOCKED = "blocked"
+
+
+class OperationType(str, Enum):
+    """Types of pipeline operations that can be triggered."""
+
+    SEED_REFERENCE = "seed_reference"
+    LOAD_DATA = "load_data"
+    ENRICH_METADATA = "enrich_metadata"
+    SYNC_TRANSCRIPTS = "sync_transcripts"
+    NORMALIZE_TAGS = "normalize_tags"

@@ -20,6 +20,7 @@ import { EntitiesPage } from "../pages/EntitiesPage";
 import { EntityDetailPage } from "../pages/EntityDetailPage";
 import { HomePage } from "../pages/HomePage";
 import { NotFoundPage } from "../pages/NotFoundPage";
+import { OnboardingPage } from "../pages/OnboardingPage";
 import { PlaylistDetailPage } from "../pages/PlaylistDetailPage";
 import { PlaylistsPage } from "../pages/PlaylistsPage";
 import { SearchPage } from "../pages/SearchPage";
@@ -114,6 +115,10 @@ export const router = createBrowserRouter([
       {
         path: "corrections/diff-analysis",
         element: <DiffAnalysisPage />,
+      },
+      {
+        path: "onboarding",
+        element: <OnboardingPage />,
       },
       {
         path: "*",

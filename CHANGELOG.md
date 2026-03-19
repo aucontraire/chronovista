@@ -11,6 +11,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.48.0] - 2026-03-19
+
+### Added
+- **Feature 047: Docker Containerization & Data Onboarding UI** (GitHub #97, #98)
+  - **Containerized Stack (US1)**: Single `docker compose up` starts PostgreSQL 15 + FastAPI backend serving both API (`/api/v1/*`) and React static build (`/*`) on port 8765; multi-stage Dockerfile (Poetry export → pip install → slim runtime, ~505MB); Alembic migrations auto-run on startup via entrypoint script with `pg_isready` health check; OAuth token persists via `./data/` bind mount; NLP dependencies excluded by default (`--build-arg INCLUDE_NLP=true` to include)
+  - **Data Onboarding Page (US2)**: New `/onboarding` route with step-based pipeline wizard; `GET /api/v1/onboarding/status` returns pipeline state (4 steps: Seed Reference Data → Load Data Export → Enrich Metadata → Normalize Tags), record counts, auth status, and export detection; `POST /api/v1/tasks` triggers background operations with in-memory TaskManager (mutual exclusion per operation type); `GET /api/v1/tasks/{task_id}` for polling; step cards show status, metrics, progress bar, and error/retry UI
+  - **Returning User Detection (US3)**: `new_data_available` compares takeout directory mtime against most recent video `created_at`; completed steps show green checkmarks with result metrics; pipeline state derived from DB counts (survives container restart)
+  - **Multi-Directory Takeout Processing**: Load Data processes all `YouTube and YouTube Music*` directories (dated + undated) in takeout path, capturing full watch history across Google Takeout behavior changes; includes `TakeoutRecoveryService` for deleted/private video metadata recovery
+  - **Maximum Enrichment Pipeline**: Enrich Metadata runs 4 sub-steps: `enrich_videos(priority="all", include_deleted=True)`, `enrich_playlists()`, sync liked videos, `enrich_channels()`; non-fatal error handling per sub-step
+  - **Migration guide**: `docs/guides/migrating-to-docker.md` for users transitioning from native setup
+  - **`enriched_videos` count**: Separate metric tracking videos enriched via YouTube API (`WHERE view_count IS NOT NULL`), distinct from total video count
+
+### Changed
+- `OperationType` enum extended with `SEED_REFERENCE`, `LOAD_DATA`, `ENRICH_METADATA`, `NORMALIZE_TAGS`
+- `PipelineStepStatus` enum added with `NOT_STARTED`, `AVAILABLE`, `RUNNING`, `COMPLETED`, `BLOCKED`
+- `TaskStatus` enum added with `QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`
+- `OnboardingCounts` schema includes `enriched_videos` field
+- Removed "Sync Transcripts" from pipeline (YouTube IP-blocks bulk transcript download; transcripts fetched per-video from detail page)
+
+### Technical
+- New files: `onboarding_service.py`, `task_manager.py`, `onboarding.py` (router + schemas), `tasks.py` (router + schemas), `entrypoint.sh`, `Dockerfile`, `docker-compose.yml`
+- SPA routing: FastAPI serves `index.html` for all non-API, non-static routes
+- Frontend: TanStack Query polling with 2-second `refetchInterval` during active tasks
+- Docker image ~505MB without NLP dependencies
+- mypy strict compliance (0 errors across src/ and tests/)
+
 ## [0.47.0] - 2026-03-18
 
 ### Added

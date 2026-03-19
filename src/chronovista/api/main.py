@@ -5,11 +5,13 @@ import os
 import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.middleware.cors import CORSMiddleware
-from starlette.responses import Response
+from starlette.responses import FileResponse, Response
 
 from chronovista.api.exception_handlers import register_exception_handlers
 from chronovista.api.middleware import RequestIdFilter, RequestIdMiddleware, get_request_id
@@ -21,12 +23,14 @@ from chronovista.api.routers import (
     entity_mentions,
     health,
     images,
+    onboarding,
     playlists,
     preferences,
     search,
     sidebar,
     sync,
     tags,
+    tasks,
     topics,
     transcript_corrections,
     transcripts,
@@ -46,7 +50,12 @@ SENSITIVE_PATHS: frozenset[str] = frozenset({
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler for startup/shutdown."""
-    # Startup
+    # Startup — wire the tasks router with the shared TaskManager and
+    # OnboardingService singletons owned by the onboarding router.
+    tasks.configure(
+        task_manager=onboarding._task_manager,
+        onboarding_service=onboarding._get_onboarding_service(),
+    )
     yield
     # Shutdown
 
@@ -58,23 +67,29 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Determine if static files should be served (production/Docker mode)
+_serve_static = os.getenv("SERVE_STATIC", "").lower() == "true"
+_static_dir = Path("static")
+
 # CORS configuration for frontend development
-# Get frontend port from environment variable with default
-_frontend_port = os.getenv("CHRONOVISTA_FRONTEND_PORT", "8766")
+# Only needed when frontend runs on a separate dev server (not serving static)
+if not _serve_static:
+    # Get frontend port from environment variable with default
+    _frontend_port = os.getenv("CHRONOVISTA_FRONTEND_PORT", "8766")
 
-# CORS origins for development (localhost and 127.0.0.1)
-_cors_origins = [
-    f"http://localhost:{_frontend_port}",
-    f"http://127.0.0.1:{_frontend_port}",
-]
+    # CORS origins for development (localhost and 127.0.0.1)
+    _cors_origins = [
+        f"http://localhost:{_frontend_port}",
+        f"http://127.0.0.1:{_frontend_port}",
+    ]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # Register Request ID middleware early in the chain
 # This ensures request ID is available throughout request processing
@@ -208,3 +223,21 @@ app.include_router(sidebar.router, prefix="/api/v1", tags=["sidebar"])
 app.include_router(images.router, prefix="/api/v1", tags=["images"])
 app.include_router(entity_mentions.router, prefix="/api/v1", tags=["entity-mentions"])
 app.include_router(batch_corrections.router, prefix="/api/v1/corrections/batch", tags=["batch-corrections"])
+app.include_router(onboarding.router, prefix="/api/v1", tags=["onboarding"])
+app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
+
+# Conditionally mount static files and SPA catch-all for production/Docker mode
+# This MUST be registered AFTER all API routers so API routes take priority
+if _serve_static and _static_dir.exists():
+    app.mount("/assets", StaticFiles(directory="static/assets"), name="static-assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str) -> FileResponse:
+        """
+        Serve index.html for all non-API routes (SPA client-side routing).
+
+        This catch-all handles React Router paths like /onboarding, /channels,
+        /videos/123, etc. API routes, /docs, /redoc, and /openapi.json continue
+        to work because they are registered before this catch-all.
+        """
+        return FileResponse("static/index.html")

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "chronovista"
-version = "0.47.0"
+version = "0.48.0"
 description = "Personal YouTube data analytics tool for comprehensive access to your YouTube engagement history"
 authors = ["chronovista <noreply@chronovista.dev>"]
 maintainers = ["chronovista <noreply@chronovista.dev>"]
@@ -217,7 +217,8 @@ markers = [
     "unit: marks tests as unit tests",
     "auth: marks tests that require authentication",
     "db: marks tests that require database",
-    "asyncio: marks tests as async (automatically marked via pytestmark)"
+    "asyncio: marks tests as async (automatically marked via pytestmark)",
+    "docker: marks tests requiring Docker (deselect with '-m \"not docker\"')"
 ]
 asyncio_mode = "auto"
 filterwarnings = [

@@ -10,10 +10,44 @@ Complete installation guide for chronovista.
 | Node.js (frontend) | 20.x LTS | 22.x LTS |
 | Memory | 2GB | 4GB+ |
 | Storage | 1GB | 10GB+ (for transcripts) |
-| Database | PostgreSQL 13 / MySQL 8 | PostgreSQL 15 |
+| Database | PostgreSQL 13 | PostgreSQL 15 |
 
 !!! note "Node.js for Frontend"
     Node.js is only required if you want to use the web frontend. The CLI works without Node.js.
+
+## Docker Installation (Recommended)
+
+The fastest way to get running. No Python or Node.js installation required.
+
+**Prerequisites:** Docker with Compose, [YouTube Data API credentials](https://console.cloud.google.com/) (API key + OAuth client).
+
+**One-time OAuth setup:** The container handles token refresh, but the initial OAuth login requires a native install so the browser redirect works:
+
+```bash
+pip install chronovista  # or: poetry install
+chronovista auth login
+```
+
+**Start the stack:**
+
+```bash
+cp .env.example .env       # Add YouTube API credentials
+make docker-setup          # Validates, builds, starts, health check
+# Opens http://localhost:8765/onboarding
+```
+
+The guided onboarding wizard walks you through a 4-step pipeline: Seed Reference Data → Load Data Export → Enrich Metadata → Normalize Tags.
+
+See [Migrating from Native to Docker](../guides/migrating-to-docker.md) for users transitioning from a native setup.
+
+!!! note "What Runs Where"
+    Docker is for **using** chronovista. Native Python is for **developing** chronovista. The `chronovista auth` commands are the one exception — they must always run natively because the OAuth flow requires a browser redirect to `localhost` on your machine.
+
+---
+
+## Native Installation (Development)
+
+For contributors who want to develop chronovista locally.
 
 ## Python Version Management
 
@@ -128,24 +162,6 @@ The development database runs on port 5434 to avoid conflicts with local Postgre
     sudo apt update
     sudo apt install postgresql postgresql-contrib
     sudo -u postgres createdb chronovista
-    ```
-
-### MySQL Setup
-
-=== "Docker"
-
-    ```bash
-    docker run --name chronovista-mysql \
-        -e MYSQL_ROOT_PASSWORD=dev \
-        -e MYSQL_DATABASE=chronovista \
-        -p 3306:3306 \
-        -d mysql:8
-    ```
-
-=== "Local"
-
-    ```bash
-    mysql -u root -p -e "CREATE DATABASE chronovista;"
     ```
 
 ## YouTube API Setup

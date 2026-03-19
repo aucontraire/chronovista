@@ -5,6 +5,7 @@ Alembic environment configuration.
 from __future__ import annotations
 
 import contextlib
+import os
 from logging.config import fileConfig
 from typing import Any
 
@@ -21,11 +22,17 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Set the SQLAlchemy URL from settings or command line override
+# Priority: 1) -x database_url CLI arg, 2) DATABASE_URL env var (Docker), 3) settings
 database_url = context.get_x_argument(as_dictionary=True).get("database_url")
 if database_url:
     config.set_main_option("sqlalchemy.url", database_url)
+elif os.environ.get("DATABASE_URL"):
+    # Docker containers set DATABASE_URL directly; convert async driver to sync
+    docker_url = os.environ["DATABASE_URL"]
+    sync_url = docker_url.replace("+asyncpg", "").replace("+aiomysql", "")
+    config.set_main_option("sqlalchemy.url", sync_url)
 else:
-    # Use sync URL for migrations
+    # Use sync URL for migrations (development default)
     config.set_main_option("sqlalchemy.url", settings.get_sync_database_url())
 
 # Add your model's MetaData object here for 'autogenerate' support

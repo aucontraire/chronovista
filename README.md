@@ -7,8 +7,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/license-AGPL--3.0-green.svg" alt="License: AGPL-3.0">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/tests-7,670+-brightgreen.svg" alt="Tests: 7,670+">
-  <img src="https://img.shields.io/badge/coverage-72%25-yellow.svg" alt="Coverage: 75%">
+  <img src="https://img.shields.io/badge/tests-8,320+-brightgreen.svg" alt="Tests: 8,320+">
+  <img src="https://img.shields.io/badge/coverage-72%25-yellow.svg" alt="Coverage: 76%">
   <img src="https://img.shields.io/badge/code%20style-black-000000.svg" alt="Code style: black">
 </p>
 
@@ -28,6 +28,26 @@
 ## Quick Start
 
 ```bash
+# Clone
+git clone https://github.com/chronovista/chronovista.git
+cd chronovista
+
+# Configure
+cp .env.example .env  # Add YouTube API credentials
+
+# One-time OAuth setup (must run natively)
+pip install chronovista  # or: poetry install
+chronovista auth login
+
+# Start the stack
+make docker-setup
+# Opens http://localhost:8765/onboarding
+```
+
+<details>
+<summary>Development Setup (alternative)</summary>
+
+```bash
 # Clone and install
 git clone https://github.com/chronovista/chronovista.git
 cd chronovista && poetry install
@@ -42,6 +62,7 @@ poetry run chronovista auth login
 poetry run chronovista sync all
 # Or activate the virtualenv first: poetry shell
 ```
+</details>
 
 ## Features
 
@@ -57,6 +78,7 @@ Most YouTube data tools require cloud sync or third-party services. chronovista 
 | **Google Takeout** | Import complete YouTube history including deleted/private videos |
 | **Deleted Video Recovery** | Recover metadata for unavailable videos via the Wayback Machine CDX API |
 | **REST API + Web UI** | FastAPI server (20+ endpoints) with React dashboard for browsing and filtering |
+| **One-Command Deploy** | `docker compose up` -- full stack with guided onboarding, no Python/Node.js required |
 | **Write Operations** | Create playlists, like videos, subscribe to channels via OAuth |
 | **Export** | CSV/JSON with language-aware filtering |
 
@@ -69,7 +91,63 @@ Most YouTube data tools require cloud sync or third-party services. chronovista 
 
 ## Installation
 
-### Prerequisites
+### Docker (Recommended)
+
+The fastest way to get running. No Python or Node.js installation required.
+
+**Prerequisites:** Docker with Compose, [YouTube Data API credentials](https://console.cloud.google.com/) (API key + OAuth client).
+
+**One-time OAuth setup:** The container handles token refresh, but the initial OAuth login requires a native install so the browser redirect works:
+
+```bash
+pip install chronovista  # or: poetry install
+chronovista auth login
+```
+
+**Start the stack:**
+
+```bash
+cp .env.example .env       # Add YouTube API credentials
+make docker-setup          # Validates, builds, starts, health check
+# Opens http://localhost:8765/onboarding
+```
+
+The guided onboarding wizard walks you through a 4-step pipeline:
+
+1. **Seed Reference Data** -- load topic categories and region mappings
+2. **Load Data Export** -- import your Google Takeout YouTube history
+3. **Enrich Metadata** -- fetch current metadata from the YouTube API
+4. **Normalize Tags** -- build canonical tag mappings from raw tag variations
+
+**Run CLI commands inside the container:**
+
+```bash
+make docker-shell          # Opens bash inside the container
+chronovista sync all       # Run any CLI command
+```
+
+**Other Makefile commands:** `make docker-up`, `make docker-down`, `make docker-restart`, `make docker-logs`, `make docker-status`, `make docker-db-shell`, `make docker-clean`.
+
+**Adding new Takeout data:** Drop the export into `./takeout/`, refresh the onboarding page, and click Start. Data persists in Docker volumes; the OAuth token persists in `./data/`.
+
+See [Migrating from Native to Docker](docs/guides/migrating-to-docker.md) for a detailed migration guide.
+
+### What Runs Where
+
+Docker is for **using** chronovista. Native Python is for **developing** chronovista. The `chronovista auth` commands are the one exception — they must always run natively because the OAuth flow requires a browser redirect to `localhost` on your machine.
+
+| Command | Where | Why |
+|---------|-------|-----|
+| `chronovista auth login/logout/status` | **Host (natively)** | Browser redirect needs host access |
+| All other `chronovista` commands | **Container** (`make docker-shell`) | Full stack runs inside Docker |
+| `make docker-*` commands | **Host** | Docker management |
+| `make dev`, `make test`, `make quality` | **Host (natively)** | Development workflow |
+
+> **Note:** If you're only using chronovista (not developing it), you only need Docker and a one-time native `chronovista auth login`. Everything else happens through the web UI or `make docker-shell`.
+
+### Development Prerequisites
+
+For local development (contributors, not end users):
 
 - Python 3.11+
 - [Poetry](https://python-poetry.org/)
@@ -96,19 +174,6 @@ cp .env.example .env  # Add YouTube API credentials, set DEVELOPMENT_MODE=true
 # Run migrations
 make dev-migrate
 ```
-
-<details>
-<summary>MySQL Setup</summary>
-
-```bash
-docker run --name chronovista-mysql -e MYSQL_ROOT_PASSWORD=dev -e MYSQL_DATABASE=chronovista -p 3306:3306 -d mysql:8
-```
-
-Update `DATABASE_URL` in `.env`:
-```
-DATABASE_URL=mysql+aiomysql://root:dev@localhost:3306/chronovista
-```
-</details>
 
 ### YouTube API Setup
 
@@ -262,7 +327,7 @@ make dev               # Start backend (8765) + frontend (8766)
 open http://localhost:8766
 ```
 
-The React dashboard provides video browsing with tag/category/topic filters, transcript search, playlist navigation, and deleted video visibility controls.
+The React dashboard provides video browsing with tag/category/topic filters, transcript search, playlist navigation, deleted video visibility controls, and a guided data onboarding wizard at `/onboarding`.
 
 ## Development
 
@@ -281,12 +346,16 @@ make quality           # format + lint + type-check
 
 ### Testing
 
+Integration tests require the development database (`postgres-dev` on port 5434):
+
 ```bash
-make test              # All backend tests (5,493+)
+make dev-db-up         # Start dev database (required for integration tests)
+
+make test              # All backend tests (6,000+)
 make test-cov          # With coverage
 make test-fast         # Quick run
 
-# Frontend tests (2,177+)
+# Frontend tests (2,320+)
 cd frontend && npm test
 ```
 
@@ -295,7 +364,7 @@ cd frontend && npm test
 ```bash
 make format            # black + isort
 make lint              # ruff
-make type-check        # mypy (strict, 0 errors across 415+ source files)
+make type-check        # mypy (strict, 0 errors across 420+ source files)
 ```
 
 ### Database

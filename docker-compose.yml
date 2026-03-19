@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: chronovista-postgres
+    environment:
+      POSTGRES_DB: chronovista
+      POSTGRES_USER: ${DB_USER:-chronovista}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-chronovista}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - chronovista-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-chronovista} -d chronovista"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - chronovista
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INCLUDE_NLP: ${INCLUDE_NLP:-false}
+    container_name: chronovista-app
+    ports:
+      - "${APP_PORT:-8765}:8765"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${DB_USER:-chronovista}:${DB_PASSWORD:-chronovista}@postgres:5432/chronovista
+      DEVELOPMENT_MODE: "false"
+      SERVE_STATIC: "true"
+      DATA_DIR: /data
+      TAKEOUT_DIR: /data/takeout
+    volumes:
+      - ./data:/data
+      - ./takeout:/data/takeout:ro
+      - ./cache:/app/cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - chronovista
+    restart: unless-stopped
+
+networks:
+  chronovista:
+    driver: bridge
+
+volumes:
+  chronovista-data:
+    driver: local

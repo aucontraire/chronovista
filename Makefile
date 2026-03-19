@@ -1,5 +1,5 @@
 # Makefile for chronovista development (Poetry-based)
-.PHONY: help install install-dev clean test test-cov test-unit test-integration test-integration-reset lint format type-check quality pre-commit run build docs docs-serve docs-build docs-deploy dev dev-backend dev-frontend generate-api
+.PHONY: help install install-dev clean test test-cov test-unit test-integration test-integration-reset lint format type-check quality pre-commit run build docs docs-serve docs-build docs-deploy dev dev-backend dev-frontend generate-api docker-build docker-up docker-down docker-logs docker-shell docker-db-shell docker-status docker-setup docker-clean docker-restart
 
 # Default target
 help:
@@ -97,6 +97,18 @@ help:
 	@echo "  release-check     - Validate package (check + build + twine check)"
 	@echo "  release-test      - Publish to TestPyPI"
 	@echo "  release           - Publish to PyPI"
+	@echo ""
+	@echo "Docker (full-stack container):"
+	@echo "  docker-setup      - First-time setup: validate prereqs, build, start, health check"
+	@echo "  docker-build      - Build the Docker image (multi-stage: Poetry + Vite + runtime)"
+	@echo "  docker-up         - Start the full stack (postgres + app) in background"
+	@echo "  docker-down       - Stop the full stack"
+	@echo "  docker-restart    - Restart the full stack"
+	@echo "  docker-logs       - Stream app container logs"
+	@echo "  docker-status     - Show container status and health"
+	@echo "  docker-shell      - Open a bash shell in the app container"
+	@echo "  docker-db-shell   - Open psql shell in the Docker postgres"
+	@echo "  docker-clean      - Stop stack and remove volumes (destroys DB data)"
 	@echo ""
 	@echo "Environment:"
 	@echo "  info              - Show project info (versions, paths, deps)"
@@ -549,3 +561,108 @@ dev-frontend:
 # - TypeScript type check: cd frontend && npm run typecheck
 # - Hot reload: Modify a .tsx file and observe browser auto-refresh
 # - Graceful shutdown: Press Ctrl+C when running 'make dev'
+
+# =============================================================================
+# Docker Full-Stack (Feature 047)
+# =============================================================================
+# Uses docker-compose.yml (production-like: app + postgres)
+# Separate from docker-compose.dev.yml (dev postgres only)
+
+APP_PORT ?= 8765
+HEALTH_URL = http://localhost:$(APP_PORT)/api/v1/health
+
+# First-time setup: validate, build, start, health check
+docker-setup:
+	@echo "=== Chronovista Docker Setup ==="
+	@echo ""
+	@# Check Docker
+	@command -v docker >/dev/null 2>&1 || { echo "Docker is not installed. Install from https://docker.com"; exit 1; }
+	@echo "[OK] Docker is installed ($$(docker --version))"
+	@# Check Docker Compose
+	@docker compose version >/dev/null 2>&1 || { echo "Docker Compose is not available."; exit 1; }
+	@echo "[OK] Docker Compose is available"
+	@# Check daemon
+	@docker info >/dev/null 2>&1 || { echo "Docker daemon is not running. Start Docker Desktop."; exit 1; }
+	@echo "[OK] Docker daemon is running"
+	@# Check .env
+	@test -f .env || { echo ".env file not found. Copy from .env.example and fill in credentials."; exit 1; }
+	@echo "[OK] .env file found"
+	@# Check OAuth token
+	@if [ -f data/youtube_token.json ]; then \
+		echo "[OK] OAuth token found"; \
+	else \
+		echo "[WARN] No OAuth token in ./data/youtube_token.json"; \
+		echo "       Run: chronovista auth login"; \
+		echo "       (required for Enrich Metadata step)"; \
+	fi
+	@echo ""
+	@echo "Building image..."
+	docker compose build
+	@echo ""
+	@echo "Starting stack..."
+	docker compose up -d
+	@echo ""
+	@echo "Waiting for health check..."
+	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do \
+		if curl -sf $(HEALTH_URL) >/dev/null 2>&1; then \
+			echo "[OK] Chronovista is running at http://localhost:$(APP_PORT)"; \
+			echo ""; \
+			echo "Open http://localhost:$(APP_PORT)/onboarding to begin."; \
+			exit 0; \
+		fi; \
+		sleep 2; \
+	done; \
+	echo "Health check timed out. Check logs: make docker-logs"; \
+	exit 1
+
+# Build the Docker image
+docker-build:
+	docker compose build
+
+# Start the full stack
+docker-up:
+	docker compose up -d
+	@echo "Stack started. Open http://localhost:$(APP_PORT)/onboarding"
+
+# Stop the full stack
+docker-down:
+	docker compose down
+
+# Restart the full stack
+docker-restart:
+	docker compose down
+	docker compose up -d
+	@echo "Stack restarted. Open http://localhost:$(APP_PORT)/onboarding"
+
+# Stream app container logs
+docker-logs:
+	docker compose logs -f app
+
+# Show container status
+docker-status:
+	@docker compose ps
+	@echo ""
+	@if curl -sf $(HEALTH_URL) >/dev/null 2>&1; then \
+		echo "Health: OK"; \
+	else \
+		echo "Health: UNREACHABLE"; \
+	fi
+
+# Open bash shell in app container
+docker-shell:
+	docker compose exec app bash
+
+# Open psql shell in Docker postgres
+docker-db-shell:
+	docker compose exec postgres psql -U $${DB_USER:-chronovista} -d chronovista
+
+# Stop stack and remove volumes (DESTROYS database data)
+docker-clean:
+	@echo "This will destroy all Docker database data."
+	@read -p "Are you sure? [y/N] " confirm; \
+	if [ "$$confirm" = "y" ] || [ "$$confirm" = "Y" ]; then \
+		docker compose down -v; \
+		echo "Stack stopped and volumes removed."; \
+	else \
+		echo "Cancelled."; \
+	fi

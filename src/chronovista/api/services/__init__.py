@@ -6,5 +6,6 @@ the REST API.
 """
 
 from chronovista.api.services.sync_manager import SyncManager, sync_manager
+from chronovista.api.services.task_manager import TaskManager
 
-__all__ = ["SyncManager", "sync_manager"]
+__all__ = ["SyncManager", "TaskManager", "sync_manager"]

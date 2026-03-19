@@ -2,9 +2,48 @@
 
 Get up and running with chronovista in minutes.
 
-## Prerequisites
+## Option 1: Docker (Recommended)
 
-Before you begin, ensure you have:
+The fastest path — no Python or Node.js required.
+
+**Prerequisites:** Docker with Compose, [YouTube Data API credentials](youtube-api-setup.md) (API key + OAuth client).
+
+```bash
+# Clone
+git clone https://github.com/chronovista/chronovista.git
+cd chronovista
+
+# Configure
+cp .env.example .env  # Add YouTube API credentials
+
+# One-time OAuth setup (must run natively)
+pip install chronovista  # or: poetry install
+chronovista auth login
+
+# Start the stack
+make docker-setup
+# Opens http://localhost:8765/onboarding
+```
+
+The guided onboarding wizard walks you through 4 steps: Seed Reference Data → Load Data Export → Enrich Metadata → Normalize Tags.
+
+Run CLI commands inside the container:
+
+```bash
+make docker-shell          # Opens bash inside the container
+chronovista videos list --limit 10
+```
+
+!!! note "What Runs Where"
+    Docker is for **using** chronovista. The `chronovista auth` commands are the one exception — they must always run natively because the OAuth flow requires a browser redirect to `localhost` on your machine. Everything else runs inside the container via `make docker-shell`.
+
+---
+
+## Option 2: Native Development Setup
+
+For contributors who want to develop chronovista locally.
+
+### Prerequisites
 
 - Python 3.11 or higher
 - Poetry (dependency management)
@@ -13,9 +52,7 @@ Before you begin, ensure you have:
 
 See [Prerequisites](prerequisites.md) for installation instructions and [YouTube API Setup](youtube-api-setup.md) for configuring Google Cloud credentials.
 
-## Installation
-
-### Option 1: Automated Setup (Recommended)
+### Automated Setup
 
 ```bash
 git clone https://github.com/chronovista/chronovista.git
@@ -25,7 +62,7 @@ cd chronovista
 ./scripts/dev_setup.sh
 ```
 
-### Option 2: Manual Setup
+### Manual Setup
 
 ```bash
 git clone https://github.com/chronovista/chronovista.git

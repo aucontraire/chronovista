@@ -32,6 +32,11 @@ from chronovista.api.schemas.channels import (
     ChannelListItem,
     ChannelListResponse,
 )
+from chronovista.api.schemas.onboarding import (
+    OnboardingCounts,
+    OnboardingStatus,
+    PipelineStep,
+)
 from chronovista.api.schemas.filters import (
     ErrorTypeURI,
     FILTER_LIMITS,
@@ -57,6 +62,10 @@ from chronovista.api.schemas.responses import (
     PaginationMeta,
 )
 from chronovista.api.schemas.sorting import SortOrder
+from chronovista.api.schemas.tasks import (
+    BackgroundTask,
+    TaskCreate,
+)
 from chronovista.api.schemas.tags import (
     TagDetail,
     TagDetailResponse,
@@ -102,6 +111,10 @@ __all__ = [
     "ChannelDetailResponse",
     "ChannelListItem",
     "ChannelListResponse",
+    # Onboarding (Feature 047)
+    "OnboardingCounts",
+    "OnboardingStatus",
+    "PipelineStep",
     # Filters (Feature 020)
     "ErrorTypeURI",
     "FILTER_LIMITS",
@@ -125,6 +138,9 @@ __all__ = [
     "PaginationMeta",
     # Sorting
     "SortOrder",
+    # Tasks (Feature 047)
+    "BackgroundTask",
+    "TaskCreate",
     # Tags
     "TagDetail",
     "TagDetailResponse",

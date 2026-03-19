@@ -540,16 +540,47 @@ class EntityMentionRepository(
         tuple[list[dict[str, Any]], int]
             Tuple of (results list, total count of distinct videos).
         """
-        # Base filter
-        base_filter = EntityMentionDB.entity_id == entity_id
-        filters = [base_filter]
+        # Build "visible names" subquery: canonical name + non-ASR-error
+        # aliases.  This keeps video/mention counts consistent with the
+        # counters stored on named_entities (which also exclude ASR-error
+        # alias mentions).
+        canonical_names = select(
+            func.lower(NamedEntityDB.canonical_name).label("name_lower"),
+        ).where(NamedEntityDB.id == entity_id)
+
+        non_asr_aliases = select(
+            func.lower(EntityAliasDB.alias_name).label("name_lower"),
+        ).where(
+            EntityAliasDB.entity_id == entity_id,
+            EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR,
+        )
+
+        visible_names = union_all(canonical_names, non_asr_aliases).subquery()
+
+        # Base filter: entity match + visible-name match
+        base_filters = [
+            EntityMentionDB.entity_id == entity_id,
+            func.lower(EntityMentionDB.mention_text) == visible_names.c.name_lower,
+        ]
         if language_code is not None:
-            filters.append(EntityMentionDB.language_code == language_code)
+            base_filters.append(EntityMentionDB.language_code == language_code)
 
         # Total count of distinct videos
         count_stmt = (
             select(func.count(distinct(EntityMentionDB.video_id)))
-            .where(*filters)
+            .join(
+                visible_names,
+                func.lower(EntityMentionDB.mention_text)
+                == visible_names.c.name_lower,
+            )
+            .where(
+                EntityMentionDB.entity_id == entity_id,
+                *(
+                    [EntityMentionDB.language_code == language_code]
+                    if language_code is not None
+                    else []
+                ),
+            )
         )
         total_result = await session.execute(count_stmt)
         total_count = total_result.scalar() or 0
@@ -567,9 +598,21 @@ class EntityMentionRepository(
                 ),
                 func.count().label("mention_count"),
             )
+            .join(
+                visible_names,
+                func.lower(EntityMentionDB.mention_text)
+                == visible_names.c.name_lower,
+            )
             .join(VideoDB, EntityMentionDB.video_id == VideoDB.video_id)
             .outerjoin(Channel, VideoDB.channel_id == Channel.channel_id)
-            .where(*filters)
+            .where(
+                EntityMentionDB.entity_id == entity_id,
+                *(
+                    [EntityMentionDB.language_code == language_code]
+                    if language_code is not None
+                    else []
+                ),
+            )
             .group_by(
                 EntityMentionDB.video_id,
                 VideoDB.title,
@@ -586,7 +629,7 @@ class EntityMentionRepository(
 
         results: list[dict[str, Any]] = []
         for row in video_rows:
-            # Fetch up to 5 mention previews for this video
+            # Fetch up to 5 mention previews for this video (visible names only)
             preview_stmt = (
                 select(
                     EntityMentionDB.segment_id,
@@ -596,6 +639,11 @@ class EntityMentionRepository(
                 .join(
                     TranscriptSegmentDB,
                     EntityMentionDB.segment_id == TranscriptSegmentDB.id,
+                )
+                .join(
+                    visible_names,
+                    func.lower(EntityMentionDB.mention_text)
+                    == visible_names.c.name_lower,
                 )
                 .where(
                     EntityMentionDB.entity_id == entity_id,

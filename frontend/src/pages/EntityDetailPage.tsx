@@ -22,6 +22,8 @@ import { apiFetch } from "../api/config";
 import type { EntityDetail, EntityAliasSummary } from "../api/entityMentions";
 import { createEntityAlias } from "../api/entityMentions";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { PhoneticVariantsSection } from "../components/corrections/PhoneticVariantsSection";
+import { ExclusionPatternsSection } from "../components/corrections/ExclusionPatternsSection";
 
 /** Default page title to restore on unmount */
 const DEFAULT_PAGE_TITLE = "Chronovista";
@@ -577,6 +579,17 @@ export function EntityDetailPage() {
           )}
         </div>
       </section>
+
+      {/* Exclusion Patterns section */}
+      {entityId && (
+        <ExclusionPatternsSection
+          entityId={entityId}
+          patterns={entity.exclusion_patterns ?? []}
+        />
+      )}
+
+      {/* Suspected ASR Variants section */}
+      {entityId && <PhoneticVariantsSection entityId={entityId} />}
 
       {/* Video list section */}
       <section aria-labelledby="entity-videos-heading">

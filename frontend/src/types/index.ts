@@ -75,3 +75,10 @@ export type {
 } from "./filters";
 
 export { FILTER_COLORS, FILTER_LIMITS, TIMEOUT_CONFIG } from "./filters";
+
+export type {
+  BatchSummary,
+  CrossSegmentCandidate,
+  DiffErrorPattern,
+  PhoneticMatch,
+} from "./corrections";

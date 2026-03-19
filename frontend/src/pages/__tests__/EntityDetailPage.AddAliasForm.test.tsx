@@ -45,6 +45,17 @@ vi.mock("../../hooks/useEntityMentions", () => ({
   })),
 }));
 
+// Mock PhoneticVariantsSection to avoid it calling useQuery independently,
+// which would conflict with the global useQuery mock below.
+vi.mock("../../components/corrections/PhoneticVariantsSection", () => ({
+  PhoneticVariantsSection: () => null,
+}));
+
+// Mock ExclusionPatternsSection to keep tests focused on AddAliasForm.
+vi.mock("../../components/corrections/ExclusionPatternsSection", () => ({
+  ExclusionPatternsSection: () => null,
+}));
+
 // Mock TanStack Query useQuery so we can control the entity detail fetch.
 vi.mock("@tanstack/react-query", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-query")>();
@@ -81,6 +92,7 @@ const mockEntity = {
   mention_count: 42,
   video_count: 3,
   aliases: [],
+  exclusion_patterns: [] as string[],
 };
 
 /** Default empty hook state for useEntityVideos. */

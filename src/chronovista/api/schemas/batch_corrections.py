@@ -408,3 +408,71 @@ class BatchRevertResponse(BaseModel):
 
     reverted_count: int
     skipped_count: int
+
+
+class DiffErrorPatternResponse(BaseModel):
+    """A recurring ASR error pattern with optional entity association.
+
+    Attributes
+    ----------
+    error_token : str
+        The original (incorrect) text pattern.
+    canonical_form : str
+        The corrected text that replaced the original.
+    frequency : int
+        Number of times this correction has been applied.
+    remaining_matches : int
+        Number of un-corrected instances remaining.
+    entity_id : uuid.UUID | None
+        Associated named entity UUID, if any.
+    entity_name : str | None
+        Associated named entity canonical name, if any.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    error_token: str
+    canonical_form: str
+    frequency: int
+    remaining_matches: int
+    entity_id: uuid.UUID | None = None
+    entity_name: str | None = None
+
+
+class CrossSegmentCandidateResponse(BaseModel):
+    """A cross-segment ASR error candidate.
+
+    Attributes
+    ----------
+    segment_n_id : int
+        Primary key of the first segment.
+    segment_n_text : str
+        Effective text of the first segment.
+    segment_n1_id : int
+        Primary key of the second segment.
+    segment_n1_text : str
+        Effective text of the second segment.
+    proposed_correction : str
+        The corrected form derived from the source pattern.
+    source_pattern : str
+        The original ASR error text from the correction pattern.
+    confidence : float
+        Confidence score in [0.0, 1.0].
+    is_partially_corrected : bool
+        Whether one of the two segments has already been corrected.
+    video_id : str
+        YouTube video ID where the candidate was found.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    segment_n_id: int
+    segment_n_text: str
+    segment_n1_id: int
+    segment_n1_text: str
+    proposed_correction: str
+    source_pattern: str
+    confidence: float
+    is_partially_corrected: bool
+    video_id: str
+    discovery_source: str = "correction_pattern"

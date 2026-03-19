@@ -21,11 +21,13 @@ from chronovista.api.schemas.entity_mentions import (
     EntityAliasSummary,
     EntityVideoResponse,
     EntityVideoResult,
+    ExclusionPatternRequest,
     MentionPreview,
+    PhoneticMatchResponse,
     VideoEntitiesResponse,
     VideoEntitySummary,
 )
-from chronovista.api.schemas.responses import PaginationMeta
+from chronovista.api.schemas.responses import ApiResponse, PaginationMeta
 from chronovista.db.models import EntityAlias as EntityAliasDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import Video as VideoDB
@@ -34,6 +36,7 @@ from chronovista.models.entity_alias import EntityAliasCreate
 from chronovista.models.enums import EntityAliasType
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
+from chronovista.services.phonetic_matcher import PhoneticMatcher
 from chronovista.services.tag_normalization import TagNormalizationService
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -336,6 +339,7 @@ async def get_entity_detail(
             "mention_count": entity.mention_count or 0,
             "video_count": entity.video_count or 0,
             "aliases": [a.model_dump() for a in genuine_aliases],
+            "exclusion_patterns": list(entity.exclusion_patterns or []),
         }
     }
 
@@ -523,4 +527,239 @@ async def create_entity_alias(
             alias_type=db_alias.alias_type,
             occurrence_count=db_alias.occurrence_count,
         ).model_dump()
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# GET /entities/{entity_id}/phonetic-matches
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.get(
+    "/entities/{entity_id}/phonetic-matches",
+    response_model=ApiResponse[list[PhoneticMatchResponse]],
+    status_code=200,
+    summary="Find phonetic ASR variants for an entity",
+)
+async def get_phonetic_matches(
+    entity_id: uuid.UUID,
+    threshold: float = Query(default=0.5, ge=0.0, le=1.0),
+    session: AsyncSession = Depends(get_db),
+) -> ApiResponse[list[PhoneticMatchResponse]]:
+    """Find suspected phonetic ASR variants for a named entity.
+
+    Uses ``PhoneticMatcher`` to scan transcript segments from videos
+    associated with the entity and scores N-grams against the entity
+    name and aliases.
+
+    Parameters
+    ----------
+    entity_id : uuid.UUID
+        Named entity UUID.
+    threshold : float
+        Minimum confidence score to include a match (0.0-1.0, default 0.5).
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    ApiResponse[list[PhoneticMatchResponse]]
+        List of phonetic matches with video title enrichment.
+
+    Raises
+    ------
+    NotFoundError
+        If the entity does not exist in the database (404).
+    """
+    # Verify entity exists
+    entity = await session.get(NamedEntityDB, entity_id)
+    if entity is None:
+        raise NotFoundError(resource_type="Entity", identifier=str(entity_id))
+
+    # Run phonetic matcher
+    matcher = PhoneticMatcher(entity_mention_repo=EntityMentionRepository())
+    matches = await matcher.match_entity(
+        entity_id=entity_id,
+        session=session,
+        threshold=threshold,
+    )
+
+    # Video title enrichment
+    video_ids = list({m.video_id for m in matches})
+    if video_ids:
+        stmt = select(VideoDB.video_id, VideoDB.title).where(
+            VideoDB.video_id.in_(video_ids)
+        )
+        rows = (await session.execute(stmt)).all()
+        title_map = {r.video_id: r.title for r in rows}
+    else:
+        title_map = {}
+
+    results = [
+        PhoneticMatchResponse(
+            original_text=m.original_text,
+            proposed_correction=m.proposed_correction,
+            confidence=m.confidence,
+            evidence_description=m.evidence_description,
+            video_id=m.video_id,
+            segment_id=m.segment_id,
+            video_title=title_map.get(m.video_id),
+        )
+        for m in matches
+    ]
+
+    return ApiResponse[list[PhoneticMatchResponse]](data=results)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# POST /entities/{entity_id}/exclusion-patterns
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.post(
+    "/entities/{entity_id}/exclusion-patterns",
+    status_code=201,
+    summary="Add an exclusion pattern to a named entity",
+)
+async def add_exclusion_pattern(
+    entity_id: str = Path(..., description="Named entity UUID"),
+    body: ExclusionPatternRequest = Body(...),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Add an exclusion pattern to a named entity.
+
+    Exclusion patterns are strings that, when found in a transcript segment,
+    cause the entity mention scanner to skip that segment for this entity.
+
+    Parameters
+    ----------
+    entity_id : str
+        Named entity UUID (string representation).
+    body : ExclusionPatternRequest
+        Request body with the pattern string.
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    dict
+        Updated exclusion_patterns list wrapped in a ``data`` envelope.
+
+    Raises
+    ------
+    NotFoundError
+        If the entity does not exist (404).
+    ConflictError
+        If the pattern already exists on this entity (409).
+    """
+    # Parse entity_id
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    # Look up entity
+    entity = await session.get(NamedEntityDB, parsed_entity_id)
+    if entity is None:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    trimmed = body.pattern.strip()
+    if not trimmed:
+        raise ConflictError(
+            message="Pattern is empty after trimming whitespace",
+            details={"pattern": body.pattern},
+        )
+
+    current_patterns: list[str] = list(entity.exclusion_patterns or [])
+
+    # Check for duplicate
+    if trimmed in current_patterns:
+        raise ConflictError(
+            message=f"Exclusion pattern '{trimmed}' already exists for this entity",
+            details={
+                "entity_id": entity_id,
+                "pattern": trimmed,
+            },
+        )
+
+    current_patterns.append(trimmed)
+    entity.exclusion_patterns = current_patterns
+    session.add(entity)
+    await session.commit()
+    await session.refresh(entity)
+
+    return {
+        "data": {
+            "exclusion_patterns": list(entity.exclusion_patterns or []),
+        }
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DELETE /entities/{entity_id}/exclusion-patterns
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.delete(
+    "/entities/{entity_id}/exclusion-patterns",
+    status_code=200,
+    summary="Remove an exclusion pattern from a named entity",
+)
+async def remove_exclusion_pattern(
+    entity_id: str = Path(..., description="Named entity UUID"),
+    body: ExclusionPatternRequest = Body(...),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Remove an exclusion pattern from a named entity.
+
+    Parameters
+    ----------
+    entity_id : str
+        Named entity UUID (string representation).
+    body : ExclusionPatternRequest
+        Request body with the pattern string to remove.
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    dict
+        Updated exclusion_patterns list wrapped in a ``data`` envelope.
+
+    Raises
+    ------
+    NotFoundError
+        If the entity does not exist (404), or if the pattern is not
+        found in the entity's exclusion_patterns list (404).
+    """
+    # Parse entity_id
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    # Look up entity
+    entity = await session.get(NamedEntityDB, parsed_entity_id)
+    if entity is None:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    trimmed = body.pattern.strip()
+    current_patterns: list[str] = list(entity.exclusion_patterns or [])
+
+    if trimmed not in current_patterns:
+        raise NotFoundError(
+            resource_type="ExclusionPattern",
+            identifier=trimmed,
+        )
+
+    current_patterns.remove(trimmed)
+    entity.exclusion_patterns = current_patterns
+    session.add(entity)
+    await session.commit()
+    await session.refresh(entity)
+
+    return {
+        "data": {
+            "exclusion_patterns": list(entity.exclusion_patterns or []),
+        }
     }

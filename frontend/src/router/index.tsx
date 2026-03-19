@@ -12,8 +12,10 @@ import {
 
 import { AppShell } from "../components/layout";
 import { BatchCorrectionsPage } from "../pages/BatchCorrectionsPage";
+import { BatchHistoryPage } from "../pages/BatchHistoryPage";
 import { ChannelDetailPage } from "../pages/ChannelDetailPage";
 import { ChannelsPage } from "../pages/ChannelsPage";
+import { DiffAnalysisPage } from "../pages/DiffAnalysisPage";
 import { EntitiesPage } from "../pages/EntitiesPage";
 import { EntityDetailPage } from "../pages/EntityDetailPage";
 import { HomePage } from "../pages/HomePage";
@@ -104,6 +106,14 @@ export const router = createBrowserRouter([
       {
         path: "corrections/batch",
         element: <BatchCorrectionsPage />,
+      },
+      {
+        path: "corrections/batch/history",
+        element: <BatchHistoryPage />,
+      },
+      {
+        path: "corrections/diff-analysis",
+        element: <DiffAnalysisPage />,
       },
       {
         path: "*",

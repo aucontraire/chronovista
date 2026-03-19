@@ -176,6 +176,38 @@ _ALLOWED_ALIAS_TYPES = Literal[
 ]
 
 
+class PhoneticMatchResponse(BaseModel):
+    """A suspected phonetic ASR variant of an entity name.
+
+    Attributes
+    ----------
+    original_text : str
+        The N-gram text from the transcript segment.
+    proposed_correction : str
+        The entity name (or alias) that the N-gram likely represents.
+    confidence : float
+        Weighted confidence score in [0.0, 1.0].
+    evidence_description : str
+        Human-readable description of the evidence supporting this match.
+    video_id : str
+        YouTube video ID where the match was found.
+    segment_id : int
+        Transcript segment primary key.
+    video_title : str | None
+        Title of the video (enriched from the videos table).
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    original_text: str
+    proposed_correction: str
+    confidence: float
+    evidence_description: str
+    video_id: str
+    segment_id: int
+    video_title: str | None = None
+
+
 class CreateEntityAliasRequest(BaseModel):
     """Request body for creating a new alias on a named entity.
 
@@ -199,4 +231,24 @@ class CreateEntityAliasRequest(BaseModel):
             "Alias type (name_variant, abbreviation, nickname, "
             "translated_name, former_name)"
         ),
+    )
+
+
+class ExclusionPatternRequest(BaseModel):
+    """Request body for adding or removing an exclusion pattern.
+
+    Attributes
+    ----------
+    pattern : str
+        The exclusion pattern string. Must be non-empty and at most
+        500 characters.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    pattern: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Exclusion pattern to add or remove",
     )

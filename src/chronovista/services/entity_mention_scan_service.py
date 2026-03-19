@@ -286,12 +286,20 @@ class EntityMentionScanService:
             result.unique_videos = len(matched_video_ids)
 
             # 4. Update entity and alias counters (live mode only)
-            if not dry_run and matched_entity_ids:
+            # On full_rescan we must refresh ALL scanned entities (some may
+            # have had their mentions deleted with nothing new to replace
+            # them, so their counters need to be zeroed).
+            counter_entity_ids: set[uuid.UUID] = set()
+            if full_rescan:
+                counter_entity_ids = set(entity_ids)
+            counter_entity_ids |= matched_entity_ids
+
+            if not dry_run and counter_entity_ids:
                 await self._mention_repo.update_entity_counters(
-                    session, list(matched_entity_ids)
+                    session, list(counter_entity_ids)
                 )
                 await self._mention_repo.update_alias_counters(
-                    session, list(matched_entity_ids)
+                    session, list(counter_entity_ids)
                 )
                 await session.flush()
 
@@ -436,10 +444,13 @@ class EntityMentionScanService:
         if not entities:
             return []
 
-        # Load all aliases for these entities in a single query
+        # Load all aliases for these entities in a single query.
+        # Exclude asr_error aliases — those track what the ASR got wrong
+        # and must NOT be used as scan patterns (they produce false mentions).
         entity_id_list = [e.id for e in entities]
         alias_stmt = select(EntityAliasDB).where(
-            EntityAliasDB.entity_id.in_(entity_id_list)
+            EntityAliasDB.entity_id.in_(entity_id_list),
+            EntityAliasDB.alias_type != "asr_error",
         )
         alias_result = await session.execute(alias_stmt)
         all_aliases = list(alias_result.scalars().all())

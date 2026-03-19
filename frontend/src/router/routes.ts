@@ -6,10 +6,13 @@ import type React from "react";
 
 import {
   BatchCorrectionsIcon,
+  ChartBarIcon,
   ChannelIcon,
+  ClockIcon,
   EntityIcon,
   PlaylistIcon,
   SearchIcon,
+  TranscriptsIcon,
   VideoIcon,
 } from "../components/icons";
 
@@ -17,6 +20,8 @@ import {
  * NavRoute defines a navigable route in the application.
  */
 export interface NavRoute {
+  /** Discriminant tag for the discriminated union */
+  kind: "route";
   /** URL path for this route */
   path: string;
   /** Display label for navigation */
@@ -28,43 +33,98 @@ export interface NavRoute {
 }
 
 /**
- * Main navigation routes for the application.
+ * NavGroupRoute defines a collapsible group of child routes in the sidebar.
  */
-export const navRoutes: NavRoute[] = [
+export interface NavGroupRoute {
+  /** Discriminant tag for the discriminated union */
+  kind: "group";
+  /** Display label for the group header */
+  label: string;
+  /** Tooltip text shown in compact (icon-only) mode */
+  tooltip: string;
+  /** Icon component for the group header */
+  icon: React.FC<React.SVGProps<SVGSVGElement>>;
+  /** Child navigation routes within this group */
+  children: NavRoute[];
+  /** Whether the group starts expanded (before localStorage overrides) */
+  defaultExpanded: boolean;
+  /** localStorage key for persisting expand/collapse state */
+  storageKey: string;
+}
+
+/**
+ * Union type for top-level navigation entries.
+ */
+export type NavEntry = NavRoute | NavGroupRoute;
+
+/**
+ * Main navigation entries for the application sidebar.
+ */
+export const navRoutes: NavEntry[] = [
   {
+    kind: "route",
     path: "/videos",
     label: "Videos",
     tooltip: "Browse your video library",
     icon: VideoIcon,
   },
   {
-    path: "/search",
-    label: "Search",
-    tooltip: "Search across all content",
-    icon: SearchIcon,
+    kind: "group",
+    label: "Transcripts",
+    tooltip: "Transcripts",
+    icon: TranscriptsIcon,
+    defaultExpanded: true,
+    storageKey: "chronovista.sidebar.transcriptsExpanded",
+    children: [
+      {
+        kind: "route",
+        path: "/corrections/batch",
+        label: "Find & Replace",
+        tooltip: "Batch find and replace across all transcripts",
+        icon: BatchCorrectionsIcon,
+      },
+      {
+        kind: "route",
+        path: "/corrections/batch/history",
+        label: "Batch History",
+        tooltip: "View batch correction history",
+        icon: ClockIcon,
+      },
+      {
+        kind: "route",
+        path: "/corrections/diff-analysis",
+        label: "ASR Error Patterns",
+        tooltip: "Analyse ASR error patterns across transcripts",
+        icon: ChartBarIcon,
+      },
+    ],
   },
   {
+    kind: "route",
     path: "/channels",
     label: "Channels",
     tooltip: "Manage your channel subscriptions",
     icon: ChannelIcon,
   },
   {
+    kind: "route",
     path: "/playlists",
     label: "Playlists",
     tooltip: "Browse your playlists",
     icon: PlaylistIcon,
   },
   {
+    kind: "route",
     path: "/entities",
     label: "Entities",
     tooltip: "Browse named entities",
     icon: EntityIcon,
   },
   {
-    path: "/corrections/batch",
-    label: "Find & Replace",
-    tooltip: "Batch find and replace across all transcripts",
-    icon: BatchCorrectionsIcon,
+    kind: "route",
+    path: "/search",
+    label: "Search",
+    tooltip: "Search across all content",
+    icon: SearchIcon,
   },
 ];

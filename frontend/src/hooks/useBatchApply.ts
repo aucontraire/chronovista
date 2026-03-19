@@ -7,7 +7,9 @@
  * fires via `mutate` / `mutateAsync`.
  *
  * On success, all transcript segment and transcript detail caches are
- * invalidated so subsequent renders reflect the corrected text.
+ * invalidated so subsequent renders reflect the corrected text. The batch
+ * history list, correction state, diff analysis, and cross-segment candidate
+ * caches are also invalidated per the Feature 046 cache invalidation matrix.
  *
  * @module hooks/useBatchApply
  */
@@ -66,6 +68,10 @@ async function postBatchApply(
  *   cached by useTranscriptSegments (segmentsQueryKey factory)
  * - `["transcript"]` prefix — covers all transcript detail views cached by
  *   useTranscript
+ * - `["batch-list"]` prefix — batch history list so the new batch appears
+ * - `["corrections"]` prefix — segment correction state
+ * - `["diff-analysis"]` prefix — ASR error pattern analysis
+ * - `["cross-segment-candidates"]` prefix — cross-segment correction suggestions
  *
  * @returns UseMutationResult for the batch apply
  *
@@ -104,6 +110,16 @@ export function useBatchApply(): UseMutationResult<
       return failureCount < 3;
     },
 
+    /**
+     * Invalidates all caches affected by a batch apply per the Feature 046
+     * cache invalidation matrix:
+     * - `["transcriptSegments"]` — virtual-scroll segment pages
+     * - `["transcript"]` — transcript detail views
+     * - `["batch-list"]` — batch history list
+     * - `["corrections"]` — segment correction state
+     * - `["diff-analysis"]` — ASR error pattern analysis
+     * - `["cross-segment-candidates"]` — cross-segment correction suggestions
+     */
     onSuccess: () => {
       // Invalidate all cached transcript segment pages so the corrected text
       // is refetched on next render. Prefix matching covers every
@@ -112,6 +128,20 @@ export function useBatchApply(): UseMutationResult<
 
       // Invalidate transcript detail queries (useTranscript) for the same reason.
       void queryClient.invalidateQueries({ queryKey: ["transcript"] });
+
+      // Invalidate the batch history list so the new batch record appears.
+      void queryClient.invalidateQueries({ queryKey: ["batch-list"] });
+
+      // Invalidate segment correction state (correction count, has_correction flags).
+      void queryClient.invalidateQueries({ queryKey: ["corrections"] });
+
+      // Invalidate ASR error pattern analysis — pattern frequencies change
+      // after corrections are applied.
+      void queryClient.invalidateQueries({ queryKey: ["diff-analysis"] });
+
+      // Invalidate cross-segment correction suggestions — applied corrections
+      // may resolve or surface new cross-segment candidates.
+      void queryClient.invalidateQueries({ queryKey: ["cross-segment-candidates"] });
     },
   });
 }

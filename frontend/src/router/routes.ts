@@ -12,6 +12,7 @@ import {
   EntityIcon,
   PlaylistIcon,
   SearchIcon,
+  SetupIcon,
   TranscriptsIcon,
   VideoIcon,
 } from "../components/icons";
@@ -126,5 +127,12 @@ export const navRoutes: NavEntry[] = [
     label: "Search",
     tooltip: "Search across all content",
     icon: SearchIcon,
+  },
+  {
+    kind: "route",
+    path: "/onboarding",
+    label: "Setup",
+    tooltip: "Data onboarding pipeline — import and enrich your YouTube data",
+    icon: SetupIcon,
   },
 ];

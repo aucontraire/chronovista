@@ -10,4 +10,5 @@ export { EntityIcon } from "./EntityIcon";
 export { PlaylistIcon } from "./PlaylistIcon";
 export { SearchIcon } from "./SearchIcon";
 export { TranscriptsIcon } from "./TranscriptsIcon";
+export { SetupIcon } from "./SetupIcon";
 export { VideoIcon } from "./VideoIcon";

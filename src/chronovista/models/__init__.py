@@ -83,7 +83,16 @@ from .enrichment_report import (
     EnrichmentReport,
     EnrichmentSummary,
 )
-from .enums import DetectionMethod, DownloadReason, LanguagePreferenceType, TrackKind, TranscriptType
+from .enums import (
+    DetectionMethod,
+    DownloadReason,
+    LanguagePreferenceType,
+    OperationType,
+    PipelineStepStatus,
+    TaskStatus,
+    TrackKind,
+    TranscriptType,
+)
 from .entity_mention import (
     EntityMention,
     EntityMentionBase,
@@ -257,6 +266,9 @@ __all__ = [
     "DownloadReason",
     "TrackKind",
     "DetectionMethod",
+    "TaskStatus",
+    "PipelineStepStatus",
+    "OperationType",
     # User Language Preferences
     "UserLanguagePreference",
     "UserLanguagePreferenceCreate",

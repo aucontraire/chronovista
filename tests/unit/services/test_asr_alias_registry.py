@@ -24,6 +24,7 @@ import pytest
 
 from chronovista.models.enums import EntityAliasType
 from chronovista.services.asr_alias_registry import (
+    is_valid_asr_alias,
     register_asr_alias,
     resolve_entity_id_from_text,
 )
@@ -709,3 +710,143 @@ class TestRegisterAsrAlias:
 
         MockRepo.assert_called_once()
         mock_repo_instance.create.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# TestIsValidAsrAlias
+# ---------------------------------------------------------------------------
+
+
+class TestIsValidAsrAlias:
+    """Tests for ``is_valid_asr_alias`` quality gate.
+
+    Validates that common English phrases and very short strings are
+    rejected, while legitimate ASR error forms pass.
+    """
+
+    def test_rejects_all_stopword_alias(self) -> None:
+        """Alias consisting entirely of stopwords is rejected."""
+        assert is_valid_asr_alias("be out") is False
+
+    def test_rejects_single_stopword(self) -> None:
+        """Single common word is rejected."""
+        assert is_valid_asr_alias("have") is False
+
+    def test_rejects_multi_stopword_phrase(self) -> None:
+        """Multi-word all-stopword phrase is rejected."""
+        assert is_valid_asr_alias("it was on the") is False
+
+    def test_rejects_short_alias(self) -> None:
+        """Alias shorter than 4 characters is rejected."""
+        assert is_valid_asr_alias("abc") is False
+
+    def test_rejects_empty_string(self) -> None:
+        """Empty string is rejected."""
+        assert is_valid_asr_alias("") is False
+
+    def test_rejects_whitespace_only(self) -> None:
+        """Whitespace-only string is rejected."""
+        assert is_valid_asr_alias("   ") is False
+
+    def test_accepts_legitimate_asr_error(self) -> None:
+        """Legitimate ASR error alias is accepted."""
+        assert is_valid_asr_alias("Shainbom") is True
+
+    def test_accepts_multi_word_asr_error(self) -> None:
+        """Multi-word alias with at least one non-stopword is accepted."""
+        assert is_valid_asr_alias("Claudia Shainbom") is True
+
+    def test_accepts_mixed_stopword_and_name(self) -> None:
+        """Alias with both stopwords and non-stopwords is accepted."""
+        assert is_valid_asr_alias("Rick be out") is True
+
+    def test_accepts_four_char_alias(self) -> None:
+        """Alias of exactly 4 characters passes length check."""
+        assert is_valid_asr_alias("Seon") is True
+
+    def test_stopword_check_is_case_insensitive(self) -> None:
+        """Stopword check works regardless of case."""
+        assert is_valid_asr_alias("Be Out") is False
+        assert is_valid_asr_alias("BE OUT") is False
+
+
+# ---------------------------------------------------------------------------
+# TestRegisterAsrAliasQualityGate
+# ---------------------------------------------------------------------------
+
+
+class TestRegisterAsrAliasQualityGate:
+    """Tests that ``register_asr_alias`` rejects aliases failing quality gate.
+
+    The quality gate runs before any DB lookups, so the session should
+    never be touched for rejected aliases.
+    """
+
+    async def test_rejects_stopword_alias_no_db_interaction(self) -> None:
+        """Stopword-only alias is rejected before any DB call."""
+        session = AsyncMock()
+
+        await register_asr_alias(
+            session,
+            original_text="be out",
+            corrected_text="Rick Beato",
+        )
+
+        session.execute.assert_not_called()
+
+    async def test_rejects_short_alias_no_db_interaction(self) -> None:
+        """Alias under 4 characters is rejected before any DB call."""
+        session = AsyncMock()
+
+        await register_asr_alias(
+            session,
+            original_text="ab",
+            corrected_text="Claudia Sheinbaum",
+        )
+
+        session.execute.assert_not_called()
+
+    async def test_accepts_legitimate_alias_proceeds_to_db(self) -> None:
+        """Legitimate alias passes the gate and queries the DB."""
+        entity_mock = MagicMock()
+        entity_mock.id = uuid.uuid4()
+        entity_mock.canonical_name = "Claudia Sheinbaum"
+
+        session = _mock_execute_returns(entity_mock, None)
+
+        with patch(
+            "chronovista.services.asr_alias_registry.EntityAliasRepository"
+        ) as MockRepo, patch(
+            "chronovista.services.asr_alias_registry.TagNormalizationService"
+        ) as MockNorm:
+            mock_repo_instance = AsyncMock()
+            MockRepo.return_value = mock_repo_instance
+            MockNorm.return_value.normalize.return_value = "claudia shainbom"
+
+            await register_asr_alias(
+                session,
+                original_text="Claudia Shainbom",
+                corrected_text="Claudia Sheinbaum",
+            )
+
+        mock_repo_instance.create.assert_called_once()
+
+    async def test_rejection_is_logged(self, caplog: Any) -> None:
+        """Rejected alias is logged at DEBUG level."""
+        import logging
+
+        session = AsyncMock()
+
+        with caplog.at_level(
+            logging.DEBUG, logger="chronovista.services.asr_alias_registry"
+        ):
+            await register_asr_alias(
+                session,
+                original_text="be out",
+                corrected_text="Rick Beato",
+            )
+
+        assert any(
+            "rejected alias" in record.message and "quality gate" in record.message
+            for record in caplog.records
+        )

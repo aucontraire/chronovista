@@ -1596,6 +1596,205 @@ class TestGetEntityVideoList:
         assert total == 2
         assert len(results) == 2
 
+    # ------------------------------------------------------------------
+    # Bug fix: get_entity_video_list must exclude ASR-error alias mentions
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _compile_pg_sql(stmt: Any) -> str:
+        """Compile a SQLAlchemy statement to SQL string with the PostgreSQL dialect.
+
+        Uses ``literal_binds=True`` so that enum string values (like
+        ``'asr_error'``) appear literally in the output rather than as
+        ``__[POSTCOMPILE_...]`` placeholders.
+
+        Parameters
+        ----------
+        stmt : Any
+            A SQLAlchemy statement (UPDATE, SELECT, etc.).
+
+        Returns
+        -------
+        str
+            The fully rendered SQL string.
+        """
+        return str(
+            stmt.compile(
+                dialect=pg_dialect.dialect(),  # type: ignore[no-untyped-call]
+                compile_kwargs={"literal_binds": True},
+            )
+        )
+
+    async def test_count_query_references_asr_error_exclusion(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """The count query SQL must exclude ASR-error alias mentions via visible_names join.
+
+        Bug fix: before the fix, get_entity_video_list counted ALL mentions for
+        an entity, including those matched only via asr_error aliases.  After the
+        fix, the count query joins a visible_names subquery that excludes
+        alias_type = 'asr_error', so ASR-error-alias-matched mentions do not
+        inflate the video count.
+
+        This test inspects the compiled SQL of the count query (first execute())
+        and confirms the 'asr_error' exclusion filter appears in it.
+        """
+        entity_id = _uuid()
+
+        count_result = MagicMock()
+        count_result.scalar.return_value = 0
+        mock_session.execute.return_value = count_result
+
+        await repository.get_entity_video_list(mock_session, entity_id=entity_id)
+
+        # Only the count query should have been issued (total=0 short-circuits)
+        mock_session.execute.assert_called_once()
+        count_stmt = mock_session.execute.call_args_list[0].args[0]
+        sql_str = self._compile_pg_sql(count_stmt)
+
+        assert "asr_error" in sql_str, (
+            "Expected 'asr_error' exclusion in the count query SQL; "
+            f"got: {sql_str[:700]}"
+        )
+
+    async def test_count_query_visible_names_includes_entity_aliases_table(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """The count query must JOIN entity_aliases to build the visible_names subquery.
+
+        The visible_names subquery unions canonical_name rows from named_entities
+        with non-asr_error alias rows from entity_aliases.  The count query SQL
+        must therefore reference the entity_aliases table.
+        """
+        entity_id = _uuid()
+
+        count_result = MagicMock()
+        count_result.scalar.return_value = 0
+        mock_session.execute.return_value = count_result
+
+        await repository.get_entity_video_list(mock_session, entity_id=entity_id)
+
+        count_stmt = mock_session.execute.call_args_list[0].args[0]
+        sql_str = self._compile_pg_sql(count_stmt)
+
+        assert "entity_aliases" in sql_str, (
+            "Expected entity_aliases to appear in the visible_names join of the count query; "
+            f"got: {sql_str[:700]}"
+        )
+        assert "named_entities" in sql_str, (
+            "Expected named_entities to appear (canonical name source) in the count query; "
+            f"got: {sql_str[:700]}"
+        )
+
+    async def test_main_query_visible_names_excludes_asr_error_aliases(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """The main group-by query must join visible_names with asr_error exclusion.
+
+        The main query computes mention_count per video_id; only mentions whose
+        mention_text matches a visible name (canonical or non-ASR-error alias)
+        should be counted.  The compiled SQL must contain 'asr_error' to confirm
+        the WHERE clause excludes ASR-alias-matched mentions.
+        """
+        entity_id = _uuid()
+
+        count_result = MagicMock()
+        count_result.scalar.return_value = 1  # non-zero so main query runs
+
+        video_row = self._make_video_row()
+        main_result = MagicMock()
+        main_result.all.return_value = [video_row]
+
+        preview_result = MagicMock()
+        preview_result.all.return_value = []
+
+        mock_session.execute.side_effect = [count_result, main_result, preview_result]
+
+        await repository.get_entity_video_list(mock_session, entity_id=entity_id)
+
+        # count=0, main=1, preview=2
+        assert mock_session.execute.call_count == 3
+        main_stmt = mock_session.execute.call_args_list[1].args[0]
+        sql_str = self._compile_pg_sql(main_stmt)
+
+        assert "asr_error" in sql_str, (
+            "Expected 'asr_error' exclusion in the main group-by query SQL; "
+            f"got: {sql_str[:700]}"
+        )
+
+    async def test_preview_query_visible_names_excludes_asr_error_aliases(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """The preview query must also join visible_names and exclude asr_error aliases.
+
+        Preview mentions shown for each video must only include mentions
+        matched via canonical name or non-ASR-error aliases, not via ASR
+        noise forms.  The compiled preview SQL must contain 'asr_error'.
+        """
+        entity_id = _uuid()
+
+        count_result = MagicMock()
+        count_result.scalar.return_value = 1
+
+        video_row = self._make_video_row()
+        main_result = MagicMock()
+        main_result.all.return_value = [video_row]
+
+        preview_row = self._make_preview_row(mention_text="Bonaparte")
+        preview_result = MagicMock()
+        preview_result.all.return_value = [preview_row]
+
+        mock_session.execute.side_effect = [count_result, main_result, preview_result]
+
+        await repository.get_entity_video_list(mock_session, entity_id=entity_id)
+
+        preview_stmt = mock_session.execute.call_args_list[2].args[0]
+        sql_str = self._compile_pg_sql(preview_stmt)
+
+        assert "asr_error" in sql_str, (
+            "Expected 'asr_error' exclusion in the preview query SQL; "
+            f"got: {sql_str[:700]}"
+        )
+
+    async def test_count_returns_zero_when_only_asr_alias_mentions_exist(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """When the DB count returns 0, the method returns ([], 0) without running main query.
+
+        This models the scenario after the bug fix: an entity whose only mentions
+        were matched via asr_error aliases will have those mentions excluded by
+        the visible_names join, so the count query returns 0.  The method must
+        short-circuit and return ([], 0) without issuing the main or preview
+        queries.
+        """
+        entity_id = _uuid()
+
+        # DB returns 0 — simulates all mentions being ASR-error-alias-sourced and
+        # thus filtered out by the visible_names join in the real query
+        count_result = MagicMock()
+        count_result.scalar.return_value = 0
+        mock_session.execute.return_value = count_result
+
+        results, total = await repository.get_entity_video_list(
+            mock_session, entity_id=entity_id
+        )
+
+        assert results == [], "No videos should be returned when count is zero"
+        assert total == 0
+        # Only one query should have been issued (the count); the main and preview
+        # queries must be skipped by the early-return guard
+        mock_session.execute.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # TestGetStatistics

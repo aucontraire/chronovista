@@ -56,6 +56,30 @@ export interface PatternInputProps {
    * the canonical name.
    */
   entityAliasNames?: string[];
+  /**
+   * Initial value for the pattern input — used to pre-fill the form when
+   * navigating from the DiffAnalysisPage "Find & Replace" action (T014 / US2).
+   * Only applied as the initial useState value; subsequent user edits are
+   * not controlled by the parent.
+   */
+  initialPattern?: string;
+  /**
+   * Initial value for the replacement input — used to pre-fill the form when
+   * navigating from the DiffAnalysisPage "Find & Replace" action (T014 / US2).
+   * Only applied as the initial useState value; subsequent user edits are
+   * not controlled by the parent.
+   */
+  initialReplacement?: string;
+  /**
+   * When true, the cross-segment toggle is switched on by default — used to
+   * propagate crossSegment=true from router state (T014 / US2).
+   */
+  initialCrossSegment?: boolean;
+  /**
+   * When true, the regex toggle is switched on by default — used to
+   * pre-fill word-boundary patterns from the DiffAnalysisPage.
+   */
+  initialIsRegex?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -178,15 +202,19 @@ export function PatternInput({
   onPatternChange,
   onEntityChange,
   entityAliasNames = [],
+  initialPattern = '',
+  initialReplacement = '',
+  initialCrossSegment = false,
+  initialIsRegex = false,
 }: PatternInputProps) {
   // -------------------------------------------------------------------------
   // Form state
   // -------------------------------------------------------------------------
-  const [pattern, setPattern] = useState('');
-  const [replacement, setReplacement] = useState('');
-  const [isRegex, setIsRegex] = useState(false);
+  const [pattern, setPattern] = useState(initialPattern);
+  const [replacement, setReplacement] = useState(initialReplacement);
+  const [isRegex, setIsRegex] = useState(initialIsRegex);
   const [caseInsensitive, setCaseInsensitive] = useState(false);
-  const [crossSegment, setCrossSegment] = useState(false);
+  const [crossSegment, setCrossSegment] = useState(initialCrossSegment);
 
   // Entity link state (T025 / FR-011)
   const [selectedEntity, setSelectedEntity] = useState<EntityOption | null>(null);

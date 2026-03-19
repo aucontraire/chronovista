@@ -239,6 +239,103 @@ class TestPatternConstruction:
         assert len(patterns) == 1
         assert patterns[0].alias_names.count("Google") == 1
 
+    # ------------------------------------------------------------------
+    # Bug fix: asr_error aliases must be excluded from scan patterns
+    # ------------------------------------------------------------------
+
+    async def test_alias_query_excludes_asr_error_type_in_sql(self) -> None:
+        """The alias query emitted by _load_entity_patterns must filter out asr_error aliases.
+
+        Bug fix (Feature 038/044): Before the fix, alias_stmt had no alias_type
+        filter, so ASR-error aliases (e.g. "Bonazo") were included in scan
+        patterns and created false rule_match mentions.  After the fix the WHERE
+        clause must contain ``alias_type != 'asr_error'`` (or equivalent NOT
+        IN / != expression).
+
+        This test inspects the compiled SQL of the *second* execute() call
+        (the alias query) to confirm the exclusion filter is present.
+        """
+        from sqlalchemy.dialects import postgresql as pg_dialect
+
+        entity_id = _make_uuid()
+        entity_row = _make_entity_row(entity_id=entity_id, canonical_name="Bonaparte")
+
+        session = AsyncMock()
+        entity_result = _scalars_execute([entity_row])
+        alias_result = _scalars_execute([])
+        session.execute = AsyncMock(side_effect=[entity_result, alias_result])
+
+        svc = _build_service(MagicMock())
+        await svc._load_entity_patterns(session, entity_type=None, new_entities_only=False)
+
+        # The alias query is the second execute() call
+        assert session.execute.call_count == 2, (
+            "Expected exactly two execute() calls: one for entities, one for aliases"
+        )
+        alias_stmt = session.execute.call_args_list[1].args[0]
+        sql_str = str(
+            alias_stmt.compile(
+                dialect=pg_dialect.dialect(),  # type: ignore[no-untyped-call]
+                compile_kwargs={"literal_binds": True},
+            )
+        )
+
+        assert "asr_error" in sql_str, (
+            "Expected 'asr_error' exclusion filter in the alias query SQL; "
+            f"got: {sql_str[:600]}"
+        )
+
+    async def test_non_asr_error_aliases_are_included_as_scan_patterns(self) -> None:
+        """Aliases with types other than asr_error must appear in scan patterns.
+
+        The fix must only exclude asr_error aliases; name_variant, abbreviation,
+        nickname, translated_name, and former_name aliases must still be returned
+        by the alias query and contribute to pg_pattern.
+        """
+        entity_id = _make_uuid()
+        entity_row = _make_entity_row(entity_id=entity_id, canonical_name="Napoleon")
+        # Simulate DB returning non-ASR-error aliases (after SQL filter is applied)
+        name_variant_alias = _make_alias_row(entity_id=entity_id, alias_name="Nap")
+        abbreviation_alias = _make_alias_row(entity_id=entity_id, alias_name="NB")
+
+        patterns = await self._call_load_patterns(
+            entity_row, [name_variant_alias, abbreviation_alias]
+        )
+
+        assert len(patterns) == 1
+        pat = patterns[0]
+        # Both non-ASR-error aliases must appear in the pattern
+        assert "Nap" in pat.alias_names, "name_variant alias 'Nap' must be in alias_names"
+        assert "NB" in pat.alias_names, "abbreviation alias 'NB' must be in alias_names"
+        assert re.escape("Nap") in pat.pg_pattern
+        assert re.escape("NB") in pat.pg_pattern
+
+    async def test_asr_error_alias_not_present_in_pattern_names(self) -> None:
+        """When the DB returns only non-ASR-error aliases, no ASR noise forms appear.
+
+        This models the post-fix behaviour: the alias query WHERE clause filters
+        out asr_error rows at the database level.  If the DB correctly excludes
+        them, the resulting alias_names list must not contain ASR noise forms.
+
+        The test simulates the DB having applied the filter already (returning
+        only non-asr_error aliases) and confirms the service builds patterns
+        from those aliases only.
+        """
+        entity_id = _make_uuid()
+        entity_row = _make_entity_row(entity_id=entity_id, canonical_name="Bonanza")
+        # Simulates DB returning zero aliases after WHERE alias_type != 'asr_error'
+        # filters out the only alias ("Bonazo") which was an asr_error alias
+        patterns = await self._call_load_patterns(entity_row, [])
+
+        assert len(patterns) == 1
+        pat = patterns[0]
+        # Only the canonical name must appear — no ASR noise forms
+        assert pat.alias_names == ["Bonanza"], (
+            f"Expected only canonical name in alias_names; got: {pat.alias_names}"
+        )
+        # The ASR-error form "Bonazo" must not appear in pg_pattern
+        assert "Bonazo" not in pat.pg_pattern
+
 
 # ---------------------------------------------------------------------------
 # TestEntityStatusFiltering

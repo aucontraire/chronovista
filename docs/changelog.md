@@ -11,6 +11,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.47.0] - 2026-03-18
+
+### Added
+- **Feature 046: Correction Intelligence Frontend**
+  - **Batch History Page (US1)**: New `/corrections/batch/history` route with paginated list of past batch operations showing pattern, replacement, correction count, actor, and timestamp; "Revert" button with confirmation dialog calling `DELETE /api/v1/corrections/batch/{batch_id}`; pagination with offset/limit and `has_more` flag; TanStack Query cache invalidation on successful revert; user-friendly error messages for 404 (batch not found) and 409 (already reverted); empty state when no batches exist; `useBatchHistory` hook with infinite scroll (GitHub #92)
+  - **Cross-Segment Discovery UI (US2)**: `GET /api/v1/corrections/cross-segment/candidates` endpoint wrapping existing `CrossSegmentDiscovery.discover()` service; "Suggested Cross-Segment Candidates" collapsible panel on `/corrections/batch` page with ranked candidate cards showing both segment texts, proposed correction, source pattern, confidence score, and partial-correction badge; clicking a candidate pre-fills the find-replace form and auto-collapses the panel; loading skeleton, error state, empty state; `useCrossSegmentCandidates` hook (GitHub #91)
+  - **Word-Level Diff Analysis Dashboard (US3)**: `GET /api/v1/corrections/diff-analysis` endpoint wrapping existing `DiffAnalysisService`; ASR Error Patterns page at `/corrections/diff-analysis` with sortable table (frequency column), client-side error token filter, server-side entity name filter (debounced 300ms), "Show completed" toggle; entity column linked to entity detail page; "Find & Replace" action navigates to batch corrections page with `\b` word-boundary regex pattern pre-filled and regex mode enabled; completed rows show disabled "Completed" badge; `useDiffAnalysis` hook (GitHub #93)
+  - **Phonetic ASR Variant Suggestions (US4)**: `GET /api/v1/entities/{entity_id}/phonetic-matches` endpoint wrapping existing `PhoneticMatcher` service; "Suspected ASR Variants" lazy-loaded collapsible section on entity detail page; results table showing original text, proposed correction, confidence score, evidence type, video title, and segment link; "Register as Alias" button (calls existing alias creation API) and "Find & Replace" button (navigates to batch corrections with regex pattern pre-filled); confidence threshold slider (default 0.5); `usePhoneticMatches` hook (GitHub #94)
+  - **Sidebar Navigation Restructure**: Collapsible "Transcripts" nav group in sidebar containing Search, Find & Replace, Batch History, ASR Error Patterns, and Language Preferences; `NavGroup` component with expand/collapse animation and `aria-expanded` accessibility; sidebar icons for new routes (`ChartBarIcon`, `ClockIcon`, `TranscriptsIcon`)
+
+### Fixed
+- **Entity Mention Scan False Positives**: `_load_entity_patterns()` now excludes `asr_error` aliases from scan patterns — previously included ASR error alias text (e.g., "Bonazo") in regex patterns, creating 917 false `rule_match` mentions across 24 entities
+- **Entity Video List Count Inconsistency**: `get_entity_video_list()` now applies visible-names filter (canonical name + non-ASR-error aliases) so video count and mention count are consistent in the entity detail page header — previously showed impossible stats like "2 mentions, 3 videos"
+- **Cross-Segment Stopword False Positives**: Added stopword filtering to `CrossSegmentDiscovery` — common English function word splits like "be out" (from "Rick Beato") no longer generate spurious cross-segment candidates
+- **ASR Alias Quality Gates**: `is_valid_asr_alias()` gate in `asr_alias_registry.py` rejects aliases shorter than 4 characters or consisting entirely of common English function words; applied to both full-string and sub-token alias registration; deleted "be out" alias and 51 associated false entity mentions for Rick Beato
+- **DiffAnalysis Filter Alignment**: Fixed vertical misalignment between "Filter by error token" and "Filter by entity name" inputs on ASR Error Patterns page
+
+### Technical
+- 3 new API endpoints: cross-segment candidates, diff analysis, phonetic matches
+- 6 new React pages/components: `BatchHistoryPage`, `DiffAnalysisPage`, `CrossSegmentPanel`, `NavGroup`, phonetic matches section on `EntityDetailPage`
+- 5 new TanStack Query hooks: `useBatchHistory`, `useCrossSegmentCandidates`, `useDiffAnalysis`, `usePhoneticMatches`, `useBatchApply` (enhanced)
+- 8 new backend tests for ASR alias exclusion and entity video list filtering
+- 7 new tests for cross-segment stopword filtering
+- 15 new tests for ASR alias quality gates
+- Frontend version: 0.15.0 → 0.16.0
+- mypy strict compliance (0 errors)
+- TypeScript strict mode (0 errors)
+- No new dependencies, no new database migrations
+
 ## [0.46.0] - 2026-03-15
 
 ### Added

@@ -93,7 +93,7 @@ function buildClassName(isActive: boolean): string {
  */
 export function NavItem({ to, icon: Icon, label, tooltip }: NavItemProps) {
   return (
-    <NavLink to={to} title={tooltip} className={({ isActive }) => buildClassName(isActive)}>
+    <NavLink to={to} end title={tooltip} className={({ isActive }) => buildClassName(isActive)}>
       {/* VD-009: Icon 24x24px with aria-hidden (already set in icon components) */}
       <Icon className="h-6 w-6 flex-shrink-0" />
       {/* FR-014: Label hidden below 1024px, visible at lg: breakpoint */}

@@ -10,7 +10,7 @@
  * @module hooks/useOnboarding
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   useMutation,
   UseMutationResult,
@@ -49,9 +49,9 @@ export const taskStatusKey = (taskId: string | null) =>
  * Hook that fetches the full onboarding pipeline status.
  *
  * Polling behaviour:
- * - When `active_task` is non-null, the query re-fetches every 5 seconds to
- *   reflect task progress and eventual step-status transitions.
- * - When no task is active, polling is disabled.
+ * - No polling interval — status updates are driven by explicit invalidation
+ *   from useTaskStatus when a task reaches a terminal state.
+ * - staleTime of 10 s prevents redundant background refetches between events.
  *
  * @returns Standard TanStack Query UseQueryResult for OnboardingStatus
  *
@@ -66,18 +66,10 @@ export function useOnboardingStatus(): UseQueryResult<OnboardingStatus, Error> {
     queryKey: ONBOARDING_STATUS_KEY,
     // FR-004/FR-005: TanStack Query provides signal; cancelled on key change or unmount.
     queryFn: ({ signal }) => fetchOnboardingStatus(signal),
-    refetchInterval: (query) => {
-      // Poll every 5 s while a task is active; disable otherwise.
-      const data = query.state.data;
-      if (data?.active_task !== null && data?.active_task !== undefined) {
-        return 5_000;
-      }
-      return false;
-    },
-    staleTime: 10 * 1000, // 10 seconds — short because status changes frequently
-    gcTime: 5 * 60 * 1000, // 5 minutes
-    // Retry up to 2 times on transient failures (e.g. brief API timeout during
-    // a heavy enrichment run) before surfacing the connection error banner.
+    // No refetchInterval — status updates are driven by invalidation from
+    // useTaskStatus when a task finishes.  This avoids polling storms.
+    staleTime: 10 * 1000,
+    gcTime: 5 * 60 * 1000,
     retry: 2,
   });
 }
@@ -129,8 +121,11 @@ export function useStartTask(): UseMutationResult<
  * - The query is disabled when `taskId` is null.
  * - Polls every 2 seconds while the task status is "queued" or "running".
  * - Stops polling when status transitions to "completed" or "failed".
- * - On completion or failure, invalidates the onboarding status query so step
- *   statuses are refreshed to reflect the finished operation.
+ * - On completion or failure, invalidates the onboarding status query ONCE so
+ *   that pipeline step statuses are refreshed to reflect the finished operation.
+ *
+ * The single-invalidation guarantee is implemented with a ref keyed to the
+ * taskId so the guard resets correctly when a new task begins.
  *
  * @param taskId - UUID of the task to poll, or null to disable the query
  * @returns Standard TanStack Query UseQueryResult for BackgroundTask
@@ -166,14 +161,25 @@ export function useTaskStatus(
     gcTime: 5 * 60 * 1000,
   });
 
-  // When the task transitions to a terminal state, invalidate the onboarding
-  // status so that pipeline step statuses are refreshed immediately.
+  // Track which taskId we have already invalidated for, so we only fire once
+  // per task completion regardless of how many times the component re-renders
+  // with the same terminal status.
+  const invalidatedForTaskRef = useRef<string | null>(null);
+
   const taskStatus = result.data?.status;
+
   useEffect(() => {
-    if (taskStatus === "completed" || taskStatus === "failed") {
+    if (
+      taskId !== null &&
+      (taskStatus === "completed" || taskStatus === "failed") &&
+      invalidatedForTaskRef.current !== taskId
+    ) {
+      // Record BEFORE the async invalidation so concurrent re-renders of this
+      // effect (while the fetch is in-flight) do not queue duplicate requests.
+      invalidatedForTaskRef.current = taskId;
       void queryClient.invalidateQueries({ queryKey: ONBOARDING_STATUS_KEY });
     }
-  }, [taskStatus, queryClient]);
+  }, [taskId, taskStatus, queryClient]);
 
   return result;
 }

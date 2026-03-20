@@ -29,29 +29,30 @@ class DatabaseManager:
         self._engine: AsyncEngine | None = None
         self._session_factory: async_sessionmaker[AsyncSession] | None = None
 
+    @staticmethod
+    def _pool_kwargs() -> dict[str, int]:
+        """Return connection pool settings based on environment.
+
+        Development uses a small pool with no overflow for fast failure.
+        Production uses a larger pool to handle concurrent status polling
+        alongside long-running background tasks that hold sessions open.
+        """
+        if settings.is_development_database:
+            return {"pool_size": 5, "max_overflow": 0, "pool_timeout": 10}
+        return {"pool_size": 10, "max_overflow": 20, "pool_timeout": 30}
+
     def get_engine(self) -> AsyncEngine:
         """Get or create async database engine."""
         if self._engine is None:
-            # Use development database URL when in development mode
             database_url = settings.effective_database_url
 
-            # Development-specific engine configuration
             engine_kwargs = {
                 "echo": settings.db_log_queries,
                 "future": True,
                 "pool_pre_ping": True,
                 "pool_recycle": 3600,
+                **self._pool_kwargs(),
             }
-
-            # Optimize for development if using dev database
-            if settings.is_development_database:
-                engine_kwargs.update(
-                    {
-                        "pool_size": 5,  # Smaller pool for development
-                        "max_overflow": 0,  # No overflow for development
-                        "pool_timeout": 10,  # Shorter timeout for development
-                    }
-                )
 
             self._engine = create_async_engine(database_url, **engine_kwargs)
         return self._engine
@@ -81,15 +82,8 @@ class DatabaseManager:
                 "future": True,
                 "pool_pre_ping": True,
                 "pool_recycle": 3600,
+                **self._pool_kwargs(),
             }
-            if settings.is_development_database:
-                engine_kwargs.update(
-                    {
-                        "pool_size": 5,
-                        "max_overflow": 0,
-                        "pool_timeout": 10,
-                    }
-                )
 
             temp_engine = create_async_engine(database_url, **engine_kwargs)
             temp_session_factory = async_sessionmaker(

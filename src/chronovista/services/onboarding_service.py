@@ -174,12 +174,11 @@ class OnboardingService:
             Full pipeline state including step statuses, counts, auth
             state, and any currently active task.
         """
-        counts = await self._get_counts()
+        counts, last_loaded_at = await self._get_counts_and_last_loaded()
         is_authenticated = self._check_auth()
         data_export_path = self._get_data_export_path()
         data_export_detected = self._detect_data_export(data_export_path)
         export_mtime = self._get_export_mtime(data_export_path)
-        last_loaded_at = await self._get_last_loaded_at()
         new_data_available = self._detect_new_data(
             data_export_detected=data_export_detected,
             export_mtime=export_mtime,
@@ -255,14 +254,20 @@ class OnboardingService:
     # Count queries
     # ------------------------------------------------------------------
 
-    async def _get_counts(self) -> OnboardingCounts:
-        """Query aggregate record counts from the database.
+    async def _get_counts_and_last_loaded(
+        self,
+    ) -> tuple[OnboardingCounts, float | None]:
+        """Query counts and last-loaded timestamp in a single session.
+
+        Consolidates what were previously two separate session opens
+        (``_get_counts`` + ``_get_last_loaded_at``) to reduce connection
+        pool pressure during status polling.
 
         Returns
         -------
-        OnboardingCounts
-            Counts for channels, videos, playlists, transcripts,
-            categories, and canonical_tags.
+        tuple[OnboardingCounts, float | None]
+            The aggregate counts and the epoch timestamp of the most
+            recently created video (or ``None``).
         """
         async with self._session_factory() as session:
             channels = await self._count(session, Channel)
@@ -274,7 +279,14 @@ class OnboardingService:
             categories = await self._count(session, VideoCategory)
             canonical_tags = await self._count(session, CanonicalTag)
 
-        return OnboardingCounts(
+            # Also fetch last-loaded timestamp in the same session
+            result = await session.execute(
+                select(func.max(Video.created_at))
+            )
+            latest = result.scalar_one_or_none()
+            last_loaded_at = latest.timestamp() if latest is not None else None
+
+        counts = OnboardingCounts(
             channels=channels,
             videos=videos,
             available_videos=available_videos,
@@ -284,6 +296,19 @@ class OnboardingService:
             categories=categories,
             canonical_tags=canonical_tags,
         )
+        return counts, last_loaded_at
+
+    async def _get_counts(self) -> OnboardingCounts:
+        """Query aggregate record counts from the database.
+
+        Returns
+        -------
+        OnboardingCounts
+            Counts for channels, videos, playlists, transcripts,
+            categories, and canonical_tags.
+        """
+        counts, _ = await self._get_counts_and_last_loaded()
+        return counts
 
     @staticmethod
     async def _count(session: AsyncSession, model: type) -> int:
@@ -338,25 +363,6 @@ class OnboardingService:
         )
         return result.scalar_one()
 
-    async def _get_last_loaded_at(self) -> float | None:
-        """Return the epoch timestamp of the most recently created video.
-
-        Used to compare against the takeout directory mtime to decide
-        whether new export data has appeared since the last load.
-
-        Returns
-        -------
-        float | None
-            Epoch timestamp, or ``None`` if no videos exist.
-        """
-        async with self._session_factory() as session:
-            result = await session.execute(
-                select(func.max(Video.created_at))
-            )
-            latest = result.scalar_one_or_none()
-            if latest is None:
-                return None
-            return latest.timestamp()
 
     # ------------------------------------------------------------------
     # Filesystem / auth checks

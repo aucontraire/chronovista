@@ -13,12 +13,16 @@ instead of Dict[str, Any] for improved type safety and runtime validation.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any, List, Optional
 
 from googleapiclient.errors import HttpError
 from pydantic import ValidationError as PydanticValidationError
+
+# Suppress noisy "file_cache is only supported with oauth2client<4.0.0" warning
+logging.getLogger("googleapiclient.discovery_cache").setLevel(logging.ERROR)
 
 from chronovista.auth import youtube_oauth
 from chronovista.config.settings import settings
@@ -177,13 +181,12 @@ class YouTubeService(YouTubeServiceInterface):
             pass
         return None
 
-    def _execute_with_retry(self, request: Any) -> Any:
+    async def _execute_with_retry(self, request: Any) -> Any:
         """
-        Execute a YouTube API request with retry logic.
+        Execute a YouTube API request with retry logic (non-blocking).
 
-        Implements exponential backoff retry (1s, 2s, 4s) for transient
-        failures per FR-052. Raises QuotaExceededException for quota
-        errors per FR-051.
+        Runs the synchronous Google API call in a thread via
+        ``asyncio.to_thread`` so the event loop stays responsive.
 
         Parameters
         ----------
@@ -201,6 +204,14 @@ class YouTubeService(YouTubeServiceInterface):
             If YouTube API quota is exceeded.
         NetworkError
             If all retry attempts fail.
+        """
+        return await asyncio.to_thread(self._execute_with_retry_sync, request)
+
+    def _execute_with_retry_sync(self, request: Any) -> Any:
+        """
+        Synchronous implementation of retry logic.
+
+        Called via ``asyncio.to_thread`` from ``_execute_with_retry``.
         """
         last_error: Exception | None = None
 
@@ -287,7 +298,7 @@ class YouTubeService(YouTubeServiceInterface):
             part="id,snippet,statistics,contentDetails,status,brandingSettings,topicDetails",
             mine=True,
         )
-        response = request.execute()
+        response = await asyncio.to_thread(request.execute)
 
         if not response.get("items"):
             raise YouTubeAPIError(
@@ -336,7 +347,7 @@ class YouTubeService(YouTubeServiceInterface):
             part="id,snippet,statistics,contentDetails,status,brandingSettings,topicDetails",
             id=channel_ids_str,
         )
-        response = request.execute()
+        response = await asyncio.to_thread(request.execute)
 
         if not response.get("items"):
             # Return empty list when no channels found — the caller (enrichment
@@ -385,7 +396,7 @@ class YouTubeService(YouTubeServiceInterface):
         """
         # First get the uploads playlist ID
         request = self.service.channels().list(part="contentDetails", id=channel_id)
-        response = request.execute()
+        response = await asyncio.to_thread(request.execute)
 
         if not response.get("items"):
             raise YouTubeAPIError(
@@ -404,7 +415,7 @@ class YouTubeService(YouTubeServiceInterface):
             playlistId=uploads_playlist_id,
             maxResults=max_results,
         )
-        response = request.execute()
+        response = await asyncio.to_thread(request.execute)
 
         results: list[YouTubePlaylistItemResponse] = []
         for item in response.get("items", []):
@@ -452,7 +463,7 @@ class YouTubeService(YouTubeServiceInterface):
             part="id,snippet,statistics,contentDetails,status,localizations,topicDetails",
             id=",".join(video_ids),
         )
-        response = self._execute_with_retry(request)
+        response = await self._execute_with_retry(request)
 
         results: list[YouTubeVideoResponse] = []
         for item in response.get("items", []):
@@ -623,7 +634,7 @@ class YouTubeService(YouTubeServiceInterface):
                 maxResults=page_size,
                 pageToken=page_token,
             )
-            response = request.execute()
+            response = await asyncio.to_thread(request.execute)
 
             for item in response.get("items", []):
                 try:
@@ -695,7 +706,7 @@ class YouTubeService(YouTubeServiceInterface):
                 maxResults=page_size,
                 pageToken=page_token,
             )
-            response = request.execute()
+            response = await asyncio.to_thread(request.execute)
 
             for item in response.get("items", []):
                 try:
@@ -743,7 +754,7 @@ class YouTubeService(YouTubeServiceInterface):
             type="video",
             maxResults=max_results,
         )
-        response = request.execute()
+        response = await asyncio.to_thread(request.execute)
 
         results: list[YouTubeSearchResponse] = []
         for item in response.get("items", []):
@@ -771,7 +782,7 @@ class YouTubeService(YouTubeServiceInterface):
         """
         try:
             request = self.service.captions().list(part="id,snippet", videoId=video_id)
-            response = request.execute()
+            response = await asyncio.to_thread(request.execute)
 
             results: list[YouTubeCaptionResponse] = []
             for item in response.get("items", []):
@@ -805,7 +816,7 @@ class YouTubeService(YouTubeServiceInterface):
         """
         try:
             request = self.service.captions().download(id=caption_id, tfmt=fmt)
-            caption_content = request.execute()
+            caption_content = await asyncio.to_thread(request.execute)
 
             # The response should be the caption content as bytes
             if isinstance(caption_content, bytes):
@@ -860,7 +871,7 @@ class YouTubeService(YouTubeServiceInterface):
                 playlistId=watch_later_playlist_id,
                 maxResults=max_results,
             )
-            response = request.execute()
+            response = await asyncio.to_thread(request.execute)
 
             results: list[YouTubePlaylistItemResponse] = []
             for item in response.get("items", []):
@@ -898,7 +909,7 @@ class YouTubeService(YouTubeServiceInterface):
                 videoId=video_id,
                 maxResults=1,
             )
-            response = request.execute()
+            response = await asyncio.to_thread(request.execute)
 
             return len(response.get("items", [])) > 0
         except Exception as e:
@@ -969,7 +980,7 @@ class YouTubeService(YouTubeServiceInterface):
         try:
             # First get the liked videos playlist ID
             request = self.service.channels().list(part="contentDetails", mine=True)
-            response = self._execute_with_retry(request)
+            response = await self._execute_with_retry(request)
 
             if not response.get("items"):
                 raise YouTubeAPIError(
@@ -1013,7 +1024,7 @@ class YouTubeService(YouTubeServiceInterface):
                     maxResults=page_size,
                     pageToken=page_token,
                 )
-                response = self._execute_with_retry(request)
+                response = await self._execute_with_retry(request)
 
                 playlist_items = response.get("items", [])
                 items_in_page = len(playlist_items)
@@ -1103,7 +1114,7 @@ class YouTubeService(YouTubeServiceInterface):
         request = self.service.subscriptions().list(
             part="id,snippet,subscriberSnippet", mine=True, maxResults=max_results
         )
-        response = request.execute()
+        response = await asyncio.to_thread(request.execute)
 
         results: list[YouTubeSubscriptionResponse] = []
         for item in response.get("items", []):
@@ -1150,7 +1161,7 @@ class YouTubeService(YouTubeServiceInterface):
             part="id,snippet,status,contentDetails",
             id=",".join(playlist_ids),
         )
-        response = self._execute_with_retry(request)
+        response = await self._execute_with_retry(request)
 
         results: list[YouTubePlaylistResponse] = []
         for item in response.get("items", []):
@@ -1247,7 +1258,7 @@ class YouTubeService(YouTubeServiceInterface):
             request = self.service.videoCategories().list(
                 part="id,snippet", regionCode=region_code.upper()
             )
-            response = request.execute()
+            response = await asyncio.to_thread(request.execute)
 
             items = response.get("items", [])
             if not items:

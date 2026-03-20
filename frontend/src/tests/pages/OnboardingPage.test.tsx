@@ -168,7 +168,7 @@ async function setupHooks(options: {
     isError: options.isError ?? false,
     refetch: mockRefetch,
     // Minimal shape — remaining fields unused by the page
-  } as ReturnType<typeof useOnboardingStatus>);
+  } as unknown as ReturnType<typeof useOnboardingStatus>);
 
   vi.mocked(useStartTask).mockReturnValue({
     mutate: mockMutate,

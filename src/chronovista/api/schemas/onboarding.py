@@ -19,6 +19,7 @@ class OnboardingCounts(BaseModel):
 
     channels: int = 0
     videos: int = 0
+    available_videos: int = 0
     enriched_videos: int = 0
     playlists: int = 0
     transcripts: int = 0

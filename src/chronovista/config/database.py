@@ -37,7 +37,7 @@ class DatabaseManager:
 
             # Development-specific engine configuration
             engine_kwargs = {
-                "echo": settings.debug or settings.db_log_queries,
+                "echo": settings.db_log_queries,
                 "future": True,
                 "pool_pre_ping": True,
                 "pool_recycle": 3600,
@@ -142,7 +142,7 @@ class DatabaseManager:
     def get_sync_engine(self) -> Engine:
         """Get synchronous engine for Alembic migrations."""
         sync_url = settings.get_sync_database_url()
-        return create_engine(sync_url, echo=settings.debug or settings.db_log_queries)
+        return create_engine(sync_url, echo=settings.db_log_queries)
 
 
 # Global database manager instance

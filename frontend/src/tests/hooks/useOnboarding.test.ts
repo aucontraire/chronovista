@@ -209,7 +209,8 @@ describe("useOnboardingStatus", () => {
 
     it("exposes isError=true when the fetch rejects", async () => {
       const { fetchOnboardingStatus } = await import("../../api/onboarding");
-      vi.mocked(fetchOnboardingStatus).mockRejectedValueOnce(
+      // The hook sets retry: 2, so we must reject all attempts (not just the first).
+      vi.mocked(fetchOnboardingStatus).mockRejectedValue(
         new Error("Network failure")
       );
 
@@ -217,9 +218,14 @@ describe("useOnboardingStatus", () => {
         wrapper: createWrapper(queryClient),
       });
 
-      await waitFor(() => {
-        expect(result.current.isError).toBe(true);
-      });
+      // Allow up to 5 s for all 3 attempts (initial + 2 retries) to complete
+      // before TanStack Query transitions the query to the error state.
+      await waitFor(
+        () => {
+          expect(result.current.isError).toBe(true);
+        },
+        { timeout: 5000 }
+      );
     });
   });
 

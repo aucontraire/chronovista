@@ -52,9 +52,13 @@ COPY --from=dependency-builder /build/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir psycopg2-binary
 
-# Copy application source and make it importable
+# Copy application source and project metadata for installation
 COPY src/ ./src/
+COPY pyproject.toml README.md ./
 ENV PYTHONPATH="/app/src"
+
+# Install the chronovista package (registers CLI entry point)
+RUN pip install --no-cache-dir --no-deps -e .
 
 # Copy Alembic configuration and migrations
 COPY alembic.ini ./alembic.ini

@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/license-AGPL--3.0-green.svg" alt="License: AGPL-3.0">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/tests-8,320+-brightgreen.svg" alt="Tests: 8,320+">
-  <img src="https://img.shields.io/badge/coverage-72%25-yellow.svg" alt="Coverage: 76%">
+  <img src="https://img.shields.io/badge/coverage-76%25-yellow.svg" alt="Coverage: 76%">
   <img src="https://img.shields.io/badge/code%20style-black-000000.svg" alt="Code style: black">
 </p>
 

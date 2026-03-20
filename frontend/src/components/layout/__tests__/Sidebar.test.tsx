@@ -3,7 +3,7 @@
  *
  * Coverage:
  * - Renders the nav landmark with accessible label
- * - Renders exactly 5 top-level entries (4 li items + 1 NavGroup li)
+ * - Renders exactly 7 top-level entries (6 li items + 1 NavGroup li)
  * - Flat nav items (Videos, Channels, Playlists, Entities) render as links
  * - Transcripts group renders with NavGroup (disclosure button)
  * - Transcripts group is expanded by default and shows child links
@@ -128,9 +128,9 @@ describe("Sidebar — Transcripts group", () => {
 });
 
 describe("Sidebar — total top-level nav item count", () => {
-  it("top-level list contains 6 entries (Videos, Transcripts group, Channels, Playlists, Entities, Search)", () => {
+  it("top-level list contains 7 entries (Videos, Transcripts group, Channels, Playlists, Entities, Search, Setup)", () => {
     renderSidebar();
-    // The outer <ul role="list"> has exactly 6 <li> children (5 flat routes + 1 group)
+    // The outer <ul role="list"> has exactly 7 <li> children (6 flat routes + 1 group)
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
     // The direct child ul has role="list" — query it within the nav
     const outerList = nav.querySelector("ul[role='list']");
@@ -138,6 +138,6 @@ describe("Sidebar — total top-level nav item count", () => {
     const directLiChildren = outerList
       ? Array.from(outerList.children).filter((el) => el.tagName === "LI")
       : [];
-    expect(directLiChildren).toHaveLength(6);
+    expect(directLiChildren).toHaveLength(7);
   });
 });

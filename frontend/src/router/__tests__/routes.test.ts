@@ -43,8 +43,8 @@ function findGroup(entries: NavEntry[], label: string): NavGroupRoute | undefine
 // ---------------------------------------------------------------------------
 
 describe("navRoutes — top-level structure", () => {
-  it("has exactly 6 top-level entries", () => {
-    expect(navRoutes).toHaveLength(6);
+  it("has exactly 7 top-level entries", () => {
+    expect(navRoutes).toHaveLength(7);
   });
 
   it("first entry is Videos flat route", () => {

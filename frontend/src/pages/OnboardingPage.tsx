@@ -11,7 +11,7 @@
  * - Active task progress via useTaskStatus() polling
  *
  * State:
- * - activeTaskId: tracked locally; set when a task is started, cleared on completion/failure
+ * - activeTaskId: derived from status.active_task (server is the sole source of truth)
  *
  * Accessibility:
  * - <main> landmark with tabIndex={-1} for skip-link focus
@@ -19,7 +19,7 @@
  * - Data export guidance uses role="status"
  */
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 import { PipelineStepCard } from "../components/onboarding/PipelineStepCard";
 import { SkipLink } from "../components/SkipLink";
@@ -263,9 +263,15 @@ function PipelineLoadingState() {
  * It fetches the pipeline status, renders five PipelineStepCard components,
  * tracks the active task with real-time polling, and shows a connection error
  * banner when the API is unreachable.
+ *
+ * Active task identity is derived entirely from the server's authoritative
+ * `status.active_task` field, which only contains tasks in an active state
+ * (queued/running). This avoids the stale-data oscillation that occurs when
+ * local state is used as a secondary source of truth and lags behind the
+ * server's view of task completion.
  */
 export function OnboardingPage() {
-  // Pipeline status query (includes polling while a task is active)
+  // Pipeline status query — source of truth for active task identity.
   const {
     data: status,
     isLoading,
@@ -273,34 +279,18 @@ export function OnboardingPage() {
     refetch,
   } = useOnboardingStatus();
 
-  // Local state: the ID of the task that was started in this session
-  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  // The active task ID comes exclusively from the server. The backend only
+  // populates active_task for QUEUED or RUNNING tasks; once a task completes
+  // or fails the field is null. No local state or clearing effects are needed.
+  const activeTaskId = status?.active_task?.id ?? null;
 
   // Start task mutation
   const startTask = useStartTask();
 
-  // Poll the active task while it runs
+  // Poll the individual task for granular progress while it runs.
+  // When the task reaches a terminal state, useTaskStatus will invalidate the
+  // onboarding status query, causing it to refetch and clear active_task.
   const { data: activeTaskPoll } = useTaskStatus(activeTaskId);
-
-  // Auto-populate activeTaskId from backend status when not set locally.
-  // This handles page refresh and connection drop/recovery — if the backend
-  // reports an active_task but the local state is null (e.g. the user reloaded
-  // the page mid-run), we pick it up so polling and progress display resume.
-  useEffect(() => {
-    if (status?.active_task && activeTaskId === null) {
-      setActiveTaskId(status.active_task.id);
-    }
-  }, [status?.active_task, activeTaskId]);
-
-  // Clear activeTaskId when the polled task reaches a terminal state
-  useEffect(() => {
-    if (
-      activeTaskPoll?.status === "completed" ||
-      activeTaskPoll?.status === "failed"
-    ) {
-      setActiveTaskId(null);
-    }
-  }, [activeTaskPoll?.status]);
 
   // Set page title
   useEffect(() => {
@@ -310,47 +300,43 @@ export function OnboardingPage() {
     };
   }, []);
 
-  // Handlers
+  // Handlers — mutations invalidate the status query via useStartTask.onSuccess,
+  // so the UI will pick up the new active_task on the next refetch automatically.
   const handleStart = (operationType: OperationType) => {
-    startTask.mutate(
-      { operation_type: operationType },
-      {
-        onSuccess: (task) => {
-          setActiveTaskId(task.id);
-        },
-      }
-    );
+    startTask.mutate({ operation_type: operationType });
   };
 
   const handleRetry = (operationType: OperationType) => {
-    startTask.mutate(
-      { operation_type: operationType },
-      {
-        onSuccess: (task) => {
-          setActiveTaskId(task.id);
-        },
-      }
-    );
+    startTask.mutate({ operation_type: operationType });
   };
 
   /**
    * Resolves which BackgroundTask is "active" for a given step.
-   * Prefers the locally polled task; falls back to status.active_task if it
-   * matches the step's operation_type.
+   *
+   * Prefers the granular polled task data (more frequent updates, includes
+   * progress percentage) when it matches the step. Falls back to the status's
+   * active_task when the polled data is not yet available.
+   *
+   * Only returns tasks in an active state (queued/running). The server's
+   * active_task field already enforces this contract, but we double-check
+   * against the polled data to guard against a brief window where the poll
+   * still has terminal-state data while the status query is revalidating.
    */
   const getActiveTaskForStep = (
     operationType: OperationType
   ): BackgroundTask | null => {
-    // Prefer the polled task if it matches this step
+    // Prefer the polled task when it is active and matches this step.
     if (
       activeTaskPoll !== undefined &&
-      activeTaskPoll.operation_type === operationType
+      activeTaskPoll.operation_type === operationType &&
+      (activeTaskPoll.status === "queued" || activeTaskPoll.status === "running")
     ) {
       return activeTaskPoll;
     }
-    // Fall back to the status's active_task
-    if (status?.active_task?.operation_type === operationType) {
-      return status.active_task;
+    // Fall back to the server's active_task (always active by contract).
+    const backendTask = status?.active_task;
+    if (backendTask?.operation_type === operationType) {
+      return backendTask;
     }
     return null;
   };

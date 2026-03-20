@@ -117,15 +117,6 @@ const mockStatus: OnboardingStatus = {
   },
 };
 
-const mockTask: BackgroundTask = {
-  id: "task-uuid-001",
-  operation_type: "seed_reference",
-  status: "queued",
-  progress: 0,
-  error: null,
-  started_at: null,
-  completed_at: null,
-};
 
 // ---------------------------------------------------------------------------
 // Render helper
@@ -317,13 +308,14 @@ describe("OnboardingPage", () => {
       await user.click(startButton);
 
       expect(mockMutate).toHaveBeenCalledOnce();
-      expect(mockMutate).toHaveBeenCalledWith(
-        { operation_type: "seed_reference" },
-        expect.any(Object)
-      );
+      // The page derives activeTaskId from the server (status.active_task), so
+      // mutate is called with only the payload — no local onSuccess callback.
+      expect(mockMutate).toHaveBeenCalledWith({
+        operation_type: "seed_reference",
+      });
     });
 
-    it("calls mutate with the onSuccess callback that sets the active task id", async () => {
+    it("calls mutate with only the operation_type payload (no local onSuccess callback)", async () => {
       await setupHooks({ status: mockStatus });
       const user = userEvent.setup();
 
@@ -334,32 +326,40 @@ describe("OnboardingPage", () => {
       });
       await user.click(startButton);
 
-      // Verify the mutation was called and the second arg is an options object
-      // containing an onSuccess handler (page uses it to track activeTaskId)
+      // activeTaskId is server-derived (status.active_task), so the page does
+      // NOT pass a second argument to mutate. Asserting the call has exactly
+      // one argument confirms no vestigial local-state-setter callback exists.
+      expect(mockMutate).toHaveBeenCalledOnce();
       const callArgs = mockMutate.mock.calls[0];
-      expect(callArgs).toBeDefined();
-      expect(callArgs?.[1]).toHaveProperty("onSuccess");
-      expect(typeof callArgs?.[1]?.onSuccess).toBe("function");
+      expect(callArgs).toHaveLength(1);
+      expect(callArgs?.[0]).toEqual({ operation_type: "seed_reference" });
     });
 
-    it("sets activeTaskId when onSuccess is invoked with the returned task", async () => {
-      await setupHooks({ status: mockStatus });
+    it("calls mutate for the handleRetry path with correct operation_type", async () => {
+      // Build a status where "seed_reference" is completed with an error so
+      // the Retry button is rendered instead of Start.
+      const statusWithError = {
+        ...mockStatus,
+        steps: mockStatus.steps.map((s) =>
+          s.operation_type === "seed_reference"
+            ? { ...s, status: "completed" as const, error: "Something failed" }
+            : s
+        ),
+      };
+      await setupHooks({ status: statusWithError });
       const user = userEvent.setup();
 
       renderPage();
 
-      const startButton = screen.getByRole("button", {
-        name: /Start Seed Reference Data/i,
+      const retryButton = screen.getByRole("button", {
+        name: /Retry Seed Reference Data/i,
       });
-      await user.click(startButton);
+      await user.click(retryButton);
 
-      // Simulate the onSuccess callback being called with a task
-      const onSuccess = mockMutate.mock.calls[0]?.[1]?.onSuccess as (
-        task: BackgroundTask
-      ) => void;
-      expect(onSuccess).toBeDefined();
-      // Calling it should not throw
-      expect(() => onSuccess(mockTask)).not.toThrow();
+      expect(mockMutate).toHaveBeenCalledOnce();
+      expect(mockMutate).toHaveBeenCalledWith({
+        operation_type: "seed_reference",
+      });
     });
   });
 

@@ -76,6 +76,9 @@ export function useOnboardingStatus(): UseQueryResult<OnboardingStatus, Error> {
     },
     staleTime: 10 * 1000, // 10 seconds — short because status changes frequently
     gcTime: 5 * 60 * 1000, // 5 minutes
+    // Retry up to 2 times on transient failures (e.g. brief API timeout during
+    // a heavy enrichment run) before surfacing the connection error banner.
+    retry: 2,
   });
 }
 

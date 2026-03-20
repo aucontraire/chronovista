@@ -80,6 +80,7 @@ def _make_background_task(
 def _make_counts(
     channels: int = 0,
     videos: int = 0,
+    available_videos: int = 0,
     playlists: int = 0,
     transcripts: int = 0,
     categories: int = 0,
@@ -89,6 +90,7 @@ def _make_counts(
     return OnboardingCounts(
         channels=channels,
         videos=videos,
+        available_videos=available_videos,
         playlists=playlists,
         transcripts=transcripts,
         categories=categories,
@@ -108,8 +110,8 @@ def _make_session_factory(counts_sequence: list[int]) -> MagicMock:
     counts_sequence : list[int]
         A list of integers returned in order for each
         ``session.execute(...).scalar_one()`` call.
-        7 values in insertion order: channels, videos, enriched_videos,
-        playlists, transcripts, categories, canonical_tags.
+        8 values in insertion order: channels, videos, available_videos,
+        enriched_videos, playlists, transcripts, categories, canonical_tags.
     """
     scalar_values = list(counts_sequence)
 
@@ -176,7 +178,7 @@ def _build_service(
     """
     from chronovista.services.onboarding_service import OnboardingService
 
-    session_factory = _make_session_factory(counts_sequence or [0] * 7)
+    session_factory = _make_session_factory(counts_sequence or [0] * 8)
     task_manager = _make_task_manager(running_tasks)
     return OnboardingService(
         task_manager=task_manager,
@@ -229,7 +231,7 @@ class TestFreshDatabase:
 
     async def test_seed_reference_is_available_when_fresh(self) -> None:
         """seed_reference has no dependencies and no auth requirement — always AVAILABLE."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -238,7 +240,7 @@ class TestFreshDatabase:
 
     async def test_load_data_is_available_when_fresh(self) -> None:
         """load_data has no dependencies and no auth requirement — always AVAILABLE."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -247,7 +249,7 @@ class TestFreshDatabase:
 
     async def test_enrich_metadata_is_blocked_when_fresh_and_no_auth(self) -> None:
         """enrich_metadata depends on load_data AND requires auth — BLOCKED if either missing."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -256,7 +258,7 @@ class TestFreshDatabase:
 
     async def test_normalize_tags_is_blocked_when_fresh(self) -> None:
         """normalize_tags depends on load_data — BLOCKED when videos == 0."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -265,7 +267,7 @@ class TestFreshDatabase:
 
     async def test_status_returns_four_steps(self) -> None:
         """OnboardingStatus must contain exactly the 4 defined pipeline steps."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -273,7 +275,7 @@ class TestFreshDatabase:
 
     async def test_step_operation_types_match_all_defined_operations(self) -> None:
         """The four pipeline OperationType values must appear exactly once in the response."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -288,7 +290,7 @@ class TestFreshDatabase:
 
     async def test_fresh_db_counts_are_all_zero(self) -> None:
         """Counts block must reflect the mocked DB values."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -309,9 +311,9 @@ class TestFreshDatabase:
 class TestAfterDataLoad:
     """Validate step statuses once videos have been loaded into the database."""
 
-    # DB counts: channels=5, videos=100, enriched_videos=0, playlists=3,
-    # transcripts=0, categories=0, canonical_tags=0
-    _LOADED_COUNTS = [5, 100, 0, 3, 0, 0, 0]
+    # DB counts: channels=5, videos=100, available_videos=100, enriched_videos=0,
+    # playlists=3, transcripts=0, categories=0, canonical_tags=0
+    _LOADED_COUNTS = [5, 100, 100, 0, 3, 0, 0, 0]
 
     async def test_load_data_is_completed_when_videos_exist(self) -> None:
         """load_data is COMPLETED as soon as videos > 0."""
@@ -357,9 +359,9 @@ class TestAfterDataLoad:
 
     async def test_seed_reference_completed_when_categories_populated(self) -> None:
         """seed_reference is COMPLETED when categories > 0."""
-        # channels=5, videos=100, enriched_videos=0, playlists=3, transcripts=0,
-        # categories=50, canonical_tags=0
-        service = _build_service(counts_sequence=[5, 100, 0, 3, 0, 50, 0])
+        # channels=5, videos=100, available_videos=100, enriched_videos=0,
+        # playlists=3, transcripts=0, categories=50, canonical_tags=0
+        service = _build_service(counts_sequence=[5, 100, 100, 0, 3, 0, 50, 0])
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -368,9 +370,9 @@ class TestAfterDataLoad:
 
     async def test_normalize_tags_completed_when_canonical_tags_exist(self) -> None:
         """normalize_tags is COMPLETED when canonical_tags > 0."""
-        # channels=5, videos=100, enriched_videos=0, playlists=3, transcripts=0,
-        # categories=0, canonical_tags=5000
-        service = _build_service(counts_sequence=[5, 100, 0, 3, 0, 0, 5000])
+        # channels=5, videos=100, available_videos=100, enriched_videos=0,
+        # playlists=3, transcripts=0, categories=0, canonical_tags=5000
+        service = _build_service(counts_sequence=[5, 100, 100, 0, 3, 0, 0, 5000])
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -386,8 +388,11 @@ class TestAfterDataLoad:
 class TestAuthGating:
     """Validate that enrich_metadata obeys the requires_auth flag."""
 
-    # Both unauthenticated and authenticated with data loaded
-    _LOADED_COUNTS = [5, 100, 3, 0, 0, 0]
+    # Both unauthenticated and authenticated with data loaded.
+    # channels=5, videos=100, available_videos=3, enriched_videos=3,
+    # playlists=0, transcripts=0, categories=0, canonical_tags=0
+    # available_videos == enriched_videos so enrich_metadata resolves COMPLETED.
+    _LOADED_COUNTS = [5, 100, 3, 3, 0, 0, 0, 0]
 
     async def test_enrich_metadata_completed_when_data_exists_and_not_authenticated(
         self,
@@ -430,7 +435,7 @@ class TestAuthGating:
         When videos == 0 the COMPLETED check fails, so auth is evaluated next.
         Auth is present but the load_data dependency is not met, so BLOCKED.
         """
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=True):
             status = await service.get_status()
 
@@ -446,7 +451,7 @@ class TestAuthGating:
 
         When videos == 0: count check fails → auth check fires (no auth) → BLOCKED.
         """
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -465,7 +470,7 @@ class TestAuthGating:
         This mirrors test_enrich_metadata_blocked_when_authenticated_but_no_data.
         """
         # This test intentionally mirrors the above — confirming consistent BLOCKED
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=True):
             status = await service.get_status()
 
@@ -488,10 +493,10 @@ class TestAuthGating:
     async def test_non_auth_steps_unaffected_by_auth_state(self) -> None:
         """Steps that do not require_auth must not change status based on auth."""
         # With data loaded, normalize_tags should be AVAILABLE regardless of auth
-        # Sequence: channels=5, videos=100, enriched_videos=0, playlists=3,
-        # transcripts=0, categories=0, canonical_tags=0
-        service_authed = _build_service(counts_sequence=[5, 100, 0, 3, 0, 0, 0])
-        service_unauthed = _build_service(counts_sequence=[5, 100, 0, 3, 0, 0, 0])
+        # Sequence: channels=5, videos=100, available_videos=100, enriched_videos=0,
+        # playlists=3, transcripts=0, categories=0, canonical_tags=0
+        service_authed = _build_service(counts_sequence=[5, 100, 100, 0, 3, 0, 0, 0])
+        service_unauthed = _build_service(counts_sequence=[5, 100, 100, 0, 3, 0, 0, 0])
 
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=True):
             status_authed = await service_authed.get_status()
@@ -515,7 +520,7 @@ class TestDataExportDetection:
         self, is_dir: bool, has_files: bool
     ) -> OnboardingStatus:
         """Helper that runs get_status() with controlled Path behaviour."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
 
         with (
             patch(_SETTINGS_TOKEN_IS_FILE, return_value=False),
@@ -546,7 +551,7 @@ class TestDataExportDetection:
 
     async def test_data_export_path_uses_env_var(self) -> None:
         """data_export_path reflects the TAKEOUT_DIR environment variable when set."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         custom_dir = "/custom/takeout/path"
 
         with (
@@ -561,7 +566,7 @@ class TestDataExportDetection:
 
     async def test_data_export_path_defaults_when_no_env_var(self) -> None:
         """data_export_path falls back to ./data/takeout when TAKEOUT_DIR is unset."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
 
         with (
             patch(_SETTINGS_TOKEN_IS_FILE, return_value=False),
@@ -577,7 +582,7 @@ class TestDataExportDetection:
         self,
     ) -> None:
         """_detect_data_export returns False and logs a warning on PermissionError."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
 
         with (
             patch(_SETTINGS_TOKEN_IS_FILE, return_value=False),
@@ -597,9 +602,9 @@ class TestDataExportDetection:
 class TestMetricsAggregation:
     """Validate that each PipelineStep.metrics dict is correctly populated."""
 
-    # channels=5, videos=100, enriched_videos=50, playlists=3,
-    # transcripts=200, categories=50, canonical_tags=9999
-    _FULL_COUNTS = [5, 100, 50, 3, 200, 50, 9999]
+    # channels=5, videos=100, available_videos=100, enriched_videos=50,
+    # playlists=3, transcripts=200, categories=50, canonical_tags=9999
+    _FULL_COUNTS = [5, 100, 100, 50, 3, 200, 50, 9999]
 
     async def test_seed_reference_metrics_contain_categories(self) -> None:
         """seed_reference metrics must include the 'categories' count key."""
@@ -645,7 +650,7 @@ class TestMetricsAggregation:
 
     async def test_metrics_reflect_zero_counts_on_fresh_db(self) -> None:
         """All metric values must be 0 when the database is empty."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -669,7 +674,7 @@ class TestRunningTaskAffectsStepStatus:
         """When TaskManager reports a running load_data task, the step is RUNNING."""
         running_task = _make_background_task(OperationType.LOAD_DATA)
         service = _build_service(
-            counts_sequence=[0] * 7,
+            counts_sequence=[0] * 8,
             running_tasks={OperationType.LOAD_DATA: running_task},
         )
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
@@ -682,7 +687,7 @@ class TestRunningTaskAffectsStepStatus:
         """A running seed_reference task overrides AVAILABLE to RUNNING."""
         running_task = _make_background_task(OperationType.SEED_REFERENCE)
         service = _build_service(
-            counts_sequence=[0] * 7,
+            counts_sequence=[0] * 8,
             running_tasks={OperationType.SEED_REFERENCE: running_task},
         )
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
@@ -695,7 +700,7 @@ class TestRunningTaskAffectsStepStatus:
         """get_status() returns the running task in the active_task field."""
         running_task = _make_background_task(OperationType.LOAD_DATA)
         service = _build_service(
-            counts_sequence=[0] * 7,
+            counts_sequence=[0] * 8,
             running_tasks={OperationType.LOAD_DATA: running_task},
         )
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
@@ -706,7 +711,7 @@ class TestRunningTaskAffectsStepStatus:
 
     async def test_active_task_is_none_when_no_running_tasks(self) -> None:
         """active_task is None when TaskManager has no active tasks."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -720,7 +725,7 @@ class TestRunningTaskAffectsStepStatus:
             error="Something went wrong",
         )
         service = _build_service(
-            counts_sequence=[0] * 7,
+            counts_sequence=[0] * 8,
             running_tasks={OperationType.LOAD_DATA: errored_task},
         )
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
@@ -731,7 +736,7 @@ class TestRunningTaskAffectsStepStatus:
 
     async def test_step_without_running_task_has_no_error(self) -> None:
         """Steps with no associated running task have error=None."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -749,15 +754,16 @@ class TestCountsFromDatabase:
 
     async def test_counts_reflect_db_query_values(self) -> None:
         """OnboardingCounts fields must match the sequence returned by session.execute."""
-        # Sequence: channels=7, videos=42, enriched_videos=10, playlists=1,
-        # transcripts=99, categories=5, canonical_tags=300
-        service = _build_service(counts_sequence=[7, 42, 10, 1, 99, 5, 300])
+        # Sequence: channels=7, videos=42, available_videos=42, enriched_videos=10,
+        # playlists=1, transcripts=99, categories=5, canonical_tags=300
+        service = _build_service(counts_sequence=[7, 42, 42, 10, 1, 99, 5, 300])
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
         counts = status.counts
         assert counts.channels == 7
         assert counts.videos == 42
+        assert counts.available_videos == 42
         assert counts.playlists == 1
         assert counts.transcripts == 99
         assert counts.categories == 5
@@ -765,7 +771,7 @@ class TestCountsFromDatabase:
 
     async def test_counts_type_is_onboarding_counts(self) -> None:
         """The counts field must be an OnboardingCounts Pydantic model."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -773,9 +779,9 @@ class TestCountsFromDatabase:
 
     async def test_counts_are_integers(self) -> None:
         """All count fields must be integers, not strings or floats."""
-        # Sequence: channels=1, videos=2, enriched_videos=3, playlists=4,
-        # transcripts=5, categories=6, canonical_tags=7
-        service = _build_service(counts_sequence=[1, 2, 3, 4, 5, 6, 7])
+        # Sequence: channels=1, videos=2, available_videos=3, enriched_videos=4,
+        # playlists=5, transcripts=6, categories=7, canonical_tags=8
+        service = _build_service(counts_sequence=[1, 2, 3, 4, 5, 6, 7, 8])
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -797,7 +803,7 @@ class TestDispatch:
     async def test_dispatch_raises_for_unknown_operation(self) -> None:
         """dispatch() must raise ValueError for an operation not in the pipeline."""
         # We test this indirectly by patching _find_step to return None
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
 
         with (
             patch.object(service, "_find_step", return_value=None),
@@ -808,7 +814,7 @@ class TestDispatch:
     async def test_dispatch_raises_when_dependency_unsatisfied(self) -> None:
         """dispatch() raises ValueError when a required dependency step is not complete."""
         # normalize_tags depends on load_data (videos > 0), but DB is fresh
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             with pytest.raises(ValueError, match="not satisfied"):
                 await service.dispatch(OperationType.NORMALIZE_TAGS)
@@ -816,7 +822,7 @@ class TestDispatch:
     async def test_dispatch_raises_when_auth_required_but_absent(self) -> None:
         """dispatch() raises ValueError when enrich_metadata is requested without auth."""
         # Give enough videos to satisfy load_data dep but no auth
-        service = _build_service(counts_sequence=[5, 100, 0, 3, 0, 0, 0])
+        service = _build_service(counts_sequence=[5, 100, 100, 0, 3, 0, 0, 0])
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             with pytest.raises(ValueError, match="requires OAuth"):
                 await service.dispatch(OperationType.ENRICH_METADATA)
@@ -829,7 +835,7 @@ class TestDispatch:
 
         from chronovista.services.onboarding_service import OnboardingService
 
-        session_factory = _make_session_factory([0] * 7)
+        session_factory = _make_session_factory([0] * 8)
         service = OnboardingService(
             task_manager=task_manager,
             session_factory=session_factory,
@@ -848,7 +854,7 @@ class TestDispatch:
 
         from chronovista.services.onboarding_service import OnboardingService
 
-        session_factory = _make_session_factory([0] * 7)
+        session_factory = _make_session_factory([0] * 8)
         service = OnboardingService(
             task_manager=task_manager,
             session_factory=session_factory,
@@ -868,7 +874,7 @@ class TestDispatch:
         from chronovista.services.onboarding_service import OnboardingService
 
         # videos=100 satisfies load_data dependency
-        session_factory = _make_session_factory([5, 100, 0, 3, 0, 0, 0])
+        session_factory = _make_session_factory([5, 100, 100, 0, 3, 0, 0, 0])
         service = OnboardingService(
             task_manager=task_manager,
             session_factory=session_factory,
@@ -887,7 +893,7 @@ class TestDispatch:
         from chronovista.services.onboarding_service import OnboardingService
 
         # videos=100 satisfies load_data dependency
-        session_factory = _make_session_factory([5, 100, 0, 3, 0, 0, 0])
+        session_factory = _make_session_factory([5, 100, 100, 0, 3, 0, 0, 0])
         service = OnboardingService(
             task_manager=task_manager,
             session_factory=session_factory,
@@ -911,11 +917,11 @@ class TestStepStatusEdgeCases:
         """RUNNING overrides COMPLETED — if a step is running, it shows RUNNING."""
         # categories=50 means seed_reference would be COMPLETED — but we inject
         # a running task for it
-        # Sequence: channels=0, videos=0, enriched_videos=0, playlists=0,
-        # transcripts=0, categories=50, canonical_tags=0
+        # Sequence: channels=0, videos=0, available_videos=0, enriched_videos=0,
+        # playlists=0, transcripts=0, categories=50, canonical_tags=0
         running_task = _make_background_task(OperationType.SEED_REFERENCE)
         service = _build_service(
-            counts_sequence=[0, 0, 0, 0, 0, 50, 0],
+            counts_sequence=[0, 0, 0, 0, 0, 0, 50, 0],
             running_tasks={OperationType.SEED_REFERENCE: running_task},
         )
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
@@ -929,7 +935,7 @@ class TestStepStatusEdgeCases:
         running_seed = _make_background_task(OperationType.SEED_REFERENCE)
         running_load = _make_background_task(OperationType.LOAD_DATA)
         service = _build_service(
-            counts_sequence=[0] * 7,
+            counts_sequence=[0] * 8,
             running_tasks={
                 OperationType.SEED_REFERENCE: running_seed,
                 OperationType.LOAD_DATA: running_load,
@@ -943,7 +949,7 @@ class TestStepStatusEdgeCases:
 
     async def test_step_requires_auth_flag_matches_definition(self) -> None:
         """Only enrich_metadata should have requires_auth=True."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -957,7 +963,7 @@ class TestStepStatusEdgeCases:
 
     async def test_step_dependencies_match_definition(self) -> None:
         """Dependency lists must match the static pipeline definition."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -977,7 +983,7 @@ class TestStepStatusEdgeCases:
         self,
     ) -> None:
         """When data is missing AND auth is missing, enrich_metadata is BLOCKED."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -987,10 +993,11 @@ class TestStepStatusEdgeCases:
 
     async def test_all_steps_completed_when_all_counts_positive(self) -> None:
         """When all relevant counts are > 0, all steps should be COMPLETED."""
-        # channels=5, videos=100, enriched_videos=50 → enrich_metadata done;
+        # channels=5, videos=100, available_videos=50, enriched_videos=50 → enrich_metadata done
+        # (enriched_videos >= available_videos so COMPLETED, not AVAILABLE);
         # playlists=3, transcripts=0, categories=10 → seed_reference done;
         # canonical_tags=200 → normalize_tags done
-        service = _build_service(counts_sequence=[5, 100, 50, 3, 0, 10, 200])
+        service = _build_service(counts_sequence=[5, 100, 50, 50, 3, 0, 10, 200])
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=True):
             status = await service.get_status()
 
@@ -1011,7 +1018,7 @@ class TestSchemaCompliance:
 
     async def test_get_status_returns_onboarding_status_instance(self) -> None:
         """get_status() must return an OnboardingStatus Pydantic model."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -1019,7 +1026,7 @@ class TestSchemaCompliance:
 
     async def test_steps_are_pipeline_step_instances(self) -> None:
         """Each element in status.steps must be a PipelineStep instance."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -1028,7 +1035,7 @@ class TestSchemaCompliance:
 
     async def test_data_export_path_is_string(self) -> None:
         """data_export_path must be serialized as a string, not a Path object."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with (
             patch(_SETTINGS_TOKEN_IS_FILE, return_value=False),
             patch("pathlib.Path.is_dir", return_value=False),
@@ -1039,7 +1046,7 @@ class TestSchemaCompliance:
 
     async def test_step_names_are_non_empty_strings(self) -> None:
         """Each step must have a non-empty name string."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -1049,7 +1056,7 @@ class TestSchemaCompliance:
 
     async def test_step_descriptions_are_non_empty_strings(self) -> None:
         """Each step must have a non-empty description string."""
-        service = _build_service(counts_sequence=[0] * 7)
+        service = _build_service(counts_sequence=[0] * 8)
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -1074,9 +1081,10 @@ class TestReturningUser:
     * Downstream steps keep their statuses based on their own counts.
     """
 
-    # Full pipeline completed: channels=5, videos=100, enriched_videos=50,
-    # playlists=3, transcripts=200, categories=50, canonical_tags=9999
-    _FULL_COUNTS = [5, 100, 50, 3, 200, 50, 9999]
+    # Full pipeline completed: channels=5, videos=100, available_videos=50,
+    # enriched_videos=50 (== available_videos so COMPLETED), playlists=3,
+    # transcripts=200, categories=50, canonical_tags=9999
+    _FULL_COUNTS = [5, 100, 50, 50, 3, 200, 50, 9999]
 
     def _make_export_entry(self, mtime: float = 1700000000.0) -> MagicMock:
         """Create a mock Path entry with a controllable stat().st_mtime."""
@@ -1211,7 +1219,7 @@ class TestReturningUser:
         because the user hasn't done the initial load yet.
         """
         status = await self._get_status_returning_user(
-            [0] * 7,
+            [0] * 8,
             export_dir_exists=True,
             export_has_files=True,
         )
@@ -2231,6 +2239,7 @@ class TestFactoryEnrichMetadata:
             priority="all",
             include_deleted=True,
             check_prerequisites=False,
+            progress_cb=unittest_mock_any,
         )
 
     async def test_progress_called_at_zero(self) -> None:

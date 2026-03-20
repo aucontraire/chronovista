@@ -10,9 +10,9 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Any, Callable, Coroutine
+from typing import Any, Callable, Coroutine, cast
 
-from sqlalchemy import func, select
+from sqlalchemy import CursorResult, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from chronovista.api.schemas.onboarding import (
@@ -267,6 +267,7 @@ class OnboardingService:
         async with self._session_factory() as session:
             channels = await self._count(session, Channel)
             videos = await self._count(session, Video)
+            available_videos = await self._count_available_videos(session)
             enriched_videos = await self._count_enriched_videos(session)
             playlists = await self._count(session, Playlist)
             transcripts = await self._count(session, VideoTranscript)
@@ -276,6 +277,7 @@ class OnboardingService:
         return OnboardingCounts(
             channels=channels,
             videos=videos,
+            available_videos=available_videos,
             enriched_videos=enriched_videos,
             playlists=playlists,
             transcripts=transcripts,
@@ -323,6 +325,16 @@ class OnboardingService:
             select(func.count())
             .select_from(Video)
             .where(Video.view_count.is_not(None))
+        )
+        return result.scalar_one()
+
+    @staticmethod
+    async def _count_available_videos(session: AsyncSession) -> int:
+        """Count videos with availability_status = 'available'."""
+        result = await session.execute(
+            select(func.count())
+            .select_from(Video)
+            .where(Video.availability_status == "available")
         )
         return result.scalar_one()
 
@@ -597,6 +609,15 @@ class OnboardingService:
                 and step_def.operation_type == OperationType.LOAD_DATA
             ):
                 return PipelineStepStatus.AVAILABLE
+            # Special case: enrich_metadata can be re-run when there are
+            # un-enriched *available* videos.  Unavailable/deleted videos
+            # can never be enriched, so we compare enriched count against
+            # available videos only.
+            if (
+                step_def.operation_type == OperationType.ENRICH_METADATA
+                and counts.enriched_videos < counts.available_videos
+            ):
+                return PipelineStepStatus.AVAILABLE
             return PipelineStepStatus.COMPLETED
 
         # Check for blocked conditions
@@ -800,8 +821,31 @@ class OnboardingService:
                     len(takeout_dirs),
                 )
 
+                # Resolve the real user ID when authenticated, so
+                # user_videos rows are stored under the actual channel
+                # ID instead of the "takeout_user" placeholder.
+                user_id = "takeout_user"
+                if OnboardingService._check_auth():
+                    try:
+                        from chronovista.container import container
+
+                        yt = container.youtube_service
+                        my_ch = await yt.get_my_channel()
+                        if my_ch:
+                            user_id = my_ch.id
+                            logger.info(
+                                "Load data: using authenticated channel ID %s",
+                                user_id,
+                            )
+                    except Exception as exc:
+                        logger.warning(
+                            "Load data: could not resolve channel ID, "
+                            "falling back to 'takeout_user': %s",
+                            exc,
+                        )
+
                 # Parse and seed from each takeout directory
-                seeding_svc = TakeoutSeedingService()
+                seeding_svc = TakeoutSeedingService(user_id=user_id)
                 all_results: dict[str, Any] = {}
                 total_dirs = len(takeout_dirs)
 
@@ -912,12 +956,17 @@ class OnboardingService:
                 )
 
                 # Step 1: Enrich videos (--priority all --include-deleted)
+                # Map video enrichment progress (0.0-1.0) into the 0%-30% range.
+                def _video_progress(fraction: float) -> None:
+                    progress_cb(fraction * 30.0)
+
                 async with session_factory() as session:
                     report = await enrichment_service.enrich_videos(
                         session,
                         priority="all",
                         include_deleted=True,
                         check_prerequisites=False,
+                        progress_cb=_video_progress,
                     )
                 progress_cb(30.0)
 
@@ -939,15 +988,71 @@ class OnboardingService:
                         )
                 progress_cb(50.0)
 
-                # Step 3: Sync liked videos (--sync-likes)
-                likes_synced = 0
+                # Step 2.5: Migrate any "takeout_user" rows to the real
+                # channel ID so likes sync and filters work correctly.
                 youtube_service = container.youtube_service
+                real_user_id: str | None = None
                 async with session_factory() as session:
                     try:
                         my_channel = await youtube_service.get_my_channel()
                         if my_channel:
+                            real_user_id = my_channel.id
+                            from chronovista.db.models import UserVideo as UserVideoDB
+                            from sqlalchemy import text
+
+                            # Migrate takeout_user → real channel ID,
+                            # skipping rows that already exist under
+                            # the real ID (avoids PK conflict).
+                            result = await session.execute(
+                                text("""
+                                    UPDATE user_videos
+                                    SET user_id = :real_id
+                                    WHERE user_id = 'takeout_user'
+                                    AND video_id NOT IN (
+                                        SELECT video_id FROM user_videos
+                                        WHERE user_id = :real_id
+                                    )
+                                """),
+                                {"real_id": real_user_id},
+                            )
+                            cursor = cast(CursorResult[Any], result)
+                            migrated = cursor.rowcount
+                            await session.commit()
+                            if migrated > 0:
+                                logger.info(
+                                    "Migrated %d user_videos rows from "
+                                    "'takeout_user' to '%s'",
+                                    migrated,
+                                    real_user_id,
+                                )
+                    except Exception as exc:
+                        logger.warning(
+                            "User ID migration failed (non-fatal): %s", exc
+                        )
+                progress_cb(55.0)
+
+                # Step 3: Sync liked videos (--sync-likes)
+                likes_synced = 0
+                async with session_factory() as session:
+                    try:
+                        # Reuse channel ID from migration step if available,
+                        # otherwise fetch it now.
+                        if real_user_id is None:
+                            logger.info("Likes sync: fetching authenticated channel...")
+                            ch = await youtube_service.get_my_channel()
+                            real_user_id = ch.id if ch else None
+
+                        if real_user_id:
+                            logger.info(
+                                "Likes sync: channel=%s, fetching liked videos...",
+                                real_user_id,
+                            )
                             liked_videos = (
                                 await youtube_service.get_liked_videos()
+                            )
+                            logger.info(
+                                "Likes sync: got %d liked videos from API",
+                                len(liked_videos) if liked_videos else 0,
                             )
                             if liked_videos:
                                 user_video_repo = UserVideoRepository()
@@ -957,17 +1062,31 @@ class OnboardingService:
                                     for v in liked_videos
                                     if await video_repo.exists(session, v.id)
                                 ]
+                                logger.info(
+                                    "Likes sync: %d/%d liked videos exist in DB",
+                                    len(existing_ids),
+                                    len(liked_videos),
+                                )
                                 if existing_ids:
                                     likes_synced = await user_video_repo.update_like_status_batch(
                                         session,
-                                        my_channel.id,
+                                        real_user_id,
                                         existing_ids,
                                         liked=True,
                                     )
                                     await session.commit()
+                                    logger.info(
+                                        "Likes sync: %d records updated",
+                                        likes_synced,
+                                    )
+                        else:
+                            logger.warning(
+                                "Likes sync: no channel found for authenticated user"
+                            )
                     except Exception as exc:
-                        logger.warning(
-                            "Likes sync failed (non-fatal): %s", exc
+                        logger.error(
+                            "Likes sync failed (non-fatal): %s", exc,
+                            exc_info=True,
                         )
                 progress_cb(70.0)
 

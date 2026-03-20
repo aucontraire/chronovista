@@ -17,7 +17,7 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import unquote
 
 from pydantic import BaseModel, Field
@@ -985,6 +985,7 @@ class EnrichmentService:
         dry_run: bool = False,
         check_prerequisites: bool = True,
         refresh_topics: bool = False,
+        progress_cb: Callable[[float], None] | None = None,
     ) -> EnrichmentReport:
         """
         Main enrichment method for batch video processing.
@@ -1016,6 +1017,9 @@ class EnrichmentService:
         refresh_topics : bool, optional
             If True, process ALL non-deleted videos regardless of metadata state
             to refresh topic associations (default False).
+        progress_cb : Callable[[float], None] | None, optional
+            If provided, called after each batch commit with a float in [0.0, 1.0]
+            representing the fraction of videos processed so far (default None).
 
         Returns
         -------
@@ -1408,12 +1412,18 @@ class EnrichmentService:
                     logger.error(f"Error committing batch: {e}")
                     await session.rollback()
 
+                if progress_cb is not None:
+                    progress_cb(videos_processed / len(video_ids))
+
         # Final commit for remaining videos
         try:
             await session.commit()
         except Exception as e:
             logger.error(f"Error in final commit: {e}")
             await session.rollback()
+
+        if progress_cb is not None:
+            progress_cb(1.0)
 
         return create_report()
 

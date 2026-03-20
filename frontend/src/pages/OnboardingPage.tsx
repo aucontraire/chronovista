@@ -282,6 +282,16 @@ export function OnboardingPage() {
   // Poll the active task while it runs
   const { data: activeTaskPoll } = useTaskStatus(activeTaskId);
 
+  // Auto-populate activeTaskId from backend status when not set locally.
+  // This handles page refresh and connection drop/recovery — if the backend
+  // reports an active_task but the local state is null (e.g. the user reloaded
+  // the page mid-run), we pick it up so polling and progress display resume.
+  useEffect(() => {
+    if (status?.active_task && activeTaskId === null) {
+      setActiveTaskId(status.active_task.id);
+    }
+  }, [status?.active_task, activeTaskId]);
+
   // Clear activeTaskId when the polled task reaches a terminal state
   useEffect(() => {
     if (

@@ -7,6 +7,7 @@
  * - Flat nav items remain as NavRoute (kind: "route")
  * - The Transcripts group is a NavGroupRoute (kind: "group")
  * - Each child of Transcripts group carries correct paths and labels
+ * - Setup and Settings appear after the separator (admin/config section)
  */
 
 import { describe, it, expect } from "vitest";
@@ -43,8 +44,8 @@ function findGroup(entries: NavEntry[], label: string): NavGroupRoute | undefine
 // ---------------------------------------------------------------------------
 
 describe("navRoutes — top-level structure", () => {
-  it("has exactly 7 top-level entries", () => {
-    expect(navRoutes).toHaveLength(7);
+  it("has exactly 9 top-level entries", () => {
+    expect(navRoutes).toHaveLength(9);
   });
 
   it("first entry is Videos flat route", () => {
@@ -130,11 +131,48 @@ describe("navRoutes — flat NavRoute entries", () => {
 
   it("/search route is a top-level flat route (not nested under Transcripts)", () => {
     const topLevel = navRoutes.find(
-      (e) => e.kind === "route" && e.path === "/search"
+      (e): e is NavRoute => e.kind === "route" && e.path === "/search"
     );
     expect(topLevel).toBeDefined();
     expect(topLevel?.label).toBe("Search");
     expect(topLevel?.icon).toBeDefined();
+  });
+});
+
+describe("navRoutes — config section order", () => {
+  it("separator appears at index 6", () => {
+    expect(navRoutes[6]?.kind).toBe("separator");
+  });
+
+  it("Setup route appears at index 7, after the separator", () => {
+    const entry = navRoutes[7];
+    expect(entry?.kind).toBe("route");
+    if (entry?.kind === "route") {
+      expect(entry.path).toBe("/onboarding");
+      expect(entry.label).toBe("Setup");
+    }
+  });
+
+  it("Settings route appears at index 8, after Setup", () => {
+    const entry = navRoutes[8];
+    expect(entry?.kind).toBe("route");
+    if (entry?.kind === "route") {
+      expect(entry.path).toBe("/settings");
+      expect(entry.label).toBe("Settings");
+    }
+  });
+
+  it("Setup and Settings are both below the separator", () => {
+    const separatorIndex = navRoutes.findIndex((e) => e.kind === "separator");
+    const setupIndex = navRoutes.findIndex(
+      (e): e is NavRoute => e.kind === "route" && e.path === "/onboarding"
+    );
+    const settingsIndex = navRoutes.findIndex(
+      (e): e is NavRoute => e.kind === "route" && e.path === "/settings"
+    );
+    expect(setupIndex).toBeGreaterThan(separatorIndex);
+    expect(settingsIndex).toBeGreaterThan(separatorIndex);
+    expect(settingsIndex).toBeGreaterThan(setupIndex);
   });
 });
 

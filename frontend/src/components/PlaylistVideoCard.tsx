@@ -132,7 +132,7 @@ export function PlaylistVideoCard({ video }: PlaylistVideoCardProps) {
 
             {/* Transcript Info (only if transcripts available) */}
             {transcript_summary.count > 0 && (
-              <div className="mt-2">
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 <span
                   className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
                     transcript_summary.has_manual
@@ -143,6 +143,27 @@ export function PlaylistVideoCard({ video }: PlaylistVideoCardProps) {
                 >
                   {transcript_summary.has_manual ? "Manual CC" : "Auto CC"}
                 </span>
+                {transcript_summary.languages.length > 0 && (
+                  <span className="flex flex-wrap items-center gap-1" aria-label="Available transcript languages">
+                    {transcript_summary.languages.slice(0, 5).map((lang) => (
+                      <span
+                        key={lang}
+                        className="inline-flex items-center bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded text-xs font-mono"
+                      >
+                        {lang}
+                      </span>
+                    ))}
+                    {transcript_summary.languages.length > 5 && (
+                      <span
+                        className="inline-flex items-center bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded text-xs"
+                        title={`Also: ${transcript_summary.languages.slice(5).join(", ")}`}
+                        aria-label={`${transcript_summary.languages.length - 5} more languages`}
+                      >
+                        +{transcript_summary.languages.length - 5}
+                      </span>
+                    )}
+                  </span>
+                )}
               </div>
             )}
           </div>

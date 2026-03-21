@@ -11,6 +11,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.50.0] - 2026-03-21
+
+### Added
+- **Feature 049: Settings & Preferences Page**
+  - **Language Preferences UI (US1)**: Settings page at `/settings` with full language preference management; preferences grouped by type (Fluent, Learning, Curious, Exclude) with color-coded pills showing display name and code; add preference via searchable language combobox with preference type selector; remove individual preferences; reset all with confirmation `alertdialog`; learning goal input conditionally shown for "learning" type; empty state explaining each preference type's effect on transcript downloading; `DuplicateLanguageError` validation (FR-009); `aria-live` region for preference change announcements; `useLanguagePreferences` hook with PUT replace-all semantics and priority renumbering
+  - **Preference-Aware Transcript Download (US2)**: Frontend transcript download now respects configured language preferences; backend `download_transcript()` consults `PreferenceAwareTranscriptFilter` to determine which languages to download (fluent → learning → curious, skipping excluded); `?language` query parameter continues to work as override; error message lists attempted languages when no transcripts available; `model_validate()` conversion from ORM to Pydantic domain models
+  - **Cache Status & Management (US3)**: "Cache" section on Settings page showing cached image count and total disk space; "Clear Cache" button with confirmation `alertdialog`; Escape key dismisses dialog; loading skeleton, error state with retry, empty cache state ("No cached images"); `useCacheStatus` hook with purge mutation and query invalidation
+  - **Application Info (US4)**: "About" section with backend version, frontend version, database statistics (videos, channels, playlists, transcripts, corrections, canonical tags) in `dl/dt/dd` markup; last sync timestamps for 5 data types with "Never synced" fallback; `useAppInfo` hook with 30s staleTime
+  - **Settings API Endpoints**: `GET /api/v1/settings/supported-languages` (all BCP-47 codes with display names, no auth required); `GET /api/v1/settings/cache-status` (image count, disk size); `DELETE /api/v1/settings/cache` (purge all cached images); `GET /api/v1/settings/app-info` (version, DB stats, sync timestamps)
+  - **Sidebar Navigation**: Settings entry added below separator alongside Setup; `NavSeparator` component with `kind: "separator"` entry type; content navigation (Videos, Transcripts, Channels, Playlists, Entities, Search) above separator, configuration items (Setup, Settings) below
+
+### Changed
+- Sidebar restructured: Setup moved below separator to group with Settings (content above, config below)
+- Transcript language display on video cards changed from plain text to indigo pills (`bg-indigo-50 text-indigo-700`) with up to 5 visible and `+N` overflow; "N transcripts" count text removed
+
+### Fixed
+- `download_transcript()` type mismatch: SQLAlchemy ORM models passed where Pydantic domain models expected by `PreferenceAwareTranscriptFilter` — added `model_validate()` conversion
+- Stale `# type: ignore[return-value]` on `ProblemJSONResponse` in settings router
+
+### Technical
+- 4 new backend endpoints, 3 new frontend hooks, 4 new frontend components, 1 new page
+- 150 new tests (38 backend + 112 frontend across 7 test files)
+- 3,277 total frontend tests, 6,000+ total backend tests
+- Frontend version: 0.18.0 → 0.19.0
+- TypeScript strict mode (0 errors), mypy strict compliance (0 errors)
+- No new dependencies, no database migrations
+- GitHub issue #102 created for sync timestamp persistence
+
 ## [0.49.0] - 2026-03-20
 
 ### Added

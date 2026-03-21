@@ -11,4 +11,5 @@ export { PlaylistIcon } from "./PlaylistIcon";
 export { SearchIcon } from "./SearchIcon";
 export { TranscriptsIcon } from "./TranscriptsIcon";
 export { SetupIcon } from "./SetupIcon";
+export { SettingsIcon } from "./SettingsIcon";
 export { VideoIcon } from "./VideoIcon";

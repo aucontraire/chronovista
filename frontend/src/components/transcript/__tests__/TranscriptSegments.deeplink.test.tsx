@@ -730,7 +730,7 @@ describe("TranscriptSegments - Deep Link Navigation", () => {
         if (segmentId === targetSegment.id) {
           expect(element).toHaveAttribute("tabindex", "-1");
         } else {
-          expect(element).not.toHaveAttribute("tabindex");
+          expect(element).toHaveAttribute("tabindex", "0");
         }
       });
     });

@@ -17,6 +17,15 @@
  *   - US-10: Optimistic update feedback
  *   - NFR-003: Virtualizer height notification on edit mode toggle
  *   - NFR-004: Motion preferences for transition animations
+ * - Feature 048 (T013): Click-to-seek with edit-mode guard and keyboard accessibility
+ *   - FR-013: Click a segment row to seek the YouTube player to that timestamp
+ *   - CHK062: Edit-mode guard — seek is suppressed when the inline editor is open
+ *   - FR-A01: Enter/Space on a focused segment row triggers seek
+ * - Feature 048 (T014): Active segment highlighting synced to playback position
+ *   - FR-014: Blue left-border + bg-blue-50 highlight on the active playback segment
+ *   - FR-017: Highlight persists when paused (activeSegmentId holds the last value)
+ *   - Edge Case 6: null activeSegmentId (gap between segments) — no row is highlighted
+ *   - Correction precedence: amber highlight takes priority over blue when both apply
  *
  * @module components/transcript/TranscriptSegments
  */
@@ -71,6 +80,20 @@ export interface TranscriptSegmentsProps {
   /** Whether the parent panel is expanded (for deep link abort on collapse) */
   isExpanded?: boolean | undefined;
   /**
+   * Seeks the YouTube player to the given time in seconds and starts playback.
+   * Passed down from the player hook via VideoDetailPage or TranscriptPanel.
+   * When undefined (no player available), click-to-seek is a no-op (FR-013).
+   */
+  seekTo?: ((seconds: number) => void) | undefined;
+  /**
+   * ID of the transcript segment currently active under the playback cursor.
+   * Comes directly from useYouTubePlayer.activeSegmentId (derived via binary
+   * search on start_time inside the hook). Null when the playhead is in a gap
+   * between segments or before the first segment (Edge Case 6 / FR-017).
+   * When undefined (no player mounted), no active highlight is rendered.
+   */
+  activeSegmentId?: number | null | undefined;
+  /**
    * Search props for client-side transcript search (Feature 042 US4).
    * When provided, segment text is rendered through TextHighlighter.
    */
@@ -117,6 +140,11 @@ interface EditModeProps {
   isPending: boolean;
   correctionError: string | null;
   onEdit: (segmentId: number) => void;
+  /**
+   * Seeks the player to a timestamp in seconds and starts playback (FR-013).
+   * Undefined when no player is mounted; click-to-seek is a no-op in that case.
+   */
+  seekTo?: ((seconds: number) => void) | undefined;
   onSave: (data: {
     corrected_text: string;
     correction_type: CorrectionType;
@@ -152,6 +180,7 @@ function SegmentItem({
   isVirtualized,
   isHighlighted,
   highlightTransitionClass,
+  isActive,
   segmentSearchProps,
   editState,
   isPending,
@@ -172,11 +201,18 @@ function SegmentItem({
   historyIsLoading,
   historyHasMore,
   historyButtonRef,
+  seekTo,
 }: {
   segment: TranscriptSegment;
   isVirtualized: boolean;
   isHighlighted?: boolean;
   highlightTransitionClass?: string;
+  /**
+   * True when this segment is currently under the playback cursor (FR-014).
+   * Drives the blue left-border + bg-blue-50 active highlight. Amber correction
+   * highlight takes precedence when both isActive and has_correction are true.
+   */
+  isActive?: boolean;
   segmentSearchProps?: SegmentSearchProps | undefined;
 } & EditModeProps) {
   const isEditing =
@@ -186,10 +222,49 @@ function SegmentItem({
   const isHistory =
     editState.mode === "history" && editState.segmentId === segment.id;
 
-  // Highlight styles: yellow background with left border indicator (FR-008)
+  /** True when any active edit-mode action is open for this specific segment (CHK062). */
+  const isThisSegmentActive = isEditing || isConfirmingRevert || isHistory;
+
+  /**
+   * Click-to-seek handler (FR-013, CHK062).
+   * Guard: if this segment currently has an active edit/revert/history panel open,
+   * clicking the row should NOT seek — the user's intent is to interact with the edit UI.
+   * When seekTo is undefined (no player mounted), this is a no-op.
+   */
+  const handleSegmentClick = useCallback(() => {
+    if (isThisSegmentActive) return;
+    seekTo?.(segment.start_time);
+  }, [isThisSegmentActive, seekTo, segment.start_time]);
+
+  /**
+   * Keyboard seek handler (FR-A01).
+   * Enter and Space trigger seek when the row itself is focused (not a child button).
+   * Guard: same edit-mode guard as click handler.
+   */
+  const handleSegmentKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      // Only fire when the row itself is the focus target, not a child button/input.
+      if (e.target !== e.currentTarget) return;
+      e.preventDefault();
+      if (isThisSegmentActive) return;
+      seekTo?.(segment.start_time);
+    },
+    [isThisSegmentActive, seekTo, segment.start_time]
+  );
+
+  // Highlight styles with three-tier precedence (FR-008, FR-014):
+  //   1. Deep-link / search highlight (yellow) — highest visual priority
+  //   2. Correction highlight (amber) — takes precedence over active-playback blue
+  //   3. Active playback segment (blue) — lowest priority
+  //   4. Default: transparent left border (placeholder for layout stability)
   const highlightClasses = isHighlighted
     ? "bg-yellow-100 border-l-4 border-yellow-400"
-    : "border-l-4 border-transparent";
+    : segment.has_correction
+      ? "border-l-4 border-amber-400 bg-amber-50"
+      : isActive
+        ? "border-l-4 border-blue-500 bg-blue-50 transition-all duration-150"
+        : "border-l-4 border-transparent";
 
   // Determine if this segment contains the active search match (Feature 042 US4)
   const activeMatch = segmentSearchProps?.allMatches[segmentSearchProps.activeMatchIndex];
@@ -204,16 +279,29 @@ function SegmentItem({
       <div
         // Attach ref when this segment row contains the active search match (T025)
         ref={isActiveMatchSegment ? segmentSearchProps.activeMatchContainerRef : undefined}
-        className={`group flex gap-4 py-2 hover:bg-slate-50 ${isVirtualized ? "px-2" : ""} ${highlightClasses} ${highlightTransitionClass ?? ""}`}
+        className={`group flex gap-4 py-2 hover:bg-slate-50 ${seekTo && !isThisSegmentActive ? "cursor-pointer" : ""} ${isVirtualized ? "px-2" : ""} ${highlightClasses} ${highlightTransitionClass ?? ""}`}
         data-segment-id={segment.id}
-        // FR-015: Make highlighted segment focusable for programmatic focus
-        tabIndex={isHighlighted ? -1 : undefined}
+        // FR-015: Make highlighted segment focusable for programmatic focus.
+        // FR-A01 / FR-013: tabIndex={0} makes every segment keyboard-focusable for click-to-seek.
+        // When highlighted, -1 keeps it reachable via programmatic focus but out of tab order;
+        // otherwise 0 puts it in the natural tab sequence for seek accessibility.
+        tabIndex={isHighlighted ? -1 : 0}
+        // FR-A01: Declare interactive role so assistive technologies announce the segment
+        // as activatable. Only applied when a player is available and the row is not in edit mode.
+        role={seekTo && !isThisSegmentActive ? "button" : undefined}
+        aria-label={
+          seekTo && !isThisSegmentActive
+            ? `Seek to ${formatTimestamp(segment.start_time)}`
+            : undefined
+        }
         // US-10: Indicate when a mutation is in-flight on this segment
         aria-busy={
           (isEditing && isPending) || (isConfirmingRevert && revertIsPending)
             ? "true"
             : undefined
         }
+        onClick={handleSegmentClick}
+        onKeyDown={handleSegmentKeyDown}
       >
         {/* Timestamp - left side (NFR-A17, NFR-A18: text-gray-600 for 7.0:1 contrast) */}
         <span
@@ -277,7 +365,7 @@ function SegmentItem({
             <button
               ref={editState.mode === "read" ? editButtonRef : undefined}
               type="button"
-              onClick={() => onEdit(segment.id)}
+              onClick={(e) => { e.stopPropagation(); onEdit(segment.id); }}
               title="Edit segment"
               aria-label={`Edit segment ${segment.id}`}
               className="
@@ -309,7 +397,7 @@ function SegmentItem({
               <button
                 ref={editState.mode === "read" ? revertButtonRef : undefined}
                 type="button"
-                onClick={() => onRevert(segment.id)}
+                onClick={(e) => { e.stopPropagation(); onRevert(segment.id); }}
                 title="Revert to previous version"
                 aria-label={`Revert correction for segment ${segment.id}`}
                 className="
@@ -342,7 +430,7 @@ function SegmentItem({
               <button
                 ref={editState.mode === "read" ? historyButtonRef : undefined}
                 type="button"
-                onClick={() => onHistory(segment.id)}
+                onClick={(e) => { e.stopPropagation(); onHistory(segment.id); }}
                 title="View correction history"
                 aria-label={`View correction history for segment ${segment.id}`}
                 className="
@@ -477,6 +565,7 @@ function VirtualizedSegmentList({
   onScroll,
   highlightedSegmentId,
   highlightTransitionClass,
+  activeSegmentId,
   editModeProps,
   searchProps,
 }: {
@@ -485,6 +574,8 @@ function VirtualizedSegmentList({
   onScroll: () => void;
   highlightedSegmentId: number | null;
   highlightTransitionClass: string;
+  /** ID of the segment currently active under the playback cursor (FR-014). */
+  activeSegmentId?: number | null | undefined;
   editModeProps: EditModeProps;
   searchProps?: TranscriptSegmentsProps["searchProps"];
 }) {
@@ -511,6 +602,7 @@ function VirtualizedSegmentList({
         if (!segment) return null;
 
         const isHighlighted = segment.id === highlightedSegmentId;
+        const isActive = activeSegmentId != null && segment.id === activeSegmentId;
         const segmentSearchProps: SegmentSearchProps | undefined = searchProps
           ? {
               allMatches: searchProps.matches,
@@ -546,6 +638,7 @@ function VirtualizedSegmentList({
               isVirtualized={true}
               isHighlighted={isHighlighted}
               highlightTransitionClass={isHighlighted ? highlightTransitionClass : ""}
+              isActive={isActive}
               segmentSearchProps={segmentSearchProps}
               {...editModeProps}
             />
@@ -563,12 +656,15 @@ function StandardSegmentList({
   segments,
   highlightedSegmentId,
   highlightTransitionClass,
+  activeSegmentId,
   editModeProps,
   searchProps,
 }: {
   segments: TranscriptSegment[];
   highlightedSegmentId: number | null;
   highlightTransitionClass: string;
+  /** ID of the segment currently active under the playback cursor (FR-014). */
+  activeSegmentId?: number | null | undefined;
   editModeProps: EditModeProps;
   searchProps?: TranscriptSegmentsProps["searchProps"];
 }) {
@@ -576,6 +672,7 @@ function StandardSegmentList({
     <>
       {segments.map((segment, segmentIndex) => {
         const isHighlighted = segment.id === highlightedSegmentId;
+        const isActive = activeSegmentId != null && segment.id === activeSegmentId;
         const segmentSearchProps: SegmentSearchProps | undefined = searchProps
           ? {
               allMatches: searchProps.matches,
@@ -591,6 +688,7 @@ function StandardSegmentList({
             isVirtualized={false}
             isHighlighted={isHighlighted}
             highlightTransitionClass={isHighlighted ? highlightTransitionClass : ""}
+            isActive={isActive}
             segmentSearchProps={segmentSearchProps}
             {...editModeProps}
           />
@@ -649,12 +747,16 @@ function findNearestSegmentByTimestamp(
  * - Responsive text sizing: text-sm mobile, text-base desktop (NFR-R06)
  * - Error handling with retry button and segment preservation (FR-025a-d)
  * - Inline correction editing with optimistic update (Feature 035)
+ * - Click-to-seek: clicking a segment row seeks the YouTube player to that timestamp (FR-013)
+ * - Edit-mode guard: seek is suppressed when the inline editor is open for that segment (CHK062)
+ * - Keyboard seek: Enter/Space on a focused segment row triggers seek (FR-A01)
  *
  * @example
  * ```tsx
  * <TranscriptSegments
  *   videoId="dQw4w9WgXcQ"
  *   languageCode="en"
+ *   seekTo={seekTo}
  *   onScrollPositionReset={() => console.log('Scroll reset')}
  * />
  * ```
@@ -668,6 +770,8 @@ export function TranscriptSegments({
   onDeepLinkComplete,
   isExpanded = true,
   searchProps,
+  seekTo,
+  activeSegmentId,
 }: TranscriptSegmentsProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -1253,6 +1357,8 @@ export function TranscriptSegments({
     historyIsLoading: historyQuery.isLoading,
     historyHasMore: historyQuery.data?.pagination.has_more ?? false,
     historyButtonRef,
+    // FR-013: Click-to-seek — forwarded from the player hook via parent (TranscriptPanel/VideoDetailPage)
+    seekTo,
   };
 
   // Initial loading state
@@ -1314,6 +1420,7 @@ export function TranscriptSegments({
           onScroll={handleScroll}
           highlightedSegmentId={highlightedSegmentId}
           highlightTransitionClass={highlightTransitionClass}
+          activeSegmentId={activeSegmentId}
           editModeProps={editModeProps}
           searchProps={searchProps}
         />
@@ -1322,6 +1429,7 @@ export function TranscriptSegments({
           segments={segments}
           highlightedSegmentId={highlightedSegmentId}
           highlightTransitionClass={highlightTransitionClass}
+          activeSegmentId={activeSegmentId}
           editModeProps={editModeProps}
           searchProps={searchProps}
         />

@@ -92,6 +92,43 @@ vi.mock('../../hooks/useEntityMentions', () => ({
   })),
 }));
 
+// Mock useOnboardingStatus — prevents real API calls for auth state
+vi.mock('../../hooks/useOnboarding', () => ({
+  useOnboardingStatus: vi.fn(() => ({
+    data: { is_authenticated: true },
+    isLoading: false,
+    isError: false,
+    error: null,
+  })),
+}));
+
+// Mock useTranscriptDownload — prevents mutation side-effects
+vi.mock('../../hooks/useTranscriptDownload', () => ({
+  useTranscriptDownload: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    reset: vi.fn(),
+  })),
+}));
+
+// Mock useYouTubePlayer — hook is now called in VideoDetailPage (Feature 048)
+vi.mock('../../hooks/useYouTubePlayer', () => ({
+  useYouTubePlayer: vi.fn(() => ({
+    containerRef: { current: null },
+    isReady: false,
+    isPlaying: false,
+    currentTime: 0,
+    activeSegmentId: null,
+    error: null,
+    followPlayback: true,
+    seekTo: vi.fn(),
+    togglePlayback: vi.fn(),
+    toggleFollowPlayback: vi.fn(),
+  })),
+}));
+
 // Import mocked functions
 import { useVideoDetail } from '../../hooks/useVideoDetail';
 import { apiFetch } from '../../api/config';

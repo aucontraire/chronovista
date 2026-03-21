@@ -1069,6 +1069,55 @@ GET /api/v1/videos/{video_id}/transcript/segments
 !!! note "Effective Text"
     The `text` field returns the effective text — corrected text if `has_correction` is true, original text otherwise. Use the correction history endpoint to see previous versions.
 
+#### Download Transcript
+
+Download a transcript from YouTube for a single video. Requires authentication.
+
+```
+POST /api/v1/videos/{video_id}/transcript/download
+```
+
+##### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `video_id` | string | 11-character YouTube video ID (regex: `[A-Za-z0-9_-]{11}`) |
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `language` | string | BCP-47 language code to download | Auto-detected |
+
+##### Responses
+
+| Status | Description |
+|--------|-------------|
+| 200 | Transcript downloaded successfully; returns transcript metadata |
+| 401 | Not authenticated |
+| 404 | No transcript available on YouTube for this video |
+| 409 | Transcript already exists in the database |
+| 422 | Invalid video_id format (must be 11 characters) |
+| 429 | Download already in progress for this video |
+| 503 | Rate limited by YouTube — wait and retry |
+
+##### Response (200)
+
+```json
+{
+  "data": {
+    "video_id": "dQw4w9WgXcQ",
+    "language_code": "en",
+    "transcript_type": "auto_generated",
+    "segment_count": 45,
+    "downloaded_at": "2026-03-20T14:30:00Z"
+  }
+}
+```
+
+!!! note "In-Flight Guard"
+    Only one download per video_id can run at a time. If a download is already in progress (e.g., from another browser tab), the server returns 429. Wait for the existing download to complete before retrying.
+
 ---
 
 ### Transcript Corrections

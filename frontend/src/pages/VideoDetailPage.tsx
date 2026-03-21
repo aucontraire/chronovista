@@ -15,7 +15,7 @@
  * - Alternative URL form for unavailable videos (T028, FR-015)
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams, useBlocker } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -24,10 +24,15 @@ import { EntityMentionsPanel } from "../components/EntityMentionsPanel";
 import { LoadingState } from "../components/LoadingState";
 import { TranscriptPanel } from "../components/transcript";
 import { UnavailabilityBanner } from "../components/UnavailabilityBanner";
+import { VideoEmbed } from "../components/video/VideoEmbed";
 import { useDeepLinkParams } from "../hooks/useDeepLinkParams";
 import { useVideoDetail } from "../hooks/useVideoDetail";
 import { useVideoPlaylists } from "../hooks/useVideoPlaylists";
 import { useVideoEntities } from "../hooks/useEntityMentions";
+import { useOnboardingStatus } from "../hooks/useOnboarding";
+import { useTranscriptDownload } from "../hooks/useTranscriptDownload";
+import { useYouTubePlayer } from "../hooks/useYouTubePlayer";
+import type { TranscriptSegment } from "../types/transcript";
 import { CONTRAST_SAFE_COLORS } from "../styles/tokens";
 import { API_BASE_URL, apiFetch, RECOVERY_TIMEOUT } from "../api/config";
 import type { RecoveryResultData } from "../types/recovery";
@@ -271,6 +276,207 @@ function XMarkIcon({ className }: { className?: string }) {
 }
 
 /**
+ * Animated spinner icon for loading states.
+ */
+function SpinnerIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Download icon for the transcript download button.
+ */
+function DownloadIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Returns a human-readable error message for a transcript download failure,
+ * differentiated by HTTP status code (FR-006).
+ *
+ * @param status - HTTP status code from the ApiError, or undefined
+ * @returns User-facing error message string
+ */
+function getDownloadErrorMessage(status: number | undefined): string {
+  if (status === 503) {
+    return "YouTube is temporarily blocking transcript requests. Please wait a few minutes and try again.";
+  }
+  if (status === 404) {
+    return "No transcript is available for this video in any language.";
+  }
+  return "Failed to download transcript. Please try again.";
+}
+
+/**
+ * Props for TranscriptDownloadButton component.
+ */
+interface TranscriptDownloadButtonProps {
+  /** The YouTube video ID to download a transcript for */
+  videoId: string;
+  /** Whether the current user is authenticated with YouTube OAuth */
+  isAuthenticated: boolean;
+}
+
+/**
+ * TranscriptDownloadButton renders a "Download Transcript" action that triggers
+ * the backend transcript-fetch pipeline.
+ *
+ * Implements:
+ * - FR-002: Show button only when transcript_summary.count === 0
+ * - FR-003: Disabled with tooltip for unauthenticated users
+ * - FR-004: Three button label states — idle / loading / error
+ * - FR-006: Differentiated error messages for 503, 404, and generic failures
+ *
+ * After a successful download the parent query cache is invalidated by the
+ * useTranscriptDownload hook, which causes VideoDetailPage to re-render with
+ * an updated transcript_summary.count > 0 — making this button disappear and
+ * the TranscriptPanel appear in its place.
+ */
+function TranscriptDownloadButton({
+  videoId,
+  isAuthenticated,
+}: TranscriptDownloadButtonProps) {
+  const { mutate: download, isPending, isError, error, reset } = useTranscriptDownload({ videoId });
+
+  // Determine button label based on current mutation state (FR-004)
+  let buttonLabel: React.ReactNode;
+  if (isPending) {
+    buttonLabel = (
+      <>
+        <SpinnerIcon className="w-4 h-4 mr-2 animate-spin" />
+        Downloading...
+      </>
+    );
+  } else if (isError) {
+    buttonLabel = (
+      <>
+        <RefreshIcon className="w-4 h-4 mr-2" />
+        Download Failed — Retry
+      </>
+    );
+  } else {
+    buttonLabel = (
+      <>
+        <DownloadIcon className="w-4 h-4 mr-2" />
+        Download Transcript
+      </>
+    );
+  }
+
+  // Error message differentiated by HTTP status (FR-006)
+  const errorMessage = isError ? getDownloadErrorMessage(error?.status) : null;
+
+  const handleClick = () => {
+    if (isError) {
+      // Reset before retrying so we get a clean mutation state
+      reset();
+    }
+    download({});
+  };
+
+  return (
+    <div className="mt-6">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        <h3 className="text-base font-semibold text-slate-900 mb-1">
+          Transcript
+        </h3>
+        <p className="text-sm text-slate-500 mb-4">
+          No transcript has been downloaded for this video yet.
+        </p>
+
+        {/* Wrap in a span to allow tooltip on disabled button (FR-003) */}
+        <span
+          title={
+            !isAuthenticated
+              ? "Sign in to download transcripts."
+              : undefined
+          }
+          className="inline-block"
+        >
+          <button
+            type="button"
+            onClick={handleClick}
+            disabled={!isAuthenticated || isPending}
+            aria-disabled={!isAuthenticated || isPending}
+            aria-label={
+              isPending
+                ? "Downloading transcript, please wait"
+                : isError
+                  ? "Download failed. Click to retry"
+                  : "Download transcript for this video"
+            }
+            className={`
+              inline-flex items-center px-4 py-2
+              text-sm font-medium
+              rounded-lg
+              focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+              transition-colors
+              ${
+                !isAuthenticated || isPending
+                  ? "bg-slate-300 text-slate-500 cursor-not-allowed"
+                  : isError
+                    ? "bg-red-600 text-white hover:bg-red-700"
+                    : "bg-blue-600 text-white hover:bg-blue-700"
+              }
+            `}
+          >
+            {buttonLabel}
+          </button>
+        </span>
+
+        {/* Differentiated error message (FR-006) */}
+        {errorMessage && (
+          <p
+            className="mt-3 text-sm text-red-600"
+            role="alert"
+            aria-live="polite"
+          >
+            {errorMessage}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
  * Props for AlternativeUrlForm component.
  */
 interface AlternativeUrlFormProps {
@@ -496,6 +702,49 @@ export function VideoDetailPage() {
   const { entities: videoEntities, isLoading: entitiesLoading } =
     useVideoEntities(videoId ?? "", lang ?? undefined);
 
+  // Auth state from onboarding status (FR-003: disable download button for unauthenticated users)
+  // useOnboardingStatus is likely cached from the onboarding page visit; select avoids re-renders
+  // on unrelated onboarding status changes.
+  const { data: onboardingStatus } = useOnboardingStatus();
+  const isAuthenticated = onboardingStatus?.is_authenticated ?? false;
+
+  // ---------------------------------------------------------------------------
+  // YouTube player state (Feature 048) — lifted to this level so seekTo,
+  // activeSegmentId, followPlayback, and toggleFollowPlayback can be shared
+  // between VideoEmbed (which houses the player iframe) and TranscriptPanel
+  // (which renders clickable segments and auto-scrolls during playback).
+  //
+  // The hook is called unconditionally to satisfy React's rules of hooks.
+  // Its containerRef is forwarded to VideoEmbed; its controls are forwarded
+  // to TranscriptPanel. When the video has no transcript (hasTranscript=false)
+  // the embed is not rendered and those props are not passed to TranscriptPanel.
+  //
+  // Segments start as [] and are updated via handlePlayerSegmentsChange, which
+  // TranscriptPanel calls once segments finish loading from the API. The hook
+  // uses a ref internally to track the latest segments array so updating them
+  // does not recreate the polling loop.
+  // ---------------------------------------------------------------------------
+  const [playerSegments, setPlayerSegments] = useState<TranscriptSegment[]>([]);
+
+  const handlePlayerSegmentsChange = useCallback(
+    (segments: TranscriptSegment[]) => {
+      setPlayerSegments(segments);
+    },
+    []
+  );
+
+  const {
+    containerRef: playerContainerRef,
+    error: playerError,
+    seekTo,
+    activeSegmentId,
+    followPlayback,
+    toggleFollowPlayback,
+  } = useYouTubePlayer({
+    videoId: videoId ?? "",
+    segments: playerSegments,
+  });
+
   // Recovery store actions and session
   const { startRecovery, updatePhase, setResult, setError, setAbortController } = useRecoveryStore();
 
@@ -699,6 +948,7 @@ export function VideoDetailPage() {
   } = video;
 
   const youtubeUrl = `https://www.youtube.com/watch?v=${video_id}`;
+  const hasTranscript = (video.transcript_summary?.count ?? 0) > 0;
 
   return (
     <>
@@ -743,210 +993,339 @@ export function VideoDetailPage() {
       )}
 
       <div className="p-6 lg:p-8">
-      {/* Navigation Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        {/* Back to Videos Link (FR-004) */}
-        <Link
-          to="/videos"
-          className="inline-flex items-center text-slate-600 hover:text-slate-900 transition-colors"
-        >
-          <ArrowLeftIcon className="w-5 h-5 mr-2" />
-          Back to Videos
-        </Link>
+        {/* Navigation Header */}
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <Link
+            to="/videos"
+            className="inline-flex items-center text-slate-600 hover:text-slate-900 transition-colors"
+          >
+            <ArrowLeftIcon className="w-5 h-5 mr-2" />
+            Back to Videos
+          </Link>
 
-        {/* Watch on YouTube Link (FR-006, FR-007, FR-008) */}
-        <a
-          href={youtubeUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-        >
-          <ExternalLinkIcon className="w-5 h-5 mr-2" />
-          Watch on YouTube
-          <span className="sr-only">(opens in new tab)</span>
-        </a>
-      </div>
+          <a
+            href={youtubeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+          >
+            <ExternalLinkIcon className="w-5 h-5 mr-2" />
+            Watch on YouTube
+            <span className="sr-only">(opens in new tab)</span>
+          </a>
+        </div>
 
-      {/* Unavailability Banner (FR-012, FR-020, Feature 025, T044 Zustand integration) */}
-      <UnavailabilityBanner
-        availabilityStatus={availability_status}
-        entityType="video"
-        alternativeUrl={alternative_url}
-        entityId={video_id}
-        onRecover={(options) => recoveryMutation.mutate(options)}
-        recoveredAt={recovered_at}
-      />
-
-      {/* Alternative URL Form (T028, FR-015) - only for unavailable videos */}
-      {availability_status !== "available" && (
-        <AlternativeUrlForm videoId={video_id} currentUrl={alternative_url} />
-      )}
-
-      {/* Video Content Card */}
-      <article className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
-        {/* Video Thumbnail */}
-        <img
-          src={`${API_BASE_URL}/images/videos/${video_id}?quality=sddefault`}
-          alt={title}
-          className="w-full aspect-video object-cover"
-          onError={(e) => {
-            e.currentTarget.src = PLACEHOLDER_THUMBNAIL;
-          }}
+        {/* Unavailability Banner (FR-012, FR-020, Feature 025, T044 Zustand integration) */}
+        <UnavailabilityBanner
+          availabilityStatus={availability_status}
+          entityType="video"
+          alternativeUrl={alternative_url}
+          entityId={video_id}
+          onRecover={(options) => recoveryMutation.mutate(options)}
+          recoveredAt={recovered_at}
         />
 
-        <div className="p-6 lg:p-8">
-        {/* Video Title (FR-002) */}
-        <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-4">
-          {title}
-        </h1>
-
-        {/* Channel Name (FR-002, FR-012, FR-013, FR-014, FR-015) */}
-        {channel_id && channel_title ? (
-          <Link
-            to={`/channels/${channel_id}`}
-            className="text-lg text-blue-500 hover:text-blue-600 hover:underline transition-colors mb-4 inline-block focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded"
-          >
-            {channel_title}
-          </Link>
-        ) : (
-          <p className="text-lg text-gray-600 mb-4">Unknown Channel</p>
+        {/* Alternative URL Form (T028, FR-015) - only for unavailable videos */}
+        {availability_status !== "available" && (
+          <AlternativeUrlForm videoId={video_id} currentUrl={alternative_url} />
         )}
 
-        {/* Video Metadata Row (FR-002) */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-gray-500 mb-6">
-          {/* Upload Date - shows absolute date (e.g., "Jan 15, 2024") */}
-          <span className="inline-flex items-center">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-              className="w-4 h-4 mr-1"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"
-              />
-            </svg>
-            {formatAbsoluteDate(upload_date)}
-          </span>
+        {hasTranscript ? (
+          <>
+            {/* Two-column layout: player (left) + transcript (right) (FR-011, NFR-005) */}
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(400px,1fr)_minmax(400px,1.2fr)] gap-6 items-start">
+              {/* Left column: VideoEmbed (sticky on desktop).
+                  containerRef and playerError come from useYouTubePlayer (lifted
+                  to VideoDetailPage so seekTo/activeSegmentId can be shared with
+                  TranscriptPanel — Feature 048 wiring fix). */}
+              <div className="lg:sticky lg:top-4">
+                <VideoEmbed
+                  videoId={video_id}
+                  availabilityStatus={availability_status}
+                  containerRef={playerContainerRef}
+                  playerError={playerError}
+                />
+              </div>
 
-          {/* Duration Badge */}
-          <span className="inline-flex items-center bg-gray-100 px-2 py-0.5 rounded font-mono text-xs">
-            {formatDuration(duration)}
-          </span>
+              {/* Right column: TranscriptPanel.
+                  Player controls are forwarded so clicking a segment seeks the
+                  player and the active segment is highlighted (Feature 048). */}
+              <div>
+                <TranscriptPanel
+                  videoId={video_id}
+                  initialLanguage={lang ?? undefined}
+                  targetSegmentId={segmentId ?? undefined}
+                  targetTimestamp={timestamp ?? undefined}
+                  onDeepLinkComplete={clearDeepLinkParams}
+                  seekTo={seekTo}
+                  activeSegmentId={activeSegmentId}
+                  followPlayback={followPlayback}
+                  toggleFollowPlayback={toggleFollowPlayback}
+                  onSegmentsChange={handlePlayerSegmentsChange}
+                />
+              </div>
+            </div>
 
-          {/* View Count */}
-          <span className="inline-flex items-center">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-              className="w-4 h-4 mr-1"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
-              />
-            </svg>
-            {formatViewCount(view_count)}
-          </span>
+            {/* Video metadata below the two-column area */}
+            <article className="mt-6 bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
+              <div className="p-6 lg:p-8">
+                <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-4">
+                  {title}
+                </h1>
 
-          {/* Like Count */}
-          <span className="inline-flex items-center">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-              className="w-4 h-4 mr-1"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M6.633 10.25c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 0 1 2.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 0 0 .322-1.672V2.75a.75.75 0 0 1 .75-.75 2.25 2.25 0 0 1 2.25 2.25c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282m0 0h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 0 1-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 0 0-1.423-.23H5.904m10.598-9.75H14.25M5.904 18.5c.083.205.173.405.27.602.197.4-.078.898-.523.898h-.908c-.889 0-1.713-.518-1.972-1.368a12 12 0 0 1-.521-3.507c0-1.553.295-3.036.831-4.398C3.387 9.953 4.167 9.5 5 9.5h1.053c.472 0 .745.556.5.96a8.958 8.958 0 0 0-1.302 4.665c0 1.194.232 2.333.654 3.375Z"
-              />
-            </svg>
-            {formatLikeCount(like_count)}
-          </span>
+                {channel_id && channel_title ? (
+                  <Link
+                    to={`/channels/${channel_id}`}
+                    className="text-lg text-blue-500 hover:text-blue-600 hover:underline transition-colors mb-4 inline-block focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded"
+                  >
+                    {channel_title}
+                  </Link>
+                ) : (
+                  <p className="text-lg text-gray-600 mb-4">Unknown Channel</p>
+                )}
 
-          {/* Corrections Badge (Feature 035, US-2) */}
-          {(video.transcript_summary?.has_corrections ?? false) && (
-            <span
-              className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200"
-              aria-label="Transcript has corrections"
-            >
-              Corrections
-            </span>
-          )}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-gray-500 mb-6">
+                  <span className="inline-flex items-center">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                      className="w-4 h-4 mr-1"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"
+                      />
+                    </svg>
+                    {formatAbsoluteDate(upload_date)}
+                  </span>
+
+                  <span className="inline-flex items-center bg-gray-100 px-2 py-0.5 rounded font-mono text-xs">
+                    {formatDuration(duration)}
+                  </span>
+
+                  <span className="inline-flex items-center">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                      className="w-4 h-4 mr-1"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+                      />
+                    </svg>
+                    {formatViewCount(view_count)}
+                  </span>
+
+                  <span className="inline-flex items-center">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                      className="w-4 h-4 mr-1"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M6.633 10.25c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 0 1 2.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 0 0 .322-1.672V2.75a.75.75 0 0 1 .75-.75 2.25 2.25 0 0 1 2.25 2.25c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282m0 0h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 0 1-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 0 0-1.423-.23H5.904m10.598-9.75H14.25M5.904 18.5c.083.205.173.405.27.602.197.4-.078.898-.523.898h-.908c-.889 0-1.713-.518-1.972-1.368a12 12 0 0 1-.521-3.507c0-1.553.295-3.036.831-4.398C3.387 9.953 4.167 9.5 5 9.5h1.053c.472 0 .745.556.5.96a8.958 8.958 0 0 0-1.302 4.665c0 1.194.232 2.333.654 3.375Z"
+                      />
+                    </svg>
+                    {formatLikeCount(like_count)}
+                  </span>
+
+                  {(video.transcript_summary?.has_corrections ?? false) && (
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200"
+                      aria-label="Transcript has corrections"
+                    >
+                      Corrections
+                    </span>
+                  )}
+                </div>
+
+                <div className="border-t border-gray-100 pt-6">
+                  <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">
+                    Description
+                  </h2>
+                  <div className="prose prose-sm max-w-none text-gray-600 whitespace-pre-wrap">
+                    {description || "No description available"}
+                  </div>
+                </div>
+              </div>
+            </article>
+          </>
+        ) : (
+          /* Single-column layout when no transcript exists (FR-008) */
+          <article className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
+            <img
+              src={`${API_BASE_URL}/images/videos/${video_id}?quality=sddefault`}
+              alt={title}
+              className="w-full aspect-video object-cover"
+              onError={(e) => {
+                e.currentTarget.src = PLACEHOLDER_THUMBNAIL;
+              }}
+            />
+
+            <div className="p-6 lg:p-8">
+              <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-4">
+                {title}
+              </h1>
+
+              {channel_id && channel_title ? (
+                <Link
+                  to={`/channels/${channel_id}`}
+                  className="text-lg text-blue-500 hover:text-blue-600 hover:underline transition-colors mb-4 inline-block focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded"
+                >
+                  {channel_title}
+                </Link>
+              ) : (
+                <p className="text-lg text-gray-600 mb-4">Unknown Channel</p>
+              )}
+
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-gray-500 mb-6">
+                <span className="inline-flex items-center">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={1.5}
+                    stroke="currentColor"
+                    className="w-4 h-4 mr-1"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"
+                    />
+                  </svg>
+                  {formatAbsoluteDate(upload_date)}
+                </span>
+
+                <span className="inline-flex items-center bg-gray-100 px-2 py-0.5 rounded font-mono text-xs">
+                  {formatDuration(duration)}
+                </span>
+
+                <span className="inline-flex items-center">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={1.5}
+                    stroke="currentColor"
+                    className="w-4 h-4 mr-1"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+                    />
+                  </svg>
+                  {formatViewCount(view_count)}
+                </span>
+
+                <span className="inline-flex items-center">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={1.5}
+                    stroke="currentColor"
+                    className="w-4 h-4 mr-1"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M6.633 10.25c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 0 1 2.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 0 0 .322-1.672V2.75a.75.75 0 0 1 .75-.75 2.25 2.25 0 0 1 2.25 2.25c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282m0 0h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 0 1-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 0 0-1.423-.23H5.904m10.598-9.75H14.25M5.904 18.5c.083.205.173.405.27.602.197.4-.078.898-.523.898h-.908c-.889 0-1.713-.518-1.972-1.368a12 12 0 0 1-.521-3.507c0-1.553.295-3.036.831-4.398C3.387 9.953 4.167 9.5 5 9.5h1.053c.472 0 .745.556.5.96a8.958 8.958 0 0 0-1.302 4.665c0 1.194.232 2.333.654 3.375Z"
+                    />
+                  </svg>
+                  {formatLikeCount(like_count)}
+                </span>
+
+                {(video.transcript_summary?.has_corrections ?? false) && (
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200"
+                    aria-label="Transcript has corrections"
+                  >
+                    Corrections
+                  </span>
+                )}
+              </div>
+
+              <div className="border-t border-gray-100 pt-6">
+                <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">
+                  Description
+                </h2>
+                <div className="prose prose-sm max-w-none text-gray-600 whitespace-pre-wrap">
+                  {description || "No description available"}
+                </div>
+              </div>
+            </div>
+          </article>
+        )}
+
+        {/* Classification Section (T038-T042, T067-T070) */}
+        <div className="mt-6">
+          <ClassificationSection
+            tags={tags}
+            categoryId={category_id}
+            categoryName={category_name}
+            topics={topics}
+            playlists={containingPlaylists}
+          />
         </div>
 
-        {/* Description Section (FR-002) */}
-        <div className="border-t border-gray-100 pt-6">
-          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">
-            Description
-          </h2>
-          <div className="prose prose-sm max-w-none text-gray-600 whitespace-pre-wrap">
-            {description || "No description available"}
-          </div>
+        {/* Entity Mentions Panel (Feature 038, T029, US7) */}
+        <div className="mt-6">
+          <EntityMentionsPanel
+            entities={videoEntities}
+            isLoading={entitiesLoading}
+          />
         </div>
+
+        {/* Download Transcript Button - shown when no transcript exists (FR-002, FR-003, FR-004, FR-006) */}
+        {!hasTranscript && (
+          <TranscriptDownloadButton
+            videoId={video_id}
+            isAuthenticated={isAuthenticated}
+          />
+        )}
+
+        {/* Back to Videos Link */}
+        <div className="mt-6">
+          <Link
+            to="/videos"
+            className="inline-flex items-center text-slate-600 hover:text-slate-900 transition-colors"
+          >
+            <ArrowLeftIcon className="w-5 h-5 mr-2" />
+            Back to Videos
+          </Link>
         </div>
-      </article>
-
-      {/* Classification Section (T038-T042, T067-T070) */}
-      <div className="mt-6">
-        <ClassificationSection
-          tags={tags}
-          categoryId={category_id}
-          categoryName={category_name}
-          topics={topics}
-          playlists={containingPlaylists}
-        />
-      </div>
-
-      {/* Entity Mentions Panel (Feature 038, T029, US7) */}
-      <div className="mt-6">
-        <EntityMentionsPanel
-          entities={videoEntities}
-          isLoading={entitiesLoading}
-        />
-      </div>
-
-      {/* Transcript Panel - only render when transcripts exist (supports deleted videos with manual transcripts) */}
-      {video.transcript_summary?.count > 0 && (
-        <TranscriptPanel
-          videoId={video_id}
-          initialLanguage={lang ?? undefined}
-          targetSegmentId={segmentId ?? undefined}
-          targetTimestamp={timestamp ?? undefined}
-          onDeepLinkComplete={clearDeepLinkParams}
-        />
-      )}
-
-      {/* Back to Videos Link */}
-      <div className="mt-6">
-        <Link
-          to="/videos"
-          className="inline-flex items-center text-slate-600 hover:text-slate-900 transition-colors"
-        >
-          <ArrowLeftIcon className="w-5 h-5 mr-2" />
-          Back to Videos
-        </Link>
-      </div>
       </div>
     </>
   );

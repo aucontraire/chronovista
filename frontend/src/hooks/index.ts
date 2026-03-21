@@ -43,3 +43,21 @@ export {
   ONBOARDING_STATUS_KEY,
   taskStatusKey,
 } from "./useOnboarding";
+export {
+  useLanguagePreferences,
+  DuplicateLanguageError,
+  LANGUAGE_PREFERENCES_KEY,
+  SUPPORTED_LANGUAGES_KEY,
+  type LanguagePreferenceItem,
+  type UseLanguagePreferencesReturn,
+} from "./useLanguagePreferences";
+export {
+  useAppInfo,
+  APP_INFO_KEY,
+  type UseAppInfoReturn,
+} from "./useAppInfo";
+export {
+  useCacheStatus,
+  CACHE_STATUS_KEY,
+  type UseCacheStatusReturn,
+} from "./useCacheStatus";

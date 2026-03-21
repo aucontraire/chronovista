@@ -54,6 +54,15 @@ from chronovista.api.schemas.playlists import (
     PlaylistVideoListItem,
     PlaylistVideoListResponse,
 )
+from chronovista.api.schemas.settings import (
+    AppInfoResponse,
+    CachePurgeResponse,
+    CacheStatusResponse,
+    DatabaseStats,
+    MultiTranscriptDownloadResponse,
+    SupportedLanguage,
+    TranscriptDownloadResult,
+)
 from chronovista.api.schemas.responses import (
     ApiError,
     ApiResponse,
@@ -130,6 +139,14 @@ __all__ = [
     "PlaylistListResponse",
     "PlaylistVideoListItem",
     "PlaylistVideoListResponse",
+    # Settings (Feature 049)
+    "AppInfoResponse",
+    "CachePurgeResponse",
+    "CacheStatusResponse",
+    "DatabaseStats",
+    "MultiTranscriptDownloadResponse",
+    "SupportedLanguage",
+    "TranscriptDownloadResult",
     # Responses
     "ApiError",
     "ApiResponse",

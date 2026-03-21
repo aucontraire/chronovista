@@ -128,9 +128,9 @@ describe("Sidebar — Transcripts group", () => {
 });
 
 describe("Sidebar — total top-level nav item count", () => {
-  it("top-level list contains 7 entries (Videos, Transcripts group, Channels, Playlists, Entities, Search, Setup)", () => {
+  it("top-level list contains 9 entries (Videos, Transcripts group, Channels, Playlists, Entities, Search, separator, Setup, Settings)", () => {
     renderSidebar();
-    // The outer <ul role="list"> has exactly 7 <li> children (6 flat routes + 1 group)
+    // The outer <ul role="list"> has 9 children (6 flat routes + 1 group + 1 separator + 2 config routes)
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
     // The direct child ul has role="list" — query it within the nav
     const outerList = nav.querySelector("ul[role='list']");
@@ -138,6 +138,6 @@ describe("Sidebar — total top-level nav item count", () => {
     const directLiChildren = outerList
       ? Array.from(outerList.children).filter((el) => el.tagName === "LI")
       : [];
-    expect(directLiChildren).toHaveLength(7);
+    expect(directLiChildren).toHaveLength(9);
   });
 });

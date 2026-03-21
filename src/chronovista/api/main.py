@@ -27,6 +27,7 @@ from chronovista.api.routers import (
     playlists,
     preferences,
     search,
+    settings,
     sidebar,
     sync,
     tags,
@@ -231,6 +232,7 @@ app.include_router(sidebar.router, prefix="/api/v1", tags=["sidebar"])
 app.include_router(images.router, prefix="/api/v1", tags=["images"])
 app.include_router(entity_mentions.router, prefix="/api/v1", tags=["entity-mentions"])
 app.include_router(batch_corrections.router, prefix="/api/v1/corrections/batch", tags=["batch-corrections"])
+app.include_router(settings.router, prefix="/api/v1", tags=["settings"])
 app.include_router(onboarding.router, prefix="/api/v1", tags=["onboarding"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
 

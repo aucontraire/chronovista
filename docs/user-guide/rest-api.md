@@ -2003,6 +2003,125 @@ Returns the updated preferences in the same format as GET.
 
 ---
 
+### Settings
+
+#### Get Supported Languages
+
+Get all supported BCP-47 language codes with human-readable display names. No authentication required.
+
+```
+GET /api/v1/settings/supported-languages
+```
+
+##### Response
+
+```json
+{
+  "data": [
+    { "code": "af", "display_name": "Afrikaans" },
+    { "code": "ar", "display_name": "Arabic" },
+    { "code": "en", "display_name": "English" },
+    { "code": "es", "display_name": "Spanish" },
+    { "code": "fr", "display_name": "French" },
+    "..."
+  ]
+}
+```
+
+#### Get Cache Status
+
+Get the current image cache status including file count and disk usage.
+
+```
+GET /api/v1/settings/cache-status
+```
+
+##### Response
+
+```json
+{
+  "data": {
+    "total_files": 342,
+    "total_size_bytes": 24576000,
+    "total_size_display": "23.4 MB",
+    "last_modified": "2026-03-21T10:30:00Z"
+  }
+}
+```
+
+##### Notes
+
+- Returns `total_files: 0` and `total_size_bytes: 0` when the cache directory is empty or does not exist
+- `last_modified` is `null` when no cached files exist
+
+#### Clear Cache
+
+Purge all cached images (channel avatars and video thumbnails).
+
+```
+DELETE /api/v1/settings/cache
+```
+
+##### Response
+
+```json
+{
+  "data": {
+    "files_deleted": 342,
+    "space_freed_bytes": 24576000,
+    "space_freed_display": "23.4 MB"
+  }
+}
+```
+
+##### Errors
+
+| Status | Code | Description |
+|--------|------|-------------|
+| 500 | `INTERNAL_ERROR` | Cache directory could not be purged |
+
+#### Get Application Info
+
+Get application version, database statistics, and last sync timestamps.
+
+```
+GET /api/v1/settings/app-info
+```
+
+##### Response
+
+```json
+{
+  "data": {
+    "backend_version": "0.50.0",
+    "frontend_version": "0.19.0",
+    "database_stats": {
+      "videos": 1523,
+      "channels": 87,
+      "playlists": 12,
+      "transcripts": 943,
+      "corrections": 156,
+      "canonical_tags": 124686
+    },
+    "sync_timestamps": {
+      "subscriptions": null,
+      "videos": "2026-03-20T15:30:00Z",
+      "transcripts": null,
+      "playlists": null,
+      "topics": null
+    }
+  }
+}
+```
+
+##### Notes
+
+- `sync_timestamps` values are `null` when a data type has never been synced (displayed as "Never synced" in the UI)
+- Sync timestamps are currently stored in-memory only and reset on server restart (see [GitHub #102](https://github.com/aucontraire/chronovista/issues/102))
+- `frontend_version` is read from the compiled frontend build; returns `"unknown"` if the build metadata file is not found
+
+---
+
 ### Recovery
 
 Recover metadata for unavailable (deleted, private, or terminated) videos and channels using the Internet Archive's Wayback Machine.

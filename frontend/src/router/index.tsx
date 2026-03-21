@@ -24,6 +24,7 @@ import { OnboardingPage } from "../pages/OnboardingPage";
 import { PlaylistDetailPage } from "../pages/PlaylistDetailPage";
 import { PlaylistsPage } from "../pages/PlaylistsPage";
 import { SearchPage } from "../pages/SearchPage";
+import { SettingsPage } from "../pages/SettingsPage";
 import { VideoDetailPage } from "../pages/VideoDetailPage";
 
 /**
@@ -119,6 +120,10 @@ export const router = createBrowserRouter([
       {
         path: "onboarding",
         element: <OnboardingPage />,
+      },
+      {
+        path: "settings",
+        element: <SettingsPage />,
       },
       {
         path: "*",

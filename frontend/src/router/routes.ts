@@ -13,6 +13,7 @@ import {
   PlaylistIcon,
   SearchIcon,
   SetupIcon,
+  SettingsIcon,
   TranscriptsIcon,
   VideoIcon,
 } from "../components/icons";
@@ -54,9 +55,17 @@ export interface NavGroupRoute {
 }
 
 /**
+ * NavSeparator defines a visual divider between navigation sections.
+ */
+export interface NavSeparator {
+  /** Discriminant tag for the discriminated union */
+  kind: "separator";
+}
+
+/**
  * Union type for top-level navigation entries.
  */
-export type NavEntry = NavRoute | NavGroupRoute;
+export type NavEntry = NavRoute | NavGroupRoute | NavSeparator;
 
 /**
  * Main navigation entries for the application sidebar.
@@ -129,10 +138,20 @@ export const navRoutes: NavEntry[] = [
     icon: SearchIcon,
   },
   {
+    kind: "separator",
+  },
+  {
     kind: "route",
     path: "/onboarding",
     label: "Setup",
     tooltip: "Data onboarding pipeline — import and enrich your YouTube data",
     icon: SetupIcon,
+  },
+  {
+    kind: "route",
+    path: "/settings",
+    label: "Settings",
+    tooltip: "Application settings and preferences",
+    icon: SettingsIcon,
   },
 ];

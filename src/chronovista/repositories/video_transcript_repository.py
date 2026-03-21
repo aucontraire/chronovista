@@ -100,6 +100,40 @@ class VideoTranscriptRepository(
         """
         return await self.get(session, (video_id, language_code))
 
+    async def get_transcript_by_language(
+        self,
+        session: AsyncSession,
+        video_id: str,
+        language_code: str,
+    ) -> Optional[VideoTranscriptDB]:
+        """
+        Get a single transcript for a video by language code (case-insensitive).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_id : str
+            YouTube video identifier.
+        language_code : str
+            BCP-47 language code (matched case-insensitively).
+
+        Returns
+        -------
+        Optional[VideoTranscriptDB]
+            Video transcript if found, None otherwise.
+        """
+        result = await session.execute(
+            select(VideoTranscriptDB).where(
+                and_(
+                    VideoTranscriptDB.video_id == video_id,
+                    func.lower(VideoTranscriptDB.language_code)
+                    == language_code.lower(),
+                )
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def exists(self, session: AsyncSession, id: Tuple[str, str]) -> bool:
         """
         Check if video transcript exists.

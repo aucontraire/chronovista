@@ -199,16 +199,27 @@ export function VideoCard({ video }: VideoCardProps) {
                 Corrections
               </span>
             )}
-            <span className={`text-${colorTokens.text.tertiary}`}>
-              {transcript_summary.count} transcript
-              {transcript_summary.count !== 1 ? "s" : ""}
-              {transcript_summary.languages.length > 0 && (
-                <span className="ml-1">
-                  ({transcript_summary.languages.slice(0, 3).join(", ")}
-                  {transcript_summary.languages.length > 3 && "..."})
-                </span>
-              )}
-            </span>
+            {transcript_summary.languages.length > 0 && (
+              <span className="flex flex-wrap items-center gap-1" aria-label="Available transcript languages">
+                {transcript_summary.languages.slice(0, 5).map((lang) => (
+                  <span
+                    key={lang}
+                    className="inline-flex items-center bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded text-xs font-mono"
+                  >
+                    {lang}
+                  </span>
+                ))}
+                {transcript_summary.languages.length > 5 && (
+                  <span
+                    className="inline-flex items-center bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded text-xs"
+                    title={`Also: ${transcript_summary.languages.slice(5).join(", ")}`}
+                    aria-label={`${transcript_summary.languages.length - 5} more languages`}
+                  >
+                    +{transcript_summary.languages.length - 5}
+                  </span>
+                )}
+              </span>
+            )}
           </div>
         </div>
       )}

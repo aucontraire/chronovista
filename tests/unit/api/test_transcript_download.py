@@ -272,6 +272,9 @@ class TestDownloadTranscriptVideoIdValidation:
         assert body["status"] == 422
 
     @patch(
+        "chronovista.api.routers.transcripts._pref_repo",
+    )
+    @patch(
         "chronovista.api.routers.transcripts._transcript_repo",
     )
     @patch(
@@ -281,6 +284,7 @@ class TestDownloadTranscriptVideoIdValidation:
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """An 11-character alphanumeric video_id passes format validation.
@@ -290,6 +294,7 @@ class TestDownloadTranscriptVideoIdValidation:
         We short-circuit by having the repo return an existing transcript
         to trigger a 409 (which proves the 422 guard did NOT fire).
         """
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         existing = _make_db_transcript(video_id=VALID_VIDEO_ID)
         mock_repo.get_video_transcripts = AsyncMock(return_value=[existing])
 
@@ -355,15 +360,18 @@ class TestDownloadTranscriptUnauthorized:
 class TestDownloadTranscriptNotFound:
     """Tests for 404 responses when YouTube has no transcript for the video."""
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_transcript_not_found_returns_404(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """404 is returned when TranscriptNotFoundError is raised."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         # No existing transcripts in DB (empty list → skip 409)
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         # Service raises TranscriptNotFoundError
@@ -375,15 +383,18 @@ class TestDownloadTranscriptNotFound:
 
         assert response.status_code == 404
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_transcript_not_found_rfc7807_body(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """404 response body conforms to RFC 7807 Problem Details format."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             side_effect=TranscriptNotFoundError("No transcript available")
@@ -399,15 +410,18 @@ class TestDownloadTranscriptNotFound:
         # The exception handler wraps this as NotFoundError for "Transcript"
         assert VALID_VIDEO_ID in body["detail"]
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_get_transcript_called_with_correct_video_id(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Service.get_transcript is called with the video_id from the URL path."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             side_effect=TranscriptNotFoundError("No transcript available")
@@ -419,15 +433,18 @@ class TestDownloadTranscriptNotFound:
         call_kwargs = mock_service.get_transcript.call_args.kwargs
         assert call_kwargs["video_id"] == VALID_VIDEO_ID
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_get_transcript_called_without_language_codes_by_default(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Without ?language param, service is called with language_codes=None."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             side_effect=TranscriptNotFoundError("No transcript available")
@@ -447,15 +464,18 @@ class TestDownloadTranscriptNotFound:
 class TestDownloadTranscriptConflict:
     """Tests for 409 Conflict when the transcript already exists in the DB."""
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_existing_transcript_returns_409(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """409 is returned when the repository already holds a transcript."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         existing = _make_db_transcript(video_id=VALID_VIDEO_ID)
         mock_repo.get_video_transcripts = AsyncMock(return_value=[existing])
 
@@ -463,15 +483,18 @@ class TestDownloadTranscriptConflict:
 
         assert response.status_code == 409
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_conflict_rfc7807_body(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """409 response body has RFC 7807 fields including status and detail."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         existing = _make_db_transcript(video_id=VALID_VIDEO_ID)
         mock_repo.get_video_transcripts = AsyncMock(return_value=[existing])
 
@@ -483,15 +506,18 @@ class TestDownloadTranscriptConflict:
         assert "title" in body
         assert "detail" in body
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_service_not_called_when_transcript_exists(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """When the transcript already exists, get_transcript is never called."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         existing = _make_db_transcript(video_id=VALID_VIDEO_ID)
         mock_repo.get_video_transcripts = AsyncMock(return_value=[existing])
 
@@ -499,15 +525,18 @@ class TestDownloadTranscriptConflict:
 
         mock_service.get_transcript.assert_not_called()
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_conflict_includes_video_id_in_detail(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """409 detail message references the conflicting video_id."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         existing = _make_db_transcript(video_id=VALID_VIDEO_ID)
         mock_repo.get_video_transcripts = AsyncMock(return_value=[existing])
 
@@ -525,15 +554,18 @@ class TestDownloadTranscriptConflict:
 class TestDownloadTranscriptServiceUnavailable:
     """Tests for 503 Service Unavailable from YouTube transcript service."""
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_service_unavailable_error_returns_503(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """503 is returned when TranscriptServiceUnavailableError is raised."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             side_effect=TranscriptServiceUnavailableError(
@@ -545,15 +577,18 @@ class TestDownloadTranscriptServiceUnavailable:
 
         assert response.status_code == 503
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_service_unavailable_rfc7807_body(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """503 response has RFC 7807 fields with SERVICE_UNAVAILABLE code."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             side_effect=TranscriptServiceUnavailableError("YouTube is down")
@@ -567,15 +602,18 @@ class TestDownloadTranscriptServiceUnavailable:
         assert "title" in body
         assert body["code"] == "SERVICE_UNAVAILABLE"
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_rate_limit_keyword_in_transcript_service_error_returns_503(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """503 is returned when TranscriptServiceError message contains 'rate limit'."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             side_effect=TranscriptServiceError(
@@ -587,15 +625,18 @@ class TestDownloadTranscriptServiceUnavailable:
 
         assert response.status_code == 503
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_too_many_keyword_in_error_returns_503(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """503 is returned when TranscriptServiceError message contains 'too many'."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             side_effect=TranscriptServiceError("too many requests, slow down")
@@ -605,15 +646,18 @@ class TestDownloadTranscriptServiceUnavailable:
 
         assert response.status_code == 503
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_quota_keyword_in_error_returns_503(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """503 is returned when TranscriptServiceError message contains 'quota'."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             side_effect=TranscriptServiceError("quota exceeded for transcript API")
@@ -623,15 +667,18 @@ class TestDownloadTranscriptServiceUnavailable:
 
         assert response.status_code == 503
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_service_unavailable_includes_instance_uri(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """503 response body includes the instance URI for the download endpoint."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             side_effect=TranscriptServiceUnavailableError("unavailable")
@@ -653,15 +700,18 @@ class TestDownloadTranscriptServiceUnavailable:
 class TestDownloadTranscriptSuccess:
     """Tests for successful 200 responses from the download endpoint."""
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_successful_download_returns_200(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """200 is returned when the transcript is downloaded and saved."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             return_value=_make_enhanced_transcript()
@@ -673,15 +723,18 @@ class TestDownloadTranscriptSuccess:
 
         assert response.status_code == 200
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_successful_download_response_shape(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """200 response body contains ApiResponse envelope with TranscriptDownloadResponse data."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             return_value=_make_enhanced_transcript()
@@ -704,15 +757,18 @@ class TestDownloadTranscriptSuccess:
         assert isinstance(data["segment_count"], int)
         assert "downloaded_at" in data
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_manual_transcript_type_display(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """is_cc=True maps to transcript_type='manual' in the response."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             return_value=_make_enhanced_transcript(is_cc=True)
@@ -725,15 +781,18 @@ class TestDownloadTranscriptSuccess:
 
         assert data["transcript_type"] == "manual"
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_auto_generated_transcript_type_display(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """is_cc=False + transcript_type='AUTO' maps to 'auto_generated' in response."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             return_value=_make_enhanced_transcript(is_cc=False)
@@ -746,15 +805,18 @@ class TestDownloadTranscriptSuccess:
 
         assert data["transcript_type"] == "auto_generated"
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_segment_count_from_db_transcript(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """segment_count in response matches db_transcript.segment_count."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             return_value=_make_enhanced_transcript()
@@ -767,15 +829,18 @@ class TestDownloadTranscriptSuccess:
 
         assert data["segment_count"] == 99
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_null_segment_count_defaults_to_zero(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """segment_count=None on the DB row is coerced to 0 in the response."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             return_value=_make_enhanced_transcript()
@@ -789,15 +854,18 @@ class TestDownloadTranscriptSuccess:
 
         assert data["segment_count"] == 0
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_language_name_resolved_from_code(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """language_name is resolved from the language_code via get_language_name."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             return_value=_make_enhanced_transcript(language_code="es")
@@ -811,15 +879,18 @@ class TestDownloadTranscriptSuccess:
         assert data["language_code"] == "es"
         assert data["language_name"] == "Spanish"
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_unknown_language_code_returns_code_as_name(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """An unknown language code is returned as-is for language_name."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             return_value=_make_enhanced_transcript(language_code="xx-unknown")
@@ -832,16 +903,19 @@ class TestDownloadTranscriptSuccess:
 
         assert data["language_name"] == "xx-unknown"
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_session_commit_called_after_save(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
         mock_session: AsyncMock,
     ) -> None:
         """session.commit() is called once after a successful transcript save."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             return_value=_make_enhanced_transcript()
@@ -853,15 +927,18 @@ class TestDownloadTranscriptSuccess:
 
         mock_session.commit.assert_awaited_once()
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_create_or_update_called_with_transcript_create(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """repository.create_or_update is called once during a successful download."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             return_value=_make_enhanced_transcript()
@@ -944,6 +1021,7 @@ class TestDownloadTranscriptInFlightGuard:
 
         assert VALID_VIDEO_ID in body["detail"]
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._downloads_in_progress", new_callable=set)
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
@@ -952,9 +1030,11 @@ class TestDownloadTranscriptInFlightGuard:
         mock_service: MagicMock,
         mock_repo: MagicMock,
         mock_in_flight: set[str],
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """A different video_id is NOT blocked by an in-flight download for another video."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         other_video_id = "9bZkp7q19f0"
         mock_in_flight.add(other_video_id)
 
@@ -968,12 +1048,14 @@ class TestDownloadTranscriptInFlightGuard:
         # 409 means we got past the in-flight guard (correct behavior)
         assert response.status_code == 409
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_in_flight_set_cleared_on_success(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """After a successful download the video_id is removed from _downloads_in_progress.
@@ -983,6 +1065,7 @@ class TestDownloadTranscriptInFlightGuard:
         """
         import chronovista.api.routers.transcripts as transcripts_module
 
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             return_value=_make_enhanced_transcript()
@@ -995,12 +1078,14 @@ class TestDownloadTranscriptInFlightGuard:
         # After the request completes the in-flight set must not contain the video_id
         assert VALID_VIDEO_ID not in transcripts_module._downloads_in_progress
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_in_flight_set_cleared_on_404(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """After a 404 error the video_id is removed from _downloads_in_progress.
@@ -1010,6 +1095,7 @@ class TestDownloadTranscriptInFlightGuard:
         """
         import chronovista.api.routers.transcripts as transcripts_module
 
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             side_effect=TranscriptNotFoundError("No transcript")
@@ -1047,15 +1133,18 @@ class TestDownloadTranscriptLanguageParam:
         call_kwargs = mock_service.get_transcript.call_args.kwargs
         assert call_kwargs["language_codes"] == ["es"]
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_no_language_param_sends_none(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Without ?language, get_transcript receives language_codes=None."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             side_effect=TranscriptNotFoundError("No transcript")
@@ -1116,17 +1205,20 @@ class TestDownloadTranscriptLanguageNameResolution:
             ("hi", "Hindi"),
         ],
     )
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_language_name_resolution(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
         code: str,
         expected_name: str,
     ) -> None:
         """Each BCP-47 code is resolved to its expected human-readable name."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             return_value=_make_enhanced_transcript(language_code=code)
@@ -1148,15 +1240,18 @@ class TestDownloadTranscriptLanguageNameResolution:
 class TestDownloadTranscriptEdgeCases:
     """Edge cases not covered by the main scenario classes."""
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_transcript_type_manual_when_transcript_type_field_is_manual(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """is_cc=False but transcript_type='MANUAL' on DB row still yields 'manual' display."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         # Enhanced transcript uses enum value 'manual' (lowercase) for Pydantic validation
         mock_service.get_transcript = AsyncMock(
@@ -1171,15 +1266,18 @@ class TestDownloadTranscriptEdgeCases:
 
         assert data["transcript_type"] == "manual"
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_raw_transcript_data_forwarded_to_create_or_update(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """raw_transcript_data from enhanced transcript is passed to create_or_update."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         raw_data = {"snippets": [{"text": "Hello", "start": 0.0, "duration": 1.5}]}
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
@@ -1196,15 +1294,18 @@ class TestDownloadTranscriptEdgeCases:
         called_kwargs = call_args.kwargs
         assert called_kwargs.get("raw_transcript_data") == raw_data
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_none_raw_transcript_data_passes_none(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """When enhanced_transcript.raw_transcript_data is None, None is passed to repo."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             return_value=_make_enhanced_transcript(raw_transcript_data=None)
@@ -1217,15 +1318,18 @@ class TestDownloadTranscriptEdgeCases:
         call_kwargs = mock_repo.create_or_update.call_args.kwargs
         assert call_kwargs.get("raw_transcript_data") is None
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_video_id_with_underscores_and_hyphens_passes(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """video_id containing underscores and hyphens (valid in YouTube IDs) passes validation."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         vid = "abc_def-ghi"  # Exactly 11 chars with _ and -
         assert len(vid) == 11
 
@@ -1238,16 +1342,19 @@ class TestDownloadTranscriptEdgeCases:
 
         assert response.status_code == 409
 
+    @patch("chronovista.api.routers.transcripts._pref_repo")
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_get_video_transcripts_called_with_correct_args(
         self,
         mock_service: MagicMock,
         mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
         client: AsyncClient,
         mock_session: AsyncMock,
     ) -> None:
         """get_video_transcripts is called with the session and the video_id."""
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[])
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         mock_service.get_transcript = AsyncMock(
             side_effect=TranscriptNotFoundError("not found")

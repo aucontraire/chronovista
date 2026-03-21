@@ -59,7 +59,15 @@ export function Sidebar() {
     >
       {/* Navigation items */}
       <ul className="flex flex-col" role="list">
-        {navRoutes.map((entry) => {
+        {navRoutes.map((entry, index) => {
+          if (entry.kind === "separator") {
+            return (
+              <li key={`separator-${index}`} role="separator" aria-hidden="true">
+                <hr className="mx-3 my-2 border-slate-700" />
+              </li>
+            );
+          }
+
           if (entry.kind === "group") {
             return (
               <NavGroup

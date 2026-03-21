@@ -11,6 +11,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.49.0] - 2026-03-20
+
+### Added
+- **Feature 048: Video Embed with Transcript Download and Interactive Playback Sync**
+  - **Transcript Download (US1)**: `POST /api/v1/videos/{video_id}/transcript/download` endpoint with 11-char video_id regex validation, in-flight download guard per video_id (429), call to TranscriptService, returns transcript metadata; `useTranscriptDownload` TanStack Query mutation hook with 30s AbortController timeout and 3-key cache invalidation on success; "Download Transcript" button on video detail page (visible when no transcript exists, disabled with tooltip when unauthenticated, loading/error/retry states per FR-004)
+  - **Embedded YouTube Player (US2)**: `useYouTubePlayer` hook with dynamic IFrame API script injection, 10s script load timeout, rAF-based 250ms getCurrentTime() polling, binary search active segment matching, `youtube-nocookie.com` privacy-enhanced mode; `VideoEmbed` component with pre-render availability check, runtime error fallback to static thumbnail, watch history disclosure note; two-column grid layout on >=1024px (stacked below) with sticky player
+  - **Click-to-Seek and Active Segment Highlighting (US3)**: Click transcript segment to seek video and auto-play; active segment highlighting with `border-l-4 border-blue-500 bg-blue-50` and 150ms transition; 4-tier highlight precedence (deep-link yellow > correction amber > active blue > default); auto-scroll with "Follow playback" toggle (default ON); 1000ms debounced aria-live announcements; keyboard-accessible segments (Enter/Space to seek)
+  - YouTube IFrame API TypeScript type declarations (`youtube.d.ts`)
+
+### Fixed
+- Edit/revert/history buttons on transcript segments triggering unintended video seek — added `e.stopPropagation()` to prevent click bubbling to row-level seekTo handler
+- Deep link test asserting non-highlighted segments should not have `tabindex` — updated to expect `tabindex="0"` (added for keyboard-accessible click-to-seek)
+
+### Technical
+- 1 new backend endpoint, 3 new frontend hooks, 2 new frontend components, 1 new type declaration file
+- 303 new tests (86 backend: 58 unit + 28 integration; 217 frontend across 6 test files)
+- 3,156 total frontend tests, 6,000+ total backend tests
+- Frontend version: 0.17.0 → 0.18.0
+- TypeScript strict mode (0 errors), mypy strict compliance (0 errors)
+- No new dependencies, no database migrations
+- `waitForContainer` rAF polling to handle delayed container ref attachment in lifted hook pattern
+
 ## [0.48.0] - 2026-03-19
 
 ### Added

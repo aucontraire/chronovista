@@ -62,7 +62,7 @@ Run these from the `frontend/` directory:
 
 ## Running Tests
 
-The frontend has 2,300+ tests using [vitest](https://vitest.dev/) and [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/).
+The frontend has 3,150+ tests using [vitest](https://vitest.dev/) and [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/).
 
 ```bash
 cd frontend
@@ -97,7 +97,10 @@ frontend/src/
 │   └── video/
 │       └── __tests__/          # Video component tests
 ├── hooks/
-│   └── __tests__/              # Custom hook tests
+│   └── __tests__/              # Custom hook tests (useYouTubePlayer, useTranscriptDownload, etc.)
+├── tests/
+│   ├── hooks/                  # Additional hook tests (useYouTubePlayer.test.ts, useTranscriptDownload.test.ts)
+│   └── components/             # Additional component tests (VideoEmbed.test.tsx)
 └── pages/
     └── __tests__/              # Page-level tests
 ```

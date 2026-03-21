@@ -347,6 +347,77 @@ The entire correction workflow is keyboard-accessible:
 - The Full Text view does not reflect corrections (it uses the original transcript text)
 - For batch corrections across multiple segments, use the CLI — see [Batch Transcript Corrections (CLI)](#batch-transcript-corrections-cli-v0390) below
 
+## Downloading Transcripts from the Web UI (v0.49.0+)
+
+You can download a transcript for a single video directly from the web interface, without using the CLI.
+
+### How to Download
+
+1. Navigate to the video detail page for a video that does not yet have a transcript
+2. Click the **Download Transcript** button that appears in place of the transcript panel
+3. The transcript downloads from YouTube and appears immediately — no page reload required
+
+### Authentication Required
+
+You must be logged in via OAuth to download transcripts. If you are not authenticated, the button is disabled and a tooltip explains that login is required. Use `chronovista auth login` from the CLI to authenticate.
+
+### Button States
+
+| State | Appearance | Meaning |
+|-------|------------|---------|
+| Idle | "Download Transcript" | Ready to download |
+| Loading | Spinner with "Downloading..." | Download in progress |
+| Error | Red text with "Retry" button | Download failed (click to retry) |
+
+### Rate Limiting
+
+YouTube may block your IP address if you make too many transcript requests in a short period. If this happens, the error message will explain the rate limit. Wait at least one hour before retrying.
+
+### Limitations
+
+- **Single-video only**: This button downloads the transcript for one video at a time. For batch downloads across many videos, use the CLI (`chronovista sync transcripts` or `chronovista transcripts batch-download`).
+- **In-flight guard**: If a download is already in progress for the same video (e.g., from another tab), the server returns a 429 status. Wait for the existing download to complete.
+
+## Video Playback and Transcript Sync (v0.49.0+)
+
+When a video has a transcript, the web UI shows an embedded YouTube player alongside the transcript, enabling synchronized playback and navigation.
+
+### Layout
+
+- **Desktop** (>=1024px): Side-by-side two-column grid with the video player on the left and transcript on the right. The player is sticky so it remains visible while scrolling the transcript.
+- **Narrow screens** (<1024px): Stacked layout with the player above the transcript.
+
+### Click-to-Seek
+
+Click any transcript segment to jump the video to that segment's timestamp. The video begins playing automatically after seeking. Segments are also keyboard-accessible — press **Enter** or **Space** on a focused segment to seek.
+
+### Active Segment Highlighting
+
+During playback, the segment corresponding to the current video position is highlighted with a blue left border and light blue background. The highlight updates in real time as the video plays.
+
+When multiple highlight conditions apply to the same segment, the following precedence order is used:
+
+1. **Deep-link highlight** (yellow) — when navigating to a specific segment via URL
+2. **Correction highlight** (amber) — when a segment has been corrected
+3. **Active playback highlight** (blue) — the currently playing segment
+4. **Default** — no highlight
+
+### Auto-Scroll
+
+By default, the transcript automatically scrolls to keep the active segment visible during playback. Use the **Follow playback** toggle at the top of the transcript panel to turn auto-scrolling on or off.
+
+### Interaction with Correction Controls
+
+The **Edit**, **Revert**, and **History** buttons on transcript segments work independently of the video player. Clicking these buttons does not trigger a video seek — they only open their respective correction controls.
+
+### Privacy
+
+The embedded player uses `youtube-nocookie.com` (YouTube's privacy-enhanced mode), which reduces tracking. A disclosure note below the player explains that playback may still appear in your YouTube watch history.
+
+### Unavailable Videos
+
+For videos that are unavailable or private on YouTube, the player is replaced with a static thumbnail image and a "Watch on YouTube" link. If the video cannot be embedded at all, a fallback message is shown.
+
 ## Batch Transcript Corrections (CLI) (v0.39.0)
 
 The `chronovista corrections` CLI commands enable bulk correction operations across your entire transcript library. While the inline web UI edits one segment at a time, the CLI tools can find and replace patterns across thousands of segments in a single command.

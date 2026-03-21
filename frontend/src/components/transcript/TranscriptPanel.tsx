@@ -10,6 +10,11 @@
  * - FR-014: Session-scoped language persistence
  * - NFR-A01-A02: Focus management
  * - NFR-A04-A10: Accessibility requirements
+ * - Feature 048 (T015): Auto-scroll with follow-playback toggle and aria-live region
+ *   - FR-015: Auto-scroll to active segment when followPlayback is ON
+ *   - FR-016: "Follow playback" toggle button with aria-pressed state
+ *   - FR-A02: aria-live="polite" region announces active segment text (debounced 1000ms)
+ *   - Edge Case 5: Manual user scroll pauses auto-scroll; re-engages on next segment transition
  *
  * @module components/transcript/TranscriptPanel
  */
@@ -39,6 +44,34 @@ interface TranscriptPanelProps {
   targetTimestamp?: number | undefined;
   /** Callback when deep link navigation completes */
   onDeepLinkComplete?: (() => void) | undefined;
+  /**
+   * ID of the transcript segment currently active under the playback cursor.
+   * Comes from useYouTubePlayer.activeSegmentId. Null when in a gap or before
+   * the first segment. Undefined when no player is mounted.
+   * Used for auto-scroll (FR-015) and aria-live announcement (FR-A02).
+   */
+  activeSegmentId?: number | null | undefined;
+  /**
+   * Seeks the YouTube player to a timestamp in seconds (FR-013).
+   * Passed through to TranscriptSegments. Undefined when no player is mounted.
+   */
+  seekTo?: ((seconds: number) => void) | undefined;
+  /**
+   * Whether the transcript panel should auto-scroll to the active segment (FR-016).
+   * Comes from useYouTubePlayer.followPlayback. Session-scoped state lives in the hook.
+   */
+  followPlayback?: boolean | undefined;
+  /**
+   * Toggles the follow-playback mode (FR-016).
+   * Comes from useYouTubePlayer.toggleFollowPlayback.
+   */
+  toggleFollowPlayback?: (() => void) | undefined;
+  /**
+   * Called whenever the loaded transcript segments change (e.g. on first load
+   * or language switch). VideoDetailPage uses this to keep the segments array
+   * passed to useYouTubePlayer up-to-date for active-segment binary search.
+   */
+  onSegmentsChange?: ((segments: TranscriptSegment[]) => void) | undefined;
 }
 
 /**
@@ -155,6 +188,11 @@ export function TranscriptPanel({
   targetSegmentId,
   targetTimestamp,
   onDeepLinkComplete,
+  activeSegmentId,
+  seekTo,
+  followPlayback,
+  toggleFollowPlayback,
+  onSegmentsChange,
 }: TranscriptPanelProps) {
   const {
     data: languages,
@@ -190,6 +228,28 @@ export function TranscriptPanel({
 
   // Ref for the active match container — used for scrollIntoView (T025)
   const activeMatchContainerRef = useRef<HTMLDivElement>(null);
+
+  // --- Follow-playback / auto-scroll state (T015) ---
+
+  /**
+   * Tracks whether the user has manually scrolled the transcript panel since
+   * the last segment transition (Edge Case 5). When true, auto-scroll is
+   * suppressed for the current segment; it re-engages on the next transition.
+   */
+  const userScrolledRef = useRef<boolean>(false);
+
+  /**
+   * Debounced aria-live text for the active segment (FR-A02, 1000ms debounce).
+   */
+  const [activeSegmentAnnouncement, setActiveSegmentAnnouncement] = useState<string>("");
+  const activeSegmentAnnouncementTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * Previous activeSegmentId — used to detect actual segment transitions in the
+   * auto-scroll effect and to determine which segment's text to announce.
+   * Initialised as undefined so the first real value always triggers the effect.
+   */
+  const prevActiveSegmentIdRef = useRef<number | null | undefined>(undefined);
 
   // Debounced search announcement (FR-021: 500ms debounce on aria-live)
   const [searchAnnouncement, setSearchAnnouncement] = useState<string>("");
@@ -330,6 +390,97 @@ export function TranscriptPanel({
     };
   }, [searchQuery, searchTotal, searchCurrentIndex]);
 
+  // --- Auto-scroll to active segment when followPlayback is ON (T015, FR-015) ---
+  //
+  // This effect fires only when activeSegmentId changes (segment transition), NOT on
+  // every currentTime update, keeping scroll events coarse-grained.
+  //
+  // Scroll strategy:
+  //   1. If userScrolledRef is true the user just manually scrolled — skip this
+  //      transition but clear the flag so the NEXT transition auto-scrolls again.
+  //   2. Query for the segment row using data-segment-id within transcriptContentRef
+  //      (which wraps the inner virtualized/non-virtualized scroll container).
+  //   3. scrollIntoView({ behavior: 'smooth', block: 'nearest' }) — uses 'nearest'
+  //      so a segment that's already partially visible isn't over-scrolled.
+  //
+  // Virtualization note: scrollIntoView only works for segments that are in the DOM.
+  // Segments far from the viewport are outside the virtual window and won't be rendered.
+  // For the common case (video playing sequentially, next segment is adjacent), the
+  // segment is always rendered because the virtualizer has an overscan of 5 rows.
+  useEffect(() => {
+    // Only run when the segment ID actually changes (skip initial undefined baseline).
+    if (prevActiveSegmentIdRef.current === activeSegmentId) return;
+    prevActiveSegmentIdRef.current = activeSegmentId;
+
+    // Re-enable auto-scroll for the new segment even if the user had scrolled away.
+    // Edge Case 5: clear the flag on segment transition so auto-scroll re-engages.
+    if (userScrolledRef.current) {
+      userScrolledRef.current = false;
+      // Still skip THIS scroll (the user's intent was to read a different position).
+      return;
+    }
+
+    // Guard: only scroll when follow is ON, a segment is active, and segment view is shown.
+    if (!followPlayback || activeSegmentId == null || viewMode !== "segments") return;
+
+    // The scrollable region is transcriptContentRef; the segment rows with
+    // data-segment-id live inside it (either directly or inside the virtualizer div).
+    const container = transcriptContentRef.current;
+    if (!container) return;
+
+    const segmentEl = container.querySelector<HTMLElement>(
+      `[data-segment-id="${activeSegmentId}"]`
+    );
+    segmentEl?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [activeSegmentId, followPlayback, viewMode]);
+
+  // --- aria-live announcement for active segment text (T015, FR-A02, 1000ms debounce) ---
+  //
+  // When the active segment changes and a player is present, announce the new
+  // segment's text to screen readers after a 1000ms debounce. Rapid segment changes
+  // (e.g. quick seeking) cancel and restart the timer so the reader isn't overwhelmed.
+  //
+  // The segment text is sourced from loadedSegments (already maintained for search).
+  useEffect(() => {
+    if (activeSegmentAnnouncementTimeoutRef.current !== null) {
+      clearTimeout(activeSegmentAnnouncementTimeoutRef.current);
+    }
+
+    // Only announce when there is an active segment and a player is present.
+    if (activeSegmentId == null || seekTo === undefined) {
+      setActiveSegmentAnnouncement("");
+      return;
+    }
+
+    const segment = loadedSegments.find((s) => s.id === activeSegmentId);
+    if (!segment) {
+      setActiveSegmentAnnouncement("");
+      return;
+    }
+
+    activeSegmentAnnouncementTimeoutRef.current = setTimeout(() => {
+      setActiveSegmentAnnouncement(segment.text);
+    }, 1000);
+
+    return () => {
+      if (activeSegmentAnnouncementTimeoutRef.current !== null) {
+        clearTimeout(activeSegmentAnnouncementTimeoutRef.current);
+      }
+    };
+  }, [activeSegmentId, loadedSegments, seekTo]);
+
+  /**
+   * Handles manual scroll of the transcript content area (Edge Case 5).
+   * Sets userScrolledRef so the current segment's auto-scroll is suppressed;
+   * auto-scroll re-engages on the next segment transition.
+   */
+  const handleTranscriptScroll = useCallback(() => {
+    // Only track user scroll when follow is ON and a player is active.
+    // When follow is already OFF, the flag has no effect, so we still set it
+    // cheaply — it'll be cleared on the next segment transition harmlessly.
+    userScrolledRef.current = true;
+  }, []);
+
   /**
    * Handles search input change.
    * Updates raw input state and forwards to debounced hook setter.
@@ -371,11 +522,14 @@ export function TranscriptPanel({
   }, [resetSearch]);
 
   /**
-   * Handles segments loaded from TranscriptSegments (used for search indexing).
+   * Handles segments loaded from TranscriptSegments (used for search indexing
+   * and for surfacing loaded segments to the parent via onSegmentsChange so
+   * that VideoDetailPage can update useYouTubePlayer's binary-search data).
    */
   const handleSegmentsChange = useCallback((segments: TranscriptSegment[]) => {
     setLoadedSegments(segments);
-  }, []);
+    onSegmentsChange?.(segments);
+  }, [onSegmentsChange]);
 
   /**
    * Handles expand/collapse toggle.
@@ -618,6 +772,52 @@ export function TranscriptPanel({
               {viewMode === "segments" && (
                 <div className="pb-3">
                   <div className="flex items-center gap-2">
+                    {/* Follow playback toggle — only shown when a player is available (T015, FR-016) */}
+                    {toggleFollowPlayback !== undefined && followPlayback !== undefined && (
+                      <button
+                        type="button"
+                        onClick={toggleFollowPlayback}
+                        aria-pressed={followPlayback}
+                        title={followPlayback ? "Auto-scrolling to active segment" : "Click to follow playback"}
+                        className={`
+                          flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium
+                          border transition-colors duration-150
+                          focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500
+                          ${
+                            followPlayback
+                              ? "bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100"
+                              : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"
+                          }
+                        `}
+                      >
+                        {/* Play/scroll icon */}
+                        <svg
+                          aria-hidden="true"
+                          className="w-3.5 h-3.5 flex-shrink-0"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          {followPlayback ? (
+                            /* Play triangle — "actively following" */
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M5 3l14 9-14 9V3z"
+                            />
+                          ) : (
+                            /* Pause bars — "not following" */
+                            <>
+                              <line x1="10" y1="5" x2="10" y2="19" strokeWidth={2} strokeLinecap="round" />
+                              <line x1="14" y1="5" x2="14" y2="19" strokeWidth={2} strokeLinecap="round" />
+                            </>
+                          )}
+                        </svg>
+                        <span>{followPlayback ? "Following" : "Follow playback"}</span>
+                      </button>
+                    )}
                     {/* Search input (NFR-002: accessible label) */}
                     <label
                       htmlFor="transcript-search-input"
@@ -768,6 +968,7 @@ export function TranscriptPanel({
                 className="overflow-y-auto max-h-[calc(60vh-150px)] sm:max-h-[calc(50vh-150px)] lg:max-h-[calc(60vh-150px)]"
                 role="region"
                 aria-label="Transcript content"
+                onScroll={handleTranscriptScroll}
               >
                 {viewMode === "segments" ? (
                   <TranscriptSegments
@@ -778,6 +979,8 @@ export function TranscriptPanel({
                     targetTimestamp={targetTimestamp}
                     onDeepLinkComplete={onDeepLinkComplete}
                     isExpanded={isExpanded}
+                    seekTo={seekTo}
+                    activeSegmentId={activeSegmentId}
                     searchProps={{
                       matches: searchMatches,
                       activeMatchIndex: searchCurrentIndex,
@@ -824,6 +1027,19 @@ export function TranscriptPanel({
         data-testid="search-announcement"
       >
         {searchAnnouncement}
+      </div>
+
+      {/* aria-live region for active segment text (T015, FR-A02, 1000ms debounce).
+          Announces the current playback segment to screen readers without
+          visual output. Only populated when a player is present (seekTo defined). */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+        data-testid="active-segment-announcement"
+      >
+        {activeSegmentAnnouncement}
       </div>
 
       {/* Screen reader summary when collapsed */}

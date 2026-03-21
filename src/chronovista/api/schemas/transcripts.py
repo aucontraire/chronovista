@@ -64,3 +64,16 @@ class SegmentListResponse(ApiResponse[List[TranscriptSegment]]):
     """Response for transcript segments endpoint."""
 
     pass
+
+
+class TranscriptDownloadResponse(BaseModel):
+    """Response for transcript download endpoint."""
+
+    model_config = ConfigDict(strict=True)
+
+    video_id: str
+    language_code: str
+    language_name: str
+    transcript_type: str  # "manual" or "auto_generated"
+    segment_count: int
+    downloaded_at: datetime

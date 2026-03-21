@@ -1,5 +1,7 @@
-"""Transcript endpoints for viewing and retrieving transcript data."""
+"""Transcript endpoints for viewing, retrieving, and downloading transcript data."""
 
+import logging
+import re
 from datetime import datetime
 from typing import Optional
 
@@ -8,10 +10,18 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.deps import get_db, require_auth
-from chronovista.api.routers.responses import GET_ITEM_ERRORS, LIST_ERRORS
-from chronovista.api.schemas.responses import PaginationMeta
+from chronovista.api.routers.responses import (
+    CONFLICT_RESPONSE,
+    GET_ITEM_ERRORS,
+    LIST_ERRORS,
+    NOT_FOUND_RESPONSE,
+    UNAUTHORIZED_RESPONSE,
+    VALIDATION_ERROR_RESPONSE,
+)
+from chronovista.api.schemas.responses import ApiResponse, PaginationMeta
 from chronovista.api.schemas.transcripts import (
     SegmentListResponse,
+    TranscriptDownloadResponse,
     TranscriptFull,
     TranscriptLanguage,
     TranscriptLanguagesResponse,
@@ -22,11 +32,37 @@ from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
 from chronovista.db.models import TranscriptSegment as SegmentDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as TranscriptDB
-from chronovista.exceptions import NotFoundError
+from chronovista.exceptions import (
+    APIValidationError,
+    ConflictError,
+    NotFoundError,
+    RateLimitError,
+)
 from chronovista.models.enums import AvailabilityStatus
+from chronovista.models.video_transcript import VideoTranscriptCreate
+from chronovista.repositories.video_transcript_repository import (
+    VideoTranscriptRepository,
+)
+from chronovista.services.transcript_service import (
+    TranscriptNotFoundError,
+    TranscriptService,
+    TranscriptServiceError,
+    TranscriptServiceUnavailableError,
+)
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=[Depends(require_auth)])
+
+# Regex for YouTube video ID validation: exactly 11 chars, [A-Za-z0-9_-]
+_VIDEO_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
+# In-flight download guard: tracks video_ids currently being downloaded
+_downloads_in_progress: set[str] = set()
+
+# Module-level service/repository singletons
+_transcript_service = TranscriptService()
+_transcript_repo = VideoTranscriptRepository()
 
 
 def get_language_name(code: str) -> str:
@@ -338,3 +374,207 @@ async def get_transcript_segments(
     )
 
     return SegmentListResponse(data=items, pagination=pagination)
+
+
+# OpenAPI error responses for the download endpoint
+_DOWNLOAD_ERRORS = {
+    **NOT_FOUND_RESPONSE,
+    **VALIDATION_ERROR_RESPONSE,
+    **UNAUTHORIZED_RESPONSE,
+    **CONFLICT_RESPONSE,
+    429: {
+        "description": "Download already in progress for this video",
+    },
+    503: {
+        "description": "YouTube transcript service unavailable or rate-limited",
+    },
+}
+
+
+@router.post(
+    "/videos/{video_id}/transcript/download",
+    response_model=ApiResponse[TranscriptDownloadResponse],
+    status_code=200,
+    responses=_DOWNLOAD_ERRORS,
+    summary="Download transcript from YouTube",
+)
+async def download_transcript(
+    video_id: str = Path(..., description="YouTube video ID (11 characters)"),
+    language: Optional[str] = Query(
+        None, description="BCP-47 language code (default: user's preferred language)"
+    ),
+    session: AsyncSession = Depends(get_db),
+) -> ApiResponse[TranscriptDownloadResponse]:
+    """Download a transcript from YouTube for the given video.
+
+    Fetches the transcript from YouTube's transcript API and saves it
+    to the local database. Returns metadata about the downloaded transcript.
+
+    Parameters
+    ----------
+    video_id : str
+        YouTube video ID (exactly 11 characters, ``[A-Za-z0-9_-]``).
+    language : Optional[str]
+        BCP-47 language code to prefer. When omitted the user's preferred
+        language is used.
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    ApiResponse[TranscriptDownloadResponse]
+        Metadata about the downloaded transcript.
+
+    Raises
+    ------
+    APIValidationError
+        If the video_id format is invalid (422).
+    NotFoundError
+        If no transcript is available on YouTube (404).
+    ConflictError
+        If the video already has a transcript in the database (409).
+    RateLimitError
+        If a download is already in progress for this video (429).
+    TranscriptServiceUnavailableError
+        If YouTube is rate-limiting or the service is unavailable (503).
+    """
+    # 1. Validate video_id format before any service/DB call
+    if not _VIDEO_ID_PATTERN.match(video_id):
+        raise APIValidationError(
+            message="Invalid video ID format. Must be exactly 11 characters matching [A-Za-z0-9_-].",
+            details={"field": "video_id"},
+        )
+
+    # 2. In-flight download guard
+    if video_id in _downloads_in_progress:
+        raise RateLimitError(
+            message=f"A download is already in progress for video '{video_id}'.",
+            details={"video_id": video_id},
+        )
+
+    _downloads_in_progress.add(video_id)
+    try:
+        # 3. Check if transcript already exists in the database
+        existing_transcripts = await _transcript_repo.get_video_transcripts(
+            session, video_id
+        )
+        if existing_transcripts:
+            raise ConflictError(
+                message=f"Video '{video_id}' already has a transcript. "
+                "Delete it first if you want to re-download.",
+                details={"video_id": video_id},
+            )
+
+        # 4. Build language_codes list for the service call
+        language_codes: list[str] | None = None
+        if language:
+            language_codes = [language]
+
+        # 5. Download from YouTube via TranscriptService
+        try:
+            enhanced_transcript = await _transcript_service.get_transcript(
+                video_id=video_id,
+                language_codes=language_codes,
+            )
+        except TranscriptNotFoundError as exc:
+            raise NotFoundError(
+                resource_type="Transcript",
+                identifier=video_id,
+                hint="No transcript is available on YouTube for this video.",
+            ) from exc
+        except TranscriptServiceUnavailableError as exc:
+            from chronovista.api.schemas.responses import (
+                ErrorCode,
+                ProblemJSONResponse,
+                get_error_type_uri,
+                ERROR_TITLES,
+            )
+            import uuid
+
+            return ProblemJSONResponse(  # type: ignore[return-value]
+                status_code=503,
+                content={
+                    "type": get_error_type_uri(ErrorCode.SERVICE_UNAVAILABLE),
+                    "title": ERROR_TITLES[ErrorCode.SERVICE_UNAVAILABLE],
+                    "status": 503,
+                    "detail": f"YouTube transcript service is unavailable: {exc}",
+                    "instance": f"/api/v1/videos/{video_id}/transcript/download",
+                    "code": ErrorCode.SERVICE_UNAVAILABLE.value,
+                    "request_id": str(uuid.uuid4()),
+                },
+            )
+        except TranscriptServiceError as exc:
+            # Catch-all for other transcript service errors (e.g. rate limiting)
+            error_msg = str(exc).lower()
+            if any(kw in error_msg for kw in ["rate limit", "too many", "quota"]):
+                from chronovista.api.schemas.responses import (
+                    ErrorCode,
+                    ProblemJSONResponse,
+                    get_error_type_uri,
+                    ERROR_TITLES,
+                )
+                import uuid
+
+                return ProblemJSONResponse(  # type: ignore[return-value]
+                    status_code=503,
+                    content={
+                        "type": get_error_type_uri(ErrorCode.SERVICE_UNAVAILABLE),
+                        "title": ERROR_TITLES[ErrorCode.SERVICE_UNAVAILABLE],
+                        "status": 503,
+                        "detail": f"YouTube is rate-limiting transcript requests: {exc}",
+                        "instance": f"/api/v1/videos/{video_id}/transcript/download",
+                        "code": ErrorCode.SERVICE_UNAVAILABLE.value,
+                        "request_id": str(uuid.uuid4()),
+                    },
+                )
+            raise
+
+        # 6. Build VideoTranscriptCreate from the enhanced transcript
+        transcript_create = VideoTranscriptCreate(
+            video_id=enhanced_transcript.video_id,
+            language_code=enhanced_transcript.language_code,
+            transcript_text=enhanced_transcript.transcript_text,
+            transcript_type=enhanced_transcript.transcript_type,
+            download_reason=enhanced_transcript.download_reason,
+            confidence_score=enhanced_transcript.confidence_score,
+            is_cc=enhanced_transcript.is_cc,
+            is_auto_synced=enhanced_transcript.is_auto_synced,
+            track_kind=enhanced_transcript.track_kind,
+            caption_name=enhanced_transcript.caption_name,
+        )
+
+        # 7. Save via repository
+        db_transcript = await _transcript_repo.create_or_update(
+            session,
+            transcript_create,
+            raw_transcript_data=(
+                enhanced_transcript.raw_transcript_data
+                if enhanced_transcript.raw_transcript_data
+                else None
+            ),
+        )
+        await session.commit()
+
+        # 8. Determine transcript_type display string
+        transcript_type_display = (
+            "manual" if db_transcript.is_cc or db_transcript.transcript_type == "MANUAL"
+            else "auto_generated"
+        )
+
+        # 9. Resolve language name
+        lang_code = db_transcript.language_code
+        lang_name = get_language_name(lang_code)
+
+        response_data = TranscriptDownloadResponse(
+            video_id=db_transcript.video_id,
+            language_code=lang_code,
+            language_name=lang_name,
+            transcript_type=transcript_type_display,
+            segment_count=db_transcript.segment_count or 0,
+            downloaded_at=db_transcript.downloaded_at,
+        )
+
+        return ApiResponse[TranscriptDownloadResponse](data=response_data)
+
+    finally:
+        _downloads_in_progress.discard(video_id)

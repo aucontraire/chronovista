@@ -913,7 +913,7 @@ class CanonicalTag(Base):
             name="chk_canonical_tag_status_valid"
         ),
         CheckConstraint(
-            "alias_count >= 1",
+            "alias_count >= 0",
             name="chk_canonical_tag_alias_count_positive"
         ),
         CheckConstraint(

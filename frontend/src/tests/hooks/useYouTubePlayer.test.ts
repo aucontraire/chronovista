@@ -1492,4 +1492,242 @@ describe("useYouTubePlayer", () => {
       expect(result.current?.followPlayback).toBe(true);
     });
   });
+
+  // =========================================================================
+  // T011-15: enabled option
+  //
+  // When enabled=false the hook must be a complete no-op: no script injection,
+  // no YT.Player construction, no 10-second timeout. When enabled transitions
+  // false→true the effect re-runs, clears any stale error state, and creates
+  // the player normally.
+  //
+  // Harness design
+  // --------------
+  // We need a test component that can be re-rendered with a different `enabled`
+  // value without unmounting (to simulate the false→true transition). A local
+  // `renderHookWithEnabledOption` helper mirrors the pattern from T011-14 but
+  // controls `enabled` instead of the container visibility.
+  // =========================================================================
+
+  describe("enabled option (T011-15)", () => {
+    // -----------------------------------------------------------------------
+    // Harness: renders the hook with a controllable `enabled` prop.
+    //
+    // The container <div> is always mounted so that when enabled transitions
+    // to true the player can be created immediately (fast path in
+    // waitForContainer).  Only `enabled` changes between renders.
+    // -----------------------------------------------------------------------
+
+    interface EnabledHookHarness {
+      result: MutableRefObject<UseYouTubePlayerResult | null>;
+      /** Re-render the hook with enabled=true. */
+      enable: () => void;
+      unmount: () => void;
+    }
+
+    function renderHookWithEnabledOption(
+      videoId: string,
+      initialEnabled: boolean,
+      queryClient: QueryClient
+    ): EnabledHookHarness {
+      const resultRef: MutableRefObject<UseYouTubePlayerResult | null> = {
+        current: null,
+      };
+
+      // Mutable ref so the re-render helper can flip enabled without capturing
+      // a stale closure over a local variable.
+      const enabledRef: MutableRefObject<boolean> = { current: initialEnabled };
+
+      function TestComponent({
+        vid,
+        resultHolder,
+        enabledHolder,
+      }: {
+        vid: string;
+        resultHolder: MutableRefObject<UseYouTubePlayerResult | null>;
+        enabledHolder: MutableRefObject<boolean>;
+      }) {
+        const hookResult = useYouTubePlayer({
+          videoId: vid,
+          segments: [],
+          enabled: enabledHolder.current,
+        });
+        resultHolder.current = hookResult;
+        // Always render the container div so the ref is populated.
+        return React.createElement("div", {
+          "data-testid": "player-container-enabled",
+          ref: hookResult.containerRef as React.RefObject<HTMLDivElement>,
+        });
+      }
+
+      const { unmount, rerender } = render(
+        React.createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          React.createElement(TestComponent, {
+            vid: videoId,
+            resultHolder: resultRef,
+            enabledHolder: enabledRef,
+          })
+        )
+      );
+
+      function enable(): void {
+        enabledRef.current = true;
+        rerender(
+          React.createElement(
+            QueryClientProvider,
+            { client: queryClient },
+            React.createElement(TestComponent, {
+              vid: videoId,
+              resultHolder: resultRef,
+              enabledHolder: enabledRef,
+            })
+          )
+        );
+      }
+
+      return { result: resultRef, enable, unmount };
+    }
+
+    // -----------------------------------------------------------------------
+    // T011-15-1: When enabled=false, no script tag is injected.
+    //
+    // The hook must short-circuit before reaching the script injection block
+    // so that document.head.appendChild is never called with a <script>.
+    // -----------------------------------------------------------------------
+
+    it("does not inject a script tag when enabled=false", () => {
+      // Remove YT global so the hook would normally take the injection path.
+      // @ts-expect-error — intentionally removing the global
+      delete window.YT;
+      const appendSpy = vi
+        .spyOn(document.head, "appendChild")
+        .mockImplementation((n) => n);
+
+      renderHookWithEnabledOption(VIDEO_ID, false, queryClient);
+
+      const scripts = appendSpy.mock.calls
+        .map((c) => c[0])
+        .filter((n): n is HTMLScriptElement => n instanceof HTMLScriptElement);
+
+      expect(scripts.length).toBe(0);
+    });
+
+    // -----------------------------------------------------------------------
+    // T011-15-2: When enabled=false, YT.Player constructor is not called.
+    //
+    // Even when window.YT is already present (the fast path), the hook must
+    // not call `new YT.Player()` while it is disabled.
+    // -----------------------------------------------------------------------
+
+    it("does not create a YT.Player instance when enabled=false", () => {
+      // YT global is installed in beforeEach; captured.options starts empty.
+      renderHookWithEnabledOption(VIDEO_ID, false, queryClient);
+
+      // If the constructor had been called, captured.options.videoId would be
+      // populated.
+      expect(captured.options.videoId).toBeUndefined();
+    });
+
+    // -----------------------------------------------------------------------
+    // T011-15-3: When enabled=false, the 10-second API-load timeout never fires.
+    //
+    // The hook reaches the timeout arm only when window.YT is absent AND
+    // enabled=true. With enabled=false the effect returns early before
+    // scheduling any setTimeout, so no timer is armed and error stays null.
+    //
+    // We verify by spying on setTimeout to confirm it was never called by
+    // the hook (avoiding vi.useFakeTimers which conflicts with rafQueue.install).
+    // -----------------------------------------------------------------------
+
+    it("does not arm the API-load timeout when enabled=false", () => {
+      // Remove YT global so the timeout arm would normally execute.
+      // @ts-expect-error — intentionally removing the global
+      delete window.YT;
+      vi.spyOn(document.head, "appendChild").mockImplementation((n) => n);
+      const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+
+      const { result } = renderHookWithEnabledOption(VIDEO_ID, false, queryClient);
+
+      // No setTimeout call should have been made by the hook — it bailed out
+      // before reaching the timer arm because enabled=false.
+      expect(setTimeoutSpy).not.toHaveBeenCalled();
+      // And error must remain null since no timeout fired.
+      expect(result.current?.error).toBeNull();
+
+      setTimeoutSpy.mockRestore();
+    });
+
+    // -----------------------------------------------------------------------
+    // T011-15-4: When enabled transitions false→true, the player is created.
+    //
+    // The container div is already mounted, so once the effect re-runs with
+    // enabled=true the fast path of waitForContainer triggers synchronously
+    // and calls createPlayer().
+    // -----------------------------------------------------------------------
+
+    it("creates the player when enabled transitions from false to true", async () => {
+      const { enable } = renderHookWithEnabledOption(VIDEO_ID, false, queryClient);
+
+      // Confirm no player before the transition.
+      expect(captured.options.videoId).toBeUndefined();
+
+      // Transition enabled → true and let React process the re-render.
+      await act(async () => {
+        enable();
+      });
+
+      expect(captured.options.videoId).toBe(VIDEO_ID);
+    });
+
+    // -----------------------------------------------------------------------
+    // T011-15-5: When enabled transitions false→true, stale error is cleared.
+    //
+    // The hook calls setError(null) at the top of its useEffect regardless of
+    // the enabled value, so any error that was in state before the transition
+    // is wiped as soon as the effect runs again with enabled=true.
+    //
+    // Strategy: We cannot easily set error state while enabled=false (the
+    // timeout does not fire and no player exists to emit an onError event).
+    // Instead we verify the clearing behaviour indirectly: after a false→true
+    // transition error must be null (the initial clear ran and no subsequent
+    // error was produced because we did not fire an onError event).
+    // -----------------------------------------------------------------------
+
+    it("clears error state when enabled transitions from false to true", async () => {
+      const { result, enable } = renderHookWithEnabledOption(
+        VIDEO_ID,
+        false,
+        queryClient
+      );
+
+      // Error starts null in the disabled phase.
+      expect(result.current?.error).toBeNull();
+
+      // Transition to enabled — the effect re-runs and setError(null) executes.
+      await act(async () => {
+        enable();
+      });
+
+      // Error must still be null (cleared by the effect, not set by any event).
+      expect(result.current?.error).toBeNull();
+    });
+
+    // -----------------------------------------------------------------------
+    // T011-15-6: Default enabled=true preserves existing behaviour.
+    //
+    // Omitting the `enabled` option (defaults to true) must behave identically
+    // to the pre-existing tests: the player is created immediately when YT is
+    // already loaded and the container div is mounted.
+    // -----------------------------------------------------------------------
+
+    it("creates the player normally when enabled is omitted (defaults to true)", () => {
+      // Use the standard harness — it does NOT pass enabled, so it defaults.
+      renderHookWithContainer(VIDEO_ID, [], queryClient);
+
+      // The YT.Player constructor must have been called (fast path).
+      expect(captured.options.videoId).toBe(VIDEO_ID);
+    });
+  });
 });

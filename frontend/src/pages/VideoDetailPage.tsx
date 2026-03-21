@@ -733,6 +733,18 @@ export function VideoDetailPage() {
     []
   );
 
+  // Enable the player only when the video has a transcript AND is available.
+  // This prevents the hook from injecting the YT script and starting the
+  // 10-second API-load timeout before the VideoEmbed container div exists in
+  // the DOM. When enabled transitions false → true (e.g. after a transcript
+  // is downloaded and TanStack Query invalidates the video detail cache) the
+  // hook's useEffect re-runs, clears the stale error state, and creates the
+  // player normally. Uses optional chaining because `video` may still be
+  // undefined at this point in the render (before the null-guard below).
+  const playerEnabled =
+    (video?.transcript_summary?.count ?? 0) > 0 &&
+    video?.availability_status === "available";
+
   const {
     containerRef: playerContainerRef,
     error: playerError,
@@ -743,6 +755,7 @@ export function VideoDetailPage() {
   } = useYouTubePlayer({
     videoId: videoId ?? "",
     segments: playerSegments,
+    enabled: playerEnabled,
   });
 
   // Recovery store actions and session

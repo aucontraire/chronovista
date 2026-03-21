@@ -920,9 +920,63 @@ describe("VideoDetailPage — Feature 048 layout and interactions", () => {
   });
 
   // -------------------------------------------------------------------------
-  // TC-8: Boundary — transcript_summary.count boundary values
+  // TC-8: useYouTubePlayer enabled prop wiring
+  //
+  // VideoDetailPage computes:
+  //   playerEnabled = (video?.transcript_summary?.count ?? 0) > 0
+  //                   && video?.availability_status === "available"
+  //
+  // and passes it as `enabled` to useYouTubePlayer.  These tests verify the
+  // three logical cases by inspecting the mock's call arguments.
   // -------------------------------------------------------------------------
-  describe("TC-8: transcript_summary.count boundary values", () => {
+  describe("TC-8: useYouTubePlayer enabled prop wiring", () => {
+    it("calls useYouTubePlayer with enabled=false when the video has no transcript", () => {
+      vi.mocked(useVideoDetail).mockReturnValue(
+        makeVideoDetailResult(mockVideoWithoutTranscript)
+      );
+
+      renderPage("def456");
+
+      const mockHook = vi.mocked(useYouTubePlayer);
+      // The hook is called unconditionally — check the most recent call.
+      const lastCall = mockHook.mock.calls[mockHook.mock.calls.length - 1];
+      expect(lastCall?.[0]).toMatchObject({ enabled: false });
+    });
+
+    it("calls useYouTubePlayer with enabled=true when transcript exists and video is available", () => {
+      // mockVideoWithTranscript has count=3 and availability_status="available"
+      vi.mocked(useVideoDetail).mockReturnValue(
+        makeVideoDetailResult(mockVideoWithTranscript)
+      );
+
+      renderPage("abc123");
+
+      const mockHook = vi.mocked(useYouTubePlayer);
+      const lastCall = mockHook.mock.calls[mockHook.mock.calls.length - 1];
+      expect(lastCall?.[0]).toMatchObject({ enabled: true });
+    });
+
+    it("calls useYouTubePlayer with enabled=false when video is unavailable even with a transcript", () => {
+      const deletedVideoWithTranscript: VideoDetail = {
+        ...mockVideoWithTranscript,
+        availability_status: "deleted",
+      };
+      vi.mocked(useVideoDetail).mockReturnValue(
+        makeVideoDetailResult(deletedVideoWithTranscript)
+      );
+
+      renderPage("abc123");
+
+      const mockHook = vi.mocked(useYouTubePlayer);
+      const lastCall = mockHook.mock.calls[mockHook.mock.calls.length - 1];
+      expect(lastCall?.[0]).toMatchObject({ enabled: false });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // TC-9: Boundary — transcript_summary.count boundary values
+  // -------------------------------------------------------------------------
+  describe("TC-9: transcript_summary.count boundary values", () => {
     it("treats count=1 as having a transcript (two-column layout)", () => {
       const videoCount1: VideoDetail = {
         ...mockVideoWithTranscript,

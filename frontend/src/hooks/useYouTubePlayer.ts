@@ -239,6 +239,17 @@ export interface UseYouTubePlayerOptions {
    * Pass an empty array when segments are not yet loaded.
    */
   segments: TranscriptSegment[];
+  /**
+   * When false the hook is a no-op: no script injection, no player creation,
+   * no polling. Defaults to true for backward compatibility.
+   *
+   * Use this to defer player initialisation until the container div is
+   * guaranteed to be rendered (e.g. pass `enabled: hasTranscript` so the hook
+   * does not start the 10-second API-load timeout before a transcript exists).
+   * When this prop transitions false → true the effect re-runs and creates the
+   * player normally, clearing any stale error state from the disabled phase.
+   */
+  enabled?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -272,6 +283,7 @@ export interface UseYouTubePlayerOptions {
 export function useYouTubePlayer({
   videoId,
   segments,
+  enabled = true,
 }: UseYouTubePlayerOptions): UseYouTubePlayerResult {
   // --------------------------------------------------------------------------
   // Refs (not state — player internals must not trigger re-renders)
@@ -443,6 +455,18 @@ export function useYouTubePlayer({
   const destroyedRef = useRef<boolean>(false);
 
   useEffect(() => {
+    // When enabled transitions false → true, clear any stale error that
+    // accumulated during the disabled phase (e.g. the -1 timeout that fired
+    // while the container div was not yet rendered).
+    setError(null);
+
+    // No-op when the caller has explicitly disabled the hook. This prevents
+    // script injection, player creation, and the 10-second API-load timeout
+    // from starting before the embed container is guaranteed to be in the DOM.
+    // When enabled later transitions to true the effect re-runs (because
+    // enabled is in the dependency array) and creates the player normally.
+    if (!enabled) return;
+
     // Reset the destroyed sentinel for this effect run.
     destroyedRef.current = false;
 
@@ -562,9 +586,11 @@ export function useYouTubePlayer({
     };
     // handleReady / handleStateChange / handleError are stable (useCallback with
     // no or stable deps). videoId intentionally included: a videoId change means
-    // we must recreate the player from scratch.
+    // we must recreate the player from scratch. enabled is included so that the
+    // effect re-runs when the caller transitions false → true (e.g. after a
+    // transcript is downloaded) and creates the player at that point.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoId]);
+  }, [videoId, enabled]);
 
   // --------------------------------------------------------------------------
   // Stable control methods

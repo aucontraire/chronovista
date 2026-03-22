@@ -981,7 +981,7 @@ class TestClassifyCommand:
             canonical_form="Elon Musk",
             entity_type="person",
             entity_created=True,
-            entity_alias_count=3,
+            entity_alias_count=1,
             operation_id=_OP_ID,
         )
 
@@ -1010,7 +1010,7 @@ class TestClassifyCommand:
             canonical_form="Elon Musk",
             entity_type="person",
             entity_created=True,
-            entity_alias_count=3,
+            entity_alias_count=1,
             operation_id=_OP_ID,
         )
 
@@ -1230,7 +1230,7 @@ class TestClassifyCommand:
             canonical_form="Python",
             entity_type="technical_term",
             entity_created=True,
-            entity_alias_count=2,
+            entity_alias_count=1,
             operation_id=_OP_ID,
         )
 

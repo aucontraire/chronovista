@@ -2561,22 +2561,19 @@ class TestClassify:
         mock_named_entity_repo.create.return_value = new_entity
 
         ea1 = _make_entity_alias(entity_id=new_entity.id)
-        ea2 = _make_entity_alias(entity_id=new_entity.id)
-        mock_entity_alias_repo.create.side_effect = [ea1, ea2]
+        mock_entity_alias_repo.create.side_effect = [ea1]
 
         op_id = uuid.uuid4()
         log_entry = _make_operation_log(operation_type="create")
         log_entry.id = op_id
         mock_operation_log_repo.create.return_value = log_entry
 
-        # SELECT: no existing entity, SELECT: tag aliases,
-        # SELECT: entity alias existence check per alias (upsert logic)
+        # SELECT: no existing entity,
+        # SELECT: self-alias existence check (should not exist yet)
         mock_session.execute = AsyncMock(
             side_effect=[
                 MagicMock(**{"scalar_one_or_none.return_value": None}),  # existing entity check
-                _make_scalars_result([alias_a, alias_b]),                # tag aliases
-                MagicMock(**{"scalar_one_or_none.return_value": None}),  # alias_a upsert check
-                MagicMock(**{"scalar_one_or_none.return_value": None}),  # alias_b upsert check
+                MagicMock(**{"scalar_one_or_none.return_value": None}),  # self-alias check
             ]
         )
         mock_session.add = MagicMock()
@@ -2591,7 +2588,7 @@ class TestClassify:
         assert isinstance(result, ClassifyResult)
         assert result.entity_created is True
         assert result.entity_type == "person"
-        assert result.entity_alias_count == 2
+        assert result.entity_alias_count == 1
         assert result.operation_id == op_id
         mock_named_entity_repo.create.assert_called_once()
 
@@ -2804,7 +2801,6 @@ class TestClassify:
         tag.entity_id = None
         mock_canonical_tag_repo.get_by_normalized_form.return_value = tag
 
-        alias_a = _make_tag_alias(raw_form="Google", canonical_tag_id=tag.id)
         new_entity = _make_named_entity(
             normalized_form="google",
             entity_type="organization",
@@ -2823,8 +2819,7 @@ class TestClassify:
         mock_session.execute = AsyncMock(
             side_effect=[
                 MagicMock(**{"scalar_one_or_none.return_value": None}),  # existing entity check
-                _make_scalars_result([alias_a]),                          # tag aliases
-                MagicMock(**{"scalar_one_or_none.return_value": None}),  # alias_a upsert check
+                MagicMock(**{"scalar_one_or_none.return_value": None}),  # self-alias check
             ]
         )
         mock_session.add = MagicMock()

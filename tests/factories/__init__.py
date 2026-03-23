@@ -201,9 +201,11 @@ from .entity_mention_factory import (
     EntityMentionCreateFactory,
     EntityMentionFactory,
     EntityMentionTestData,
+    ManualEntityMentionFactory,
     create_entity_mention,
     create_entity_mention_base,
     create_entity_mention_create,
+    create_manual_entity_mention,
 )
 from .batch_correction_factory import (
     BatchListItemFactory,
@@ -391,9 +393,11 @@ __all__ = [
     "EntityMentionCreateFactory",
     "EntityMentionFactory",
     "EntityMentionTestData",
+    "ManualEntityMentionFactory",
     "create_entity_mention",
     "create_entity_mention_base",
     "create_entity_mention_create",
+    "create_manual_entity_mention",
     # BatchListItem factories
     "BatchListItemFactory",
     "BatchListItemTestData",

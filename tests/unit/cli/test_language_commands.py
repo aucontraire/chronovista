@@ -777,7 +777,11 @@ class TestLanguageAddCommand:
                 assert result.exit_code == 0
                 assert "it" in result.stdout.lower()
                 assert "Italian" in result.stdout
-                assert "Priority: 3" in result.stdout
+                # Rich formats numeric values with ANSI colour codes; strip them
+                # before asserting on the priority number.
+                import re as _re
+                ansi_stripped = _re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
+                assert "Priority: 3" in ansi_stripped
                 # Verify _add_language_preference was called
                 assert mock_add.called
 
@@ -806,7 +810,11 @@ class TestLanguageAddCommand:
                 assert result.exit_code == 0
                 assert "de" in result.stdout.lower()
                 assert "German" in result.stdout
-                assert "Priority: 1" in result.stdout
+                # Rich formats numeric values with ANSI colour codes; strip them
+                # before asserting on the priority number.
+                import re as _re
+                ansi_stripped = _re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
+                assert "Priority: 1" in ansi_stripped
                 # Verify _add_language_preference was called with priority parameter
                 assert mock_add.called
                 # Verify priority was passed to the function

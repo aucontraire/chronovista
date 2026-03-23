@@ -6,19 +6,23 @@
  * - useEntityVideos(entityId, params) — infinite-scroll videos for an entity
  */
 
-import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef } from "react";
 
 import {
   fetchVideoEntities,
   fetchEntityVideos,
   fetchEntities,
+  createManualAssociation,
+  deleteManualAssociation,
 } from "../api/entityMentions";
 import type {
   VideoEntitySummary,
+  VideoEntitiesResponse,
   EntityVideoResult,
   EntityListItem,
   EntityPaginationMeta,
+  ManualAssociationResponse,
   FetchEntityVideosParams,
   FetchEntitiesParams,
 } from "../api/entityMentions";
@@ -344,4 +348,177 @@ export function useEntities(
     retry,
     loadMoreRef,
   };
+}
+
+// ---------------------------------------------------------------------------
+// useCreateManualAssociation
+// ---------------------------------------------------------------------------
+
+/** Variables passed to the manual association mutation. */
+export interface CreateManualAssociationVariables {
+  /** YouTube video ID */
+  videoId: string;
+  /** Named entity UUID */
+  entityId: string;
+}
+
+/**
+ * Mutation hook for creating a manual entity–video association.
+ *
+ * On success, invalidates the caches for:
+ * - `videoEntities` (so the EntityMentionsPanel refreshes)
+ * - `entitySearch`  (so is_linked flags update in autocomplete)
+ * - `entity-videos` (so the entity detail page refreshes)
+ *
+ * Error handling is left to the caller — use `mutation.isError` and
+ * `mutation.error` to display inline error messages.
+ *
+ * @returns UseMutationResult with `mutate({ videoId, entityId })`
+ *
+ * @example
+ * ```tsx
+ * const mutation = useCreateManualAssociation();
+ * mutation.mutate({ videoId: "dQw4w9WgXcQ", entityId: "ent-uuid" });
+ * ```
+ */
+export function useCreateManualAssociation() {
+  const queryClient = useQueryClient();
+
+  return useMutation<ManualAssociationResponse, ApiError, CreateManualAssociationVariables>({
+    mutationFn: ({ videoId, entityId }: CreateManualAssociationVariables) =>
+      createManualAssociation(videoId, entityId),
+
+    onSuccess: (_data, variables) => {
+      // Invalidate caches that depend on entity–video associations.
+      void queryClient.invalidateQueries({
+        queryKey: ["video-entities", variables.videoId],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["entitySearch"] });
+      void queryClient.invalidateQueries({ queryKey: ["entity-videos"] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// useDeleteManualAssociation
+// ---------------------------------------------------------------------------
+
+/** Variables passed to the delete manual association mutation. */
+export interface DeleteManualAssociationVariables {
+  videoId: string;
+  entityId: string;
+}
+
+/**
+ * Mutation hook for deleting a manual entity-video association.
+ *
+ * Uses optimistic updates to immediately reflect the deletion in the
+ * `video-entities` cache so the EntityMentionsPanel updates without waiting
+ * for a network refetch.  All queries whose key starts with
+ * `["video-entities", videoId]` are updated in-place:
+ * - Manual-only entity (mention_count === 0): removed from the list.
+ * - Multi-source entity (mention_count > 0): `has_manual` set to false and
+ *   "manual" removed from `sources`.
+ *
+ * On success, also invalidates caches for:
+ * - `entity-videos` (entity detail page refreshes)
+ * - `entity-detail` (entity detail header refreshes)
+ * - `entitySearch` (is_linked flags update in autocomplete)
+ *
+ * On error, rolls back the optimistic update to restore previous state.
+ *
+ * @returns UseMutationResult with `mutate({ videoId, entityId })`
+ *
+ * @example
+ * ```tsx
+ * const mutation = useDeleteManualAssociation();
+ * mutation.mutate({ videoId: "dQw4w9WgXcQ", entityId: "ent-uuid" });
+ * ```
+ */
+export function useDeleteManualAssociation() {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    void,
+    ApiError,
+    DeleteManualAssociationVariables,
+    { snapshots: Array<[readonly unknown[], VideoEntitiesResponse | undefined]> }
+  >({
+    mutationFn: ({ videoId, entityId }) =>
+      deleteManualAssociation(videoId, entityId),
+
+    onMutate: async (variables) => {
+      // Cancel any in-flight refetches for this video's entities so they don't
+      // overwrite the optimistic update we're about to apply.
+      await queryClient.cancelQueries({
+        queryKey: ["video-entities", variables.videoId],
+      });
+
+      // Snapshot all cached variants of the video-entities query (may include
+      // queries with different languageCode values as the third key element).
+      const matchedQueries = queryClient.getQueriesData<VideoEntitiesResponse>({
+        queryKey: ["video-entities", variables.videoId],
+      });
+
+      // Apply optimistic update to every matching cache entry.
+      for (const [queryKey, previousData] of matchedQueries) {
+        if (!previousData) continue;
+
+        const updatedEntities = previousData.data
+          // Remove manual-only entities from the list.
+          .filter(
+            (entity) =>
+              !(entity.entity_id === variables.entityId && entity.mention_count === 0)
+          )
+          // For multi-source entities: clear has_manual and remove "manual" from sources.
+          .map((entity) => {
+            if (entity.entity_id !== variables.entityId) return entity;
+            return {
+              ...entity,
+              has_manual: false,
+              sources: entity.sources.filter((s) => s !== "manual"),
+            };
+          });
+
+        queryClient.setQueryData<VideoEntitiesResponse>(queryKey, {
+          ...previousData,
+          data: updatedEntities,
+        });
+      }
+
+      // Return the snapshots so we can roll back on error.
+      return {
+        snapshots: matchedQueries as Array<
+          [readonly unknown[], VideoEntitiesResponse | undefined]
+        >,
+      };
+    },
+
+    onError: (_err, _variables, context) => {
+      // Roll back the optimistic update on failure.
+      if (context?.snapshots) {
+        for (const [queryKey, previousData] of context.snapshots) {
+          queryClient.setQueryData<VideoEntitiesResponse>(queryKey, previousData);
+        }
+      }
+    },
+
+    onSuccess: (_data, variables) => {
+      // The optimistic update in onMutate already applied the correct
+      // post-deletion state to the cache.  We intentionally mark video-entities
+      // as stale WITHOUT triggering an immediate background refetch (refetchType:
+      // 'none') so the refetch cannot race the optimistic update and overwrite it
+      // with a potentially-stale server response.  TanStack Query will refetch on
+      // the next cache-invalidating event (e.g. component remount, window focus).
+      void queryClient.invalidateQueries({
+        queryKey: ["video-entities", variables.videoId],
+        refetchType: "none",
+      });
+      // These caches were NOT optimistically updated, so an immediate refetch is
+      // correct and desired — they need fresh server data to reflect the deletion.
+      void queryClient.invalidateQueries({ queryKey: ["entitySearch"] });
+      void queryClient.invalidateQueries({ queryKey: ["entity-videos"] });
+      void queryClient.invalidateQueries({ queryKey: ["entity-detail"] });
+    },
+  });
 }

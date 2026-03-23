@@ -43,6 +43,13 @@ vi.mock("../../hooks/useEntityMentions", () => ({
     isError: false,
     error: null,
   })),
+  useDeleteManualAssociation: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    isSuccess: false,
+  })),
 }));
 
 // Mock PhoneticVariantsSection to avoid it calling useQuery independently,

@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, Path, Query
+from fastapi import APIRouter, Body, Depends, Path, Query, Response
 from sqlalchemy import distinct, func, or_, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,9 +19,11 @@ from chronovista.api.deps import get_db, require_auth
 from chronovista.api.schemas.entity_mentions import (
     CreateEntityAliasRequest,
     EntityAliasSummary,
+    EntitySearchResult,
     EntityVideoResponse,
     EntityVideoResult,
     ExclusionPatternRequest,
+    ManualAssociationResponse,
     MentionPreview,
     PhoneticMatchResponse,
     VideoEntitiesResponse,
@@ -31,7 +33,7 @@ from chronovista.api.schemas.responses import ApiResponse, PaginationMeta
 from chronovista.db.models import EntityAlias as EntityAliasDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import Video as VideoDB
-from chronovista.exceptions import ConflictError, NotFoundError
+from chronovista.exceptions import APIValidationError, ConflictError, NotFoundError
 from chronovista.models.entity_alias import EntityAliasCreate
 from chronovista.models.enums import EntityAliasType
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
@@ -214,6 +216,46 @@ async def list_entities(
             "has_more": offset + limit < total,
         },
     }
+
+
+@router.get(
+    "/entities/search",
+    status_code=200,
+    summary="Search entities for autocomplete",
+)
+async def search_entities(
+    q: str = Query(..., min_length=2, description="Search query (min 2 chars)"),
+    video_id: str | None = Query(default=None, description="Video ID for is_linked check"),
+    limit: int = Query(default=10, ge=1, le=20, description="Max results"),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Search named entities by name or alias for autocomplete.
+
+    Performs ILIKE prefix search on canonical_name and alias_name,
+    deduplicates by entity_id, and optionally checks whether each
+    entity is already linked to a given video.
+
+    Parameters
+    ----------
+    q : str
+        Search query (minimum 2 characters).
+    video_id : str | None
+        Optional video ID; when provided, each result includes
+        ``is_linked`` and ``link_sources`` fields.
+    limit : int
+        Maximum number of results (1-20, default 10).
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    dict
+        List of entity search results wrapped in a ``data`` envelope.
+    """
+    results = await _mention_repo.search_entities(
+        session, query=q, video_id=video_id, limit=limit
+    )
+    return {"data": [EntitySearchResult(**r) for r in results]}
 
 
 @router.get(
@@ -420,6 +462,10 @@ async def get_entity_videos(
             channel_name=r["channel_name"],
             mention_count=r["mention_count"],
             mentions=[MentionPreview(**m) for m in r["mentions"]],
+            sources=r["sources"],
+            has_manual=r["has_manual"],
+            first_mention_time=r["first_mention_time"],
+            upload_date=r["upload_date"],
         )
         for r in results
     ]
@@ -763,3 +809,121 @@ async def remove_exclusion_pattern(
             "exclusion_patterns": list(entity.exclusion_patterns or []),
         }
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# POST /videos/{video_id}/entities/{entity_id}/manual
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.post(
+    "/videos/{video_id}/entities/{entity_id}/manual",
+    status_code=201,
+    summary="Create manual entity-video association",
+)
+async def create_manual_association(
+    video_id: str = Path(..., description="YouTube video ID"),
+    entity_id: str = Path(..., description="Named entity UUID"),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Create a manual association between a named entity and a video.
+
+    Validates that both the video and entity exist, the entity is not
+    deprecated, and no duplicate manual association exists.
+
+    Parameters
+    ----------
+    video_id : str
+        YouTube video ID.
+    entity_id : str
+        Named entity UUID (string representation).
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    dict
+        Created mention wrapped in a ``data`` envelope with
+        ManualAssociationResponse fields.
+
+    Raises
+    ------
+    NotFoundError
+        If the video or entity does not exist (404), or if entity_id
+        is not a valid UUID.
+    APIValidationError
+        If the entity is deprecated (422).
+    ConflictError
+        If a manual association already exists (409).
+    """
+    # Parse entity_id to UUID
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    mention = await _mention_repo.create_manual_association(
+        session, video_id=video_id, entity_id=parsed_entity_id
+    )
+    await session.commit()
+    await session.refresh(mention)
+
+    return {
+        "data": ManualAssociationResponse(
+            id=str(mention.id),
+            entity_id=str(mention.entity_id),
+            video_id=mention.video_id,
+            detection_method=mention.detection_method,
+            mention_text=mention.mention_text,
+            created_at=mention.created_at.isoformat(),
+        ).model_dump()
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DELETE /videos/{video_id}/entities/{entity_id}/manual
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.delete(
+    "/videos/{video_id}/entities/{entity_id}/manual",
+    status_code=204,
+    response_class=Response,
+    summary="Remove manual entity-video association",
+)
+async def delete_manual_association(
+    video_id: str = Path(..., description="YouTube video ID"),
+    entity_id: str = Path(..., description="Named entity UUID"),
+    session: AsyncSession = Depends(get_db),
+) -> Response:
+    """Remove a manual association between a named entity and a video.
+
+    Deletes the ``entity_mentions`` row with ``detection_method='manual'``
+    for the given video and entity, and updates entity counters.
+
+    Parameters
+    ----------
+    video_id : str
+        YouTube video ID.
+    entity_id : str
+        Named entity UUID (string representation).
+    session : AsyncSession
+        Database session (injected).
+
+    Raises
+    ------
+    NotFoundError
+        If no manual association exists for this entity+video (404),
+        or if entity_id is not a valid UUID.
+    """
+    # Parse entity_id to UUID
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    await _mention_repo.delete_manual_association(
+        session, video_id=video_id, entity_id=parsed_entity_id
+    )
+    await session.commit()
+    return Response(status_code=204)

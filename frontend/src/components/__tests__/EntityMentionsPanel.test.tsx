@@ -1,23 +1,51 @@
 /**
  * Tests for EntityMentionsPanel component.
  *
- * Coverage (Feature 038, T030):
- * - Renders nothing (hidden) when entities is empty and not loading
+ * Coverage (Feature 038, T030; Feature 050, T025):
  * - Shows loading skeleton when isLoading is true
+ * - Always renders the panel (T011 — empty state with message)
  * - Groups entities by type with section headings
  * - Shows count badges next to entity names
  * - Each entity chip links to /entities/{entity_id}
  * - Invokes onEntityClick callback when a chip is clicked
  * - Renders all known entity type groups in correct order
+ * - Shows search/link UI (T025)
+ *
+ * Note: Full search-UI behaviour is tested in the TDD suite at
+ * src/tests/components/EntityMentionsPanel.test.tsx.  This file tests
+ * the baseline chip/group behaviour and panel structure.
  */
 
 import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MemoryRouter } from "react-router-dom";
+
+// ---------------------------------------------------------------------------
+// Mock hooks used inside EntityMentionsPanel — must be declared before imports
+// ---------------------------------------------------------------------------
+
+vi.mock("../../hooks/useEntitySearch", () => ({
+  useEntitySearch: vi.fn(),
+}));
+
+vi.mock("../../hooks/useEntityMentions", () => ({
+  useVideoEntities: vi.fn(),
+  useEntityVideos: vi.fn(),
+  useEntities: vi.fn(),
+  useCreateManualAssociation: vi.fn(),
+  useDeleteManualAssociation: vi.fn(),
+}));
+
+// ---------------------------------------------------------------------------
+// Imports after mocks
+// ---------------------------------------------------------------------------
 
 import { EntityMentionsPanel } from "../EntityMentionsPanel";
 import type { EntityMentionsPanelProps } from "../EntityMentionsPanel";
 import type { VideoEntitySummary } from "../../api/entityMentions";
+import { useEntitySearch } from "../../hooks/useEntitySearch";
+import { useCreateManualAssociation, useDeleteManualAssociation } from "../../hooks/useEntityMentions";
+import type { Mock } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -31,14 +59,19 @@ function createEntity(overrides: Partial<VideoEntitySummary> = {}): VideoEntityS
     description: null,
     mention_count: 3,
     first_mention_time: 42.5,
+    sources: ["transcript"],
+    has_manual: false,
     ...overrides,
   };
 }
+
+const VIDEO_ID = "test-video-001";
 
 function renderPanel(props: Partial<EntityMentionsPanelProps> = {}) {
   const defaultProps: EntityMentionsPanelProps = {
     entities: [],
     isLoading: false,
+    videoId: VIDEO_ID,
     ...props,
   };
   return render(
@@ -53,10 +86,39 @@ function renderPanel(props: Partial<EntityMentionsPanelProps> = {}) {
 // ---------------------------------------------------------------------------
 
 describe("EntityMentionsPanel", () => {
+  beforeEach(() => {
+    (useEntitySearch as Mock).mockReturnValue({
+      entities: [],
+      isLoading: false,
+      isFetched: false,
+      isError: false,
+      isBelowMinChars: true,
+    });
+    (useCreateManualAssociation as Mock).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      isSuccess: false,
+    });
+    (useDeleteManualAssociation as Mock).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      isSuccess: false,
+    });
+  });
+
   describe("Empty state", () => {
-    it("renders nothing when entities is empty and not loading", () => {
-      const { container } = renderPanel({ entities: [], isLoading: false });
-      expect(container.firstChild).toBeNull();
+    it("renders the panel with the heading even when entities is empty", () => {
+      renderPanel({ entities: [], isLoading: false });
+      expect(screen.getByRole("heading", { name: /entity mentions/i })).toBeInTheDocument();
+    });
+
+    it("shows the empty-state message when entities is empty", () => {
+      renderPanel({ entities: [], isLoading: false });
+      expect(screen.getByText(/no entity mentions yet/i)).toBeInTheDocument();
     });
   });
 
@@ -206,6 +268,18 @@ describe("EntityMentionsPanel", () => {
         name: /John Doe.*5 mention/i,
       });
       expect(chip).toBeInTheDocument();
+    });
+  });
+
+  describe("Search UI (T025)", () => {
+    it("renders a search input within the panel", () => {
+      renderPanel({ entities: [] });
+      expect(screen.getByRole("searchbox")).toBeInTheDocument();
+    });
+
+    it("renders the search input even when entities exist", () => {
+      renderPanel({ entities: [createEntity()] });
+      expect(screen.getByRole("searchbox")).toBeInTheDocument();
     });
   });
 });

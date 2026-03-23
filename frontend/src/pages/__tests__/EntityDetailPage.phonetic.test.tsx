@@ -26,6 +26,13 @@ vi.mock("../../hooks/useEntityMentions", () => ({
     isError: false,
     error: null,
   })),
+  useDeleteManualAssociation: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    isSuccess: false,
+  })),
 }));
 
 vi.mock("@tanstack/react-query", async (importOriginal) => {

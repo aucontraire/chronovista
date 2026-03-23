@@ -11,6 +11,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.51.0] - 2026-03-22
+
+### Added
+- **Feature 050: Manual Video-Level Entity Mentions (ADR-006 Increment D)**
+  - **Manual Entity-Video Association (US1)**: `EntityMentionsPanel` on video detail page with entity search autocomplete against existing `named_entities`; selecting an entity creates an `entity_mentions` row with `detection_method='manual'` and `segment_id=NULL`; duplicate prevention (409); already-linked entities shown as disabled with "Already linked" label; search driven by `useEntitySearch` hook with 300ms debounce and 2-char minimum
+  - **Multi-Source Entity Video List (US2)**: Entity detail page shows videos from ALL sources (transcript, manual, user_correction) with source badges (`[TRANSCRIPT ×N]`, `[MANUAL]`); deduplication via `_SOURCE_CATEGORY_MAP` mapping detection methods to display categories; `has_manual` flag and `sources` array on `VideoEntitySummary` response; entity header stats reflect combined video count across all sources
+  - **Remove Manual Association (US3)**: Unlink button with confirmation dialog on manually-linked entities; `DELETE /api/v1/videos/{video_id}/entities/{entity_id}/manual` returns 204 No Content; optimistic cache update with rollback on error; only manual associations can be removed (transcript-derived mentions cannot be deleted from UI)
+  - **Entity Search API**: `GET /api/v1/entities/search?q=...&video_id=...` returns entity matches with `is_linked` and `link_sources` fields indicating existing associations for the given video
+  - **Manual Association API**: `POST /api/v1/videos/{video_id}/entities/{entity_id}/manual` creates manual entity-video association; `DELETE /api/v1/videos/{video_id}/entities/{entity_id}/manual` removes it
+
+### Fixed
+- `apiFetch` calling `response.json()` on 204 No Content responses — added status check to return `undefined` for bodyless responses (204/205)
+- `_TRANSCRIPT_METHODS` missing `"user_correction"` — entity mention counts excluded correction-derived mentions, showing 0 in entity detail view
+- `_SOURCE_CATEGORY_MAP` mapping `user_correction` to its own category instead of `"transcript"` — frontend showed separate badge instead of combining with transcript count
+- `union_all` in `visible_names` subquery causing JOIN fan-out when canonical name also existed as a `name_variant` alias — changed to `union` to deduplicate, fixing doubled mention counts
+- Entity search autocomplete disabling all linked entities — changed to only disable manually-linked entities (`link_sources.includes("manual")`), allowing transcript-linked entities to receive manual associations
+- `useDeleteManualAssociation` using `useEffect(isSuccess)` for cleanup — replaced with per-call `onSuccess` callback for reliable state reset
+
+### Technical
+- 3 new API endpoints (entity search, create manual association, delete manual association)
+- 1 new frontend component (`EntityMentionsPanel`), 2 new hooks (`useEntityMentions`, `useDeleteManualAssociation`), 1 new API client module
+- New Alembic migration 050 for `entity_mentions` schema updates (nullable `segment_id`, nullable `language_code` for manual mentions)
+- 43 new frontend tests (apiFetch 204 handling, delete API client, optimistic update hook)
+- 7,301+ total backend tests, 3,377+ total frontend tests
+- Frontend version: 0.19.0 → 0.20.0
+- TypeScript strict mode (0 errors), mypy strict compliance (0 errors)
+- No new dependencies
+
 ## [0.50.0] - 2026-03-21
 
 ### Added

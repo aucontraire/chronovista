@@ -437,15 +437,15 @@ CREATE TABLE entity_aliases (
 
 ### entity_mentions
 
-Tracks where named entities appear in transcript segments. Created by `entities scan` (rule_match) or batch corrections with entity linking (user_correction).
+Tracks where named entities appear in transcript segments or are manually associated with videos. Created by `entities scan` (rule_match), batch corrections with entity linking (user_correction), or manual association from the UI (manual).
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | UUID (v7) | Primary key |
 | `entity_id` | UUID | FK → `named_entities.id` |
-| `segment_id` | INTEGER | FK → `transcript_segments.id` |
+| `segment_id` | INTEGER | FK → `transcript_segments.id` (nullable — NULL for manual associations) |
 | `video_id` | VARCHAR(11) | YouTube video ID |
-| `language_code` | VARCHAR(10) | BCP-47 language code |
+| `language_code` | VARCHAR(10) | BCP-47 language code (nullable — NULL for manual associations) |
 | `mention_text` | TEXT | Exact matched text |
 | `match_start` | INTEGER | Character offset start (nullable) |
 | `match_end` | INTEGER | Character offset end (nullable) |
@@ -457,6 +457,8 @@ Tracks where named entities appear in transcript segments. Created by `entities 
 **Indexes**: entity_id, segment_id, video_id, detection_method, correction_id
 
 **Unique constraint**: `(entity_id, segment_id, mention_text)` — prevents duplicate mentions via `ON CONFLICT DO NOTHING`
+
+**Manual associations**: When `detection_method='manual'`, `segment_id` and `language_code` are NULL, and `mention_text` is set to the entity's canonical name. The unique constraint uses a partial index for manual mentions: `(entity_id, video_id)` WHERE `detection_method='manual'`.
 
 ### tag_operation_logs
 

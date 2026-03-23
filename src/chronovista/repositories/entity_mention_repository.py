@@ -11,11 +11,15 @@ import uuid
 from typing import Any, Optional
 
 from sqlalchemy import (
+    String,
     and_,
     delete,
     distinct,
     func,
+    literal,
+    or_,
     select,
+    type_coerce,
     union,
     union_all,
     update,
@@ -23,6 +27,8 @@ from sqlalchemy import (
 
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from uuid_utils import uuid7
 
 from chronovista.db.models import (
     CanonicalTag as CanonicalTagDB,
@@ -35,6 +41,7 @@ from chronovista.db.models import (
     Video as VideoDB,
     VideoTag as VideoTagDB,
 )
+from chronovista.exceptions import APIValidationError, ConflictError, NotFoundError
 from chronovista.models.entity_mention import EntityMentionCreate
 from chronovista.models.enums import EntityAliasType
 from chronovista.repositories.base import BaseSQLAlchemyRepository
@@ -103,8 +110,11 @@ class EntityMentionRepository(
     ) -> int:
         """Bulk insert entity mentions, skipping duplicates on conflict.
 
-        Uses INSERT ... ON CONFLICT (entity_id, segment_id, match_start) DO NOTHING
-        for efficient bulk insertion with automatic deduplication.
+        Uses INSERT ... ON CONFLICT DO NOTHING for efficient bulk insertion
+        with automatic deduplication.  Conflicts are detected by the applicable
+        partial unique indexes: ``uq_entity_mentions_transcript`` for
+        segment-bound mentions and ``uq_entity_mentions_manual`` for manual
+        mentions.
 
         Parameters
         ----------
@@ -130,9 +140,7 @@ class EntityMentionRepository(
         stmt = (
             insert(EntityMentionDB)
             .values(values)
-            .on_conflict_do_nothing(
-                constraint="uq_entity_mention_entity_segment_position"
-            )
+            .on_conflict_do_nothing()
         )
         result = await session.execute(stmt)
         return int(result.rowcount)
@@ -318,7 +326,7 @@ class EntityMentionRepository(
             EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR,
         )
 
-        visible_names = union_all(canonical_names, non_asr_aliases).subquery()
+        visible_names = union(canonical_names, non_asr_aliases).subquery()
 
         # Count only mentions whose mention_text matches a visible name
         agg_subq = (
@@ -438,6 +446,15 @@ class EntityMentionRepository(
         )
         await session.execute(zero_stmt)
 
+    # Category mapping for detection methods → source categories
+    _SOURCE_CATEGORY_MAP: dict[str, str] = {
+        "rule_match": "transcript",
+        "spacy_ner": "transcript",
+        "llm_extraction": "transcript",
+        "manual": "manual",
+        "user_correction": "transcript",
+    }
+
     async def get_video_entity_summary(
         self,
         session: AsyncSession,
@@ -448,7 +465,9 @@ class EntityMentionRepository(
 
         GROUP BY entity_id with COUNT(distinct segment_id) as mention_count,
         MIN(start_time) as first_mention_time. JOINs named_entities for
-        canonical_name, entity_type, description. Sorted by mention_count DESC.
+        canonical_name, entity_type, description. Uses LEFT JOIN on
+        transcript_segments to include manual mentions (segment_id=NULL).
+        Sorted by mention_count DESC.
 
         Parameters
         ----------
@@ -462,22 +481,34 @@ class EntityMentionRepository(
         Returns
         -------
         list[dict[str, Any]]
-            List of dicts matching VideoEntitySummary schema.
+            List of dicts matching VideoEntitySummary schema including
+            sources, has_manual, and nullable first_mention_time.
         """
+        # Use array_agg to collect distinct detection methods per entity
         stmt = (
             select(
                 EntityMentionDB.entity_id,
                 NamedEntityDB.canonical_name,
                 NamedEntityDB.entity_type,
                 NamedEntityDB.description,
-                func.count(distinct(EntityMentionDB.segment_id)).label("mention_count"),
-                func.min(TranscriptSegmentDB.start_time).label("first_mention_time"),
+                func.count(
+                    distinct(EntityMentionDB.segment_id)
+                ).label("mention_count"),
+                func.min(TranscriptSegmentDB.start_time).label(
+                    "first_mention_time"
+                ),
+                func.array_agg(
+                    distinct(EntityMentionDB.detection_method)
+                ).label("detection_methods"),
+                func.bool_or(
+                    EntityMentionDB.detection_method == "manual"
+                ).label("has_manual"),
             )
             .join(
                 NamedEntityDB,
                 EntityMentionDB.entity_id == NamedEntityDB.id,
             )
-            .join(
+            .outerjoin(
                 TranscriptSegmentDB,
                 EntityMentionDB.segment_id == TranscriptSegmentDB.id,
             )
@@ -488,11 +519,20 @@ class EntityMentionRepository(
                 NamedEntityDB.entity_type,
                 NamedEntityDB.description,
             )
-            .order_by(func.count(distinct(EntityMentionDB.segment_id)).desc())
+            .order_by(
+                func.count(distinct(EntityMentionDB.segment_id)).desc()
+            )
         )
 
         if language_code is not None:
-            stmt = stmt.where(EntityMentionDB.language_code == language_code)
+            # Language filter applies to transcript-derived mentions only;
+            # manual mentions (language_code=NULL) are always included.
+            stmt = stmt.where(
+                or_(
+                    EntityMentionDB.language_code == language_code,
+                    EntityMentionDB.detection_method == "manual",
+                )
+            )
 
         result = await session.execute(stmt)
         rows = result.all()
@@ -504,10 +544,24 @@ class EntityMentionRepository(
                 "entity_type": row.entity_type,
                 "description": row.description,
                 "mention_count": row.mention_count,
-                "first_mention_time": row.first_mention_time,
+                "first_mention_time": (
+                    float(row.first_mention_time)
+                    if row.first_mention_time is not None
+                    else None
+                ),
+                "sources": sorted(
+                    {
+                        self._SOURCE_CATEGORY_MAP.get(dm, dm)
+                        for dm in (row.detection_methods or [])
+                    }
+                ),
+                "has_manual": bool(row.has_manual),
             }
             for row in rows
         ]
+
+    # Transcript-derived detection methods (excludes manual).
+    _TRANSCRIPT_METHODS = {"rule_match", "spacy_ner", "llm_extraction", "user_correction"}
 
     async def get_entity_video_list(
         self,
@@ -519,8 +573,10 @@ class EntityMentionRepository(
     ) -> tuple[list[dict[str, Any]], int]:
         """Get paginated list of videos where an entity is mentioned.
 
-        GROUP BY video_id with COUNT as mention_count. JOINs videos for title,
-        channels for channel_name. Each result includes up to 5 mention previews.
+        GROUP BY video_id with transcript-only mention_count. JOINs videos for
+        title, channels for channel_name. Each result includes up to 5 mention
+        previews (transcript-derived only), source categories, has_manual flag,
+        first_mention_time, and upload_date. Sorted by upload_date DESC.
 
         Parameters
         ----------
@@ -529,7 +585,8 @@ class EntityMentionRepository(
         entity_id : uuid.UUID
             The named entity UUID.
         language_code : str | None
-            Optional language filter.
+            Optional language filter. Manual mentions (language_code=NULL) are
+            always included regardless of this filter.
         limit : int
             Maximum results per page.
         offset : int
@@ -555,71 +612,104 @@ class EntityMentionRepository(
             EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR,
         )
 
-        visible_names = union_all(canonical_names, non_asr_aliases).subquery()
+        visible_names = union(canonical_names, non_asr_aliases).subquery()
 
-        # Base filter: entity match + visible-name match
-        base_filters = [
+        # Mention filter: visible-name match OR manual detection method.
+        # Manual mentions always use mention_text=canonical_name which is
+        # already in visible_names, but we include them via OR to be safe.
+        mention_filter = and_(
             EntityMentionDB.entity_id == entity_id,
-            func.lower(EntityMentionDB.mention_text) == visible_names.c.name_lower,
-        ]
-        if language_code is not None:
-            base_filters.append(EntityMentionDB.language_code == language_code)
+            or_(
+                func.lower(EntityMentionDB.mention_text)
+                == visible_names.c.name_lower,
+                EntityMentionDB.detection_method == "manual",
+            ),
+        )
+
+        # Language filter: manual mentions (language_code=NULL) always pass.
+        lang_filter = (
+            or_(
+                EntityMentionDB.language_code == language_code,
+                EntityMentionDB.detection_method == "manual",
+            )
+            if language_code is not None
+            else None
+        )
 
         # Total count of distinct videos
         count_stmt = (
             select(func.count(distinct(EntityMentionDB.video_id)))
-            .join(
+            .outerjoin(
                 visible_names,
                 func.lower(EntityMentionDB.mention_text)
                 == visible_names.c.name_lower,
             )
-            .where(
-                EntityMentionDB.entity_id == entity_id,
-                *(
-                    [EntityMentionDB.language_code == language_code]
-                    if language_code is not None
-                    else []
-                ),
-            )
+            .where(mention_filter)
         )
+        if lang_filter is not None:
+            count_stmt = count_stmt.where(lang_filter)
+
         total_result = await session.execute(count_stmt)
         total_count = total_result.scalar() or 0
 
         if total_count == 0:
             return [], 0
 
-        # Main query: group by video_id with mention count
+        # Main query: group by video_id with transcript-only mention count,
+        # source categories, has_manual, first_mention_time, upload_date.
         main_stmt = (
             select(
                 EntityMentionDB.video_id,
                 VideoDB.title.label("video_title"),
-                func.coalesce(Channel.title, VideoDB.channel_name_hint, "Unknown").label(
-                    "channel_name"
+                func.coalesce(
+                    Channel.title, VideoDB.channel_name_hint, "Unknown"
+                ).label("channel_name"),
+                # Transcript-only mention count (excludes manual)
+                func.count()
+                .filter(
+                    EntityMentionDB.detection_method.in_(self._TRANSCRIPT_METHODS)
+                )
+                .label("mention_count"),
+                # Collect distinct detection methods for source mapping
+                func.array_agg(
+                    distinct(EntityMentionDB.detection_method)
+                ).label("detection_methods"),
+                # Has manual flag
+                func.bool_or(
+                    EntityMentionDB.detection_method == "manual"
+                ).label("has_manual"),
+                # First mention time from transcript segments (LEFT JOIN)
+                func.min(TranscriptSegmentDB.start_time).label(
+                    "first_mention_time"
                 ),
-                func.count().label("mention_count"),
+                # Upload date for sorting
+                VideoDB.upload_date,
             )
-            .join(
+            .outerjoin(
                 visible_names,
                 func.lower(EntityMentionDB.mention_text)
                 == visible_names.c.name_lower,
             )
             .join(VideoDB, EntityMentionDB.video_id == VideoDB.video_id)
             .outerjoin(Channel, VideoDB.channel_id == Channel.channel_id)
-            .where(
-                EntityMentionDB.entity_id == entity_id,
-                *(
-                    [EntityMentionDB.language_code == language_code]
-                    if language_code is not None
-                    else []
-                ),
+            .outerjoin(
+                TranscriptSegmentDB,
+                EntityMentionDB.segment_id == TranscriptSegmentDB.id,
             )
-            .group_by(
+            .where(mention_filter)
+        )
+        if lang_filter is not None:
+            main_stmt = main_stmt.where(lang_filter)
+
+        main_stmt = (
+            main_stmt.group_by(
                 EntityMentionDB.video_id,
                 VideoDB.title,
                 Channel.title,
                 VideoDB.channel_name_hint,
+                VideoDB.upload_date,
             )
-            .order_by(func.count().desc())
+            .order_by(VideoDB.upload_date.desc())
             .offset(offset)
             .limit(limit)
         )
@@ -629,7 +719,15 @@ class EntityMentionRepository(
 
         results: list[dict[str, Any]] = []
         for row in video_rows:
-            # Fetch up to 5 mention previews for this video (visible names only)
+            # Map detection methods to source categories
+            sources = sorted(
+                {
+                    self._SOURCE_CATEGORY_MAP.get(dm, dm)
+                    for dm in (row.detection_methods or [])
+                }
+            )
+
+            # Fetch up to 5 transcript-derived mention previews (skip manual)
             preview_stmt = (
                 select(
                     EntityMentionDB.segment_id,
@@ -640,7 +738,7 @@ class EntityMentionRepository(
                     TranscriptSegmentDB,
                     EntityMentionDB.segment_id == TranscriptSegmentDB.id,
                 )
-                .join(
+                .outerjoin(
                     visible_names,
                     func.lower(EntityMentionDB.mention_text)
                     == visible_names.c.name_lower,
@@ -648,6 +746,12 @@ class EntityMentionRepository(
                 .where(
                     EntityMentionDB.entity_id == entity_id,
                     EntityMentionDB.video_id == row.video_id,
+                    EntityMentionDB.detection_method != "manual",
+                    or_(
+                        func.lower(EntityMentionDB.mention_text)
+                        == visible_names.c.name_lower,
+                        EntityMentionDB.detection_method == "manual",
+                    ),
                 )
             )
             if language_code is not None:
@@ -675,6 +779,18 @@ class EntityMentionRepository(
                     "channel_name": row.channel_name,
                     "mention_count": row.mention_count,
                     "mentions": previews,
+                    "sources": sources,
+                    "has_manual": bool(row.has_manual),
+                    "first_mention_time": (
+                        float(row.first_mention_time)
+                        if row.first_mention_time is not None
+                        else None
+                    ),
+                    "upload_date": (
+                        row.upload_date.isoformat()
+                        if row.upload_date is not None
+                        else None
+                    ),
                 }
             )
 
@@ -866,3 +982,303 @@ class EntityMentionRepository(
         combined = union(path1, path2)
         result = await session.execute(combined)
         return set(result.scalars().all())
+
+    async def search_entities(
+        self,
+        session: AsyncSession,
+        query: str,
+        video_id: str | None = None,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Search named entities by canonical name or alias for autocomplete.
+
+        Performs ILIKE prefix search on ``named_entities.canonical_name`` and
+        ``entity_aliases.alias_name``, deduplicates by entity_id, and
+        optionally checks whether each entity is already linked to a video.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        query : str
+            Search query (minimum 2 characters).
+        video_id : str | None
+            Optional video ID; when provided, each result includes
+            ``is_linked`` and ``link_sources`` fields.
+        limit : int
+            Maximum number of results to return (default 10).
+
+        Returns
+        -------
+        list[dict[str, Any]]
+            List of entity dicts matching EntitySearchResult schema.
+
+        Raises
+        ------
+        ValueError
+            If query is shorter than 2 characters.
+        """
+        if len(query) < 2:
+            raise ValueError("Search query must be at least 2 characters")
+
+        pattern = f"{query}%"
+
+        # Canonical name matches
+        canonical_stmt = (
+            select(
+                NamedEntityDB.id.label("entity_id"),
+                NamedEntityDB.canonical_name,
+                NamedEntityDB.entity_type,
+                NamedEntityDB.description,
+                NamedEntityDB.status,
+                type_coerce(literal(None), String).label("matched_alias"),
+            )
+            .where(NamedEntityDB.canonical_name.ilike(pattern))
+        )
+
+        # Alias matches — only include if canonical name did NOT match
+        alias_stmt = (
+            select(
+                NamedEntityDB.id.label("entity_id"),
+                NamedEntityDB.canonical_name,
+                NamedEntityDB.entity_type,
+                NamedEntityDB.description,
+                NamedEntityDB.status,
+                EntityAliasDB.alias_name.label("matched_alias"),
+            )
+            .join(EntityAliasDB, NamedEntityDB.id == EntityAliasDB.entity_id)
+            .where(
+                EntityAliasDB.alias_name.ilike(pattern),
+                ~NamedEntityDB.canonical_name.ilike(pattern),
+            )
+        )
+
+        combined = union(canonical_stmt, alias_stmt).subquery()
+        outer_stmt = select(combined)
+        result = await session.execute(outer_stmt)
+        rows = result.all()
+
+        # Deduplicate by entity_id (keep first occurrence — canonical match
+        # appears first from UNION which removes exact duplicates)
+        seen: set[uuid.UUID] = set()
+        unique_rows: list[Any] = []
+        for row in rows:
+            eid = row.entity_id
+            if eid not in seen:
+                seen.add(eid)
+                unique_rows.append(row)
+
+        # Sort by relevance tiers:
+        # 1. Exact canonical match (canonical_name ILIKE query exactly)
+        # 2. Prefix canonical match (matched_alias is None)
+        # 3. Alias match (matched_alias is not None)
+        # Within each tier: alphabetical by canonical_name
+        query_lower = query.lower()
+
+        def sort_key(row: Any) -> tuple[int, str]:
+            if row.matched_alias is None:
+                # Canonical name matched
+                if row.canonical_name.lower() == query_lower:
+                    return (0, row.canonical_name.lower())
+                return (1, row.canonical_name.lower())
+            return (2, row.canonical_name.lower())
+
+        unique_rows.sort(key=sort_key)
+        unique_rows = unique_rows[:limit]
+
+        # Build is_linked / link_sources if video_id provided
+        linked_map: dict[uuid.UUID, list[str]] = {}
+        if video_id is not None:
+            entity_ids = [r.entity_id for r in unique_rows]
+            if entity_ids:
+                link_stmt = (
+                    select(
+                        EntityMentionDB.entity_id,
+                        EntityMentionDB.detection_method,
+                    )
+                    .where(
+                        EntityMentionDB.entity_id.in_(entity_ids),
+                        EntityMentionDB.video_id == video_id,
+                    )
+                )
+                link_result = await session.execute(link_stmt)
+                for link_row in link_result.all():
+                    eid = link_row.entity_id
+                    if eid not in linked_map:
+                        linked_map[eid] = []
+                    method = link_row.detection_method
+                    if method not in linked_map[eid]:
+                        linked_map[eid].append(method)
+
+        results: list[dict[str, Any]] = []
+        for row in unique_rows:
+            entry: dict[str, Any] = {
+                "entity_id": str(row.entity_id),
+                "canonical_name": row.canonical_name,
+                "entity_type": row.entity_type,
+                "description": row.description,
+                "status": row.status,
+                "matched_alias": row.matched_alias,
+            }
+            if video_id is not None:
+                sources = linked_map.get(row.entity_id, [])
+                entry["is_linked"] = len(sources) > 0
+                entry["link_sources"] = sorted(sources)
+            else:
+                entry["is_linked"] = None
+                entry["link_sources"] = None
+            results.append(entry)
+
+        return results
+
+    async def create_manual_association(
+        self,
+        session: AsyncSession,
+        video_id: str,
+        entity_id: uuid.UUID,
+    ) -> EntityMentionDB:
+        """Create a manual entity-video association.
+
+        Validates that the video and entity exist, the entity is not
+        deprecated, and no duplicate manual association exists before
+        creating a new ``entity_mentions`` row with
+        ``detection_method='manual'``.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        video_id : str
+            YouTube video ID.
+        entity_id : uuid.UUID
+            Named entity UUID.
+
+        Returns
+        -------
+        EntityMentionDB
+            The created entity mention row.
+
+        Raises
+        ------
+        NotFoundError
+            If the video or entity does not exist.
+        APIValidationError
+            If the entity is deprecated.
+        ConflictError
+            If a manual association already exists for this entity+video.
+        """
+        # 1. Check video exists
+        video_result = await session.execute(
+            select(VideoDB.video_id).where(VideoDB.video_id == video_id)
+        )
+        if video_result.scalar_one_or_none() is None:
+            raise NotFoundError(resource_type="Video", identifier=video_id)
+
+        # 2. Check entity exists
+        entity_result = await session.execute(
+            select(NamedEntityDB).where(NamedEntityDB.id == entity_id)
+        )
+        entity = entity_result.scalar_one_or_none()
+        if entity is None:
+            raise NotFoundError(
+                resource_type="Entity", identifier=str(entity_id)
+            )
+
+        # 3. Check entity not deprecated
+        if entity.status == "deprecated":
+            raise APIValidationError(
+                message=(
+                    f"Entity '{entity.canonical_name}' has been deprecated "
+                    f"and cannot be manually associated"
+                ),
+                details={
+                    "entity_id": str(entity_id),
+                    "status": entity.status,
+                },
+            )
+
+        # 4. Check no existing manual association
+        existing_result = await session.execute(
+            select(EntityMentionDB).where(
+                EntityMentionDB.entity_id == entity_id,
+                EntityMentionDB.video_id == video_id,
+                EntityMentionDB.detection_method == "manual",
+            )
+        )
+        if existing_result.scalar_one_or_none() is not None:
+            raise ConflictError(
+                message=(
+                    f"Manual association already exists for entity "
+                    f"'{entity.canonical_name}' on video '{video_id}'"
+                ),
+                details={
+                    "entity_id": str(entity_id),
+                    "video_id": video_id,
+                },
+            )
+
+        # 5. Create the mention
+        mention = EntityMentionDB(
+            id=uuid.UUID(bytes=uuid7().bytes),
+            entity_id=entity_id,
+            segment_id=None,
+            video_id=video_id,
+            language_code=None,
+            mention_text=entity.canonical_name,
+            detection_method="manual",
+            confidence=None,
+            match_start=None,
+            match_end=None,
+        )
+        session.add(mention)
+        await session.flush()
+
+        # 6. Update entity counters
+        await self.update_entity_counters(session, [entity_id])
+
+        return mention
+
+    async def delete_manual_association(
+        self,
+        session: AsyncSession,
+        video_id: str,
+        entity_id: uuid.UUID,
+    ) -> None:
+        """Delete a manual entity-video association.
+
+        Finds and removes the ``entity_mentions`` row with
+        ``detection_method='manual'`` for the given video and entity,
+        then updates the entity counters within the same transaction.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        video_id : str
+            YouTube video ID.
+        entity_id : uuid.UUID
+            Named entity UUID.
+
+        Raises
+        ------
+        NotFoundError
+            If no manual association exists for this entity+video.
+        """
+        result = await session.execute(
+            select(EntityMentionDB).where(
+                EntityMentionDB.entity_id == entity_id,
+                EntityMentionDB.video_id == video_id,
+                EntityMentionDB.detection_method == "manual",
+            )
+        )
+        mention = result.scalar_one_or_none()
+        if mention is None:
+            raise NotFoundError(
+                resource_type="ManualAssociation",
+                identifier=f"entity={entity_id}, video={video_id}",
+            )
+
+        await session.delete(mention)
+        await session.flush()
+
+        await self.update_entity_counters(session, [entity_id])

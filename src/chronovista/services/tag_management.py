@@ -969,64 +969,40 @@ class TagManagementService:
                 created_entity_id = new_entity.id
                 entity_created = True
 
-            # Copy tag_aliases as entity_aliases
-            tag_aliases_result = await session.execute(
-                select(TagAliasDB).where(
-                    TagAliasDB.canonical_tag_id == tag.id
+            # Create self-alias (canonical form as name_variant).
+            # Tag aliases are NOT copied — they represent YouTube tag
+            # variations (show names, SEO tags), not entity name variants.
+            entity_id_for_aliases = tag.entity_id
+            from chronovista.services.tag_normalization import (
+                TagNormalizationService,
+            )
+
+            normalizer = TagNormalizationService()
+            self_norm = (
+                normalizer.normalize(tag.canonical_form)
+                or tag.canonical_form.lower()
+            )
+
+            existing_result = await session.execute(
+                select(EntityAliasDB).where(
+                    EntityAliasDB.entity_id == entity_id_for_aliases,
+                    EntityAliasDB.alias_name_normalized == self_norm,
                 )
             )
-            tag_aliases = list(tag_aliases_result.scalars().all())
+            existing_db = existing_result.scalar_one_or_none()
 
-            entity_id_for_aliases = tag.entity_id
-            # Track normalized forms we've already seen to handle
-            # multiple tag aliases that normalize to the same form
-            # (e.g., "Aaron Mate" and "Aaron Maté" both → "aaron mate").
-            # FR-019: upsert semantics — update occurrence_count on conflict.
-            seen_normalized: dict[str, EntityAliasDB] = {}
-            for tag_alias in tag_aliases:
-                norm = tag_alias.normalized_form
-                if norm in seen_normalized:
-                    # Same normalized form already inserted in this batch —
-                    # accumulate occurrence_count on the existing record.
-                    existing_ea = seen_normalized[norm]
-                    existing_ea.occurrence_count = (
-                        (existing_ea.occurrence_count or 0)
-                        + (tag_alias.occurrence_count or 0)
-                    )
-                    session.add(existing_ea)
-                    continue
-
-                # Check if entity alias already exists in DB
-                existing_result = await session.execute(
-                    select(EntityAliasDB).where(
-                        EntityAliasDB.entity_id == entity_id_for_aliases,
-                        EntityAliasDB.alias_name_normalized == norm,
-                    )
-                )
-                existing_db = existing_result.scalar_one_or_none()
-                if existing_db is not None:
-                    # Upsert: update occurrence_count on existing record
-                    existing_db.occurrence_count = (
-                        (existing_db.occurrence_count or 0)
-                        + (tag_alias.occurrence_count or 0)
-                    )
-                    session.add(existing_db)
-                    seen_normalized[norm] = existing_db
-                    # Don't add to created_entity_alias_ids — pre-existing
-                    continue
-
+            if existing_db is None:
                 ea_create = EntityAliasCreate(
                     entity_id=entity_id_for_aliases,
                     alias_name=tag.canonical_form,
-                    alias_name_normalized=norm,
+                    alias_name_normalized=self_norm,
                     alias_type=EntityAliasType.NAME_VARIANT,
-                    occurrence_count=tag_alias.occurrence_count,
+                    occurrence_count=0,
                 )
                 ea_db = await self._entity_alias_repo.create(
                     session, obj_in=ea_create
                 )
                 created_entity_alias_ids.append(ea_db.id)
-                seen_normalized[norm] = ea_db
 
         elif entity_type in tag_only_types:
             # 5. Tag-only types: set entity_type only

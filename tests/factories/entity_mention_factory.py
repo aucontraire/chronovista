@@ -86,6 +86,28 @@ class EntityMentionFactory(factory.Factory[EntityMention]):
     )
 
 
+class ManualEntityMentionFactory(factory.Factory[EntityMention]):
+    """Factory for manual entity mention Pydantic models (segment_id=None)."""
+
+    class Meta:
+        model = EntityMention
+
+    id: Any = LazyFunction(_uuid7)
+    entity_id: Any = LazyFunction(_uuid7)
+    segment_id: Any = None  # Manual mentions have no segment
+    video_id: Any = LazyFunction(lambda: "dQw4w9WgXcQ")
+    language_code: Any = None  # Manual mentions are language-agnostic
+    mention_text: Any = Sequence(lambda n: f"Manual Entity {n}")
+    detection_method: Any = LazyFunction(lambda: DetectionMethod.MANUAL)
+    confidence: Any = None  # No confidence for manual
+    match_start: Any = None
+    match_end: Any = None
+    correction_id: Any = None
+    created_at: Any = LazyFunction(
+        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+    )
+
+
 # ---------------------------------------------------------------------------
 # Convenience factory functions
 # ---------------------------------------------------------------------------
@@ -124,6 +146,24 @@ def create_entity_mention_base(**kwargs: Any) -> EntityMentionBase:
     """
     result = EntityMentionBaseFactory.build(**kwargs)
     assert isinstance(result, EntityMentionBase)
+    return result
+
+
+def create_manual_entity_mention(**kwargs: Any) -> EntityMention:
+    """Create a manual EntityMention with keyword arguments.
+
+    Parameters
+    ----------
+    **kwargs : Any
+        Any field overrides to apply on top of factory defaults.
+
+    Returns
+    -------
+    EntityMention
+        A built EntityMention Pydantic model with manual detection defaults.
+    """
+    result = ManualEntityMentionFactory.build(**kwargs)
+    assert isinstance(result, EntityMention)
     return result
 
 

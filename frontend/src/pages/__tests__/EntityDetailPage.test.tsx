@@ -28,6 +28,13 @@ import { EntityDetailPage } from "../EntityDetailPage";
 vi.mock("../../hooks/useEntityMentions", () => ({
   useEntityVideos: vi.fn(),
   useVideoEntities: vi.fn(() => ({ entities: [], isLoading: false, isError: false, error: null })),
+  useDeleteManualAssociation: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    isSuccess: false,
+  })),
 }));
 
 // Mock PhoneticVariantsSection to avoid it calling useQuery independently,
@@ -79,6 +86,10 @@ function createMockVideo(overrides: Partial<EntityVideoResult> = {}): EntityVide
     mentions: [
       { segment_id: 101, start_time: 30.5, mention_text: "Chomsky" },
     ],
+    sources: ["transcript"],
+    has_manual: false,
+    first_mention_time: 30.5,
+    upload_date: "2024-06-15T00:00:00+00:00",
     ...overrides,
   };
 }
@@ -302,6 +313,7 @@ describe("EntityDetailPage", () => {
         videos: [
           createMockVideo({
             mentions: [{ segment_id: 101, start_time: 90.0, mention_text: "Chomsky" }],
+            first_mention_time: 90.0,
           }),
         ],
         total: 1,
@@ -377,6 +389,137 @@ describe("EntityDetailPage", () => {
       renderPage();
       // Skeleton is present — header should still be visible
       expect(screen.getByRole("heading", { name: "Noam Chomsky", level: 1 })).toBeInTheDocument();
+    });
+  });
+
+  describe("Source badges (Feature 050 US2)", () => {
+    it("shows transcript badge for transcript source", () => {
+      vi.mocked(useEntityVideos).mockReturnValue({
+        ...defaultUseEntityVideos,
+        videos: [
+          createMockVideo({
+            mention_count: 5,
+            sources: ["transcript"],
+            has_manual: false,
+          }),
+        ],
+        total: 1,
+      });
+      renderPage();
+      const badge = screen.getByTestId("transcript-badge");
+      expect(badge).toBeInTheDocument();
+      expect(badge.textContent).toContain("5");
+    });
+
+    it("shows manual badge when has_manual is true", () => {
+      vi.mocked(useEntityVideos).mockReturnValue({
+        ...defaultUseEntityVideos,
+        videos: [
+          createMockVideo({
+            mention_count: 3,
+            sources: ["manual", "transcript"],
+            has_manual: true,
+          }),
+        ],
+        total: 1,
+      });
+      renderPage();
+      expect(screen.getByTestId("manual-badge")).toBeInTheDocument();
+    });
+
+    it("shows combined badges for dual-source video", () => {
+      vi.mocked(useEntityVideos).mockReturnValue({
+        ...defaultUseEntityVideos,
+        videos: [
+          createMockVideo({
+            mention_count: 4,
+            sources: ["transcript", "manual"],
+            has_manual: true,
+          }),
+        ],
+        total: 1,
+      });
+      renderPage();
+      expect(screen.getByTestId("transcript-badge")).toBeInTheDocument();
+      expect(screen.getByTestId("manual-badge")).toBeInTheDocument();
+    });
+
+    it("shows 'Manually linked' label for manual-only video", () => {
+      vi.mocked(useEntityVideos).mockReturnValue({
+        ...defaultUseEntityVideos,
+        videos: [
+          createMockVideo({
+            mention_count: 0,
+            mentions: [],
+            sources: ["manual"],
+            has_manual: true,
+            first_mention_time: null,
+          }),
+        ],
+        total: 1,
+      });
+      renderPage();
+      expect(screen.getByText("Manually linked")).toBeInTheDocument();
+    });
+
+    it("links to video with timestamp for transcript mention", () => {
+      vi.mocked(useEntityVideos).mockReturnValue({
+        ...defaultUseEntityVideos,
+        videos: [
+          createMockVideo({
+            video_id: "abc_ts",
+            mention_count: 2,
+            mentions: [{ segment_id: 50, start_time: 60.0, mention_text: "Chomsky" }],
+            sources: ["transcript"],
+            has_manual: false,
+            first_mention_time: 60.0,
+          }),
+        ],
+        total: 1,
+      });
+      renderPage();
+      const link = screen.getByRole("link", { name: /Chomsky on Language/i });
+      expect(link).toHaveAttribute("href", expect.stringContaining("t=60"));
+    });
+
+    it("links to video without timestamp for manual-only", () => {
+      vi.mocked(useEntityVideos).mockReturnValue({
+        ...defaultUseEntityVideos,
+        videos: [
+          createMockVideo({
+            video_id: "abc_manual",
+            mention_count: 0,
+            mentions: [],
+            sources: ["manual"],
+            has_manual: true,
+            first_mention_time: null,
+          }),
+        ],
+        total: 1,
+      });
+      renderPage();
+      const link = screen.getByRole("link", { name: /Chomsky on Language/i });
+      expect(link).toHaveAttribute("href", "/videos/abc_manual");
+      expect(link).not.toHaveAttribute("href", expect.stringContaining("t="));
+    });
+
+    it("does not show transcript badge for manual-only video", () => {
+      vi.mocked(useEntityVideos).mockReturnValue({
+        ...defaultUseEntityVideos,
+        videos: [
+          createMockVideo({
+            mention_count: 0,
+            mentions: [],
+            sources: ["manual"],
+            has_manual: true,
+            first_mention_time: null,
+          }),
+        ],
+        total: 1,
+      });
+      renderPage();
+      expect(screen.queryByTestId("transcript-badge")).not.toBeInTheDocument();
+      expect(screen.getByTestId("manual-badge")).toBeInTheDocument();
     });
   });
 });

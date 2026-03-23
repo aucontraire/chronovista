@@ -139,6 +139,14 @@ export async function apiFetch<T>(
       throw createApiError(null, response);
     }
 
+    // HTTP 204 No Content (and 205 Reset Content) have no body.
+    // Calling response.json() on an empty body throws a SyntaxError which
+    // would be misclassified as a mutation failure and trigger optimistic
+    // update rollbacks.  Return undefined (cast to T) for bodyless responses.
+    if (response.status === 204 || response.status === 205) {
+      return undefined as T;
+    }
+
     const data = (await response.json()) as T;
     return data;
   } catch (error) {

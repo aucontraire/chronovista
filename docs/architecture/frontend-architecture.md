@@ -30,6 +30,7 @@ frontend/src/
 │   ├── video/          # VideoCard, VideoList, VideoDetailPage
 │   ├── channel/        # ChannelCard, ChannelList
 │   ├── batch/          # BatchCorrectionsPage components: PatternInput, MatchCard, EntityAutocomplete
+│   ├── entity/         # EntityMentionsPanel (manual entity-video associations)
 │   └── playlist/       # PlaylistCard, PlaylistNavigation
 ├── stores/             # Zustand state stores
 │   └── recoveryStore.ts           # Recovery session state with localStorage persist
@@ -38,7 +39,8 @@ frontend/src/
 │   ├── useDeepLinkParams.ts       # URL parameter handling for deep links
 │   ├── useDebounce.ts             # Input debouncing
 │   ├── useEntitySearch.ts           # Debounced entity name/alias search
-│   └── useEntityDetail.ts           # Entity detail with aliases for mismatch check
+│   ├── useEntityDetail.ts           # Entity detail with aliases for mismatch check
+│   └── useEntityMentions.ts         # Video entity associations, manual link/unlink with optimistic updates
 ├── pages/              # Page-level components (route targets)
 │   ├── VideosPage.tsx
 │   ├── VideoDetailPage.tsx
@@ -204,6 +206,19 @@ The batch corrections page (Feature 041/043) provides a visual find-and-replace 
 - **`useEntityDetail`** — TanStack Query hook fetching entity detail including aliases for mismatch checking. 5-minute stale time, disabled when no entity selected
 - **`AddAliasForm`** — Inline form on `EntityDetailPage` for creating new aliases via `POST /entities/{id}/aliases`. TanStack Query cache invalidation on success
 - **State flow** — `selectedEntity` state in `BatchCorrectionsPage` drives: autocomplete display, pill rendering, entity_id inclusion in apply request, mismatch computation. The `entityAliasNames` from `useEntityDetail` are passed down to `PatternInput` for local mismatch checking
+
+### Manual Entity-Video Associations (v0.51.0)
+
+The `EntityMentionsPanel` (Feature 050) enables manual entity-video linking directly from the video detail page:
+
+- **Entity search autocomplete** — `useEntitySearch` hook searches entities by name and aliases via `GET /entities/search?q=...&video_id=...`. Already manually-linked entities are disabled with "Already linked" label; transcript-linked entities remain selectable
+- **Create association** — `useCreateManualAssociation` mutation calls `POST /videos/{videoId}/entities/{entityId}/manual`, then invalidates `video-entities`, `entitySearch`, and `entity-videos` caches
+- **Delete with optimistic updates** — `useDeleteManualAssociation` implements full optimistic update lifecycle:
+  - `onMutate`: cancels in-flight queries, snapshots cache, applies optimistic removal (manual-only entities removed from list; multi-source entities have `has_manual` cleared)
+  - `onError`: rolls back to snapshot
+  - `onSuccess`: invalidates with `refetchType: "none"` for video-entities (prevents race with optimistic update), immediate refetch for `entitySearch`, `entity-videos`, `entity-detail`
+- **204 No Content handling** — `apiFetch` returns `undefined` for 204/205 responses without calling `response.json()`, preventing `SyntaxError` on empty body
+- **Multi-source display** — `VideoEntitySummary` includes `has_manual` flag and `sources` array for source badge rendering (`[TRANSCRIPT ×N]`, `[MANUAL]`)
 
 ### React Router v7 Future Flags
 

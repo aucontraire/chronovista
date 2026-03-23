@@ -20,8 +20,10 @@ from chronovista.api.schemas.categories import (
     CategoryListResponse,
 )
 from chronovista.api.schemas.entity_mentions import (
+    EntitySearchResult,
     EntityVideoResponse,
     EntityVideoResult,
+    ManualAssociationResponse,
     MentionPreview,
     VideoEntitiesResponse,
     VideoEntitySummary,
@@ -109,9 +111,11 @@ __all__ = [
     "CategoryDetailResponse",
     "CategoryListItem",
     "CategoryListResponse",
-    # Entity Mentions (Feature 038)
+    # Entity Mentions (Feature 038 / Feature 050)
+    "EntitySearchResult",
     "EntityVideoResponse",
     "EntityVideoResult",
+    "ManualAssociationResponse",
     "MentionPreview",
     "VideoEntitiesResponse",
     "VideoEntitySummary",

@@ -1767,11 +1767,16 @@ GET /api/v1/videos/{video_id}/entities
       "entity_type": "person",
       "description": "Former President of Mexico (2018–2024)",
       "mention_count": 12,
-      "first_mention_time": 45.2
+      "first_mention_time": 45.2,
+      "has_manual": false,
+      "sources": ["transcript"]
     }
   ]
 }
 ```
+
+- `has_manual` — `true` when a manual association exists for this entity+video
+- `sources` — list of source categories present (e.g., `["transcript"]`, `["manual"]`, `["transcript", "manual"]`)
 
 ---
 
@@ -1810,6 +1815,87 @@ Valid alias types: `name_variant`, `abbreviation`, `nickname`, `translated_name`
 |--------|-------------|
 | 404 | Entity not found |
 | 409 | Alias already exists |
+
+---
+
+#### Search Entities (with Link Status)
+
+Search named entities with optional video-level link status. Used by the `EntityMentionsPanel` autocomplete to indicate which entities are already associated with a video.
+
+```
+GET /api/v1/entities/search
+```
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `q` | string | Search query (2+ characters, required) | - |
+| `video_id` | string | YouTube video ID — when provided, response includes `is_linked` and `link_sources` | - |
+| `limit` | integer | Results per page (1–50) | 10 |
+
+**Response (200):**
+
+```json
+{
+  "data": [
+    {
+      "entity_id": "01936c8a-...",
+      "canonical_name": "Noam Chomsky",
+      "entity_type": "person",
+      "status": "active",
+      "is_linked": true,
+      "link_sources": ["transcript", "manual"]
+    }
+  ]
+}
+```
+
+- `is_linked` is `true` when the entity has any association with the given `video_id` (transcript mention, manual link, etc.)
+- `link_sources` lists the source categories of existing associations (e.g., `["transcript"]`, `["manual"]`, `["transcript", "manual"]`)
+- Both fields are `null` when `video_id` is not provided
+
+---
+
+#### Create Manual Entity-Video Association
+
+Manually associate a named entity with a video. Creates an `entity_mentions` row with `detection_method='manual'` and no segment reference.
+
+```
+POST /api/v1/videos/{video_id}/entities/{entity_id}/manual
+```
+
+**Response (201):**
+
+```json
+{
+  "data": {
+    "mention_id": "019...",
+    "entity_id": "01936c8a-...",
+    "video_id": "dQw4w9WgXcQ",
+    "detection_method": "manual"
+  }
+}
+```
+
+| Status | Description |
+|--------|-------------|
+| 404 | Entity or video not found |
+| 409 | Manual association already exists for this entity+video |
+
+---
+
+#### Delete Manual Entity-Video Association
+
+Remove a manual entity-video association. Only manual associations can be deleted; transcript-derived mentions cannot be removed via this endpoint.
+
+```
+DELETE /api/v1/videos/{video_id}/entities/{entity_id}/manual
+```
+
+**Response:** `204 No Content`
+
+| Status | Description |
+|--------|-------------|
+| 404 | No manual association found for this entity+video |
 
 ---
 
@@ -2681,6 +2767,19 @@ curl "http://localhost:8000/api/v1/corrections/batch/cross-segment/candidates?mi
 
 # Get phonetic ASR variants for an entity
 curl "http://localhost:8000/api/v1/entities/01936c8a-1234-7000-8000-000000000001/phonetic-matches?threshold=0.5"
+```
+
+#### Manual Entity-Video Associations
+
+```bash
+# Search entities with link status for a specific video
+curl "http://localhost:8000/api/v1/entities/search?q=chomsky&video_id=dQw4w9WgXcQ"
+
+# Create a manual entity-video association
+curl -X POST http://localhost:8000/api/v1/videos/dQw4w9WgXcQ/entities/01936c8a-1234-7000-8000-000000000001/manual
+
+# Remove a manual entity-video association
+curl -X DELETE http://localhost:8000/api/v1/videos/dQw4w9WgXcQ/entities/01936c8a-1234-7000-8000-000000000001/manual
 ```
 
 #### Recover Video Metadata

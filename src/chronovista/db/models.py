@@ -1114,16 +1114,17 @@ class EntityMention(Base):
         nullable=False,
     )
 
-    # Foreign key to transcript_segments
-    segment_id: Mapped[int] = mapped_column(
+    # Foreign key to transcript_segments (nullable for manual mentions)
+    segment_id: Mapped[Optional[int]] = mapped_column(
         Integer,
         ForeignKey("transcript_segments.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
     )
 
     # Denormalized for direct querying without segment join
     video_id: Mapped[str] = mapped_column(String(20), nullable=False)
-    language_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    # nullable for manual mentions that lack a specific language context
+    language_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
 
     # Mention content
     mention_text: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -1132,7 +1133,8 @@ class EntityMention(Base):
     detection_method: Mapped[str] = mapped_column(
         String(30), nullable=False, default="rule_match"
     )
-    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    # nullable for manual mentions (no statistical confidence applies)
+    confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=1.0)
 
     # Character-level position within segment text
     match_start: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -1153,9 +1155,27 @@ class EntityMention(Base):
 
     # Table constraints and indexes
     __table_args__ = (
-        UniqueConstraint(
-            "entity_id", "segment_id", "match_start",
-            name="uq_entity_mention_entity_segment_position",
+        # Partial unique index for segment-bound (automated) mentions.
+        # Replaces the former uq_entity_mention_entity_segment_position
+        # unique constraint so that NULL segment_id rows (manual mentions)
+        # are excluded from the uniqueness check.
+        Index(
+            "uq_entity_mentions_transcript",
+            "entity_id",
+            "segment_id",
+            "match_start",
+            unique=True,
+            postgresql_where=text("segment_id IS NOT NULL"),
+        ),
+        # Partial unique index for manual mentions.
+        # Prevents duplicate manual mentions for the same entity+video pair.
+        Index(
+            "uq_entity_mentions_manual",
+            "entity_id",
+            "video_id",
+            "detection_method",
+            unique=True,
+            postgresql_where=text("detection_method = 'manual'"),
         ),
         CheckConstraint(
             "detection_method IN ('rule_match', 'spacy_ner', 'llm_extraction', 'manual', 'user_correction')",

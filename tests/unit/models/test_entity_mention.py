@@ -262,7 +262,7 @@ class TestEntityMentionBase:
         assert isinstance(mention.segment_id, int)
         assert mention.segment_id >= 1
         assert len(mention.video_id) == 11
-        assert len(mention.language_code) >= 2
+        assert mention.language_code is not None and len(mention.language_code) >= 2
         assert len(mention.mention_text) >= 1
         assert mention.detection_method == DetectionMethod.RULE_MATCH
         assert mention.confidence == 1.0
@@ -328,8 +328,8 @@ class TestEntityMentionBase:
     # confidence — float in [0.0, 1.0] with default of 1.0
     # -----------------------------------------------------------------------
 
-    def test_confidence_defaults_to_1_0(self) -> None:
-        """confidence defaults to 1.0 when not supplied."""
+    def test_confidence_defaults_to_none(self) -> None:
+        """confidence defaults to None when not supplied."""
         entity_id = _uuid7()
         mention = EntityMentionBase(
             entity_id=entity_id,
@@ -338,7 +338,7 @@ class TestEntityMentionBase:
             language_code="en",
             mention_text="Elon Musk",
         )
-        assert mention.confidence == 1.0
+        assert mention.confidence is None
 
     def test_confidence_boundary_zero_is_accepted(self) -> None:
         """confidence == 0.0 (lower bound) is accepted."""
@@ -443,20 +443,20 @@ class TestEntityMentionBase:
         mention = _make_entity_mention_base(language_code="zh-Hans-CN")
         assert mention.language_code == "zh-Hans-CN"
 
-    def test_language_code_single_char_raises_validation_error(self) -> None:
-        """language_code of 1 character (below min_length=2) raises ValidationError."""
-        with pytest.raises(ValidationError):
-            _make_entity_mention_base(language_code="a")
+    def test_language_code_single_char_is_accepted(self) -> None:
+        """language_code of 1 character is accepted (no min_length since Feature 050)."""
+        mention = _make_entity_mention_base(language_code="a")
+        assert mention.language_code == "a"
 
-    def test_language_code_empty_raises_validation_error(self) -> None:
-        """Empty language_code raises ValidationError."""
-        with pytest.raises(ValidationError):
-            _make_entity_mention_base(language_code="")
+    def test_language_code_empty_is_accepted(self) -> None:
+        """Empty language_code is accepted (no min_length since Feature 050)."""
+        mention = _make_entity_mention_base(language_code="")
+        assert mention.language_code == ""
 
-    def test_language_code_11_chars_raises_validation_error(self) -> None:
-        """language_code of 11 characters (above max_length=10) raises ValidationError."""
-        with pytest.raises(ValidationError):
-            _make_entity_mention_base(language_code="x" * 11)
+    def test_language_code_none_is_accepted(self) -> None:
+        """None language_code is accepted (nullable since Feature 050)."""
+        mention = _make_entity_mention_base(language_code=None)
+        assert mention.language_code is None
 
     def test_language_code_bcp47_formats_accepted(self) -> None:
         """Common BCP-47 language code formats are accepted."""
@@ -568,7 +568,8 @@ class TestEntityMentionCreate:
             mention_text="Some entity",
         )
         assert create.detection_method == DetectionMethod.RULE_MATCH
-        assert create.confidence == 1.0
+        # confidence defaults to None (nullable since Feature 050)
+        assert create.confidence is None
 
     def test_create_factory_produces_valid_model(self) -> None:
         """EntityMentionCreateFactory.build() produces a valid EntityMentionCreate."""
@@ -614,14 +615,25 @@ class TestEntityMentionCreate:
         self, detection_method: DetectionMethod
     ) -> None:
         """Every DetectionMethod value produces a valid EntityMentionCreate."""
-        create = EntityMentionCreate(
-            entity_id=_uuid7(),
-            segment_id=1,
-            video_id=_VALID_VIDEO_ID,
-            language_code="en",
-            mention_text="Some entity",
-            detection_method=detection_method,
-        )
+        # Manual detection_method requires segment_id=None (Feature 050)
+        if detection_method == DetectionMethod.MANUAL:
+            create = EntityMentionCreate(
+                entity_id=_uuid7(),
+                segment_id=None,
+                video_id=_VALID_VIDEO_ID,
+                language_code=None,
+                mention_text="Some entity",
+                detection_method=detection_method,
+            )
+        else:
+            create = EntityMentionCreate(
+                entity_id=_uuid7(),
+                segment_id=1,
+                video_id=_VALID_VIDEO_ID,
+                language_code="en",
+                mention_text="Some entity",
+                detection_method=detection_method,
+            )
         assert create.detection_method == detection_method
 
     def test_model_dump_round_trip(self) -> None:
@@ -898,7 +910,7 @@ class TestEntityMentionHypothesis:
     def test_valid_confidence_range_always_accepted(self, confidence: float) -> None:
         """Any float in [0.0, 1.0] is always accepted as a valid confidence value."""
         mention = _make_entity_mention_base(confidence=confidence)
-        assert 0.0 <= mention.confidence <= 1.0
+        assert mention.confidence is not None and 0.0 <= mention.confidence <= 1.0
 
     @given(confidence=st.one_of(
         st.floats(max_value=-0.001, allow_nan=False),
@@ -943,5 +955,5 @@ class TestEntityMentionHypothesis:
         mention = _make_entity_mention_base(
             confidence=confidence, detection_method=method
         )
-        assert 0.0 <= mention.confidence <= 1.0
+        assert mention.confidence is not None and 0.0 <= mention.confidence <= 1.0
         assert mention.detection_method == method

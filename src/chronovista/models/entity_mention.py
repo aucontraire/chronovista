@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .enums import DetectionMethod
 from .youtube_types import VideoId
@@ -23,16 +23,15 @@ class EntityMentionBase(BaseModel):
     entity_id: uuid.UUID = Field(
         ..., description="UUID of the named entity being mentioned"
     )
-    segment_id: int = Field(
-        ..., description="ID of the transcript segment containing the mention"
+    segment_id: int | None = Field(
+        default=None,
+        description="ID of the transcript segment containing the mention",
     )
     video_id: VideoId = Field(
         ..., description="YouTube video ID where the mention occurs"
     )
-    language_code: str = Field(
-        ...,
-        min_length=2,
-        max_length=10,
+    language_code: str | None = Field(
+        default=None,
         description="BCP-47 language code of the transcript segment",
     )
     mention_text: str = Field(
@@ -45,10 +44,8 @@ class EntityMentionBase(BaseModel):
         default=DetectionMethod.RULE_MATCH,
         description="Method used to detect this mention",
     )
-    confidence: float = Field(
-        default=1.0,
-        ge=0.0,
-        le=1.0,
+    confidence: float | None = Field(
+        default=None,
         description="Confidence score of the detection (0.0 to 1.0)",
     )
     match_start: Optional[int] = Field(
@@ -66,24 +63,26 @@ class EntityMentionBase(BaseModel):
 
     @field_validator("confidence")
     @classmethod
-    def validate_confidence_range(cls, v: float) -> float:
+    def validate_confidence_range(cls, v: float | None) -> float | None:
         """Validate confidence is within valid range.
 
         Parameters
         ----------
-        v : float
+        v : float | None
             The confidence value to validate.
 
         Returns
         -------
-        float
-            The validated confidence value.
+        float | None
+            The validated confidence value, or None for manual mentions.
 
         Raises
         ------
         ValueError
             If confidence is outside the [0.0, 1.0] range.
         """
+        if v is None:
+            return None
         if v < 0.0 or v > 1.0:
             raise ValueError("Confidence must be between 0.0 and 1.0")
         return v
@@ -94,9 +93,53 @@ class EntityMentionBase(BaseModel):
 
 
 class EntityMentionCreate(EntityMentionBase):
-    """Model for creating entity mentions. No extra fields beyond the base."""
+    """Model for creating entity mentions with manual vs automated validation."""
 
-    pass
+    @model_validator(mode="after")
+    def validate_manual_fields(self) -> EntityMentionCreate:
+        """Validate field constraints based on detection method.
+
+        Manual mentions must have NULL segment_id, match_start, match_end,
+        confidence, and language_code. Automated mentions must have a
+        non-NULL segment_id.
+
+        Returns
+        -------
+        EntityMentionCreate
+            The validated instance.
+
+        Raises
+        ------
+        ValueError
+            If field constraints are violated for the detection method.
+        """
+        if self.detection_method == DetectionMethod.MANUAL:
+            if self.segment_id is not None:
+                raise ValueError(
+                    "segment_id must be None for manual mentions"
+                )
+            if self.match_start is not None:
+                raise ValueError(
+                    "match_start must be None for manual mentions"
+                )
+            if self.match_end is not None:
+                raise ValueError(
+                    "match_end must be None for manual mentions"
+                )
+            if self.confidence is not None:
+                raise ValueError(
+                    "confidence must be None for manual mentions"
+                )
+            if self.language_code is not None:
+                raise ValueError(
+                    "language_code must be None for manual mentions"
+                )
+        else:
+            if self.segment_id is None:
+                raise ValueError(
+                    "segment_id is required for non-manual mentions"
+                )
+        return self
 
 
 class EntityMention(EntityMentionBase):

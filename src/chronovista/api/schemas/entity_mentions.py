@@ -43,9 +43,16 @@ class VideoEntitySummary(BaseModel):
     mention_count: int = Field(
         ..., description="Number of distinct segments mentioning this entity"
     )
-    first_mention_time: float = Field(
+    first_mention_time: float | None = Field(
         ...,
         description="Start time (seconds) of the earliest segment with a mention",
+    )
+    sources: list[str] = Field(
+        ...,
+        description="Detection method categories (transcript, manual, user_correction)",
+    )
+    has_manual: bool = Field(
+        ..., description="Whether a manual association exists for this entity"
     )
 
 
@@ -99,9 +106,17 @@ class EntityVideoResult(BaseModel):
     channel_name : str
         Channel name.
     mention_count : int
-        Number of distinct segments mentioning this entity in this video.
+        Number of transcript-derived mentions (excludes manual).
     mentions : list[MentionPreview]
-        Preview of first 5 mentions ordered by start_time ASC.
+        Preview of first 5 transcript mentions ordered by start_time ASC.
+    sources : list[str]
+        Detection method categories present (e.g. ["transcript", "manual"]).
+    has_manual : bool
+        Whether a manual association exists for this entity on this video.
+    first_mention_time : float | None
+        Earliest transcript mention timestamp; null for manual-only videos.
+    upload_date : str | None
+        Video upload date (ISO 8601) used for sort ordering.
     """
 
     model_config = ConfigDict(strict=True)
@@ -110,10 +125,25 @@ class EntityVideoResult(BaseModel):
     video_title: str = Field(..., description="Video title")
     channel_name: str = Field(..., description="Channel name")
     mention_count: int = Field(
-        ..., description="Number of distinct segments mentioning this entity"
+        ...,
+        description="Number of transcript-derived mentions (excludes manual)",
     )
     mentions: list[MentionPreview] = Field(
-        ..., description="Preview of first 5 mentions"
+        ..., description="Preview of first 5 transcript mentions"
+    )
+    sources: list[str] = Field(
+        ...,
+        description="Detection method categories (transcript, manual, user_correction)",
+    )
+    has_manual: bool = Field(
+        ..., description="Whether a manual association exists"
+    )
+    first_mention_time: float | None = Field(
+        None,
+        description="Earliest transcript mention timestamp; null for manual-only",
+    )
+    upload_date: str | None = Field(
+        None, description="Video upload date (ISO 8601)"
     )
 
 
@@ -232,6 +262,77 @@ class CreateEntityAliasRequest(BaseModel):
             "translated_name, former_name)"
         ),
     )
+
+
+class EntitySearchResult(BaseModel):
+    """Result from entity autocomplete search.
+
+    Attributes
+    ----------
+    entity_id : str
+        Named entity UUID.
+    canonical_name : str
+        Display name.
+    entity_type : str
+        Entity type.
+    description : str | None
+        Entity description.
+    status : str
+        Entity status (active/deprecated).
+    matched_alias : str | None
+        Alias that matched, if any.
+    is_linked : bool | None
+        Whether linked to the video (only when video_id provided).
+    link_sources : list[str] | None
+        Detection methods for existing links.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    entity_id: str = Field(..., description="Named entity UUID")
+    canonical_name: str = Field(..., description="Display name")
+    entity_type: str = Field(..., description="Entity type")
+    description: str | None = Field(None, description="Entity description")
+    status: str = Field(..., description="Entity status (active/deprecated)")
+    matched_alias: str | None = Field(
+        None, description="Alias that matched, if any"
+    )
+    is_linked: bool | None = Field(
+        None,
+        description="Whether linked to the video (only when video_id provided)",
+    )
+    link_sources: list[str] | None = Field(
+        None, description="Detection methods for existing links"
+    )
+
+
+class ManualAssociationResponse(BaseModel):
+    """Response for manual entity-video association creation.
+
+    Attributes
+    ----------
+    id : str
+        Entity mention UUID.
+    entity_id : str
+        Named entity UUID.
+    video_id : str
+        YouTube video ID.
+    detection_method : str
+        Detection method (manual).
+    mention_text : str
+        Entity canonical name.
+    created_at : str
+        ISO 8601 creation timestamp.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    id: str = Field(..., description="Entity mention UUID")
+    entity_id: str = Field(..., description="Named entity UUID")
+    video_id: str = Field(..., description="YouTube video ID")
+    detection_method: str = Field(..., description="Detection method (manual)")
+    mention_text: str = Field(..., description="Entity canonical name")
+    created_at: str = Field(..., description="ISO 8601 creation timestamp")
 
 
 class ExclusionPatternRequest(BaseModel):

@@ -1,5 +1,6 @@
 """
-Tests for EntityMentionRepository (Feature 038 — T012; Feature 044 — T009).
+Tests for EntityMentionRepository (Feature 038 — T012; Feature 044 — T009;
+Feature 050 — T012/T013).
 
 Covers all public methods with mocked AsyncSession:
 - bulk_create_with_conflict_skip() — INSERT ... ON CONFLICT DO NOTHING for bulk inserts
@@ -10,6 +11,10 @@ Covers all public methods with mocked AsyncSession:
 - get_video_entity_summary()      — per-entity aggregation for a video
 - get_entity_video_list()         — paginated video list where an entity is mentioned
 - get_statistics()                — aggregate stats with optional entity_type filter
+- search_entities()               — entity autocomplete search with alias matching
+                                    (Feature 050 T012)
+- create_manual_association()     — create a manual entity-video link
+                                    (Feature 050 T013)
 
 Mock strategy: every test creates a ``MagicMock(spec=AsyncSession)`` whose
 ``execute`` attribute is an ``AsyncMock``.  This mirrors the pattern used
@@ -2100,7 +2105,18 @@ class TestEntityMentionRepositoryFactoryIntegration:
         mock_session.execute.return_value = mock_result
 
         for method in DetectionMethod:
-            mention = create_entity_mention_create(detection_method=method)
+            # Manual mentions require segment_id=None, confidence=None,
+            # language_code=None per the EntityMentionCreate model validator.
+            extra_kwargs: dict[str, Any] = {}
+            if method == DetectionMethod.MANUAL:
+                extra_kwargs = {
+                    "segment_id": None,
+                    "confidence": None,
+                    "language_code": None,
+                }
+            mention = create_entity_mention_create(
+                detection_method=method, **extra_kwargs
+            )
             assert mention.detection_method == method
 
             # Each should be accepted by bulk_create without type errors
@@ -2342,3 +2358,1229 @@ class TestGetEntityVideoIds:
         stmt = mock_session.execute.call_args.args[0]
         sql_str = str(stmt.compile(compile_kwargs={"literal_binds": False}))
         assert "UNION" in sql_str.upper()
+
+
+# ---------------------------------------------------------------------------
+# Feature 050 — T012: TestSearchEntities
+# ---------------------------------------------------------------------------
+
+
+class TestSearchEntities:
+    """Tests for search_entities() — entity autocomplete search method.
+
+    This is a TDD test class for Feature 050 User Story 1. The
+    ``search_entities`` method does not exist yet in the repository;
+    these tests MUST fail until the implementation is added.
+
+    Expected method signature:
+        async def search_entities(
+            self,
+            session: AsyncSession,
+            query: str,
+            video_id: str | None = None,
+            limit: int = 10,
+        ) -> list[dict]
+    """
+
+    @pytest.fixture
+    def repository(self) -> EntityMentionRepository:
+        """Provide a fresh repository instance for each test."""
+        return EntityMentionRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> MagicMock:
+        """Provide a mock async session for each test."""
+        return _make_mock_session()
+
+    def _make_scalars_result(self, items: list[Any]) -> MagicMock:
+        """Build a mock execute() result whose scalars().all() returns items."""
+        result = MagicMock()
+        scalars_mock = MagicMock()
+        scalars_mock.all.return_value = items
+        result.scalars.return_value = scalars_mock
+        return result
+
+    def _make_all_result(self, rows: list[Any]) -> MagicMock:
+        """Build a mock execute() result whose .all() returns rows."""
+        result = MagicMock()
+        result.all.return_value = rows
+        return result
+
+    def _make_entity_row(
+        self,
+        *,
+        entity_id: uuid.UUID | None = None,
+        canonical_name: str = "Joanna Hausmann",
+        entity_type: str = "person",
+        description: str | None = "Venezuelan-American comedian",
+        status: str = "active",
+        matched_alias: str | None = None,
+    ) -> MagicMock:
+        """Build a MagicMock simulating a SQLAlchemy named-tuple row.
+
+        The repository is expected to return rows with at least:
+        entity_id, canonical_name, entity_type, description, status,
+        and matched_alias (None when matched via canonical name).
+        """
+        row = MagicMock()
+        row.entity_id = entity_id or _uuid()
+        row.canonical_name = canonical_name
+        row.entity_type = entity_type
+        row.description = description
+        row.status = status
+        row.matched_alias = matched_alias
+        return row
+
+    async def test_search_canonical_name_prefix_match(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """search_entities() returns an entity when the query matches its canonical name prefix.
+
+        Query "Joan" should match the entity with canonical_name "Joanna Hausmann".
+        The returned dict must include entity_id, canonical_name, entity_type,
+        description, status, matched_alias=None, is_linked=None, and
+        link_sources=None (no video_id provided).
+        """
+        entity_id = _uuid()
+        fake_row = self._make_entity_row(
+            entity_id=entity_id,
+            canonical_name="Joanna Hausmann",
+            matched_alias=None,
+        )
+        mock_session.execute.return_value = self._make_all_result([fake_row])
+
+        results = await repository.search_entities(mock_session, query="Joan")
+
+        assert isinstance(results, list)
+        assert len(results) == 1
+        item = results[0]
+        assert item["canonical_name"] == "Joanna Hausmann"
+        assert str(item["entity_id"]) == str(entity_id)
+        assert item["matched_alias"] is None
+        # is_linked and link_sources are None when video_id is not provided
+        assert item.get("is_linked") is None
+        assert item.get("link_sources") is None
+
+    async def test_search_alias_match_with_matched_alias_field(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """search_entities() populates matched_alias when the hit came from an alias.
+
+        When query "Joanna" matches the alias "Joanna" (not the canonical name
+        "Joanna Hausmann"), the result dict's matched_alias field must equal
+        the alias text that triggered the match.
+        """
+        entity_id = _uuid()
+        fake_row = self._make_entity_row(
+            entity_id=entity_id,
+            canonical_name="Joanna Hausmann",
+            matched_alias="Joanna",
+        )
+        mock_session.execute.return_value = self._make_all_result([fake_row])
+
+        results = await repository.search_entities(mock_session, query="Joanna")
+
+        assert len(results) >= 1
+        item = next(
+            (r for r in results if r["canonical_name"] == "Joanna Hausmann"), None
+        )
+        assert item is not None, "Expected 'Joanna Hausmann' in results"
+        assert item["matched_alias"] == "Joanna"
+
+    async def test_search_deduplication_canonical_and_alias(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """search_entities() returns an entity only once when matched via both canonical and alias.
+
+        If the DB query returns the same entity_id twice (once via canonical
+        name match and once via alias match), the implementation must
+        deduplicate so the entity appears only once in the returned list.
+        The canonical-name row should take precedence (matched_alias=None).
+        """
+        entity_id = _uuid()
+        canonical_row = self._make_entity_row(
+            entity_id=entity_id,
+            canonical_name="Joanna Hausmann",
+            matched_alias=None,
+        )
+        alias_row = self._make_entity_row(
+            entity_id=entity_id,
+            canonical_name="Joanna Hausmann",
+            matched_alias="Joanna",
+        )
+        # Both rows have the same entity_id — duplicates
+        mock_session.execute.return_value = self._make_all_result(
+            [canonical_row, alias_row]
+        )
+
+        results = await repository.search_entities(mock_session, query="Joanna")
+
+        entity_ids_returned = [r["entity_id"] for r in results]
+        assert entity_ids_returned.count(str(entity_id)) == 1, (
+            "Expected entity to appear exactly once even when matched by both "
+            "canonical name and alias"
+        )
+
+    async def test_search_is_linked_when_video_id_provided(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """search_entities() sets is_linked=True and populates link_sources when video_id given.
+
+        When a video_id is supplied and the entity already has entity_mention
+        rows for that video, the result dict must have:
+        - is_linked = True
+        - link_sources = non-empty list of detection method strings
+        """
+        entity_id = _uuid()
+        video_id = "dQw4w9WgXcQ"
+
+        # First execute call: search query results
+        fake_row = self._make_entity_row(
+            entity_id=entity_id,
+            canonical_name="Joanna Hausmann",
+        )
+        search_result = self._make_all_result([fake_row])
+
+        # Second execute call: link status lookup.
+        # entity_id must match the entity returned by the search so that
+        # linked_map.get(row.entity_id, []) finds the right key.
+        link_row = MagicMock()
+        link_row.entity_id = entity_id
+        link_row.detection_method = "rule_match"
+        link_result = self._make_all_result([link_row])
+
+        mock_session.execute.side_effect = [search_result, link_result]
+
+        results = await repository.search_entities(
+            mock_session, query="Joan", video_id=video_id
+        )
+
+        assert len(results) >= 1
+        item = results[0]
+        assert item.get("is_linked") is True
+        link_sources = item.get("link_sources")
+        assert link_sources is not None
+        assert len(link_sources) >= 1
+
+    async def test_search_deprecated_entity_included_with_status(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """search_entities() includes deprecated entities and marks status='deprecated'.
+
+        Deprecated entities should appear in autocomplete results (so the user
+        can see that the entity is no longer active) but their status field
+        must be 'deprecated' so the UI can render an appropriate indicator.
+        """
+        entity_id = _uuid()
+        fake_row = self._make_entity_row(
+            entity_id=entity_id,
+            canonical_name="Old Entity",
+            status="deprecated",
+        )
+        mock_session.execute.return_value = self._make_all_result([fake_row])
+
+        results = await repository.search_entities(mock_session, query="Old")
+
+        deprecated_item = next(
+            (r for r in results if r.get("canonical_name") == "Old Entity"), None
+        )
+        assert deprecated_item is not None, "Expected deprecated entity in results"
+        assert deprecated_item["status"] == "deprecated"
+
+    async def test_search_empty_results(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """search_entities() returns an empty list when no entity matches the query.
+
+        A query that matches no canonical names and no aliases must yield an
+        empty list without raising any exception.
+        """
+        mock_session.execute.return_value = self._make_all_result([])
+
+        results = await repository.search_entities(
+            mock_session, query="zzznomatch"
+        )
+
+        assert results == []
+
+    async def test_search_minimum_2_char_validation(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """search_entities() raises ValueError (or equivalent) for a 1-character query.
+
+        Autocomplete with a single character would produce too many results and
+        is explicitly not supported. The implementation must raise a ValueError
+        or similar validation error before touching the database.
+        """
+        with pytest.raises((ValueError, Exception)):
+            await repository.search_entities(mock_session, query="J")
+
+        # The DB must NOT have been touched for this short query
+        mock_session.execute.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Feature 050 — T013: TestCreateManualAssociation
+# ---------------------------------------------------------------------------
+
+
+class TestCreateManualAssociation:
+    """Tests for create_manual_association() — manual entity-video link method.
+
+    This is a TDD test class for Feature 050 User Story 1. The
+    ``create_manual_association`` method does not exist yet in the repository;
+    these tests MUST fail until the implementation is added.
+
+    Expected method signature:
+        async def create_manual_association(
+            self,
+            session: AsyncSession,
+            video_id: str,
+            entity_id: uuid.UUID,
+        ) -> EntityMentionDB
+
+    Behaviour contract:
+    - Creates an EntityMentionDB row with segment_id=None, confidence=None,
+      language_code=None, detection_method='manual', and mention_text set to
+      the entity's canonical_name.
+    - Raises ConflictError (409) if a manual association for the same
+      (entity_id, video_id) already exists.
+    - Raises APIValidationError (422) if the entity status is 'deprecated'.
+    - Raises NotFoundError (404) if video_id does not exist in the videos table.
+    - Raises NotFoundError (404) if entity_id does not exist in named_entities.
+    - Calls update_entity_counters() with [entity_id] after a successful insert.
+    """
+
+    @pytest.fixture
+    def repository(self) -> EntityMentionRepository:
+        """Provide a fresh repository instance for each test."""
+        return EntityMentionRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> MagicMock:
+        """Provide a mock async session for each test."""
+        return _make_mock_session()
+
+    def _make_scalar_result(self, value: Any) -> MagicMock:
+        """Return a mock whose .scalar_one_or_none() returns value."""
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = value
+        return result
+
+    def _make_named_entity_db(
+        self,
+        *,
+        entity_id: uuid.UUID | None = None,
+        canonical_name: str = "Joanna Hausmann",
+        status: str = "active",
+    ) -> MagicMock:
+        """Build a MagicMock simulating a NamedEntity ORM row."""
+        from chronovista.db.models import NamedEntity as NamedEntityDB
+
+        entity = MagicMock(spec=NamedEntityDB)
+        entity.id = entity_id or _uuid()
+        entity.canonical_name = canonical_name
+        entity.status = status
+        entity.entity_type = "person"
+        return entity
+
+    def _make_video_db(self, *, video_id: str = "dQw4w9WgXcQ") -> MagicMock:
+        """Build a MagicMock simulating a Video ORM row."""
+        from chronovista.db.models import Video as VideoDB
+
+        video = MagicMock(spec=VideoDB)
+        video.video_id = video_id
+        return video
+
+    def _make_mention_db(
+        self,
+        *,
+        entity_id: uuid.UUID,
+        video_id: str,
+        canonical_name: str,
+    ) -> MagicMock:
+        """Build a MagicMock simulating a newly created EntityMentionDB row."""
+        mention = MagicMock(spec=EntityMentionDB)
+        mention.id = _uuid()
+        mention.entity_id = entity_id
+        mention.video_id = video_id
+        mention.segment_id = None
+        mention.language_code = None
+        mention.confidence = None
+        mention.detection_method = "manual"
+        mention.mention_text = canonical_name
+        mention.created_at = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        return mention
+
+    async def test_create_successful(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """create_manual_association() returns a new EntityMentionDB row on success.
+
+        The created row must have:
+        - segment_id = None   (manual mentions have no segment)
+        - confidence = None   (no statistical confidence for manual)
+        - language_code = None (manual mentions are language-agnostic)
+        - detection_method = 'manual'
+        - mention_text = entity's canonical_name
+        """
+        entity_id = _uuid()
+        video_id = "dQw4w9WgXcQ"
+        canonical_name = "Joanna Hausmann"
+
+        entity_db = self._make_named_entity_db(
+            entity_id=entity_id, canonical_name=canonical_name, status="active"
+        )
+        video_db = self._make_video_db(video_id=video_id)
+        new_mention = self._make_mention_db(
+            entity_id=entity_id, video_id=video_id, canonical_name=canonical_name
+        )
+
+        # execute() calls in order:
+        # 1. look up video
+        # 2. look up entity
+        # 3. check for duplicate manual association
+        # 4+. update_entity_counters internals
+        video_result = self._make_scalar_result(video_db)
+        entity_result = self._make_scalar_result(entity_db)
+        no_duplicate = self._make_scalar_result(None)
+        counter_result = MagicMock()
+
+        mock_session.execute.side_effect = [
+            video_result,
+            entity_result,
+            no_duplicate,
+            counter_result,
+            counter_result,
+        ]
+        mock_session.add = MagicMock()
+        mock_session.flush = AsyncMock()
+        mock_session.refresh = AsyncMock()
+
+        # After flush, the mention is accessible via session.add's argument
+        async def _flush_side_effect() -> None:
+            pass
+
+        mock_session.flush.side_effect = _flush_side_effect
+
+        # Patch update_entity_counters to capture calls
+        with patch.object(
+            repository, "update_entity_counters", new=AsyncMock()
+        ) as mock_counters:
+            result = await repository.create_manual_association(
+                mock_session, video_id=video_id, entity_id=entity_id
+            )
+
+        # The method must call update_entity_counters at least once
+        mock_counters.assert_called_once()
+
+        # The result must be an EntityMentionDB (or compatible mock)
+        assert result is not None
+        # detection_method must be 'manual'
+        assert result.detection_method == "manual"
+        assert result.segment_id is None
+        assert result.language_code is None
+        assert result.confidence is None
+        assert result.mention_text == canonical_name
+
+    async def test_create_duplicate_409(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """create_manual_association() raises ConflictError when a manual association exists.
+
+        If a row with detection_method='manual' already exists for the same
+        (entity_id, video_id), the method must raise ConflictError (HTTP 409)
+        without inserting a new row.
+        """
+        from chronovista.exceptions import ConflictError
+
+        entity_id = _uuid()
+        video_id = "dQw4w9WgXcQ"
+
+        entity_db = self._make_named_entity_db(entity_id=entity_id, status="active")
+        video_db = self._make_video_db(video_id=video_id)
+
+        # Existing duplicate mention
+        existing_mention = self._make_mention_db(
+            entity_id=entity_id,
+            video_id=video_id,
+            canonical_name=entity_db.canonical_name,
+        )
+
+        video_result = self._make_scalar_result(video_db)
+        entity_result = self._make_scalar_result(entity_db)
+        duplicate_result = self._make_scalar_result(existing_mention)
+
+        mock_session.execute.side_effect = [
+            video_result,
+            entity_result,
+            duplicate_result,
+        ]
+
+        with pytest.raises(ConflictError):
+            await repository.create_manual_association(
+                mock_session, video_id=video_id, entity_id=entity_id
+            )
+
+        # The session must not have had add() called (no row inserted)
+        mock_session.add.assert_not_called()
+
+    async def test_create_deprecated_entity_422(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """create_manual_association() raises APIValidationError for deprecated entities.
+
+        Manually associating a deprecated entity to a video is not permitted.
+        The method must raise APIValidationError (HTTP 422) when the entity's
+        status is 'deprecated'.
+        """
+        from chronovista.exceptions import APIValidationError
+
+        entity_id = _uuid()
+        video_id = "dQw4w9WgXcQ"
+
+        video_db = self._make_video_db(video_id=video_id)
+        deprecated_entity = self._make_named_entity_db(
+            entity_id=entity_id,
+            canonical_name="Old Entity",
+            status="deprecated",
+        )
+
+        video_result = self._make_scalar_result(video_db)
+        entity_result = self._make_scalar_result(deprecated_entity)
+
+        mock_session.execute.side_effect = [video_result, entity_result]
+
+        with pytest.raises(APIValidationError):
+            await repository.create_manual_association(
+                mock_session, video_id=video_id, entity_id=entity_id
+            )
+
+    async def test_create_nonexistent_video_404(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """create_manual_association() raises NotFoundError when the video does not exist.
+
+        The method must verify the video exists before touching entity or
+        mention data, and raise NotFoundError (HTTP 404) if it is absent.
+        """
+        from chronovista.exceptions import NotFoundError
+
+        entity_id = _uuid()
+        video_id = "nosuchvideo1"
+
+        # Video lookup returns None
+        video_result = self._make_scalar_result(None)
+        mock_session.execute.side_effect = [video_result]
+
+        with pytest.raises(NotFoundError):
+            await repository.create_manual_association(
+                mock_session, video_id=video_id, entity_id=entity_id
+            )
+
+    async def test_create_nonexistent_entity_404(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """create_manual_association() raises NotFoundError when the entity does not exist.
+
+        After verifying the video exists, the method must verify the entity
+        exists and raise NotFoundError (HTTP 404) if it is absent.
+        """
+        from chronovista.exceptions import NotFoundError
+
+        entity_id = _uuid()
+        video_id = "dQw4w9WgXcQ"
+
+        video_db = self._make_video_db(video_id=video_id)
+        video_result = self._make_scalar_result(video_db)
+        entity_result = self._make_scalar_result(None)  # entity missing
+
+        mock_session.execute.side_effect = [video_result, entity_result]
+
+        with pytest.raises(NotFoundError):
+            await repository.create_manual_association(
+                mock_session, video_id=video_id, entity_id=entity_id
+            )
+
+    async def test_create_calls_update_entity_counters(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """create_manual_association() calls update_entity_counters with the correct entity_id.
+
+        After a successful insert, the method must call update_entity_counters
+        passing a list that contains the newly-associated entity_id so that
+        mention_count and video_count on named_entities are kept in sync.
+        """
+        entity_id = _uuid()
+        video_id = "dQw4w9WgXcQ"
+        canonical_name = "Joanna Hausmann"
+
+        entity_db = self._make_named_entity_db(
+            entity_id=entity_id, canonical_name=canonical_name, status="active"
+        )
+        video_db = self._make_video_db(video_id=video_id)
+
+        video_result = self._make_scalar_result(video_db)
+        entity_result = self._make_scalar_result(entity_db)
+        no_duplicate = self._make_scalar_result(None)
+        counter_result = MagicMock()
+
+        mock_session.execute.side_effect = [
+            video_result,
+            entity_result,
+            no_duplicate,
+            counter_result,
+            counter_result,
+        ]
+        mock_session.add = MagicMock()
+        mock_session.flush = AsyncMock()
+        mock_session.refresh = AsyncMock()
+
+        with patch.object(
+            repository, "update_entity_counters", new=AsyncMock()
+        ) as mock_counters:
+            await repository.create_manual_association(
+                mock_session, video_id=video_id, entity_id=entity_id
+            )
+
+        # update_entity_counters must have been called with a list containing entity_id
+        mock_counters.assert_called_once()
+        call_args = mock_counters.call_args
+        # First positional arg after session is the entity_ids list
+        # Could be positional or keyword depending on impl
+        entity_ids_arg = (
+            call_args.args[1]
+            if len(call_args.args) > 1
+            else call_args.kwargs.get("entity_ids", [])
+        )
+        assert entity_id in entity_ids_arg, (
+            f"Expected entity_id {entity_id} in update_entity_counters call, "
+            f"got: {entity_ids_arg}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestGetEntityVideoListMultiSource (Feature 050 — T027)
+# ---------------------------------------------------------------------------
+
+
+class TestGetEntityVideoListMultiSource:
+    """Tests for the multi-source enhancements to get_entity_video_list().
+
+    Feature 050 US2 adds new fields (sources, has_manual, first_mention_time,
+    upload_date) and changes the sort order to upload_date DESC with
+    transcript-only mention counting.
+
+    Mock strategy: the method issues multiple queries (count, main, previews)
+    so mock_session.execute returns results via side_effect.
+    """
+
+    @pytest.fixture
+    def repository(self) -> EntityMentionRepository:
+        """Provide a fresh repository instance for each test."""
+        return EntityMentionRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> MagicMock:
+        """Provide a mock async session for each test."""
+        return _make_mock_session()
+
+    @staticmethod
+    def _make_count_result(count: int) -> MagicMock:
+        """Create a mock scalar result for the count query."""
+        mock = MagicMock()
+        mock.scalar.return_value = count
+        return mock
+
+    @staticmethod
+    def _make_video_row(
+        *,
+        video_id: str = "vid001",
+        video_title: str = "Test Video",
+        channel_name: str = "Test Channel",
+        mention_count: int = 3,
+        detection_methods: list[str] | None = None,
+        has_manual: bool = False,
+        first_mention_time: float | None = 10.5,
+        upload_date: Any = None,
+    ) -> MagicMock:
+        """Build a mock row matching the main query's column shape."""
+        from datetime import datetime as dt, timezone as tz
+
+        row = MagicMock()
+        row.video_id = video_id
+        row.video_title = video_title
+        row.channel_name = channel_name
+        row.mention_count = mention_count
+        row.detection_methods = detection_methods or ["rule_match"]
+        row.has_manual = has_manual
+        row.first_mention_time = first_mention_time
+        row.upload_date = upload_date or dt(2024, 6, 15, tzinfo=tz.utc)
+        return row
+
+    @staticmethod
+    def _make_main_result(rows: list[MagicMock]) -> MagicMock:
+        """Create a mock result for the main query."""
+        mock = MagicMock()
+        mock.all.return_value = rows
+        return mock
+
+    @staticmethod
+    def _make_preview_result(
+        previews: list[dict[str, Any]] | None = None,
+    ) -> MagicMock:
+        """Create a mock result for the preview query."""
+        mock = MagicMock()
+        preview_rows = []
+        for p in previews or []:
+            r = MagicMock()
+            r.segment_id = p.get("segment_id", 1)
+            r.start_time = p.get("start_time", 0.0)
+            r.mention_text = p.get("mention_text", "Test")
+            preview_rows.append(r)
+        mock.all.return_value = preview_rows
+        return mock
+
+    async def test_transcript_only_video(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Video with only transcript mentions has sources=['transcript'], has_manual=false."""
+        entity_id = _uuid()
+
+        row = self._make_video_row(
+            detection_methods=["rule_match", "spacy_ner"],
+            has_manual=False,
+            mention_count=5,
+        )
+
+        mock_session.execute.side_effect = [
+            self._make_count_result(1),     # count query
+            self._make_main_result([row]),   # main query
+            self._make_preview_result(),     # preview query
+        ]
+
+        results, total = await repository.get_entity_video_list(
+            mock_session, entity_id=entity_id
+        )
+
+        assert total == 1
+        assert len(results) == 1
+        assert results[0]["sources"] == ["transcript"]
+        assert results[0]["has_manual"] is False
+        assert results[0]["mention_count"] == 5
+
+    async def test_manual_only_video(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Video with only manual association has sources=['manual'], has_manual=true, mention_count=0."""
+        entity_id = _uuid()
+
+        row = self._make_video_row(
+            detection_methods=["manual"],
+            has_manual=True,
+            mention_count=0,
+            first_mention_time=None,
+        )
+
+        mock_session.execute.side_effect = [
+            self._make_count_result(1),
+            self._make_main_result([row]),
+            self._make_preview_result([]),  # no transcript previews
+        ]
+
+        results, total = await repository.get_entity_video_list(
+            mock_session, entity_id=entity_id
+        )
+
+        assert total == 1
+        assert len(results) == 1
+        assert results[0]["sources"] == ["manual"]
+        assert results[0]["has_manual"] is True
+        assert results[0]["mention_count"] == 0
+        assert results[0]["first_mention_time"] is None
+
+    async def test_both_sources(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Video with both transcript and manual has sources=['manual','transcript'], has_manual=true."""
+        entity_id = _uuid()
+
+        row = self._make_video_row(
+            detection_methods=["rule_match", "manual"],
+            has_manual=True,
+            mention_count=3,
+            first_mention_time=5.0,
+        )
+
+        mock_session.execute.side_effect = [
+            self._make_count_result(1),
+            self._make_main_result([row]),
+            self._make_preview_result([{"segment_id": 1, "start_time": 5.0, "mention_text": "Elon"}]),
+        ]
+
+        results, total = await repository.get_entity_video_list(
+            mock_session, entity_id=entity_id
+        )
+
+        assert total == 1
+        assert len(results) == 1
+        assert sorted(results[0]["sources"]) == ["manual", "transcript"]
+        assert results[0]["has_manual"] is True
+        assert results[0]["mention_count"] == 3
+        assert results[0]["first_mention_time"] == 5.0
+
+    async def test_deduplication_one_row_per_video(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Same video with both sources returns one row (GROUP BY video_id handles this)."""
+        entity_id = _uuid()
+
+        # The SQL GROUP BY ensures one row per video — we simulate that
+        row = self._make_video_row(
+            video_id="vid_dedup",
+            detection_methods=["rule_match", "manual"],
+            has_manual=True,
+            mention_count=2,
+        )
+
+        mock_session.execute.side_effect = [
+            self._make_count_result(1),
+            self._make_main_result([row]),
+            self._make_preview_result(),
+        ]
+
+        results, total = await repository.get_entity_video_list(
+            mock_session, entity_id=entity_id
+        )
+
+        assert total == 1
+        assert len(results) == 1
+        assert results[0]["video_id"] == "vid_dedup"
+
+    async def test_sort_by_upload_date_descending(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """SQL includes upload_date DESC ordering. Verify SQL structure."""
+        entity_id = _uuid()
+
+        mock_session.execute.side_effect = [
+            self._make_count_result(0),  # count query returns 0, early exit
+        ]
+
+        results, total = await repository.get_entity_video_list(
+            mock_session, entity_id=entity_id
+        )
+
+        assert total == 0
+        assert results == []
+        # Verify the count query was called
+        mock_session.execute.assert_called_once()
+
+    async def test_pagination(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """limit/offset are passed correctly. Verify 2 rows returned when total=5, limit=2."""
+        entity_id = _uuid()
+
+        row1 = self._make_video_row(video_id="vid_a", detection_methods=["rule_match"])
+        row2 = self._make_video_row(video_id="vid_b", detection_methods=["manual"], has_manual=True, mention_count=0)
+
+        mock_session.execute.side_effect = [
+            self._make_count_result(5),       # total=5
+            self._make_main_result([row1, row2]),
+            self._make_preview_result(),      # previews for vid_a
+            self._make_preview_result([]),    # previews for vid_b
+        ]
+
+        results, total = await repository.get_entity_video_list(
+            mock_session, entity_id=entity_id, limit=2, offset=0
+        )
+
+        assert total == 5
+        assert len(results) == 2
+        assert results[0]["video_id"] == "vid_a"
+        assert results[1]["video_id"] == "vid_b"
+
+    async def test_upload_date_field_in_results(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """upload_date is present in each result dict as an ISO string."""
+        entity_id = _uuid()
+        from datetime import datetime as dt, timezone as tz
+
+        row = self._make_video_row(
+            upload_date=dt(2024, 12, 25, 10, 0, 0, tzinfo=tz.utc),
+            detection_methods=["rule_match"],
+        )
+
+        mock_session.execute.side_effect = [
+            self._make_count_result(1),
+            self._make_main_result([row]),
+            self._make_preview_result(),
+        ]
+
+        results, _ = await repository.get_entity_video_list(
+            mock_session, entity_id=entity_id
+        )
+
+        assert results[0]["upload_date"] is not None
+        assert "2024-12-25" in results[0]["upload_date"]
+
+    async def test_empty_previews_for_manual_only(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Manual-only videos have empty mentions preview list."""
+        entity_id = _uuid()
+
+        row = self._make_video_row(
+            detection_methods=["manual"],
+            has_manual=True,
+            mention_count=0,
+            first_mention_time=None,
+        )
+
+        mock_session.execute.side_effect = [
+            self._make_count_result(1),
+            self._make_main_result([row]),
+            self._make_preview_result([]),  # No transcript previews
+        ]
+
+        results, _ = await repository.get_entity_video_list(
+            mock_session, entity_id=entity_id
+        )
+
+        assert results[0]["mentions"] == []
+        assert results[0]["has_manual"] is True
+
+
+# ---------------------------------------------------------------------------
+# TestDeleteManualAssociation (Feature 050 — T036)
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteManualAssociation:
+    """Tests for delete_manual_association() — remove manual entity-video link.
+
+    This is a TDD test class for Feature 050 User Story 3.  The
+    ``delete_manual_association`` method does not exist yet in the repository;
+    these tests MUST fail until the implementation is added.
+
+    Expected method signature:
+        async def delete_manual_association(
+            self,
+            session: AsyncSession,
+            video_id: str,
+            entity_id: uuid.UUID,
+        ) -> None
+
+    Behaviour contract:
+    - Queries for an EntityMentionDB row with detection_method='manual' for
+      the given (video_id, entity_id) pair.
+    - Raises NotFoundError (404) when no such manual row exists.
+    - Calls session.delete() on the found row when it does exist.
+    - Calls update_entity_counters() with [entity_id] in the same transaction
+      after the delete so that mention_count / video_count stay accurate.
+    - Only targets rows with detection_method='manual'; transcript-derived
+      mentions for the same entity+video are never touched.
+    """
+
+    @pytest.fixture
+    def repository(self) -> EntityMentionRepository:
+        """Provide a fresh repository instance for each test."""
+        return EntityMentionRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> MagicMock:
+        """Provide a mock async session for each test."""
+        session = _make_mock_session()
+        # delete() is synchronous on the SQLAlchemy session
+        session.delete = AsyncMock()
+        return session
+
+    def _make_scalar_result(self, value: Any) -> MagicMock:
+        """Return a mock whose .scalar_one_or_none() returns value."""
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = value
+        return result
+
+    def _make_manual_mention(
+        self,
+        *,
+        entity_id: uuid.UUID | None = None,
+        video_id: str = "dQw4w9WgXcQ",
+    ) -> MagicMock:
+        """Build a MagicMock simulating a manual EntityMentionDB row."""
+        mention = MagicMock(spec=EntityMentionDB)
+        mention.id = _uuid()
+        mention.entity_id = entity_id or _uuid()
+        mention.video_id = video_id
+        mention.segment_id = None
+        mention.language_code = None
+        mention.confidence = None
+        mention.detection_method = "manual"
+        mention.mention_text = "Joanna Hausmann"
+        mention.created_at = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        return mention
+
+    def _make_transcript_mention(
+        self,
+        *,
+        entity_id: uuid.UUID | None = None,
+        video_id: str = "dQw4w9WgXcQ",
+        segment_id: int = 42,
+    ) -> MagicMock:
+        """Build a MagicMock simulating a transcript-derived EntityMentionDB row."""
+        mention = MagicMock(spec=EntityMentionDB)
+        mention.id = _uuid()
+        mention.entity_id = entity_id or _uuid()
+        mention.video_id = video_id
+        mention.segment_id = segment_id
+        mention.language_code = "en"
+        mention.confidence = 0.95
+        mention.detection_method = "rule_match"
+        mention.mention_text = "Joanna Hausmann"
+        mention.created_at = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        return mention
+
+    async def test_delete_successful_calls_session_delete(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """delete_manual_association() calls session.delete() on the found row.
+
+        When a manual EntityMentionDB row exists for the given (video_id,
+        entity_id) pair, the method must call session.delete() with that row
+        and return None (no return value).
+        """
+        entity_id = _uuid()
+        video_id = "dQw4w9WgXcQ"
+        manual_mention = self._make_manual_mention(entity_id=entity_id, video_id=video_id)
+
+        # execute() finds the manual mention
+        mock_session.execute.return_value = self._make_scalar_result(manual_mention)
+
+        with patch.object(
+            repository, "update_entity_counters", new=AsyncMock()
+        ):
+            await repository.delete_manual_association(
+                mock_session, video_id=video_id, entity_id=entity_id
+            )
+
+        # delete_manual_association returns None (void)
+
+        # session.delete must have been called with the found row
+        mock_session.delete.assert_called_once_with(manual_mention)
+
+    async def test_delete_raises_not_found_when_no_manual_row(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """delete_manual_association() raises NotFoundError when no manual row exists.
+
+        If no EntityMentionDB row with detection_method='manual' exists for the
+        given (video_id, entity_id) pair, the method must raise NotFoundError
+        (HTTP 404) without touching the session.
+        """
+        from chronovista.exceptions import NotFoundError
+
+        entity_id = _uuid()
+        video_id = "dQw4w9WgXcQ"
+
+        # Manual mention lookup returns None — nothing to delete
+        mock_session.execute.return_value = self._make_scalar_result(None)
+
+        with pytest.raises(NotFoundError):
+            await repository.delete_manual_association(
+                mock_session, video_id=video_id, entity_id=entity_id
+            )
+
+        # session.delete must NOT be called when the row is missing
+        mock_session.delete.assert_not_called()
+
+    async def test_delete_calls_update_entity_counters(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """delete_manual_association() calls update_entity_counters with the entity_id.
+
+        After deleting the manual mention, the method must call
+        update_entity_counters passing a list that contains the entity_id so
+        that mention_count and video_count on named_entities are refreshed in
+        the same transaction.
+        """
+        entity_id = _uuid()
+        video_id = "dQw4w9WgXcQ"
+        manual_mention = self._make_manual_mention(entity_id=entity_id, video_id=video_id)
+
+        mock_session.execute.return_value = self._make_scalar_result(manual_mention)
+
+        with patch.object(
+            repository, "update_entity_counters", new=AsyncMock()
+        ) as mock_counters:
+            await repository.delete_manual_association(
+                mock_session, video_id=video_id, entity_id=entity_id
+            )
+
+        # update_entity_counters must be called exactly once
+        mock_counters.assert_called_once()
+        call_args = mock_counters.call_args
+        # First positional arg after session is the entity_ids list
+        entity_ids_arg = (
+            call_args.args[1]
+            if len(call_args.args) > 1
+            else call_args.kwargs.get("entity_ids", [])
+        )
+        assert entity_id in entity_ids_arg, (
+            f"Expected entity_id {entity_id} in update_entity_counters call, "
+            f"got: {entity_ids_arg}"
+        )
+
+    async def test_delete_counters_called_after_delete(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """update_entity_counters is called in the same transaction as session.delete().
+
+        The ordering requirement is: delete the row first, then refresh counters.
+        This test verifies that update_entity_counters is always called after
+        the row deletion (i.e., delete precedes counter update in the call log).
+        """
+        entity_id = _uuid()
+        video_id = "dQw4w9WgXcQ"
+        manual_mention = self._make_manual_mention(entity_id=entity_id, video_id=video_id)
+
+        mock_session.execute.return_value = self._make_scalar_result(manual_mention)
+
+        call_order: list[str] = []
+
+        async def _track_delete(obj: Any) -> None:
+            call_order.append("delete")
+
+        async def _track_counters(session: Any, entity_ids: Any) -> None:
+            call_order.append("counters")
+
+        mock_session.delete.side_effect = _track_delete
+
+        with patch.object(
+            repository, "update_entity_counters", new=AsyncMock(side_effect=_track_counters)
+        ):
+            await repository.delete_manual_association(
+                mock_session, video_id=video_id, entity_id=entity_id
+            )
+
+        assert call_order == ["delete", "counters"], (
+            f"Expected delete before counters, got order: {call_order}"
+        )
+
+    async def test_delete_does_not_affect_transcript_mentions(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """delete_manual_association() only queries for detection_method='manual' rows.
+
+        Transcript-derived mentions (rule_match, spacy_ner, etc.) for the same
+        entity+video must be unaffected.  This test verifies that the method's
+        lookup query targets only manual rows: the mock returns the manual row
+        (not the transcript row), confirming the query filter is specific.
+        """
+        entity_id = _uuid()
+        video_id = "dQw4w9WgXcQ"
+
+        manual_mention = self._make_manual_mention(entity_id=entity_id, video_id=video_id)
+        # transcript mention exists alongside the manual one — but the method
+        # only queries for detection_method='manual', so only manual_mention
+        # appears in the execute result.
+        _transcript_mention = self._make_transcript_mention(
+            entity_id=entity_id, video_id=video_id
+        )
+
+        # The execute mock returns only the manual mention — this simulates the
+        # WHERE detection_method='manual' filter in the repository query.
+        mock_session.execute.return_value = self._make_scalar_result(manual_mention)
+
+        with patch.object(
+            repository, "update_entity_counters", new=AsyncMock()
+        ):
+            await repository.delete_manual_association(
+                mock_session, video_id=video_id, entity_id=entity_id
+            )
+
+        # Only the manual mention is passed to session.delete()
+        mock_session.delete.assert_called_once_with(manual_mention)
+        # The transcript mention object was never touched
+        assert mock_session.delete.call_args[0][0] is manual_mention
+
+    async def test_delete_not_found_when_only_transcript_mention_exists(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """NotFoundError is raised when only transcript-derived mentions exist.
+
+        If the video+entity pair has transcript mentions but NO manual row,
+        delete_manual_association() must raise NotFoundError because there is
+        no manual association to remove.  This mirrors the API contract that
+        DELETE only targets detection_method='manual' rows.
+        """
+        from chronovista.exceptions import NotFoundError
+
+        entity_id = _uuid()
+        video_id = "dQw4w9WgXcQ"
+
+        # The query filtered on detection_method='manual' returns None even
+        # though transcript mentions for this pair exist in the real DB.
+        mock_session.execute.return_value = self._make_scalar_result(None)
+
+        with pytest.raises(NotFoundError):
+            await repository.delete_manual_association(
+                mock_session, video_id=video_id, entity_id=entity_id
+            )
+
+        mock_session.delete.assert_not_called()

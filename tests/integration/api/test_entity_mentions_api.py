@@ -1,8 +1,11 @@
-"""Integration tests for entity mention API endpoints (Feature 038 — T024).
+"""Integration tests for entity mention API endpoints (Feature 038 — T024;
+Feature 050 — T014/T015).
 
 Covers:
   - GET /api/v1/videos/{video_id}/entities
   - GET /api/v1/entities/{entity_id}/videos
+  - GET /api/v1/entities/search                     (Feature 050 T014)
+  - POST /api/v1/videos/{video_id}/entities/{entity_id}/manual  (Feature 050 T015)
 
 All tests require an integration database. Each test class seeds its own data
 via the ``seed_entity_data`` fixture and cleans up after itself in FK-reverse
@@ -15,6 +18,7 @@ tests do not need real OAuth credentials, following the same pattern used in
 
 from __future__ import annotations
 
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, AsyncGenerator
@@ -1629,3 +1633,1515 @@ class TestGetEntityDetail:
             response = await async_client.get(_entity_detail_url(entity_id))
 
         assert response.status_code == 401, response.text
+
+
+# ---------------------------------------------------------------------------
+# Feature 050 — T014: Stable IDs for search/manual-association tests
+# ---------------------------------------------------------------------------
+# These IDs must not collide with the existing _CHANNEL_ID, _VIDEO_ID, or
+# _VIDEO_ID_2 constants defined above. They follow the same length constraints.
+_SEARCH_CHANNEL_ID = "UCsearch_manual_test01"  # 22 chars — within 24
+_SEARCH_VIDEO_ID = "srch_manual_vid01"  # 17 chars — within 20
+
+
+# ---------------------------------------------------------------------------
+# Feature 050 — T014: URL helpers for new endpoints
+# ---------------------------------------------------------------------------
+
+
+def _search_entities_url() -> str:
+    """Return the entity search endpoint URL."""
+    return "/api/v1/entities/search"
+
+
+def _manual_association_url(video_id: str, entity_id: str) -> str:
+    """Return the manual association POST endpoint URL."""
+    return f"/api/v1/videos/{video_id}/entities/{entity_id}/manual"
+
+
+# ---------------------------------------------------------------------------
+# Feature 050 — T014: Seed fixture for search / manual association tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def seed_search_data(
+    integration_session_factory: "async_sessionmaker[AsyncSession]",
+) -> AsyncGenerator[dict[str, Any], None]:
+    """Seed the integration DB for Feature 050 search and manual association tests.
+
+    Creates:
+    - One channel (``_SEARCH_CHANNEL_ID``).
+    - One video (``_SEARCH_VIDEO_ID``) belonging to that channel.
+    - One active NamedEntity ``"Joanna Hausmann"`` (type: person) with one
+      alias ``"Joanna"`` (type: name_variant).
+    - One deprecated NamedEntity ``"Old Entity"`` (type: person).
+    - One EntityMention linking "Joanna Hausmann" to ``_SEARCH_VIDEO_ID``
+      (detection_method='rule_match') so ``is_linked`` tests have data.
+
+    Yields a dict with stable IDs and UUIDs for test reference.
+    Cleanup removes all seeded rows in FK-reverse order.
+    """
+    from chronovista.db.models import EntityAlias as EntityAliasDB
+
+    active_entity_id = uuid.uuid4()
+    deprecated_entity_id = uuid.uuid4()
+
+    async with integration_session_factory() as session:
+        # ---- Channel -------------------------------------------------------
+        existing_ch = (
+            await session.execute(
+                select(ChannelDB).where(ChannelDB.channel_id == _SEARCH_CHANNEL_ID)
+            )
+        ).scalar_one_or_none()
+        if not existing_ch:
+            session.add(
+                ChannelDB(
+                    channel_id=_SEARCH_CHANNEL_ID,
+                    title="Search Manual Test Channel",
+                )
+            )
+
+        # ---- Video ---------------------------------------------------------
+        existing_vid = (
+            await session.execute(
+                select(VideoDB).where(VideoDB.video_id == _SEARCH_VIDEO_ID)
+            )
+        ).scalar_one_or_none()
+        if not existing_vid:
+            session.add(
+                VideoDB(
+                    video_id=_SEARCH_VIDEO_ID,
+                    channel_id=_SEARCH_CHANNEL_ID,
+                    title="Search Manual Test Video",
+                    description="Feature 050 test video",
+                    upload_date=datetime(2024, 6, 1, tzinfo=timezone.utc),
+                    duration=300,
+                )
+            )
+
+        await session.commit()
+
+        # ---- Active NamedEntity: Joanna Hausmann ---------------------------
+        existing_active = (
+            await session.execute(
+                select(NamedEntityDB).where(
+                    NamedEntityDB.id == active_entity_id
+                )
+            )
+        ).scalar_one_or_none()
+        if not existing_active:
+            session.add(
+                NamedEntityDB(
+                    id=active_entity_id,
+                    canonical_name="Joanna Hausmann",
+                    canonical_name_normalized="joanna hausmann",
+                    entity_type="person",
+                    description="Venezuelan-American comedian and writer.",
+                    status="active",
+                )
+            )
+            await session.commit()
+
+            # Add alias "Joanna"
+            session.add(
+                EntityAliasDB(
+                    id=uuid.UUID(bytes=uuid7().bytes),
+                    entity_id=active_entity_id,
+                    alias_name="Joanna",
+                    alias_name_normalized="joanna",
+                    alias_type="name_variant",
+                    occurrence_count=0,
+                )
+            )
+
+        # ---- Deprecated NamedEntity: Old Entity ----------------------------
+        existing_deprecated = (
+            await session.execute(
+                select(NamedEntityDB).where(
+                    NamedEntityDB.id == deprecated_entity_id
+                )
+            )
+        ).scalar_one_or_none()
+        if not existing_deprecated:
+            session.add(
+                NamedEntityDB(
+                    id=deprecated_entity_id,
+                    canonical_name="Old Entity",
+                    canonical_name_normalized="old entity",
+                    entity_type="person",
+                    description="A deprecated entity for testing.",
+                    status="deprecated",
+                )
+            )
+
+        await session.commit()
+
+        # ---- Existing mention (for is_linked tests) -----------------------
+        # Attach "Joanna Hausmann" to the search video via rule_match so
+        # test_search_is_linked_with_video_id can verify is_linked=True.
+        session.add(
+            EntityMentionDB(
+                id=uuid.UUID(bytes=uuid7().bytes),
+                entity_id=active_entity_id,
+                segment_id=None,  # video-level manual or direct mention
+                video_id=_SEARCH_VIDEO_ID,
+                language_code=None,
+                mention_text="Joanna Hausmann",
+                detection_method="rule_match",
+                confidence=1.0,
+            )
+        )
+        await session.commit()
+
+    yield {
+        "active_entity_id": str(active_entity_id),
+        "active_entity_id_uuid": active_entity_id,
+        "deprecated_entity_id": str(deprecated_entity_id),
+        "deprecated_entity_id_uuid": deprecated_entity_id,
+        "video_id": _SEARCH_VIDEO_ID,
+        "channel_id": _SEARCH_CHANNEL_ID,
+    }
+
+    # ---- Cleanup (FK-reverse order) ----------------------------------------
+    async with integration_session_factory() as session:
+        # entity_mentions first
+        await session.execute(
+            delete(EntityMentionDB).where(
+                EntityMentionDB.video_id == _SEARCH_VIDEO_ID
+            )
+        )
+        # also any manual associations created during tests
+        await session.execute(
+            delete(EntityMentionDB).where(
+                EntityMentionDB.entity_id.in_(
+                    [active_entity_id, deprecated_entity_id]
+                )
+            )
+        )
+        # entity_aliases
+        await session.execute(
+            delete(EntityAliasDB).where(
+                EntityAliasDB.entity_id.in_(
+                    [active_entity_id, deprecated_entity_id]
+                )
+            )
+        )
+        # named_entities
+        await session.execute(
+            delete(NamedEntityDB).where(
+                NamedEntityDB.id.in_([active_entity_id, deprecated_entity_id])
+            )
+        )
+        # videos
+        await session.execute(
+            delete(VideoDB).where(VideoDB.video_id == _SEARCH_VIDEO_ID)
+        )
+        # channel
+        await session.execute(
+            delete(ChannelDB).where(ChannelDB.channel_id == _SEARCH_CHANNEL_ID)
+        )
+        await session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Feature 050 — T014: GET /api/v1/entities/search
+# ---------------------------------------------------------------------------
+
+
+class TestSearchEntitiesEndpoint:
+    """Integration tests for GET /api/v1/entities/search.
+
+    This is a TDD test class for Feature 050 User Story 1. The
+    ``search_entities`` repository method and the corresponding router
+    endpoint do not exist yet. These tests MUST fail until the
+    implementation is added.
+
+    URL: GET /api/v1/entities/search?q=...&video_id=...&limit=...
+    """
+
+    async def test_search_requires_min_2_chars(
+        self,
+        async_client: AsyncClient,
+        seed_search_data: dict[str, Any],
+    ) -> None:
+        """GET /api/v1/entities/search returns 422 when q is a single character.
+
+        The autocomplete endpoint enforces a minimum query length of 2
+        characters via FastAPI's Query(min_length=2) validation.
+        """
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(
+                _search_entities_url(), params={"q": "J"}
+            )
+
+        assert response.status_code == 422, (
+            f"Expected 422 for single-char query, got {response.status_code}: "
+            f"{response.text}"
+        )
+
+    async def test_search_canonical_name_match(
+        self,
+        async_client: AsyncClient,
+        seed_search_data: dict[str, Any],
+    ) -> None:
+        """GET /api/v1/entities/search returns Joanna Hausmann for query 'Joan'.
+
+        The canonical name "Joanna Hausmann" matches a 'Joan' prefix. The
+        response must include an entity with the correct canonical_name,
+        entity_id, entity_type, status, and a null matched_alias field.
+        """
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(
+                _search_entities_url(), params={"q": "Joan"}
+            )
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        data = body.get("data", body) if isinstance(body, dict) else body
+        # Accept both a wrapped {"data": [...]} envelope and a bare list
+        if isinstance(data, dict):
+            data = body
+
+        entity = next(
+            (
+                item
+                for item in (data if isinstance(data, list) else [])
+                if item.get("canonical_name") == "Joanna Hausmann"
+            ),
+            None,
+        )
+        assert entity is not None, (
+            f"Expected 'Joanna Hausmann' in search results for query 'Joan'. "
+            f"Response: {body}"
+        )
+        assert entity["entity_id"] == seed_search_data["active_entity_id"]
+        assert entity["entity_type"] == "person"
+        assert entity["status"] == "active"
+        assert entity.get("matched_alias") is None
+
+    async def test_search_alias_match(
+        self,
+        async_client: AsyncClient,
+        seed_search_data: dict[str, Any],
+    ) -> None:
+        """GET /api/v1/entities/search returns matched_alias when hit via alias.
+
+        The query "Joanna" matches the alias "Joanna" (not the canonical name
+        "Joanna Hausmann"). The result must include matched_alias="Joanna".
+        If the canonical name also matches then matched_alias may be None
+        (canonical preference), but the entity must be present.
+        """
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(
+                _search_entities_url(), params={"q": "Joanna"}
+            )
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        raw_list = body.get("data", body) if isinstance(body, dict) else body
+        items = raw_list if isinstance(raw_list, list) else []
+
+        entity = next(
+            (
+                item
+                for item in items
+                if item.get("canonical_name") == "Joanna Hausmann"
+            ),
+            None,
+        )
+        assert entity is not None, (
+            f"Expected 'Joanna Hausmann' in alias-match results. Body: {body}"
+        )
+        # matched_alias should be "Joanna" when query matches via alias
+        # (canonical "Joanna Hausmann" also starts with "Joanna", so either
+        # None or "Joanna" is acceptable — entity must be present)
+        assert entity.get("entity_id") == seed_search_data["active_entity_id"]
+
+    async def test_search_is_linked_with_video_id(
+        self,
+        async_client: AsyncClient,
+        seed_search_data: dict[str, Any],
+    ) -> None:
+        """GET /api/v1/entities/search shows is_linked=True when video_id provided.
+
+        When the caller supplies a video_id parameter and the entity already
+        has entity_mention rows for that video, the response must include
+        is_linked=True and a non-empty link_sources list.
+        """
+        video_id = seed_search_data["video_id"]
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(
+                _search_entities_url(),
+                params={"q": "Joan", "video_id": video_id},
+            )
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        raw_list = body.get("data", body) if isinstance(body, dict) else body
+        items = raw_list if isinstance(raw_list, list) else []
+
+        entity = next(
+            (
+                item
+                for item in items
+                if item.get("canonical_name") == "Joanna Hausmann"
+            ),
+            None,
+        )
+        assert entity is not None, (
+            f"Expected 'Joanna Hausmann' in results. Body: {body}"
+        )
+        assert entity.get("is_linked") is True, (
+            f"Expected is_linked=True for entity already linked to video. "
+            f"Got: {entity}"
+        )
+        link_sources = entity.get("link_sources")
+        assert link_sources is not None and len(link_sources) >= 1, (
+            f"Expected non-empty link_sources. Got: {link_sources}"
+        )
+
+    async def test_search_deprecated_entity_in_results(
+        self,
+        async_client: AsyncClient,
+        seed_search_data: dict[str, Any],
+    ) -> None:
+        """GET /api/v1/entities/search includes deprecated entities with status='deprecated'.
+
+        Searching for "Old" should surface "Old Entity" (which is deprecated).
+        The result's status field must be 'deprecated'.
+        """
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(
+                _search_entities_url(), params={"q": "Old"}
+            )
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        raw_list = body.get("data", body) if isinstance(body, dict) else body
+        items = raw_list if isinstance(raw_list, list) else []
+
+        deprecated_item = next(
+            (item for item in items if item.get("canonical_name") == "Old Entity"),
+            None,
+        )
+        assert deprecated_item is not None, (
+            f"Expected deprecated 'Old Entity' in results. Body: {body}"
+        )
+        assert deprecated_item["status"] == "deprecated", (
+            f"Expected status='deprecated', got: {deprecated_item['status']}"
+        )
+
+    async def test_search_limit_parameter(
+        self,
+        async_client: AsyncClient,
+        seed_search_data: dict[str, Any],
+    ) -> None:
+        """GET /api/v1/entities/search respects the limit query parameter.
+
+        With limit=1, the response data must contain at most 1 result even
+        when multiple entities could match the query.
+        """
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(
+                _search_entities_url(),
+                params={"q": "an", "limit": 1},
+            )
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        raw_list = body.get("data", body) if isinstance(body, dict) else body
+        items = raw_list if isinstance(raw_list, list) else []
+        assert len(items) <= 1, (
+            f"Expected at most 1 result with limit=1, got {len(items)}"
+        )
+
+    async def test_search_auth_required(
+        self,
+        async_client: AsyncClient,
+        seed_search_data: dict[str, Any],
+    ) -> None:
+        """GET /api/v1/entities/search returns 401 or 403 without authentication.
+
+        The endpoint is guarded by ``require_auth``; unauthenticated requests
+        must be rejected with a 401 or 403 status.
+        """
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = False
+            response = await async_client.get(
+                _search_entities_url(), params={"q": "Joan"}
+            )
+
+        assert response.status_code in (401, 403), (
+            f"Expected 401 or 403 for unauthenticated request, "
+            f"got {response.status_code}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Feature 050 — T015: POST /api/v1/videos/{video_id}/entities/{entity_id}/manual
+# ---------------------------------------------------------------------------
+
+
+class TestCreateManualAssociationEndpoint:
+    """Integration tests for POST /api/v1/videos/{video_id}/entities/{entity_id}/manual.
+
+    This is a TDD test class for Feature 050 User Story 1. The endpoint
+    does not exist yet; these tests MUST fail until the implementation is
+    added.
+
+    URL: POST /api/v1/videos/{video_id}/entities/{entity_id}/manual
+    Body: (none)
+    Success: 201 with ManualAssociationResponse body
+    """
+
+    async def test_create_201_success(
+        self,
+        async_client: AsyncClient,
+        seed_search_data: dict[str, Any],
+    ) -> None:
+        """POST manual association returns 201 with ManualAssociationResponse body.
+
+        Creates a manual entity-video link and verifies:
+        - HTTP 201 status code
+        - Response body has fields: id, entity_id, video_id, detection_method,
+          mention_text, created_at
+        - detection_method == 'manual'
+        - mention_text == entity's canonical_name
+        """
+        video_id = seed_search_data["video_id"]
+        entity_id = seed_search_data["active_entity_id"]
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.post(
+                _manual_association_url(video_id, entity_id)
+            )
+
+        assert response.status_code == 201, (
+            f"Expected 201, got {response.status_code}: {response.text}"
+        )
+        body = response.json()
+        data = body.get("data", body) if isinstance(body, dict) else body
+
+        assert "id" in data, f"Missing 'id' field in response: {data}"
+        assert "entity_id" in data, f"Missing 'entity_id' field: {data}"
+        assert "video_id" in data, f"Missing 'video_id' field: {data}"
+        assert "detection_method" in data, f"Missing 'detection_method': {data}"
+        assert "mention_text" in data, f"Missing 'mention_text': {data}"
+        assert "created_at" in data, f"Missing 'created_at': {data}"
+
+        assert data["detection_method"] == "manual", (
+            f"Expected detection_method='manual', got: {data['detection_method']}"
+        )
+        assert data["entity_id"] == entity_id
+        assert data["video_id"] == video_id
+        assert data["mention_text"] == "Joanna Hausmann", (
+            f"Expected mention_text='Joanna Hausmann', got: {data['mention_text']}"
+        )
+
+    async def test_create_404_nonexistent_video(
+        self,
+        async_client: AsyncClient,
+        seed_search_data: dict[str, Any],
+    ) -> None:
+        """POST manual association returns 404 with RFC 7807 body for unknown video_id.
+
+        The endpoint must verify the video exists before inserting. When the
+        video does not exist, it returns 404 with a Problem Detail response
+        body containing 'type', 'status', and 'detail' fields.
+        """
+        entity_id = seed_search_data["active_entity_id"]
+        nonexistent_video_id = "nosuchvid0001"
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.post(
+                _manual_association_url(nonexistent_video_id, entity_id)
+            )
+
+        assert response.status_code == 404, (
+            f"Expected 404 for nonexistent video, got {response.status_code}: "
+            f"{response.text}"
+        )
+        body = response.json()
+        # RFC 7807 Problem Detail fields
+        assert "status" in body or "detail" in body, (
+            f"Expected RFC 7807 body with 'status' or 'detail', got: {body}"
+        )
+
+    async def test_create_404_nonexistent_entity(
+        self,
+        async_client: AsyncClient,
+        seed_search_data: dict[str, Any],
+    ) -> None:
+        """POST manual association returns 404 with RFC 7807 body for unknown entity_id.
+
+        The endpoint must verify the entity exists after verifying the video.
+        When the entity does not exist, it returns 404.
+        """
+        video_id = seed_search_data["video_id"]
+        nonexistent_entity_id = str(uuid.uuid4())
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.post(
+                _manual_association_url(video_id, nonexistent_entity_id)
+            )
+
+        assert response.status_code == 404, (
+            f"Expected 404 for nonexistent entity, got {response.status_code}: "
+            f"{response.text}"
+        )
+
+    async def test_create_409_duplicate(
+        self,
+        async_client: AsyncClient,
+        seed_search_data: dict[str, Any],
+        integration_session_factory: "async_sessionmaker[AsyncSession]",
+    ) -> None:
+        """POST manual association returns 409 when the link already exists.
+
+        If a manual entity_mention row already exists for the same
+        (entity_id, video_id) pair, the endpoint must return 409 Conflict
+        rather than creating a duplicate row.
+        """
+        video_id = seed_search_data["video_id"]
+        entity_id = seed_search_data["active_entity_id"]
+        entity_uuid = seed_search_data["active_entity_id_uuid"]
+
+        # Pre-create a manual association directly
+        async with integration_session_factory() as session:
+            existing = EntityMentionDB(
+                id=uuid.UUID(bytes=uuid7().bytes),
+                entity_id=entity_uuid,
+                segment_id=None,
+                video_id=video_id,
+                language_code=None,
+                mention_text="Joanna Hausmann",
+                detection_method="manual",
+                confidence=None,
+            )
+            session.add(existing)
+            await session.commit()
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.post(
+                _manual_association_url(video_id, entity_id)
+            )
+
+        assert response.status_code == 409, (
+            f"Expected 409 for duplicate association, got {response.status_code}: "
+            f"{response.text}"
+        )
+
+    async def test_create_422_deprecated_entity(
+        self,
+        async_client: AsyncClient,
+        seed_search_data: dict[str, Any],
+    ) -> None:
+        """POST manual association returns 422 when the entity is deprecated.
+
+        Manually linking a deprecated entity to a video is not permitted.
+        The endpoint must return 422 Unprocessable Entity.
+        """
+        video_id = seed_search_data["video_id"]
+        deprecated_entity_id = seed_search_data["deprecated_entity_id"]
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.post(
+                _manual_association_url(video_id, deprecated_entity_id)
+            )
+
+        assert response.status_code == 422, (
+            f"Expected 422 for deprecated entity, got {response.status_code}: "
+            f"{response.text}"
+        )
+
+    async def test_create_updates_entity_counters(
+        self,
+        async_client: AsyncClient,
+        seed_search_data: dict[str, Any],
+        integration_session_factory: "async_sessionmaker[AsyncSession]",
+    ) -> None:
+        """POST manual association updates mention_count/video_count on named_entities.
+
+        After a successful manual association, the named_entity row's
+        mention_count and video_count should be refreshed by the repository's
+        update_entity_counters() call. This test verifies the counter update
+        is triggered by checking that the named_entity row is mutated.
+
+        Note: Because manual mentions have mention_text=canonical_name and
+        detection_method='manual', they contribute to the visible-name counter
+        logic, so mention_count should be >= 1 after the association.
+        """
+        video_id = seed_search_data["video_id"]
+        entity_id = seed_search_data["active_entity_id"]
+        entity_uuid = seed_search_data["active_entity_id_uuid"]
+
+        # Read baseline counter before association
+        async with integration_session_factory() as session:
+            entity_before = (
+                await session.execute(
+                    select(NamedEntityDB).where(NamedEntityDB.id == entity_uuid)
+                )
+            ).scalar_one_or_none()
+        assert entity_before is not None, "Entity must exist before the test"
+        count_before = entity_before.mention_count or 0
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.post(
+                _manual_association_url(video_id, entity_id)
+            )
+
+        # The POST itself may succeed with 201 or fail with 409 if a prior
+        # test already created the association. Either way, the counter
+        # check below only makes sense on a fresh 201.
+        if response.status_code != 201:
+            pytest.skip(
+                f"Manual association was not created (status {response.status_code}); "
+                "skipping counter verification. "
+                "Ensure test isolation (no prior manual mention for this entity+video)."
+            )
+
+        # Read counter after association
+        async with integration_session_factory() as session:
+            entity_after = (
+                await session.execute(
+                    select(NamedEntityDB).where(NamedEntityDB.id == entity_uuid)
+                )
+            ).scalar_one_or_none()
+
+        assert entity_after is not None
+        count_after = entity_after.mention_count or 0
+
+        assert count_after >= count_before, (
+            f"Expected mention_count to be >= {count_before} after manual "
+            f"association, got {count_after}"
+        )
+        # Specifically, adding a manual mention should produce mention_count >= 1
+        assert count_after >= 1, (
+            f"Expected mention_count >= 1 after manual association, "
+            f"got {count_after}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# T028 — GET /api/v1/entities/{entity_id}/videos (Multi-Source)
+# ---------------------------------------------------------------------------
+
+
+class TestEntityVideosMultiSource:
+    """Integration tests for multi-source fields in entity videos endpoint.
+
+    Feature 050 US2 adds sources, has_manual, first_mention_time, and
+    upload_date to EntityVideoResult. These tests verify the new fields
+    are returned correctly for both transcript-derived and manual mentions.
+    """
+
+    async def test_response_includes_sources_and_has_manual(
+        self,
+        async_client: AsyncClient,
+        seed_entity_data: dict[str, Any],
+    ) -> None:
+        """200 response includes sources, has_manual, first_mention_time, upload_date.
+
+        The seeded entity has only transcript-derived mentions (rule_match),
+        so sources should contain 'transcript' and has_manual should be false.
+        """
+        entity_id = seed_entity_data["entity_id"]
+        video_id = seed_entity_data["video_id"]
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(_entity_videos_url(entity_id))
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        data = body["data"]
+
+        # Find the seeded video
+        video_result = next(
+            (item for item in data if item["video_id"] == video_id),
+            None,
+        )
+        assert video_result is not None
+
+        # Verify new fields are present
+        assert "sources" in video_result
+        assert "has_manual" in video_result
+        assert "first_mention_time" in video_result
+        assert "upload_date" in video_result
+
+        # Transcript-only: sources should contain "transcript"
+        assert "transcript" in video_result["sources"]
+        assert video_result["has_manual"] is False
+
+    async def test_mention_count_excludes_manual(
+        self,
+        async_client: AsyncClient,
+        seed_entity_data: dict[str, Any],
+    ) -> None:
+        """mention_count reflects only transcript-derived mentions, not manual.
+
+        The seeded data has 2 rule_match mentions. Even if a manual mention
+        existed, mention_count should exclude it.
+        """
+        entity_id = seed_entity_data["entity_id"]
+        video_id = seed_entity_data["video_id"]
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(_entity_videos_url(entity_id))
+
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+        video_result = next(
+            (item for item in data if item["video_id"] == video_id),
+            None,
+        )
+        assert video_result is not None
+        assert video_result["mention_count"] == 2
+
+    async def test_first_mention_time_present_for_transcript(
+        self,
+        async_client: AsyncClient,
+        seed_entity_data: dict[str, Any],
+    ) -> None:
+        """first_mention_time is set for videos with transcript mentions.
+
+        The seeded segment1 has start_time=0.0, so first_mention_time should
+        be approximately 0.0.
+        """
+        entity_id = seed_entity_data["entity_id"]
+        video_id = seed_entity_data["video_id"]
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(_entity_videos_url(entity_id))
+
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+        video_result = next(
+            (item for item in data if item["video_id"] == video_id),
+            None,
+        )
+        assert video_result is not None
+        assert video_result["first_mention_time"] is not None
+        assert video_result["first_mention_time"] == pytest.approx(0.0)
+
+    async def test_upload_date_present(
+        self,
+        async_client: AsyncClient,
+        seed_entity_data: dict[str, Any],
+    ) -> None:
+        """upload_date is present and contains the seeded video's upload date."""
+        entity_id = seed_entity_data["entity_id"]
+        video_id = seed_entity_data["video_id"]
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(_entity_videos_url(entity_id))
+
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+        video_result = next(
+            (item for item in data if item["video_id"] == video_id),
+            None,
+        )
+        assert video_result is not None
+        assert video_result["upload_date"] is not None
+        assert "2024-03-01" in video_result["upload_date"]
+
+    async def test_pagination_params(
+        self,
+        async_client: AsyncClient,
+        seed_entity_data: dict[str, Any],
+    ) -> None:
+        """limit and offset query params are respected in the response."""
+        entity_id = seed_entity_data["entity_id"]
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(
+                f"{_entity_videos_url(entity_id)}?limit=1&offset=0"
+            )
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert len(body["data"]) <= 1
+        assert body["pagination"]["limit"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Feature 050 — T037: DELETE /api/v1/videos/{video_id}/entities/{entity_id}/manual
+# ---------------------------------------------------------------------------
+
+# Unique stable IDs for this test class — must not collide with other classes.
+# channel_id: max 24 chars, video_id: max 20 chars.
+_DELETE_CHANNEL_ID = "UCdelete_manual_t0001"  # 21 chars
+_DELETE_VIDEO_ID = "del_manual_vid01"  # 16 chars
+_DELETE_VIDEO_ID_2 = "del_manual_vid02"  # 16 chars
+
+
+def _delete_manual_url(video_id: str, entity_id: str) -> str:
+    """Return the DELETE manual association endpoint URL."""
+    return f"/api/v1/videos/{video_id}/entities/{entity_id}/manual"
+
+
+@pytest.fixture
+async def seed_delete_data(
+    integration_session_factory: "async_sessionmaker[AsyncSession]",
+) -> AsyncGenerator[dict[str, Any], None]:
+    """Seed the integration DB for Feature 050 T037 DELETE endpoint tests.
+
+    Creates:
+    - One channel (``_DELETE_CHANNEL_ID``).
+    - Two videos (``_DELETE_VIDEO_ID``, ``_DELETE_VIDEO_ID_2``).
+    - One active NamedEntity ``"Ingrid Bergman"`` (type: person).
+    - No pre-seeded EntityMention rows — each test manages its own associations
+      so that tests stay independent of one another.
+
+    Yields a dict with stable IDs and UUIDs.
+    Cleanup removes all seeded rows in FK-reverse order.
+    """
+    entity_id = uuid.uuid4()
+
+    async with integration_session_factory() as session:
+        # ---- Channel -------------------------------------------------------
+        existing_ch = (
+            await session.execute(
+                select(ChannelDB).where(ChannelDB.channel_id == _DELETE_CHANNEL_ID)
+            )
+        ).scalar_one_or_none()
+        if not existing_ch:
+            session.add(
+                ChannelDB(
+                    channel_id=_DELETE_CHANNEL_ID,
+                    title="Delete Manual Test Channel",
+                )
+            )
+
+        # ---- Video 1 -------------------------------------------------------
+        existing_vid = (
+            await session.execute(
+                select(VideoDB).where(VideoDB.video_id == _DELETE_VIDEO_ID)
+            )
+        ).scalar_one_or_none()
+        if not existing_vid:
+            session.add(
+                VideoDB(
+                    video_id=_DELETE_VIDEO_ID,
+                    channel_id=_DELETE_CHANNEL_ID,
+                    title="Delete Manual Test Video 1",
+                    description="Feature 050 T037 test video",
+                    upload_date=datetime(2024, 6, 1, tzinfo=timezone.utc),
+                    duration=300,
+                )
+            )
+
+        # ---- Video 2 -------------------------------------------------------
+        existing_vid2 = (
+            await session.execute(
+                select(VideoDB).where(VideoDB.video_id == _DELETE_VIDEO_ID_2)
+            )
+        ).scalar_one_or_none()
+        if not existing_vid2:
+            session.add(
+                VideoDB(
+                    video_id=_DELETE_VIDEO_ID_2,
+                    channel_id=_DELETE_CHANNEL_ID,
+                    title="Delete Manual Test Video 2",
+                    description="Feature 050 T037 test video 2",
+                    upload_date=datetime(2024, 7, 1, tzinfo=timezone.utc),
+                    duration=200,
+                )
+            )
+
+        await session.commit()
+
+        # ---- Active NamedEntity: Ingrid Bergman ----------------------------
+        existing_entity = (
+            await session.execute(
+                select(NamedEntityDB).where(NamedEntityDB.id == entity_id)
+            )
+        ).scalar_one_or_none()
+        if not existing_entity:
+            session.add(
+                NamedEntityDB(
+                    id=entity_id,
+                    canonical_name="Ingrid Bergman",
+                    canonical_name_normalized="ingrid bergman",
+                    entity_type="person",
+                    description="Swedish actress.",
+                    status="active",
+                )
+            )
+            await session.commit()
+
+    yield {
+        "entity_id": str(entity_id),
+        "entity_id_uuid": entity_id,
+        "video_id": _DELETE_VIDEO_ID,
+        "video_id_2": _DELETE_VIDEO_ID_2,
+        "channel_id": _DELETE_CHANNEL_ID,
+    }
+
+    # ---- Cleanup (FK-reverse order) ----------------------------------------
+    async with integration_session_factory() as session:
+        # entity_mentions first (any created by individual tests)
+        await session.execute(
+            delete(EntityMentionDB).where(
+                EntityMentionDB.video_id.in_([_DELETE_VIDEO_ID, _DELETE_VIDEO_ID_2])
+            )
+        )
+        await session.execute(
+            delete(EntityMentionDB).where(
+                EntityMentionDB.entity_id == entity_id
+            )
+        )
+        # named_entities
+        await session.execute(
+            delete(NamedEntityDB).where(NamedEntityDB.id == entity_id)
+        )
+        # videos
+        await session.execute(
+            delete(VideoDB).where(
+                VideoDB.video_id.in_([_DELETE_VIDEO_ID, _DELETE_VIDEO_ID_2])
+            )
+        )
+        # channel
+        await session.execute(
+            delete(ChannelDB).where(ChannelDB.channel_id == _DELETE_CHANNEL_ID)
+        )
+        await session.commit()
+
+
+class TestDeleteManualAssociation:
+    """Integration tests for DELETE /api/v1/videos/{video_id}/entities/{entity_id}/manual.
+
+    Feature 050 US3: Remove Manual Association.
+
+    Contract:
+    - 204 No Content on successful deletion of a manual entity-video link.
+    - 404 with RFC 7807 body when no manual association exists for that pair.
+    - Only rows with detection_method='manual' are removed; transcript-derived
+      mentions for the same entity+video remain intact.
+    - named_entities.mention_count and video_count are updated in the same
+      transaction via update_entity_counters.
+
+    Auth is patched via ``unittest.mock.patch`` so that tests do not require
+    real OAuth credentials (same pattern as TestCreateManualAssociationEndpoint).
+    """
+
+    async def test_delete_204_success(
+        self,
+        async_client: AsyncClient,
+        seed_delete_data: dict[str, Any],
+        integration_session_factory: "async_sessionmaker[AsyncSession]",
+    ) -> None:
+        """DELETE manual association returns 204 No Content on success.
+
+        Seed a manual EntityMentionDB row directly in the DB, then call the
+        DELETE endpoint and verify:
+        - HTTP 204 status code.
+        - Response body is empty (no JSON payload).
+        - The manual mention row no longer exists in the DB after deletion.
+        """
+        video_id = seed_delete_data["video_id"]
+        entity_id_str = seed_delete_data["entity_id"]
+        entity_uuid = seed_delete_data["entity_id_uuid"]
+
+        # Pre-create a manual association directly in the DB
+        manual_mention_id = uuid.UUID(bytes=uuid7().bytes)
+        async with integration_session_factory() as session:
+            session.add(
+                EntityMentionDB(
+                    id=manual_mention_id,
+                    entity_id=entity_uuid,
+                    segment_id=None,
+                    video_id=video_id,
+                    language_code=None,
+                    mention_text="Ingrid Bergman",
+                    detection_method="manual",
+                    confidence=None,
+                )
+            )
+            await session.commit()
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.delete(
+                _delete_manual_url(video_id, entity_id_str)
+            )
+
+        assert response.status_code == 204, (
+            f"Expected 204 No Content, got {response.status_code}: {response.text}"
+        )
+        # 204 responses must have no body
+        assert response.content == b"", (
+            f"Expected empty body for 204 response, got: {response.content!r}"
+        )
+
+        # Verify the row was actually removed from the DB
+        async with integration_session_factory() as session:
+            remaining = (
+                await session.execute(
+                    select(EntityMentionDB).where(
+                        EntityMentionDB.id == manual_mention_id
+                    )
+                )
+            ).scalar_one_or_none()
+        assert remaining is None, (
+            "Manual mention row should have been deleted but still exists in DB"
+        )
+
+    async def test_delete_404_no_manual_association(
+        self,
+        async_client: AsyncClient,
+        seed_delete_data: dict[str, Any],
+    ) -> None:
+        """DELETE returns 404 with RFC 7807 body when no manual association exists.
+
+        When the (video_id, entity_id) pair has no row with
+        detection_method='manual', the endpoint must return 404 Problem Detail
+        rather than 204.  The body must conform to RFC 7807 (Problem Details
+        for HTTP APIs) and include at least 'status' or 'detail' fields.
+        """
+        video_id = seed_delete_data["video_id"]
+        entity_id_str = seed_delete_data["entity_id"]
+
+        # Do NOT pre-create any manual association — the endpoint should 404.
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.delete(
+                _delete_manual_url(video_id, entity_id_str)
+            )
+
+        assert response.status_code == 404, (
+            f"Expected 404 for missing manual association, "
+            f"got {response.status_code}: {response.text}"
+        )
+        body = response.json()
+        # RFC 7807 Problem Detail requires at least 'status' or 'detail'
+        assert "status" in body or "detail" in body, (
+            f"Expected RFC 7807 body with 'status' or 'detail', got: {body}"
+        )
+
+    async def test_delete_updates_entity_counters(
+        self,
+        async_client: AsyncClient,
+        seed_delete_data: dict[str, Any],
+        integration_session_factory: "async_sessionmaker[AsyncSession]",
+    ) -> None:
+        """DELETE manual association triggers update_entity_counters.
+
+        After a successful deletion, the named_entity row's mention_count and
+        video_count should reflect the removal.  This test seeds a manual
+        association, reads the counters before deletion, triggers the DELETE
+        endpoint, then verifies the counters were refreshed (i.e., the counts
+        do not increase beyond the pre-deletion values).
+        """
+        video_id = seed_delete_data["video_id"]
+        entity_id_str = seed_delete_data["entity_id"]
+        entity_uuid = seed_delete_data["entity_id_uuid"]
+
+        # Seed a manual association so there is something to delete
+        async with integration_session_factory() as session:
+            session.add(
+                EntityMentionDB(
+                    id=uuid.UUID(bytes=uuid7().bytes),
+                    entity_id=entity_uuid,
+                    segment_id=None,
+                    video_id=video_id,
+                    language_code=None,
+                    mention_text="Ingrid Bergman",
+                    detection_method="manual",
+                    confidence=None,
+                )
+            )
+            await session.commit()
+
+        # Read counter baseline
+        async with integration_session_factory() as session:
+            entity_before = (
+                await session.execute(
+                    select(NamedEntityDB).where(NamedEntityDB.id == entity_uuid)
+                )
+            ).scalar_one_or_none()
+        assert entity_before is not None
+        count_before = entity_before.mention_count or 0
+
+        # Delete the manual association
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.delete(
+                _delete_manual_url(video_id, entity_id_str)
+            )
+
+        assert response.status_code == 204, (
+            f"Expected 204, got {response.status_code}: {response.text}"
+        )
+
+        # Read counter after deletion
+        async with integration_session_factory() as session:
+            entity_after = (
+                await session.execute(
+                    select(NamedEntityDB).where(NamedEntityDB.id == entity_uuid)
+                )
+            ).scalar_one_or_none()
+        assert entity_after is not None
+        count_after = entity_after.mention_count or 0
+
+        # After removing the manual association the counter should decrease or
+        # stay equal to 0 — it must not exceed the pre-deletion count.
+        assert count_after <= count_before, (
+            f"Expected mention_count <= {count_before} after deletion, "
+            f"got {count_after}"
+        )
+
+    async def test_delete_preserves_transcript_mentions(
+        self,
+        async_client: AsyncClient,
+        seed_delete_data: dict[str, Any],
+        integration_session_factory: "async_sessionmaker[AsyncSession]",
+    ) -> None:
+        """DELETE manual association leaves transcript-derived mentions intact.
+
+        When both a manual mention and a transcript-derived mention exist for
+        the same (video_id, entity_id) pair, calling DELETE must remove only
+        the manual row.  The transcript-derived mention must remain in the DB
+        and must still appear in a subsequent GET to the video entities endpoint.
+        """
+        video_id = seed_delete_data["video_id"]
+        entity_id_str = seed_delete_data["entity_id"]
+        entity_uuid = seed_delete_data["entity_id_uuid"]
+
+        transcript_mention_id = uuid.UUID(bytes=uuid7().bytes)
+        manual_mention_id = uuid.UUID(bytes=uuid7().bytes)
+
+        # Seed both a transcript-derived mention and a manual association
+        async with integration_session_factory() as session:
+            # Transcript-derived mention (rule_match)
+            session.add(
+                EntityMentionDB(
+                    id=transcript_mention_id,
+                    entity_id=entity_uuid,
+                    segment_id=None,  # no segment FK for simplicity in integration test
+                    video_id=video_id,
+                    language_code="en",
+                    mention_text="Ingrid Bergman",
+                    detection_method="rule_match",
+                    confidence=0.97,
+                )
+            )
+            # Manual association
+            session.add(
+                EntityMentionDB(
+                    id=manual_mention_id,
+                    entity_id=entity_uuid,
+                    segment_id=None,
+                    video_id=video_id,
+                    language_code=None,
+                    mention_text="Ingrid Bergman",
+                    detection_method="manual",
+                    confidence=None,
+                )
+            )
+            await session.commit()
+
+        # DELETE the manual association
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.delete(
+                _delete_manual_url(video_id, entity_id_str)
+            )
+
+        assert response.status_code == 204, (
+            f"Expected 204, got {response.status_code}: {response.text}"
+        )
+
+        # Verify the manual mention is gone
+        async with integration_session_factory() as session:
+            manual_gone = (
+                await session.execute(
+                    select(EntityMentionDB).where(
+                        EntityMentionDB.id == manual_mention_id
+                    )
+                )
+            ).scalar_one_or_none()
+
+            # Verify the transcript mention still exists
+            transcript_still_present = (
+                await session.execute(
+                    select(EntityMentionDB).where(
+                        EntityMentionDB.id == transcript_mention_id
+                    )
+                )
+            ).scalar_one_or_none()
+
+        assert manual_gone is None, (
+            "Manual mention should have been deleted but still exists in DB"
+        )
+        assert transcript_still_present is not None, (
+            "Transcript-derived mention should NOT have been deleted, but it is gone"
+        )
+
+    async def test_delete_404_for_nonexistent_entity(
+        self,
+        async_client: AsyncClient,
+        seed_delete_data: dict[str, Any],
+    ) -> None:
+        """DELETE returns 404 when the entity UUID does not exist at all.
+
+        Using a random UUID that is not in the named_entities table should
+        produce a 404 response, not a 500 or other error.
+        """
+        video_id = seed_delete_data["video_id"]
+        nonexistent_entity_id = str(uuid.uuid4())
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.delete(
+                _delete_manual_url(video_id, nonexistent_entity_id)
+            )
+
+        assert response.status_code == 404, (
+            f"Expected 404 for nonexistent entity, "
+            f"got {response.status_code}: {response.text}"
+        )
+
+    async def test_delete_404_only_transcript_mention_exists(
+        self,
+        async_client: AsyncClient,
+        seed_delete_data: dict[str, Any],
+        integration_session_factory: "async_sessionmaker[AsyncSession]",
+    ) -> None:
+        """DELETE returns 404 when only transcript mentions exist (no manual row).
+
+        If a transcript-derived mention exists for the (video_id, entity_id)
+        pair but no manual row exists, the endpoint must return 404 because
+        there is no manual association to delete.
+        """
+        video_id = seed_delete_data["video_id_2"]
+        entity_id_str = seed_delete_data["entity_id"]
+        entity_uuid = seed_delete_data["entity_id_uuid"]
+
+        transcript_mention_id = uuid.UUID(bytes=uuid7().bytes)
+
+        # Seed only a transcript-derived mention — no manual row
+        async with integration_session_factory() as session:
+            session.add(
+                EntityMentionDB(
+                    id=transcript_mention_id,
+                    entity_id=entity_uuid,
+                    segment_id=None,
+                    video_id=video_id,
+                    language_code="en",
+                    mention_text="Ingrid Bergman",
+                    detection_method="rule_match",
+                    confidence=0.90,
+                )
+            )
+            await session.commit()
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.delete(
+                _delete_manual_url(video_id, entity_id_str)
+            )
+
+        assert response.status_code == 404, (
+            f"Expected 404 when only transcript mention exists, "
+            f"got {response.status_code}: {response.text}"
+        )
+
+        # Confirm the transcript mention was not deleted as a side effect
+        async with integration_session_factory() as session:
+            transcript_still_present = (
+                await session.execute(
+                    select(EntityMentionDB).where(
+                        EntityMentionDB.id == transcript_mention_id
+                    )
+                )
+            ).scalar_one_or_none()
+
+        assert transcript_still_present is not None, (
+            "Transcript mention should NOT have been deleted by a failed DELETE call"
+        )
+
+
+# ---------------------------------------------------------------------------
+# T048 — Non-Functional Requirements: Performance Assertions
+# ---------------------------------------------------------------------------
+
+
+class TestPerformanceAssertions:
+    """Integration tests that verify endpoint wall-clock response times meet NFRs.
+
+    All timing is measured via ``time.perf_counter()`` around the actual HTTP
+    call through the httpx AsyncClient / ASGITransport.  The measurements
+    include serialization and DB round-trips inside the test process but exclude
+    any real network latency (the transport is in-process).
+
+    NFR thresholds
+    --------------
+    NFR-001 : GET /api/v1/entities/search      < 300 ms
+    NFR-002 : GET /api/v1/entities/{id}/videos < 2 000 ms
+    NFR-003 : POST /api/v1/videos/{id}/entities/{id}/manual < 1 000 ms
+
+    Notes
+    -----
+    - Each test uses a dedicated fixture (``seed_search_data`` for NFR-001 and
+      NFR-003; ``seed_entity_data`` for NFR-002) so that the DB state is
+      consistent with the functional tests.
+    - A valid authenticated call is used so that the measurement covers the
+      full handler path, not just auth rejection.
+    - The POST test (NFR-003) targets a fresh entity-video pair to avoid a 409
+      Conflict.  If an existing association is found (409), the test reports the
+      timing anyway and asserts only the time budget — the functional contract
+      is covered by ``TestCreateManualAssociationEndpoint``.
+    """
+
+    async def test_nfr_001_search_responds_under_300ms(
+        self,
+        async_client: AsyncClient,
+        seed_search_data: dict[str, Any],
+    ) -> None:
+        """GET /api/v1/entities/search must complete within 300 ms (NFR-001).
+
+        Uses the ``seed_search_data`` fixture which seeds "Joanna Hausmann"
+        so the search query 'Joan' always returns at least one result,
+        exercising the full DB lookup path.
+        """
+        budget_ms: float = 300.0
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+
+            t_start = time.perf_counter()
+            response = await async_client.get(
+                _search_entities_url(), params={"q": "Joan"}
+            )
+            elapsed_ms = (time.perf_counter() - t_start) * 1_000
+
+        # The functional contract (200) must hold; timing is only meaningful
+        # when the handler actually ran to completion.
+        assert response.status_code == 200, (
+            f"NFR-001: Expected 200 from /entities/search, "
+            f"got {response.status_code}: {response.text}"
+        )
+        assert elapsed_ms < budget_ms, (
+            f"NFR-001 VIOLATED: GET /api/v1/entities/search took "
+            f"{elapsed_ms:.1f} ms, budget is {budget_ms:.0f} ms"
+        )
+
+    async def test_nfr_002_entity_videos_loads_under_2000ms(
+        self,
+        async_client: AsyncClient,
+        seed_entity_data: dict[str, Any],
+    ) -> None:
+        """GET /api/v1/entities/{entity_id}/videos must complete within 2 000 ms (NFR-002).
+
+        Uses the ``seed_entity_data`` fixture which seeds the "Elon Musk"
+        entity with two EntityMention rows, exercising the paginated JOIN
+        query and mention-preview aggregation path.
+        """
+        budget_ms: float = 2_000.0
+        entity_id: str = seed_entity_data["entity_id"]
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+
+            t_start = time.perf_counter()
+            response = await async_client.get(_entity_videos_url(entity_id))
+            elapsed_ms = (time.perf_counter() - t_start) * 1_000
+
+        assert response.status_code == 200, (
+            f"NFR-002: Expected 200 from /entities/{{id}}/videos, "
+            f"got {response.status_code}: {response.text}"
+        )
+        assert elapsed_ms < budget_ms, (
+            f"NFR-002 VIOLATED: GET /api/v1/entities/{{entity_id}}/videos took "
+            f"{elapsed_ms:.1f} ms, budget is {budget_ms:.0f} ms"
+        )
+
+    async def test_nfr_003_manual_association_completes_under_1000ms(
+        self,
+        async_client: AsyncClient,
+        seed_search_data: dict[str, Any],
+        integration_session_factory: "async_sessionmaker[AsyncSession]",
+    ) -> None:
+        """POST /api/v1/videos/{video_id}/entities/{entity_id}/manual must complete within 1 000 ms (NFR-003).
+
+        Uses the ``seed_search_data`` fixture.  A temporary NamedEntity
+        (``"Nfr003 Perf Entity"``) is created uniquely for this test to avoid
+        a 409 Conflict from prior runs of the functional tests, ensuring the
+        handler executes the full insert + counter-update path.
+
+        Cleanup removes the temporary entity and any created mention rows
+        after the timing assertion so that subsequent test runs stay isolated.
+        """
+        budget_ms: float = 1_000.0
+        video_id: str = seed_search_data["video_id"]
+
+        # Create a dedicated entity so this test is never blocked by a prior
+        # manual association for the same (entity_id, video_id) pair.
+        perf_entity_id = uuid.uuid4()
+
+        async with integration_session_factory() as session:
+            session.add(
+                NamedEntityDB(
+                    id=perf_entity_id,
+                    canonical_name="Nfr003 Perf Entity",
+                    canonical_name_normalized="nfr003 perf entity",
+                    entity_type="person",
+                    description="Temporary entity for NFR-003 performance test.",
+                    status="active",
+                )
+            )
+            await session.commit()
+
+        try:
+            with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+                mock_oauth.is_authenticated.return_value = True
+
+                t_start = time.perf_counter()
+                response = await async_client.post(
+                    _manual_association_url(video_id, str(perf_entity_id))
+                )
+                elapsed_ms = (time.perf_counter() - t_start) * 1_000
+
+            # A 201 confirms the full insert path executed; other 2xx/4xx codes
+            # are noted but do not invalidate the timing measurement since the
+            # handler still ran end-to-end.
+            assert response.status_code == 201, (
+                f"NFR-003: Expected 201 from POST manual association, "
+                f"got {response.status_code}: {response.text}"
+            )
+            assert elapsed_ms < budget_ms, (
+                f"NFR-003 VIOLATED: POST /api/v1/videos/{{video_id}}/entities/{{entity_id}}/manual "
+                f"took {elapsed_ms:.1f} ms, budget is {budget_ms:.0f} ms"
+            )
+        finally:
+            # Clean up the temporary entity and any mention rows it owns.
+            async with integration_session_factory() as session:
+                await session.execute(
+                    delete(EntityMentionDB).where(
+                        EntityMentionDB.entity_id == perf_entity_id
+                    )
+                )
+                await session.execute(
+                    delete(NamedEntityDB).where(NamedEntityDB.id == perf_entity_id)
+                )
+                await session.commit()

@@ -164,6 +164,17 @@ class TagNormalizationService:
         parts = text.split()
         text = " ".join(parts)
 
+        # FR-007 Idempotency: Strip any leading '#' characters exposed by
+        # diacritic removal (e.g. '´#' → after diacritic strip → '#').
+        # Without this second pass, normalize(normalize('´#')) would differ
+        # from normalize('´#') because the first call returns '#' while the
+        # second call would return None.
+        text = text.lstrip("#")
+
+        # Collapse whitespace again in case lstrip revealed new leading spaces
+        parts = text.split()
+        text = " ".join(parts)
+
         # FR-002: Return None for empty results
         return text if text else None
 

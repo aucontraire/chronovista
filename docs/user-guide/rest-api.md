@@ -1939,6 +1939,136 @@ Each match includes the original transcript N-gram, the entity name it likely re
 
 ---
 
+#### Check Duplicate Entity
+
+Check whether an entity with the same normalized name and type already exists before creating one. Rate-limited to 50 requests per minute per client IP.
+
+```
+GET /api/v1/entities/check-duplicate
+```
+
+##### Query Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `name` | string | Entity name to check (required) | - |
+| `type` | string | Entity type to filter by (required) | - |
+
+##### Response (200 OK)
+
+```json
+{
+  "is_duplicate": true,
+  "existing_entity": {
+    "entity_id": "01936c8a-1234-7000-8000-000000000001",
+    "canonical_name": "Noam Chomsky",
+    "entity_type": "person",
+    "description": "American linguist and political commentator"
+  }
+}
+```
+
+When no duplicate is found, `is_duplicate` is `false` and `existing_entity` is `null`.
+
+| Status | Description |
+|--------|-------------|
+| 429 | Rate limit exceeded (50 req/min per client IP). Includes `Retry-After` header. |
+
+---
+
+#### Classify Tag as Entity
+
+Create a named entity from an existing canonical tag. Delegates to the tag management service which handles entity creation/linking and alias registration.
+
+```
+POST /api/v1/entities/classify
+```
+
+**Request body:**
+
+```json
+{
+  "normalized_form": "noam chomsky",
+  "entity_type": "person",
+  "description": "American linguist and political commentator"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `normalized_form` | string | yes | Normalized form of the canonical tag (1-500 chars) |
+| `entity_type` | string | yes | Entity type: `person`, `organization`, `place`, `event`, `work`, `technical_term`, `concept`, `other` |
+| `description` | string | no | Entity description (max 5000 chars) |
+
+**Response (201 Created):**
+
+```json
+{
+  "entity_id": "01936c8a-1234-7000-8000-000000000001",
+  "canonical_name": "Noam Chomsky",
+  "entity_type": "person",
+  "description": "American linguist and political commentator",
+  "alias_count": 2,
+  "entity_created": true,
+  "operation_id": "01936c8b-5678-7000-8000-000000000002"
+}
+```
+
+| Status | Description |
+|--------|-------------|
+| 400 | Invalid entity_type or other validation error |
+| 404 | Canonical tag not found or inactive |
+| 409 | Tag is already classified as an entity. Response includes `existing_entity` details. |
+
+---
+
+#### Create Standalone Entity
+
+Create a new named entity without linking to a canonical tag. The entity name is auto-title-cased and normalized for duplicate detection.
+
+```
+POST /api/v1/entities
+```
+
+**Request body:**
+
+```json
+{
+  "name": "Noam Chomsky",
+  "entity_type": "person",
+  "description": "American linguist and political commentator",
+  "aliases": ["Chomsky", "N. Chomsky"]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | yes | Entity display name (1-500 chars) |
+| `entity_type` | string | yes | Entity type: `person`, `organization`, `place`, `event`, `work`, `technical_term`, `concept`, `other` |
+| `description` | string | no | Entity description (max 5000 chars) |
+| `aliases` | string[] | no | Additional alias names (max 20). Duplicates by normalized form are skipped. |
+
+**Response (201 Created):**
+
+```json
+{
+  "entity_id": "01936c8a-1234-7000-8000-000000000001",
+  "canonical_name": "Noam Chomsky",
+  "entity_type": "person",
+  "description": "American linguist and political commentator",
+  "alias_count": 3
+}
+```
+
+The `alias_count` includes the canonical name plus any unique aliases provided.
+
+| Status | Description |
+|--------|-------------|
+| 409 | An active entity with the same normalized name and type already exists. Response includes `existing_entity` details. |
+| 422 | Entity name normalizes to an empty string |
+
+---
+
 ### Search
 
 #### Search Transcript Segments
@@ -2782,6 +2912,23 @@ curl -X POST http://localhost:8000/api/v1/videos/dQw4w9WgXcQ/entities/01936c8a-1
 curl -X DELETE http://localhost:8000/api/v1/videos/dQw4w9WgXcQ/entities/01936c8a-1234-7000-8000-000000000001/manual
 ```
 
+#### Entity Creation
+
+```bash
+# Check for duplicate entity before creating
+curl "http://localhost:8000/api/v1/entities/check-duplicate?name=Noam%20Chomsky&type=person"
+
+# Classify a canonical tag as an entity
+curl -X POST http://localhost:8000/api/v1/entities/classify \
+  -H "Content-Type: application/json" \
+  -d '{"normalized_form": "noam chomsky", "entity_type": "person", "description": "American linguist"}'
+
+# Create a standalone entity with aliases
+curl -X POST http://localhost:8000/api/v1/entities \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Noam Chomsky", "entity_type": "person", "aliases": ["Chomsky", "N. Chomsky"]}'
+```
+
 #### Recover Video Metadata
 
 ```bash
@@ -2899,7 +3046,7 @@ await updatePreferences([
 
 ## Rate Limiting
 
-The canonical tag search endpoint (`GET /api/v1/canonical-tags?q=...`) and tag search endpoint (`GET /api/v1/tags?q=...`) enforce rate limiting at **50 requests per minute per client IP**. Exceeding this limit returns a `429 Too Many Requests` response with a `Retry-After` header indicating how many seconds to wait.
+The canonical tag search endpoint (`GET /api/v1/canonical-tags?q=...`), tag search endpoint (`GET /api/v1/tags?q=...`), and entity duplicate-check endpoint (`GET /api/v1/entities/check-duplicate`) enforce rate limiting at **50 requests per minute per client IP**. Exceeding this limit returns a `429 Too Many Requests` response with a `Retry-After` header indicating how many seconds to wait.
 
 Other endpoints do not implement rate limiting directly, but be aware of YouTube API quotas when triggering sync operations. See the [Authentication](authentication.md) guide for quota information.
 

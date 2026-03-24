@@ -4,15 +4,15 @@
  * Implements:
  * - FR-005: Cache invalidation for video detail, transcript segments, and
  *   transcript languages after a successful download
- * - NFR-002: 30-second timeout for download operations (YouTube fetch can
- *   be slow on the backend — longer than the default 10s guard)
+ * - NFR-002: 2-minute timeout for download operations (preference-aware
+ *   downloads iterate over multiple languages — see issue #109)
  *
  * @module hooks/useTranscriptDownload
  */
 
 import { useMutation, useQueryClient, UseMutationResult } from "@tanstack/react-query";
 
-import { apiFetch } from "../api/config";
+import { apiFetch, TRANSCRIPT_DOWNLOAD_TIMEOUT } from "../api/config";
 import type { ApiError } from "../types/video";
 
 // ---------------------------------------------------------------------------
@@ -68,12 +68,7 @@ export interface UseTranscriptDownloadOptions {
 // Timeout constant (NFR-002)
 // ---------------------------------------------------------------------------
 
-/**
- * Timeout for transcript download requests in milliseconds.
- * YouTube transcript fetching on the backend can take up to ~20s.
- * 30s gives a comfortable margin while still providing a safety net.
- */
-const TRANSCRIPT_DOWNLOAD_TIMEOUT = 30_000;
+// TRANSCRIPT_DOWNLOAD_TIMEOUT imported from api/config.ts
 
 // ---------------------------------------------------------------------------
 // Fetch helper

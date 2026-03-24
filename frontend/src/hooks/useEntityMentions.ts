@@ -18,6 +18,8 @@ import {
   classifyTag,
   checkEntityDuplicate,
   createEntity,
+  scanEntity,
+  scanVideoEntities,
 } from "../api/entityMentions";
 import type {
   VideoEntitySummary,
@@ -32,6 +34,8 @@ import type {
   FetchEntitiesParams,
   CreateEntityRequest,
   CreateEntityResponse,
+  ScanRequest,
+  ScanResultResponse,
 } from "../api/entityMentions";
 import type { ApiError } from "../types/video";
 
@@ -650,5 +654,102 @@ export function useCheckDuplicate(name: string, entityType: string) {
     enabled,
     staleTime: 30 * 1000, // 30 seconds
     gcTime: 60 * 1000,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// useScanEntity
+// ---------------------------------------------------------------------------
+
+/** Variables passed to the scan entity mutation. */
+export interface ScanEntityVariables {
+  /** UUID of the named entity to scan for */
+  entityId: string;
+  /** Optional scan parameters (language filter, dry_run, full_rescan) */
+  options?: ScanRequest;
+}
+
+/**
+ * Mutation hook that triggers a transcript scan for a single named entity
+ * across all videos.
+ *
+ * On success, invalidates caches for:
+ * - `entity-detail` (so the entity header reflects updated mention counts)
+ * - `entity-videos` (so the entity-to-videos list refreshes)
+ *
+ * Error handling is left to the caller — use `mutation.isError` and
+ * `mutation.error` to display inline error messages.
+ *
+ * @returns UseMutationResult with `mutate({ entityId, options? })`
+ *
+ * @example
+ * ```tsx
+ * const mutation = useScanEntity();
+ * mutation.mutate({ entityId: "ent-uuid", options: { dry_run: true } });
+ * if (mutation.data) {
+ *   console.log(mutation.data.data.mentions_found);
+ * }
+ * ```
+ */
+export function useScanEntity() {
+  const queryClient = useQueryClient();
+
+  return useMutation<ScanResultResponse, ApiError, ScanEntityVariables>({
+    mutationFn: ({ entityId, options }: ScanEntityVariables) =>
+      scanEntity(entityId, options),
+
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: ["entity-detail", variables.entityId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["entity-videos", variables.entityId],
+      });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// useScanVideoEntities
+// ---------------------------------------------------------------------------
+
+/** Variables passed to the scan video entities mutation. */
+export interface ScanVideoEntitiesVariables {
+  /** YouTube video ID whose transcripts should be scanned */
+  videoId: string;
+  /** Optional scan parameters (language filter, dry_run, full_rescan) */
+  options?: ScanRequest;
+}
+
+/**
+ * Mutation hook that triggers an entity scan across all known entities for
+ * a single video's transcripts.
+ *
+ * On success, invalidates the cache for:
+ * - `video-entities` (so the EntityMentionsPanel refreshes with new detections)
+ *
+ * Error handling is left to the caller — use `mutation.isError` and
+ * `mutation.error` to display inline error messages.
+ *
+ * @returns UseMutationResult with `mutate({ videoId, options? })`
+ *
+ * @example
+ * ```tsx
+ * const mutation = useScanVideoEntities();
+ * mutation.mutate({ videoId: "dQw4w9WgXcQ" });
+ * ```
+ */
+export function useScanVideoEntities() {
+  const queryClient = useQueryClient();
+
+  return useMutation<ScanResultResponse, ApiError, ScanVideoEntitiesVariables>({
+    mutationFn: ({ videoId, options }: ScanVideoEntitiesVariables) =>
+      scanVideoEntities(videoId, options),
+
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: ["video-entities", variables.videoId],
+      });
+    },
   });
 }

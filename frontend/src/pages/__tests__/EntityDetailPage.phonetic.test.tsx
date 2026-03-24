@@ -33,6 +33,22 @@ vi.mock("../../hooks/useEntityMentions", () => ({
     error: null,
     isSuccess: false,
   })),
+  useScanEntity: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    data: null,
+    reset: vi.fn(),
+  })),
+  useScanVideoEntities: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    data: null,
+    reset: vi.fn(),
+  })),
 }));
 
 vi.mock("@tanstack/react-query", async (importOriginal) => {

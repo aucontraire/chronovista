@@ -21,7 +21,7 @@ RUN if [ "$INCLUDE_NLP" = "true" ]; then \
 # ==============================================================================
 # Stage 2: frontend-builder — Build Vite/React frontend
 # ==============================================================================
-FROM node:20-alpine AS frontend-builder
+FROM node:22-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 

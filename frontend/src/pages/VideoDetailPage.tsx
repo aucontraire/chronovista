@@ -1313,12 +1313,13 @@ export function VideoDetailPage() {
           />
         </div>
 
-        {/* Entity Mentions Panel (Feature 038, T029, US7; Feature 050, T025) */}
+        {/* Entity Mentions Panel (Feature 038, T029, US7; Feature 050, T025; T012 scan button) */}
         <div className="mt-6">
           <EntityMentionsPanel
             videoId={video_id}
             entities={videoEntities}
             isLoading={entitiesLoading}
+            hasTranscript={hasTranscript}
           />
         </div>
 

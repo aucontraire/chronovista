@@ -29,6 +29,7 @@ import { useEntitySearch } from "../hooks/useEntitySearch";
 import {
   useCreateManualAssociation,
   useDeleteManualAssociation,
+  useScanVideoEntities,
 } from "../hooks/useEntityMentions";
 
 // ---------------------------------------------------------------------------
@@ -46,6 +47,12 @@ export interface EntityMentionsPanelProps {
    * Required for the search/link UI (T025, FR-024).
    */
   videoId: string;
+  /**
+   * Whether the video has at least one transcript. Controls visibility of
+   * the "Scan for Entity Mentions" button (T012). When false the button is
+   * not rendered because scanning requires transcript data.
+   */
+  hasTranscript?: boolean;
   /**
    * Callback invoked when the user clicks an entity chip.
    * Receives the first-mention segment_id and timestamp so the caller can
@@ -472,6 +479,36 @@ function EntitySearchAutocomplete({ videoId }: EntitySearchAutocompleteProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Spinner icon (used by the scan button)
+// ---------------------------------------------------------------------------
+
+function SpinnerIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      />
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -498,12 +535,28 @@ export function EntityMentionsPanel({
   entities,
   isLoading,
   videoId,
+  hasTranscript = false,
   onEntityClick,
 }: EntityMentionsPanelProps) {
   // T043: Track which entity's unlink confirmation is currently visible.
   const [unlinkingEntityId, setUnlinkingEntityId] = useState<string | null>(null);
 
   const deleteMutation = useDeleteManualAssociation();
+
+  // T012: Scan for entity mentions in this video's transcripts.
+  const scanMutation = useScanVideoEntities();
+
+  const [scanMessage, setScanMessage] = useState<{
+    text: string;
+    kind: "success" | "error";
+  } | null>(null);
+
+  // Auto-dismiss the success message after 3 seconds.
+  useEffect(() => {
+    if (scanMessage?.kind !== "success") return;
+    const timer = setTimeout(() => setScanMessage(null), 3000);
+    return () => clearTimeout(timer);
+  }, [scanMessage]);
 
   // Show skeleton while loading
   if (isLoading) {
@@ -591,6 +644,79 @@ export function EntityMentionsPanel({
       <div className="border-t border-gray-100 pt-4">
         <EntitySearchAutocomplete videoId={videoId} />
       </div>
+
+      {/* T012: Scan for Entity Mentions — only shown when transcripts exist */}
+      {hasTranscript && (
+        <div className="border-t border-gray-100 pt-4 flex flex-wrap items-center gap-3">
+          <span
+            title={scanMutation.isPending ? "A scan is already running" : undefined}
+            className="inline-block"
+          >
+            <button
+              type="button"
+              disabled={scanMutation.isPending}
+              aria-disabled={scanMutation.isPending}
+              aria-busy={scanMutation.isPending ? "true" : undefined}
+              onClick={() => {
+                setScanMessage(null);
+                scanMutation.reset();
+                scanMutation.mutate(
+                  { videoId },
+                  {
+                    onSuccess: (result) => {
+                      const { unique_entities, mentions_found } = result.data;
+                      if (unique_entities === 0 && mentions_found === 0) {
+                        setScanMessage({ text: "No entity mentions found", kind: "success" });
+                      } else {
+                        setScanMessage({
+                          text: `Found ${unique_entities} ${unique_entities === 1 ? "entity" : "entities"} with ${mentions_found} ${mentions_found === 1 ? "mention" : "mentions"}`,
+                          kind: "success",
+                        });
+                      }
+                    },
+                    onError: (err) => {
+                      setScanMessage({
+                        text: (err as { message?: string }).message ?? "Scan failed. Please try again.",
+                        kind: "error",
+                      });
+                    },
+                  }
+                );
+              }}
+              className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors ${
+                scanMutation.isPending
+                  ? "bg-indigo-400 text-white cursor-not-allowed"
+                  : "bg-indigo-600 hover:bg-indigo-700 text-white"
+              }`}
+            >
+              {scanMutation.isPending ? (
+                <>
+                  <SpinnerIcon className="w-4 h-4 mr-2 animate-spin" />
+                  Scanning...
+                  <span className="sr-only">Scanning for mentions...</span>
+                </>
+              ) : (
+                "Scan for Entity Mentions"
+              )}
+            </button>
+          </span>
+
+          {/* Inline result message */}
+          {scanMessage !== null && (
+            <p
+              role={scanMessage.kind === "error" ? "alert" : "status"}
+              aria-live={scanMessage.kind === "error" ? undefined : "polite"}
+              className={`text-sm font-medium ${
+                scanMessage.kind === "success"
+                  ? "text-green-700"
+                  : "text-red-700"
+              }`}
+            >
+              {scanMessage.text}
+            </p>
+          )}
+        </div>
+      )}
     </section>
   );
 }

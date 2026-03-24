@@ -90,6 +90,22 @@ vi.mock('../../hooks/useEntityMentions', () => ({
     fetchNextPage: vi.fn(),
     loadMoreRef: { current: null },
   })),
+  useScanEntity: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    data: null,
+    reset: vi.fn(),
+  })),
+  useScanVideoEntities: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    data: null,
+    reset: vi.fn(),
+  })),
 }));
 
 // Mock useOnboardingStatus — prevents real API calls for auth state

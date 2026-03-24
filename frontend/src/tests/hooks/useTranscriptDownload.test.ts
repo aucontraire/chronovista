@@ -32,11 +32,13 @@ import * as apiConfig from "../../api/config";
 // Module-level mock for apiFetch
 // ---------------------------------------------------------------------------
 
-vi.mock("../../api/config", () => ({
-  apiFetch: vi.fn(),
-  API_BASE_URL: "http://localhost:8765/api/v1",
-  API_TIMEOUT: 10000,
-}));
+vi.mock("../../api/config", async () => {
+  const actual = await vi.importActual<typeof import("../../api/config")>("../../api/config");
+  return {
+    ...actual,
+    apiFetch: vi.fn(),
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -465,8 +467,8 @@ describe("useTranscriptDownload", () => {
   // T007-6: 30-second timeout (NFR-002)
   // -------------------------------------------------------------------------
 
-  describe("30-second timeout configuration (T007-6 / NFR-002)", () => {
-    it("calls apiFetch with timeout: 30000", async () => {
+  describe("2-minute timeout configuration (T007-6 / NFR-002)", () => {
+    it("calls apiFetch with timeout: 120000", async () => {
       vi.mocked(apiConfig.apiFetch).mockResolvedValueOnce(mockDownloadResponse);
 
       const { result } = renderHook(
@@ -484,7 +486,7 @@ describe("useTranscriptDownload", () => {
 
       expect(apiConfig.apiFetch).toHaveBeenCalledWith(
         expect.any(String),
-        expect.objectContaining({ timeout: 30_000 })
+        expect.objectContaining({ timeout: apiConfig.TRANSCRIPT_DOWNLOAD_TIMEOUT })
       );
     });
 

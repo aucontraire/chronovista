@@ -17,6 +17,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { ENTITY_TYPE_LABELS, ENTITY_TYPE_COLORS } from "../constants/entityTypes";
 import { useEntityVideos, useDeleteManualAssociation } from "../hooks/useEntityMentions";
 import { apiFetch } from "../api/config";
 import type { EntityDetail, EntityAliasSummary } from "../api/entityMentions";
@@ -43,31 +44,9 @@ interface NamedEntityDetailResponse {
 // Helper functions
 // ---------------------------------------------------------------------------
 
-/** Human-readable label for each entity_type value from the backend. */
-const ENTITY_TYPE_LABELS: Record<string, string> = {
-  person: "Person",
-  organization: "Organization",
-  place: "Place",
-  event: "Event",
-  work: "Work",
-  concept: "Concept",
-  other: "Other",
-};
-
 function getTypeLabel(entityType: string): string {
   return ENTITY_TYPE_LABELS[entityType] ?? entityType;
 }
-
-/** Badge colour by entity type */
-const ENTITY_TYPE_COLORS: Record<string, string> = {
-  person: "bg-indigo-100 text-indigo-700 border-indigo-200",
-  organization: "bg-violet-100 text-violet-700 border-violet-200",
-  place: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  event: "bg-amber-100 text-amber-700 border-amber-200",
-  work: "bg-sky-100 text-sky-700 border-sky-200",
-  concept: "bg-rose-100 text-rose-700 border-rose-200",
-  other: "bg-slate-100 text-slate-700 border-slate-200",
-};
 
 function getTypeBadgeClass(entityType: string): string {
   return (

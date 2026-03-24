@@ -58,6 +58,8 @@ _ENTITY_PRODUCING_TYPES = {
     "event",
     "work",
     "technical_term",
+    "concept",
+    "other",
 }
 
 
@@ -71,7 +73,7 @@ def create_entity(
         "--type",
         help=(
             "Entity type. Valid values: person, organization, place, "
-            "event, work, technical_term."
+            "event, work, technical_term, concept, other."
         ),
     ),
     description: Optional[str] = typer.Option(
@@ -94,7 +96,7 @@ def create_entity(
                 Panel(
                     f"[red]Entity type '{type_str}' is not valid for entities.[/red]\n"
                     "Only entity-producing types are allowed: "
-                    "person, organization, place, event, work, technical_term",
+                    "person, organization, place, event, work, technical_term, concept, other",
                     title="Invalid Type",
                     border_style="red",
                 )

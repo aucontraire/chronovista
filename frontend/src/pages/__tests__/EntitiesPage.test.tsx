@@ -62,6 +62,39 @@ vi.mock("../../hooks/useEntityMentions", () => ({
     fetchNextPage: vi.fn(),
     loadMoreRef: { current: null },
   })),
+  useCreateManualAssociation: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    reset: vi.fn(),
+  })),
+  useDeleteManualAssociation: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    reset: vi.fn(),
+  })),
+  useClassifyTag: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    reset: vi.fn(),
+  })),
+  useCreateEntity: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    reset: vi.fn(),
+  })),
+  useCheckDuplicate: vi.fn(() => ({
+    data: null,
+    isLoading: false,
+    isError: false,
+  })),
 }));
 
 import { useEntities } from "../../hooks/useEntityMentions";
@@ -467,7 +500,7 @@ describe("EntitiesPage", () => {
       );
     });
 
-    it("renders all seven type tabs", () => {
+    it("renders all type tabs", () => {
       renderPage();
       // The <nav> has role="tablist", so query by that explicit role
       const tablist = screen.getByRole("tablist", { name: "Entity type filter" });
@@ -480,6 +513,8 @@ describe("EntitiesPage", () => {
         "Place",
         "Event",
         "Work",
+        "Technical Term",
+        "Concept",
         "Other",
       ]);
     });

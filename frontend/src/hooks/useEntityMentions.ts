@@ -15,6 +15,9 @@ import {
   fetchEntities,
   createManualAssociation,
   deleteManualAssociation,
+  classifyTag,
+  checkEntityDuplicate,
+  createEntity,
 } from "../api/entityMentions";
 import type {
   VideoEntitySummary,
@@ -23,8 +26,12 @@ import type {
   EntityListItem,
   EntityPaginationMeta,
   ManualAssociationResponse,
+  ClassifyTagResponse,
+  DuplicateCheckResult,
   FetchEntityVideosParams,
   FetchEntitiesParams,
+  CreateEntityRequest,
+  CreateEntityResponse,
 } from "../api/entityMentions";
 import type { ApiError } from "../types/video";
 
@@ -520,5 +527,128 @@ export function useDeleteManualAssociation() {
       void queryClient.invalidateQueries({ queryKey: ["entity-videos"] });
       void queryClient.invalidateQueries({ queryKey: ["entity-detail"] });
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// useClassifyTag
+// ---------------------------------------------------------------------------
+
+/** Variables passed to the classify tag mutation. */
+export interface ClassifyTagVariables {
+  /** The canonical name / normalized tag text to classify */
+  normalized_form: string;
+  /** Entity type (e.g. "person", "organization", "place") */
+  entity_type: string;
+  /** Optional human-readable description */
+  description?: string;
+}
+
+/**
+ * Mutation hook for classifying a raw tag as a named entity.
+ *
+ * On success, invalidates caches for:
+ * - `entities`       (entity list page refreshes)
+ * - `entitySearch`   (autocomplete results refresh)
+ * - `canonical-tags` (canonical tag data refreshes)
+ *
+ * Error handling is left to the caller — use `mutation.isError` and
+ * `mutation.error` to display inline error messages.
+ *
+ * @returns UseMutationResult with `mutate({ normalized_form, entity_type, description? })`
+ *
+ * @example
+ * ```tsx
+ * const mutation = useClassifyTag();
+ * mutation.mutate({ normalized_form: "React", entity_type: "organization" });
+ * ```
+ */
+export function useClassifyTag() {
+  const queryClient = useQueryClient();
+
+  return useMutation<ClassifyTagResponse, ApiError, ClassifyTagVariables>({
+    mutationFn: (variables: ClassifyTagVariables) => classifyTag(variables),
+
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["entities"] });
+      void queryClient.invalidateQueries({ queryKey: ["entitySearch"] });
+      void queryClient.invalidateQueries({ queryKey: ["canonical-tags"] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// useCreateEntity
+// ---------------------------------------------------------------------------
+
+/**
+ * Mutation hook for creating a standalone named entity.
+ *
+ * On success, invalidates caches for:
+ * - `entities`     (entity list page refreshes)
+ * - `entitySearch` (autocomplete results refresh)
+ *
+ * Note: `canonical-tags` is intentionally NOT invalidated here because
+ * standalone entities are not linked to the tag taxonomy.
+ *
+ * Error handling is left to the caller — use `mutation.isError` and
+ * `mutation.error` to display inline error messages.
+ *
+ * @returns UseMutationResult with `mutate(data: CreateEntityRequest)`
+ *
+ * @example
+ * ```tsx
+ * const mutation = useCreateEntity();
+ * mutation.mutate({ name: "Marie Curie", entity_type: "person" });
+ * ```
+ */
+export function useCreateEntity() {
+  const queryClient = useQueryClient();
+
+  return useMutation<CreateEntityResponse, ApiError, CreateEntityRequest>({
+    mutationFn: (data) => createEntity(data),
+
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["entities"] });
+      void queryClient.invalidateQueries({ queryKey: ["entitySearch"] });
+      // Note: NO ["canonical-tags"] invalidation — standalone entities aren't linked to tags
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// useCheckDuplicate
+// ---------------------------------------------------------------------------
+
+/**
+ * Query hook that checks whether a named entity with the given name and type
+ * already exists in the database.
+ *
+ * The query is disabled until `name` has at least 2 non-whitespace characters
+ * and `entityType` is non-empty, avoiding unnecessary requests while the user
+ * is still typing.
+ *
+ * @param name - Candidate canonical name (query fires when trimmed length >= 2)
+ * @param entityType - Entity type string (e.g. "person", "organization")
+ * @returns TanStack Query result containing DuplicateCheckResult
+ *
+ * @example
+ * ```tsx
+ * const { data } = useCheckDuplicate(nameInput, selectedType);
+ * if (data?.is_duplicate) {
+ *   // show warning with data.existing_entity
+ * }
+ * ```
+ */
+export function useCheckDuplicate(name: string, entityType: string) {
+  const enabled = name.trim().length >= 2 && entityType !== "";
+
+  return useQuery<DuplicateCheckResult, ApiError>({
+    queryKey: ["checkDuplicate", name.trim(), entityType],
+    // FR-004/FR-005: TanStack Query provides signal; cancelled on key change or unmount.
+    queryFn: ({ signal }) => checkEntityDuplicate(name.trim(), entityType, signal),
+    enabled,
+    staleTime: 30 * 1000, // 30 seconds
+    gcTime: 60 * 1000,
   });
 }

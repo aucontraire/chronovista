@@ -57,6 +57,12 @@ chronovista is a CLI application that enables users to access, store, and explor
 
     Edit, revert, and audit transcript corrections via inline web UI or batch CLI tools with full audit trail
 
+-   :material-account-group:{ .lg .middle } **Entity Management**
+
+    ---
+
+    Create and manage named entities from tags or standalone, with duplicate detection, alias tracking, and transcript mention scanning
+
 -   :material-api:{ .lg .middle } **REST API**
 
     ---
@@ -74,13 +80,13 @@ chronovista is a CLI application that enables users to access, store, and explor
 ## Project Status
 
 !!! success "Current Status"
-    - **6,000+ tests** (5,700+ backend, 2,300+ frontend) with **90%+ coverage**
+    - **10,900+ tests** (7,403+ backend, 3,519+ frontend) with **90%+ coverage**
     - **Comprehensive Pydantic models** with advanced validation and type safety
     - **Real API integration testing** with YouTube API data validation
     - **Advanced repository pattern** with async support and composite keys
     - **Rate-limited API service** with intelligent error handling and retry logic
     - **Wayback Machine recovery** for deleted/unavailable video and channel metadata via CLI, REST API, and frontend (v0.28.0)
-    - **React frontend** with video browsing, transcript search, deep link navigation, and recovery UI (v0.7.0)
+    - **React frontend** with video browsing, transcript search, deep link navigation, and recovery UI (v0.21.0)
 
 ## Quick Example
 

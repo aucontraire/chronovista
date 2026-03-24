@@ -921,6 +921,8 @@ class TagManagementService:
             EntityType.EVENT,
             EntityType.WORK,
             EntityType.TECHNICAL_TERM,
+            EntityType.CONCEPT,
+            EntityType.OTHER,
         }
         tag_only_types = {EntityType.TOPIC, EntityType.DESCRIPTOR}
 

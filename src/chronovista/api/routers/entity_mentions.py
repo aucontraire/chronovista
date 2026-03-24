@@ -7,22 +7,29 @@ from entity to videos.
 
 from __future__ import annotations
 
+import time
 import uuid
-from typing import Any
+from collections import defaultdict
+from typing import Any, Dict, List, Tuple
 
-from fastapi import APIRouter, Body, Depends, Path, Query, Response
+from fastapi import APIRouter, Body, Depends, Path, Query, Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy import distinct, func, or_, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.deps import get_db, require_auth
 from chronovista.api.schemas.entity_mentions import (
+    ClassifyTagRequest,
     CreateEntityAliasRequest,
+    CreateEntityRequest,
+    DuplicateCheckResponse,
     EntityAliasSummary,
     EntitySearchResult,
     EntityVideoResponse,
     EntityVideoResult,
     ExclusionPatternRequest,
+    ExistingEntityInfo,
     ManualAssociationResponse,
     MentionPreview,
     PhoneticMatchResponse,
@@ -33,12 +40,19 @@ from chronovista.api.schemas.responses import ApiResponse, PaginationMeta
 from chronovista.db.models import EntityAlias as EntityAliasDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import Video as VideoDB
-from chronovista.exceptions import APIValidationError, ConflictError, NotFoundError
+from chronovista.db.models import CanonicalTag as CanonicalTagDB
+from chronovista.exceptions import APIValidationError, BadRequestError, ConflictError, NotFoundError
 from chronovista.models.entity_alias import EntityAliasCreate
-from chronovista.models.enums import EntityAliasType
+from chronovista.models.enums import DiscoveryMethod, EntityAliasType, EntityType, TagStatus
+from chronovista.models.named_entity import NamedEntityCreate
+from chronovista.repositories.canonical_tag_repository import CanonicalTagRepository
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
+from chronovista.repositories.named_entity_repository import NamedEntityRepository
+from chronovista.repositories.tag_alias_repository import TagAliasRepository
+from chronovista.repositories.tag_operation_log_repository import TagOperationLogRepository
 from chronovista.services.phonetic_matcher import PhoneticMatcher
+from chronovista.services.tag_management import TagManagementService
 from chronovista.services.tag_normalization import TagNormalizationService
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -46,7 +60,89 @@ router = APIRouter(dependencies=[Depends(require_auth)])
 # Module-level repository / service instantiation (singleton pattern)
 _mention_repo = EntityMentionRepository()
 _alias_repo = EntityAliasRepository()
+_entity_repo = NamedEntityRepository()
 _normalizer = TagNormalizationService()
+_tag_mgmt_service = TagManagementService(
+    canonical_tag_repo=CanonicalTagRepository(),
+    tag_alias_repo=TagAliasRepository(),
+    named_entity_repo=NamedEntityRepository(),
+    entity_alias_repo=EntityAliasRepository(),
+    operation_log_repo=TagOperationLogRepository(),
+)
+
+# Rate limiting configuration for duplicate check (50 req/min per client)
+RATE_LIMIT_DUPLICATE_CHECK = 50
+RATE_LIMIT_WINDOW_SECONDS = 60
+
+# Storage for rate limit tracking
+_duplicate_check_counts: Dict[str, List[float]] = defaultdict(list)
+
+
+def _get_client_id(request: Request) -> str:
+    """Get client identifier from request.
+
+    Uses X-Forwarded-For header for proxied requests, falls back to client host.
+
+    Parameters
+    ----------
+    request : Request
+        FastAPI request object.
+
+    Returns
+    -------
+    str
+        Client identifier (IP address or "unknown").
+    """
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _check_rate_limit(
+    client_id: str,
+    request_counts: Dict[str, List[float]],
+    rate_limit: int,
+) -> Tuple[bool, int]:
+    """Check if client has exceeded rate limit.
+
+    Cleans up old entries and checks if current request should be allowed.
+
+    Parameters
+    ----------
+    client_id : str
+        Client identifier.
+    request_counts : Dict[str, List[float]]
+        Storage for request timestamps per client.
+    rate_limit : int
+        Maximum requests allowed per minute.
+
+    Returns
+    -------
+    Tuple[bool, int]
+        Tuple of (is_allowed, retry_after_seconds).
+        If is_allowed is True, retry_after is 0.
+        If is_allowed is False, retry_after indicates seconds until a slot opens.
+    """
+    now = time.time()
+    window_start = now - RATE_LIMIT_WINDOW_SECONDS
+
+    # Clean old entries (older than window)
+    request_counts[client_id] = [
+        ts for ts in request_counts[client_id]
+        if ts > window_start
+    ]
+
+    # Check if limit exceeded
+    if len(request_counts[client_id]) >= rate_limit:
+        # Find when the oldest request in window will expire
+        oldest = min(request_counts[client_id])
+        retry_after = int(oldest + RATE_LIMIT_WINDOW_SECONDS - now) + 1
+        return False, max(1, retry_after)
+
+    # Add current request timestamp
+    request_counts[client_id].append(now)
+    return True, 0
 
 
 @router.get(
@@ -311,6 +407,87 @@ async def get_video_entities(
     data = [VideoEntitySummary(**s) for s in summaries]
 
     return VideoEntitiesResponse(data=data)
+
+
+@router.get(
+    "/entities/check-duplicate",
+    response_model=DuplicateCheckResponse,
+    status_code=200,
+    summary="Check for duplicate entity by normalized name and type",
+)
+async def check_duplicate_entity(
+    request: Request,
+    name: str = Query(..., description="Entity name to check"),
+    type: str = Query(..., description="Entity type (person, organization, place, etc.)"),
+    session: AsyncSession = Depends(get_db),
+) -> DuplicateCheckResponse | JSONResponse:
+    """Check whether an entity with the same normalized name and type already exists.
+
+    Normalizes the provided name using ``TagNormalizationService`` and queries
+    the ``named_entities`` table for an active entity with the same normalized
+    canonical name and entity type.
+
+    Rate-limited to 50 requests per minute per client IP.
+
+    Parameters
+    ----------
+    request : Request
+        FastAPI request object (used for rate limiting).
+    name : str
+        Entity name to check for duplicates.
+    type : str
+        Entity type to filter by (person, organization, place, etc.).
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    DuplicateCheckResponse
+        Contains ``is_duplicate`` flag and optional ``existing_entity`` details.
+    JSONResponse (429)
+        If rate limit is exceeded.
+    """
+    # Rate limiting
+    client_id = _get_client_id(request)
+    is_allowed, retry_after = _check_rate_limit(
+        client_id, _duplicate_check_counts, RATE_LIMIT_DUPLICATE_CHECK
+    )
+    if not is_allowed:
+        return JSONResponse(
+            status_code=429,
+            content={
+                "detail": "Rate limit exceeded. Maximum 50 duplicate-check requests per minute.",
+                "retry_after": retry_after,
+            },
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    # Normalize the input name
+    normalized_name = _normalizer.normalize(name)
+    if not normalized_name:
+        return DuplicateCheckResponse(is_duplicate=False, existing_entity=None)
+
+    # Query for an active entity with the same normalized name and type
+    query = select(NamedEntityDB).where(
+        NamedEntityDB.canonical_name_normalized == normalized_name,
+        NamedEntityDB.entity_type == type,
+        NamedEntityDB.status == "active",
+    )
+    result = await session.execute(query)
+    entity = result.scalar_one_or_none()
+
+    if entity is not None:
+        return DuplicateCheckResponse(
+            is_duplicate=True,
+            existing_entity=ExistingEntityInfo(
+                entity_id=str(entity.id),
+                canonical_name=entity.canonical_name,
+                entity_type=entity.entity_type,
+                description=entity.description,
+            ),
+        )
+
+    return DuplicateCheckResponse(is_duplicate=False, existing_entity=None)
 
 
 @router.get(
@@ -927,3 +1104,270 @@ async def delete_manual_association(
     )
     await session.commit()
     return Response(status_code=204)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# POST /entities/classify — Tag-Backed Entity Creation
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.post(
+    "/entities/classify",
+    status_code=201,
+    summary="Classify a canonical tag as a named entity",
+)
+async def classify_tag(
+    body: ClassifyTagRequest = Body(...),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Classify an existing canonical tag to create or link a named entity.
+
+    Delegates to ``TagManagementService.classify()`` which handles entity
+    creation/linking and alias management. Maps service-layer ``ValueError``
+    exceptions to appropriate HTTP status codes.
+
+    Parameters
+    ----------
+    body : ClassifyTagRequest
+        Request body with normalized_form, entity_type, and optional description.
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    dict
+        Created/linked entity details with alias count and operation ID.
+
+    Raises
+    ------
+    NotFoundError
+        If the canonical tag is not found or inactive (404).
+    ConflictError
+        If the tag is already classified as an entity (409).
+    APIValidationError
+        If the request is otherwise invalid (400).
+    """
+    try:
+        entity_type_enum = EntityType(body.entity_type)
+    except ValueError:
+        raise BadRequestError(
+            message=f"Invalid entity_type: {body.entity_type}",
+            details={"entity_type": body.entity_type},
+        )
+
+    try:
+        result = await _tag_mgmt_service.classify(
+            session,
+            body.normalized_form,
+            entity_type_enum,
+            description=body.description,
+            auto_case=True,
+        )
+    except ValueError as exc:
+        error_msg = str(exc)
+
+        if "not found" in error_msg.lower() or "status" in error_msg.lower():
+            raise NotFoundError(
+                resource_type="CanonicalTag",
+                identifier=body.normalized_form,
+            )
+
+        if "already classified" in error_msg.lower():
+            # Look up the canonical tag to get existing entity details
+            tag_query = select(CanonicalTagDB).where(
+                CanonicalTagDB.normalized_form == body.normalized_form,
+            )
+            tag_result = await session.execute(tag_query)
+            tag = tag_result.scalar_one_or_none()
+
+            existing_entity_data: dict[str, Any] | None = None
+            if tag is not None and tag.entity_id is not None:
+                entity = await session.get(NamedEntityDB, tag.entity_id)
+                if entity is not None:
+                    existing_entity_data = {
+                        "entity_id": str(entity.id),
+                        "canonical_name": entity.canonical_name,
+                        "entity_type": entity.entity_type,
+                        "description": entity.description,
+                    }
+
+            raise ConflictError(
+                message=error_msg,
+                details={"existing_entity": existing_entity_data}
+                if existing_entity_data
+                else None,
+            )
+
+        # Other ValueError → 400 Bad Request
+        raise BadRequestError(
+            message=error_msg,
+            details={"normalized_form": body.normalized_form},
+        )
+
+    # After successful classification, look up the canonical tag to get entity_id
+    tag_query = select(CanonicalTagDB).where(
+        CanonicalTagDB.normalized_form == body.normalized_form,
+    )
+    tag_result = await session.execute(tag_query)
+    tag = tag_result.scalar_one_or_none()
+
+    entity_id_str: str | None = None
+    canonical_name = result.canonical_form
+    description: str | None = body.description
+
+    if tag is not None and tag.entity_id is not None:
+        entity = await session.get(NamedEntityDB, tag.entity_id)
+        if entity is not None:
+            entity_id_str = str(entity.id)
+            canonical_name = entity.canonical_name
+            description = entity.description
+
+    await session.commit()
+
+    return {
+        "entity_id": entity_id_str,
+        "canonical_name": canonical_name,
+        "entity_type": result.entity_type,
+        "description": description,
+        "alias_count": result.entity_alias_count,
+        "entity_created": result.entity_created,
+        "operation_id": str(result.operation_id),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# POST /entities — Standalone Entity Creation
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.post(
+    "/entities",
+    status_code=201,
+    summary="Create a new named entity",
+)
+async def create_entity(
+    body: CreateEntityRequest = Body(...),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Create a standalone named entity with optional aliases.
+
+    Normalizes the entity name, checks for duplicates by normalized name
+    and type, creates the entity, and registers aliases (including the
+    canonical name as the first alias).
+
+    Parameters
+    ----------
+    body : CreateEntityRequest
+        Request body with name, entity_type, optional description and aliases.
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    dict
+        Created entity summary with entity_id, canonical_name, entity_type,
+        description, and alias_count.
+
+    Raises
+    ------
+    BadRequestError
+        If entity_type is not a valid EntityType enum value (400).
+    APIValidationError
+        If the name normalizes to an empty string (422).
+    ConflictError
+        If an active entity with the same normalized name and type already
+        exists (409).
+    """
+    # 1. Convert entity_type string to enum
+    try:
+        entity_type_enum = EntityType(body.entity_type)
+    except ValueError:
+        raise BadRequestError(
+            message=f"Invalid entity_type: {body.entity_type}",
+            details={"entity_type": body.entity_type},
+        )
+
+    # 2. Normalize the name
+    normalized_name = _normalizer.normalize(body.name)
+    if not normalized_name:
+        raise APIValidationError(
+            message="Entity name normalizes to an empty string",
+            details={"name": body.name},
+        )
+
+    # 3. Auto-title-case
+    canonical_name = body.name.strip().title()
+
+    # 4. Check for duplicate (same normalized name + type + active status)
+    dup_query = select(NamedEntityDB).where(
+        NamedEntityDB.canonical_name_normalized == normalized_name,
+        NamedEntityDB.entity_type == entity_type_enum.value,
+        NamedEntityDB.status == "active",
+    )
+    dup_result = await session.execute(dup_query)
+    existing = dup_result.scalar_one_or_none()
+    if existing is not None:
+        raise ConflictError(
+            message=(
+                f"An active entity with normalized name '{normalized_name}' "
+                f"and type '{entity_type_enum.value}' already exists"
+            ),
+            details={
+                "existing_entity": {
+                    "entity_id": str(existing.id),
+                    "canonical_name": existing.canonical_name,
+                    "entity_type": existing.entity_type,
+                    "description": existing.description,
+                }
+            },
+        )
+
+    # 5. Create entity via repository
+    entity_create = NamedEntityCreate(
+        canonical_name=canonical_name,
+        canonical_name_normalized=normalized_name,
+        entity_type=entity_type_enum,
+        description=body.description,
+        status=TagStatus.ACTIVE,
+        discovery_method=DiscoveryMethod.USER_CREATED,
+        confidence=1.0,
+    )
+    db_entity = await _entity_repo.create(session, obj_in=entity_create)
+
+    # 6. Create canonical name as first alias
+    canonical_alias = EntityAliasCreate(
+        entity_id=db_entity.id,
+        alias_name=canonical_name,
+        alias_name_normalized=normalized_name,
+        alias_type=EntityAliasType.NAME_VARIANT,
+        occurrence_count=0,
+    )
+    await _alias_repo.create(session, obj_in=canonical_alias)
+
+    # 7. Create additional aliases, skipping normalized duplicates
+    seen_normalized: set[str] = {normalized_name}
+    for alias_text in body.aliases:
+        alias_normalized = _normalizer.normalize(alias_text)
+        if not alias_normalized or alias_normalized in seen_normalized:
+            continue
+        seen_normalized.add(alias_normalized)
+        alias_create = EntityAliasCreate(
+            entity_id=db_entity.id,
+            alias_name=alias_text.strip(),
+            alias_name_normalized=alias_normalized,
+            alias_type=EntityAliasType.NAME_VARIANT,
+            occurrence_count=0,
+        )
+        await _alias_repo.create(session, obj_in=alias_create)
+
+    # 8. Commit and return 201
+    await session.commit()
+    await session.refresh(db_entity)
+
+    return {
+        "entity_id": str(db_entity.id),
+        "canonical_name": db_entity.canonical_name,
+        "entity_type": db_entity.entity_type,
+        "description": db_entity.description,
+        "alias_count": len(seen_normalized),
+    }

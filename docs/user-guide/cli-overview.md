@@ -725,7 +725,7 @@ chronovista tags classify <NORMALIZED_FORM> --type <TYPE> [OPTIONS]
 chronovista tags classify --top <N>
 ```
 
-Assigns an entity type to a canonical tag. Entity-producing types (person, organization, place, event, work, technical_term) create a `named_entities` record and copy tag aliases as `entity_aliases`. Tag-only types (topic, descriptor) set `entity_type` only.
+Assigns an entity type to a canonical tag. Entity-producing types (person, organization, place, event, work, technical_term, concept, other) create a `named_entities` record and copy tag aliases as `entity_aliases`. Tag-only types (topic, descriptor) set `entity_type` only.
 
 With `--top N`, displays the N highest-video_count unclassified canonical tags for triage.
 
@@ -735,7 +735,7 @@ With `--top N`, displays the N highest-video_count unclassified canonical tags f
 
 **Options:**
 
-- `--type <type>` - Entity type: `person`, `organization`, `place`, `event`, `work`, `technical_term`, `topic`, `descriptor`
+- `--type <type>` - Entity type: `person`, `organization`, `place`, `event`, `work`, `technical_term`, `concept`, `other`, `topic`, `descriptor`
 - `--top <n>` - Show top N unclassified tags by video count
 - `--force` - Reclassify an already-classified tag
 - `--reason <text>` - Reason for the classification (max 1000 chars)
@@ -872,7 +872,7 @@ Creates a standalone named entity (not linked to an existing canonical tag). The
 
 **Options:**
 
-- `--type <type>` - Entity type (required): `person`, `organization`, `place`, `event`, `work`, `technical_term`
+- `--type <type>` - Entity type (required): `person`, `organization`, `place`, `event`, `work`, `technical_term`, `concept`, `other`
 - `--description <text>` - Human-readable description of the entity
 - `--alias <name>` - Additional alias name (repeatable for multiple aliases)
 
@@ -891,7 +891,7 @@ chronovista entities create "Gaza Strip" --type place --description "Palestinian
 
 **Notes:**
 
-- Only entity-producing types are allowed (topic and descriptor are tag-only types — use `tags classify` instead)
+- Only entity-producing types are allowed: person, organization, place, event, work, technical_term, concept, other (topic and descriptor are tag-only types — use `tags classify` instead)
 - Duplicate detection: same normalized name + entity type → error
 - The canonical name alias is automatically created (same pattern as `tags classify`)
 

@@ -11,6 +11,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.52.0] - 2026-03-23
+
+### Added
+- **Feature 051: Entity Creation Form (ADR-006 Increment E)**
+  - **Tag-Backed Entity Creation (US1)**: "Create Entity" button on entities page opens modal form with ARIA `dialog` role and focus trap; name field with autocomplete searching canonical tags by prefix (debounced, 2-char minimum); autocomplete results show canonical form, video count, and alias count; selecting a tag pre-fills name and shows "Creating from tag" chip; entity type selector with all 8 entity-producing types (person, organization, place, event, work, technical_term, concept, other) with tooltips; optional description field; submit calls `POST /api/v1/entities/classify` using TagManagementService.classify(); on success modal closes and entity list refreshes
+  - **Standalone Entity Creation (US2)**: When no matching tag exists, user proceeds with typed name as freeform entry; form indicates "Creating standalone entity (not linked to a tag)"; repeatable alias field (add/remove, max 20) with `aria-live="polite"` mode transition announcements; submit calls `POST /api/v1/entities` with auto-title-casing and normalization; on success modal closes and entity list refreshes
+  - **Duplicate Detection (US3)**: Real-time debounced check via `GET /api/v1/entities/check-duplicate` with normalized name and entity type; warning block with `aria-live="assertive"` showing existing entity's name, type, and description; Link to existing entity detail page; submission blocked when duplicate exists; warning clears when name or type changes
+  - **Entity Creation API**: `POST /api/v1/entities/classify` wraps TagManagementService.classify() with 404/409/400 error mapping; `GET /api/v1/entities/check-duplicate` with in-memory rate limiting (50 req/min); `POST /api/v1/entities` for standalone creation with alias deduplication
+  - **EntityType Enum Expansion**: Added `concept` and `other` entity types across full stack (Pydantic enums, DB check constraints, frontend constants, entity type tabs)
+
+### Fixed
+- Tag normalization idempotency bug: `normalize('´#')` returned `'#'` but `normalize('#')` returned `None`; added second `lstrip('#')` pass after diacritic removal to ensure `normalize(normalize(x)) == normalize(x)` for all inputs
+- `EntitiesPage.test.tsx` missing mock stubs for `useClassifyTag`, `useCreateEntity`, `useCheckDuplicate`, `useCreateManualAssociation`, `useDeleteManualAssociation` — caused 93 test failures when running full suite (CreateEntityModal hooks called outside QueryClientProvider)
+- `EntitiesPage.test.tsx` entity type tab count assertion updated from 7 to 9 tabs (added Technical Term and Concept)
+
+### Technical
+- 3 new API endpoints (classify entity from tag, check duplicate, create standalone entity)
+- 1 new frontend component (`CreateEntityModal`), 3 new TanStack Query hooks (`useClassifyTag`, `useCreateEntity`, `useCheckDuplicate`), 1 new constants module (`entityTypes.ts`)
+- 158 new tests: 49 backend unit, 70 frontend component, 10 backend integration, 29 frontend hook tests
+- 7,403 total backend tests, 3,519 total frontend tests
+- Frontend version: 0.20.0 → 0.21.0
+- TypeScript strict mode (0 errors), mypy strict compliance (0 errors)
+- No new dependencies, no database migrations
+- WCAG 2.1 AA: ARIA dialog, combobox, focus trap, keyboard navigation (Escape/Tab/Arrow), aria-live announcements
+
 ## [0.51.0] - 2026-03-22
 
 ### Added

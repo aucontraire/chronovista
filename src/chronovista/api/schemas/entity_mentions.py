@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from chronovista.api.schemas.responses import PaginationMeta
 
@@ -353,3 +353,157 @@ class ExclusionPatternRequest(BaseModel):
         max_length=500,
         description="Exclusion pattern to add or remove",
     )
+
+
+# ---------------------------------------------------------------------------
+# Entity creation & duplicate-check schemas (Feature 051)
+# ---------------------------------------------------------------------------
+
+_ENTITY_PRODUCING_TYPES = {
+    "person",
+    "organization",
+    "place",
+    "event",
+    "work",
+    "technical_term",
+    "concept",
+    "other",
+}
+
+
+class ExistingEntityInfo(BaseModel):
+    """Summary of an existing entity for duplicate detection.
+
+    Attributes
+    ----------
+    entity_id : str
+        Named entity UUID.
+    canonical_name : str
+        Display name of the entity.
+    entity_type : str
+        Entity type.
+    description : str | None
+        Entity description.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    entity_id: str = Field(..., description="Named entity UUID")
+    canonical_name: str = Field(..., description="Display name of the entity")
+    entity_type: str = Field(..., description="Entity type")
+    description: str | None = Field(None, description="Entity description")
+
+
+class DuplicateCheckResponse(BaseModel):
+    """Response for duplicate entity check.
+
+    Attributes
+    ----------
+    is_duplicate : bool
+        Whether a duplicate entity was found.
+    existing_entity : ExistingEntityInfo | None
+        Details of the existing entity, if found.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    is_duplicate: bool = Field(
+        ..., description="Whether a duplicate entity was found"
+    )
+    existing_entity: ExistingEntityInfo | None = Field(
+        default=None, description="Details of the existing entity, if found"
+    )
+
+
+class CreateEntityRequest(BaseModel):
+    """Request body for standalone entity creation.
+
+    Attributes
+    ----------
+    name : str
+        Entity display name (1-500 chars).
+    entity_type : str
+        Must be one of the entity-producing types.
+    description : str | None
+        Optional entity description (max 5000 chars).
+    aliases : list[str]
+        Optional list of alias strings (max 20).
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    name: str = Field(
+        ..., min_length=1, max_length=500, description="Entity display name"
+    )
+    entity_type: str = Field(
+        ..., min_length=1, description="Entity type"
+    )
+    description: str | None = Field(
+        default=None,
+        max_length=5000,
+        description="Optional entity description",
+    )
+    aliases: list[str] = Field(
+        default_factory=list,
+        max_length=20,
+        description="Optional alias strings",
+    )
+
+    @field_validator("entity_type")
+    @classmethod
+    def validate_entity_type(cls, v: str) -> str:
+        """Ensure entity_type is a valid entity-producing type."""
+        if v not in _ENTITY_PRODUCING_TYPES:
+            raise ValueError(
+                f"entity_type must be one of: "
+                f"{', '.join(sorted(_ENTITY_PRODUCING_TYPES))}"
+            )
+        return v
+
+    @field_validator("aliases")
+    @classmethod
+    def validate_aliases(cls, v: list[str]) -> list[str]:
+        """Strip whitespace from aliases and filter out empty strings."""
+        return [a.strip() for a in v if a.strip()]
+
+
+class ClassifyTagRequest(BaseModel):
+    """Request body for tag-backed entity creation.
+
+    Attributes
+    ----------
+    normalized_form : str
+        Normalized form of the canonical tag (1-500 chars).
+    entity_type : str
+        Must be one of the entity-producing types.
+    description : str | None
+        Optional entity description (max 5000 chars).
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    normalized_form: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Normalized form of the canonical tag",
+    )
+    entity_type: str = Field(
+        ..., min_length=1, description="Entity type"
+    )
+    description: str | None = Field(
+        default=None,
+        max_length=5000,
+        description="Optional entity description",
+    )
+
+    @field_validator("entity_type")
+    @classmethod
+    def validate_entity_type(cls, v: str) -> str:
+        """Ensure entity_type is a valid entity-producing type."""
+        if v not in _ENTITY_PRODUCING_TYPES:
+            raise ValueError(
+                f"entity_type must be one of: "
+                f"{', '.join(sorted(_ENTITY_PRODUCING_TYPES))}"
+            )
+        return v

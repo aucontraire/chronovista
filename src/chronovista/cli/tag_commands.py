@@ -1079,7 +1079,8 @@ def classify_tag(
         "--type",
         help=(
             "Entity type to assign. Valid values: person, organization, "
-            "place, event, work, technical_term, topic, descriptor."
+            "place, event, work, technical_term, concept, other, "
+            "topic, descriptor."
         ),
     ),
     top: Optional[int] = typer.Option(
@@ -1142,7 +1143,7 @@ def classify_tag(
             Panel(
                 "[red]--type is required when classifying a tag. "
                 "Valid values: person, organization, place, event, work, "
-                "technical_term, topic, descriptor.[/red]",
+                "technical_term, concept, other, topic, descriptor.[/red]",
                 title="Missing --type",
                 border_style="red",
             )

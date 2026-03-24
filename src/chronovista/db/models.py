@@ -792,7 +792,7 @@ class NamedEntity(Base):
     __table_args__ = (
         UniqueConstraint("canonical_name_normalized", "entity_type", name="uq_named_entity_canonical"),
         CheckConstraint(
-            "entity_type IN ('person', 'organization', 'place', 'event', 'work', 'technical_term')",
+            "entity_type IN ('person', 'organization', 'place', 'event', 'work', 'technical_term', 'concept', 'other')",
             name="chk_entity_type_valid"
         ),
         CheckConstraint(
@@ -905,7 +905,7 @@ class CanonicalTag(Base):
     # Table constraints
     __table_args__ = (
         CheckConstraint(
-            "entity_type IN ('person', 'organization', 'place', 'event', 'work', 'technical_term', 'topic', 'descriptor') OR entity_type IS NULL",
+            "entity_type IN ('person', 'organization', 'place', 'event', 'work', 'technical_term', 'concept', 'other', 'topic', 'descriptor') OR entity_type IS NULL",
             name="chk_canonical_tag_entity_type_valid"
         ),
         CheckConstraint(

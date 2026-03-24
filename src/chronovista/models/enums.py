@@ -245,6 +245,8 @@ class EntityType(str, Enum):
     TECHNICAL_TERM = "technical_term"
     TOPIC = "topic"
     DESCRIPTOR = "descriptor"
+    CONCEPT = "concept"
+    OTHER = "other"
 
 
 class EntityAliasType(str, Enum):

@@ -16,12 +16,18 @@
  * - SkipLink to main content area (FR-019, NFR-004, NFR-006)
  */
 
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { SkipLink } from "../components/SkipLink";
+import { CreateEntityModal } from "../components/entity/CreateEntityModal";
 import { useEntities } from "../hooks/useEntityMentions";
 import type { EntityListItem } from "../api/entityMentions";
+import {
+  ENTITY_TYPE_LABELS,
+  ENTITY_TYPE_COLORS,
+  ENTITY_TYPE_TABS,
+} from "../constants/entityTypes";
 
 /** Stable ID used by SkipLink and main content container (T036, T037). */
 const MAIN_CONTENT_ID = "entities-main-content";
@@ -30,43 +36,12 @@ const MAIN_CONTENT_ID = "entities-main-content";
 // Constants
 // ---------------------------------------------------------------------------
 
-const ENTITY_TYPE_TABS: Array<{ value: string; label: string }> = [
-  { value: "all", label: "All" },
-  { value: "person", label: "Person" },
-  { value: "organization", label: "Organization" },
-  { value: "place", label: "Place" },
-  { value: "event", label: "Event" },
-  { value: "work", label: "Work" },
-  { value: "other", label: "Other" },
-];
-
 const VALID_TYPES = ENTITY_TYPE_TABS.map((t) => t.value);
 
 const SORT_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "mentions", label: "Mentions" },
   { value: "name", label: "Name (A-Z)" },
 ];
-
-/** Badge colour classes by entity type — matches EntityDetailPage */
-const ENTITY_TYPE_COLORS: Record<string, string> = {
-  person: "bg-indigo-100 text-indigo-700 border-indigo-200",
-  organization: "bg-violet-100 text-violet-700 border-violet-200",
-  place: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  event: "bg-amber-100 text-amber-700 border-amber-200",
-  work: "bg-sky-100 text-sky-700 border-sky-200",
-  concept: "bg-rose-100 text-rose-700 border-rose-200",
-  other: "bg-slate-100 text-slate-700 border-slate-200",
-};
-
-const ENTITY_TYPE_LABELS: Record<string, string> = {
-  person: "Person",
-  organization: "Organization",
-  place: "Place",
-  event: "Event",
-  work: "Work",
-  concept: "Concept",
-  other: "Other",
-};
 
 function getTypeBadgeClass(entityType: string): string {
   return (
@@ -321,6 +296,8 @@ function EntitiesEmptyState({
  */
 export function EntitiesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const createButtonRef = useRef<HTMLButtonElement>(null);
 
   // Parse type filter from URL
   const typeParam = searchParams.get("type") ?? "all";
@@ -446,6 +423,30 @@ export function EntitiesPage() {
     return "An error occurred while loading entities";
   };
 
+  // Reusable page header — title + "Create Entity" button
+  const pageHeader = (
+    <div className="flex items-center justify-between mb-6">
+      <h1 className="text-3xl font-bold text-gray-900">Entities</h1>
+      <button
+        ref={createButtonRef}
+        type="button"
+        onClick={() => setIsCreateModalOpen(true)}
+        className="inline-flex items-center gap-1.5 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg px-4 py-2 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 transition-colors"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          className="w-4 h-4"
+          aria-hidden="true"
+        >
+          <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
+        </svg>
+        Create Entity
+      </button>
+    </div>
+  );
+
   // Toolbar (shown in all states)
   const toolbar = (
     <div className="space-y-4 mb-6">
@@ -545,10 +546,17 @@ export function EntitiesPage() {
           tabIndex={-1}
           className="container mx-auto px-4 py-8"
         >
-          <h1 className="text-3xl font-bold text-gray-900 mb-6">Entities</h1>
+          {pageHeader}
           {toolbar}
           <EntityLoadingState count={8} />
         </main>
+        <CreateEntityModal
+          isOpen={isCreateModalOpen}
+          onClose={() => {
+            setIsCreateModalOpen(false);
+            createButtonRef.current?.focus();
+          }}
+        />
       </>
     );
   }
@@ -563,7 +571,7 @@ export function EntitiesPage() {
           tabIndex={-1}
           className="container mx-auto px-4 py-8"
         >
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">Entities</h1>
+        {pageHeader}
         {toolbar}
         <div
           className="bg-gradient-to-br from-red-50 to-amber-50 border border-red-200 rounded-xl shadow-lg p-8 text-center"
@@ -619,6 +627,13 @@ export function EntitiesPage() {
           </button>
         </div>
         </main>
+        <CreateEntityModal
+          isOpen={isCreateModalOpen}
+          onClose={() => {
+            setIsCreateModalOpen(false);
+            createButtonRef.current?.focus();
+          }}
+        />
       </>
     );
   }
@@ -633,7 +648,7 @@ export function EntitiesPage() {
           tabIndex={-1}
           className="container mx-auto px-4 py-8"
         >
-          <h1 className="text-3xl font-bold text-gray-900 mb-6">Entities</h1>
+          {pageHeader}
           {toolbar}
           <EntitiesEmptyState
             typeFilter={typeFilter}
@@ -641,6 +656,13 @@ export function EntitiesPage() {
             search={search}
           />
         </main>
+        <CreateEntityModal
+          isOpen={isCreateModalOpen}
+          onClose={() => {
+            setIsCreateModalOpen(false);
+            createButtonRef.current?.focus();
+          }}
+        />
       </>
     );
   }
@@ -654,13 +676,32 @@ export function EntitiesPage() {
         tabIndex={-1}
         className="container mx-auto px-4 py-8"
       >
-      <div className="flex items-baseline justify-between mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Entities</h1>
-        {countText && (
-          <span className="text-sm text-gray-500 ml-3" aria-hidden="true">
-            {countText}
-          </span>
-        )}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-baseline gap-3">
+          <h1 className="text-3xl font-bold text-gray-900">Entities</h1>
+          {countText && (
+            <span className="text-sm text-gray-500" aria-hidden="true">
+              {countText}
+            </span>
+          )}
+        </div>
+        <button
+          ref={createButtonRef}
+          type="button"
+          onClick={() => setIsCreateModalOpen(true)}
+          className="inline-flex items-center gap-1.5 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg px-4 py-2 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 transition-colors"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            className="w-4 h-4"
+            aria-hidden="true"
+          >
+            <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
+          </svg>
+          Create Entity
+        </button>
       </div>
 
       {toolbar}
@@ -731,6 +772,13 @@ export function EntitiesPage() {
         )}
       </div>
       </main>
+      <CreateEntityModal
+        isOpen={isCreateModalOpen}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          createButtonRef.current?.focus();
+        }}
+      />
     </>
   );
 }

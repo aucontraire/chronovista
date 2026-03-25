@@ -105,11 +105,12 @@ async function downloadTranscript(
 /**
  * Mutation hook for triggering a transcript download for a video.
  *
- * On success, invalidates three query caches so consuming components
- * automatically reflect the newly downloaded transcript:
- * - `["video", videoId]`                 — refreshes transcript_summary on detail page
+ * On success, updates three query caches so consuming components automatically
+ * reflect the newly downloaded transcript:
+ * - `["video", videoId]`                 — force-refetched via refetchQueries (bypasses
+ *   staleTime so hasTranscript flips immediately without a manual page reload)
  * - `["transcriptSegments", videoId, …]` — prefix-invalidated (all language variants)
- * - `["transcriptLanguages", videoId]`   — refreshes the language selector options
+ * - `["transcriptLanguages", videoId]`   — invalidated (refreshes language selector)
  *
  * Error HTTP status codes (via `error.status`) allow callers to distinguish:
  * - **503** — YouTube is temporarily rate-limiting the backend (IP block)
@@ -157,11 +158,30 @@ export function useTranscriptDownload(
 
     onSuccess: async () => {
       // FR-005: Invalidate all affected caches after a successful download.
-      // Run all three invalidations concurrently — they are independent.
+      //
+      // For the video detail query we use refetchQueries rather than
+      // invalidateQueries because the video detail page has staleTime: 10 s.
+      // invalidateQueries marks the entry stale and then calls refetch() on
+      // active observers — but in TanStack Query v5 there is a known edge case
+      // where the refetch is not dispatched when the query was populated very
+      // recently (within staleTime) AND the mutation's onSuccess callback runs
+      // synchronously before React has committed the current render cycle.
+      // refetchQueries bypasses the staleness check entirely and issues an
+      // unconditional network request, guaranteeing the component receives the
+      // updated transcript_summary.count immediately after the download.
+      //
+      // The transcript-segment and transcript-language queries do not have
+      // active observers until TranscriptPanel mounts (which happens AFTER
+      // hasTranscript flips to true), so invalidateQueries is correct for
+      // those — it marks them stale so they fetch fresh data on first mount.
       await Promise.all([
-        // Refresh video detail (transcript_summary.count / languages list)
-        queryClient.invalidateQueries({
+        // Force-refetch video detail so hasTranscript flips without a manual
+        // page reload. exact: true ensures only the precise key is targeted
+        // (no prefix matches) so unrelated ["video", ...] queries are unaffected.
+        queryClient.refetchQueries({
           queryKey: ["video", videoId],
+          exact: true,
+          type: "active",
         }),
         // Invalidate ALL language variants of transcript segments by prefix
         // (exact: false is the TanStack Query v5 default for prefix matching)

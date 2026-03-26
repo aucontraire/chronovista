@@ -51,6 +51,22 @@ vi.mock("../../../hooks/useEntityMentions", () => ({
   useDeleteManualAssociation: vi.fn(),
   useCheckDuplicate: vi.fn(),
   useCreateEntity: vi.fn(),
+  useScanEntity: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    data: null,
+    reset: vi.fn(),
+  })),
+  useScanVideoEntities: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    data: null,
+    reset: vi.fn(),
+  })),
 }));
 
 // ---------------------------------------------------------------------------

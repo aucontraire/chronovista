@@ -124,6 +124,7 @@ class EntityMentionScanService:
         new_entities_only: bool = False,
         limit: int | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
+        entity_ids: list[uuid.UUID] | None = None,
     ) -> ScanResult:
         """Scan transcript segments for entity mentions.
 
@@ -148,6 +149,9 @@ class EntityMentionScanService:
             Cap the number of dry-run preview rows collected.
         progress_callback : Callable[[int, int], None] | None
             Called after each batch with ``(segments_scanned, mentions_found)``.
+        entity_ids : list[uuid.UUID] | None
+            Restrict scanning to these specific entity IDs.  Applied as an
+            AND filter together with ``entity_type`` when both are provided.
 
         Returns
         -------
@@ -156,25 +160,37 @@ class EntityMentionScanService:
         """
         t0 = time.monotonic()
 
+        logger.info(
+            "Scan starting: entity_ids=%s, video_ids=%s, dry_run=%s, "
+            "entity_type=%s, full_rescan=%s, new_entities_only=%s",
+            entity_ids,
+            video_ids,
+            dry_run,
+            entity_type,
+            full_rescan,
+            new_entities_only,
+        )
+
         async with self._session_factory() as session:
             # 1. Load entity patterns
             patterns = await self._load_entity_patterns(
                 session,
                 entity_type=entity_type,
                 new_entities_only=new_entities_only,
+                entity_ids=entity_ids,
             )
 
             if not patterns:
                 logger.info("No active entities matched the filter criteria")
                 return ScanResult(dry_run=dry_run, duration_seconds=time.monotonic() - t0)
 
-            entity_ids = [p.entity_id for p in patterns]
+            scoped_entity_ids = [p.entity_id for p in patterns]
 
             # 2. Handle --full rescan: delete existing mentions in scope
             if full_rescan and not dry_run:
                 deleted = await self._mention_repo.delete_by_scope(
                     session,
-                    entity_ids=entity_ids,
+                    entity_ids=scoped_entity_ids,
                     video_ids=video_ids,
                     language_code=language_code,
                     detection_method="rule_match",
@@ -291,7 +307,7 @@ class EntityMentionScanService:
             # them, so their counters need to be zeroed).
             counter_entity_ids: set[uuid.UUID] = set()
             if full_rescan:
-                counter_entity_ids = set(entity_ids)
+                counter_entity_ids = set(scoped_entity_ids)
             counter_entity_ids |= matched_entity_ids
 
             if not dry_run and counter_entity_ids:
@@ -402,6 +418,7 @@ class EntityMentionScanService:
         session: AsyncSession,
         entity_type: str | None,
         new_entities_only: bool,
+        entity_ids: list[uuid.UUID] | None = None,
     ) -> list[_EntityPattern]:
         """Load active entities and their aliases, build regex patterns.
 
@@ -413,6 +430,9 @@ class EntityMentionScanService:
             Optional entity type filter.
         new_entities_only : bool
             If True, only include entities with zero existing mentions.
+        entity_ids : list[uuid.UUID] | None
+            Optional list of specific entity IDs to restrict to.  Applied as
+            an AND filter together with ``entity_type``.
 
         Returns
         -------
@@ -429,6 +449,10 @@ class EntityMentionScanService:
             entity_stmt = select(NamedEntityDB).where(
                 NamedEntityDB.id.in_(zero_mention_ids)
             )
+            if entity_ids is not None:
+                entity_stmt = entity_stmt.where(
+                    NamedEntityDB.id.in_(entity_ids)
+                )
         else:
             entity_stmt = select(NamedEntityDB).where(
                 NamedEntityDB.status == "active"
@@ -436,6 +460,10 @@ class EntityMentionScanService:
             if entity_type is not None:
                 entity_stmt = entity_stmt.where(
                     NamedEntityDB.entity_type == entity_type
+                )
+            if entity_ids is not None:
+                entity_stmt = entity_stmt.where(
+                    NamedEntityDB.id.in_(entity_ids)
                 )
 
         entity_result = await session.execute(entity_stmt)

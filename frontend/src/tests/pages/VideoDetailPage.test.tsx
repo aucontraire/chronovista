@@ -72,6 +72,22 @@ vi.mock("../../hooks/useVideoPlaylists", () => ({
 vi.mock("../../hooks/useEntityMentions", () => ({
   useVideoEntities: vi.fn(),
   useEntityVideos: vi.fn(),
+  useScanEntity: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    data: null,
+    reset: vi.fn(),
+  })),
+  useScanVideoEntities: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    data: null,
+    reset: vi.fn(),
+  })),
 }));
 
 // Mock useTranscriptDownload — prevents mutation side-effects

@@ -54,6 +54,26 @@ DOWNLOAD_URL = f"/api/v1/videos/{VALID_VIDEO_ID}/transcript/download"
 # ---------------------------------------------------------------------------
 
 
+def _make_orm_pref(language_code: str = "en") -> MagicMock:
+    """Build a mock ORM UserLanguagePreference row for Path B tests.
+
+    The router calls ``UserLanguagePreferenceDomain.model_validate(p)``
+    with ``from_attributes=True``, so every required field must be
+    present as an attribute on the mock.
+    """
+    from datetime import timezone as tz
+
+    mock = MagicMock()
+    mock.user_id = "default"
+    mock.language_code = language_code
+    mock.preference_type = "fluent"
+    mock.priority = 1
+    mock.auto_download_transcripts = True
+    mock.learning_goal = None
+    mock.created_at = datetime(2024, 1, 1, 0, 0, 0, tzinfo=tz.utc)
+    return mock
+
+
 def _make_db_transcript(
     *,
     video_id: str = VALID_VIDEO_ID,
@@ -1366,3 +1386,135 @@ class TestDownloadTranscriptEdgeCases:
         call_args = mock_repo.get_video_transcripts.call_args
         # Second positional argument should be the video_id
         assert VALID_VIDEO_ID in (call_args.args or list(call_args.kwargs.values()))
+
+
+# ---------------------------------------------------------------------------
+# Test class: 503 — Batch download IP block returns 503
+# ---------------------------------------------------------------------------
+
+
+class TestBatchDownloadIpBlockReturns503:
+    """Tests that the batch (preference-aware) download path returns 503 when IP-blocked.
+
+    When get_transcripts_for_languages() raises TranscriptServiceUnavailableError,
+    the router should return a 503 ProblemJSON response instead of a misleading 404.
+    """
+
+    @patch("chronovista.api.routers.transcripts._pref_filter")
+    @patch("chronovista.api.routers.transcripts._pref_repo")
+    @patch("chronovista.api.routers.transcripts._transcript_repo")
+    @patch("chronovista.api.routers.transcripts._transcript_service")
+    async def test_batch_ip_block_returns_503(
+        self,
+        mock_service: MagicMock,
+        mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
+        mock_pref_filter: MagicMock,
+        client: AsyncClient,
+    ) -> None:
+        """503 is returned when batch download raises TranscriptServiceUnavailableError."""
+        # Set up preferences so we enter Path B (preference-aware batch download)
+        mock_pref = _make_orm_pref("en")
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[mock_pref])
+        mock_pref_filter.get_download_languages.return_value = ["en", "es"]
+        mock_repo.get_video_transcripts = AsyncMock(return_value=[])
+
+        mock_service.get_transcripts_for_languages = AsyncMock(
+            side_effect=TranscriptServiceUnavailableError(
+                "YouTube is temporarily blocking requests from this IP address."
+            )
+        )
+
+        response = await client.post(DOWNLOAD_URL)
+
+        assert response.status_code == 503
+
+    @patch("chronovista.api.routers.transcripts._pref_filter")
+    @patch("chronovista.api.routers.transcripts._pref_repo")
+    @patch("chronovista.api.routers.transcripts._transcript_repo")
+    @patch("chronovista.api.routers.transcripts._transcript_service")
+    async def test_batch_ip_block_503_rfc7807_body(
+        self,
+        mock_service: MagicMock,
+        mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
+        mock_pref_filter: MagicMock,
+        client: AsyncClient,
+    ) -> None:
+        """503 response body has RFC 7807 fields with SERVICE_UNAVAILABLE code."""
+        mock_pref = _make_orm_pref("en")
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[mock_pref])
+        mock_pref_filter.get_download_languages.return_value = ["en", "es"]
+        mock_repo.get_video_transcripts = AsyncMock(return_value=[])
+
+        mock_service.get_transcripts_for_languages = AsyncMock(
+            side_effect=TranscriptServiceUnavailableError(
+                "YouTube is temporarily blocking requests."
+            )
+        )
+
+        response = await client.post(DOWNLOAD_URL)
+        body = response.json()
+
+        assert body["status"] == 503
+        assert "type" in body
+        assert "title" in body
+        assert "detail" in body
+        assert body["code"] == "SERVICE_UNAVAILABLE"
+        assert "temporarily blocking" in body["detail"].lower()
+
+    @patch("chronovista.api.routers.transcripts._pref_filter")
+    @patch("chronovista.api.routers.transcripts._pref_repo")
+    @patch("chronovista.api.routers.transcripts._transcript_repo")
+    @patch("chronovista.api.routers.transcripts._transcript_service")
+    async def test_batch_ip_block_503_includes_instance_uri(
+        self,
+        mock_service: MagicMock,
+        mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
+        mock_pref_filter: MagicMock,
+        client: AsyncClient,
+    ) -> None:
+        """503 response includes the instance URI with the video_id."""
+        mock_pref = _make_orm_pref("en")
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[mock_pref])
+        mock_pref_filter.get_download_languages.return_value = ["en"]
+        mock_repo.get_video_transcripts = AsyncMock(return_value=[])
+
+        mock_service.get_transcripts_for_languages = AsyncMock(
+            side_effect=TranscriptServiceUnavailableError("IP blocked")
+        )
+
+        response = await client.post(DOWNLOAD_URL)
+        body = response.json()
+
+        assert "instance" in body
+        assert VALID_VIDEO_ID in body["instance"]
+
+    @patch("chronovista.api.routers.transcripts._pref_filter")
+    @patch("chronovista.api.routers.transcripts._pref_repo")
+    @patch("chronovista.api.routers.transcripts._transcript_repo")
+    @patch("chronovista.api.routers.transcripts._transcript_service")
+    async def test_batch_ip_block_clears_in_flight_set(
+        self,
+        mock_service: MagicMock,
+        mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
+        mock_pref_filter: MagicMock,
+        client: AsyncClient,
+    ) -> None:
+        """After a 503 IP-block error, the video_id is removed from _downloads_in_progress."""
+        import chronovista.api.routers.transcripts as transcripts_module
+
+        mock_pref = _make_orm_pref("en")
+        mock_pref_repo.get_user_preferences = AsyncMock(return_value=[mock_pref])
+        mock_pref_filter.get_download_languages.return_value = ["en"]
+        mock_repo.get_video_transcripts = AsyncMock(return_value=[])
+
+        mock_service.get_transcripts_for_languages = AsyncMock(
+            side_effect=TranscriptServiceUnavailableError("IP blocked")
+        )
+
+        await client.post(DOWNLOAD_URL)
+
+        assert VALID_VIDEO_ID not in transcripts_module._downloads_in_progress

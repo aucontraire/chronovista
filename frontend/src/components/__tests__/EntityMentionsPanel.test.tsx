@@ -34,6 +34,22 @@ vi.mock("../../hooks/useEntityMentions", () => ({
   useEntities: vi.fn(),
   useCreateManualAssociation: vi.fn(),
   useDeleteManualAssociation: vi.fn(),
+  useScanEntity: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    data: null,
+    reset: vi.fn(),
+  })),
+  useScanVideoEntities: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    data: null,
+    reset: vi.fn(),
+  })),
 }));
 
 // ---------------------------------------------------------------------------
@@ -44,7 +60,7 @@ import { EntityMentionsPanel } from "../EntityMentionsPanel";
 import type { EntityMentionsPanelProps } from "../EntityMentionsPanel";
 import type { VideoEntitySummary } from "../../api/entityMentions";
 import { useEntitySearch } from "../../hooks/useEntitySearch";
-import { useCreateManualAssociation, useDeleteManualAssociation } from "../../hooks/useEntityMentions";
+import { useCreateManualAssociation, useDeleteManualAssociation, useScanVideoEntities } from "../../hooks/useEntityMentions";
 import type { Mock } from "vitest";
 
 // ---------------------------------------------------------------------------
@@ -280,6 +296,269 @@ describe("EntityMentionsPanel", () => {
     it("renders the search input even when entities exist", () => {
       renderPanel({ entities: [createEntity()] });
       expect(screen.getByRole("searchbox")).toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Scan for Entity Mentions button (T012, Feature 052)
+  // ---------------------------------------------------------------------------
+
+  describe("Scan for Entity Mentions button (T012)", () => {
+    it("renders the scan button when hasTranscript is true", () => {
+      renderPanel({ entities: [], hasTranscript: true });
+      expect(
+        screen.getByRole("button", { name: /scan for entity mentions/i })
+      ).toBeInTheDocument();
+    });
+
+    it("does not render the scan button when hasTranscript is false", () => {
+      renderPanel({ entities: [], hasTranscript: false });
+      expect(
+        screen.queryByRole("button", { name: /scan for entity mentions/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("does not render the scan button when hasTranscript is omitted (default)", () => {
+      renderPanel({ entities: [] });
+      expect(
+        screen.queryByRole("button", { name: /scan for entity mentions/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("scan button is enabled in idle state", () => {
+      renderPanel({ entities: [], hasTranscript: true });
+      const button = screen.getByRole("button", { name: /scan for entity mentions/i });
+      expect(button).not.toBeDisabled();
+    });
+
+    it("shows 'Scanning...' and disables the button when isPending is true", () => {
+      (useScanVideoEntities as Mock).mockReturnValue({
+        mutate: vi.fn(),
+        isPending: true,
+        isError: false,
+        error: null,
+        data: null,
+        reset: vi.fn(),
+      });
+
+      renderPanel({ entities: [], hasTranscript: true });
+
+      const button = screen.getByRole("button", { name: /scanning/i });
+      expect(button).toBeDisabled();
+      expect(button.textContent).toMatch(/scanning/i);
+    });
+
+    it("button has aria-busy='true' when isPending is true", () => {
+      (useScanVideoEntities as Mock).mockReturnValue({
+        mutate: vi.fn(),
+        isPending: true,
+        isError: false,
+        error: null,
+        data: null,
+        reset: vi.fn(),
+      });
+
+      renderPanel({ entities: [], hasTranscript: true });
+
+      const button = screen.getByRole("button", { name: /scanning/i });
+      expect(button).toHaveAttribute("aria-busy", "true");
+    });
+
+    it("calls useScanVideoEntities.mutate with the videoId when the button is clicked", () => {
+      const mockMutate = vi.fn();
+      (useScanVideoEntities as Mock).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+        isError: false,
+        error: null,
+        data: null,
+        reset: vi.fn(),
+      });
+
+      renderPanel({ entities: [], videoId: VIDEO_ID, hasTranscript: true });
+
+      fireEvent.click(screen.getByRole("button", { name: /scan for entity mentions/i }));
+
+      expect(mockMutate).toHaveBeenCalledOnce();
+      expect(mockMutate).toHaveBeenCalledWith(
+        expect.objectContaining({ videoId: VIDEO_ID }),
+        expect.any(Object)
+      );
+    });
+
+    it("shows success message 'Found N entities with M mentions' after scan finds results", () => {
+      const mockMutate = vi.fn().mockImplementation((_vars, callbacks) => {
+        callbacks?.onSuccess?.({
+          data: {
+            unique_entities: 4,
+            mentions_found: 12,
+            segments_scanned: 90,
+            mentions_skipped: 0,
+            unique_videos: 1,
+            duration_seconds: 0.4,
+            dry_run: false,
+          },
+        });
+      });
+
+      (useScanVideoEntities as Mock).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+        isError: false,
+        error: null,
+        data: null,
+        reset: vi.fn(),
+      });
+
+      renderPanel({ entities: [], hasTranscript: true });
+
+      fireEvent.click(screen.getByRole("button", { name: /scan for entity mentions/i }));
+
+      expect(screen.getByText(/found 4 entities with 12 mentions/i)).toBeInTheDocument();
+    });
+
+    it("shows 'No entity mentions found' when scan returns zero results", () => {
+      const mockMutate = vi.fn().mockImplementation((_vars, callbacks) => {
+        callbacks?.onSuccess?.({
+          data: {
+            unique_entities: 0,
+            mentions_found: 0,
+            segments_scanned: 60,
+            mentions_skipped: 0,
+            unique_videos: 1,
+            duration_seconds: 0.2,
+            dry_run: false,
+          },
+        });
+      });
+
+      (useScanVideoEntities as Mock).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+        isError: false,
+        error: null,
+        data: null,
+        reset: vi.fn(),
+      });
+
+      renderPanel({ entities: [], hasTranscript: true });
+
+      fireEvent.click(screen.getByRole("button", { name: /scan for entity mentions/i }));
+
+      expect(screen.getByText(/no entity mentions found/i)).toBeInTheDocument();
+    });
+
+    it("success message uses role='status' for polite accessibility announcement", () => {
+      const mockMutate = vi.fn().mockImplementation((_vars, callbacks) => {
+        callbacks?.onSuccess?.({
+          data: {
+            unique_entities: 2,
+            mentions_found: 6,
+            segments_scanned: 50,
+            mentions_skipped: 0,
+            unique_videos: 1,
+            duration_seconds: 0.2,
+            dry_run: false,
+          },
+        });
+      });
+
+      (useScanVideoEntities as Mock).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+        isError: false,
+        error: null,
+        data: null,
+        reset: vi.fn(),
+      });
+
+      renderPanel({ entities: [], hasTranscript: true });
+
+      fireEvent.click(screen.getByRole("button", { name: /scan for entity mentions/i }));
+
+      expect(screen.getByRole("status")).toBeInTheDocument();
+    });
+
+    it("shows error message with role='alert' when scan fails", () => {
+      const mockMutate = vi.fn().mockImplementation((_vars, callbacks) => {
+        callbacks?.onError?.({ status: 500, message: "Scan failed. Please try again." });
+      });
+
+      (useScanVideoEntities as Mock).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+        isError: false,
+        error: null,
+        data: null,
+        reset: vi.fn(),
+      });
+
+      renderPanel({ entities: [], hasTranscript: true });
+
+      fireEvent.click(screen.getByRole("button", { name: /scan for entity mentions/i }));
+
+      const alert = screen.getByRole("alert");
+      expect(alert).toBeInTheDocument();
+      expect(alert).toHaveTextContent(/scan failed/i);
+    });
+
+    it("singular entity/mention labels used when counts are exactly 1", () => {
+      const mockMutate = vi.fn().mockImplementation((_vars, callbacks) => {
+        callbacks?.onSuccess?.({
+          data: {
+            unique_entities: 1,
+            mentions_found: 1,
+            segments_scanned: 30,
+            mentions_skipped: 0,
+            unique_videos: 1,
+            duration_seconds: 0.1,
+            dry_run: false,
+          },
+        });
+      });
+
+      (useScanVideoEntities as Mock).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+        isError: false,
+        error: null,
+        data: null,
+        reset: vi.fn(),
+      });
+
+      renderPanel({ entities: [], hasTranscript: true });
+
+      fireEvent.click(screen.getByRole("button", { name: /scan for entity mentions/i }));
+
+      expect(screen.getByText(/found 1 entity with 1 mention/i)).toBeInTheDocument();
+    });
+
+    it("error message persists (does not auto-dismiss) after failed scan", () => {
+      vi.useFakeTimers();
+      const mockMutate = vi.fn().mockImplementation((_vars, callbacks) => {
+        callbacks?.onError?.({ message: "Scan failed. Please try again." });
+      });
+
+      (useScanVideoEntities as Mock).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+        isError: false,
+        error: null,
+        data: null,
+        reset: vi.fn(),
+      });
+
+      renderPanel({ entities: [], hasTranscript: true });
+
+      fireEvent.click(screen.getByRole("button", { name: /scan for entity mentions/i }));
+
+      // Advance timers past the 3-second auto-dismiss window
+      vi.advanceTimersByTime(5000);
+
+      const alert = screen.getByRole("alert");
+      expect(alert).toBeInTheDocument();
+
+      vi.useRealTimers();
     });
   });
 });

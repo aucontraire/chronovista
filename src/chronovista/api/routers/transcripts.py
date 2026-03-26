@@ -577,18 +577,53 @@ async def download_transcript(
                 },
             )
 
-        # Download each remaining language
+        # Download all remaining languages in a single batch (1-3 API calls
+        # total via the "List Once, Fetch Selectively" optimisation — GH #109).
         downloaded: list[TranscriptDownloadResult] = []
         skipped: list[str] = []
         failed: list[str] = []
 
-        for lang_code in remaining_languages:
-            try:
-                enhanced_transcript = await _transcript_service.get_transcript(
-                    video_id=video_id,
-                    language_codes=[lang_code],
-                )
+        try:
+            batch_results = await _transcript_service.get_transcripts_for_languages(
+                video_id=video_id,
+                language_codes=remaining_languages,
+            )
+        except TranscriptServiceUnavailableError as exc:
+            from chronovista.api.schemas.responses import (
+                ErrorCode,
+                ProblemJSONResponse,
+                get_error_type_uri,
+                ERROR_TITLES,
+            )
+            import uuid
 
+            return ProblemJSONResponse(  # type: ignore[return-value]
+                status_code=503,
+                content={
+                    "type": get_error_type_uri(ErrorCode.SERVICE_UNAVAILABLE),
+                    "title": ERROR_TITLES[ErrorCode.SERVICE_UNAVAILABLE],
+                    "status": 503,
+                    "detail": (
+                        "YouTube is temporarily blocking transcript requests "
+                        f"from this IP address. Please try again later. ({exc})"
+                    ),
+                    "instance": f"/api/v1/videos/{video_id}/transcript/download",
+                    "code": ErrorCode.SERVICE_UNAVAILABLE.value,
+                    "request_id": str(uuid.uuid4()),
+                },
+            )
+
+        for lang_code, enhanced_transcript in batch_results.items():
+            if enhanced_transcript is None:
+                skipped.append(lang_code)
+                logger.info(
+                    "No transcript available in '%s' for video %s — skipped",
+                    lang_code,
+                    video_id,
+                )
+                continue
+
+            try:
                 transcript_create = VideoTranscriptCreate(
                     video_id=enhanced_transcript.video_id,
                     language_code=enhanced_transcript.language_code,
@@ -631,21 +666,21 @@ async def download_transcript(
                     )
                 )
 
-            except TranscriptNotFoundError:
-                skipped.append(lang_code)
-                logger.info(
-                    "No transcript available in '%s' for video %s — skipped",
-                    lang_code,
-                    video_id,
-                )
-
             except (
                 TranscriptServiceUnavailableError,
                 TranscriptServiceError,
             ):
                 failed.append(lang_code)
                 logger.warning(
-                    "Failed to download '%s' transcript for video %s",
+                    "Failed to persist '%s' transcript for video %s",
+                    lang_code,
+                    video_id,
+                    exc_info=True,
+                )
+            except Exception:
+                failed.append(lang_code)
+                logger.warning(
+                    "Unexpected error persisting '%s' transcript for video %s",
                     lang_code,
                     video_id,
                     exc_info=True,

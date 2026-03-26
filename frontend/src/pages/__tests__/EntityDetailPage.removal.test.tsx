@@ -51,6 +51,22 @@ vi.mock("../../hooks/useEntityMentions", () => ({
   })),
   // The delete hook is the new export added in T038.
   useDeleteManualAssociation: vi.fn(),
+  useScanEntity: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    data: null,
+    reset: vi.fn(),
+  })),
+  useScanVideoEntities: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    data: null,
+    reset: vi.fn(),
+  })),
 }));
 
 vi.mock("../../components/corrections/PhoneticVariantsSection", () => ({

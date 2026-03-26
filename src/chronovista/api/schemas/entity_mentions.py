@@ -507,3 +507,135 @@ class ClassifyTagRequest(BaseModel):
                 f"{', '.join(sorted(_ENTITY_PRODUCING_TYPES))}"
             )
         return v
+
+
+# ---------------------------------------------------------------------------
+# Scan request / response schemas (Feature 038 API)
+# ---------------------------------------------------------------------------
+
+_VALID_ENTITY_TYPES = {
+    "person",
+    "organization",
+    "place",
+    "event",
+    "work",
+    "technical_term",
+    "topic",
+    "descriptor",
+    "concept",
+    "other",
+}
+
+
+class ScanRequest(BaseModel):
+    """Request body for triggering an entity mention scan.
+
+    All fields are optional.  An empty body ``{}`` runs a default
+    incremental scan across all entities and languages.
+
+    Attributes
+    ----------
+    language_code : str | None
+        Restrict scanning to transcript segments in this language.
+    entity_type : str | None
+        Restrict scanning to entities of this type.  Must be a valid
+        ``EntityType`` enum value.
+    dry_run : bool
+        If ``True``, collect preview data without writing to the database.
+    full_rescan : bool
+        If ``True``, delete existing ``rule_match`` mentions in scope
+        before scanning.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    language_code: str | None = Field(
+        default=None,
+        description="Restrict scanning to segments in this language",
+    )
+    entity_type: str | None = Field(
+        default=None,
+        description="Restrict scanning to entities of this type",
+    )
+    dry_run: bool = Field(
+        default=False,
+        description="Preview matches without writing to the database",
+    )
+    full_rescan: bool = Field(
+        default=False,
+        description="Delete existing rule_match mentions before scanning",
+    )
+
+    @field_validator("entity_type")
+    @classmethod
+    def validate_scan_entity_type(cls, v: str | None) -> str | None:
+        """Ensure entity_type is a valid EntityType enum value when provided."""
+        if v is not None and v not in _VALID_ENTITY_TYPES:
+            raise ValueError(
+                f"entity_type must be one of: "
+                f"{', '.join(sorted(_VALID_ENTITY_TYPES))}"
+            )
+        return v
+
+
+class ScanResultData(BaseModel):
+    """Core scan result metrics returned inside the response envelope.
+
+    Attributes
+    ----------
+    segments_scanned : int
+        Total number of transcript segments examined.
+    mentions_found : int
+        Number of new entity mention rows inserted (or previewed).
+    mentions_skipped : int
+        Number of mention matches already present (incremental mode).
+    unique_entities : int
+        Count of distinct entities that produced at least one mention.
+    unique_videos : int
+        Count of distinct videos that contained at least one mention.
+    duration_seconds : float
+        Wall-clock time spent on the scan.
+    dry_run : bool
+        Whether this was a dry-run (no writes).
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    segments_scanned: int = Field(
+        ..., description="Total transcript segments examined"
+    )
+    mentions_found: int = Field(
+        ..., description="New entity mention rows inserted (or previewed)"
+    )
+    mentions_skipped: int = Field(
+        ..., description="Mention matches already present (incremental mode)"
+    )
+    unique_entities: int = Field(
+        ..., description="Distinct entities with at least one mention"
+    )
+    unique_videos: int = Field(
+        ..., description="Distinct videos with at least one mention"
+    )
+    duration_seconds: float = Field(
+        ..., description="Wall-clock time spent on the scan"
+    )
+    dry_run: bool = Field(
+        ..., description="Whether this was a dry-run (no writes)"
+    )
+
+
+class ScanResultResponse(BaseModel):
+    """Response envelope for the entity mention scan endpoint.
+
+    Wraps ``ScanResultData`` inside a ``data`` key for consistent
+    API response formatting.
+
+    Attributes
+    ----------
+    data : ScanResultData
+        Scan result metrics.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    data: ScanResultData

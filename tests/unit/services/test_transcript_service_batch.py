@@ -217,6 +217,7 @@ class TestGetTranscriptsForLanguages:
             result = await service.get_transcripts_for_languages(
                 video_id=VIDEO_ID,
                 language_codes=["en", "fr"],
+                include_translations=True,
             )
 
         # en fetched natively; fr fetched via translation
@@ -325,6 +326,7 @@ class TestGetTranscriptsForLanguages:
             result = await service.get_transcripts_for_languages(
                 video_id=VIDEO_ID,
                 language_codes=["en", "es", "it", "ja"],
+                include_translations=True,
             )
 
         assert result["en"] is not None   # native
@@ -514,6 +516,7 @@ class TestGetTranscriptsForLanguages:
             result = await service.get_transcripts_for_languages(
                 video_id=VIDEO_ID,
                 language_codes=["fr"],
+                include_translations=True,
             )
 
         # manual_en.translate should have been called (it is the non-generated one)
@@ -555,6 +558,7 @@ class TestGetTranscriptsForLanguages:
             result = await service.get_transcripts_for_languages(
                 video_id=VIDEO_ID,
                 language_codes=["de"],
+                include_translations=True,
             )
 
         auto_en.translate.assert_called_once_with("de")
@@ -740,6 +744,155 @@ class TestGetTranscriptsForLanguages:
             )
 
         mock_api_instance.list.assert_called_once_with(VIDEO_ID)
+
+    # ------------------------------------------------------------------
+    # include_translations=False (default): no translation attempted
+    # ------------------------------------------------------------------
+
+    async def test_include_translations_false_non_native_language_returns_none(self) -> None:
+        """When include_translations=False (default), a non-native language returns None without any translate() call."""
+        en_transcript = _make_transcript_mock(
+            language_code="en",
+            language="English",
+            is_generated=False,
+            is_translatable=True,
+            fetch_snippets=[_make_snippet_mock("Hello", 0.0, 2.0)],
+        )
+        # Spy on translate so we can assert it is never called
+        en_transcript.translate = MagicMock()
+
+        transcript_list = _make_transcript_list([en_transcript])
+        mock_api_instance = MagicMock()
+        mock_api_instance.list.return_value = transcript_list
+
+        service = _service_with_api()
+
+        with patch(
+            "chronovista.services.transcript_service.YouTubeTranscriptApi",
+            return_value=mock_api_instance,
+        ):
+            # Default: include_translations=False
+            result = await service.get_transcripts_for_languages(
+                video_id=VIDEO_ID,
+                language_codes=["en", "fr"],
+            )
+
+        # en native → present; fr has no native → None with no translation attempt
+        assert result["en"] is not None
+        assert result["fr"] is None
+        en_transcript.translate.assert_not_called()
+
+    async def test_include_translations_false_explicit_no_translate_call(self) -> None:
+        """Passing include_translations=False explicitly also suppresses all translate() calls."""
+        en_transcript = _make_transcript_mock(
+            language_code="en",
+            language="English",
+            is_generated=False,
+            is_translatable=True,
+        )
+        en_transcript.translate = MagicMock()
+
+        transcript_list = _make_transcript_list([en_transcript])
+        mock_api_instance = MagicMock()
+        mock_api_instance.list.return_value = transcript_list
+
+        service = _service_with_api()
+
+        with patch(
+            "chronovista.services.transcript_service.YouTubeTranscriptApi",
+            return_value=mock_api_instance,
+        ):
+            result = await service.get_transcripts_for_languages(
+                video_id=VIDEO_ID,
+                language_codes=["es", "de", "fr"],
+                include_translations=False,
+            )
+
+        # All requested languages are non-native → all None, no translate() called
+        assert result["es"] is None
+        assert result["de"] is None
+        assert result["fr"] is None
+        en_transcript.translate.assert_not_called()
+
+    async def test_include_translations_false_does_not_fetch_non_native_when_translatable_exists(self) -> None:
+        """When include_translations=False, a non-native language returns None even if a translatable
+        source exists — translation is never attempted.
+        """
+        translated_es = _make_transcript_mock(
+            language_code="es",
+            language="Spanish",
+            is_generated=False,
+            is_translatable=False,
+            fetch_snippets=[_make_snippet_mock("Hola", 0.0, 1.0)],
+        )
+        en_transcript = _make_transcript_mock(
+            language_code="en",
+            language="English",
+            is_generated=False,
+            is_translatable=True,
+            fetch_snippets=[_make_snippet_mock("Hello", 0.0, 2.0)],
+        )
+        en_transcript.translate = MagicMock(return_value=translated_es)
+
+        transcript_list = _make_transcript_list([en_transcript])
+        mock_api_instance = MagicMock()
+        mock_api_instance.list.return_value = transcript_list
+
+        service = _service_with_api()
+
+        with patch(
+            "chronovista.services.transcript_service.YouTubeTranscriptApi",
+            return_value=mock_api_instance,
+        ):
+            result = await service.get_transcripts_for_languages(
+                video_id=VIDEO_ID,
+                language_codes=["en", "es"],
+                include_translations=False,
+            )
+
+        assert result["en"] is not None  # native always works
+        assert result["es"] is None      # non-native is not attempted
+        en_transcript.translate.assert_not_called()
+
+    async def test_include_translations_true_fetches_non_native_via_translation(self) -> None:
+        """When include_translations=True, a language without a native transcript is fetched
+        via translation and returns a non-None result.
+        """
+        translated_es = _make_transcript_mock(
+            language_code="es",
+            language="Spanish",
+            is_generated=False,
+            is_translatable=False,
+            fetch_snippets=[_make_snippet_mock("Hola", 0.0, 1.0)],
+        )
+        en_transcript = _make_transcript_mock(
+            language_code="en",
+            language="English",
+            is_generated=False,
+            is_translatable=True,
+            fetch_snippets=[_make_snippet_mock("Hello", 0.0, 2.0)],
+        )
+        en_transcript.translate = MagicMock(return_value=translated_es)
+
+        transcript_list = _make_transcript_list([en_transcript])
+        mock_api_instance = MagicMock()
+        mock_api_instance.list.return_value = transcript_list
+
+        service = _service_with_api()
+
+        with patch(
+            "chronovista.services.transcript_service.YouTubeTranscriptApi",
+            return_value=mock_api_instance,
+        ):
+            result = await service.get_transcripts_for_languages(
+                video_id=VIDEO_ID,
+                language_codes=["en", "es"],
+                include_translations=True,
+            )
+
+        assert result["en"] is not None  # native
+        assert result["es"] is not None  # fetched via translation
+        en_transcript.translate.assert_called_once_with("es")
 
 
 # ---------------------------------------------------------------------------

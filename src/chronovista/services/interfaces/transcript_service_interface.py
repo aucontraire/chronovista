@@ -128,13 +128,16 @@ class TranscriptServiceInterface(ABC):
         video_id: VideoId,
         language_codes: List[str],
         download_reason: DownloadReason = DownloadReason.USER_REQUEST,
+        include_translations: bool = False,
     ) -> Dict[str, Optional["EnhancedVideoTranscriptBase"]]:
         """
         Get transcripts for multiple languages with minimal API calls.
 
         Uses a single ``api.list()`` call to enumerate available transcripts,
-        then selectively fetches or translates only the requested languages,
-        reducing YouTube API round-trips from O(N) to O(1) + O(fetches).
+        then selectively fetches only native transcripts for the requested
+        languages.  When ``include_translations`` is ``True``, languages
+        without a native transcript are attempted via YouTube's translation
+        API as a fallback.
 
         Parameters
         ----------
@@ -144,6 +147,11 @@ class TranscriptServiceInterface(ABC):
             BCP-47 language codes to download (e.g., ['en', 'es', 'fr']).
         download_reason : DownloadReason
             Reason for downloading the transcripts.
+        include_translations : bool
+            When ``False`` (default), only native transcripts are fetched.
+            When ``True``, languages without a native transcript are
+            attempted via translation, which uses additional YouTube API
+            calls and may trigger IP-based rate limiting.
 
         Returns
         -------

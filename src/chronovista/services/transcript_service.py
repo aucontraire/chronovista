@@ -680,14 +680,16 @@ class TranscriptService(TranscriptServiceInterface):
         video_id: VideoId,
         language_codes: List[str],
         download_reason: DownloadReason = DownloadReason.USER_REQUEST,
+        include_translations: bool = False,
     ) -> Dict[str, Optional[EnhancedVideoTranscriptBase]]:
         """
         Get transcripts for multiple languages with minimal API calls.
 
         Calls ``api.list()`` exactly once, builds a map of available native
-        transcripts, and then for each requested language either fetches the
-        native transcript directly, falls back to translation from the best
-        available source, or records ``None`` if the language is unavailable.
+        transcripts, and then for each requested language fetches the native
+        transcript directly.  When ``include_translations`` is ``True``,
+        languages without a native transcript are attempted via YouTube's
+        translation API as a fallback.
 
         This reduces YouTube API calls from ``O(N)`` (one ``api.fetch()`` per
         language) to ``1 + O(fetches)`` — typically 1–3 total calls regardless
@@ -705,6 +707,11 @@ class TranscriptService(TranscriptServiceInterface):
             BCP-47 language codes to download (e.g., ``['en', 'es', 'fr']``).
         download_reason : DownloadReason
             Reason for downloading the transcripts.
+        include_translations : bool
+            When ``False`` (default), only native transcripts are fetched.
+            When ``True``, languages without a native transcript are
+            attempted via translation, which uses additional YouTube API
+            calls and may trigger IP-based rate limiting.
 
         Returns
         -------
@@ -871,18 +878,19 @@ class TranscriptService(TranscriptServiceInterface):
             if lc not in native_map or not transcript.is_generated:
                 native_map[lc] = transcript
 
-        # Identify the best translation source: prefer manual over auto-generated
+        # Identify the best translation source (only when translations enabled)
         translation_source: Optional[Any] = None
-        for _lc, t in native_map.items():
-            if not t.is_generated and getattr(t, "is_translatable", False):
-                translation_source = t
-                break
-        if translation_source is None:
-            # Fall back to any translatable transcript
+        if include_translations:
             for _lc, t in native_map.items():
-                if getattr(t, "is_translatable", False):
+                if not t.is_generated and getattr(t, "is_translatable", False):
                     translation_source = t
                     break
+            if translation_source is None:
+                # Fall back to any translatable transcript
+                for _lc, t in native_map.items():
+                    if getattr(t, "is_translatable", False):
+                        translation_source = t
+                        break
 
         # --- Fetch each requested language ---
         consecutive_ip_blocks = 0

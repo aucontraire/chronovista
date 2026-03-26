@@ -29,6 +29,19 @@ export const RECOVERY_TIMEOUT = 660000;
 export const BATCH_PREVIEW_TIMEOUT = 30000;
 
 /**
+ * Timeout for transcript download requests in milliseconds.
+ * Preference-aware downloads iterate over multiple languages, each making
+ * separate YouTube API calls (~2s per language attempt). See issue #109.
+ */
+export const TRANSCRIPT_DOWNLOAD_TIMEOUT = 120000;
+
+/**
+ * Timeout for entity/video scan requests in milliseconds.
+ * Scans can process 1M+ segments and take 2-3 minutes on large corpora.
+ */
+export const SCAN_TIMEOUT = 300000;
+
+/**
  * Classifies an error into a specific error type.
  *
  * FR-001: HTTP 401/403 responses are classified as "auth" — distinct from

@@ -123,6 +123,45 @@ class TranscriptServiceInterface(ABC):
         pass
 
     @abstractmethod
+    async def get_transcripts_for_languages(
+        self,
+        video_id: VideoId,
+        language_codes: List[str],
+        download_reason: DownloadReason = DownloadReason.USER_REQUEST,
+        include_translations: bool = False,
+    ) -> Dict[str, Optional["EnhancedVideoTranscriptBase"]]:
+        """
+        Get transcripts for multiple languages with minimal API calls.
+
+        Uses a single ``api.list()`` call to enumerate available transcripts,
+        then selectively fetches only native transcripts for the requested
+        languages.  When ``include_translations`` is ``True``, languages
+        without a native transcript are attempted via YouTube's translation
+        API as a fallback.
+
+        Parameters
+        ----------
+        video_id : VideoId
+            YouTube video ID (validated VideoId type).
+        language_codes : List[str]
+            BCP-47 language codes to download (e.g., ['en', 'es', 'fr']).
+        download_reason : DownloadReason
+            Reason for downloading the transcripts.
+        include_translations : bool
+            When ``False`` (default), only native transcripts are fetched.
+            When ``True``, languages without a native transcript are
+            attempted via translation, which uses additional YouTube API
+            calls and may trigger IP-based rate limiting.
+
+        Returns
+        -------
+        Dict[str, Optional[EnhancedVideoTranscriptBase]]
+            Mapping of language_code → transcript (or ``None`` if the language
+            is not available for this video).
+        """
+        pass
+
+    @abstractmethod
     def is_service_available(self) -> bool:
         """
         Check if the transcript service is available.

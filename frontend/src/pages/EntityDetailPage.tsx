@@ -18,7 +18,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { ENTITY_TYPE_LABELS, ENTITY_TYPE_COLORS } from "../constants/entityTypes";
-import { useEntityVideos, useDeleteManualAssociation } from "../hooks/useEntityMentions";
+import { useEntityVideos, useDeleteManualAssociation, useScanEntity } from "../hooks/useEntityMentions";
 import { apiFetch } from "../api/config";
 import type { EntityDetail, EntityAliasSummary } from "../api/entityMentions";
 import { createEntityAlias } from "../api/entityMentions";
@@ -611,6 +611,62 @@ export function EntityDetailPage() {
     }
   }, [deleteMutation.isSuccess]);
 
+  // T008: Scan for mentions button state.
+  type ScanMessageType = "success" | "error" | null;
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [scanMessageType, setScanMessageType] = useState<ScanMessageType>(null);
+  const scanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scanMutation = useScanEntity();
+
+  // Clear scan auto-dismiss timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (scanTimerRef.current !== null) {
+        clearTimeout(scanTimerRef.current);
+      }
+    };
+  }, []);
+
+  function handleScanClick() {
+    if (!entityId) return;
+    setScanMessage(null);
+    setScanMessageType(null);
+    if (scanTimerRef.current !== null) {
+      clearTimeout(scanTimerRef.current);
+      scanTimerRef.current = null;
+    }
+    scanMutation.mutate(
+      { entityId },
+      {
+        onSuccess: (data) => {
+          const { mentions_found, unique_videos } = data.data;
+          const msg =
+            mentions_found === 0
+              ? "No new mentions found."
+              : `Found ${mentions_found.toLocaleString()} new mention${mentions_found === 1 ? "" : "s"} across ${unique_videos.toLocaleString()} video${unique_videos === 1 ? "" : "s"}.`;
+          setScanMessage(msg);
+          setScanMessageType("success");
+          scanTimerRef.current = setTimeout(() => {
+            setScanMessage(null);
+            setScanMessageType(null);
+          }, 3000);
+        },
+        onError: (err) => {
+          const status = (err as { status?: number } | null)?.status;
+          let msg = "Scan failed. Please try again.";
+          if (status === 404) {
+            msg = "Entity not found. Please refresh the page.";
+          } else if (status === 503 || status === 500) {
+            msg = "Scan service unavailable. Please try again later.";
+          }
+          setScanMessage(msg);
+          setScanMessageType("error");
+          // Error messages persist until the user retries — no auto-dismiss.
+        },
+      }
+    );
+  }
+
   // Fetch entity detail — we reuse the video-entity summary shape to get
   // the canonical_name, entity_type, and description.  The backend exposes
   // GET /api/v1/entities/{entity_id} which returns the NamedEntity record.
@@ -754,6 +810,66 @@ export function EntityDetailPage() {
               </strong>{" "}
               video{total === 1 ? "" : "s"}
             </span>
+          )}
+        </div>
+
+        {/* T008: Scan for mentions button + inline feedback */}
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={handleScanClick}
+            disabled={scanMutation.isPending}
+            aria-busy={scanMutation.isPending ? "true" : undefined}
+            title={scanMutation.isPending ? "A scan is already running" : undefined}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 transition-colors"
+          >
+            {scanMutation.isPending ? (
+              <>
+                <svg
+                  className="w-4 h-4 animate-spin"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                Scanning...
+                <span className="sr-only">Scanning for mentions...</span>
+              </>
+            ) : (
+              "Scan for Mentions"
+            )}
+          </button>
+
+          {scanMessage !== null && scanMessageType === "success" && (
+            <p
+              role="status"
+              aria-live="polite"
+              className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-1.5"
+            >
+              {scanMessage}
+            </p>
+          )}
+          {scanMessage !== null && scanMessageType === "error" && (
+            <p
+              role="alert"
+              className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-1.5"
+            >
+              {scanMessage}
+            </p>
           )}
         </div>
       </article>

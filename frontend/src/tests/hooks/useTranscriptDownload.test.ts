@@ -32,11 +32,13 @@ import * as apiConfig from "../../api/config";
 // Module-level mock for apiFetch
 // ---------------------------------------------------------------------------
 
-vi.mock("../../api/config", () => ({
-  apiFetch: vi.fn(),
-  API_BASE_URL: "http://localhost:8765/api/v1",
-  API_TIMEOUT: 10000,
-}));
+vi.mock("../../api/config", async () => {
+  const actual = await vi.importActual<typeof import("../../api/config")>("../../api/config");
+  return {
+    ...actual,
+    apiFetch: vi.fn(),
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -327,13 +329,18 @@ describe("useTranscriptDownload", () => {
   // -------------------------------------------------------------------------
 
   describe("cache invalidation on success (T007-5 / FR-005)", () => {
-    it("invalidates the ['video', videoId] query key after success", async () => {
+    it("force-refetches the ['video', videoId] query key after success (not just invalidates)", async () => {
+      // The video detail uses staleTime: 10 s. invalidateQueries has an edge
+      // case in TanStack Query v5 where it may not trigger a network refetch
+      // if the query was populated very recently. We use refetchQueries so the
+      // component transitions from download button to transcript panel without
+      // requiring a manual page reload.
       vi.mocked(apiConfig.apiFetch).mockResolvedValueOnce(mockDownloadResponse);
 
-      // Pre-seed the video detail cache so we can confirm invalidation
+      // Pre-seed the video detail cache so we can confirm refetch
       queryClient.setQueryData(["video", VIDEO_ID], { video_id: VIDEO_ID });
 
-      const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+      const refetchSpy = vi.spyOn(queryClient, "refetchQueries");
 
       const { result } = renderHook(
         () => useTranscriptDownload({ videoId: VIDEO_ID }),
@@ -348,8 +355,8 @@ describe("useTranscriptDownload", () => {
         expect(result.current.isSuccess).toBe(true);
       });
 
-      expect(invalidateSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ queryKey: ["video", VIDEO_ID] })
+      expect(refetchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: ["video", VIDEO_ID], exact: true })
       );
     });
 
@@ -402,9 +409,10 @@ describe("useTranscriptDownload", () => {
       );
     });
 
-    it("fires all three invalidations concurrently on success", async () => {
+    it("fires refetch for video detail and invalidates segment/language caches concurrently on success", async () => {
       vi.mocked(apiConfig.apiFetch).mockResolvedValueOnce(mockDownloadResponse);
 
+      const refetchSpy = vi.spyOn(queryClient, "refetchQueries");
       const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
 
       const { result } = renderHook(
@@ -420,20 +428,22 @@ describe("useTranscriptDownload", () => {
         expect(result.current.isSuccess).toBe(true);
       });
 
-      // All three invalidations must be present
+      // Video detail: force-refetch (bypasses staleTime for immediate UI update)
+      const refetchedKeys = refetchSpy.mock.calls.map(
+        (call) => (call[0] as { queryKey: unknown[] }).queryKey
+      );
+      expect(refetchedKeys).toContainEqual(["video", VIDEO_ID]);
+
+      // Transcript segment/language queries: invalidate (they become active
+      // only after TranscriptPanel mounts, so marking stale is sufficient)
       const invalidatedKeys = invalidateSpy.mock.calls.map(
         (call) => (call[0] as { queryKey: unknown[] }).queryKey
       );
-
-      expect(invalidatedKeys).toContainEqual(["video", VIDEO_ID]);
-      expect(invalidatedKeys).toContainEqual([
-        "transcriptSegments",
-        VIDEO_ID,
-      ]);
+      expect(invalidatedKeys).toContainEqual(["transcriptSegments", VIDEO_ID]);
       expect(invalidatedKeys).toContainEqual(["transcriptLanguages", VIDEO_ID]);
     });
 
-    it("does not call invalidateQueries when mutation fails", async () => {
+    it("does not call refetchQueries or invalidateQueries when mutation fails", async () => {
       const serverError: ApiError = {
         type: "server",
         message: "Something went wrong on the server.",
@@ -442,6 +452,7 @@ describe("useTranscriptDownload", () => {
 
       vi.mocked(apiConfig.apiFetch).mockRejectedValueOnce(serverError);
 
+      const refetchSpy = vi.spyOn(queryClient, "refetchQueries");
       const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
 
       const { result } = renderHook(
@@ -457,6 +468,7 @@ describe("useTranscriptDownload", () => {
         expect(result.current.isError).toBe(true);
       });
 
+      expect(refetchSpy).not.toHaveBeenCalled();
       expect(invalidateSpy).not.toHaveBeenCalled();
     });
   });
@@ -465,8 +477,8 @@ describe("useTranscriptDownload", () => {
   // T007-6: 30-second timeout (NFR-002)
   // -------------------------------------------------------------------------
 
-  describe("30-second timeout configuration (T007-6 / NFR-002)", () => {
-    it("calls apiFetch with timeout: 30000", async () => {
+  describe("2-minute timeout configuration (T007-6 / NFR-002)", () => {
+    it("calls apiFetch with timeout: 120000", async () => {
       vi.mocked(apiConfig.apiFetch).mockResolvedValueOnce(mockDownloadResponse);
 
       const { result } = renderHook(
@@ -484,7 +496,7 @@ describe("useTranscriptDownload", () => {
 
       expect(apiConfig.apiFetch).toHaveBeenCalledWith(
         expect.any(String),
-        expect.objectContaining({ timeout: 30_000 })
+        expect.objectContaining({ timeout: apiConfig.TRANSCRIPT_DOWNLOAD_TIMEOUT })
       );
     });
 

@@ -33,6 +33,9 @@ from chronovista.api.schemas.entity_mentions import (
     ManualAssociationResponse,
     MentionPreview,
     PhoneticMatchResponse,
+    ScanRequest,
+    ScanResultData,
+    ScanResultResponse,
     VideoEntitiesResponse,
     VideoEntitySummary,
 )
@@ -51,6 +54,8 @@ from chronovista.repositories.entity_mention_repository import EntityMentionRepo
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
 from chronovista.repositories.tag_alias_repository import TagAliasRepository
 from chronovista.repositories.tag_operation_log_repository import TagOperationLogRepository
+from chronovista.config.database import db_manager
+from chronovista.services.entity_mention_scan_service import EntityMentionScanService
 from chronovista.services.phonetic_matcher import PhoneticMatcher
 from chronovista.services.tag_management import TagManagementService
 from chronovista.services.tag_normalization import TagNormalizationService
@@ -69,6 +74,9 @@ _tag_mgmt_service = TagManagementService(
     entity_alias_repo=EntityAliasRepository(),
     operation_log_repo=TagOperationLogRepository(),
 )
+
+# In-flight scan guard: tracks entity/video scans currently running
+_scans_in_progress: set[str] = set()
 
 # Rate limiting configuration for duplicate check (50 req/min per client)
 RATE_LIMIT_DUPLICATE_CHECK = 50
@@ -1371,3 +1379,184 @@ async def create_entity(
         "description": db_entity.description,
         "alias_count": len(seen_normalized),
     }
+
+
+# ---------------------------------------------------------------------------
+# Entity scan endpoint (Feature 038 API)
+# ---------------------------------------------------------------------------
+
+# Lazily-initialised scan service singleton (needs db_manager to be configured).
+_scan_service: EntityMentionScanService | None = None
+
+
+def _get_scan_service() -> EntityMentionScanService:
+    """Return the module-level EntityMentionScanService singleton.
+
+    Lazily initialised so that ``db_manager`` has been configured by the
+    time the first request arrives.
+    """
+    global _scan_service
+    if _scan_service is None:
+        _scan_service = EntityMentionScanService(
+            session_factory=db_manager.get_session_factory(),
+        )
+    return _scan_service
+
+
+@router.post(
+    "/entities/{entity_id}/scan",
+    response_model=ScanResultResponse,
+    status_code=200,
+    summary="Scan transcript segments for mentions of a specific entity",
+)
+async def scan_entity(
+    entity_id: uuid.UUID = Path(..., description="Named entity UUID"),
+    request: ScanRequest = Body(default_factory=ScanRequest),
+    session: AsyncSession = Depends(get_db),
+) -> ScanResultResponse:
+    """Trigger an entity mention scan for a single entity.
+
+    Scans transcript segments for mentions of the specified entity using
+    PostgreSQL regex matching with word-boundary support.
+
+    Parameters
+    ----------
+    entity_id : uuid.UUID
+        UUID of the named entity to scan.
+    request : ScanRequest
+        Optional scan configuration (language_code, dry_run, full_rescan).
+    session : AsyncSession
+        Injected database session.
+
+    Returns
+    -------
+    ScanResultResponse
+        Scan result metrics wrapped in a ``data`` envelope.
+    """
+    # 1. Validate entity exists
+    entity = await session.get(NamedEntityDB, entity_id)
+    if entity is None:
+        raise NotFoundError(resource_type="Entity", identifier=str(entity_id))
+
+    # 2. Validate entity is active
+    if entity.status != "active":
+        raise BadRequestError(
+            message=f"Entity is not in an active state (status: {entity.status})"
+        )
+
+    # 3. Concurrency guard
+    guard_key = f"scan:entity:{entity_id}"
+    if guard_key in _scans_in_progress:
+        raise ConflictError(
+            message="A scan is already in progress for this entity"
+        )
+
+    _scans_in_progress.add(guard_key)
+    try:
+        # 4. Run the scan
+        service = _get_scan_service()
+        result = await service.scan(
+            entity_ids=[entity_id],
+            language_code=request.language_code,
+            dry_run=request.dry_run,
+            full_rescan=request.full_rescan,
+        )
+
+        # 5. Build response
+        return ScanResultResponse(
+            data=ScanResultData(
+                segments_scanned=result.segments_scanned,
+                mentions_found=result.mentions_found,
+                mentions_skipped=result.mentions_skipped,
+                unique_entities=result.unique_entities,
+                unique_videos=result.unique_videos,
+                duration_seconds=result.duration_seconds,
+                dry_run=result.dry_run,
+            )
+        )
+    finally:
+        _scans_in_progress.discard(guard_key)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# POST /videos/{video_id}/scan-entities
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.post(
+    "/videos/{video_id}/scan-entities",
+    response_model=ScanResultResponse,
+    status_code=200,
+    summary="Scan a single video for entity mentions",
+)
+async def scan_video_entities(
+    video_id: str = Path(..., description="YouTube video ID"),
+    request: ScanRequest = Body(default_factory=ScanRequest),
+    session: AsyncSession = Depends(get_db),
+) -> ScanResultResponse:
+    """Trigger an entity mention scan for a single video.
+
+    Validates that the video exists, checks a concurrency guard to prevent
+    duplicate scans, then delegates to ``EntityMentionScanService.scan()``
+    with the given video ID.
+
+    Parameters
+    ----------
+    video_id : str
+        YouTube video ID (string path parameter).
+    request : ScanRequest
+        Optional scan parameters (entity_type, language_code, dry_run,
+        full_rescan).  All fields default to ``None`` / ``False``.
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    ScanResultResponse
+        Scan result metrics wrapped in a ``data`` envelope.
+
+    Raises
+    ------
+    NotFoundError
+        If the video does not exist (404).
+    ConflictError
+        If a scan is already in progress for this video (409).
+    """
+    # 1. Validate video exists
+    video = await session.get(VideoDB, video_id)
+    if video is None:
+        raise NotFoundError(resource_type="Video", identifier=video_id)
+
+    # 2. Concurrency guard
+    guard_key = f"scan:video:{video_id}"
+    if guard_key in _scans_in_progress:
+        raise ConflictError(
+            message="A scan is already in progress for this video",
+        )
+
+    _scans_in_progress.add(guard_key)
+    try:
+        # 3. Run the scan
+        service = _get_scan_service()
+        result = await service.scan(
+            video_ids=[video_id],
+            entity_type=request.entity_type,
+            language_code=request.language_code,
+            dry_run=request.dry_run,
+            full_rescan=request.full_rescan,
+        )
+
+        # 4. Build response
+        return ScanResultResponse(
+            data=ScanResultData(
+                segments_scanned=result.segments_scanned,
+                mentions_found=result.mentions_found,
+                mentions_skipped=result.mentions_skipped,
+                unique_entities=result.unique_entities,
+                unique_videos=result.unique_videos,
+                duration_seconds=result.duration_seconds,
+                dry_run=result.dry_run,
+            )
+        )
+    finally:
+        _scans_in_progress.discard(guard_key)

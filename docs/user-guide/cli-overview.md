@@ -1574,6 +1574,21 @@ chronovista entities scan --audit
 # Custom batch size for large libraries
 chronovista entities scan --batch-size 1000
 
+# Scan all transcripts for a single entity by ID
+chronovista entities scan --entity-id 019d1d2a-719b-7552-97d1-ea9aa08d3b47
+
+# Dry-run preview for a single entity
+chronovista entities scan --entity-id 019d1d2a-719b-7552-97d1-ea9aa08d3b47 --dry-run
+
+# Single entity with language filter
+chronovista entities scan --entity-id 019d1d2a-719b-7552-97d1-ea9aa08d3b47 --language en
+
+# Full rescan for a single entity (deletes only that entity's rule_match mentions)
+chronovista entities scan --entity-id 019d1d2a-719b-7552-97d1-ea9aa08d3b47 --full
+
+# Scan one video for one specific entity (combined filter)
+chronovista entities scan --entity-id 019d1d2a-719b-7552-97d1-ea9aa08d3b47 --video-id dQw4w9WgXcQ
+
 # View entity mention statistics
 chronovista entities stats --top 20
 
@@ -1603,6 +1618,7 @@ chronovista entities scan --full
 | `--full` | Delete existing `rule_match` mentions and rescan |
 | `--audit` | Report user-correction mentions with unregistered text forms. Displays a Rich table showing entities with mention texts that don't match any registered alias or canonical name, along with suggested CLI commands to register them. Read-only operation. Mutually exclusive with `--full`. |
 | `--new-entities-only` | Scan only entities with zero existing mentions |
+| `--entity-id` | Scan for a single entity by UUID. Takes precedence over `--entity-type` and `--new-entities-only` |
 | `--entity-type` | Filter by entity type (e.g., `person`) |
 | `--video-id` | Filter by video ID |
 | `--batch-size` | Custom batch size for large libraries |

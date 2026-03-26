@@ -11,6 +11,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.53.0] - 2026-03-24
+
+### Added
+- **Feature 052: Targeted Entity & Video-Level Mention Scanning**
+  - **Entity-Specific Scan (US1)**: "Scan for Mentions" button on entity detail page triggers `POST /api/v1/entities/{entity_id}/scan` scanning all transcript segments for that entity's canonical name and aliases; returns scan result metrics (segments scanned, mentions found/skipped, unique entities/videos, duration); validates entity exists (404) and is active (400 — only `active` status is scannable, not `merged` or `deprecated`); in-memory concurrency guard prevents duplicate scans (409); success message "Found N new mentions across M videos" with 3-second auto-dismiss; zero-result message "No new mentions found"; error message persists until retry; button disabled with `aria-busy="true"` and tooltip "A scan is already running" during scan
+  - **Video-Specific Scan (US2)**: "Scan for Entity Mentions" button inside `EntityMentionsPanel` on video detail page triggers `POST /api/v1/videos/{video_id}/scan-entities` scanning that video's transcripts against all active entity patterns; button hidden when video has no transcripts; success message "Found N entities with M mentions"; singular labels when counts are 1; concurrency guard with key `scan:video:{video_id}`; video with no transcripts returns 200 with zero counts (not an error)
+  - **CLI `--entity-id` Flag (US3)**: `entities scan --entity-id <uuid>` scans all transcripts for a single entity's patterns; UUID format validation with red Rich Panel on invalid input; entity existence and active status validation; `--entity-id` takes precedence over `--entity-type` (silently ignored) and `--new-entities-only` (ignored); combines with `--video-id` to scan one video for one entity; composes with `--language`, `--dry-run`, `--full` filters
+  - **Scan API Schemas**: `ScanRequest` Pydantic model with `language_code`, `entity_type` (validated against `EntityType` enum), `dry_run`, `full_rescan`; `ScanResultResponse` envelope wrapping `ScanResultData` with 7 metric fields
+  - **Service `entity_ids` Parameter**: `EntityMentionScanService.scan()` accepts optional `entity_ids: list[UUID]` to restrict pattern building to specific entities; applies as AND filter with `entity_type` at service level; precedence logic handled at CLI/API layer
+  - **Structured Logging**: Scan start log includes `entity_ids`, `video_ids`, `dry_run`, `entity_type`, `full_rescan`, `new_entities_only` scope fields (FR-022)
+
+### Fixed
+- Frontend scan timeout: `scanEntity` and `scanVideoEntities` API functions now use 5-minute timeout (300,000ms) instead of default 10-second `API_TIMEOUT` — prevents false "Scan failed" errors on large corpora (1M+ segments take ~140 seconds)
+- `NotFoundError` constructor calls in scan endpoints used incorrect `message=` keyword — changed to `resource_type=`/`identifier=` per actual class signature
+- Existing test mocks missing `useScanEntity` and `useScanVideoEntities` stubs — added to 14 frontend test files to prevent hook-not-found errors
+- Service test spy functions missing `entity_ids` parameter — added `entity_ids: Any = None` to 2 spy functions in `test_entity_mention_scan_service.py`
+
+### Changed
+- "Scan for Entity Mentions" button moved from floating position between Classification and Entity Mentions sections into the `EntityMentionsPanel` component at the bottom, separated by a border divider
+- Docker `frontend-builder` stage bumped from `node:20-alpine` to `node:22-alpine` (Node 22 LTS) — eliminates `EBADENGINE` warning from orval requiring Node >=22.18.0; Node 20 EOL is April 2026
+
+### Technical
+- 2 new API endpoints (entity scan, video scan), 1 new CLI flag (`--entity-id`), 3 new Pydantic schemas
+- 2 new frontend API client functions, 2 new TanStack Query mutation hooks (`useScanEntity`, `useScanVideoEntities`)
+- `EntityMentionsPanel` gains `hasTranscript` prop and scan button with full WCAG accessibility
+- 253 new tests: 139 backend (37 schema, 20 API integration, 14 CLI, 7 service, 61 existing-pass verification), 114 frontend (25 API client, 21 hooks, 36 EntityDetailPage, 32 VideoDetailPage/EntityMentionsPanel)
+- 7,500+ total backend tests, 3,594 total frontend tests
+- Frontend version: 0.21.0 → 0.22.0
+- TypeScript strict mode (0 errors), mypy strict compliance (0 errors)
+- No new dependencies, no database migrations
+- WCAG 2.1 AA: `aria-busy`, `aria-live="polite"`, `role="status"`, `role="alert"`, `sr-only` spinner text, tooltip on disabled state
+
 ## [0.52.0] - 2026-03-23
 
 ### Added

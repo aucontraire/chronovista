@@ -95,6 +95,22 @@ vi.mock("../../hooks/useEntityMentions", () => ({
     isLoading: false,
     isError: false,
   })),
+  useScanEntity: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    data: null,
+    reset: vi.fn(),
+  })),
+  useScanVideoEntities: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    data: null,
+    reset: vi.fn(),
+  })),
 }));
 
 import { useEntities } from "../../hooks/useEntityMentions";

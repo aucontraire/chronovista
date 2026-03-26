@@ -1744,6 +1744,105 @@ GET /api/v1/entities/{entity_id}/videos
 
 ---
 
+#### Scan Entity Mentions
+
+Trigger an entity mention scan for a single entity across all transcript segments. The entity must exist and be in `active` status.
+
+```
+POST /api/v1/entities/{entity_id}/scan
+```
+
+**Request body (all fields optional):**
+
+```json
+{
+  "language_code": "en",
+  "dry_run": false,
+  "full_rescan": false
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `language_code` | string | null | BCP-47 language filter |
+| `dry_run` | boolean | false | Preview mode — no writes, no counter updates |
+| `full_rescan` | boolean | false | Delete existing `rule_match` mentions for this entity before scanning |
+
+**Response (200):**
+
+```json
+{
+  "data": {
+    "segments_scanned": 12450,
+    "mentions_found": 42,
+    "mentions_skipped": 3,
+    "unique_entities": 1,
+    "unique_videos": 12,
+    "duration_seconds": 8.2,
+    "dry_run": false
+  }
+}
+```
+
+| Status | Description |
+|--------|-------------|
+| 400 | Entity is not in an active state (status: merged/deprecated) |
+| 404 | Entity not found |
+| 409 | A scan is already in progress for this entity |
+
+---
+
+#### Scan Video for Entity Mentions
+
+Trigger an entity mention scan for a single video, checking all active entity patterns against that video's transcript segments.
+
+```
+POST /api/v1/videos/{video_id}/scan-entities
+```
+
+**Request body (all fields optional):**
+
+```json
+{
+  "entity_type": "person",
+  "language_code": "en",
+  "dry_run": false,
+  "full_rescan": false
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `entity_type` | string | null | Filter to specific entity type (person, organization, place, etc.) |
+| `language_code` | string | null | BCP-47 language filter |
+| `dry_run` | boolean | false | Preview mode — no writes, no counter updates |
+| `full_rescan` | boolean | false | Delete existing `rule_match` mentions in scope before scanning |
+
+**Response (200):**
+
+```json
+{
+  "data": {
+    "segments_scanned": 156,
+    "mentions_found": 23,
+    "mentions_skipped": 0,
+    "unique_entities": 8,
+    "unique_videos": 1,
+    "duration_seconds": 1.4,
+    "dry_run": false
+  }
+}
+```
+
+A video with no transcripts returns 200 with all counts at zero.
+
+| Status | Description |
+|--------|-------------|
+| 404 | Video not found |
+| 409 | A scan is already in progress for this video |
+
+---
+
 #### Get Video Entities
 
 Retrieve all entities mentioned in a specific video, sorted by mention count descending.

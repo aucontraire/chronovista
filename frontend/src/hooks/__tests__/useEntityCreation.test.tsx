@@ -51,6 +51,8 @@ vi.mock("../../api/entityMentions", () => ({
   addExclusionPattern: vi.fn(),
   removeExclusionPattern: vi.fn(),
   fetchPhoneticMatches: vi.fn(),
+  scanEntity: vi.fn(),
+  scanVideoEntities: vi.fn(),
 }));
 
 const mockedClassifyTag = vi.mocked(classifyTag);

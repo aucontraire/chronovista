@@ -9,6 +9,10 @@
  * - Null values converted to undefined via ?? operator
  * - clearDeepLinkParams callback passed as onDeepLinkComplete
  * - Invalid params (from hook validation) result in undefined props
+ *
+ * Note: Scan for Entity Mentions button tests have been moved to
+ * src/components/__tests__/EntityMentionsPanel.test.tsx (the button now lives
+ * inside EntityMentionsPanel).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -71,6 +75,14 @@ vi.mock('../../hooks/useEntityMentions', () => ({
     isFetchingNextPage: false,
     fetchNextPage: vi.fn(),
     loadMoreRef: { current: null },
+  })),
+  useScanEntity: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    data: null,
+    reset: vi.fn(),
   })),
 }));
 
@@ -707,6 +719,74 @@ describe('VideoDetailPage', () => {
         }),
         undefined
       );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Scan for Entity Mentions button tests have been moved to
+  // src/components/__tests__/EntityMentionsPanel.test.tsx
+  // ---------------------------------------------------------------------------
+
+  describe('EntityMentionsPanel receives hasTranscript prop', () => {
+    beforeEach(() => {
+      vi.mocked(useDeepLinkParams).mockReturnValue({
+        lang: null,
+        segmentId: null,
+        timestamp: null,
+        clearDeepLinkParams: mockClearDeepLinkParams,
+      });
+    });
+
+    it("renders entity-mentions-panel for a video with transcripts", () => {
+      renderVideoDetailPage('/videos/test-video-123');
+      // The EntityMentionsPanel mock renders a div with data-testid="entity-mentions-panel".
+      // The real scan button behaviour is tested in EntityMentionsPanel.test.tsx.
+      expect(screen.getByTestId('entity-mentions-panel')).toBeInTheDocument();
+    });
+
+    it("renders entity-mentions-panel even when video has no transcripts", () => {
+      const videoNoTranscript: VideoDetail = {
+        ...mockVideo,
+        transcript_summary: {
+          count: 0,
+          languages: [],
+          has_manual: false,
+          has_corrections: false,
+        },
+      };
+
+      vi.mocked(useVideoDetail).mockReturnValue({
+        data: videoNoTranscript,
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+        isSuccess: true,
+        status: "success",
+        isFetching: false,
+        isPending: false,
+        isRefetching: false,
+        isLoadingError: false,
+        isRefetchError: false,
+        isPaused: false,
+        isPlaceholderData: false,
+        isStale: false,
+        dataUpdatedAt: Date.now(),
+        errorUpdatedAt: 0,
+        failureCount: 0,
+        failureReason: null,
+        errorUpdateCount: 0,
+        fetchStatus: "idle" as const,
+        isFetched: true,
+        isFetchedAfterMount: true,
+        isInitialLoading: false,
+        isEnabled: true,
+        promise: Promise.resolve(videoNoTranscript),
+      } as ReturnType<typeof useVideoDetail>);
+
+      renderVideoDetailPage('/videos/test-video-123');
+
+      expect(screen.getByTestId('entity-mentions-panel')).toBeInTheDocument();
     });
   });
 });

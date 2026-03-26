@@ -383,9 +383,9 @@ class TestEntityStatusFiltering:
 
         original_load = svc._load_entity_patterns
 
-        async def spy_load(s: Any, entity_type: Any, new_entities_only: Any) -> Any:
-            captured_args.append({"entity_type": entity_type, "new_entities_only": new_entities_only})
-            return await original_load(s, entity_type=entity_type, new_entities_only=new_entities_only)
+        async def spy_load(s: Any, entity_type: Any, new_entities_only: Any, entity_ids: Any = None) -> Any:
+            captured_args.append({"entity_type": entity_type, "new_entities_only": new_entities_only, "entity_ids": entity_ids})
+            return await original_load(s, entity_type=entity_type, new_entities_only=new_entities_only, entity_ids=entity_ids)
 
         with patch.object(svc, "_load_entity_patterns", side_effect=spy_load):
             await svc.scan(entity_type="person")
@@ -706,7 +706,7 @@ class TestFilterParameters:
 
         captured: list[dict[str, Any]] = []
 
-        async def spy_load(s: Any, entity_type: Any, new_entities_only: Any) -> list[Any]:
+        async def spy_load(s: Any, entity_type: Any, new_entities_only: Any, entity_ids: Any = None) -> list[Any]:
             captured.append({"entity_type": entity_type})
             return []
 
@@ -2150,3 +2150,273 @@ class TestAuditUnregisteredMentions:
 
         cm.__aenter__.assert_called_once()
         cm.__aexit__.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# TestEntityIdsFilter — Feature 052
+# ---------------------------------------------------------------------------
+
+
+class TestEntityIdsFilter:
+    """Verify entity_ids parameter filters entities in _load_entity_patterns()
+    and interacts correctly with entity_type (AND semantics).
+
+    Feature 052 — Targeted Entity & Video-Level Mention Scanning.
+    """
+
+    # ------------------------------------------------------------------
+    # _load_entity_patterns with entity_ids
+    # ------------------------------------------------------------------
+
+    async def test_entity_ids_passed_to_load_entity_patterns(self) -> None:
+        """scan(entity_ids=[...]) must forward entity_ids to _load_entity_patterns."""
+        session = AsyncMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+
+        entity_result = _scalars_execute([])
+        session.execute = AsyncMock(return_value=entity_result)
+
+        factory = _make_session_factory(session)
+        svc = _build_service(factory)
+
+        target_id = _make_uuid()
+        captured_args: list[dict[str, Any]] = []
+
+        original_load = svc._load_entity_patterns
+
+        async def spy_load(
+            s: Any,
+            entity_type: Any,
+            new_entities_only: Any,
+            entity_ids: Any = None,
+        ) -> Any:
+            captured_args.append(
+                {
+                    "entity_type": entity_type,
+                    "new_entities_only": new_entities_only,
+                    "entity_ids": entity_ids,
+                }
+            )
+            return await original_load(
+                s,
+                entity_type=entity_type,
+                new_entities_only=new_entities_only,
+                entity_ids=entity_ids,
+            )
+
+        with patch.object(svc, "_load_entity_patterns", side_effect=spy_load):
+            await svc.scan(entity_ids=[target_id])
+
+        assert len(captured_args) == 1
+        assert captured_args[0]["entity_ids"] == [target_id]
+
+    async def test_entity_ids_none_loads_all_entities(self) -> None:
+        """scan() without entity_ids must pass entity_ids=None to the loader."""
+        session = AsyncMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+
+        entity_result = _scalars_execute([])
+        session.execute = AsyncMock(return_value=entity_result)
+
+        factory = _make_session_factory(session)
+        svc = _build_service(factory)
+
+        captured_args: list[dict[str, Any]] = []
+
+        original_load = svc._load_entity_patterns
+
+        async def spy_load(
+            s: Any,
+            entity_type: Any,
+            new_entities_only: Any,
+            entity_ids: Any = None,
+        ) -> Any:
+            captured_args.append({"entity_ids": entity_ids})
+            return await original_load(
+                s,
+                entity_type=entity_type,
+                new_entities_only=new_entities_only,
+                entity_ids=entity_ids,
+            )
+
+        with patch.object(svc, "_load_entity_patterns", side_effect=spy_load):
+            await svc.scan()
+
+        assert captured_args[0]["entity_ids"] is None
+
+    async def test_entity_ids_combined_with_entity_type_passed_together(self) -> None:
+        """When both entity_ids and entity_type are given, both are forwarded."""
+        session = AsyncMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+
+        entity_result = _scalars_execute([])
+        session.execute = AsyncMock(return_value=entity_result)
+
+        factory = _make_session_factory(session)
+        svc = _build_service(factory)
+
+        target_id = _make_uuid()
+        captured_args: list[dict[str, Any]] = []
+
+        original_load = svc._load_entity_patterns
+
+        async def spy_load(
+            s: Any,
+            entity_type: Any,
+            new_entities_only: Any,
+            entity_ids: Any = None,
+        ) -> Any:
+            captured_args.append(
+                {"entity_type": entity_type, "entity_ids": entity_ids}
+            )
+            return await original_load(
+                s,
+                entity_type=entity_type,
+                new_entities_only=new_entities_only,
+                entity_ids=entity_ids,
+            )
+
+        with patch.object(svc, "_load_entity_patterns", side_effect=spy_load):
+            await svc.scan(entity_type="person", entity_ids=[target_id])
+
+        assert captured_args[0]["entity_type"] == "person"
+        assert captured_args[0]["entity_ids"] == [target_id]
+
+    # ------------------------------------------------------------------
+    # _load_entity_patterns SQL filtering with entity_ids
+    # ------------------------------------------------------------------
+
+    async def test_load_patterns_with_entity_ids_filters_by_id(self) -> None:
+        """When entity_ids is provided, only entities with matching IDs are returned.
+
+        The method should add an ``id IN (...)`` WHERE clause so that only the
+        requested entities appear in the pattern list.
+        """
+        from sqlalchemy.dialects import postgresql as pg_dialect
+
+        entity_id = _make_uuid()
+        entity_row = _make_entity_row(entity_id=entity_id, canonical_name="Alice")
+
+        session = AsyncMock()
+        entity_result = _scalars_execute([entity_row])
+        alias_result = _scalars_execute([])
+        session.execute = AsyncMock(side_effect=[entity_result, alias_result])
+
+        svc = _build_service(MagicMock())
+        patterns = await svc._load_entity_patterns(
+            session,
+            entity_type=None,
+            new_entities_only=False,
+            entity_ids=[entity_id],
+        )
+
+        # The SQL emitted for the entity query must contain the ID filter
+        entity_stmt = session.execute.call_args_list[0].args[0]
+        sql_str = str(
+            entity_stmt.compile(
+                dialect=pg_dialect.dialect(),  # type: ignore[no-untyped-call]
+                compile_kwargs={"literal_binds": True},
+            )
+        )
+        # The UUID should appear in the IN clause
+        assert str(entity_id) in sql_str, (
+            f"Expected entity_id {entity_id} in SQL; got: {sql_str[:600]}"
+        )
+
+    async def test_load_patterns_with_entity_ids_and_entity_type_filters_both(
+        self,
+    ) -> None:
+        """With both entity_ids and entity_type, both filters appear in SQL.
+
+        The WHERE clause must contain both the entity_type equality check and
+        an id IN (...) filter.
+        """
+        from sqlalchemy.dialects import postgresql as pg_dialect
+
+        entity_id = _make_uuid()
+        entity_row = _make_entity_row(
+            entity_id=entity_id,
+            canonical_name="Bob",
+            entity_type="organization",
+        )
+
+        session = AsyncMock()
+        entity_result = _scalars_execute([entity_row])
+        alias_result = _scalars_execute([])
+        session.execute = AsyncMock(side_effect=[entity_result, alias_result])
+
+        svc = _build_service(MagicMock())
+        await svc._load_entity_patterns(
+            session,
+            entity_type="organization",
+            new_entities_only=False,
+            entity_ids=[entity_id],
+        )
+
+        entity_stmt = session.execute.call_args_list[0].args[0]
+        sql_str = str(
+            entity_stmt.compile(
+                dialect=pg_dialect.dialect(),  # type: ignore[no-untyped-call]
+                compile_kwargs={"literal_binds": True},
+            )
+        )
+        assert "organization" in sql_str, (
+            f"Expected 'organization' in SQL; got: {sql_str[:600]}"
+        )
+        assert str(entity_id) in sql_str, (
+            f"Expected entity_id {entity_id} in SQL; got: {sql_str[:600]}"
+        )
+
+    async def test_entity_ids_empty_list_returns_no_patterns(self) -> None:
+        """An empty entity_ids list must result in no patterns (no matching entities)."""
+        session = AsyncMock()
+        entity_result = _scalars_execute([])
+        session.execute = AsyncMock(return_value=entity_result)
+
+        svc = _build_service(MagicMock())
+        patterns = await svc._load_entity_patterns(
+            session,
+            entity_type=None,
+            new_entities_only=False,
+            entity_ids=[],
+        )
+
+        # An empty IN clause produces zero results; the result list must be empty
+        assert patterns == []
+
+    # ------------------------------------------------------------------
+    # Logging at scan start includes entity_ids scope
+    # ------------------------------------------------------------------
+
+    async def test_scan_start_log_includes_entity_ids(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The structured log emitted at scan start must record the entity_ids value."""
+        import logging
+
+        session = AsyncMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+
+        entity_result = _scalars_execute([])
+        session.execute = AsyncMock(return_value=entity_result)
+
+        factory = _make_session_factory(session)
+        svc = _build_service(factory)
+
+        target_id = _make_uuid()
+
+        with caplog.at_level(
+            logging.INFO,
+            logger="chronovista.services.entity_mention_scan_service",
+        ):
+            await svc.scan(entity_ids=[target_id])
+
+        # The INFO log at scan start must reference entity_ids
+        log_messages = " ".join(r.getMessage() for r in caplog.records)
+        assert "entity_ids" in log_messages.lower(), (
+            f"Expected 'entity_ids' in scan start log; log output: {log_messages[:400]}"
+        )

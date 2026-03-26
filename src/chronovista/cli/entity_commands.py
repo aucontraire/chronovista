@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from typing import Annotated, List, Optional
 
 import typer
@@ -862,6 +863,10 @@ def scan_entities(
             help="Report user-correction mentions with unregistered text forms",
         ),
     ] = False,
+    entity_id: Annotated[
+        Optional[str],
+        typer.Option("--entity-id", help="Scan for a single entity"),
+    ] = None,
 ) -> None:
     """Scan transcript segments for named entity mentions."""
 
@@ -880,6 +885,22 @@ def scan_entities(
                     f"[red]Invalid entity type '{entity_type}'. "
                     f"Valid values: {valid_types}[/red]",
                     title="Invalid --entity-type",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(code=1)
+
+    # Validate --entity-id UUID format if provided
+    parsed_entity_uuid: Optional[uuid.UUID] = None
+    if entity_id is not None:
+        try:
+            parsed_entity_uuid = uuid.UUID(entity_id)
+        except ValueError:
+            console.print(
+                Panel(
+                    f"[red]Invalid value: {entity_id!r}\n"
+                    f"Expected UUID format, e.g. 550e8400-e29b-41d4-a716-446655440000[/red]",
+                    title="Invalid --entity-id",
                     border_style="red",
                 )
             )
@@ -932,6 +953,36 @@ def scan_entities(
             )
             return
 
+        # Resolve --entity-id: validate existence and status, then set scan params
+        effective_entity_type: Optional[str] = entity_type
+        effective_new_entities_only: bool = new_entities_only
+        effective_entity_ids: Optional[List[uuid.UUID]] = None
+
+        if parsed_entity_uuid is not None:
+            async for session in db_manager.get_session(echo=False):
+                db_entity = await session.get(NamedEntityDB, parsed_entity_uuid)
+                if db_entity is None:
+                    console.print(
+                        Panel(
+                            f"[red]No entity found with ID {parsed_entity_uuid}[/red]",
+                            title="Entity not found",
+                            border_style="red",
+                        )
+                    )
+                    raise typer.Exit(code=1)
+                if db_entity.status != "active":
+                    console.print(
+                        Panel(
+                            f"[red]Entity is not active (status: {db_entity.status})[/red]",
+                            title="Entity is not active",
+                            border_style="red",
+                        )
+                    )
+                    raise typer.Exit(code=1)
+            effective_entity_type = None
+            effective_new_entities_only = False
+            effective_entity_ids = [parsed_entity_uuid]
+
         if dry_run:
             # Dry-run mode: show preview table
             with Progress(
@@ -942,14 +993,15 @@ def scan_entities(
                 progress.add_task("Scanning (dry run)...", total=None)
 
                 result = await service.scan(
-                    entity_type=entity_type,
+                    entity_type=effective_entity_type,
                     video_ids=video_id,
                     language_code=language,
                     batch_size=batch_size,
                     dry_run=True,
                     full_rescan=full,
-                    new_entities_only=new_entities_only,
+                    new_entities_only=effective_new_entities_only,
                     limit=limit,
+                    entity_ids=effective_entity_ids,
                 )
 
             if not result.dry_run_matches:
@@ -1019,14 +1071,15 @@ def scan_entities(
                     )
 
                 result = await service.scan(
-                    entity_type=entity_type,
+                    entity_type=effective_entity_type,
                     video_ids=video_id,
                     language_code=language,
                     batch_size=batch_size,
                     dry_run=False,
                     full_rescan=full,
-                    new_entities_only=new_entities_only,
+                    new_entities_only=effective_new_entities_only,
                     progress_callback=_progress_callback,
+                    entity_ids=effective_entity_ids,
                 )
 
             # Summary panel

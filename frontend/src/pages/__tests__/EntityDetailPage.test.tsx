@@ -12,10 +12,20 @@
  * - "Loading more" indicator when isFetchingNextPage
  * - "All N videos loaded" message at end of list
  * - Loads more videos when hasNextPage is true (via hook)
+ *
+ * Coverage (Feature 052, T008 — Scan for Mentions button):
+ * - Renders "Scan for Mentions" button
+ * - Button is disabled and shows "Scanning..." during pending state
+ * - Button has aria-busy="true" during pending state
+ * - Button has title tooltip "A scan is already running" during pending state
+ * - Success message with mention/video counts appears after scan
+ * - Zero-result success message "No new mentions found." appears
+ * - Error message appears and uses role="alert" for persistence
+ * - Scan button triggers the mutation when clicked
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -34,6 +44,22 @@ vi.mock("../../hooks/useEntityMentions", () => ({
     isError: false,
     error: null,
     isSuccess: false,
+  })),
+  useScanEntity: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    data: null,
+    reset: vi.fn(),
+  })),
+  useScanVideoEntities: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    data: null,
+    reset: vi.fn(),
   })),
 }));
 
@@ -58,7 +84,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 });
 
 import { useQuery } from "@tanstack/react-query";
-import { useEntityVideos } from "../../hooks/useEntityMentions";
+import { useEntityVideos, useScanEntity } from "../../hooks/useEntityMentions";
 import type { EntityVideoResult } from "../../api/entityMentions";
 
 // ---------------------------------------------------------------------------
@@ -133,6 +159,25 @@ function renderPage(entityId = "entity-uuid-001") {
 
 beforeEach(() => {
   vi.clearAllMocks();
+
+  // Default: scan mutation in idle state
+  vi.mocked(useScanEntity).mockReturnValue({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    data: undefined,
+    reset: vi.fn(),
+    mutateAsync: vi.fn(),
+    isSuccess: false,
+    isIdle: true,
+    status: "idle",
+    variables: undefined,
+    context: undefined,
+    failureCount: 0,
+    failureReason: null,
+    submittedAt: 0,
+  } as ReturnType<typeof useScanEntity>);
 
   // Default: entity loads successfully
   vi.mocked(useQuery).mockReturnValue({
@@ -520,6 +565,330 @@ describe("EntityDetailPage", () => {
       renderPage();
       expect(screen.queryByTestId("transcript-badge")).not.toBeInTheDocument();
       expect(screen.getByTestId("manual-badge")).toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Scan for Mentions button (Feature 052, T008)
+  // ---------------------------------------------------------------------------
+
+  describe("Scan for Mentions button", () => {
+    it("renders a 'Scan for Mentions' button in the entity header", () => {
+      renderPage();
+      expect(
+        screen.getByRole("button", { name: /scan for mentions/i })
+      ).toBeInTheDocument();
+    });
+
+    it("button is enabled in idle state", () => {
+      renderPage();
+      const button = screen.getByRole("button", { name: /scan for mentions/i });
+      expect(button).not.toBeDisabled();
+    });
+
+    it("button is disabled and shows 'Scanning...' text when isPending is true", () => {
+      vi.mocked(useScanEntity).mockReturnValue({
+        mutate: vi.fn(),
+        isPending: true,
+        isError: false,
+        error: null,
+        data: undefined,
+        reset: vi.fn(),
+        // Required mutation shape fields
+        mutateAsync: vi.fn(),
+        isSuccess: false,
+        isIdle: false,
+        status: "pending",
+        variables: undefined,
+        context: undefined,
+        failureCount: 0,
+        failureReason: null,
+        submittedAt: Date.now(),
+      } as ReturnType<typeof useScanEntity>);
+
+      renderPage();
+
+      const button = screen.getByRole("button", { name: /scanning/i });
+      expect(button).toBeDisabled();
+      expect(button).toHaveTextContent(/scanning/i);
+    });
+
+    it("button has aria-busy='true' when isPending is true", () => {
+      vi.mocked(useScanEntity).mockReturnValue({
+        mutate: vi.fn(),
+        isPending: true,
+        isError: false,
+        error: null,
+        data: undefined,
+        reset: vi.fn(),
+        mutateAsync: vi.fn(),
+        isSuccess: false,
+        isIdle: false,
+        status: "pending",
+        variables: undefined,
+        context: undefined,
+        failureCount: 0,
+        failureReason: null,
+        submittedAt: Date.now(),
+      } as ReturnType<typeof useScanEntity>);
+
+      renderPage();
+
+      const button = screen.getByRole("button", { name: /scanning/i });
+      expect(button).toHaveAttribute("aria-busy", "true");
+    });
+
+    it("button has tooltip 'A scan is already running' when isPending is true", () => {
+      vi.mocked(useScanEntity).mockReturnValue({
+        mutate: vi.fn(),
+        isPending: true,
+        isError: false,
+        error: null,
+        data: undefined,
+        reset: vi.fn(),
+        mutateAsync: vi.fn(),
+        isSuccess: false,
+        isIdle: false,
+        status: "pending",
+        variables: undefined,
+        context: undefined,
+        failureCount: 0,
+        failureReason: null,
+        submittedAt: Date.now(),
+      } as ReturnType<typeof useScanEntity>);
+
+      renderPage();
+
+      const button = screen.getByRole("button", { name: /scanning/i });
+      expect(button).toHaveAttribute("title", "A scan is already running");
+    });
+
+    it("button does not have title tooltip in idle state", () => {
+      renderPage();
+      const button = screen.getByRole("button", { name: /scan for mentions/i });
+      expect(button).not.toHaveAttribute("title");
+    });
+
+    it("calls scanMutation.mutate with the entityId when the scan button is clicked", () => {
+      const mockMutate = vi.fn();
+      vi.mocked(useScanEntity).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+        isError: false,
+        error: null,
+        data: undefined,
+        reset: vi.fn(),
+        mutateAsync: vi.fn(),
+        isSuccess: false,
+        isIdle: true,
+        status: "idle",
+        variables: undefined,
+        context: undefined,
+        failureCount: 0,
+        failureReason: null,
+        submittedAt: 0,
+      } as ReturnType<typeof useScanEntity>);
+
+      renderPage("entity-uuid-001");
+
+      const button = screen.getByRole("button", { name: /scan for mentions/i });
+      fireEvent.click(button);
+
+      expect(mockMutate).toHaveBeenCalledOnce();
+      expect(mockMutate).toHaveBeenCalledWith(
+        expect.objectContaining({ entityId: "entity-uuid-001" }),
+        expect.any(Object)
+      );
+    });
+
+    it("success message with mention and video counts appears after a scan finds results", () => {
+      // Simulate the component having received scan result data by rendering
+      // with a mutate that immediately calls onSuccess in the click handler.
+      // We verify the component shows success message text patterns that match
+      // the actual implementation strings: "Found N new mention(s) across M video(s)."
+      const mockMutate = vi.fn().mockImplementation((_vars, callbacks) => {
+        // Simulate an immediate onSuccess callback
+        callbacks?.onSuccess?.({
+          data: {
+            mentions_found: 7,
+            unique_videos: 3,
+            segments_scanned: 100,
+            mentions_skipped: 0,
+            unique_entities: 1,
+            duration_seconds: 0.5,
+            dry_run: false,
+          },
+        });
+      });
+
+      vi.mocked(useScanEntity).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+        isError: false,
+        error: null,
+        data: undefined,
+        reset: vi.fn(),
+        mutateAsync: vi.fn(),
+        isSuccess: false,
+        isIdle: true,
+        status: "idle",
+        variables: undefined,
+        context: undefined,
+        failureCount: 0,
+        failureReason: null,
+        submittedAt: 0,
+      } as ReturnType<typeof useScanEntity>);
+
+      renderPage();
+
+      const button = screen.getByRole("button", { name: /scan for mentions/i });
+      fireEvent.click(button);
+
+      expect(screen.getByText(/found 7 new mentions across 3 videos/i)).toBeInTheDocument();
+    });
+
+    it("success message 'No new mentions found.' appears when scan returns zero results", () => {
+      const mockMutate = vi.fn().mockImplementation((_vars, callbacks) => {
+        callbacks?.onSuccess?.({
+          data: {
+            mentions_found: 0,
+            unique_videos: 0,
+            segments_scanned: 80,
+            mentions_skipped: 0,
+            unique_entities: 0,
+            duration_seconds: 0.2,
+            dry_run: false,
+          },
+        });
+      });
+
+      vi.mocked(useScanEntity).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+        isError: false,
+        error: null,
+        data: undefined,
+        reset: vi.fn(),
+        mutateAsync: vi.fn(),
+        isSuccess: false,
+        isIdle: true,
+        status: "idle",
+        variables: undefined,
+        context: undefined,
+        failureCount: 0,
+        failureReason: null,
+        submittedAt: 0,
+      } as ReturnType<typeof useScanEntity>);
+
+      renderPage();
+
+      const button = screen.getByRole("button", { name: /scan for mentions/i });
+      fireEvent.click(button);
+
+      expect(screen.getByText(/no new mentions found/i)).toBeInTheDocument();
+    });
+
+    it("success message uses role='status' for polite announcement", () => {
+      const mockMutate = vi.fn().mockImplementation((_vars, callbacks) => {
+        callbacks?.onSuccess?.({
+          data: {
+            mentions_found: 5,
+            unique_videos: 2,
+            segments_scanned: 100,
+            mentions_skipped: 0,
+            unique_entities: 1,
+            duration_seconds: 0.3,
+            dry_run: false,
+          },
+        });
+      });
+
+      vi.mocked(useScanEntity).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+        isError: false,
+        error: null,
+        data: undefined,
+        reset: vi.fn(),
+        mutateAsync: vi.fn(),
+        isSuccess: false,
+        isIdle: true,
+        status: "idle",
+        variables: undefined,
+        context: undefined,
+        failureCount: 0,
+        failureReason: null,
+        submittedAt: 0,
+      } as ReturnType<typeof useScanEntity>);
+
+      renderPage();
+
+      fireEvent.click(screen.getByRole("button", { name: /scan for mentions/i }));
+
+      const statusEl = screen.getByRole("status");
+      expect(statusEl).toBeInTheDocument();
+    });
+
+    it("error message appears with role='alert' when scan fails", () => {
+      const mockMutate = vi.fn().mockImplementation((_vars, callbacks) => {
+        callbacks?.onError?.({ status: 500, message: "Internal server error" });
+      });
+
+      vi.mocked(useScanEntity).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+        isError: false,
+        error: null,
+        data: undefined,
+        reset: vi.fn(),
+        mutateAsync: vi.fn(),
+        isSuccess: false,
+        isIdle: true,
+        status: "idle",
+        variables: undefined,
+        context: undefined,
+        failureCount: 0,
+        failureReason: null,
+        submittedAt: 0,
+      } as ReturnType<typeof useScanEntity>);
+
+      renderPage();
+
+      fireEvent.click(screen.getByRole("button", { name: /scan for mentions/i }));
+
+      const alertEl = screen.getByRole("alert");
+      expect(alertEl).toBeInTheDocument();
+      expect(alertEl).toHaveTextContent(/scan service unavailable|scan failed/i);
+    });
+
+    it("shows 404-specific error message when entity is not found during scan", () => {
+      const mockMutate = vi.fn().mockImplementation((_vars, callbacks) => {
+        callbacks?.onError?.({ status: 404, message: "Entity not found" });
+      });
+
+      vi.mocked(useScanEntity).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+        isError: false,
+        error: null,
+        data: undefined,
+        reset: vi.fn(),
+        mutateAsync: vi.fn(),
+        isSuccess: false,
+        isIdle: true,
+        status: "idle",
+        variables: undefined,
+        context: undefined,
+        failureCount: 0,
+        failureReason: null,
+        submittedAt: 0,
+      } as ReturnType<typeof useScanEntity>);
+
+      renderPage();
+
+      fireEvent.click(screen.getByRole("button", { name: /scan for mentions/i }));
+
+      expect(screen.getByRole("alert")).toHaveTextContent(/entity not found/i);
     });
   });
 });

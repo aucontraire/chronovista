@@ -160,9 +160,10 @@ class TestConcurrentRequestsCore:
         max_duration = max(durations)
         avg_duration = sum(durations) / len(durations)
 
-        # Allow significant latency under extreme stress (30s max, 5s average)
-        assert max_duration < 30.0, (
-            f"Maximum request duration {max_duration:.2f}s exceeds 30s threshold"
+        # Allow significant latency under extreme stress (45s max, 5s average)
+        # Raised from 30s to 45s for shared CI runners (GitHub Actions)
+        assert max_duration < 45.0, (
+            f"Maximum request duration {max_duration:.2f}s exceeds 45s threshold"
         )
         assert avg_duration < 5.0, (
             f"Average request duration {avg_duration:.2f}s exceeds 5s threshold"

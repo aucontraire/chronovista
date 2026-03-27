@@ -11,6 +11,7 @@ Feature 036 — Batch Correction Tools (T012–T026)
 
 from __future__ import annotations
 
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -55,19 +56,21 @@ class TestFindReplaceCommand:
         """Test that --help lists all expected options."""
         result = runner.invoke(correction_app, ["find-replace", "--help"])
         assert result.exit_code == 0
-        assert "--pattern" in result.stdout
-        assert "--replacement" in result.stdout
-        assert "--regex" in result.stdout
-        assert "--case-insensitive" in result.stdout
-        assert "--language" in result.stdout
-        assert "--channel" in result.stdout
-        assert "--video-id" in result.stdout
-        assert "--correction-type" in result.stdout
-        assert "--correction-note" in result.stdout
-        assert "--batch-size" in result.stdout
-        assert "--dry-run" in result.stdout
-        assert "--yes" in result.stdout
-        assert "--limit" in result.stdout
+        # Strip ANSI escape codes — Typer emits them in CI (no TTY)
+        output = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
+        assert "--pattern" in output
+        assert "--replacement" in output
+        assert "--regex" in output
+        assert "--case-insensitive" in output
+        assert "--language" in output
+        assert "--channel" in output
+        assert "--video-id" in output
+        assert "--correction-type" in output
+        assert "--correction-note" in output
+        assert "--batch-size" in output
+        assert "--dry-run" in output
+        assert "--yes" in output
+        assert "--limit" in output
 
     def test_missing_pattern_fails(self, runner: CliRunner) -> None:
         """Test that omitting --pattern triggers an error."""

@@ -42,7 +42,7 @@ class TestFindReplaceCommand:
     @pytest.fixture
     def runner(self) -> CliRunner:
         """Create CLI test runner."""
-        return CliRunner(env={"NO_COLOR": "1"})
+        return CliRunner()
 
     # ------------------------------------------------------------------
     # T012: Option acceptance
@@ -635,7 +635,7 @@ class TestRebuildTextCommand:
 
     @pytest.fixture
     def runner(self) -> CliRunner:
-        return CliRunner(env={"NO_COLOR": "1"})
+        return CliRunner()
 
     def test_help_shows_options(self, runner: CliRunner) -> None:
         """Test that --help lists expected options."""
@@ -800,7 +800,7 @@ class TestExportCommand:
 
     @pytest.fixture
     def runner(self) -> CliRunner:
-        return CliRunner(env={"NO_COLOR": "1"})
+        return CliRunner()
 
     def test_help_shows_options(self, runner: CliRunner) -> None:
         """Test that --help lists expected options."""
@@ -951,7 +951,7 @@ class TestStatsCommand:
 
     @pytest.fixture
     def runner(self) -> CliRunner:
-        return CliRunner(env={"NO_COLOR": "1"})
+        return CliRunner()
 
     def test_help_shows_options(self, runner: CliRunner) -> None:
         """Test that --help lists expected options."""
@@ -1133,7 +1133,7 @@ class TestPatternsCommand:
 
     @pytest.fixture
     def runner(self) -> CliRunner:
-        return CliRunner(env={"NO_COLOR": "1"})
+        return CliRunner()
 
     def test_help_shows_options(self, runner: CliRunner) -> None:
         """Test that --help lists expected options."""
@@ -1300,7 +1300,7 @@ class TestBatchRevertCommand:
 
     @pytest.fixture
     def runner(self) -> CliRunner:
-        return CliRunner(env={"NO_COLOR": "1"})
+        return CliRunner()
 
     def test_help_shows_options(self, runner: CliRunner) -> None:
         """Test that --help lists expected options."""
@@ -1527,7 +1527,7 @@ class TestCrossSegmentDryRunDisplay:
     @pytest.fixture
     def runner(self) -> CliRunner:
         """Create CLI test runner."""
-        return CliRunner(env={"NO_COLOR": "1"})
+        return CliRunner()
 
     # ------------------------------------------------------------------
     # T029: Type column box-drawing markers for cross-segment pairs
@@ -1770,7 +1770,7 @@ class TestBatchRevertBatchIdFlag:
     @pytest.fixture
     def runner(self) -> CliRunner:
         """Create CLI test runner."""
-        return CliRunner(env={"NO_COLOR": "1"})
+        return CliRunner()
 
     # ------------------------------------------------------------------
     # --help shows --batch-id
@@ -2152,7 +2152,7 @@ class TestAnalyzeDiffsCommand:
     @pytest.fixture
     def runner(self) -> CliRunner:
         """Create CLI test runner."""
-        return CliRunner(env={"NO_COLOR": "1"})
+        return CliRunner()
 
     # ------------------------------------------------------------------
     # (a) Rich table output format with correct columns
@@ -2526,7 +2526,7 @@ class TestDetectBoundariesCommand:
     @pytest.fixture
     def runner(self) -> CliRunner:
         """Create CLI test runner."""
-        return CliRunner(env={"NO_COLOR": "1"})
+        return CliRunner()
 
     # ---- (a) Rich table output with correct columns ----
 
@@ -2927,7 +2927,7 @@ class TestSuggestCrossSegmentCommand:
     @pytest.fixture
     def runner(self) -> CliRunner:
         """Create a Typer test runner."""
-        return CliRunner(env={"NO_COLOR": "1"})
+        return CliRunner()
 
     # ------------------------------------------------------------------
     # Help text

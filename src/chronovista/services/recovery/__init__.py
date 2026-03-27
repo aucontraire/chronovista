@@ -27,12 +27,9 @@ is not installed, the recovery service will skip JavaScript rendering
 and rely on static HTML parsing only.
 """
 
-# Try to import selenium to check availability
-try:
-    import selenium.webdriver  # noqa: F401
-    SELENIUM_AVAILABLE = True
-except ImportError:
-    SELENIUM_AVAILABLE = False
+import selenium.webdriver  # noqa: F401
+
+SELENIUM_AVAILABLE = True
 
 from chronovista.services.recovery.cdx_client import CDXClient, RateLimiter
 from chronovista.services.recovery.models import (

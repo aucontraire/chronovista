@@ -52,11 +52,6 @@ fuzzywuzzy = "^0.18.0"
 python-levenshtein = "^0.27.3"
 jellyfish = "^1.2.1"
 metaphone = "^0.6"
-
-[tool.poetry.group.recovery]
-optional = true
-
-[tool.poetry.group.recovery.dependencies]
 selenium = "^4.25.0"
 webdriver-manager = "^4.0.0"
 
@@ -175,9 +170,6 @@ module = [
     "spacy.*",
     "youtube_transcript_api.*",
     "factory_boy.*",
-    "selenium",
-    "selenium.*",
-    "webdriver_manager.*",
     "bs4.*",
     "fuzzywuzzy.*",
     "Levenshtein.*",

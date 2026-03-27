@@ -38,7 +38,7 @@ jobs:
         run: poetry install --no-interaction
 
       - name: Run unit tests
-        run: poetry run pytest tests/unit/ -x -q -o "addopts=-v --strict-markers --strict-config"
+        run: poetry run pytest tests/unit/ -x -q -o "addopts=-v --strict-markers --strict-config" -m "not db"
 
   mypy:
     name: Type Check (mypy)

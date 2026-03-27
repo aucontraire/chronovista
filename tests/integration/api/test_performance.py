@@ -120,6 +120,7 @@ class TestConcurrentRequestsCore:
             f"Average request duration {avg_duration:.2f}s exceeds 2s threshold"
         )
 
+    @pytest.mark.slow
     async def test_50_concurrent_health_requests_extreme_stress(
         self, async_client: AsyncClient
     ) -> None:

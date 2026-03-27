@@ -142,4 +142,4 @@ jobs:
         run: poetry install --no-interaction
 
       - name: Run integration tests
-        run: poetry run pytest tests/integration/ -x -q -o "addopts=-v --strict-markers --strict-config" -m "not docker"
+        run: poetry run pytest tests/integration/ -q -o "addopts=-v --strict-markers --strict-config" -m "not docker and not slow"

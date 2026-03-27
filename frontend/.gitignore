@@ -8,6 +8,10 @@ build/
 # Generated API client (regenerated from OpenAPI)
 src/api/*.ts
 !src/api/config.ts
+!src/api/batchCorrections.ts
+!src/api/entityMentions.ts
+!src/api/onboarding.ts
+!src/api/settings.ts
 
 # Environment
 .env

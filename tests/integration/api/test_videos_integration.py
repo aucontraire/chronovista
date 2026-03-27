@@ -182,6 +182,7 @@ async def tagged_video_data(
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.auth
 class TestSortOrdering:
     """Test that sort_by and sort_order actually order results correctly."""
 
@@ -269,6 +270,7 @@ class TestSortOrdering:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.auth
 class TestLikedFilter:
     """Test liked_only filter with real data."""
 
@@ -326,6 +328,7 @@ class TestLikedFilter:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.auth
 class TestCombinedFilterIntersection:
     """Test that combining filters produces correct intersection results."""
 
@@ -375,6 +378,7 @@ class TestCombinedFilterIntersection:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.auth
 class TestPaginationWithSort:
     """Test pagination behavior when combined with sort."""
 

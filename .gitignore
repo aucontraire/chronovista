@@ -269,7 +269,7 @@ temp_downloads/
 # User data and cache
 user_data/
 data/
-takeout/
+/takeout/
 .cache/
 cache/
 

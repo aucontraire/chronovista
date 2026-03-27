@@ -175,6 +175,7 @@ module = [
     "spacy.*",
     "youtube_transcript_api.*",
     "factory_boy.*",
+    "selenium",
     "selenium.*",
     "webdriver_manager.*",
     "bs4.*",

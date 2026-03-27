@@ -11,7 +11,6 @@ Feature 036 — Batch Correction Tools (T012–T026)
 
 from __future__ import annotations
 
-import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -43,7 +42,7 @@ class TestFindReplaceCommand:
     @pytest.fixture
     def runner(self) -> CliRunner:
         """Create CLI test runner."""
-        return CliRunner()
+        return CliRunner(env={"NO_COLOR": "1"})
 
     # ------------------------------------------------------------------
     # T012: Option acceptance
@@ -56,21 +55,19 @@ class TestFindReplaceCommand:
         """Test that --help lists all expected options."""
         result = runner.invoke(correction_app, ["find-replace", "--help"])
         assert result.exit_code == 0
-        # Strip ANSI escape codes — Typer emits them in CI (no TTY)
-        output = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
-        assert "--pattern" in output
-        assert "--replacement" in output
-        assert "--regex" in output
-        assert "--case-insensitive" in output
-        assert "--language" in output
-        assert "--channel" in output
-        assert "--video-id" in output
-        assert "--correction-type" in output
-        assert "--correction-note" in output
-        assert "--batch-size" in output
-        assert "--dry-run" in output
-        assert "--yes" in output
-        assert "--limit" in output
+        assert "--pattern" in result.stdout
+        assert "--replacement" in result.stdout
+        assert "--regex" in result.stdout
+        assert "--case-insensitive" in result.stdout
+        assert "--language" in result.stdout
+        assert "--channel" in result.stdout
+        assert "--video-id" in result.stdout
+        assert "--correction-type" in result.stdout
+        assert "--correction-note" in result.stdout
+        assert "--batch-size" in result.stdout
+        assert "--dry-run" in result.stdout
+        assert "--yes" in result.stdout
+        assert "--limit" in result.stdout
 
     def test_missing_pattern_fails(self, runner: CliRunner) -> None:
         """Test that omitting --pattern triggers an error."""
@@ -638,7 +635,7 @@ class TestRebuildTextCommand:
 
     @pytest.fixture
     def runner(self) -> CliRunner:
-        return CliRunner()
+        return CliRunner(env={"NO_COLOR": "1"})
 
     def test_help_shows_options(self, runner: CliRunner) -> None:
         """Test that --help lists expected options."""
@@ -803,7 +800,7 @@ class TestExportCommand:
 
     @pytest.fixture
     def runner(self) -> CliRunner:
-        return CliRunner()
+        return CliRunner(env={"NO_COLOR": "1"})
 
     def test_help_shows_options(self, runner: CliRunner) -> None:
         """Test that --help lists expected options."""
@@ -954,7 +951,7 @@ class TestStatsCommand:
 
     @pytest.fixture
     def runner(self) -> CliRunner:
-        return CliRunner()
+        return CliRunner(env={"NO_COLOR": "1"})
 
     def test_help_shows_options(self, runner: CliRunner) -> None:
         """Test that --help lists expected options."""
@@ -1136,7 +1133,7 @@ class TestPatternsCommand:
 
     @pytest.fixture
     def runner(self) -> CliRunner:
-        return CliRunner()
+        return CliRunner(env={"NO_COLOR": "1"})
 
     def test_help_shows_options(self, runner: CliRunner) -> None:
         """Test that --help lists expected options."""
@@ -1303,7 +1300,7 @@ class TestBatchRevertCommand:
 
     @pytest.fixture
     def runner(self) -> CliRunner:
-        return CliRunner()
+        return CliRunner(env={"NO_COLOR": "1"})
 
     def test_help_shows_options(self, runner: CliRunner) -> None:
         """Test that --help lists expected options."""
@@ -1530,7 +1527,7 @@ class TestCrossSegmentDryRunDisplay:
     @pytest.fixture
     def runner(self) -> CliRunner:
         """Create CLI test runner."""
-        return CliRunner()
+        return CliRunner(env={"NO_COLOR": "1"})
 
     # ------------------------------------------------------------------
     # T029: Type column box-drawing markers for cross-segment pairs
@@ -1773,7 +1770,7 @@ class TestBatchRevertBatchIdFlag:
     @pytest.fixture
     def runner(self) -> CliRunner:
         """Create CLI test runner."""
-        return CliRunner()
+        return CliRunner(env={"NO_COLOR": "1"})
 
     # ------------------------------------------------------------------
     # --help shows --batch-id
@@ -2155,7 +2152,7 @@ class TestAnalyzeDiffsCommand:
     @pytest.fixture
     def runner(self) -> CliRunner:
         """Create CLI test runner."""
-        return CliRunner()
+        return CliRunner(env={"NO_COLOR": "1"})
 
     # ------------------------------------------------------------------
     # (a) Rich table output format with correct columns
@@ -2529,7 +2526,7 @@ class TestDetectBoundariesCommand:
     @pytest.fixture
     def runner(self) -> CliRunner:
         """Create CLI test runner."""
-        return CliRunner()
+        return CliRunner(env={"NO_COLOR": "1"})
 
     # ---- (a) Rich table output with correct columns ----
 
@@ -2930,7 +2927,7 @@ class TestSuggestCrossSegmentCommand:
     @pytest.fixture
     def runner(self) -> CliRunner:
         """Create a Typer test runner."""
-        return CliRunner()
+        return CliRunner(env={"NO_COLOR": "1"})
 
     # ------------------------------------------------------------------
     # Help text

@@ -14,8 +14,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -269,7 +269,7 @@ temp_downloads/
 # User data and cache
 user_data/
 data/
-takeout/
+/takeout/
 .cache/
 cache/
 

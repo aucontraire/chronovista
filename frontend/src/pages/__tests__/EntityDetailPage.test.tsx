@@ -176,6 +176,7 @@ beforeEach(() => {
     context: undefined,
     failureCount: 0,
     failureReason: null,
+    isPaused: false,
     submittedAt: 0,
   } as ReturnType<typeof useScanEntity>);
 
@@ -599,10 +600,11 @@ describe("EntityDetailPage", () => {
         isSuccess: false,
         isIdle: false,
         status: "pending",
-        variables: undefined,
+        variables: { entityId: "test-entity-id" },
         context: undefined,
         failureCount: 0,
         failureReason: null,
+        isPaused: false,
         submittedAt: Date.now(),
       } as ReturnType<typeof useScanEntity>);
 
@@ -625,10 +627,11 @@ describe("EntityDetailPage", () => {
         isSuccess: false,
         isIdle: false,
         status: "pending",
-        variables: undefined,
+        variables: { entityId: "test-entity-id" },
         context: undefined,
         failureCount: 0,
         failureReason: null,
+        isPaused: false,
         submittedAt: Date.now(),
       } as ReturnType<typeof useScanEntity>);
 
@@ -650,10 +653,11 @@ describe("EntityDetailPage", () => {
         isSuccess: false,
         isIdle: false,
         status: "pending",
-        variables: undefined,
+        variables: { entityId: "test-entity-id" },
         context: undefined,
         failureCount: 0,
         failureReason: null,
+        isPaused: false,
         submittedAt: Date.now(),
       } as ReturnType<typeof useScanEntity>);
 
@@ -686,6 +690,7 @@ describe("EntityDetailPage", () => {
         context: undefined,
         failureCount: 0,
         failureReason: null,
+        isPaused: false,
         submittedAt: 0,
       } as ReturnType<typeof useScanEntity>);
 
@@ -736,6 +741,7 @@ describe("EntityDetailPage", () => {
         context: undefined,
         failureCount: 0,
         failureReason: null,
+        isPaused: false,
         submittedAt: 0,
       } as ReturnType<typeof useScanEntity>);
 
@@ -777,6 +783,7 @@ describe("EntityDetailPage", () => {
         context: undefined,
         failureCount: 0,
         failureReason: null,
+        isPaused: false,
         submittedAt: 0,
       } as ReturnType<typeof useScanEntity>);
 
@@ -818,6 +825,7 @@ describe("EntityDetailPage", () => {
         context: undefined,
         failureCount: 0,
         failureReason: null,
+        isPaused: false,
         submittedAt: 0,
       } as ReturnType<typeof useScanEntity>);
 
@@ -849,6 +857,7 @@ describe("EntityDetailPage", () => {
         context: undefined,
         failureCount: 0,
         failureReason: null,
+        isPaused: false,
         submittedAt: 0,
       } as ReturnType<typeof useScanEntity>);
 
@@ -881,6 +890,7 @@ describe("EntityDetailPage", () => {
         context: undefined,
         failureCount: 0,
         failureReason: null,
+        isPaused: false,
         submittedAt: 0,
       } as ReturnType<typeof useScanEntity>);
 

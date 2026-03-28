@@ -196,7 +196,7 @@ class YouTubeOAuthService:
             # If token is expired but we have a refresh token, try to refresh it
             if credentials.refresh_token is not None:
                 try:
-                    credentials.refresh(Request())
+                    credentials.refresh(Request())  # type: ignore[no-untyped-call]
                     self._save_token(credentials)
                     return bool(credentials.valid)
                 except RefreshError:
@@ -233,7 +233,7 @@ class YouTubeOAuthService:
         # Refresh token if needed
         if not credentials.valid and credentials.refresh_token:
             try:
-                credentials.refresh(Request())
+                credentials.refresh(Request())  # type: ignore[no-untyped-call]
                 self._save_token(credentials)
             except RefreshError as e:
                 raise AuthenticationError(
@@ -260,7 +260,7 @@ class YouTubeOAuthService:
                 credentials = self._load_token()
                 if credentials.valid:
                     # Attempt to revoke the token
-                    credentials.revoke(Request())
+                    credentials.revoke(Request())  # type: ignore[no-untyped-call]
             except Exception:
                 # Continue with deletion even if revocation fails
                 pass
@@ -329,7 +329,7 @@ class YouTubeOAuthService:
                     token_data["expiry"].replace("Z", "+00:00")
                 )
 
-        return Credentials(
+        return Credentials(  # type: ignore[no-untyped-call]
             token=token_data.get("token"),
             refresh_token=token_data.get("refresh_token"),
             token_uri=token_data.get("token_uri"),

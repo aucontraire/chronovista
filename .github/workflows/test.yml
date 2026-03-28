@@ -67,7 +67,7 @@ jobs:
         run: poetry install --no-interaction
 
       - name: Run mypy
-        run: poetry run mypy src/chronovista/ --no-error-summary
+        run: poetry run mypy src/chronovista/ --strict --no-error-summary
 
   frontend:
     name: Frontend Tests & Type Check

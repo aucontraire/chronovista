@@ -22,7 +22,8 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -31,8 +32,6 @@ from typer.testing import CliRunner
 from chronovista.cli.entity_commands import entity_app
 
 # CRITICAL: Module-level asyncio marker ensures async tests run with coverage.
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -69,7 +68,7 @@ def _make_scan_result(**kwargs: Any) -> MagicMock:
     result.unique_videos = kwargs.get("unique_videos", 1)
     result.duration_seconds = kwargs.get("duration_seconds", 0.5)
     result.dry_run = kwargs.get("dry_run", False)
-    result.dry_run_matches = kwargs.get("dry_run_matches", None)
+    result.dry_run_matches = kwargs.get("dry_run_matches")
     result.failed_batches = kwargs.get("failed_batches", 0)
     return result
 
@@ -142,13 +141,13 @@ class TestEntityIdUuidValidation:
         """A well-formed UUID string must not trigger the format-error path."""
         valid_uuid = str(_make_uuid())
 
-        entity = _make_entity_mock(status="active")
+        _make_entity_mock(status="active")
 
         with (
             patch("chronovista.cli.entity_commands.db_manager") as mock_db,
             patch(
                 "chronovista.cli.entity_commands.EntityMentionScanService"
-            ) as mock_service_cls,
+            ),
             patch("chronovista.cli.entity_commands.asyncio.run") as mock_asyncio_run,
         ):
             mock_db.get_session_factory.return_value = MagicMock()

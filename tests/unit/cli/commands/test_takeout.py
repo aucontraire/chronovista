@@ -4,21 +4,17 @@ Tests for Takeout CLI Commands.
 Comprehensive test coverage for CLI commands that explore and analyze Google Takeout data.
 """
 
-import asyncio
 import csv
 import json
 import shutil
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 # Mark all async tests in this module
-pytestmark = pytest.mark.asyncio
-
 from chronovista.cli.commands.takeout import (
     _analyze_channel_clusters,
     _analyze_playlist_overlap,
@@ -39,20 +35,9 @@ from chronovista.cli.commands.takeout import (
     _peek_subscriptions,
     _peek_watch_history,
     _show_detailed_playlist,
-    console,
 )
 from chronovista.models.takeout import (
-    ChannelSummary,
-    ContentGap,
-    DateRange,
-    PlaylistAnalysis,
     TakeoutAnalysis,
-    TakeoutData,
-    TakeoutPlaylist,
-    TakeoutPlaylistItem,
-    TakeoutSubscription,
-    TakeoutWatchEntry,
-    ViewingPatterns,
 )
 from chronovista.services.takeout_service import TakeoutService
 from tests.factories.takeout_data_factory import create_takeout_data
@@ -99,7 +84,7 @@ def sample_takeout_data():
         title="Test Video 1",
         title_url="https://www.youtube.com/watch?v=test_video_1",
         channel_name="Test Channel",
-        watched_at=datetime(2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc),
+        watched_at=datetime(2023, 1, 15, 14, 30, 0, tzinfo=UTC),
     )
 
     watch_entry_2 = create_takeout_watch_entry(
@@ -107,12 +92,12 @@ def sample_takeout_data():
         title="Test Video 2",
         title_url="https://www.youtube.com/watch?v=test_video_2",
         channel_name="Another Channel",
-        watched_at=datetime(2023, 1, 16, 15, 45, 0, tzinfo=timezone.utc),
+        watched_at=datetime(2023, 1, 16, 15, 45, 0, tzinfo=UTC),
     )
 
     playlist_item = create_takeout_playlist_item(
         video_id="test_video_1",
-        creation_timestamp=datetime(2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc),
+        creation_timestamp=datetime(2023, 1, 15, 14, 30, 0, tzinfo=UTC),
     )
 
     playlist = create_takeout_playlist(
@@ -329,14 +314,14 @@ class TestPeekWatchHistory:
                 title="Video 1",
                 title_url="https://www.youtube.com/watch?v=video1",
                 channel_name="Channel 1",
-                watched_at=datetime(2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc),
+                watched_at=datetime(2023, 1, 15, 14, 30, 0, tzinfo=UTC),
             ),
             create_takeout_watch_entry(
                 video_id="video2",
                 title="Video 2",
                 title_url="https://www.youtube.com/watch?v=video2",
                 channel_name="Channel 2",
-                watched_at=datetime(2023, 1, 16, 15, 45, 0, tzinfo=timezone.utc),
+                watched_at=datetime(2023, 1, 16, 15, 45, 0, tzinfo=UTC),
             ),
         ]
         mock_takeout_service.parse_watch_history.return_value = history
@@ -363,14 +348,14 @@ class TestPeekWatchHistory:
                 title="Video 1",
                 title_url="https://www.youtube.com/watch?v=video1",
                 channel_name="Target Channel",
-                watched_at=datetime(2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc),
+                watched_at=datetime(2023, 1, 15, 14, 30, 0, tzinfo=UTC),
             ),
             create_takeout_watch_entry(
                 video_id="video2",
                 title="Video 2",
                 title_url="https://www.youtube.com/watch?v=video2",
                 channel_name="Other Channel",
-                watched_at=datetime(2023, 1, 16, 15, 45, 0, tzinfo=timezone.utc),
+                watched_at=datetime(2023, 1, 16, 15, 45, 0, tzinfo=UTC),
             ),
         ]
         mock_takeout_service.parse_watch_history.return_value = history
@@ -396,13 +381,13 @@ class TestPeekWatchHistory:
                 video_id="old_video",
                 title="Old Video",
                 title_url="https://www.youtube.com/watch?v=old_video",
-                watched_at=datetime(2023, 1, 1, 10, 0, 0, tzinfo=timezone.utc),
+                watched_at=datetime(2023, 1, 1, 10, 0, 0, tzinfo=UTC),
             ),
             create_takeout_watch_entry(
                 video_id="new_video",
                 title="New Video",
                 title_url="https://www.youtube.com/watch?v=new_video",
-                watched_at=datetime(2023, 1, 20, 15, 0, 0, tzinfo=timezone.utc),
+                watched_at=datetime(2023, 1, 20, 15, 0, 0, tzinfo=UTC),
             ),
         ]
         mock_takeout_service.parse_watch_history.return_value = history
@@ -522,13 +507,13 @@ class TestShowDetailedPlaylist:
                 create_takeout_playlist_item(
                     video_id="video1",
                     creation_timestamp=datetime(
-                        2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc
+                        2023, 1, 15, 14, 30, 0, tzinfo=UTC
                     ),
                 ),
                 create_takeout_playlist_item(
                     video_id="video2",
                     creation_timestamp=datetime(
-                        2023, 1, 16, 15, 45, 0, tzinfo=timezone.utc
+                        2023, 1, 16, 15, 45, 0, tzinfo=UTC
                     ),
                 ),
             ],

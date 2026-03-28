@@ -25,9 +25,9 @@ test_canonical_tag_repository.py) and avoids any real database I/O.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.dialects import postgresql as pg_dialect
@@ -41,7 +41,6 @@ from chronovista.models.enums import DetectionMethod
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 from tests.factories.entity_mention_factory import (
     EntityMentionCreateFactory,
-    EntityMentionFactory,
     create_entity_mention,
     create_entity_mention_create,
 )
@@ -60,8 +59,6 @@ _pg_insert_patcher.start()
 # CRITICAL: ensures every async test in this module is recognised by
 # pytest-asyncio regardless of how coverage is invoked
 # (see CLAUDE.md §pytest-asyncio Coverage Integration Issues).
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -132,7 +129,7 @@ def _make_entity_mention_db(
         mention_text=mention_text,
         detection_method=detection_method,
         confidence=confidence,
-        created_at=datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+        created_at=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
     )
 
 
@@ -2723,7 +2720,7 @@ class TestCreateManualAssociation:
         mention.confidence = None
         mention.detection_method = "manual"
         mention.mention_text = canonical_name
-        mention.created_at = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        mention.created_at = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
         return mention
 
     async def test_create_successful(
@@ -2748,7 +2745,7 @@ class TestCreateManualAssociation:
             entity_id=entity_id, canonical_name=canonical_name, status="active"
         )
         video_db = self._make_video_db(video_id=video_id)
-        new_mention = self._make_mention_db(
+        self._make_mention_db(
             entity_id=entity_id, video_id=video_id, canonical_name=canonical_name
         )
 
@@ -3031,7 +3028,7 @@ class TestGetEntityVideoListMultiSource:
         upload_date: Any = None,
     ) -> MagicMock:
         """Build a mock row matching the main query's column shape."""
-        from datetime import datetime as dt, timezone as tz
+        from datetime import datetime as dt
 
         row = MagicMock()
         row.video_id = video_id
@@ -3041,7 +3038,7 @@ class TestGetEntityVideoListMultiSource:
         row.detection_methods = detection_methods or ["rule_match"]
         row.has_manual = has_manual
         row.first_mention_time = first_mention_time
-        row.upload_date = upload_date or dt(2024, 6, 15, tzinfo=tz.utc)
+        row.upload_date = upload_date or dt(2024, 6, 15, tzinfo=UTC)
         return row
 
     @staticmethod
@@ -3246,10 +3243,10 @@ class TestGetEntityVideoListMultiSource:
     ) -> None:
         """upload_date is present in each result dict as an ISO string."""
         entity_id = _uuid()
-        from datetime import datetime as dt, timezone as tz
+        from datetime import datetime as dt
 
         row = self._make_video_row(
-            upload_date=dt(2024, 12, 25, 10, 0, 0, tzinfo=tz.utc),
+            upload_date=dt(2024, 12, 25, 10, 0, 0, tzinfo=UTC),
             detection_methods=["rule_match"],
         )
 
@@ -3361,7 +3358,7 @@ class TestDeleteManualAssociation:
         mention.confidence = None
         mention.detection_method = "manual"
         mention.mention_text = "Joanna Hausmann"
-        mention.created_at = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        mention.created_at = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
         return mention
 
     def _make_transcript_mention(
@@ -3381,7 +3378,7 @@ class TestDeleteManualAssociation:
         mention.confidence = 0.95
         mention.detection_method = "rule_match"
         mention.mention_text = "Joanna Hausmann"
-        mention.created_at = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        mention.created_at = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
         return mention
 
     async def test_delete_successful_calls_session_delete(

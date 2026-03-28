@@ -6,8 +6,8 @@ Tests model field types, constraints, relationships, and cascade delete behavior
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, cast
+from datetime import UTC, datetime
+from typing import Any, cast
 
 import pytest
 from pydantic import ValidationError
@@ -17,9 +17,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import (
     Channel,
-    TranscriptSegment as TranscriptSegmentDB,
     Video,
     VideoTranscript,
+)
+from chronovista.db.models import (
+    TranscriptSegment as TranscriptSegmentDB,
 )
 from chronovista.models.transcript_segment import (
     TranscriptSegment,
@@ -28,7 +30,6 @@ from chronovista.models.transcript_segment import (
     TranscriptSegmentResponse,
 )
 from tests.factories.transcript_segment_factory import (
-    TranscriptSegmentFactory,
     TranscriptSegmentTestData,
     create_batch_transcript_segments,
     create_corrected_transcript_segment,
@@ -69,7 +70,7 @@ class TestTranscriptSegmentSQLAlchemyModel:
             video_id="dQw4w9WgXcQ",
             channel_id=channel.channel_id,
             title="Test Video",
-            upload_date=datetime.now(timezone.utc),
+            upload_date=datetime.now(UTC),
             duration=300,
         )
         db_session.add(video)
@@ -123,7 +124,7 @@ class TestTranscriptSegmentSQLAlchemyModel:
             video_id="dQw4w9WgXcQ",
             channel_id=channel.channel_id,
             title="Test Video",
-            upload_date=datetime.now(timezone.utc),
+            upload_date=datetime.now(UTC),
             duration=300,
         )
         db_session.add(video)
@@ -173,7 +174,7 @@ class TestTranscriptSegmentSQLAlchemyModel:
             video_id="dQw4w9WgXcQ",
             channel_id=channel.channel_id,
             title="Test Video",
-            upload_date=datetime.now(timezone.utc),
+            upload_date=datetime.now(UTC),
             duration=300,
         )
         db_session.add(video)
@@ -254,7 +255,7 @@ class TestTranscriptSegmentSQLAlchemyModel:
             video_id="dQw4w9WgXcQ",
             channel_id=channel.channel_id,
             title="Test Video",
-            upload_date=datetime.now(timezone.utc),
+            upload_date=datetime.now(UTC),
             duration=300,
         )
         db_session.add(video)
@@ -309,7 +310,7 @@ class TestTranscriptSegmentSQLAlchemyModel:
             video_id="dQw4w9WgXcQ",
             channel_id=channel.channel_id,
             title="Test Video",
-            upload_date=datetime.now(timezone.utc),
+            upload_date=datetime.now(UTC),
             duration=300,
         )
         db_session.add(video)
@@ -375,7 +376,7 @@ class TestTranscriptSegmentSQLAlchemyModel:
             video_id="dQw4w9WgXcQ",
             channel_id=channel.channel_id,
             title="Test Video",
-            upload_date=datetime.now(timezone.utc),
+            upload_date=datetime.now(UTC),
             duration=300,
         )
         db_session.add(video)
@@ -421,7 +422,7 @@ class TestTranscriptSegmentSQLAlchemyModel:
             video_id="dQw4w9WgXcQ",
             channel_id=channel.channel_id,
             title="Test Video",
-            upload_date=datetime.now(timezone.utc),
+            upload_date=datetime.now(UTC),
             duration=300,
         )
         db_session.add(video)
@@ -469,7 +470,7 @@ class TestTranscriptSegmentSQLAlchemyModel:
             video_id="dQw4w9WgXcQ",
             channel_id=channel.channel_id,
             title="Test Video",
-            upload_date=datetime.now(timezone.utc),
+            upload_date=datetime.now(UTC),
             duration=300,
         )
         db_session.add(video)
@@ -515,7 +516,7 @@ class TestTranscriptSegmentSQLAlchemyModel:
             video_id="dQw4w9WgXcQ",
             channel_id=channel.channel_id,
             title="Test Video",
-            upload_date=datetime.now(timezone.utc),
+            upload_date=datetime.now(UTC),
             duration=300,
         )
         db_session.add(video)
@@ -614,7 +615,7 @@ class TestTranscriptSegmentPydanticModels:
             sequence_number=0,
             has_correction=False,
             corrected_text=None,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         assert segment.display_text == "Original text"
 
@@ -631,7 +632,7 @@ class TestTranscriptSegmentPydanticModels:
             sequence_number=0,
             has_correction=True,
             corrected_text="Corrected text",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         assert segment.display_text == "Corrected text"
 
@@ -701,7 +702,7 @@ class TestTranscriptSegmentPydanticModels:
             sequence_number=10,
             has_correction=False,
             corrected_text=None,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         response = TranscriptSegmentResponse.from_segment(full_segment)
         assert response.segment_id == 42
@@ -722,7 +723,7 @@ class TestTranscriptSegmentPydanticModels:
             sequence_number=0,
             has_correction=True,
             corrected_text="Corrected text",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         response = TranscriptSegmentResponse.from_segment(full_segment)
         assert response.text == "Corrected text"
@@ -917,7 +918,7 @@ class TestValidationEdgeCases:
         # Test sample snippets from test data
         for i, snippet in enumerate(TranscriptSegmentTestData.SAMPLE_SNIPPETS):
             # Type annotations for mypy
-            snippet_dict = cast(Dict[str, Any], snippet)
+            snippet_dict = cast(dict[str, Any], snippet)
             segment = TranscriptSegmentCreate.from_snippet(
                 video_id="dQw4w9WgXcQ",
                 language_code="en",

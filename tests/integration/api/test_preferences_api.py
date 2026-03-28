@@ -1,14 +1,11 @@
 """Integration tests for language preferences endpoints (US4)."""
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from httpx import AsyncClient
 
-from chronovista.api.main import app
 from chronovista.api.deps import get_db
-
-pytestmark = pytest.mark.asyncio
+from chronovista.api.main import app
 
 
 async def get_mock_db() -> AsyncGenerator[AsyncMock, None]:
@@ -112,7 +109,10 @@ class TestGetLanguagePreferences:
                 mock_oauth.is_authenticated.return_value = True
 
                 # Create a mock preference object
-                from chronovista.models.enums import LanguageCode, LanguagePreferenceType
+                from chronovista.models.enums import (
+                    LanguageCode,
+                    LanguagePreferenceType,
+                )
 
                 mock_pref = AsyncMock()
                 mock_pref.language_code = LanguageCode.ENGLISH

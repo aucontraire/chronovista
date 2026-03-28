@@ -8,7 +8,7 @@ tag aliases, named entities, and entity aliases using factory patterns.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -16,21 +16,23 @@ from uuid_utils import uuid7
 
 from chronovista.db.models import (
     CanonicalTag as CanonicalTagDB,
+)
+from chronovista.db.models import (
     EntityAlias as EntityAliasDB,
+)
+from chronovista.db.models import (
     NamedEntity as NamedEntityDB,
+)
+from chronovista.db.models import (
     TagAlias as TagAliasDB,
 )
 from chronovista.models.canonical_tag import (
     CanonicalTag,
-    CanonicalTagBase,
     CanonicalTagCreate,
     CanonicalTagUpdate,
 )
 from chronovista.models.entity_alias import (
-    EntityAlias,
-    EntityAliasBase,
     EntityAliasCreate,
-    EntityAliasUpdate,
 )
 from chronovista.models.enums import (
     CreationMethod,
@@ -41,37 +43,27 @@ from chronovista.models.enums import (
 )
 from chronovista.models.named_entity import (
     NamedEntity,
-    NamedEntityBase,
     NamedEntityCreate,
-    NamedEntityUpdate,
 )
 from chronovista.models.tag_alias import (
-    TagAlias,
-    TagAliasBase,
     TagAliasCreate,
-    TagAliasUpdate,
 )
 from tests.factories import (
     CanonicalTagBaseFactory,
     CanonicalTagCreateFactory,
     CanonicalTagFactory,
     CanonicalTagTestData,
-    CanonicalTagUpdateFactory,
     EntityAliasBaseFactory,
     EntityAliasCreateFactory,
     EntityAliasFactory,
     EntityAliasTestData,
-    EntityAliasUpdateFactory,
     NamedEntityBaseFactory,
     NamedEntityCreateFactory,
-    NamedEntityFactory,
     NamedEntityTestData,
-    NamedEntityUpdateFactory,
     TagAliasBaseFactory,
     TagAliasCreateFactory,
     TagAliasFactory,
     TagAliasTestData,
-    TagAliasUpdateFactory,
 )
 
 
@@ -128,7 +120,7 @@ class TestCanonicalTagModels:
         """Test creating full CanonicalTag with all fields."""
         tag_id = uuid.UUID(bytes=uuid7().bytes)
         entity_id = uuid.UUID(bytes=uuid7().bytes)
-        now = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        now = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
 
         tag = CanonicalTagFactory.build(
             id=tag_id,
@@ -225,8 +217,8 @@ class TestCanonicalTagModels:
                 merged_into_id=tag_id,  # Same as id - should fail
                 alias_count=1,
                 video_count=0,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
 
     def test_canonical_tag_update_partial_fields(self) -> None:
@@ -302,7 +294,7 @@ class TestTagAliasModels:
         """Test creating full TagAlias with all fields."""
         alias_id = uuid.UUID(bytes=uuid7().bytes)
         canonical_tag_id = uuid.UUID(bytes=uuid7().bytes)
-        now = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        now = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
 
         alias = TagAliasFactory.build(
             id=alias_id,
@@ -438,8 +430,8 @@ class TestNamedEntityModels:
                 video_count=0,
                 channel_count=0,
                 confidence=1.0,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
 
     def test_named_entity_confidence_out_of_range_high(self) -> None:
@@ -582,7 +574,7 @@ class TestEntityAliasModels:
         """Test creating full EntityAlias with all fields."""
         alias_id = uuid.UUID(bytes=uuid7().bytes)
         entity_id = uuid.UUID(bytes=uuid7().bytes)
-        now = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        now = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
 
         alias = EntityAliasFactory.build(
             id=alias_id,

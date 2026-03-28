@@ -28,8 +28,6 @@ from typer.testing import CliRunner
 from chronovista.cli.entity_commands import entity_app
 
 # CRITICAL: Module-level asyncio marker ensures async tests work with coverage.
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -146,7 +144,11 @@ class TestScanAuditFlag:
             import asyncio
 
             captured_coro.append(coro)
-            asyncio.get_event_loop().run_until_complete(coro)  # type: ignore[arg-type]
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(coro)  # type: ignore[arg-type]
+            finally:
+                loop.close()
 
         with patch("chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run):
             result = runner.invoke(entity_app, ["scan", "--audit"])
@@ -192,7 +194,11 @@ class TestScanAuditFlag:
         def fake_asyncio_run(coro: object) -> None:
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(coro)  # type: ignore[arg-type]
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(coro)  # type: ignore[arg-type]
+            finally:
+                loop.close()
 
         with patch("chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run):
             result = runner.invoke(entity_app, ["scan", "--audit"])
@@ -236,7 +242,11 @@ class TestScanAuditFlag:
         def fake_asyncio_run(coro: object) -> None:
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(coro)  # type: ignore[arg-type]
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(coro)  # type: ignore[arg-type]
+            finally:
+                loop.close()
 
         with patch("chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run):
             result = runner.invoke(entity_app, ["scan", "--audit"])
@@ -274,7 +284,11 @@ class TestScanAuditFlag:
         def fake_asyncio_run(coro: object) -> None:
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(coro)  # type: ignore[arg-type]
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(coro)  # type: ignore[arg-type]
+            finally:
+                loop.close()
 
         with patch("chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run):
             result = runner.invoke(entity_app, ["scan", "--audit"])
@@ -309,7 +323,11 @@ class TestScanAuditFlag:
         def fake_asyncio_run(coro: object) -> None:
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(coro)  # type: ignore[arg-type]
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(coro)  # type: ignore[arg-type]
+            finally:
+                loop.close()
 
         with patch("chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run):
             result = runner.invoke(entity_app, ["scan", "--audit"])
@@ -340,7 +358,11 @@ class TestScanAuditFlag:
         def fake_asyncio_run(coro: object) -> None:
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(coro)  # type: ignore[arg-type]
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(coro)  # type: ignore[arg-type]
+            finally:
+                loop.close()
 
         with patch("chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run):
             result = runner.invoke(entity_app, ["scan", "--audit"])
@@ -397,7 +419,11 @@ class TestScanAuditFlag:
         def fake_asyncio_run(coro: object) -> None:
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(coro)  # type: ignore[arg-type]
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(coro)  # type: ignore[arg-type]
+            finally:
+                loop.close()
 
         with patch("chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run):
             result = runner.invoke(entity_app, ["scan", "--audit", "--dry-run"])

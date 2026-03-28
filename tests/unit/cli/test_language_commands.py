@@ -8,8 +8,7 @@ module, including helper functions, database operations, and CLI commands.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,13 +19,11 @@ from chronovista.cli.language_commands import (
     DEFAULT_USER_ID,
     LANGUAGE_NAMES,
     OutputFormat,
-    _get_preferences,
     _get_terminal_width,
     _is_tty,
     _truncate_text,
     detect_system_locale,
     get_language_display_name,
-    language_app,
     parse_language_input,
     suggest_similar_codes,
     validate_language_code,
@@ -34,7 +31,6 @@ from chronovista.cli.language_commands import (
 from chronovista.cli.main import app
 from chronovista.models.enums import LanguageCode, LanguagePreferenceType
 from chronovista.models.user_language_preference import UserLanguagePreference
-
 
 # -------------------------------------------------------------------------
 # Fixtures
@@ -48,7 +44,7 @@ def runner() -> CliRunner:
 
 
 @pytest.fixture
-def mock_preferences() -> List[UserLanguagePreference]:
+def mock_preferences() -> list[UserLanguagePreference]:
     """
     Create a list of mock UserLanguagePreference objects for testing.
 
@@ -57,7 +53,7 @@ def mock_preferences() -> List[UserLanguagePreference]:
     List[UserLanguagePreference]
         List of mock language preferences.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return [
         UserLanguagePreference(
             user_id=DEFAULT_USER_ID,
@@ -90,7 +86,7 @@ def mock_preferences() -> List[UserLanguagePreference]:
 
 
 @pytest.fixture
-def mock_db_preferences() -> List[MagicMock]:
+def mock_db_preferences() -> list[MagicMock]:
     """
     Create mock database preference objects.
 
@@ -99,7 +95,7 @@ def mock_db_preferences() -> List[MagicMock]:
     List[MagicMock]
         List of mock database objects that mimic UserLanguagePreferenceDB.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     prefs = []
     for code, ptype, priority in [
         (LanguageCode.ENGLISH.value, LanguagePreferenceType.FLUENT.value, 1),
@@ -396,7 +392,7 @@ class TestGetPreferences:
     """Tests for _get_preferences() async helper function."""
 
     async def test_get_preferences_returns_list(
-        self, mock_db_preferences: List[MagicMock]
+        self, mock_db_preferences: list[MagicMock]
     ) -> None:
         """Test _get_preferences returns list of preferences."""
         with patch(
@@ -469,7 +465,7 @@ class TestLanguageListCommand:
             assert "--from-locale" in result.stdout
 
     def test_list_with_preferences_shows_grouped_table(
-        self, runner: CliRunner, mock_preferences: List[UserLanguagePreference]
+        self, runner: CliRunner, mock_preferences: list[UserLanguagePreference]
     ) -> None:
         """T012: Preferences are displayed in grouped table."""
         with patch("chronovista.cli.language_commands._get_preferences") as mock_get:
@@ -491,7 +487,7 @@ class TestLanguageListCommand:
             assert "Auto-Download" in result.stdout
 
     def test_list_format_json_outputs_valid_json(
-        self, runner: CliRunner, mock_preferences: List[UserLanguagePreference]
+        self, runner: CliRunner, mock_preferences: list[UserLanguagePreference]
     ) -> None:
         """T013: --format json outputs valid JSON."""
         import json
@@ -516,7 +512,7 @@ class TestLanguageListCommand:
             assert output_data["learning"][0]["language_code"] == "es"
 
     def test_list_format_yaml_outputs_valid_yaml(
-        self, runner: CliRunner, mock_preferences: List[UserLanguagePreference]
+        self, runner: CliRunner, mock_preferences: list[UserLanguagePreference]
     ) -> None:
         """T014: --format yaml outputs valid YAML."""
         import yaml
@@ -538,7 +534,7 @@ class TestLanguageListCommand:
             assert len(output_data["learning"]) == 1
 
     def test_list_type_filter_shows_only_filtered(
-        self, runner: CliRunner, mock_preferences: List[UserLanguagePreference]
+        self, runner: CliRunner, mock_preferences: list[UserLanguagePreference]
     ) -> None:
         """T015: --type fluent filters to fluent only."""
         with patch("chronovista.cli.language_commands._get_preferences") as mock_get:
@@ -874,7 +870,7 @@ class TestLanguageAddCommand:
                 priority=1,
                 auto_download_transcripts=True,
                 learning_goal=None,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
         ]
 
@@ -1121,7 +1117,7 @@ class TestLanguageResetCommand:
                 priority=1,
                 auto_download_transcripts=True,
                 learning_goal=None,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
             UserLanguagePreference(
                 user_id=DEFAULT_USER_ID,
@@ -1130,7 +1126,7 @@ class TestLanguageResetCommand:
                 priority=2,
                 auto_download_transcripts=True,
                 learning_goal=None,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
             UserLanguagePreference(
                 user_id=DEFAULT_USER_ID,
@@ -1139,7 +1135,7 @@ class TestLanguageResetCommand:
                 priority=1,
                 auto_download_transcripts=True,
                 learning_goal="B2 by December",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
             UserLanguagePreference(
                 user_id=DEFAULT_USER_ID,
@@ -1148,7 +1144,7 @@ class TestLanguageResetCommand:
                 priority=2,
                 auto_download_transcripts=True,
                 learning_goal=None,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
             UserLanguagePreference(
                 user_id=DEFAULT_USER_ID,
@@ -1157,7 +1153,7 @@ class TestLanguageResetCommand:
                 priority=1,
                 auto_download_transcripts=False,
                 learning_goal=None,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
             UserLanguagePreference(
                 user_id=DEFAULT_USER_ID,
@@ -1166,7 +1162,7 @@ class TestLanguageResetCommand:
                 priority=2,
                 auto_download_transcripts=False,
                 learning_goal=None,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
             UserLanguagePreference(
                 user_id=DEFAULT_USER_ID,
@@ -1175,7 +1171,7 @@ class TestLanguageResetCommand:
                 priority=1,
                 auto_download_transcripts=False,
                 learning_goal=None,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
         ]
 
@@ -1223,7 +1219,7 @@ class TestLanguageResetCommand:
                 priority=1,
                 auto_download_transcripts=True,
                 learning_goal=None,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
             UserLanguagePreference(
                 user_id=DEFAULT_USER_ID,
@@ -1232,7 +1228,7 @@ class TestLanguageResetCommand:
                 priority=2,
                 auto_download_transcripts=True,
                 learning_goal=None,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
             UserLanguagePreference(
                 user_id=DEFAULT_USER_ID,
@@ -1241,7 +1237,7 @@ class TestLanguageResetCommand:
                 priority=1,
                 auto_download_transcripts=True,
                 learning_goal="B2",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
         ]
 
@@ -1286,7 +1282,7 @@ class TestLanguageResetCommand:
                 priority=1,
                 auto_download_transcripts=True,
                 learning_goal=None,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
         ]
 
@@ -1329,7 +1325,7 @@ class TestLanguageResetCommand:
                 priority=1,
                 auto_download_transcripts=True,
                 learning_goal=None,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
         ]
 
@@ -1369,7 +1365,7 @@ class TestLanguageResetCommand:
                 priority=1,
                 auto_download_transcripts=True,
                 learning_goal=None,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
         ]
 
@@ -1486,7 +1482,7 @@ class TestLanguageSetCommandFlags:
                 priority=1,
                 auto_download_transcripts=True,
                 learning_goal=None,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
         ]
 
@@ -1580,12 +1576,11 @@ class TestUpgradePromptForSyncCommands:
     @pytest.mark.asyncio
     async def test_upgrade_prompt_appears_when_no_preferences_configured(self) -> None:
         """T075 [P] [US8]: Test upgrade prompt appears when no preferences configured."""
+        # Reset module-level flag
+        import chronovista.cli.language_commands as lang_cmd
         from chronovista.cli.language_commands import (
             check_and_prompt_language_preferences,
         )
-
-        # Reset module-level flag
-        import chronovista.cli.language_commands as lang_cmd
 
         lang_cmd._upgrade_prompt_shown = False
 
@@ -1605,12 +1600,11 @@ class TestUpgradePromptForSyncCommands:
     @pytest.mark.asyncio
     async def test_upgrade_prompt_does_not_appear_when_preferences_exist(self) -> None:
         """T076 [P] [US8]: Test upgrade prompt does NOT appear when preferences exist."""
+        # Reset module-level flag
+        import chronovista.cli.language_commands as lang_cmd
         from chronovista.cli.language_commands import (
             check_and_prompt_language_preferences,
         )
-
-        # Reset module-level flag
-        import chronovista.cli.language_commands as lang_cmd
 
         lang_cmd._upgrade_prompt_shown = False
 
@@ -1622,7 +1616,7 @@ class TestUpgradePromptForSyncCommands:
                 priority=1,
                 auto_download_transcripts=True,
                 learning_goal=None,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
         ]
 
@@ -1640,12 +1634,11 @@ class TestUpgradePromptForSyncCommands:
     @pytest.mark.asyncio
     async def test_upgrade_prompt_appears_only_once_per_session(self) -> None:
         """T077 [P] [US8]: Test upgrade prompt appears only once per session."""
+        # Reset module-level flag
+        import chronovista.cli.language_commands as lang_cmd
         from chronovista.cli.language_commands import (
             check_and_prompt_language_preferences,
         )
-
-        # Reset module-level flag
-        import chronovista.cli.language_commands as lang_cmd
 
         lang_cmd._upgrade_prompt_shown = False
 
@@ -1670,12 +1663,11 @@ class TestUpgradePromptForSyncCommands:
     @pytest.mark.asyncio
     async def test_accepting_upgrade_prompt_enters_first_run_setup(self) -> None:
         """T078 [P] [US8]: Test accepting upgrade prompt enters first-run setup."""
+        # Reset module-level flag
+        import chronovista.cli.language_commands as lang_cmd
         from chronovista.cli.language_commands import (
             check_and_prompt_language_preferences,
         )
-
-        # Reset module-level flag
-        import chronovista.cli.language_commands as lang_cmd
 
         lang_cmd._upgrade_prompt_shown = False
 
@@ -1691,7 +1683,7 @@ class TestUpgradePromptForSyncCommands:
                         priority=1,
                         auto_download_transcripts=True,
                         learning_goal=None,
-                        created_at=datetime.now(timezone.utc),
+                        created_at=datetime.now(UTC),
                     )
                 ],  # Preferences exist after setup
             ]
@@ -1714,12 +1706,11 @@ class TestUpgradePromptForSyncCommands:
     @pytest.mark.asyncio
     async def test_declining_upgrade_prompt_proceeds_with_defaults(self) -> None:
         """T079 [P] [US8]: Test declining upgrade prompt proceeds with defaults."""
+        # Reset module-level flag
+        import chronovista.cli.language_commands as lang_cmd
         from chronovista.cli.language_commands import (
             check_and_prompt_language_preferences,
         )
-
-        # Reset module-level flag
-        import chronovista.cli.language_commands as lang_cmd
 
         lang_cmd._upgrade_prompt_shown = False
 
@@ -1874,7 +1865,7 @@ class TestNonTTYOutput:
             assert "Available Language Codes" in result.stdout
 
     def test_list_preferences_non_tty_output(
-        self, runner: CliRunner, mock_preferences: List[UserLanguagePreference]
+        self, runner: CliRunner, mock_preferences: list[UserLanguagePreference]
     ) -> None:
         """T086: Test list output works in non-TTY mode."""
         with patch("chronovista.cli.language_commands._is_tty") as mock_tty:
@@ -1888,7 +1879,7 @@ class TestNonTTYOutput:
                 assert "Fluent" in result.stdout or "fluent" in result.stdout.lower()
 
     def test_json_output_always_plain(
-        self, runner: CliRunner, mock_preferences: List[UserLanguagePreference]
+        self, runner: CliRunner, mock_preferences: list[UserLanguagePreference]
     ) -> None:
         """T086: Test JSON output is always plain (no Rich formatting)."""
         with patch("chronovista.cli.language_commands._get_preferences") as mock_get:
@@ -1900,7 +1891,7 @@ class TestNonTTYOutput:
             assert "fluent" in output_data
 
     def test_yaml_output_always_plain(
-        self, runner: CliRunner, mock_preferences: List[UserLanguagePreference]
+        self, runner: CliRunner, mock_preferences: list[UserLanguagePreference]
     ) -> None:
         """T086: Test YAML output is always plain (no Rich formatting)."""
         with patch("chronovista.cli.language_commands._get_preferences") as mock_get:

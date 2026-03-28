@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -21,10 +21,10 @@ import pytest
 
 from chronovista.services.enrichment.enrichment_service import (
     EnrichmentService,
+)
+from chronovista.services.enrichment.enrichment_service import (
     logger as enrichment_logger,
 )
-
-pytestmark = pytest.mark.asyncio
 
 
 def generate_default_log_path(
@@ -50,7 +50,7 @@ def generate_default_log_path(
         Full path to the log file
     """
     if timestamp is None:
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
 
     # Format: enrichment-YYYYMMDD-HHMMSS.log
     timestamp_str = timestamp.strftime("%Y%m%d-%H%M%S")
@@ -138,7 +138,7 @@ class TestLogFilePathFormat:
 
     def test_default_log_path_format(self, tmp_path: Path) -> None:
         """Test that default log path follows expected format."""
-        timestamp = datetime(2024, 6, 15, 14, 30, 45, tzinfo=timezone.utc)
+        timestamp = datetime(2024, 6, 15, 14, 30, 45, tzinfo=UTC)
         path = generate_default_log_path(tmp_path, timestamp)
 
         # Verify path format
@@ -154,7 +154,7 @@ class TestLogFilePathFormat:
 
     def test_log_path_includes_timestamp(self, tmp_path: Path) -> None:
         """Test that log path includes timestamp."""
-        timestamp = datetime(2024, 12, 25, 8, 0, 0, tzinfo=timezone.utc)
+        timestamp = datetime(2024, 12, 25, 8, 0, 0, tzinfo=UTC)
         path = generate_default_log_path(tmp_path, timestamp)
 
         # Should contain date components

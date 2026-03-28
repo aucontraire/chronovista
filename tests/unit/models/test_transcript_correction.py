@@ -9,7 +9,7 @@ TranscriptCorrectionRead models (Feature 033, FR-018 append-only).
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -30,8 +30,6 @@ from tests.factories.transcript_correction_factory import (
 )
 
 # CRITICAL: Ensure async tests work with coverage tooling.
-pytestmark = pytest.mark.asyncio
-
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
@@ -402,7 +400,7 @@ class TestTranscriptCorrectionRead:
 
     def _make_read(self, **overrides: Any) -> TranscriptCorrectionRead:
         """Build a valid TranscriptCorrectionRead with optional field overrides."""
-        now = datetime(2024, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2024, 6, 15, 12, 0, 0, tzinfo=UTC)
         defaults: dict[str, Any] = {
             "id": _make_uuid7(),
             "video_id": _VALID_VIDEO_ID,
@@ -426,7 +424,7 @@ class TestTranscriptCorrectionRead:
     def test_valid_read_with_required_fields(self) -> None:
         """TranscriptCorrectionRead is valid with all required fields present."""
         correction_id = _make_uuid7()
-        now = datetime(2024, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2024, 6, 15, 12, 0, 0, tzinfo=UTC)
 
         correction = TranscriptCorrectionRead(
             id=correction_id,
@@ -537,7 +535,7 @@ class TestTranscriptCorrectionRead:
                 original_text="teh",
                 corrected_text="the",
                 version_number=1,
-                corrected_at=datetime.now(timezone.utc),
+                corrected_at=datetime.now(UTC),
             )
 
     def test_missing_corrected_at_raises_validation_error(self) -> None:

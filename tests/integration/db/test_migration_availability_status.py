@@ -18,18 +18,15 @@ Related: Feature 023 (Deleted Content Visibility), Task T013
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
-import pytest
 from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.db.models import Base, Channel, Playlist, Video
+from chronovista.db.models import Channel, Playlist, Video
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 def get_column_names(model: type[Any]) -> list[str]:
     """
@@ -165,7 +162,7 @@ class TestSchemaIntegration:
             channel_id="UC_test_channel_001",
             title="Test Video",
             description="Test",
-            upload_date=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2024, 1, 1, tzinfo=UTC),
             duration=300,
             availability_status="available",
         )
@@ -196,7 +193,7 @@ class TestSchemaIntegration:
             channel_id="UC_test_channel_002",
             title="Unavailable Video",
             description="Test",
-            upload_date=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2024, 1, 1, tzinfo=UTC),
             duration=300,
             availability_status="unavailable",
         )

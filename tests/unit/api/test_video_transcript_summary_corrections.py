@@ -6,8 +6,6 @@ correctly surface whether any transcript segment has user corrections.
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from chronovista.api.routers.videos import build_transcript_summary
 from chronovista.api.schemas.videos import TranscriptSummary
 from chronovista.db.models import VideoTranscript

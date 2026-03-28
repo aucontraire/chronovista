@@ -42,8 +42,6 @@ from chronovista.services.tag_management import TagManagementService
 # CRITICAL: Module-level asyncio marker ensures async tests run properly
 # with coverage tools, avoiding silent test-skipping (see CLAUDE.md).
 # ---------------------------------------------------------------------------
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -1365,7 +1363,6 @@ class TestMerge:
 
         # Inspect what rollback_data was passed to operation log repo
         call_kwargs = mock_operation_log_repo.create.call_args
-        from chronovista.models.tag_operation_log import TagOperationLogCreate
 
         obj_in: TagOperationLogCreate = call_kwargs.kwargs["obj_in"]
         rollback = obj_in.rollback_data
@@ -1887,7 +1884,6 @@ class TestSplit:
         )
 
         call_kwargs = mock_operation_log_repo.create.call_args
-        from chronovista.models.tag_operation_log import TagOperationLogCreate
 
         obj_in: TagOperationLogCreate = call_kwargs.kwargs["obj_in"]
         rollback = obj_in.rollback_data
@@ -2455,7 +2451,6 @@ class TestRename:
         )
 
         call_kwargs = mock_operation_log_repo.create.call_args
-        from chronovista.models.tag_operation_log import TagOperationLogCreate
 
         obj_in: TagOperationLogCreate = call_kwargs.kwargs["obj_in"]
         rollback = obj_in.rollback_data
@@ -2546,10 +2541,10 @@ class TestClassify:
         mock_canonical_tag_repo.get_by_normalized_form.return_value = tag
 
         # No existing entity with same normalized form
-        alias_a = _make_tag_alias(
+        _make_tag_alias(
             raw_form="Elon Musk", normalized_form="elon musk", canonical_tag_id=tag.id
         )
-        alias_b = _make_tag_alias(
+        _make_tag_alias(
             raw_form="ElonMusk", normalized_form="elonmusk", canonical_tag_id=tag.id
         )
 
@@ -2790,7 +2785,6 @@ class TestClassify:
         - ``created_entity_alias_ids`` (list of str UUIDs)
         """
         from chronovista.models.enums import EntityType
-        from chronovista.models.tag_operation_log import TagOperationLogCreate
 
         tag = _make_canonical_tag(
             normalized_form="google",
@@ -3096,7 +3090,6 @@ class TestGetCollisions:
         Collision groups must be sorted by total_occurrence_count descending
         so the highest-impact collisions appear first.
         """
-        from chronovista.services.tag_management import CollisionGroup
 
         tag1 = _make_canonical_tag(normalized_form="cafe", canonical_form="Cafe", status="active")
         tag1.id = uuid.uuid4()
@@ -3368,7 +3361,6 @@ class TestDeprecate:
         - ``canonical_id``: str UUID of the tag
         - ``previous_status``: the status before deprecation ('active')
         """
-        from chronovista.models.tag_operation_log import TagOperationLogCreate
 
         tag = _make_canonical_tag(
             normalized_form="oldtag",
@@ -3409,7 +3401,6 @@ class TestDeprecate:
         The operation log entry must use operation_type='delete' (per spec),
         not 'deprecate' (which is not a valid operation type).
         """
-        from chronovista.models.tag_operation_log import TagOperationLogCreate
 
         tag = _make_canonical_tag(normalized_form="oldtag", status="active")
         mock_canonical_tag_repo.get_by_normalized_form.return_value = tag

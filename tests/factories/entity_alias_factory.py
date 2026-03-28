@@ -8,7 +8,7 @@ with sensible defaults and easy customization.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import factory
@@ -80,10 +80,10 @@ class EntityAliasFactory(factory.Factory[EntityAlias]):
     entity_id: Any = LazyFunction(_uuid7)
     occurrence_count: Any = LazyFunction(lambda: 0)
     first_seen_at: Any = LazyFunction(
-        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
     )
     last_seen_at: Any = LazyFunction(
-        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
     )
 
 

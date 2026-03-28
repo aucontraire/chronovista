@@ -39,10 +39,8 @@ Usage
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -50,14 +48,15 @@ from httpx import AsyncClient
 
 from chronovista.api.routers import onboarding as onboarding_router
 from chronovista.api.routers import tasks as tasks_router
-from chronovista.api.schemas.onboarding import OnboardingCounts, OnboardingStatus, PipelineStep
+from chronovista.api.schemas.onboarding import (
+    OnboardingCounts,
+    OnboardingStatus,
+    PipelineStep,
+)
 from chronovista.api.schemas.tasks import BackgroundTask
-from chronovista.api.services.task_manager import TaskManager
 from chronovista.models.enums import OperationType, PipelineStepStatus, TaskStatus
 
 # CRITICAL: This line ensures async tests work with coverage tools
-pytestmark = pytest.mark.asyncio
-
 # ---------------------------------------------------------------------------
 # Module-level wiring
 # ---------------------------------------------------------------------------
@@ -1099,7 +1098,7 @@ class TestListTasks:
             OperationType.NORMALIZE_TAGS,
         ]
 
-        for task_id, op_type in zip(task_ids, operation_types):
+        for task_id, op_type in zip(task_ids, operation_types, strict=False):
             onboarding_router._task_manager._tasks[task_id] = _make_background_task(
                 task_id=task_id,
                 operation_type=op_type,

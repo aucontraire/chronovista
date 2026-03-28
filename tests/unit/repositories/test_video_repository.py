@@ -4,19 +4,17 @@ Tests for VideoRepository functionality.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import Video as VideoDB
-from chronovista.models.enums import AvailabilityStatus, LanguageCode
+from chronovista.models.enums import LanguageCode
 from chronovista.models.video import VideoCreate, VideoStatistics
 from chronovista.repositories.video_repository import VideoRepository
 from tests.factories.video_factory import create_video_search_filters
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestVideoRepository:
@@ -153,7 +151,7 @@ class TestVideoRepository:
             repository,
             "get_video_statistics",
             new=AsyncMock(return_value=expected_stats),
-        ) as mock_stats:
+        ):
 
             result = await repository.get_video_statistics(mock_session)
 
@@ -398,10 +396,10 @@ class TestVideoRepository:
         self, repository: VideoRepository, mock_session: AsyncMock
     ):
         """Test finding videos by date range."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        start_date = datetime(2023, 1, 1, tzinfo=timezone.utc)
-        end_date = datetime(2023, 12, 31, tzinfo=timezone.utc)
+        start_date = datetime(2023, 1, 1, tzinfo=UTC)
+        end_date = datetime(2023, 12, 31, tzinfo=UTC)
 
         mock_videos = [MagicMock(), MagicMock()]
         mock_result = MagicMock()
@@ -563,14 +561,14 @@ class TestVideoRepositorySearchFilters:
         self, repository: VideoRepository, mock_session: AsyncMock, mock_videos
     ):
         """Test search videos with upload date filters."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = mock_videos
         mock_session.execute.return_value = mock_result
 
-        upload_after = datetime(2023, 1, 1, tzinfo=timezone.utc)
-        upload_before = datetime(2023, 12, 31, tzinfo=timezone.utc)
+        upload_after = datetime(2023, 1, 1, tzinfo=UTC)
+        upload_before = datetime(2023, 12, 31, tzinfo=UTC)
 
         filters = create_video_search_filters(
             upload_after=upload_after, upload_before=upload_before
@@ -751,7 +749,7 @@ class TestVideoRepositoryStatistics:
             repository,
             "get_video_statistics",
             new=AsyncMock(return_value=expected_stats),
-        ) as mock_stats:
+        ):
 
             result = await repository.get_video_statistics(mock_session)
 
@@ -795,7 +793,7 @@ class TestVideoRepositoryStatistics:
             repository,
             "get_video_statistics",
             new=AsyncMock(return_value=expected_stats),
-        ) as mock_stats:
+        ):
 
             result = await repository.get_video_statistics(mock_session)
 
@@ -1351,7 +1349,7 @@ class TestVideoRepositoryAdvancedCoverage:
         # Mock get_by_video_id to return video
         with patch.object(
             repository, "get_by_video_id", new=AsyncMock(return_value=sample_video_db)
-        ) as mock_get:
+        ):
 
             # Mock localization data
             mock_localization = MagicMock()
@@ -1409,7 +1407,7 @@ class TestVideoRepositoryAdvancedCoverage:
         # Mock get_by_video_id to return video
         with patch.object(
             repository, "get_by_video_id", new=AsyncMock(return_value=sample_video_db)
-        ) as mock_get:
+        ):
 
             with patch(
                 "chronovista.repositories.video_localization_repository.VideoLocalizationRepository"

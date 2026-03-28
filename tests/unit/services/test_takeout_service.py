@@ -9,15 +9,13 @@ import csv
 import json
 import shutil
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 # Mark all async tests in this module
-pytestmark = pytest.mark.asyncio
-
 from chronovista.models.takeout import (
     ContentGap,
     PlaylistAnalysis,
@@ -180,7 +178,7 @@ class TestParseWatchHistory:
         assert first_entry.channel_url == "https://www.youtube.com/channel/UCtest123"
         assert first_entry.channel_id == "UCtest123"
         assert first_entry.watched_at == datetime(
-            2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc
+            2023, 1, 15, 14, 30, 0, tzinfo=UTC
         )
 
     async def test_parse_watch_history_no_file(self, temp_takeout_dir):
@@ -836,7 +834,7 @@ class TestLoggerIntegration:
             await service.parse_watch_history()
 
         # Check that info messages were logged
-        info_calls = [call for call in mock_logger.info.call_args_list]
+        info_calls = list(mock_logger.info.call_args_list)
         assert len(info_calls) >= 2  # Should log parsing start and completion
 
         # Check specific log messages

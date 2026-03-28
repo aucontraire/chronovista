@@ -10,8 +10,8 @@ factory targets the SQLAlchemy ORM model directly.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 
 import factory
 from factory import LazyFunction
@@ -38,7 +38,7 @@ class TagOperationLogFactory(factory.Factory[TagOperationLog]):
     reason: Any = LazyFunction(lambda: None)
     performed_by: Any = LazyFunction(lambda: "system")
     performed_at: Any = LazyFunction(
-        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
     )
     rollback_data: Any = LazyFunction(dict)
     rolled_back: Any = LazyFunction(lambda: False)
@@ -69,7 +69,7 @@ def create_merge_operation_log(**kwargs: Any) -> TagOperationLog:
     source_id = uuid7()
     target_id = uuid7()
     alias_id = uuid7()
-    defaults: Dict[str, Any] = {
+    defaults: dict[str, Any] = {
         "operation_type": "merge",
         "source_canonical_ids": [str(source_id)],
         "target_canonical_id": target_id,
@@ -97,7 +97,7 @@ def create_split_operation_log(**kwargs: Any) -> TagOperationLog:
         A TagOperationLog instance configured for a split operation.
     """
     source_id = uuid7()
-    defaults: Dict[str, Any] = {
+    defaults: dict[str, Any] = {
         "operation_type": "split",
         "source_canonical_ids": [str(source_id)],
         "reason": "Tag split into more specific variants",
@@ -129,7 +129,7 @@ class TagOperationLogTestData:
     ]
 
     @classmethod
-    def valid_operation_log_data(cls) -> Dict[str, Any]:
+    def valid_operation_log_data(cls) -> dict[str, Any]:
         """Get valid tag operation log data."""
         return {
             "operation_type": "create",
@@ -144,7 +144,7 @@ class TagOperationLogTestData:
         }
 
     @classmethod
-    def merge_operation_data(cls) -> Dict[str, Any]:
+    def merge_operation_data(cls) -> dict[str, Any]:
         """Get data for a merge operation."""
         source_id = uuid7()
         target_id = uuid7()

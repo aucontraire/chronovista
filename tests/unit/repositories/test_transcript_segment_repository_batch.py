@@ -8,9 +8,8 @@ Batch Correction Tools (T004, T005).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import List
-from unittest.mock import AsyncMock, MagicMock, call
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,8 +19,6 @@ from chronovista.repositories.transcript_segment_repository import (
     TranscriptSegmentRepository,
     _escape_like_pattern,
 )
-
-pytestmark = pytest.mark.asyncio
 
 
 def _make_segment(
@@ -46,7 +43,7 @@ def _make_segment(
         duration=2.5,
         end_time=2.5,
         sequence_number=sequence_number,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 
@@ -65,7 +62,7 @@ class TestFindByTextPatternSubstring:
         return session
 
     def _setup_scalars_result(
-        self, mock_session: AsyncMock, segments: List[TranscriptSegmentDB]
+        self, mock_session: AsyncMock, segments: list[TranscriptSegmentDB]
     ) -> None:
         """Configure mock session to return segments via scalars().all()."""
         mock_result = MagicMock()
@@ -154,7 +151,7 @@ class TestFindByTextPatternRegex:
         return session
 
     def _setup_scalars_result(
-        self, mock_session: AsyncMock, segments: List[TranscriptSegmentDB]
+        self, mock_session: AsyncMock, segments: list[TranscriptSegmentDB]
     ) -> None:
         """Configure mock session to return segments via scalars().all()."""
         mock_result = MagicMock()
@@ -254,7 +251,7 @@ class TestFindByTextPatternFilters:
         return session
 
     def _setup_scalars_result(
-        self, mock_session: AsyncMock, segments: List[TranscriptSegmentDB]
+        self, mock_session: AsyncMock, segments: list[TranscriptSegmentDB]
     ) -> None:
         """Configure mock session to return segments via scalars().all()."""
         mock_result = MagicMock()
@@ -392,7 +389,7 @@ class TestFindByTextPatternEffectiveText:
         return session
 
     def _setup_scalars_result(
-        self, mock_session: AsyncMock, segments: List[TranscriptSegmentDB]
+        self, mock_session: AsyncMock, segments: list[TranscriptSegmentDB]
     ) -> None:
         """Configure mock session to return segments via scalars().all()."""
         mock_result = MagicMock()
@@ -490,7 +487,7 @@ class TestFindByTextPatternEdgeCases:
         return session
 
     def _setup_scalars_result(
-        self, mock_session: AsyncMock, segments: List[TranscriptSegmentDB]
+        self, mock_session: AsyncMock, segments: list[TranscriptSegmentDB]
     ) -> None:
         """Configure mock session to return segments via scalars().all()."""
         mock_result = MagicMock()
@@ -797,7 +794,7 @@ class TestFindCandidateVideoIdsForCrossSegment:
         return AsyncMock(spec=AsyncSession)
 
     def _setup_scalars_result(
-        self, mock_session: AsyncMock, video_ids: List[str]
+        self, mock_session: AsyncMock, video_ids: list[str]
     ) -> None:
         """Configure mock session to return video_id strings via scalars().all()."""
         mock_result = MagicMock()
@@ -1073,7 +1070,7 @@ class TestFindByTextPatternLiteralEscaping:
         return AsyncMock(spec=AsyncSession)
 
     def _setup_scalars_result(
-        self, mock_session: AsyncMock, segments: List[TranscriptSegmentDB]
+        self, mock_session: AsyncMock, segments: list[TranscriptSegmentDB]
     ) -> None:
         """Configure mock session to return segments via scalars().all()."""
         mock_result = MagicMock()

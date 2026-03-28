@@ -20,14 +20,13 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from chronovista.services.tag_management import CollisionGroup
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 from typer.testing import CliRunner
 
@@ -705,7 +704,7 @@ def _make_operation_log_mock(
     log = MagicMock()
     log.id = op_id
     log.operation_type = op_type
-    log.performed_at = datetime(2024, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+    log.performed_at = datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC)
     log.rolled_back = rolled_back
     log.reason = reason
     return log
@@ -1281,7 +1280,7 @@ def _make_collision_group(
     normalized_form: str = "cafe",
     aliases: list[dict[str, Any]] | None = None,
     total_occurrences: int = 10,
-) -> "CollisionGroup":
+) -> CollisionGroup:
     """Build a CollisionGroup-like mock."""
     from chronovista.services.tag_management import CollisionGroup
 

@@ -6,12 +6,13 @@ pagination with sort, and empty liked results against the integration database.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, AsyncGenerator, List
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import (
@@ -25,8 +26,6 @@ from chronovista.db.models import (
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
-pytestmark = pytest.mark.asyncio
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Fixtures
@@ -35,7 +34,7 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 async def sort_test_session(
-    integration_session_factory: "async_sessionmaker[AsyncSession]",
+    integration_session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncGenerator[AsyncSession, None]:
     """Provide a session for test data setup and cleanup."""
     async with integration_session_factory() as session:
@@ -67,7 +66,7 @@ async def sort_test_channel(sort_test_session: AsyncSession) -> Channel:
 async def sort_test_videos(
     sort_test_session: AsyncSession,
     sort_test_channel: Channel,
-) -> List[Video]:
+) -> list[Video]:
     """Create videos with distinct titles and upload dates for sort testing.
 
     Creates 3 videos:
@@ -76,12 +75,12 @@ async def sort_test_videos(
     - sort_vid_c: title="Charlie Video",  upload_date=2024-02-20
     """
     video_specs = [
-        ("sort_vid__a", "Alpha Video", datetime(2024, 1, 10, tzinfo=timezone.utc)),
-        ("sort_vid__b", "Bravo Video", datetime(2024, 3, 15, tzinfo=timezone.utc)),
-        ("sort_vid__c", "Charlie Video", datetime(2024, 2, 20, tzinfo=timezone.utc)),
+        ("sort_vid__a", "Alpha Video", datetime(2024, 1, 10, tzinfo=UTC)),
+        ("sort_vid__b", "Bravo Video", datetime(2024, 3, 15, tzinfo=UTC)),
+        ("sort_vid__c", "Charlie Video", datetime(2024, 2, 20, tzinfo=UTC)),
     ]
 
-    videos: List[Video] = []
+    videos: list[Video] = []
     for vid_id, title, upload_date in video_specs:
         result = await sort_test_session.execute(
             select(Video).where(Video.video_id == vid_id)
@@ -111,7 +110,7 @@ async def sort_test_videos(
 @pytest.fixture
 async def liked_video_data(
     sort_test_session: AsyncSession,
-    sort_test_videos: List[Video],
+    sort_test_videos: list[Video],
 ) -> None:
     """Mark sort_vid__a as liked via user_videos table."""
     result = await sort_test_session.execute(
@@ -134,7 +133,7 @@ async def liked_video_data(
 @pytest.fixture
 async def transcript_video_data(
     sort_test_session: AsyncSession,
-    sort_test_videos: List[Video],
+    sort_test_videos: list[Video],
 ) -> None:
     """Add a transcript to sort_vid__b."""
     result = await sort_test_session.execute(
@@ -159,7 +158,7 @@ async def transcript_video_data(
 @pytest.fixture
 async def tagged_video_data(
     sort_test_session: AsyncSession,
-    sort_test_videos: List[Video],
+    sort_test_videos: list[Video],
 ) -> None:
     """Add tag 'sort_test_tag' to sort_vid__a and sort_vid__c."""
     for vid_id in ["sort_vid__a", "sort_vid__c"]:
@@ -189,7 +188,7 @@ class TestSortOrdering:
     async def test_sort_by_upload_date_desc(
         self,
         async_client: AsyncClient,
-        sort_test_videos: List[Video],
+        sort_test_videos: list[Video],
     ) -> None:
         """upload_date desc should return newest first."""
         response = await async_client.get(
@@ -210,7 +209,7 @@ class TestSortOrdering:
     async def test_sort_by_upload_date_asc(
         self,
         async_client: AsyncClient,
-        sort_test_videos: List[Video],
+        sort_test_videos: list[Video],
     ) -> None:
         """upload_date asc should return oldest first."""
         response = await async_client.get(
@@ -229,7 +228,7 @@ class TestSortOrdering:
     async def test_sort_by_title_asc(
         self,
         async_client: AsyncClient,
-        sort_test_videos: List[Video],
+        sort_test_videos: list[Video],
     ) -> None:
         """title asc should return alphabetically A-Z."""
         response = await async_client.get(
@@ -248,7 +247,7 @@ class TestSortOrdering:
     async def test_sort_by_title_desc(
         self,
         async_client: AsyncClient,
-        sort_test_videos: List[Video],
+        sort_test_videos: list[Video],
     ) -> None:
         """title desc should return alphabetically Z-A."""
         response = await async_client.get(
@@ -277,7 +276,7 @@ class TestLikedFilter:
     async def test_liked_only_returns_liked_video(
         self,
         async_client: AsyncClient,
-        sort_test_videos: List[Video],
+        sort_test_videos: list[Video],
         liked_video_data: None,
     ) -> None:
         """liked_only=true should include the liked video."""
@@ -293,7 +292,7 @@ class TestLikedFilter:
     async def test_liked_only_excludes_non_liked_videos(
         self,
         async_client: AsyncClient,
-        sort_test_videos: List[Video],
+        sort_test_videos: list[Video],
         liked_video_data: None,
     ) -> None:
         """liked_only=true should exclude non-liked videos."""
@@ -311,7 +310,7 @@ class TestLikedFilter:
     async def test_empty_liked_results(
         self,
         async_client: AsyncClient,
-        sort_test_videos: List[Video],
+        sort_test_videos: list[Video],
     ) -> None:
         """liked_only=true with no liked videos should return empty data."""
         # We don't set up liked_video_data here, so no videos are liked
@@ -335,7 +334,7 @@ class TestCombinedFilterIntersection:
     async def test_liked_and_has_transcript(
         self,
         async_client: AsyncClient,
-        sort_test_videos: List[Video],
+        sort_test_videos: list[Video],
         liked_video_data: None,
         transcript_video_data: None,
     ) -> None:
@@ -355,7 +354,7 @@ class TestCombinedFilterIntersection:
     async def test_liked_and_tag(
         self,
         async_client: AsyncClient,
-        sort_test_videos: List[Video],
+        sort_test_videos: list[Video],
         liked_video_data: None,
         tagged_video_data: None,
     ) -> None:
@@ -385,7 +384,7 @@ class TestPaginationWithSort:
     async def test_pagination_with_sort_returns_200(
         self,
         async_client: AsyncClient,
-        sort_test_videos: List[Video],
+        sort_test_videos: list[Video],
     ) -> None:
         """Pagination + sort params should return 200."""
         response = await async_client.get(
@@ -400,7 +399,7 @@ class TestPaginationWithSort:
     async def test_pagination_offset_with_sort(
         self,
         async_client: AsyncClient,
-        sort_test_videos: List[Video],
+        sort_test_videos: list[Video],
     ) -> None:
         """Second page with sort should skip first page items."""
         response = await async_client.get(
@@ -413,7 +412,7 @@ class TestPaginationWithSort:
     async def test_pagination_has_more_flag(
         self,
         async_client: AsyncClient,
-        sort_test_videos: List[Video],
+        sort_test_videos: list[Video],
     ) -> None:
         """has_more should be true when more results exist beyond the page."""
         response = await async_client.get(

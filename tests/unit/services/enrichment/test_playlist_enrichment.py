@@ -12,13 +12,9 @@ Covers Phase 9: User Story 7 - Enrich Playlist Metadata:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set, Tuple
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
-
-pytestmark = pytest.mark.asyncio
+from datetime import UTC, datetime
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 
 class TestEnrichPlaylistsMethod:
@@ -116,10 +112,6 @@ class TestPlaylistFieldUpdates:
 
     async def test_description_update_from_api(self) -> None:
         """Test that playlist description is updated from API response."""
-        db_playlist: dict[str, Any] = {
-            "playlist_id": "PLtest456",
-            "description": None,
-        }
 
         api_response: dict[str, Any] = {
             "snippet": {
@@ -148,7 +140,6 @@ class TestPlaylistFieldUpdates:
 
     async def test_item_count_update_from_api(self) -> None:
         """Test that playlist item count is updated from API response."""
-        db_playlist: dict[str, Any] = {"video_count": 0}
 
         api_response: dict[str, Any] = {"contentDetails": {"itemCount": 157}}
 
@@ -223,7 +214,7 @@ class TestDeletedPlaylistHandling:
 
         # Mark as deleted
         playlist["is_deleted"] = True
-        playlist["deleted_at"] = datetime.now(timezone.utc)
+        playlist["deleted_at"] = datetime.now(UTC)
 
         assert playlist["is_deleted"] is True
         assert playlist["deleted_at"] is not None
@@ -235,7 +226,7 @@ class TestDeletedPlaylistHandling:
             "playlist_id": "PLrecovered",
             "title": "[Placeholder] Playlist PLrecovered",
             "is_deleted": True,
-            "deleted_at": datetime(2024, 1, 1, tzinfo=timezone.utc),
+            "deleted_at": datetime(2024, 1, 1, tzinfo=UTC),
         }
 
         # API now returns this playlist
@@ -320,10 +311,9 @@ class TestDryRunModeForPlaylists:
             )
         )
 
-        dry_run = True
 
         # Even in dry run, should call API to show what would be updated
-        result = await mock_youtube_service.fetch_playlists_batched(["PL001"])
+        await mock_youtube_service.fetch_playlists_batched(["PL001"])
 
         mock_youtube_service.fetch_playlists_batched.assert_called_once()
 
@@ -466,7 +456,6 @@ class TestIntegrationWithVideoEnrichment:
 
     async def test_video_only_enrichment_no_playlist_fields(self) -> None:
         """Test that video-only enrichment doesn't include playlist fields."""
-        include_playlists = False
 
         video_only_summary = {
             "videos_processed": 500,
@@ -481,7 +470,7 @@ class TestIntegrationWithVideoEnrichment:
 
     async def test_playlist_enrichment_after_video_enrichment(self) -> None:
         """Test that playlist enrichment runs after video enrichment."""
-        enrichment_order: List[str] = []
+        enrichment_order: list[str] = []
 
         # Mock video enrichment
         async def mock_video_enrichment() -> dict[str, int]:
@@ -539,7 +528,7 @@ class TestPlaylistBatchProcessing:
 
     async def test_empty_playlist_list_returns_zero_counts(self) -> None:
         """Test that empty playlist list returns zero counts."""
-        playlist_ids: List[str] = []
+        playlist_ids: list[str] = []
 
         result: dict[str, Any] = {
             "playlists_processed": len(playlist_ids),
@@ -556,7 +545,7 @@ class TestPlaylistEnrichmentErrorHandling:
 
     async def test_api_error_logged_and_continued(self) -> None:
         """Test that API errors are logged and processing continues."""
-        errors: List[Dict[str, Any]] = []
+        errors: list[dict[str, Any]] = []
 
         # Simulate processing with an error
         try:
@@ -570,8 +559,8 @@ class TestPlaylistEnrichmentErrorHandling:
     async def test_individual_playlist_error_doesnt_stop_batch(self) -> None:
         """Test that error on one playlist doesn't stop processing others."""
         playlist_ids = ["PL001", "PL002", "PL003"]
-        results: List[Dict[str, Any]] = []
-        errors: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
+        errors: list[dict[str, Any]] = []
 
         for playlist_id in playlist_ids:
             try:

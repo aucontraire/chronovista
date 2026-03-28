@@ -10,8 +10,9 @@ were added.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
@@ -24,8 +25,6 @@ from tests.factories.id_factory import YouTubeIdFactory
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import async_sessionmaker
-
-pytestmark = pytest.mark.asyncio
 
 # ---------------------------------------------------------------------------
 # Namespace constants for TestTagEndpointRegression fixtures
@@ -190,7 +189,7 @@ class TestListTagsWithCounts:
                     video_id=f"tag_sort_{i:02d}",
                     channel_id=channel.channel_id,
                     title=f"Test Video {i}",
-                    upload_date=datetime.now(timezone.utc),
+                    upload_date=datetime.now(UTC),
                     duration=300,
                 )
                 videos.append(video)
@@ -282,7 +281,7 @@ class TestTagDetail:
                 video_id="tag_detail_vid",
                 channel_id=channel.channel_id,
                 title="Tag Detail Video",
-                upload_date=datetime.now(timezone.utc),
+                upload_date=datetime.now(UTC),
                 duration=300,
             )
             session.add(video)
@@ -359,7 +358,7 @@ class TestTagDetail:
                 video_id="tag_encode_vid",
                 channel_id=channel.channel_id,
                 title="Encoding Test Video",
-                upload_date=datetime.now(timezone.utc),
+                upload_date=datetime.now(UTC),
                 duration=300,
             )
             session.add(video)
@@ -440,7 +439,7 @@ class TestTagVideos:
                 video_id="tag_vid_test_00",
                 channel_id=channel.channel_id,
                 title="Test Video",
-                upload_date=datetime.now(timezone.utc),
+                upload_date=datetime.now(UTC),
                 duration=300,
             )
             session.add(video)
@@ -501,7 +500,7 @@ class TestTagVideos:
                 video_id="tag_active_vid",
                 channel_id=channel.channel_id,
                 title="Active Video",
-                upload_date=datetime.now(timezone.utc),
+                upload_date=datetime.now(UTC),
                 duration=300,
                 availability_status="available",
             )
@@ -512,7 +511,7 @@ class TestTagVideos:
                 video_id="tag_deleted_vid",
                 channel_id=channel.channel_id,
                 title="Deleted Video",
-                upload_date=datetime.now(timezone.utc),
+                upload_date=datetime.now(UTC),
                 duration=300,
                 availability_status="unavailable",
             )
@@ -569,21 +568,21 @@ class TestTagVideos:
                 video_id="tag_sort_vid_1",
                 channel_id=channel.channel_id,
                 title="Oldest Video",
-                upload_date=datetime(2023, 1, 1, tzinfo=timezone.utc),
+                upload_date=datetime(2023, 1, 1, tzinfo=UTC),
                 duration=300,
             )
             video2 = Video(
                 video_id="tag_sort_vid_2",
                 channel_id=channel.channel_id,
                 title="Middle Video",
-                upload_date=datetime(2023, 6, 1, tzinfo=timezone.utc),
+                upload_date=datetime(2023, 6, 1, tzinfo=UTC),
                 duration=300,
             )
             video3 = Video(
                 video_id="tag_sort_vid_3",
                 channel_id=channel.channel_id,
                 title="Newest Video",
-                upload_date=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                upload_date=datetime(2024, 1, 1, tzinfo=UTC),
                 duration=300,
             )
             session.add_all([video1, video2, video3])
@@ -642,7 +641,7 @@ class TestTagVideos:
                     video_id=f"tag_pag_test_{i:02d}",
                     channel_id=channel.channel_id,
                     title=f"Pagination Test Video {i}",
-                    upload_date=datetime.now(timezone.utc),
+                    upload_date=datetime.now(UTC),
                     duration=300 + i * 10,
                 )
                 videos.append(video)
@@ -693,7 +692,7 @@ class TestTagVideos:
 
 @pytest.fixture
 async def _reg_test_session(
-    integration_session_factory: "async_sessionmaker[AsyncSession]",
+    integration_session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncGenerator[AsyncSession, None]:
     """Bare session for regression test data setup and cleanup.
 
@@ -749,7 +748,7 @@ async def _reg_sample_data(
         video_id=_REG_VID1_ID,
         channel_id=_REG_CHANNEL_ID,
         title="Python Basics",
-        upload_date=datetime(2024, 3, 10, tzinfo=timezone.utc),
+        upload_date=datetime(2024, 3, 10, tzinfo=UTC),
         duration=600,
         availability_status="available",
     )
@@ -757,7 +756,7 @@ async def _reg_sample_data(
         video_id=_REG_VID2_ID,
         channel_id=_REG_CHANNEL_ID,
         title="Python and Testing",
-        upload_date=datetime(2024, 5, 20, tzinfo=timezone.utc),
+        upload_date=datetime(2024, 5, 20, tzinfo=UTC),
         duration=900,
         availability_status="available",
     )
@@ -765,7 +764,7 @@ async def _reg_sample_data(
         video_id=_REG_VID3_ID,
         channel_id=_REG_CHANNEL_ID,
         title="Deleted Python Video",
-        upload_date=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        upload_date=datetime(2024, 1, 1, tzinfo=UTC),
         duration=300,
         availability_status="deleted",
     )

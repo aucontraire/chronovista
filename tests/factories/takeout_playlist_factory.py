@@ -8,7 +8,7 @@ with realistic and consistent test data.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Any, List, cast
+from typing import Any
 
 import factory
 
@@ -178,7 +178,7 @@ def create_tech_takeout_playlist(**kwargs: Any) -> TakeoutPlaylist:
     return result
 
 
-def create_batch_takeout_playlists(count: int = 3) -> List[TakeoutPlaylist]:
+def create_batch_takeout_playlists(count: int = 3) -> list[TakeoutPlaylist]:
     """Create a batch of TakeoutPlaylist instances for testing."""
     playlists = []
     base_names = [

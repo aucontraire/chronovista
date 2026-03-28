@@ -13,20 +13,16 @@ Tests cover:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import Video as VideoDB
-
-pytestmark = pytest.mark.asyncio
-
 
 # =============================================================================
 # Test Fixtures
@@ -36,7 +32,7 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture
 async def sample_channel(
     integration_session_factory,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create a sample channel in the database for testing.
 
@@ -88,8 +84,8 @@ async def sample_channel(
 @pytest.fixture
 async def sample_channel_with_videos(
     integration_session_factory,
-    sample_channel: Dict[str, Any],
-) -> Dict[str, Any]:
+    sample_channel: dict[str, Any],
+) -> dict[str, Any]:
     """
     Create a sample channel with associated videos.
 
@@ -107,7 +103,7 @@ async def sample_channel_with_videos(
                 channel_id=channel_id,
                 title=f"Test Video {i + 1}",
                 description=f"Description for test video {i + 1}",
-                upload_date=datetime(2024, 1, 15 + i, tzinfo=timezone.utc),
+                upload_date=datetime(2024, 1, 15 + i, tzinfo=UTC),
                 duration=300 + (i * 60),
                 view_count=1000 * (i + 1),
                 made_for_kids=False,
@@ -136,7 +132,7 @@ async def sample_channel_with_videos(
 @pytest.fixture
 async def channel_without_videos(
     integration_session_factory,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create a channel with no videos for testing has_videos filter.
 
@@ -228,7 +224,7 @@ class TestListChannels:
     async def test_list_channels_returns_paginated_response(
         self,
         async_client: AsyncClient,
-        sample_channel: Dict[str, Any],
+        sample_channel: dict[str, Any],
     ) -> None:
         """Test channel list returns paginated response structure."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
@@ -243,7 +239,7 @@ class TestListChannels:
     async def test_list_channels_pagination_metadata(
         self,
         async_client: AsyncClient,
-        sample_channel: Dict[str, Any],
+        sample_channel: dict[str, Any],
     ) -> None:
         """Test pagination metadata contains required fields."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
@@ -263,7 +259,7 @@ class TestListChannels:
     async def test_list_channels_default_pagination(
         self,
         async_client: AsyncClient,
-        sample_channel: Dict[str, Any],
+        sample_channel: dict[str, Any],
     ) -> None:
         """Test default pagination values (limit=20, offset=0)."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
@@ -305,7 +301,7 @@ class TestListChannels:
     async def test_list_channels_item_structure(
         self,
         async_client: AsyncClient,
-        sample_channel: Dict[str, Any],
+        sample_channel: dict[str, Any],
     ) -> None:
         """Test channel list items have correct structure."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
@@ -327,8 +323,8 @@ class TestListChannels:
     async def test_list_channels_has_videos_filter_true(
         self,
         async_client: AsyncClient,
-        sample_channel: Dict[str, Any],
-        channel_without_videos: Dict[str, Any],
+        sample_channel: dict[str, Any],
+        channel_without_videos: dict[str, Any],
     ) -> None:
         """Test has_videos=true filter returns only channels with videos."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
@@ -345,7 +341,7 @@ class TestListChannels:
     async def test_list_channels_has_videos_filter_false(
         self,
         async_client: AsyncClient,
-        channel_without_videos: Dict[str, Any],
+        channel_without_videos: dict[str, Any],
     ) -> None:
         """Test has_videos=false filter returns only channels without videos."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
@@ -361,8 +357,8 @@ class TestListChannels:
     async def test_list_channels_ordered_by_video_count(
         self,
         async_client: AsyncClient,
-        sample_channel: Dict[str, Any],
-        channel_without_videos: Dict[str, Any],
+        sample_channel: dict[str, Any],
+        channel_without_videos: dict[str, Any],
     ) -> None:
         """Test channels are ordered by video_count descending."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
@@ -391,7 +387,7 @@ class TestChannelDetail:
     async def test_get_channel_detail(
         self,
         async_client: AsyncClient,
-        sample_channel: Dict[str, Any],
+        sample_channel: dict[str, Any],
     ) -> None:
         """Test getting channel details by ID."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
@@ -407,7 +403,7 @@ class TestChannelDetail:
     async def test_get_channel_detail_structure(
         self,
         async_client: AsyncClient,
-        sample_channel: Dict[str, Any],
+        sample_channel: dict[str, Any],
     ) -> None:
         """Test channel detail response has all expected fields."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
@@ -494,7 +490,7 @@ class TestChannelVideos:
     async def test_get_channel_videos_returns_videos(
         self,
         async_client: AsyncClient,
-        sample_channel_with_videos: Dict[str, Any],
+        sample_channel_with_videos: dict[str, Any],
     ) -> None:
         """Test getting videos for a channel returns video list."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
@@ -511,7 +507,7 @@ class TestChannelVideos:
     async def test_get_channel_videos_empty_channel(
         self,
         async_client: AsyncClient,
-        channel_without_videos: Dict[str, Any],
+        channel_without_videos: dict[str, Any],
     ) -> None:
         """Test getting videos for channel with no videos returns empty list."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
@@ -541,7 +537,7 @@ class TestChannelVideos:
     async def test_get_channel_videos_pagination(
         self,
         async_client: AsyncClient,
-        sample_channel_with_videos: Dict[str, Any],
+        sample_channel_with_videos: dict[str, Any],
     ) -> None:
         """Test pagination works for channel videos."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
@@ -558,7 +554,7 @@ class TestChannelVideos:
     async def test_get_channel_videos_item_structure(
         self,
         async_client: AsyncClient,
-        sample_channel_with_videos: Dict[str, Any],
+        sample_channel_with_videos: dict[str, Any],
     ) -> None:
         """Test video list items have correct structure."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
@@ -581,7 +577,7 @@ class TestChannelVideos:
     async def test_get_channel_videos_ordered_by_upload_date(
         self,
         async_client: AsyncClient,
-        sample_channel_with_videos: Dict[str, Any],
+        sample_channel_with_videos: dict[str, Any],
     ) -> None:
         """Test videos are ordered by upload_date descending."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:

@@ -7,7 +7,7 @@ for all VideoCategory model variants.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -275,8 +275,8 @@ class TestVideoCategory:
 
     def test_create_valid_video_category(self):
         """Test creating valid VideoCategory with keyword arguments."""
-        created_at = datetime.now(timezone.utc)
-        updated_at = datetime.now(timezone.utc)
+        created_at = datetime.now(UTC)
+        updated_at = datetime.now(UTC)
 
         category = VideoCategory(
             category_id="10",
@@ -300,8 +300,8 @@ class TestVideoCategory:
             category_id = "20"
             name = "Gaming"
             assignable = True
-            created_at = datetime.now(timezone.utc)
-            updated_at = datetime.now(timezone.utc)
+            created_at = datetime.now(UTC)
+            updated_at = datetime.now(UTC)
 
         mock_db = MockVideoCategoryDB()
         category = VideoCategory.model_validate(mock_db, from_attributes=True)
@@ -314,8 +314,8 @@ class TestVideoCategory:
 
     def test_model_is_instance_of_base(self):
         """Test that VideoCategory is instance of VideoCategoryBase."""
-        created_at = datetime.now(timezone.utc)
-        updated_at = datetime.now(timezone.utc)
+        created_at = datetime.now(UTC)
+        updated_at = datetime.now(UTC)
 
         category = VideoCategory(
             category_id="1",
@@ -334,7 +334,7 @@ class TestVideoCategory:
                 "category_id": "1",
                 "name": "Test",
                 "assignable": True,
-                "updated_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(UTC),
             })
 
         # Missing updated_at
@@ -343,13 +343,13 @@ class TestVideoCategory:
                 "category_id": "1",
                 "name": "Test",
                 "assignable": True,
-                "created_at": datetime.now(timezone.utc),
+                "created_at": datetime.now(UTC),
             })
 
     def test_model_dump_includes_timestamps(self):
         """Test model_dump() includes timestamp fields."""
-        created_at = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-        updated_at = datetime(2024, 1, 2, 12, 0, 0, tzinfo=timezone.utc)
+        created_at = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
+        updated_at = datetime(2024, 1, 2, 12, 0, 0, tzinfo=UTC)
 
         category = VideoCategory(
             category_id="10",
@@ -381,7 +381,7 @@ class TestVideoCategoryModelInteractions:
         )
 
         # Simulate creation
-        created_at = datetime.now(timezone.utc)
+        created_at = datetime.now(UTC)
         updated_at = created_at
 
         category_full = VideoCategory(
@@ -402,7 +402,7 @@ class TestVideoCategoryModelInteractions:
         updated_data = category_full.model_dump()
         update_data = category_update.model_dump(exclude_unset=True)
         updated_data.update(update_data)
-        updated_data["updated_at"] = datetime.now(timezone.utc)
+        updated_data["updated_at"] = datetime.now(UTC)
 
         category_updated = VideoCategory.model_validate(updated_data)
 
@@ -455,8 +455,8 @@ class TestVideoCategoryModelInteractions:
     def test_model_config_validation(self):
         """Test model configuration settings."""
         # Test validate_assignment works
-        created_at = datetime.now(timezone.utc)
-        updated_at = datetime.now(timezone.utc)
+        created_at = datetime.now(UTC)
+        updated_at = datetime.now(UTC)
 
         category = VideoCategory(
             category_id="10",

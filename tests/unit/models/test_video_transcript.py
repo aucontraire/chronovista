@@ -7,7 +7,7 @@ serialization, and business logic testing using factory-boy for DRY principles.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -337,7 +337,7 @@ class TestVideoTranscriptFactory:
 
     def test_video_transcript_timestamps(self):
         """Test VideoTranscript with custom timestamps."""
-        downloaded_time = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        downloaded_time = datetime(2023, 1, 1, tzinfo=UTC)
 
         transcript = VideoTranscriptFactory.build(downloaded_at=downloaded_time)
 
@@ -356,7 +356,7 @@ class TestVideoTranscriptFactory:
             "is_auto_synced": False,
             "track_kind": "standard",
             "caption_name": "Italiano (manuale)",
-            "downloaded_at": datetime(2023, 6, 15, 10, 30, tzinfo=timezone.utc),
+            "downloaded_at": datetime(2023, 6, 15, 10, 30, tzinfo=UTC),
         }
 
         transcript = VideoTranscript.model_validate(transcript_data)
@@ -455,8 +455,8 @@ class TestTranscriptSearchFiltersFactory:
 
     def test_transcript_search_filters_comprehensive(self):
         """Test TranscriptSearchFilters with all fields."""
-        download_after = datetime(2023, 1, 1, tzinfo=timezone.utc)
-        download_before = datetime(2023, 12, 31, tzinfo=timezone.utc)
+        download_after = datetime(2023, 1, 1, tzinfo=UTC)
+        download_before = datetime(2023, 12, 31, tzinfo=UTC)
 
         filters = TranscriptSearchFiltersFactory.build(
             video_ids=["dQw4w9WgXcQ", "9bZkp7q19f0", "3tmd-ClpJxA"],

@@ -4,7 +4,7 @@ Tests for PlaylistRepository functionality.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,8 +20,6 @@ from chronovista.models.playlist import (
 )
 from chronovista.repositories.playlist_repository import PlaylistRepository
 from tests.factories.playlist_factory import PlaylistTestData, create_playlist_create
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestPlaylistRepository:
@@ -48,8 +46,8 @@ class TestPlaylistRepository:
             privacy_status="public",
             channel_id="UC_x5XG1OV2P6uZZ5FSM9Ttw",
             video_count=10,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
     @pytest.fixture
@@ -277,8 +275,8 @@ class TestPlaylistRepository:
             min_video_count=5,
             max_video_count=50,
             has_description=True,
-            created_after=datetime(2023, 1, 1, tzinfo=timezone.utc),
-            created_before=datetime(2023, 12, 31, tzinfo=timezone.utc),
+            created_after=datetime(2023, 1, 1, tzinfo=UTC),
+            created_before=datetime(2023, 12, 31, tzinfo=UTC),
         )
 
         mock_playlists = [MagicMock(), MagicMock()]
@@ -578,7 +576,7 @@ class TestPlaylistRepository:
             repository,
             "get_by_playlist_id",
             new=AsyncMock(return_value=sample_playlist_db),
-        ) as mock_get:
+        ):
 
             result = await repository.delete_by_playlist_id(
                 mock_session, "PLrAXtmRdnqDpVC2bT0Bz-8Q5RWmF6gBkR"
@@ -600,7 +598,7 @@ class TestPlaylistRepository:
         mock_playlists = [MagicMock(), MagicMock(), MagicMock()]
         with patch.object(
             repository, "get_by_channel_id", new=AsyncMock(return_value=mock_playlists)
-        ) as mock_get_by_channel:
+        ):
 
             result = await repository.delete_by_channel_id(mock_session, "UC123")
 
@@ -619,7 +617,7 @@ class TestPlaylistRepository:
             repository,
             "get_by_playlist_id",
             new=AsyncMock(return_value=target_playlist),
-        ) as mock_get:
+        ):
 
             # Mock similar playlists
             similar_playlist = MagicMock()
@@ -646,7 +644,7 @@ class TestPlaylistRepository:
         """Test finding similar playlists when target doesn't exist."""
         with patch.object(
             repository, "get_by_playlist_id", new=AsyncMock(return_value=None)
-        ) as mock_get:
+        ):
 
             result = await repository.find_similar_playlists(
                 mock_session, "PLnonexistent"
@@ -715,7 +713,7 @@ class TestPlaylistRepositoryIntegration:
         with (
             patch.object(
                 repository, "get_by_playlist_id", new=AsyncMock(return_value=None)
-            ) as mock_get,
+            ),
             patch.object(
                 repository, "create", new=AsyncMock(return_value=mock_playlist_db)
             ) as mock_create,

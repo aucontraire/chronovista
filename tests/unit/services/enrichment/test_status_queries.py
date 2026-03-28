@@ -7,19 +7,15 @@ Covers:
 - T054d: Performance test for status query structure
 """
 
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from sqlalchemy import func, select
 
 from chronovista.services.enrichment.enrichment_service import (
     BATCH_SIZE,
     EnrichmentService,
     estimate_quota_cost,
 )
-
-pytestmark = pytest.mark.asyncio
 
 
 @pytest.mark.asyncio

@@ -17,8 +17,7 @@ API errors. First empty API response sets unavailability_first_detected; second
 consecutive empty response confirms by setting availability_status=UNAVAILABLE.
 """
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -27,8 +26,6 @@ from chronovista.models.enums import AvailabilityStatus
 from chronovista.services.enrichment.enrichment_service import EnrichmentService
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 class TestVideoMultiCycleConfirmation:
     """Tests for video multi-cycle unavailability confirmation (FR-024, FR-026)."""
@@ -103,7 +100,7 @@ class TestVideoMultiCycleConfirmation:
         """
         # Create a video with unavailability_first_detected already set
         # (simulating first cycle already occurred)
-        first_detection_time = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        first_detection_time = datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
         mock_video = MagicMock()
         mock_video.video_id = "secondCycle456"
         mock_video.availability_status = AvailabilityStatus.AVAILABLE
@@ -138,13 +135,13 @@ class TestVideoMultiCycleConfirmation:
         but the second sync succeeds.
         """
         from chronovista.models.api_responses import (
-            YouTubeVideoResponse,
-            VideoSnippet,
             VideoContentDetails,
+            VideoSnippet,
+            YouTubeVideoResponse,
         )
 
         # Create a video with unavailability_first_detected set (first cycle occurred)
-        first_detection_time = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        first_detection_time = datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
         mock_video = MagicMock()
         mock_video.video_id = "transientError789"
         mock_video.title = "[Placeholder] Video transientError789"
@@ -158,7 +155,7 @@ class TestVideoMultiCycleConfirmation:
             etag="test_etag",
             id="transientError789",
             snippet=VideoSnippet(
-                publishedAt=datetime.now(timezone.utc),
+                publishedAt=datetime.now(UTC),
                 channelId="UCuAXFkgsw1L7xaCfnd5JJOw",
                 title="Recovered Video",
                 description="This video is back",
@@ -217,9 +214,9 @@ class TestVideoMultiCycleConfirmation:
         This is the happy path baseline test.
         """
         from chronovista.models.api_responses import (
-            YouTubeVideoResponse,
-            VideoSnippet,
             VideoContentDetails,
+            VideoSnippet,
+            YouTubeVideoResponse,
         )
 
         # Create a normal video with no unavailability flags
@@ -236,7 +233,7 @@ class TestVideoMultiCycleConfirmation:
             etag="test_etag",
             id="normalVideo123",
             snippet=VideoSnippet(
-                publishedAt=datetime.now(timezone.utc),
+                publishedAt=datetime.now(UTC),
                 channelId="UCuAXFkgsw1L7xaCfnd5JJOw",
                 title="Normal Video",
                 description="Normal video metadata",
@@ -322,7 +319,6 @@ class TestChannelMultiCycleConfirmation:
         - NOT change availability_status (remains AVAILABLE)
         - Increment channels_skipped counter
         """
-        from chronovista.models.api_responses import YouTubeChannelResponse
 
         # Create a channel with no prior unavailability flag
         mock_channel = MagicMock()
@@ -369,10 +365,9 @@ class TestChannelMultiCycleConfirmation:
         - Clear unavailability_first_detected (reset for next cycle)
         - Increment channels_skipped counter
         """
-        from chronovista.models.api_responses import YouTubeChannelResponse
 
         # Create a channel with unavailability_first_detected already set
-        first_detection_time = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        first_detection_time = datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
         mock_channel = MagicMock()
         mock_channel.channel_id = "UCsecondChannel"
         mock_channel.availability_status = AvailabilityStatus.AVAILABLE
@@ -421,13 +416,13 @@ class TestChannelMultiCycleConfirmation:
         but the second sync succeeds.
         """
         from chronovista.models.api_responses import (
-            YouTubeChannelResponse,
             ChannelSnippet,
             ChannelStatisticsResponse,
+            YouTubeChannelResponse,
         )
 
         # Create a channel with unavailability_first_detected set (first cycle occurred)
-        first_detection_time = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        first_detection_time = datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
         mock_channel = MagicMock()
         mock_channel.channel_id = "UCtransientChannel"
         mock_channel.title = "Transient Channel"
@@ -442,7 +437,7 @@ class TestChannelMultiCycleConfirmation:
             snippet=ChannelSnippet(
                 title="Recovered Channel",
                 description="Channel description",
-                publishedAt=datetime.now(timezone.utc),
+                publishedAt=datetime.now(UTC),
                 thumbnails={},
             ),
             statistics=ChannelStatisticsResponse(
@@ -521,9 +516,9 @@ class TestRestorationBehavior:
         - Update video metadata normally
         """
         from chronovista.models.api_responses import (
-            YouTubeVideoResponse,
-            VideoSnippet,
             VideoContentDetails,
+            VideoSnippet,
+            YouTubeVideoResponse,
         )
 
         # Create a previously unavailable video
@@ -542,7 +537,7 @@ class TestRestorationBehavior:
             etag="test_etag",
             id="restoredVideo123",
             snippet=VideoSnippet(
-                publishedAt=datetime.now(timezone.utc),
+                publishedAt=datetime.now(UTC),
                 channelId="UCuAXFkgsw1L7xaCfnd5JJOw",
                 title="Restored Video",
                 description="This video has been restored",
@@ -610,9 +605,9 @@ class TestRestorationBehavior:
         - Update channel metadata normally
         """
         from chronovista.models.api_responses import (
-            YouTubeChannelResponse,
             ChannelSnippet,
             ChannelStatisticsResponse,
+            YouTubeChannelResponse,
         )
 
         # Create a previously unavailable channel
@@ -632,7 +627,7 @@ class TestRestorationBehavior:
             snippet=ChannelSnippet(
                 title="Restored Channel Title",
                 description="Channel has been restored",
-                publishedAt=datetime.now(timezone.utc),
+                publishedAt=datetime.now(UTC),
                 thumbnails={},
             ),
             statistics=ChannelStatisticsResponse(
@@ -690,14 +685,14 @@ class TestRestorationBehavior:
         The restoration should clear the flag regardless of how it got there.
         """
         from chronovista.models.api_responses import (
-            YouTubeVideoResponse,
-            VideoSnippet,
             VideoContentDetails,
+            VideoSnippet,
+            YouTubeVideoResponse,
         )
 
         # Create a video with both UNAVAILABLE status AND a pending flag
         # (edge case - shouldn't happen normally, but test robustness)
-        first_detection_time = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        first_detection_time = datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
         mock_video = MagicMock()
         mock_video.video_id = "edgeCaseVideo"
         mock_video.title = "[Placeholder] Video edgeCaseVideo"
@@ -713,7 +708,7 @@ class TestRestorationBehavior:
             etag="test_etag",
             id="edgeCaseVideo",
             snippet=VideoSnippet(
-                publishedAt=datetime.now(timezone.utc),
+                publishedAt=datetime.now(UTC),
                 channelId="UCuAXFkgsw1L7xaCfnd5JJOw",
                 title="Edge Case Video",
                 description="Testing edge case",
@@ -744,7 +739,7 @@ class TestRestorationBehavior:
             mock_get.return_value = [mock_video]
 
             # Enrich videos
-            report = await service.enrich_videos(
+            await service.enrich_videos(
                 mock_session, include_deleted=True, check_prerequisites=False
             )
 
@@ -835,7 +830,7 @@ class TestDryRunBehavior:
         - Return False (not confirmed)
         """
         # Create a video with unavailability_first_detected set (ready for second cycle)
-        first_detection_time = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        first_detection_time = datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
         mock_video = MagicMock()
         mock_video.video_id = "dryRunVideo456"
         mock_video.availability_status = AvailabilityStatus.AVAILABLE

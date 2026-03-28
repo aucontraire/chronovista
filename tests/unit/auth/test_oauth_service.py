@@ -5,9 +5,9 @@ Comprehensive tests for YouTubeOAuthService.
 from __future__ import annotations
 
 import json
-import tempfile
+from datetime import UTC
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, mock_open, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
@@ -151,7 +151,6 @@ class TestYouTubeOAuthService:
 
     def test_load_token_success(self, oauth_service):
         """Test successful token loading."""
-        from datetime import datetime
 
         oauth_service.token_file = MagicMock()
         oauth_service.token_file.exists.return_value = True
@@ -252,14 +251,14 @@ class TestYouTubeOAuthService:
 
     def test_get_token_info_with_valid_credentials(self, oauth_service):
         """Test get_token_info with valid credentials."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         mock_credentials = MagicMock()
         mock_credentials.valid = True
         mock_credentials.expired = False
         mock_credentials.refresh_token = "refresh_token"
         mock_credentials.scopes = ["scope1", "scope2"]
-        mock_credentials.expiry = datetime.now(timezone.utc)
+        mock_credentials.expiry = datetime.now(UTC)
 
         oauth_service.token_file = MagicMock()
         oauth_service.token_file.exists.return_value = True
@@ -646,14 +645,14 @@ class TestYouTubeOAuthServiceInteractive:
 
     def test_get_token_info_authenticated(self, oauth_service):
         """Test get_token_info when authenticated."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         mock_credentials = MagicMock()
         mock_credentials.valid = True
         mock_credentials.expired = False
         mock_credentials.refresh_token = "refresh_token"
         mock_credentials.scopes = ["scope1", "scope2"]
-        mock_credentials.expiry = datetime.now(timezone.utc)
+        mock_credentials.expiry = datetime.now(UTC)
 
         oauth_service.token_file = MagicMock()
         oauth_service.token_file.exists.return_value = True

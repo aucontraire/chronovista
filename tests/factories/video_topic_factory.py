@@ -7,12 +7,11 @@ with sensible defaults and easy customization.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, cast
+from datetime import UTC, datetime
+from typing import Any
 
 import factory
 from factory import Faker, LazyAttribute
-from factory.faker import Faker as FakerType
 
 from chronovista.models.video_topic import (
     VideoTopic,
@@ -61,7 +60,7 @@ class VideoTopicFactory(VideoTopicBaseFactory):
     class Meta:
         model = VideoTopic
 
-    created_at: Any = Faker("date_time", tzinfo=timezone.utc)
+    created_at: Any = Faker("date_time", tzinfo=UTC)
 
 
 class VideoTopicSearchFiltersFactory(factory.Factory[VideoTopicSearchFilters]):
@@ -75,8 +74,8 @@ class VideoTopicSearchFiltersFactory(factory.Factory[VideoTopicSearchFilters]):
         lambda: ["topic_music", "topic_gaming", "topic_education"]
     )
     relevance_types: Any = factory.LazyFunction(lambda: ["primary", "relevant"])
-    created_after: Any = Faker("date_time", tzinfo=timezone.utc)
-    created_before: Any = Faker("date_time", tzinfo=timezone.utc)
+    created_after: Any = Faker("date_time", tzinfo=UTC)
+    created_before: Any = Faker("date_time", tzinfo=UTC)
 
 
 class VideoTopicStatisticsFactory(factory.Factory[VideoTopicStatistics]):
@@ -207,6 +206,6 @@ class VideoTopicTestData:
             "video_ids": cls.VALID_VIDEO_IDS[:2],
             "topic_ids": cls.VALID_TOPIC_IDS[:3],
             "relevance_types": cls.VALID_RELEVANCE_TYPES[:2],
-            "created_after": datetime(2023, 1, 1, tzinfo=timezone.utc),
-            "created_before": datetime(2023, 12, 31, tzinfo=timezone.utc),
+            "created_after": datetime(2023, 1, 1, tzinfo=UTC),
+            "created_before": datetime(2023, 12, 31, tzinfo=UTC),
         }

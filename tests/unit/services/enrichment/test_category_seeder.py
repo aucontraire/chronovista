@@ -13,17 +13,11 @@ Tests cover:
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
-from chronovista.models.video_category import VideoCategoryCreate
 from chronovista.repositories.video_category_repository import VideoCategoryRepository
 from chronovista.services.enrichment.seeders import CategorySeeder, CategorySeedResult
 from chronovista.services.youtube_service import YouTubeService
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestCategorySeederConstants:
@@ -36,7 +30,7 @@ class TestCategorySeederConstants:
     def test_default_regions_list(self) -> None:
         """Test default regions match expected list."""
         expected_regions = ["US", "GB", "JP", "DE", "BR", "IN", "MX"]
-        assert CategorySeeder.DEFAULT_REGIONS == expected_regions
+        assert expected_regions == CategorySeeder.DEFAULT_REGIONS
 
     def test_get_default_region_count(self) -> None:
         """Test class method for getting default region count."""

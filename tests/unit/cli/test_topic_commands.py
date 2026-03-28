@@ -7,15 +7,12 @@ list, show, channels, and videos commands.
 
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
 
 from chronovista.cli.topic_commands import topic_app
-from chronovista.db.models import TopicCategory as TopicCategoryDB
 
 
 class TestTopicCommands:

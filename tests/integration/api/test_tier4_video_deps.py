@@ -22,8 +22,9 @@ Defensive Implementation Notes:
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
-from typing import Any, Awaitable, Dict, List
+from collections.abc import Awaitable
+from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 from sqlalchemy import delete, select
@@ -40,14 +41,11 @@ from chronovista.models.enums import (
 from chronovista.models.user_video import UserVideoCreate, UserVideoUpdate
 from chronovista.models.video_tag import VideoTagCreate, VideoTagUpdate
 from chronovista.models.video_transcript import (
-    VideoTranscript,
     VideoTranscriptCreate,
     VideoTranscriptUpdate,
 )
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 from tests.factories.user_video_factory import create_user_video_update
-
-pytestmark = pytest.mark.asyncio
 
 
 @pytest.mark.integration
@@ -60,7 +58,7 @@ class TestVideoTranscriptFromAPI:
         self,
         authenticated_youtube_service,
         integration_db_session,
-        established_videos: Awaitable[List[Dict[str, Any]] | None],
+        established_videos: Awaitable[list[dict[str, Any]] | None],
     ):
         """Test creating video transcripts from real YouTube API data."""
         # Await the fixture once - defensive pattern from Tier 3 lessons
@@ -107,7 +105,7 @@ class TestVideoTranscriptFromAPI:
                     transcript_content = f"Real caption track: {caption_name}"
 
                 # Create unique transcript ID using timestamp - defensive pattern
-                unique_suffix = f"test_{int(time.time())}"
+                f"test_{int(time.time())}"
 
                 transcript_create = VideoTranscriptCreate(
                     video_id=video_id,
@@ -185,7 +183,7 @@ class TestVideoTranscriptFromAPI:
     async def test_video_transcript_multi_language_support(
         self,
         integration_db_session,
-        established_videos: Awaitable[List[Dict[str, Any]] | None],
+        established_videos: Awaitable[list[dict[str, Any]] | None],
     ):
         """Test video transcript multi-language capabilities."""
         established_videos_data = await established_videos
@@ -293,7 +291,7 @@ class TestVideoTagFromAPI:
         self,
         authenticated_youtube_service,
         integration_db_session,
-        established_videos: Awaitable[List[Dict[str, Any]] | None],
+        established_videos: Awaitable[list[dict[str, Any]] | None],
     ):
         """Test creating video tags from real YouTube API data."""
         established_videos_data = await established_videos
@@ -325,7 +323,7 @@ class TestVideoTagFromAPI:
 
                 # Extract tags from video title and description for realistic testing
                 title = api_video_data["snippet"]["title"]
-                description = api_video_data["snippet"].get("description", "")
+                api_video_data["snippet"].get("description", "")
 
                 # Generate test tags based on content - more realistic than arbitrary tags
                 content_tags = []
@@ -404,7 +402,7 @@ class TestVideoTagFromAPI:
     async def test_video_tag_deduplication(
         self,
         integration_db_session,
-        established_videos: Awaitable[List[Dict[str, Any]] | None],
+        established_videos: Awaitable[list[dict[str, Any]] | None],
     ):
         """Test that duplicate video tags are handled properly."""
         established_videos_data = await established_videos
@@ -445,7 +443,7 @@ class TestVideoTagFromAPI:
                     )
 
                     # This should fail due to unique constraint (video_id + tag_name)
-                    second_tag = await tag_repo.create(session, obj_in=duplicate_tag)
+                    await tag_repo.create(session, obj_in=duplicate_tag)
                     await session.commit()
 
                     # If we get here, duplicate was somehow allowed
@@ -468,7 +466,7 @@ class TestVideoTagFromAPI:
                 # If duplicate was created, that's actually fine for some designs
                 # but we should be aware of the behavior
                 if duplicate_created:
-                    print(f"Note: Duplicate tags were allowed for video {video_id}")
+                    pass
 
             except Exception:
                 await session.rollback()
@@ -483,7 +481,7 @@ class TestUserVideoFromAPI:
     async def test_user_video_interaction_tracking(
         self,
         integration_db_session,
-        established_videos: Awaitable[List[Dict[str, Any]] | None],
+        established_videos: Awaitable[list[dict[str, Any]] | None],
         test_user_id,
     ):
         """Test tracking user-video interactions."""
@@ -514,7 +512,7 @@ class TestUserVideoFromAPI:
                 user_video_create = UserVideoCreate(
                     user_id=test_user_id,
                     video_id=video_id,
-                    watched_at=datetime.now(timezone.utc),  # Correct field name
+                    watched_at=datetime.now(UTC),  # Correct field name
                     liked=True,
                     rewatch_count=1,  # Correct field name
                     saved_to_playlist=False,  # Correct field name
@@ -553,7 +551,7 @@ class TestUserVideoFromAPI:
 
                 interaction_update = create_user_video_update(
                     rewatch_count=2,  # Correct field name
-                    watched_at=datetime.now(timezone.utc),  # Correct field name
+                    watched_at=datetime.now(UTC),  # Correct field name
                 )
 
                 updated_interaction = await user_video_repo.update(
@@ -580,7 +578,7 @@ class TestUserVideoFromAPI:
     async def test_user_video_analytics_aggregation(
         self,
         integration_db_session,
-        established_videos: Awaitable[List[Dict[str, Any]] | None],
+        established_videos: Awaitable[list[dict[str, Any]] | None],
         test_user_id,
     ):
         """Test aggregating user video analytics."""
@@ -613,7 +611,7 @@ class TestUserVideoFromAPI:
                     interaction_create = UserVideoCreate(
                         user_id=test_user_id,
                         video_id=video_id,
-                        watched_at=datetime.now(timezone.utc),  # Correct field name
+                        watched_at=datetime.now(UTC),  # Correct field name
                         liked=i % 2 == 0,  # Alternate liked status
                         rewatch_count=i + 1,  # Correct field name
                         saved_to_playlist=i
@@ -657,10 +655,6 @@ class TestUserVideoFromAPI:
                 assert total_likes >= 0
                 assert total_bookmarks >= 0
 
-                print(f"User {test_user_id} analytics:")
-                print(f"  Videos watched: {total_videos_watched}")
-                print(f"  Videos liked: {total_likes}")
-                print(f"  Videos bookmarked: {total_bookmarks}")
 
                 # Clean up all test data - proper cleanup from lessons learned
                 await session.execute(

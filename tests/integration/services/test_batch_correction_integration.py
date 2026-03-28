@@ -23,11 +23,9 @@ Feature 045 — Correction Intelligence Pipeline
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import UTC, datetime, timedelta
 
-import pytest
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
@@ -37,6 +35,8 @@ from chronovista.models.enums import CorrectionType
 from scripts.utilities.backfill_batch_ids import (
     assign_batch_id,
     fetch_unassigned_corrections,
+)
+from scripts.utilities.backfill_batch_ids import (
     identify_batches_by_text as identify_batches,
 )
 
@@ -44,8 +44,6 @@ from scripts.utilities.backfill_batch_ids import (
 # CRITICAL: Module-level asyncio marker ensures async tests run properly
 # with coverage tools, avoiding silent test-skipping (see CLAUDE.md).
 # ---------------------------------------------------------------------------
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # DB seed helpers
@@ -73,7 +71,7 @@ async def _seed_video(
     video = VideoDB(
         video_id=video_id,
         title="Backfill Integration Test Video",
-        upload_date=datetime(2020, 6, 1, tzinfo=timezone.utc),
+        upload_date=datetime(2020, 6, 1, tzinfo=UTC),
         duration=600,
     )
     session.add(video)
@@ -162,7 +160,7 @@ async def _seed_correction(
         The persisted TranscriptCorrection ORM instance.
     """
     if corrected_at is None:
-        corrected_at = datetime(2024, 3, 1, 12, 0, 0, tzinfo=timezone.utc)
+        corrected_at = datetime(2024, 3, 1, 12, 0, 0, tzinfo=UTC)
 
     correction = TranscriptCorrectionDB(
         video_id=video_id,
@@ -193,7 +191,7 @@ def _ts(seconds_offset: float) -> datetime:
     datetime
         Anchor time plus the given offset.
     """
-    base = datetime(2024, 3, 1, 12, 0, 0, tzinfo=timezone.utc)
+    base = datetime(2024, 3, 1, 12, 0, 0, tzinfo=UTC)
     return base + timedelta(seconds=seconds_offset)
 
 

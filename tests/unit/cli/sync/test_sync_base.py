@@ -6,10 +6,7 @@ Tests SyncResult model and utility functions.
 
 from __future__ import annotations
 
-from typing import FrozenSet
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from chronovista.cli.sync.base import (
     SyncResult,

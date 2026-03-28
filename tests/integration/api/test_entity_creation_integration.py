@@ -23,31 +23,33 @@ Notes
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import delete, select
-from uuid_utils import uuid7
 from sqlalchemy.ext.asyncio import AsyncSession
+from uuid_utils import uuid7
 
 from chronovista.db.models import (
     CanonicalTag as CanonicalTagDB,
-    Channel as ChannelDB,
+)
+from chronovista.db.models import (
     EntityAlias as EntityAliasDB,
+)
+from chronovista.db.models import (
     NamedEntity as NamedEntityDB,
+)
+from chronovista.db.models import (
     TagAlias as TagAliasDB,
-    Video as VideoDB,
 )
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
 # CRITICAL: Ensures all async tests in this module run with pytest-asyncio
-pytestmark = pytest.mark.asyncio
-
 # ---------------------------------------------------------------------------
 # Stable test IDs — chosen to avoid collisions with all other test files.
 # ---------------------------------------------------------------------------
@@ -101,7 +103,7 @@ class TestClassifyFlowEndToEnd:
     @pytest.fixture
     async def seed_canonical_tag(
         self,
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Seed a canonical tag with a tag alias for classify tests.
 
@@ -207,7 +209,7 @@ class TestClassifyFlowEndToEnd:
         self,
         async_client: AsyncClient,
         seed_canonical_tag: dict[str, Any],
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """POST /entities/classify returns 201 and correctly links entity to tag.
 
@@ -366,7 +368,7 @@ class TestStandaloneCreationEndToEnd:
     @pytest.fixture(autouse=True)
     async def cleanup_snowden(
         self,
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> AsyncGenerator[None, None]:
         """Remove any leftover Edward Snowden entity rows before and after each test."""
         normalized = self._SNOWDEN_NORMALIZED
@@ -403,7 +405,7 @@ class TestStandaloneCreationEndToEnd:
     async def test_standalone_creation_end_to_end(
         self,
         async_client: AsyncClient,
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """POST /entities creates an entity with title-cased name and aliases.
 
@@ -492,7 +494,7 @@ class TestStandaloneCreationEndToEnd:
     async def test_standalone_creation_deduplicates_identical_aliases(
         self,
         async_client: AsyncClient,
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """POST /entities de-duplicates aliases that normalize to the same form.
 
@@ -567,7 +569,7 @@ class TestDuplicateDetection:
     @pytest.fixture
     async def seed_garland_entity(
         self,
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Seed a 'Garland Nixon' named entity for duplicate detection tests.
 
@@ -719,7 +721,7 @@ class TestConflictOnDuplicateCreation:
     @pytest.fixture
     async def seed_garland_for_conflict(
         self,
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Seed a 'Garland Nixon' named entity for the 409 conflict test.
 
@@ -810,7 +812,7 @@ class TestConflictOnDuplicateCreation:
         self,
         async_client: AsyncClient,
         seed_garland_for_conflict: dict[str, Any],
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """POST /entities allows same name when entity_type differs.
 

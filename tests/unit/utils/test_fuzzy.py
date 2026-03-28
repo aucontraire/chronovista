@@ -9,10 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Generator
 
-import pytest
-
 from chronovista.utils.fuzzy import find_similar, levenshtein_distance
-
 
 # -------------------------------------------------------------------------
 # Test: levenshtein_distance

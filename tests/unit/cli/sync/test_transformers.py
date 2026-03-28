@@ -12,7 +12,7 @@ Mypy doesn't understand this, so we ignore call-arg errors in this file.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -169,7 +169,7 @@ class TestExtractChannelCreate:
             title="Test Channel",
             description="A test channel",
             custom_url="@testchannel",
-            published_at=datetime.now(timezone.utc),
+            published_at=datetime.now(UTC),
             thumbnails={
                 "high": Thumbnail(
                     url="https://example.com/thumb.jpg",
@@ -229,7 +229,7 @@ class TestExtractChannelCreate:
         snippet = ChannelSnippet(
             title="Test Channel",
             description="",
-            published_at=datetime.now(timezone.utc),
+            published_at=datetime.now(UTC),
             default_language="invalid_lang",
         )
         channel = YouTubeChannelResponse(
@@ -254,7 +254,7 @@ class TestExtractVideoCreate:
 
     def test_extract_full_video(self) -> None:
         """Test extracting video with all fields."""
-        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         snippet = VideoSnippet(
             published_at=published,
             channel_id=self.VALID_CHANNEL_ID,
@@ -320,7 +320,7 @@ class TestExtractVideoCreate:
 
     def test_extract_video_with_channel_override(self) -> None:
         """Test extracting video with channel_id override."""
-        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         snippet = VideoSnippet(
             published_at=published,
             channel_id=self.VALID_CHANNEL_ID,
@@ -423,7 +423,7 @@ class TestExtractPlaylistCreate:
 
     def test_extract_playlist_create_valid_response(self) -> None:
         """Test extracting playlist with full valid response."""
-        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         snippet = PlaylistSnippet(
             published_at=published,
             channel_id=self.VALID_CHANNEL_ID,
@@ -481,7 +481,7 @@ class TestExtractPlaylistCreate:
 
     def test_extract_playlist_create_with_language(self) -> None:
         """Test extracting playlist with different language codes."""
-        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         snippet = PlaylistSnippet(
             published_at=published,
             channel_id=self.VALID_CHANNEL_ID,
@@ -503,7 +503,7 @@ class TestExtractPlaylistCreate:
 
     def test_extract_playlist_create_invalid_language_defaults_to_none(self) -> None:
         """Test extracting playlist with invalid language code defaults to None."""
-        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         snippet = PlaylistSnippet(
             published_at=published,
             channel_id=self.VALID_CHANNEL_ID,
@@ -525,7 +525,7 @@ class TestExtractPlaylistCreate:
 
     def test_extract_playlist_create_private_status(self) -> None:
         """Test extracting playlist with private status."""
-        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         snippet = PlaylistSnippet(
             published_at=published,
             channel_id=self.VALID_CHANNEL_ID,
@@ -550,7 +550,7 @@ class TestExtractPlaylistCreate:
 
     def test_extract_playlist_create_unlisted_status(self) -> None:
         """Test extracting playlist with unlisted status."""
-        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         snippet = PlaylistSnippet(
             published_at=published,
             channel_id=self.VALID_CHANNEL_ID,
@@ -575,7 +575,7 @@ class TestExtractPlaylistCreate:
 
     def test_extract_playlist_create_invalid_privacy_defaults_to_private(self) -> None:
         """Test extracting playlist with invalid privacy status defaults to private."""
-        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         snippet = PlaylistSnippet(
             published_at=published,
             channel_id=self.VALID_CHANNEL_ID,
@@ -600,7 +600,7 @@ class TestExtractPlaylistCreate:
 
     def test_extract_playlist_create_no_content_details(self) -> None:
         """Test extracting playlist without content details defaults video_count to 0."""
-        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         snippet = PlaylistSnippet(
             published_at=published,
             channel_id=self.VALID_CHANNEL_ID,
@@ -633,7 +633,7 @@ class TestExtractPlaylistMembershipCreate:
 
     def test_extract_playlist_membership_create_valid(self) -> None:
         """Test extracting playlist membership with valid data."""
-        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         snippet = PlaylistItemSnippet(
             published_at=published,
             channel_id=self.VALID_CHANNEL_ID,
@@ -685,7 +685,7 @@ class TestExtractPlaylistMembershipCreate:
 
     def test_extract_playlist_membership_create_missing_content_details(self) -> None:
         """Test extracting playlist membership without content_details returns None."""
-        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         snippet = PlaylistItemSnippet(
             published_at=published,
             channel_id=self.VALID_CHANNEL_ID,
@@ -713,7 +713,7 @@ class TestExtractPlaylistMembershipCreate:
 
     def test_extract_playlist_membership_create_missing_video_id(self) -> None:
         """Test extracting playlist membership without video_id returns None."""
-        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         snippet = PlaylistItemSnippet(
             published_at=published,
             channel_id=self.VALID_CHANNEL_ID,
@@ -745,7 +745,7 @@ class TestExtractPlaylistMembershipCreate:
 
     def test_extract_playlist_membership_create_position_zero(self) -> None:
         """Test extracting playlist membership with position 0 (first item)."""
-        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         snippet = PlaylistItemSnippet(
             published_at=published,
             channel_id=self.VALID_CHANNEL_ID,

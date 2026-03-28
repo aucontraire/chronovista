@@ -20,11 +20,10 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 from typer.testing import CliRunner
 
@@ -63,7 +62,7 @@ def _make_mock_entity(
     entity.canonical_name = name
     entity.entity_type = entity_type
     entity.description = description
-    entity.created_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    entity.created_at = datetime(2024, 1, 1, tzinfo=UTC)
     entity.status = "active"
     entity.mention_count = 0
     return entity

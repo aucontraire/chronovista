@@ -9,8 +9,8 @@ API interactions, database operations, and dry-run mode.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -41,7 +41,7 @@ class TestPlaylistsCommand:
     @pytest.fixture
     def mock_playlist_1(self) -> YouTubePlaylistResponse:
         """Create a mock playlist response."""
-        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        published = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         snippet = PlaylistSnippet(
             published_at=published,
             channel_id=self.VALID_CHANNEL_ID,
@@ -68,7 +68,7 @@ class TestPlaylistsCommand:
     @pytest.fixture
     def mock_playlist_2(self) -> YouTubePlaylistResponse:
         """Create another mock playlist response."""
-        published = datetime(2024, 2, 10, 8, 30, 0, tzinfo=timezone.utc)
+        published = datetime(2024, 2, 10, 8, 30, 0, tzinfo=UTC)
         snippet = PlaylistSnippet(
             published_at=published,
             channel_id=self.VALID_CHANNEL_ID,

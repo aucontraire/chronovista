@@ -16,7 +16,7 @@ Key behavioral notes verified against the actual schema implementation:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 
@@ -31,8 +31,6 @@ from chronovista.api.schemas.transcript_corrections import (
     SegmentCorrectionState,
 )
 from chronovista.models.enums import CorrectionType
-
-pytestmark = pytest.mark.asyncio
 
 # ---------------------------------------------------------------------------
 # Helpers / shared fixtures
@@ -64,7 +62,7 @@ def _make_audit_record_dict(
         "corrected_text": corrected_text,
         "correction_note": correction_note,
         "corrected_by_user_id": corrected_by_user_id,
-        "corrected_at": corrected_at or datetime.now(tz=timezone.utc),
+        "corrected_at": corrected_at or datetime.now(tz=UTC),
         "version_number": version_number,
     }
 
@@ -275,7 +273,7 @@ class TestCorrectionAuditRecord:
     def test_valid_construction_from_dict_all_fields(self) -> None:
         """CorrectionAuditRecord is constructible from a complete dict."""
         record_id = uuid.uuid4()
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
 
         record = CorrectionAuditRecord(
             id=record_id,
@@ -311,7 +309,7 @@ class TestCorrectionAuditRecord:
         SimpleNamespace is used here as a lightweight stand-in.
         """
         record_id = uuid.uuid4()
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
 
         orm_like = SimpleNamespace(
             id=record_id,

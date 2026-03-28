@@ -10,7 +10,7 @@ for EntityMentionBase, EntityMentionCreate, and EntityMention models
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -27,8 +27,6 @@ from chronovista.models.entity_mention import (
 )
 from chronovista.models.enums import DetectionMethod
 from tests.factories.entity_mention_factory import (
-    EntityMentionBaseFactory,
-    EntityMentionCreateFactory,
     EntityMentionFactory,
     EntityMentionTestData,
     create_entity_mention,
@@ -37,8 +35,6 @@ from tests.factories.entity_mention_factory import (
 )
 
 # CRITICAL: Ensure async tests work with coverage tooling.
-pytestmark = pytest.mark.asyncio
-
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
@@ -101,7 +97,7 @@ def _make_entity_mention(**overrides: Any) -> EntityMention:
         "mention_text": _VALID_MENTION_TEXT,
         "detection_method": DetectionMethod.RULE_MATCH,
         "confidence": 1.0,
-        "created_at": datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+        "created_at": datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
     }
     defaults.update(overrides)
     return EntityMention(**defaults)
@@ -665,7 +661,7 @@ class TestEntityMention:
         """EntityMention is created successfully with all required fields."""
         mention_id = _uuid7()
         entity_id = _uuid7()
-        now = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        now = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
 
         mention = EntityMention(
             id=mention_id,
@@ -730,7 +726,7 @@ class TestEntityMention:
                 video_id=_VALID_VIDEO_ID,
                 language_code="en",
                 mention_text="Elon Musk",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
 
     def test_missing_created_at_raises_validation_error(self) -> None:
@@ -761,7 +757,7 @@ class TestEntityMention:
         """
         mention_id = _uuid7()
         entity_id = _uuid7()
-        now = datetime(2024, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2024, 6, 15, 12, 0, 0, tzinfo=UTC)
 
         orm_like = MagicMock()
         orm_like.id = mention_id
@@ -809,7 +805,7 @@ class TestEntityMention:
         orm_like.match_start = None
         orm_like.match_end = None
         orm_like.correction_id = None
-        orm_like.created_at = datetime.now(timezone.utc)
+        orm_like.created_at = datetime.now(UTC)
 
         mention = EntityMention.model_validate(orm_like)
         assert mention.detection_method == DetectionMethod.SPACY_NER
@@ -830,7 +826,7 @@ class TestEntityMention:
             orm_like.match_start = None
             orm_like.match_end = None
             orm_like.correction_id = None
-            orm_like.created_at = datetime.now(timezone.utc)
+            orm_like.created_at = datetime.now(UTC)
 
             mention = EntityMention.model_validate(orm_like)
             assert mention.detection_method == detection_method

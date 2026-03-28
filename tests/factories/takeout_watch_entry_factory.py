@@ -7,11 +7,10 @@ with realistic and consistent test data.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Any, Dict, List, cast
+from datetime import UTC, datetime
+from typing import Any
 
 import factory
-from factory import LazyFunction
 
 from chronovista.models.takeout.takeout_data import TakeoutWatchEntry
 
@@ -38,7 +37,7 @@ class TakeoutWatchEntryFactory(factory.Factory[TakeoutWatchEntry]):
     )
     channel_id: Any = factory.LazyFunction(lambda: "UCuAXFkgsw1L7xaCfnd5JJOw")
     watched_at: Any = factory.LazyFunction(
-        lambda: datetime(2023, 6, 15, 14, 30, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 6, 15, 14, 30, 0, tzinfo=UTC)
     )
     raw_time: Any = factory.LazyFunction(lambda: "2023-06-15T14:30:00Z")
 
@@ -83,7 +82,7 @@ class TakeoutWatchEntryWithTimeFactory(factory.Factory[TakeoutWatchEntry]):
     )
     channel_id: Any = factory.LazyFunction(lambda: "UCMtFAi84ehTSYSE9XoHefig")
     watched_at: Any = factory.LazyFunction(
-        lambda: datetime(2023, 12, 15, 23, 35, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 12, 15, 23, 35, 0, tzinfo=UTC)
     )
     raw_time: Any = factory.LazyFunction(lambda: "2023-12-15T23:35:00Z")
 
@@ -107,7 +106,7 @@ class TakeoutWatchEntryTechFactory(factory.Factory[TakeoutWatchEntry]):
     )
     channel_id: Any = factory.LazyFunction(lambda: "UC_x5XG1OV2P6uZZ5FSM9Ttw")
     watched_at: Any = factory.LazyFunction(
-        lambda: datetime(2023, 5, 10, 17, 0, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 5, 10, 17, 0, 0, tzinfo=UTC)
     )
     raw_time: Any = factory.LazyFunction(lambda: "2023-05-10T17:00:00Z")
 
@@ -240,7 +239,7 @@ def create_tech_takeout_watch_entry(**kwargs: Any) -> TakeoutWatchEntry:
     return result
 
 
-def create_batch_takeout_watch_entries(count: int = 5) -> List[TakeoutWatchEntry]:
+def create_batch_takeout_watch_entries(count: int = 5) -> list[TakeoutWatchEntry]:
     """Create a batch of TakeoutWatchEntry instances for testing."""
     entries = []
     base_video_ids = [
@@ -271,7 +270,7 @@ def create_batch_takeout_watch_entries(count: int = 5) -> List[TakeoutWatchEntry
         channel_name, channel_id = base_channels[i % len(base_channels)]
 
         # Create progressive timestamps
-        timestamp = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        timestamp = datetime(2023, 1, 1, tzinfo=UTC)
         timestamp = timestamp.replace(day=1 + (i % 28), hour=10 + (i % 12))
 
         entry = TakeoutWatchEntryFactory.build(

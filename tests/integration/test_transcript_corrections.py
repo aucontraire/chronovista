@@ -27,7 +27,7 @@ Feature 033 — Transcript Corrections Audit
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import or_, select
@@ -53,8 +53,6 @@ from chronovista.repositories.video_transcript_repository import (
 # CRITICAL: Module-level asyncio marker ensures async tests run properly
 # with coverage tools, avoiding silent test-skipping (see CLAUDE.md).
 # ---------------------------------------------------------------------------
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # DB seed helpers
@@ -66,7 +64,7 @@ async def _seed_video(session: AsyncSession, video_id: str = "dQw4w9WgXcQ") -> V
     video = VideoDB(
         video_id=video_id,
         title="Integration Test Video",
-        upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+        upload_date=datetime(2020, 1, 1, tzinfo=UTC),
         duration=300,
     )
     session.add(video)

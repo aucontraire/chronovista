@@ -14,23 +14,19 @@ Tests cover:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.exceptions import CDXError
 from chronovista.models.enums import AvailabilityStatus
 from chronovista.services.recovery.models import RecoveryResult
-
-pytestmark = pytest.mark.asyncio
-
 
 # =============================================================================
 # Test Fixtures
@@ -40,7 +36,7 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture
 async def test_channel(
     integration_session_factory,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create a test channel for FK constraints.
 
@@ -78,8 +74,8 @@ async def test_channel(
 @pytest.fixture
 async def deleted_video(
     integration_session_factory,
-    test_channel: Dict[str, Any],
-) -> Dict[str, Any]:
+    test_channel: dict[str, Any],
+) -> dict[str, Any]:
     """
     Create a video with availability_status = 'deleted'.
 
@@ -91,7 +87,7 @@ async def deleted_video(
             channel_id=test_channel["channel_id"],
             title="Deleted Video for Recovery",
             description="A deleted video that needs recovery",
-            upload_date=datetime(2023, 1, 15, tzinfo=timezone.utc),
+            upload_date=datetime(2023, 1, 15, tzinfo=UTC),
             duration=420,
             made_for_kids=False,
             availability_status=AvailabilityStatus.DELETED.value,
@@ -129,8 +125,8 @@ async def deleted_video(
 @pytest.fixture
 async def available_video(
     integration_session_factory,
-    test_channel: Dict[str, Any],
-) -> Dict[str, Any]:
+    test_channel: dict[str, Any],
+) -> dict[str, Any]:
     """
     Create a video with availability_status = 'available'.
 
@@ -142,7 +138,7 @@ async def available_video(
             channel_id=test_channel["channel_id"],
             title="Available Video",
             description="An available video that should not be recovered",
-            upload_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            upload_date=datetime(2024, 1, 15, tzinfo=UTC),
             duration=300,
             made_for_kids=False,
             availability_status=AvailabilityStatus.AVAILABLE.value,
@@ -186,7 +182,7 @@ class TestVideoRecoverySuccess:
     async def test_recover_video_success_with_metadata(
         self,
         async_client: AsyncClient,
-        deleted_video: Dict[str, Any],
+        deleted_video: dict[str, Any],
     ) -> None:
         """Test successful video recovery with populated RecoveryResult."""
         video_id = deleted_video["video_id"]
@@ -243,7 +239,7 @@ class TestVideoRecoverySuccess:
     async def test_recover_video_zero_new_fields(
         self,
         async_client: AsyncClient,
-        deleted_video: Dict[str, Any],
+        deleted_video: dict[str, Any],
     ) -> None:
         """Test successful recovery with empty fields_recovered list."""
         video_id = deleted_video["video_id"]
@@ -315,7 +311,7 @@ class TestVideoRecoveryErrors:
     async def test_recover_available_video_409(
         self,
         async_client: AsyncClient,
-        available_video: Dict[str, Any],
+        available_video: dict[str, Any],
     ) -> None:
         """Test 409 conflict when video is available."""
         video_id = available_video["video_id"]
@@ -335,7 +331,7 @@ class TestVideoRecoveryErrors:
     async def test_recover_invalid_year_range_422(
         self,
         async_client: AsyncClient,
-        deleted_video: Dict[str, Any],
+        deleted_video: dict[str, Any],
     ) -> None:
         """Test 422 validation error when end_year < start_year."""
         video_id = deleted_video["video_id"]
@@ -359,7 +355,7 @@ class TestVideoRecoveryErrors:
     async def test_recover_year_out_of_range_422(
         self,
         async_client: AsyncClient,
-        deleted_video: Dict[str, Any],
+        deleted_video: dict[str, Any],
     ) -> None:
         """Test 422 validation error when year is out of range."""
         video_id = deleted_video["video_id"]
@@ -382,7 +378,7 @@ class TestVideoRecoveryErrors:
     async def test_recover_cdx_error_503(
         self,
         async_client: AsyncClient,
-        deleted_video: Dict[str, Any],
+        deleted_video: dict[str, Any],
     ) -> None:
         """Test 503 error when CDX API is unavailable."""
         video_id = deleted_video["video_id"]
@@ -426,7 +422,7 @@ class TestVideoRecoveryQueryParameters:
     async def test_recover_with_start_year(
         self,
         async_client: AsyncClient,
-        deleted_video: Dict[str, Any],
+        deleted_video: dict[str, Any],
     ) -> None:
         """Test recovery with start_year parameter."""
         video_id = deleted_video["video_id"]
@@ -464,7 +460,7 @@ class TestVideoRecoveryQueryParameters:
     async def test_recover_with_end_year(
         self,
         async_client: AsyncClient,
-        deleted_video: Dict[str, Any],
+        deleted_video: dict[str, Any],
     ) -> None:
         """Test recovery with end_year parameter."""
         video_id = deleted_video["video_id"]
@@ -502,7 +498,7 @@ class TestVideoRecoveryQueryParameters:
     async def test_recover_with_year_range(
         self,
         async_client: AsyncClient,
-        deleted_video: Dict[str, Any],
+        deleted_video: dict[str, Any],
     ) -> None:
         """Test recovery with both start_year and end_year parameters."""
         video_id = deleted_video["video_id"]

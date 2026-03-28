@@ -4,15 +4,11 @@ Tests for TranscriptService.
 Comprehensive test coverage for YouTube transcript downloading and processing service.
 """
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 # Mark all async tests in this module
-pytestmark = pytest.mark.asyncio
-
 from chronovista.models.enums import DownloadReason, LanguageCode
 from chronovista.models.transcript_source import (
     RawTranscriptData,
@@ -22,7 +18,6 @@ from chronovista.models.transcript_source import (
 from chronovista.models.video_transcript import EnhancedVideoTranscriptBase
 from chronovista.models.youtube_types import create_test_video_id
 from chronovista.services.transcript_service import (
-    TRANSCRIPT_API_AVAILABLE,
     TranscriptNotFoundError,
     TranscriptService,
     TranscriptServiceError,
@@ -70,14 +65,13 @@ class TestTranscriptServiceInitialization:
         """Test initialization when API is unavailable."""
         with patch(
             "chronovista.services.transcript_service.TRANSCRIPT_API_AVAILABLE", False
-        ):
-            with patch("chronovista.services.transcript_service.logger") as mock_logger:
-                service = TranscriptService()
-                assert service.enable_mock_fallback is False
-                assert service._api_available is False
-                mock_logger.warning.assert_called_once_with(
-                    "youtube-transcript-api not available - transcript downloads will fail"
-                )
+        ), patch("chronovista.services.transcript_service.logger") as mock_logger:
+            service = TranscriptService()
+            assert service.enable_mock_fallback is False
+            assert service._api_available is False
+            mock_logger.warning.assert_called_once_with(
+                "youtube-transcript-api not available - transcript downloads will fail"
+            )
 
     def test_init_with_mock_fallback_disabled(self):
         """Test initialization with mock fallback disabled."""
@@ -1177,7 +1171,7 @@ class _FakeSegment:
         *,
         id: int = 1,
         text: str = "original raw text",
-        corrected_text: Optional[str] = None,
+        corrected_text: str | None = None,
         has_correction: bool = False,
     ) -> None:
         self.id = id

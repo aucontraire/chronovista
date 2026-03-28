@@ -18,8 +18,6 @@ import pytest
 
 from chronovista.services.youtube_service import YouTubeService
 
-pytestmark = pytest.mark.asyncio
-
 
 class TestFetchPlaylistsBatched:
     """Tests for fetch_playlists_batched method."""
@@ -38,7 +36,7 @@ class TestFetchPlaylistsBatched:
         self, youtube_service: YouTubeService, mock_service_client: MagicMock
     ) -> None:
         """Test that fetch_playlists_batched returns playlists and not_found set."""
-        setattr(youtube_service, "_service", mock_service_client)
+        youtube_service._service = mock_service_client  # type: ignore[assignment]
 
         # Mock successful API response
         mock_response: dict[str, Any] = {
@@ -97,7 +95,7 @@ class TestFetchPlaylistsBatched:
         self, youtube_service: YouTubeService, mock_service_client: MagicMock
     ) -> None:
         """Test that not_found set contains IDs not returned by API."""
-        setattr(youtube_service, "_service", mock_service_client)
+        youtube_service._service = mock_service_client  # type: ignore[assignment]
 
         # Mock response with only some playlists found
         mock_response: dict[str, Any] = {
@@ -214,7 +212,7 @@ class TestAPIErrorHandling:
         self, youtube_service: YouTubeService, mock_service_client: MagicMock
     ) -> None:
         """Test that API error in one batch doesn't stop remaining batches."""
-        setattr(youtube_service, "_service", mock_service_client)
+        youtube_service._service = mock_service_client  # type: ignore[assignment]
 
         # Simulate fetch with error handling
         playlist_ids = [f"PL{i:04d}" for i in range(100)]
@@ -228,7 +226,7 @@ class TestAPIErrorHandling:
             {"items": [{"id": "PL0050", "snippet": {"title": "Playlist 50"}}]},
         ]
 
-        for i, batch_idx in enumerate(range(0, len(playlist_ids), batch_size)):
+        for i, _batch_idx in enumerate(range(0, len(playlist_ids), batch_size)):
             try:
                 result = batch_results[i]
                 if "error" in result:
@@ -250,7 +248,7 @@ class TestAPIErrorHandling:
         self, youtube_service: YouTubeService, mock_service_client: MagicMock
     ) -> None:
         """Test that partial results are returned when some batches fail."""
-        setattr(youtube_service, "_service", mock_service_client)
+        youtube_service._service = mock_service_client  # type: ignore[assignment]
 
         # Successfully fetched before error
         successful_items = [
@@ -269,7 +267,7 @@ class TestAPIErrorHandling:
         self, youtube_service: YouTubeService, mock_service_client: MagicMock
     ) -> None:
         """Test handling of rate limit (quota exceeded) errors."""
-        setattr(youtube_service, "_service", mock_service_client)
+        youtube_service._service = mock_service_client  # type: ignore[assignment]
 
         rate_limit_error = Exception(
             "quotaExceeded: The request cannot be completed because you have exceeded your quota."
@@ -285,7 +283,7 @@ class TestAPIErrorHandling:
         self, youtube_service: YouTubeService, mock_service_client: MagicMock
     ) -> None:
         """Test handling of network errors."""
-        setattr(youtube_service, "_service", mock_service_client)
+        youtube_service._service = mock_service_client  # type: ignore[assignment]
 
         network_error = Exception("Network connection failed")
 
@@ -317,7 +315,7 @@ class TestPartialResults:
         self, youtube_service: YouTubeService, mock_service_client: MagicMock
     ) -> None:
         """Test fetching where some playlists exist and some don't."""
-        setattr(youtube_service, "_service", mock_service_client)
+        youtube_service._service = mock_service_client  # type: ignore[assignment]
 
         requested_ids = ["PLexists1", "PLexists2", "PLdeleted1", "PLprivate1"]
 
@@ -365,7 +363,6 @@ class TestPartialResults:
         """Test when no requested playlists are found (all deleted/private)."""
         requested_ids = ["PLdeleted1", "PLdeleted2", "PLdeleted3"]
 
-        mock_response: dict[str, list[Any]] = {"items": []}
 
         found_ids: set[str] = set()
         not_found = set(requested_ids) - found_ids
@@ -437,7 +434,7 @@ class TestEmptyPlaylistInput:
         self, youtube_service: YouTubeService, mock_service_client: MagicMock
     ) -> None:
         """Test that no API calls are made for empty input."""
-        setattr(youtube_service, "_service", mock_service_client)
+        youtube_service._service = mock_service_client  # type: ignore[assignment]
 
         playlist_ids: list[str] = []
         api_call_count = 0
@@ -479,7 +476,7 @@ class TestPlaylistBatchFetchIntegration:
         self, youtube_service: YouTubeService, mock_service_client: MagicMock
     ) -> None:
         """Test complete batch fetch workflow with realistic data."""
-        setattr(youtube_service, "_service", mock_service_client)
+        youtube_service._service = mock_service_client  # type: ignore[assignment]
 
         # Simulate 75 playlist IDs
         playlist_ids = [f"PLtest{i:04d}" for i in range(75)]
@@ -527,7 +524,7 @@ class TestPlaylistBatchFetchIntegration:
         self, youtube_service: YouTubeService, mock_service_client: MagicMock
     ) -> None:
         """Test batch fetch with playlists of different privacy statuses."""
-        setattr(youtube_service, "_service", mock_service_client)
+        youtube_service._service = mock_service_client  # type: ignore[assignment]
 
         mock_playlists: list[dict[str, Any]] = [
             {

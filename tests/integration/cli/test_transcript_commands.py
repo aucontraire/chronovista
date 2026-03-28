@@ -12,7 +12,7 @@ internally via run_sync_operation().
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,9 +21,15 @@ from typer.testing import CliRunner
 from chronovista.cli.main import app
 from chronovista.db.models import (
     Channel as ChannelDB,
+)
+from chronovista.db.models import (
     TranscriptSegment as TranscriptSegmentDB,
-    VideoTranscript as VideoTranscriptDB,
+)
+from chronovista.db.models import (
     Video as VideoDB,
+)
+from chronovista.db.models import (
+    VideoTranscript as VideoTranscriptDB,
 )
 from chronovista.models.enums import DownloadReason, TranscriptType
 
@@ -44,8 +50,8 @@ def patch_settings_for_integration(monkeypatch: pytest.MonkeyPatch) -> None:
     This fixture patches the effective_database_url property to return the
     integration test database URL.
     """
-    from chronovista.config import settings as settings_module
     from chronovista.config import database as database_module
+    from chronovista.config import settings as settings_module
 
     # Patch the settings object to return the test database URL
     monkeypatch.setattr(
@@ -92,7 +98,7 @@ async def db_with_segments(db_session: AsyncSession) -> AsyncSession:
         channel_id="test_channel",
         title="Test Video",
         description="Test Description",
-        upload_date=datetime(2023, 1, 1, tzinfo=timezone.utc),
+        upload_date=datetime(2023, 1, 1, tzinfo=UTC),
         duration=300,  # 5 minutes
         made_for_kids=False,
         self_declared_made_for_kids=False,

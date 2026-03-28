@@ -1,13 +1,11 @@
 """Unit tests for API dependencies."""
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 class TestGetDb:
     """Tests for get_db dependency."""
@@ -61,7 +59,7 @@ class TestGetDb:
             mock_db.get_session = mock_get_session
 
             with pytest.raises(ConnectionError, match="Database unavailable"):
-                async for session in get_db():
+                async for _session in get_db():
                     pass
 
 

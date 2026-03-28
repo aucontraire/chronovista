@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -27,12 +27,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.deps import get_db, require_auth
 from chronovista.api.main import app
-from chronovista.models.batch_correction_models import BatchCorrectionResult, BatchListItem
+from chronovista.models.batch_correction_models import (
+    BatchCorrectionResult,
+    BatchListItem,
+)
 from tests.factories.batch_correction_factory import BatchListItemFactory
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Helpers
@@ -358,11 +359,11 @@ class TestListBatches:
         """Items are returned in the order provided by get_batch_list (most recent first)."""
         older = _make_batch_list_item(
             pattern="old",
-            batch_timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            batch_timestamp=datetime(2024, 1, 1, tzinfo=UTC),
         )
         newer = _make_batch_list_item(
             pattern="new",
-            batch_timestamp=datetime(2024, 6, 1, tzinfo=timezone.utc),
+            batch_timestamp=datetime(2024, 6, 1, tzinfo=UTC),
         )
         # Simulate repository returning newest first
         mock_repo.get_batch_list = AsyncMock(return_value=[newer, older])

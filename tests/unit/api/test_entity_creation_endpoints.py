@@ -54,7 +54,6 @@ from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -63,8 +62,6 @@ from chronovista.api.main import app
 from chronovista.services.tag_management import ClassifyResult
 
 # CRITICAL: ensures all async tests in this module are picked up by pytest-asyncio
-pytestmark = pytest.mark.asyncio
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------

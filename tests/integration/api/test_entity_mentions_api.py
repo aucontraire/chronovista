@@ -20,22 +20,33 @@ from __future__ import annotations
 
 import time
 import uuid
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import delete, select
-from uuid_utils import uuid7
 from sqlalchemy.ext.asyncio import AsyncSession
+from uuid_utils import uuid7
 
 from chronovista.db.models import (
     Channel as ChannelDB,
+)
+from chronovista.db.models import (
     EntityMention as EntityMentionDB,
+)
+from chronovista.db.models import (
     NamedEntity as NamedEntityDB,
+)
+from chronovista.db.models import (
     TranscriptSegment as TranscriptSegmentDB,
+)
+from chronovista.db.models import (
     Video as VideoDB,
+)
+from chronovista.db.models import (
     VideoTranscript as VideoTranscriptDB,
 )
 
@@ -43,8 +54,6 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
 # CRITICAL: Ensures all async tests in this module run with pytest-asyncio
-pytestmark = pytest.mark.asyncio
-
 # ---------------------------------------------------------------------------
 # Unique stable IDs — chosen to avoid collisions with other test files.
 # All IDs must respect column length constraints.
@@ -90,7 +99,7 @@ def _entity_detail_url(entity_id: str) -> str:
 
 @pytest.fixture
 async def seed_entity_data(
-    integration_session_factory: "async_sessionmaker[AsyncSession]",
+    integration_session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncGenerator[dict[str, Any], None]:
     """Seed the integration DB with channel, videos, transcripts, segments, entity, and mentions.
 
@@ -141,7 +150,7 @@ async def seed_entity_data(
                 channel_id=_CHANNEL_ID,
                 title="Entity API Test Video 1",
                 description="Integration test video for Feature 038",
-                upload_date=datetime(2024, 3, 1, tzinfo=timezone.utc),
+                upload_date=datetime(2024, 3, 1, tzinfo=UTC),
                 duration=600,
             )
             session.add(video1)
@@ -158,7 +167,7 @@ async def seed_entity_data(
                 channel_id=_CHANNEL_ID,
                 title="Entity API Test Video 2",
                 description="Second integration test video for Feature 038",
-                upload_date=datetime(2024, 3, 2, tzinfo=timezone.utc),
+                upload_date=datetime(2024, 3, 2, tzinfo=UTC),
                 duration=300,
             )
             session.add(video2)
@@ -620,7 +629,7 @@ class TestGetEntityVideos:
     async def test_get_entity_videos_200_empty_data(
         self,
         async_client: AsyncClient,
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
         seed_entity_data: dict[str, Any],
     ) -> None:
         """200 response with empty data list when entity exists but has no mentions.
@@ -1062,7 +1071,7 @@ class TestListEntities:
     async def test_list_entities_filter_has_mentions_true(
         self,
         async_client: AsyncClient,
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
         seed_entity_data: dict[str, Any],
     ) -> None:
         """``has_mentions=true`` returns only entities with mention_count > 0.
@@ -1203,7 +1212,7 @@ class TestListEntities:
     async def test_list_entities_sort_by_name_default(
         self,
         async_client: AsyncClient,
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
         seed_entity_data: dict[str, Any],
     ) -> None:
         """Default sort (no ``sort`` param) returns entities in alphabetical name order.
@@ -1253,7 +1262,7 @@ class TestListEntities:
     async def test_list_entities_sort_by_mentions_desc(
         self,
         async_client: AsyncClient,
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
         seed_entity_data: dict[str, Any],
     ) -> None:
         """``sort=mentions`` returns entities ordered by mention_count descending.
@@ -1359,7 +1368,7 @@ class TestListEntities:
     async def test_list_entities_pagination_has_more_true(
         self,
         async_client: AsyncClient,
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
         seed_entity_data: dict[str, Any],
     ) -> None:
         """``has_more`` is True when the total exceeds ``offset + limit``.
@@ -1529,7 +1538,7 @@ class TestGetEntityDetail:
     async def test_get_entity_detail_description_may_be_null(
         self,
         async_client: AsyncClient,
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
         seed_entity_data: dict[str, Any],
     ) -> None:
         """``description`` field is null when the entity has no description set.
@@ -1666,7 +1675,7 @@ def _manual_association_url(video_id: str, entity_id: str) -> str:
 
 @pytest.fixture
 async def seed_search_data(
-    integration_session_factory: "async_sessionmaker[AsyncSession]",
+    integration_session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncGenerator[dict[str, Any], None]:
     """Seed the integration DB for Feature 050 search and manual association tests.
 
@@ -1715,7 +1724,7 @@ async def seed_search_data(
                     channel_id=_SEARCH_CHANNEL_ID,
                     title="Search Manual Test Video",
                     description="Feature 050 test video",
-                    upload_date=datetime(2024, 6, 1, tzinfo=timezone.utc),
+                    upload_date=datetime(2024, 6, 1, tzinfo=UTC),
                     duration=300,
                 )
             )
@@ -2205,7 +2214,7 @@ class TestCreateManualAssociationEndpoint:
         self,
         async_client: AsyncClient,
         seed_search_data: dict[str, Any],
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """POST manual association returns 409 when the link already exists.
 
@@ -2271,7 +2280,7 @@ class TestCreateManualAssociationEndpoint:
         self,
         async_client: AsyncClient,
         seed_search_data: dict[str, Any],
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """POST manual association updates mention_count/video_count on named_entities.
 
@@ -2501,7 +2510,7 @@ def _delete_manual_url(video_id: str, entity_id: str) -> str:
 
 @pytest.fixture
 async def seed_delete_data(
-    integration_session_factory: "async_sessionmaker[AsyncSession]",
+    integration_session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncGenerator[dict[str, Any], None]:
     """Seed the integration DB for Feature 050 T037 DELETE endpoint tests.
 
@@ -2545,7 +2554,7 @@ async def seed_delete_data(
                     channel_id=_DELETE_CHANNEL_ID,
                     title="Delete Manual Test Video 1",
                     description="Feature 050 T037 test video",
-                    upload_date=datetime(2024, 6, 1, tzinfo=timezone.utc),
+                    upload_date=datetime(2024, 6, 1, tzinfo=UTC),
                     duration=300,
                 )
             )
@@ -2563,7 +2572,7 @@ async def seed_delete_data(
                     channel_id=_DELETE_CHANNEL_ID,
                     title="Delete Manual Test Video 2",
                     description="Feature 050 T037 test video 2",
-                    upload_date=datetime(2024, 7, 1, tzinfo=timezone.utc),
+                    upload_date=datetime(2024, 7, 1, tzinfo=UTC),
                     duration=200,
                 )
             )
@@ -2648,7 +2657,7 @@ class TestDeleteManualAssociation:
         self,
         async_client: AsyncClient,
         seed_delete_data: dict[str, Any],
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """DELETE manual association returns 204 No Content on success.
 
@@ -2742,7 +2751,7 @@ class TestDeleteManualAssociation:
         self,
         async_client: AsyncClient,
         seed_delete_data: dict[str, Any],
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """DELETE manual association triggers update_entity_counters.
 
@@ -2814,7 +2823,7 @@ class TestDeleteManualAssociation:
         self,
         async_client: AsyncClient,
         seed_delete_data: dict[str, Any],
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """DELETE manual association leaves transcript-derived mentions intact.
 
@@ -2925,7 +2934,7 @@ class TestDeleteManualAssociation:
         self,
         async_client: AsyncClient,
         seed_delete_data: dict[str, Any],
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """DELETE returns 404 when only transcript mentions exist (no manual row).
 
@@ -3080,7 +3089,7 @@ class TestPerformanceAssertions:
         self,
         async_client: AsyncClient,
         seed_search_data: dict[str, Any],
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """POST /api/v1/videos/{video_id}/entities/{entity_id}/manual must complete within 1 000 ms (NFR-003).
 

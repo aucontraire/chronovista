@@ -952,3 +952,44 @@ class TestGetAppInfo:
             response = await async_client_no_auth.get("/api/v1/settings/app-info")
 
         assert response.status_code == 401
+
+    async def test_gather_returns_correct_counts_for_each_field(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Verify asyncio.gather returns each COUNT in the correct DatabaseStats field.
+
+        The endpoint issues 6 independent COUNT queries via asyncio.gather in
+        this order: videos, channels, playlists, transcripts, corrections,
+        canonical_tags.  Each field in DatabaseStats must carry the value from
+        the corresponding query, not a neighbour's value.
+        """
+        mock_session = AsyncMock(spec=AsyncSession)
+        # Distinct primes so any field-assignment swap is immediately visible.
+        mock_session.scalar.side_effect = [
+            101,  # videos
+            202,  # channels
+            303,  # playlists
+            404,  # transcripts
+            505,  # corrections
+            606,  # canonical_tags
+        ]
+
+        async def mock_get_db_custom() -> AsyncGenerator[AsyncSession, None]:
+            yield mock_session
+
+        app.dependency_overrides[get_db] = mock_get_db_custom
+
+        with patch(
+            "chronovista.api.services.sync_manager.sync_manager.get_last_successful_sync",
+            return_value=None,
+        ):
+            response = await async_client.get("/api/v1/settings/app-info")
+
+        assert response.status_code == 200
+        stats = response.json()["data"]["database_stats"]
+        assert stats["videos"] == 101
+        assert stats["channels"] == 202
+        assert stats["playlists"] == 303
+        assert stats["transcripts"] == 404
+        assert stats["corrections"] == 505
+        assert stats["canonical_tags"] == 606

@@ -11,6 +11,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.53.1] - 2026-03-28
+
+### Added
+- **CI/CD Pipeline** (PR #111): GitHub Actions workflow with 4 jobs — backend unit tests, mypy --strict + ruff lint, frontend tests + TypeScript check, integration tests with PostgreSQL service container
+- **HTTP Security Headers** (PR #113): Middleware adding X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy, and Content-Security-Policy to all responses
+- **GIN Trigram Indexes** (PR #117): pg_trgm extension with GIN indexes on `transcript_segments.text` and `corrected_text` for 10-100x faster ILIKE search queries
+- **Database statement_timeout** (PR #116): 60-second query timeout via PostgreSQL server_settings prevents runaway queries
+
+### Changed
+- **Search N+1 Elimination** (PR #114): Replaced per-result prev/next segment queries with LAG/LEAD window functions in a CTE — search endpoint reduced from 41 to 3 database queries for 20 results (93% reduction)
+- **Route-Level Code Splitting** (PR #115): All 14 page components wrapped in React.lazy() for on-demand loading — initial bundle size reduced by 40-60%
+- **COUNT Query Parallelization** (PR #116): Settings app-info (6 queries) and onboarding status (9 queries) now use asyncio.gather() instead of sequential awaits
+- **Conditional OAUTHLIB_INSECURE_TRANSPORT** (PR #116): Only set for localhost redirect URIs, not unconditionally
+
+### Fixed
+- **Ruff Lint Cleanup** (PR #112): Fixed 2,504 lint violations across 175 files including 2 SQLAlchemy bugs (`not ColumnDB.field` → `~ColumnDB.field` — queries were returning wrong results)
+- **CSP YouTube Fix** (PR #115): Added YouTube domains to Content-Security-Policy script-src and frame-src for IFrame API compatibility
+- Selenium and webdriver-manager moved from optional to required dependencies
+
+### Technical
+- Backend version: 0.53.0 → 0.53.1
+- Alembic migration 052: GIN trigram indexes
+- mypy --strict enabled in CI
+- ruff lint check added to CI
+- 35+ new tests across PRs #111-#117
+
 ## [0.53.0] - 2026-03-24
 
 ### Added

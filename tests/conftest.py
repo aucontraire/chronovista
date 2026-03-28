@@ -4,6 +4,7 @@ Pytest configuration and fixtures for chronovista tests.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -103,8 +104,11 @@ def container_reset():
 
 
 def pytest_configure(config):
-    """Configure pytest markers for chronovista tests."""
+    """Configure pytest markers and environment for chronovista tests."""
     config.addinivalue_line(
         "markers",
         "performance: mark test as performance test requiring database and large datasets",
     )
+    # Disable Rich/Typer ANSI output in CLI tests — CliRunner.invoke() runs
+    # in-process so it reads os.environ, not the shell's env vars.
+    os.environ.setdefault("NO_COLOR", "1")

@@ -7,8 +7,6 @@ response wrappers. Tags are aggregated from the video_tags junction table.
 
 from __future__ import annotations
 
-from typing import List, Optional
-
 from pydantic import BaseModel, ConfigDict, Field
 
 from chronovista.api.schemas.responses import PaginationMeta
@@ -52,9 +50,9 @@ class TagListResponse(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    data: List[TagListItem]
+    data: list[TagListItem]
     pagination: PaginationMeta
-    suggestions: Optional[List[str]] = Field(
+    suggestions: list[str] | None = Field(
         None,
         description="Fuzzy match suggestions when no exact matches found (max 3)",
     )

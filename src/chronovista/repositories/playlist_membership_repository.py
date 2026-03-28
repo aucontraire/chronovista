@@ -6,8 +6,6 @@ Handles CRUD operations and specialized queries for playlist-video relationships
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
-
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -15,7 +13,6 @@ from sqlalchemy.orm import selectinload
 from ..db.models import PlaylistMembership as DBPlaylistMembership
 from ..models.playlist_membership import (
     PlaylistMembershipCreate,
-    PlaylistMembershipRead,
     PlaylistMembershipUpdate,
 )
 from .base import BaseSQLAlchemyRepository
@@ -26,7 +23,7 @@ class PlaylistMembershipRepository(
         DBPlaylistMembership,
         PlaylistMembershipCreate,
         PlaylistMembershipUpdate,
-        Tuple[str, str],
+        tuple[str, str],
     ]
 ):
     """Repository for playlist membership operations with specialized queries."""
@@ -36,7 +33,7 @@ class PlaylistMembershipRepository(
 
     async def get_playlist_videos(
         self, session: AsyncSession, playlist_id: str
-    ) -> List[DBPlaylistMembership]:
+    ) -> list[DBPlaylistMembership]:
         """
         Get all videos in a playlist, ordered by position.
 
@@ -58,7 +55,7 @@ class PlaylistMembershipRepository(
 
     async def get_video_playlists(
         self, session: AsyncSession, video_id: str
-    ) -> List[DBPlaylistMembership]:
+    ) -> list[DBPlaylistMembership]:
         """
         Get all playlists containing a video.
 
@@ -116,7 +113,7 @@ class PlaylistMembershipRepository(
 
     async def get_membership(
         self, session: AsyncSession, playlist_id: str, video_id: str
-    ) -> Optional[DBPlaylistMembership]:
+    ) -> DBPlaylistMembership | None:
         """
         Get specific playlist membership.
 
@@ -136,7 +133,7 @@ class PlaylistMembershipRepository(
 
     async def update_video_position(
         self, session: AsyncSession, playlist_id: str, video_id: str, new_position: int
-    ) -> Optional[DBPlaylistMembership]:
+    ) -> DBPlaylistMembership | None:
         """
         Update the position of a video in a playlist.
 

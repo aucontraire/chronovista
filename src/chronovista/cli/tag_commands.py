@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from chronovista.services.tag_management import TagManagementService
@@ -294,7 +294,7 @@ def search_tags(
                     tag_counts[result.tag] = tag_counts.get(result.tag, 0) + 1
 
                 # Sort by count descending
-                sorted_tags: List[tuple[str, int]] = sorted(
+                sorted_tags: list[tuple[str, int]] = sorted(
                     tag_counts.items(), key=lambda x: x[1], reverse=True
                 )[:limit]
 
@@ -499,7 +499,7 @@ def normalize_tags(
     try:
         asyncio.run(_run())
     except SystemExit as e:
-        raise typer.Exit(code=e.code if isinstance(e.code, int) else 1)
+        raise typer.Exit(code=e.code if isinstance(e.code, int) else 1) from e
 
 
 @tag_app.command("analyze")
@@ -533,7 +533,7 @@ def analyze_tags(
     try:
         asyncio.run(_run())
     except SystemExit as e:
-        raise typer.Exit(code=e.code if isinstance(e.code, int) else 1)
+        raise typer.Exit(code=e.code if isinstance(e.code, int) else 1) from e
 
 
 @tag_app.command("recount")
@@ -561,7 +561,7 @@ def recount_tags(
     try:
         asyncio.run(_run())
     except SystemExit as e:
-        raise typer.Exit(code=e.code if isinstance(e.code, int) else 1)
+        raise typer.Exit(code=e.code if isinstance(e.code, int) else 1) from e
 
 
 # ---------------------------------------------------------------------------
@@ -569,7 +569,7 @@ def recount_tags(
 # ---------------------------------------------------------------------------
 
 
-def _reason_callback(value: Optional[str]) -> Optional[str]:
+def _reason_callback(value: str | None) -> str | None:
     """Validate --reason text length (max 1000 characters)."""
     if value is not None and len(value) > 1000:
         raise typer.BadParameter(
@@ -594,7 +594,7 @@ def _normalize_input(tag: str) -> str:
     return result
 
 
-def _create_tag_management_service() -> "TagManagementService":
+def _create_tag_management_service() -> TagManagementService:
     """Create a TagManagementService with all required repositories."""
     from chronovista.repositories.canonical_tag_repository import (
         CanonicalTagRepository,
@@ -622,13 +622,13 @@ def _create_tag_management_service() -> "TagManagementService":
 
 @tag_app.command("merge")
 def merge_tags(
-    sources: List[str] = typer.Argument(
+    sources: list[str] = typer.Argument(
         ..., help="Tag name(s) to merge (e.g., '#ChasFreeman')"
     ),
     into: str = typer.Option(
         ..., "--into", help="Tag name to merge into (e.g., 'Chas Freeman')"
     ),
-    reason: Optional[str] = typer.Option(
+    reason: str | None = typer.Option(
         None,
         "--reason",
         help="Reason for the merge (max 1000 chars)",
@@ -679,7 +679,7 @@ def merge_tags(
                         border_style="red",
                     )
                 )
-                raise typer.Exit(code=1)
+                raise typer.Exit(code=1) from e
 
     asyncio.run(_run())
 
@@ -694,7 +694,7 @@ def split_tag(
         "--aliases",
         help="Comma-separated list of raw alias forms to split out.",
     ),
-    reason: Optional[str] = typer.Option(
+    reason: str | None = typer.Option(
         None,
         "--reason",
         callback=_reason_callback,
@@ -747,7 +747,7 @@ def split_tag(
                         border_style="red",
                     )
                 )
-                raise typer.Exit(code=1)
+                raise typer.Exit(code=1) from e
 
     asyncio.run(_run())
 
@@ -760,7 +760,7 @@ def rename_tag(
     to: str = typer.Option(
         ..., "--to", help="New display form for the canonical tag."
     ),
-    reason: Optional[str] = typer.Option(
+    reason: str | None = typer.Option(
         None,
         "--reason",
         callback=_reason_callback,
@@ -807,14 +807,14 @@ def rename_tag(
                         border_style="red",
                     )
                 )
-                raise typer.Exit(code=1)
+                raise typer.Exit(code=1) from e
 
     asyncio.run(_run())
 
 
 @tag_app.command("deprecate")
 def deprecate_tag(
-    normalized_form: Optional[str] = typer.Argument(
+    normalized_form: str | None = typer.Argument(
         None, help="Tag name to deprecate (e.g., 'Chas Freeman')."
     ),
     list_deprecated: bool = typer.Option(
@@ -823,7 +823,7 @@ def deprecate_tag(
         is_flag=True,
         help="List all deprecated canonical tags.",
     ),
-    reason: Optional[str] = typer.Option(
+    reason: str | None = typer.Option(
         None,
         "--reason",
         callback=_reason_callback,
@@ -925,14 +925,14 @@ def deprecate_tag(
                             border_style="red",
                         )
                     )
-                    raise typer.Exit(code=1)
+                    raise typer.Exit(code=1) from e
 
     asyncio.run(_run())
 
 
 @tag_app.command("undo")
 def undo_operation(
-    operation_id: Optional[str] = typer.Argument(
+    operation_id: str | None = typer.Argument(
         None, help="UUID of the operation to undo."
     ),
     list_ops: bool = typer.Option(
@@ -1026,7 +1026,7 @@ def undo_operation(
                         border_style="red",
                     )
                 )
-                raise typer.Exit(code=1)
+                raise typer.Exit(code=1) from None
 
             try:
                 result: UndoResult = await service.undo(session, op_uuid)
@@ -1054,7 +1054,7 @@ def undo_operation(
                         border_style="red",
                     )
                 )
-                raise typer.Exit(code=1)
+                raise typer.Exit(code=1) from e
             except UndoNotImplementedError as e:
                 logger.warning("Undo not implemented: %s", e)
                 console.print(
@@ -1064,17 +1064,17 @@ def undo_operation(
                         border_style="red",
                     )
                 )
-                raise typer.Exit(code=1)
+                raise typer.Exit(code=1) from e
 
     asyncio.run(_run())
 
 
 @tag_app.command("classify")
 def classify_tag(
-    normalized_form: Optional[str] = typer.Argument(
+    normalized_form: str | None = typer.Argument(
         None, help="Tag name to classify (e.g., 'Chas Freeman')."
     ),
-    entity_type: Optional[str] = typer.Option(
+    entity_type: str | None = typer.Option(
         None,
         "--type",
         help=(
@@ -1083,7 +1083,7 @@ def classify_tag(
             "topic, descriptor."
         ),
     ),
-    top: Optional[int] = typer.Option(
+    top: int | None = typer.Option(
         None,
         "--top",
         help="Show top N unclassified tags by video count.",
@@ -1094,13 +1094,13 @@ def classify_tag(
         is_flag=True,
         help="Override existing classification.",
     ),
-    reason: Optional[str] = typer.Option(
+    reason: str | None = typer.Option(
         None,
         "--reason",
         callback=_reason_callback,
         help="Reason for the classification (max 1000 chars).",
     ),
-    description: Optional[str] = typer.Option(
+    description: str | None = typer.Option(
         None,
         "--description",
         help="Entity description (e.g., 'Mexican journalist'). "
@@ -1217,7 +1217,7 @@ def classify_tag(
                             border_style="red",
                         )
                     )
-                    raise typer.Exit(code=1)
+                    raise typer.Exit(code=1) from None
 
                 try:
                     result: ClassifyResult = await service.classify(
@@ -1256,7 +1256,7 @@ def classify_tag(
                             border_style="red",
                         )
                     )
-                    raise typer.Exit(code=1)
+                    raise typer.Exit(code=1) from e
 
     asyncio.run(_run())
 
@@ -1268,7 +1268,7 @@ def review_collisions(
         "--format",
         help="Output format: table (interactive) or json.",
     ),
-    limit: Optional[int] = typer.Option(
+    limit: int | None = typer.Option(
         None,
         "--limit",
         help="Maximum number of collision groups to review.",

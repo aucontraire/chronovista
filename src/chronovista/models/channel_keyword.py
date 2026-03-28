@@ -8,7 +8,7 @@ with validation and serialization support.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -22,7 +22,7 @@ class ChannelKeywordBase(BaseModel):
     keyword: str = Field(
         ..., min_length=1, max_length=100, description="Keyword content"
     )
-    keyword_order: Optional[int] = Field(
+    keyword_order: int | None = Field(
         default=None, ge=0, description="Order of keyword from channel branding"
     )
 
@@ -58,7 +58,7 @@ class ChannelKeywordCreate(ChannelKeywordBase):
 class ChannelKeywordUpdate(BaseModel):
     """Model for updating channel keywords."""
 
-    keyword_order: Optional[int] = Field(None, ge=0)
+    keyword_order: int | None = Field(None, ge=0)
 
     model_config = ConfigDict(
         validate_assignment=True,
@@ -79,30 +79,30 @@ class ChannelKeyword(ChannelKeywordBase):
 class ChannelKeywordSearchFilters(BaseModel):
     """Filters for searching channel keywords."""
 
-    channel_ids: Optional[List[ChannelId]] = Field(
+    channel_ids: list[ChannelId] | None = Field(
         default=None, description="Filter by channel IDs"
     )
-    keywords: Optional[List[str]] = Field(
+    keywords: list[str] | None = Field(
         default=None, description="Filter by specific keywords"
     )
-    keyword_pattern: Optional[str] = Field(
+    keyword_pattern: str | None = Field(
         default=None,
         min_length=1,
         description="Search keywords by pattern (case-insensitive)",
     )
-    min_keyword_order: Optional[int] = Field(
+    min_keyword_order: int | None = Field(
         default=None, ge=0, description="Minimum keyword order"
     )
-    max_keyword_order: Optional[int] = Field(
+    max_keyword_order: int | None = Field(
         default=None, ge=0, description="Maximum keyword order"
     )
-    has_order: Optional[bool] = Field(
+    has_order: bool | None = Field(
         default=None, description="Filter by presence of keyword order"
     )
-    created_after: Optional[datetime] = Field(
+    created_after: datetime | None = Field(
         default=None, description="Filter by creation date"
     )
-    created_before: Optional[datetime] = Field(
+    created_before: datetime | None = Field(
         default=None, description="Filter by creation date"
     )
 
@@ -120,7 +120,7 @@ class ChannelKeywordStatistics(BaseModel):
     avg_keywords_per_channel: float = Field(
         ..., description="Average keywords per channel"
     )
-    most_common_keywords: List[tuple[str, int]] = Field(
+    most_common_keywords: list[tuple[str, int]] = Field(
         default_factory=list, description="Most common keywords with counts"
     )
     keyword_distribution: dict[str, int] = Field(
@@ -138,13 +138,13 @@ class ChannelKeywordStatistics(BaseModel):
 class ChannelKeywordAnalytics(BaseModel):
     """Advanced channel keyword analytics."""
 
-    keyword_trends: dict[str, List[int]] = Field(
+    keyword_trends: dict[str, list[int]] = Field(
         default_factory=dict, description="Keyword usage trends over time"
     )
-    semantic_clusters: List[dict[str, Any]] = Field(
+    semantic_clusters: list[dict[str, Any]] = Field(
         default_factory=list, description="Semantic keyword clusters"
     )
-    topic_keywords: dict[str, List[str]] = Field(
+    topic_keywords: dict[str, list[str]] = Field(
         default_factory=dict, description="Keywords grouped by topics"
     )
     keyword_similarity: dict[str, float] = Field(

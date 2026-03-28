@@ -8,7 +8,7 @@ content restrictions, and engagement metrics.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -20,16 +20,16 @@ class VideoBase(BaseModel):
     """Base model for video data."""
 
     video_id: VideoId = Field(..., description="YouTube video ID (validated)")
-    channel_id: Optional[ChannelId] = Field(
+    channel_id: ChannelId | None = Field(
         default=None, description="Channel ID (foreign key, validated). NULL for orphaned videos."
     )
-    channel_name_hint: Optional[str] = Field(
+    channel_name_hint: str | None = Field(
         default=None,
         max_length=255,
         description="Original channel name for future resolution when channel_id is NULL",
     )
     title: str = Field(..., min_length=1, description="Video title")
-    description: Optional[str] = Field(default=None, description="Video description")
+    description: str | None = Field(default=None, description="Video description")
     upload_date: datetime = Field(..., description="Video upload date and time")
     duration: int = Field(..., ge=0, description="Video duration in seconds")
 
@@ -42,35 +42,35 @@ class VideoBase(BaseModel):
     )
 
     # Language support
-    default_language: Optional[LanguageCode] = Field(
+    default_language: LanguageCode | None = Field(
         default=None, description="Default language (BCP-47)"
     )
-    default_audio_language: Optional[LanguageCode] = Field(
+    default_audio_language: LanguageCode | None = Field(
         default=None, description="Default audio language (BCP-47)"
     )
-    available_languages: Optional[Dict[str, Any]] = Field(
+    available_languages: dict[str, Any] | None = Field(
         default=None, description="Available languages data"
     )
 
     # Regional and content restrictions
-    region_restriction: Optional[Dict[str, Any]] = Field(
+    region_restriction: dict[str, Any] | None = Field(
         default=None, description="Regional restrictions"
     )
-    content_rating: Optional[Dict[str, Any]] = Field(
+    content_rating: dict[str, Any] | None = Field(
         default=None, description="Content rating information"
     )
 
     # Category
-    category_id: Optional[str] = Field(
+    category_id: str | None = Field(
         default=None,
         max_length=10,
         description="YouTube category ID (numeric string)",
     )
 
     # Engagement metrics
-    like_count: Optional[int] = Field(default=None, ge=0, description="Number of likes")
-    view_count: Optional[int] = Field(default=None, ge=0, description="Number of views")
-    comment_count: Optional[int] = Field(
+    like_count: int | None = Field(default=None, ge=0, description="Number of likes")
+    view_count: int | None = Field(default=None, ge=0, description="Number of views")
+    comment_count: int | None = Field(
         default=None, ge=0, description="Number of comments"
     )
 
@@ -79,16 +79,16 @@ class VideoBase(BaseModel):
         default=AvailabilityStatus.AVAILABLE,
         description="Current availability status on YouTube",
     )
-    alternative_url: Optional[str] = Field(
+    alternative_url: str | None = Field(
         default=None, description="URL to alternative source"
     )
-    recovered_at: Optional[datetime] = Field(
+    recovered_at: datetime | None = Field(
         default=None, description="When content was recovered"
     )
-    recovery_source: Optional[str] = Field(
+    recovery_source: str | None = Field(
         default=None, description="Source of recovery information"
     )
-    unavailability_first_detected: Optional[datetime] = Field(
+    unavailability_first_detected: datetime | None = Field(
         default=None, description="When unavailability was first detected"
     )
 
@@ -107,7 +107,7 @@ class VideoBase(BaseModel):
 
     @field_validator("channel_id")
     @classmethod
-    def validate_channel_id(cls, v: Optional[str]) -> Optional[str]:
+    def validate_channel_id(cls, v: str | None) -> str | None:
         """Validate channel ID format. Accepts None for orphaned videos."""
         if v is None:
             return None
@@ -153,33 +153,33 @@ class VideoCreate(VideoBase):
 class VideoUpdate(BaseModel):
     """Model for updating videos."""
 
-    channel_id: Optional[ChannelId] = None
-    channel_name_hint: Optional[str] = None
-    title: Optional[str] = Field(default=None, min_length=1)
-    description: Optional[str] = None
-    duration: Optional[int] = Field(default=None, ge=0)
-    made_for_kids: Optional[bool] = None
-    self_declared_made_for_kids: Optional[bool] = None
-    default_language: Optional[LanguageCode] = None
-    default_audio_language: Optional[LanguageCode] = None
-    available_languages: Optional[Dict[str, Any]] = None
-    region_restriction: Optional[Dict[str, Any]] = None
-    content_rating: Optional[Dict[str, Any]] = None
-    upload_date: Optional[datetime] = None
-    thumbnail_url: Optional[str] = None
-    category_id: Optional[str] = Field(default=None, max_length=10)
-    like_count: Optional[int] = Field(default=None, ge=0)
-    view_count: Optional[int] = Field(default=None, ge=0)
-    comment_count: Optional[int] = Field(default=None, ge=0)
-    availability_status: Optional[AvailabilityStatus] = None
-    alternative_url: Optional[str] = None
-    recovered_at: Optional[datetime] = None
-    recovery_source: Optional[str] = None
-    unavailability_first_detected: Optional[datetime] = None
+    channel_id: ChannelId | None = None
+    channel_name_hint: str | None = None
+    title: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    duration: int | None = Field(default=None, ge=0)
+    made_for_kids: bool | None = None
+    self_declared_made_for_kids: bool | None = None
+    default_language: LanguageCode | None = None
+    default_audio_language: LanguageCode | None = None
+    available_languages: dict[str, Any] | None = None
+    region_restriction: dict[str, Any] | None = None
+    content_rating: dict[str, Any] | None = None
+    upload_date: datetime | None = None
+    thumbnail_url: str | None = None
+    category_id: str | None = Field(default=None, max_length=10)
+    like_count: int | None = Field(default=None, ge=0)
+    view_count: int | None = Field(default=None, ge=0)
+    comment_count: int | None = Field(default=None, ge=0)
+    availability_status: AvailabilityStatus | None = None
+    alternative_url: str | None = None
+    recovered_at: datetime | None = None
+    recovery_source: str | None = None
+    unavailability_first_detected: datetime | None = None
 
     @field_validator("title")
     @classmethod
-    def validate_title(cls, v: Optional[str]) -> Optional[str]:
+    def validate_title(cls, v: str | None) -> str | None:
         """Validate title if provided."""
         if v is not None and (not v or not v.strip()):
             raise ValueError("Title cannot be empty")
@@ -207,42 +207,42 @@ class Video(VideoBase):
 class VideoSearchFilters(BaseModel):
     """Filters for searching videos."""
 
-    channel_ids: Optional[List[ChannelId]] = Field(
+    channel_ids: list[ChannelId] | None = Field(
         default=None, description="Filter by channel IDs"
     )
-    title_query: Optional[str] = Field(default=None, description="Search in title")
-    description_query: Optional[str] = Field(
+    title_query: str | None = Field(default=None, description="Search in title")
+    description_query: str | None = Field(
         default=None, description="Search in description"
     )
-    language_codes: Optional[List[LanguageCode]] = Field(
+    language_codes: list[LanguageCode] | None = Field(
         default=None, description="Filter by languages"
     )
-    upload_after: Optional[datetime] = Field(
+    upload_after: datetime | None = Field(
         default=None, description="Videos uploaded after date"
     )
-    upload_before: Optional[datetime] = Field(
+    upload_before: datetime | None = Field(
         default=None, description="Videos uploaded before date"
     )
-    min_duration: Optional[int] = Field(
+    min_duration: int | None = Field(
         default=None, ge=0, description="Minimum duration in seconds"
     )
-    max_duration: Optional[int] = Field(
+    max_duration: int | None = Field(
         default=None, ge=0, description="Maximum duration in seconds"
     )
-    min_view_count: Optional[int] = Field(
+    min_view_count: int | None = Field(
         default=None, ge=0, description="Minimum view count"
     )
-    max_view_count: Optional[int] = Field(
+    max_view_count: int | None = Field(
         default=None, ge=0, description="Maximum view count"
     )
-    min_like_count: Optional[int] = Field(
+    min_like_count: int | None = Field(
         default=None, ge=0, description="Minimum like count"
     )
-    kids_friendly_only: Optional[bool] = Field(
+    kids_friendly_only: bool | None = Field(
         default=None, description="Filter for kids-friendly content"
     )
     exclude_deleted: bool = Field(default=True, description="Exclude deleted videos")
-    has_transcripts: Optional[bool] = Field(
+    has_transcripts: bool | None = Field(
         default=None, description="Filter videos with transcripts"
     )
 
@@ -266,10 +266,10 @@ class VideoStatistics(BaseModel):
     avg_likes_per_video: float = Field(..., description="Average likes per video")
     deleted_video_count: int = Field(..., description="Number of deleted videos")
     kids_friendly_count: int = Field(..., description="Number of kids-friendly videos")
-    top_languages: List[tuple[str, int]] = Field(
+    top_languages: list[tuple[str, int]] = Field(
         ..., description="Top languages by video count"
     )
-    upload_trend: Dict[str, int] = Field(..., description="Upload counts by month/year")
+    upload_trend: dict[str, int] = Field(..., description="Upload counts by month/year")
 
     model_config = ConfigDict(
         validate_assignment=True,
@@ -279,8 +279,8 @@ class VideoStatistics(BaseModel):
 class VideoWithChannel(Video):
     """Video model with channel information included."""
 
-    channel_title: Optional[str] = Field(default=None, description="Channel title")
-    channel_subscriber_count: Optional[int] = Field(
+    channel_title: str | None = Field(default=None, description="Channel title")
+    channel_subscriber_count: int | None = Field(
         default=None, description="Channel subscriber count"
     )
 

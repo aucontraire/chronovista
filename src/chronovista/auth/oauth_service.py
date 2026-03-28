@@ -7,11 +7,11 @@ token exchange, token storage and refresh, and credential management.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import secrets
 import webbrowser
-from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -165,14 +165,11 @@ class YouTubeOAuthService:
         """
         authorization_url, state = self.get_authorization_url()
 
-        print("🔐 Opening browser for YouTube authorization...")
-        print(f"If browser doesn't open, visit: {authorization_url}")
 
         # Open browser
         webbrowser.open(authorization_url)
 
         # Wait for user to complete authorization and paste callback URL
-        print("\n📋 After authorizing, copy the full callback URL and paste it here:")
         callback_url = input("Callback URL: ").strip()
 
         return self.authorize_from_callback(callback_url, state)
@@ -327,12 +324,10 @@ class YouTubeOAuthService:
         # Parse expiry time if available
         expiry = None
         if token_data.get("expiry"):
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 expiry = datetime.fromisoformat(
                     token_data["expiry"].replace("Z", "+00:00")
                 )
-            except (ValueError, TypeError):
-                pass
 
         return Credentials(
             token=token_data.get("token"),

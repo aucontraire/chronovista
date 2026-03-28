@@ -8,10 +8,9 @@ to chronovista data models.
 from __future__ import annotations
 
 import json
-import re
+from collections.abc import Generator
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Generator, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
 from pydantic import BaseModel, Field
@@ -25,7 +24,7 @@ class WatchHistoryEntry(BaseModel):
     """
 
     # Video identification
-    video_id: Optional[str] = None
+    video_id: str | None = None
     video_url: str
 
     # Video metadata
@@ -33,16 +32,16 @@ class WatchHistoryEntry(BaseModel):
     action: str = Field(description="'Watched' or 'Viewed'")
 
     # Channel information
-    channel_name: Optional[str] = None
-    channel_id: Optional[str] = None
-    channel_url: Optional[str] = None
+    channel_name: str | None = None
+    channel_id: str | None = None
+    channel_url: str | None = None
 
     # Timing
     watched_at: datetime
 
     # Source data
-    products: List[str] = Field(default_factory=list)
-    activity_controls: List[str] = Field(default_factory=list)
+    products: list[str] = Field(default_factory=list)
+    activity_controls: list[str] = Field(default_factory=list)
 
 
 class TakeoutParser:
@@ -51,7 +50,7 @@ class TakeoutParser:
     """
 
     @staticmethod
-    def extract_video_id(url: str) -> Optional[str]:
+    def extract_video_id(url: str) -> str | None:
         """
         Extract video ID from YouTube URL.
 
@@ -86,7 +85,7 @@ class TakeoutParser:
         return None
 
     @staticmethod
-    def extract_channel_id(url: str) -> Optional[str]:
+    def extract_channel_id(url: str) -> str | None:
         """
         Extract channel ID from YouTube channel URL.
 
@@ -102,17 +101,16 @@ class TakeoutParser:
 
         if parsed.netloc in ["www.youtube.com", "youtube.com"]:
             path_parts = parsed.path.strip("/").split("/")
-            if len(path_parts) >= 2:
-                if path_parts[0] == "channel":
-                    # Direct channel ID: /channel/UC...
-                    return path_parts[1]
+            if len(path_parts) >= 2 and path_parts[0] == "channel":
+                # Direct channel ID: /channel/UC...
+                return path_parts[1]
                 # For custom URLs and handles, we can't extract channel ID
                 # without additional API calls
 
         return None
 
     @staticmethod
-    def parse_action(title: str) -> Tuple[str, str]:
+    def parse_action(title: str) -> tuple[str, str]:
         """
         Parse action type and clean title from Takeout title.
 
@@ -138,7 +136,7 @@ class TakeoutParser:
         Yields WatchHistoryEntry objects for each valid entry.
         """
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 data = json.load(f)
         except (json.JSONDecodeError, FileNotFoundError) as e:
             raise ValidationError(
@@ -154,7 +152,7 @@ class TakeoutParser:
                 invalid_value=type(data).__name__,
             )
 
-        for i, entry in enumerate(data):
+        for _i, entry in enumerate(data):
             try:
                 # Skip non-YouTube entries
                 if entry.get("header") != "YouTube":
@@ -213,13 +211,12 @@ class TakeoutParser:
 
                 yield watch_entry
 
-            except Exception as e:
+            except Exception:
                 # Log error but continue processing
-                print(f"Warning: Failed to parse entry {i}: {e}")
                 continue
 
     @classmethod
-    def count_entries(cls, file_path: Path) -> Dict[str, int]:
+    def count_entries(cls, file_path: Path) -> dict[str, int]:
         """
         Count different types of entries in watch history file.
 
@@ -236,10 +233,9 @@ class TakeoutParser:
         }
 
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 data = json.load(f)
-        except Exception as e:
-            print(f"Error reading file: {e}")
+        except Exception:
             return counts
 
         if not isinstance(data, list):

@@ -32,7 +32,6 @@ from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.models.batch_correction_models import CorrectionPattern
 from chronovista.services.batch_correction_service import BatchCorrectionService
-from chronovista.services.phonetic_matcher import PhoneticMatcher
 from chronovista.utils.text import strip_boundary_punctuation
 
 logger = logging.getLogger(__name__)
@@ -801,8 +800,6 @@ class CrossSegmentDiscovery:
             # Find best-scoring pattern match for this pair
             best_pattern: CorrectionPattern | None = None
             best_score = -1.0
-            best_prefix = ""
-            best_suffix = ""
             for prefix, suffix, pat in split_entries:
                 if seg_n_text.lower().rstrip().endswith(
                     prefix.lower().rstrip()
@@ -821,8 +818,6 @@ class CrossSegmentDiscovery:
                     if score > best_score:
                         best_score = score
                         best_pattern = pat
-                        best_prefix = prefix
-                        best_suffix = suffix
 
             if best_pattern:
                 candidates.append(

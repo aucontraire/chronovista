@@ -8,7 +8,6 @@ and serialization support.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -76,12 +75,12 @@ class VideoCategoryCreate(VideoCategoryBase):
 class VideoCategoryUpdate(BaseModel):
     """Model for updating video categories."""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    assignable: Optional[bool] = None
+    name: str | None = Field(None, min_length=1, max_length=100)
+    assignable: bool | None = None
 
     @field_validator("name")
     @classmethod
-    def validate_name(cls, v: Optional[str]) -> Optional[str]:
+    def validate_name(cls, v: str | None) -> str | None:
         """Validate category name if provided."""
         if v is None:
             return v

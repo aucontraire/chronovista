@@ -36,11 +36,12 @@ Design Principles
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Generator, Optional
+from typing import TYPE_CHECKING
 
 from chronovista.repositories import (
     ChannelRepository,
@@ -98,8 +99,8 @@ class RequestContext:
     'user_123'
     """
 
-    session: "AsyncSession"
-    user_id: Optional[str] = None
+    session: AsyncSession
+    user_id: str | None = None
 
 
 class Container:
@@ -556,7 +557,7 @@ class Container:
     @contextmanager
     def request_scope(
         self,
-        session: "AsyncSession",
+        session: AsyncSession,
         user_id: str | None = None,
     ) -> Generator[RequestContext, None, None]:
         """

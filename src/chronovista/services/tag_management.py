@@ -12,8 +12,8 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import distinct, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,7 +33,6 @@ from chronovista.models.enums import (
 )
 from chronovista.models.tag_operation_log import (
     TagOperationLogCreate,
-    TagOperationLogUpdate,
 )
 from chronovista.repositories.canonical_tag_repository import CanonicalTagRepository
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
@@ -61,7 +60,7 @@ class MergeResult:
     new_alias_count: int
     new_video_count: int
     operation_id: uuid.UUID
-    entity_hint: Optional[str] = None
+    entity_hint: str | None = None
 
 
 @dataclass
@@ -260,9 +259,9 @@ class TagManagementService:
         *,
         operation_type: str,
         source_ids: list[uuid.UUID],
-        target_id: Optional[uuid.UUID],
+        target_id: uuid.UUID | None,
         alias_ids: list[uuid.UUID],
-        reason: Optional[str],
+        reason: str | None,
         rollback_data: dict[str, Any],
     ) -> uuid.UUID:
         """
@@ -327,7 +326,7 @@ class TagManagementService:
         source_normalized_forms: list[str],
         target_normalized_form: str,
         *,
-        reason: Optional[str] = None,
+        reason: str | None = None,
     ) -> MergeResult:
         """
         Merge one or more source canonical tags into a target.
@@ -486,7 +485,7 @@ class TagManagementService:
         normalized_form: str,
         alias_raw_forms: list[str],
         *,
-        reason: Optional[str] = None,
+        reason: str | None = None,
     ) -> SplitResult:
         """
         Split specific aliases from a canonical tag into a new canonical tag.
@@ -718,7 +717,7 @@ class TagManagementService:
 
         # Mark the log entry as rolled back
         log_entry.rolled_back = True
-        log_entry.rolled_back_at = datetime.now(timezone.utc)
+        log_entry.rolled_back_at = datetime.now(UTC)
         session.add(log_entry)
 
         logger.info(
@@ -748,7 +747,7 @@ class TagManagementService:
         normalized_form: str,
         new_display_form: str,
         *,
-        reason: Optional[str] = None,
+        reason: str | None = None,
     ) -> RenameResult:
         """
         Rename a canonical tag's display form (canonical_form).
@@ -831,8 +830,8 @@ class TagManagementService:
         entity_type: EntityType,
         *,
         force: bool = False,
-        reason: Optional[str] = None,
-        description: Optional[str] = None,
+        reason: str | None = None,
+        description: str | None = None,
         auto_case: bool = True,
     ) -> ClassifyResult:
         """
@@ -926,8 +925,8 @@ class TagManagementService:
         }
         tag_only_types = {EntityType.TOPIC, EntityType.DESCRIPTOR}
 
-        created_entity_id: Optional[uuid.UUID] = None
-        linked_existing_entity_id: Optional[uuid.UUID] = None
+        created_entity_id: uuid.UUID | None = None
+        linked_existing_entity_id: uuid.UUID | None = None
         created_entity_alias_ids: list[uuid.UUID] = []
         entity_created = False
 
@@ -1098,7 +1097,7 @@ class TagManagementService:
         self,
         session: AsyncSession,
         *,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         include_reviewed: bool = False,
     ) -> list[CollisionGroup]:
         """
@@ -1237,7 +1236,7 @@ class TagManagementService:
         session: AsyncSession,
         normalized_form: str,
         *,
-        reason: Optional[str] = None,
+        reason: str | None = None,
     ) -> DeprecateResult:
         """
         Deprecate a canonical tag (soft delete).
@@ -1567,7 +1566,7 @@ class TagManagementService:
         canonical_id = uuid.UUID(rollback["canonical_id"])
         previous_entity_type = rollback.get("previous_entity_type")
         created_entity_id_str = rollback.get("created_entity_id")
-        linked_existing_entity_id_str = rollback.get("linked_existing_entity_id")
+        rollback.get("linked_existing_entity_id")
         created_entity_alias_ids = [
             uuid.UUID(ea_id)
             for ea_id in rollback.get("created_entity_alias_ids", [])

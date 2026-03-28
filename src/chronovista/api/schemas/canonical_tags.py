@@ -8,7 +8,6 @@ separation and response wrappers.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -84,7 +83,7 @@ class CanonicalTagDetail(BaseModel):
     normalized_form: str = Field(..., description="Normalized form for matching")
     alias_count: int = Field(0, description="Number of raw tag aliases")
     video_count: int = Field(0, description="Number of videos with this tag")
-    top_aliases: List[TagAliasItem] = Field(
+    top_aliases: list[TagAliasItem] = Field(
         default_factory=list, description="Top aliases by occurrence count"
     )
     created_at: datetime = Field(..., description="Creation timestamp")
@@ -117,9 +116,9 @@ class CanonicalTagListResponse(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    data: List[CanonicalTagListItem]
+    data: list[CanonicalTagListItem]
     pagination: PaginationMeta
-    suggestions: Optional[List[CanonicalTagSuggestion]] = Field(
+    suggestions: list[CanonicalTagSuggestion] | None = Field(
         None,
         description="Fuzzy match suggestions when no exact matches found",
     )

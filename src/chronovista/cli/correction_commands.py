@@ -1039,7 +1039,7 @@ def batch_revert(
                 f"[red]Error:[/red] '{batch_id_str}' is not a valid UUID. "
                 "Expected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
             )
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from None
 
     # ---- Validate regex pattern early (pattern mode only) ----
     if pattern is not None and regex:

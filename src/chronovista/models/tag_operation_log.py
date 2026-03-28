@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -24,7 +24,7 @@ class TagOperationLogBase(BaseModel):
         max_length=30,
         description="Type of operation: merge, split, rename, delete, or create",
     )
-    reason: Optional[str] = Field(
+    reason: str | None = Field(
         default=None, description="Human-readable reason for the operation"
     )
 
@@ -50,7 +50,7 @@ class TagOperationLogCreate(TagOperationLogBase):
         default_factory=list,
         description="List of source canonical tag UUID strings (stored as JSONB)",
     )
-    target_canonical_id: Optional[uuid.UUID] = Field(
+    target_canonical_id: uuid.UUID | None = Field(
         default=None,
         description="Target canonical tag UUID (e.g. merge destination)",
     )
@@ -72,10 +72,10 @@ class TagOperationLogCreate(TagOperationLogBase):
 class TagOperationLogUpdate(BaseModel):
     """Model for updating tag operation logs (PATCH-style, all fields optional)."""
 
-    rolled_back: Optional[bool] = Field(
+    rolled_back: bool | None = Field(
         default=None, description="Whether this operation has been rolled back"
     )
-    rolled_back_at: Optional[datetime] = Field(
+    rolled_back_at: datetime | None = Field(
         default=None, description="Timestamp when the rollback was performed"
     )
 
@@ -91,7 +91,7 @@ class TagOperationLog(TagOperationLogBase):
     source_canonical_ids: list[uuid.UUID] = Field(
         ..., description="List of source canonical tag UUIDs involved in the operation"
     )
-    target_canonical_id: Optional[uuid.UUID] = Field(
+    target_canonical_id: uuid.UUID | None = Field(
         default=None,
         description="Target canonical tag UUID (e.g. merge destination)",
     )
@@ -112,7 +112,7 @@ class TagOperationLog(TagOperationLogBase):
     rolled_back: bool = Field(
         ..., description="Whether this operation has been rolled back"
     )
-    rolled_back_at: Optional[datetime] = Field(
+    rolled_back_at: datetime | None = Field(
         default=None, description="Timestamp when the rollback was performed"
     )
 

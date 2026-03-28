@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable, Coroutine
 from pathlib import Path
-from typing import Any, Callable, Coroutine, cast
+from typing import Any, cast
 
 from sqlalchemy import CursorResult, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -479,9 +480,7 @@ class OnboardingService:
         if export_mtime is None:
             return False
         # Only signal new data if export dir was modified after last load
-        if last_loaded_at is not None and export_mtime <= last_loaded_at:
-            return False
-        return True
+        return not (last_loaded_at is not None and export_mtime <= last_loaded_at)
 
     @staticmethod
     def _check_auth() -> bool:
@@ -1003,8 +1002,8 @@ class OnboardingService:
                         my_channel = await youtube_service.get_my_channel()
                         if my_channel:
                             real_user_id = my_channel.id
-                            from chronovista.db.models import UserVideo as UserVideoDB
                             from sqlalchemy import text
+
 
                             # Migrate takeout_user → real channel ID,
                             # skipping rows that already exist under

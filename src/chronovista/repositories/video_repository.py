@@ -8,13 +8,12 @@ capabilities and content restrictions.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from chronovista.db.models import Channel
 from chronovista.db.models import Video as VideoDB
 from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.video import (
@@ -22,7 +21,6 @@ from chronovista.models.video import (
     VideoSearchFilters,
     VideoStatistics,
     VideoUpdate,
-    VideoWithChannel,
 )
 from chronovista.models.youtube_types import ChannelId, VideoId
 from chronovista.repositories.base import BaseSQLAlchemyRepository
@@ -42,7 +40,7 @@ class VideoRepository(
         """Initialize repository with Video model."""
         super().__init__(VideoDB)
 
-    async def get(self, session: AsyncSession, id: VideoId) -> Optional[VideoDB]:
+    async def get(self, session: AsyncSession, id: VideoId) -> VideoDB | None:
         """Get video by video_id (primary key)."""
         return await self.get_by_video_id(session, id)
 
@@ -52,7 +50,7 @@ class VideoRepository(
 
     async def get_by_video_id(
         self, session: AsyncSession, video_id: VideoId
-    ) -> Optional[VideoDB]:
+    ) -> VideoDB | None:
         """
         Get video by YouTube video ID.
 
@@ -98,7 +96,7 @@ class VideoRepository(
 
     async def get_multi(
         self, session: AsyncSession, *, skip: int = 0, limit: int = 100
-    ) -> List[VideoDB]:
+    ) -> list[VideoDB]:
         """
         Get multiple videos with pagination, excluding deleted videos.
 
@@ -131,7 +129,7 @@ class VideoRepository(
         channel_id: ChannelId,
         skip: int = 0,
         limit: int = 50,
-    ) -> List[VideoDB]:
+    ) -> list[VideoDB]:
         """
         Find videos by channel with pagination.
 
@@ -164,7 +162,7 @@ class VideoRepository(
 
     async def find_by_language(
         self, session: AsyncSession, language: str
-    ) -> List[VideoDB]:
+    ) -> list[VideoDB]:
         """
         Find videos by default language.
 
@@ -198,7 +196,7 @@ class VideoRepository(
 
     async def find_available_in_language(
         self, session: AsyncSession, language: str
-    ) -> List[VideoDB]:
+    ) -> list[VideoDB]:
         """
         Find videos that have content available in specified language.
 
@@ -228,7 +226,7 @@ class VideoRepository(
 
     async def find_made_for_kids(
         self, session: AsyncSession, made_for_kids: bool = True
-    ) -> List[VideoDB]:
+    ) -> list[VideoDB]:
         """
         Find videos filtered by made-for-kids status.
 
@@ -264,7 +262,7 @@ class VideoRepository(
         session: AsyncSession,
         start_date: datetime,
         end_date: datetime,
-    ) -> List[VideoDB]:
+    ) -> list[VideoDB]:
         """
         Find videos uploaded within date range.
 
@@ -297,7 +295,7 @@ class VideoRepository(
 
     async def get_with_transcripts(
         self, session: AsyncSession, video_id: VideoId
-    ) -> Optional[VideoDB]:
+    ) -> VideoDB | None:
         """
         Get video with all transcripts loaded.
 
@@ -322,7 +320,7 @@ class VideoRepository(
 
     async def get_with_channel(
         self, session: AsyncSession, video_id: VideoId
-    ) -> Optional[VideoDB]:
+    ) -> VideoDB | None:
         """
         Get video with channel information loaded.
 
@@ -347,7 +345,7 @@ class VideoRepository(
 
     async def search_videos(
         self, session: AsyncSession, filters: VideoSearchFilters
-    ) -> List[VideoDB]:
+    ) -> list[VideoDB]:
         """
         Search videos with advanced filtering.
 
@@ -364,7 +362,7 @@ class VideoRepository(
             List of matching videos
         """
         query = select(VideoDB)
-        conditions: List[Any] = []
+        conditions: list[Any] = []
 
         # Exclude deleted videos by default
         if filters.exclude_deleted:
@@ -477,7 +475,7 @@ class VideoRepository(
 
     async def get_popular_videos(
         self, session: AsyncSession, limit: int = 10, days_back: int = 30
-    ) -> List[VideoDB]:
+    ) -> list[VideoDB]:
         """
         Get most popular videos by view count from recent period.
 
@@ -511,7 +509,7 @@ class VideoRepository(
         )
         return list(result.scalars().all())
 
-    async def find_deleted_videos(self, session: AsyncSession) -> List[VideoDB]:
+    async def find_deleted_videos(self, session: AsyncSession) -> list[VideoDB]:
         """
         Find videos marked as unavailable (deleted, private, terminated, etc.).
 
@@ -676,9 +674,9 @@ class VideoRepository(
     async def get_videos_with_preferred_localizations(
         self,
         session: AsyncSession,
-        video_ids: List[str],
-        preferred_languages: List[str],
-    ) -> Dict[str, Dict[str, Any]]:
+        video_ids: list[str],
+        preferred_languages: list[str],
+    ) -> dict[str, dict[str, Any]]:
         """
         Get videos with their preferred localizations.
 
@@ -744,11 +742,11 @@ class VideoRepository(
     async def get_videos_with_localization_support(
         self,
         session: AsyncSession,
-        language_codes: Optional[List[str]] = None,
+        language_codes: list[str] | None = None,
         min_localizations: int = 1,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Get videos that have localization support in specified languages.
 
@@ -784,8 +782,8 @@ class VideoRepository(
                 video_ids_per_language[lang] = set(video_ids)
 
             # Find videos that appear in enough languages
-            video_counts: Dict[str, int] = {}
-            for lang, video_ids_set in video_ids_per_language.items():
+            video_counts: dict[str, int] = {}
+            for _lang, video_ids_set in video_ids_per_language.items():
                 for video_id in video_ids_set:
                     video_counts[video_id] = video_counts.get(video_id, 0) + 1
 
@@ -841,10 +839,10 @@ class VideoRepository(
     async def get_videos_missing_localizations(
         self,
         session: AsyncSession,
-        target_languages: List[str],
-        video_ids: Optional[List[str]] = None,
+        target_languages: list[str],
+        video_ids: list[str] | None = None,
         limit: int = 50,
-    ) -> Dict[str, Dict[str, Any]]:
+    ) -> dict[str, dict[str, Any]]:
         """
         Get videos that are missing localizations in target languages.
 
@@ -920,7 +918,7 @@ class VideoRepository(
         self,
         session: AsyncSession,
         video_id: str,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Get comprehensive localization summary for a single video.
 
@@ -984,7 +982,7 @@ class VideoRepository(
         skip: int = 0,
         limit: int | None = None,
         exclude_deleted: bool = True,
-    ) -> List[VideoDB]:
+    ) -> list[VideoDB]:
         """
         Find videos by YouTube video category ID.
 
@@ -1059,10 +1057,10 @@ class VideoRepository(
         self,
         session: AsyncSession,
         *,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         offset: int = 0,
         with_hint_only: bool = False,
-    ) -> List[VideoDB]:
+    ) -> list[VideoDB]:
         """
         Find videos with NULL channel_id (orphan videos).
 
@@ -1145,7 +1143,7 @@ class VideoRepository(
         self,
         session: AsyncSession,
         channel_name_hint: str,
-    ) -> List[VideoDB]:
+    ) -> list[VideoDB]:
         """
         Find orphan videos by channel_name_hint for resolution.
 
@@ -1179,7 +1177,7 @@ class VideoRepository(
     async def link_videos_to_channel(
         self,
         session: AsyncSession,
-        video_ids: List[VideoId],
+        video_ids: list[VideoId],
         channel_id: ChannelId,
         clear_hint: bool = True,
     ) -> int:
@@ -1210,7 +1208,7 @@ class VideoRepository(
 
         from sqlalchemy import update
 
-        update_values: Dict[str, Any] = {"channel_id": channel_id}
+        update_values: dict[str, Any] = {"channel_id": channel_id}
         if clear_hint:
             update_values["channel_name_hint"] = None
 

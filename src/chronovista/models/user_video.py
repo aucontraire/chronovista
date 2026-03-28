@@ -8,7 +8,6 @@ from Google Takeout data with validation and serialization support.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -21,7 +20,7 @@ class UserVideoBase(BaseModel):
 
     user_id: UserId = Field(..., description="User identifier (validated)")
     video_id: VideoId = Field(..., description="YouTube video ID (validated)")
-    watched_at: Optional[datetime] = Field(
+    watched_at: datetime | None = Field(
         default=None, description="When the video was watched"
     )
     rewatch_count: int = Field(default=0, ge=0, description="Number of times rewatched")
@@ -47,10 +46,10 @@ class UserVideoCreate(UserVideoBase):
 class UserVideoUpdate(BaseModel):
     """Model for updating user-video interactions."""
 
-    watched_at: Optional[datetime] = None
-    rewatch_count: Optional[int] = Field(None, ge=0)
-    liked: Optional[bool] = None
-    saved_to_playlist: Optional[bool] = None
+    watched_at: datetime | None = None
+    rewatch_count: int | None = Field(None, ge=0)
+    liked: bool | None = None
+    saved_to_playlist: bool | None = None
 
     model_config = ConfigDict(
         validate_assignment=True,
@@ -75,12 +74,12 @@ class GoogleTakeoutWatchHistoryItem(BaseModel):
     header: str = Field(..., description="Source header (usually 'YouTube')")
     title: str = Field(..., description="Full title from Takeout including action")
     titleUrl: str = Field(..., description="YouTube URL for the video")
-    subtitles: List[Dict[str, str]] = Field(
+    subtitles: list[dict[str, str]] = Field(
         default_factory=list, description="Channel info"
     )
     time: str = Field(..., description="ISO timestamp string from Takeout")
-    products: List[str] = Field(default_factory=list, description="Google products")
-    activityControls: List[str] = Field(
+    products: list[str] = Field(default_factory=list, description="Google products")
+    activityControls: list[str] = Field(
         default_factory=list, description="Activity controls"
     )
 
@@ -104,7 +103,7 @@ class GoogleTakeoutWatchHistoryItem(BaseModel):
 
         return v
 
-    def extract_video_id(self) -> Optional[str]:
+    def extract_video_id(self) -> str | None:
         """
         Extract video ID from YouTube URL.
 
@@ -135,7 +134,7 @@ class GoogleTakeoutWatchHistoryItem(BaseModel):
         except Exception:
             return None
 
-    def extract_channel_info(self) -> Optional[Dict[str, Optional[str]]]:
+    def extract_channel_info(self) -> dict[str, str | None] | None:
         """
         Extract channel information from subtitles.
 
@@ -153,7 +152,7 @@ class GoogleTakeoutWatchHistoryItem(BaseModel):
             "url": channel.get("url"),
         }
 
-    def extract_channel_id(self) -> Optional[str]:
+    def extract_channel_id(self) -> str | None:
         """
         Extract channel ID from channel URL.
 
@@ -216,7 +215,7 @@ class GoogleTakeoutWatchHistoryItem(BaseModel):
                 break
         return title.strip()
 
-    def to_user_video_create(self, user_id: UserId) -> Optional[UserVideoCreate]:
+    def to_user_video_create(self, user_id: UserId) -> UserVideoCreate | None:
         """
         Convert to UserVideoCreate model.
 
@@ -255,31 +254,31 @@ class GoogleTakeoutWatchHistoryItem(BaseModel):
 class UserVideoSearchFilters(BaseModel):
     """Filters for searching user video interactions."""
 
-    user_ids: Optional[List[UserId]] = Field(
+    user_ids: list[UserId] | None = Field(
         default=None, description="Filter by validated user IDs"
     )
-    video_ids: Optional[List[VideoId]] = Field(
+    video_ids: list[VideoId] | None = Field(
         default=None, description="Filter by video IDs"
     )
-    watched_after: Optional[datetime] = Field(
+    watched_after: datetime | None = Field(
         default=None, description="Filter by watch date"
     )
-    watched_before: Optional[datetime] = Field(
+    watched_before: datetime | None = Field(
         default=None, description="Filter by watch date"
     )
-    liked_only: Optional[bool] = Field(
+    liked_only: bool | None = Field(
         default=None, description="Filter for liked videos only"
     )
-    playlist_saved_only: Optional[bool] = Field(
+    playlist_saved_only: bool | None = Field(
         default=None, description="Filter for playlist-saved videos"
     )
-    min_rewatch_count: Optional[int] = Field(
+    min_rewatch_count: int | None = Field(
         default=None, ge=0, description="Minimum rewatch count"
     )
-    created_after: Optional[datetime] = Field(
+    created_after: datetime | None = Field(
         default=None, description="Filter by creation date"
     )
-    created_before: Optional[datetime] = Field(
+    created_before: datetime | None = Field(
         default=None, description="Filter by creation date"
     )
 
@@ -298,7 +297,7 @@ class UserVideoStatistics(BaseModel):
     )
     rewatch_count: int = Field(..., description="Number of rewatched videos")
     unique_videos: int = Field(..., description="Number of unique videos")
-    most_watched_date: Optional[datetime] = Field(
+    most_watched_date: datetime | None = Field(
         default=None, description="Date with most activity"
     )
     watch_streak_days: int = Field(

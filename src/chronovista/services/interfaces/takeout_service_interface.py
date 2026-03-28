@@ -10,7 +10,6 @@ This interface defines the contract for Takeout data parsing, enabling:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List
 
 from ...models.takeout import (
     ContentGap,
@@ -64,7 +63,7 @@ class TakeoutServiceInterface(ABC):
         pass
 
     @abstractmethod
-    async def parse_watch_history(self) -> List[TakeoutWatchEntry]:
+    async def parse_watch_history(self) -> list[TakeoutWatchEntry]:
         """
         Parse watch history from JSON file.
 
@@ -83,7 +82,7 @@ class TakeoutServiceInterface(ABC):
         pass
 
     @abstractmethod
-    async def parse_playlists(self) -> List[TakeoutPlaylist]:
+    async def parse_playlists(self) -> list[TakeoutPlaylist]:
         """
         Parse playlists from CSV files in the playlists directory.
 
@@ -100,7 +99,7 @@ class TakeoutServiceInterface(ABC):
         pass
 
     @abstractmethod
-    async def parse_subscriptions(self) -> List[TakeoutSubscription]:
+    async def parse_subscriptions(self) -> list[TakeoutSubscription]:
         """
         Parse channel subscriptions from CSV file.
 
@@ -167,7 +166,7 @@ class TakeoutServiceInterface(ABC):
         pass
 
     @abstractmethod
-    async def find_content_gaps(self, takeout_data: TakeoutData) -> List[ContentGap]:
+    async def find_content_gaps(self, takeout_data: TakeoutData) -> list[ContentGap]:
         """
         Find content gaps in Takeout data (unwatched subscribed channels, etc.).
 

@@ -8,7 +8,6 @@ and serialization support.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -20,7 +19,7 @@ class VideoTagBase(BaseModel):
 
     video_id: VideoId = Field(..., description="YouTube video ID (validated)")
     tag: str = Field(..., min_length=1, max_length=500, description="Tag content")
-    tag_order: Optional[int] = Field(
+    tag_order: int | None = Field(
         default=None, ge=0, description="Order of tag from YouTube API"
     )
 
@@ -53,7 +52,7 @@ class VideoTagCreate(VideoTagBase):
 class VideoTagUpdate(BaseModel):
     """Model for updating video tags."""
 
-    tag_order: Optional[int] = Field(None, ge=0)
+    tag_order: int | None = Field(None, ge=0)
 
     model_config = ConfigDict(
         validate_assignment=True,
@@ -74,27 +73,27 @@ class VideoTag(VideoTagBase):
 class VideoTagSearchFilters(BaseModel):
     """Filters for searching video tags."""
 
-    video_ids: Optional[List[VideoId]] = Field(
+    video_ids: list[VideoId] | None = Field(
         default=None, description="Filter by video IDs"
     )
-    tags: Optional[List[str]] = Field(
+    tags: list[str] | None = Field(
         default=None, description="Filter by specific tags"
     )
-    tag_pattern: Optional[str] = Field(
+    tag_pattern: str | None = Field(
         default=None,
         min_length=1,
         description="Search tags by pattern (case-insensitive)",
     )
-    min_tag_order: Optional[int] = Field(
+    min_tag_order: int | None = Field(
         default=None, ge=0, description="Minimum tag order"
     )
-    max_tag_order: Optional[int] = Field(
+    max_tag_order: int | None = Field(
         default=None, ge=0, description="Maximum tag order"
     )
-    created_after: Optional[datetime] = Field(
+    created_after: datetime | None = Field(
         default=None, description="Filter by creation date"
     )
-    created_before: Optional[datetime] = Field(
+    created_before: datetime | None = Field(
         default=None, description="Filter by creation date"
     )
 
@@ -109,7 +108,7 @@ class VideoTagStatistics(BaseModel):
     total_tags: int = Field(..., description="Total number of tags")
     unique_tags: int = Field(..., description="Number of unique tags")
     avg_tags_per_video: float = Field(..., description="Average tags per video")
-    most_common_tags: List[tuple[str, int]] = Field(
+    most_common_tags: list[tuple[str, int]] = Field(
         default_factory=list, description="Most common tags with counts"
     )
     tag_distribution: dict[str, int] = Field(

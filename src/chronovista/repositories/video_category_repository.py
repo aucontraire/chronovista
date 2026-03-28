@@ -7,8 +7,6 @@ and bulk creation support for seeding.
 
 from __future__ import annotations
 
-from typing import List, Optional
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,7 +28,7 @@ class VideoCategoryRepository(
 
     async def get(
         self, session: AsyncSession, category_id: str
-    ) -> Optional[VideoCategoryDB]:
+    ) -> VideoCategoryDB | None:
         """
         Get video category by category ID.
 
@@ -74,7 +72,7 @@ class VideoCategoryRepository(
         )
         return result.first() is not None
 
-    async def get_all(self, session: AsyncSession) -> List[VideoCategoryDB]:
+    async def get_all(self, session: AsyncSession) -> list[VideoCategoryDB]:
         """
         Get all video categories.
 
@@ -93,7 +91,7 @@ class VideoCategoryRepository(
         )
         return list(result.scalars().all())
 
-    async def get_assignable(self, session: AsyncSession) -> List[VideoCategoryDB]:
+    async def get_assignable(self, session: AsyncSession) -> list[VideoCategoryDB]:
         """
         Get only assignable video categories.
 
@@ -117,8 +115,8 @@ class VideoCategoryRepository(
         return list(result.scalars().all())
 
     async def bulk_create(
-        self, session: AsyncSession, categories: List[VideoCategoryCreate]
-    ) -> List[VideoCategoryDB]:
+        self, session: AsyncSession, categories: list[VideoCategoryCreate]
+    ) -> list[VideoCategoryDB]:
         """
         Create multiple video categories efficiently.
 
@@ -138,7 +136,7 @@ class VideoCategoryRepository(
         List[VideoCategoryDB]
             List of created or existing video categories.
         """
-        created_categories: List[VideoCategoryDB] = []
+        created_categories: list[VideoCategoryDB] = []
 
         for category_create in categories:
             # Check if category already exists
@@ -153,7 +151,7 @@ class VideoCategoryRepository(
 
     async def get_by_category_id(
         self, session: AsyncSession, category_id: str
-    ) -> Optional[VideoCategoryDB]:
+    ) -> VideoCategoryDB | None:
         """
         Get video category by category ID (alias for get method).
 
@@ -204,7 +202,7 @@ class VideoCategoryRepository(
 
     async def delete_by_category_id(
         self, session: AsyncSession, category_id: str
-    ) -> Optional[VideoCategoryDB]:
+    ) -> VideoCategoryDB | None:
         """
         Delete video category by category ID.
 
@@ -228,7 +226,7 @@ class VideoCategoryRepository(
 
     async def find_by_name(
         self, session: AsyncSession, name_query: str
-    ) -> List[VideoCategoryDB]:
+    ) -> list[VideoCategoryDB]:
         """
         Find categories by name (case-insensitive partial match).
 

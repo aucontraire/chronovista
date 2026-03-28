@@ -7,21 +7,18 @@ hierarchy management, and analytics support.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from sqlalchemy import and_, desc, func, or_, select
+from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from chronovista.db.models import TopicCategory as TopicCategoryDB
 from chronovista.models.topic_category import (
-    TopicCategory,
     TopicCategoryCreate,
     TopicCategorySearchFilters,
     TopicCategoryStatistics,
     TopicCategoryUpdate,
 )
-from chronovista.models.youtube_types import TopicId
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
@@ -35,7 +32,7 @@ class TopicCategoryRepository(
 
     async def get(
         self, session: AsyncSession, topic_id: str
-    ) -> Optional[TopicCategoryDB]:
+    ) -> TopicCategoryDB | None:
         """Get topic category by topic ID."""
         result = await session.execute(
             select(TopicCategoryDB).where(TopicCategoryDB.topic_id == topic_id)
@@ -51,7 +48,7 @@ class TopicCategoryRepository(
 
     async def get_by_topic_id(
         self, session: AsyncSession, topic_id: str
-    ) -> Optional[TopicCategoryDB]:
+    ) -> TopicCategoryDB | None:
         """Get topic category by topic ID (alias for get method)."""
         return await self.get(session, topic_id)
 
@@ -77,7 +74,7 @@ class TopicCategoryRepository(
             # Create new topic
             return await self.create(session, obj_in=topic_create)
 
-    async def get_root_topics(self, session: AsyncSession) -> List[TopicCategoryDB]:
+    async def get_root_topics(self, session: AsyncSession) -> list[TopicCategoryDB]:
         """Get all root topics (topics with no parent)."""
         result = await session.execute(
             select(TopicCategoryDB)
@@ -88,7 +85,7 @@ class TopicCategoryRepository(
 
     async def get_children(
         self, session: AsyncSession, parent_topic_id: str
-    ) -> List[TopicCategoryDB]:
+    ) -> list[TopicCategoryDB]:
         """Get all child topics for a given parent topic."""
         result = await session.execute(
             select(TopicCategoryDB)
@@ -98,8 +95,8 @@ class TopicCategoryRepository(
         return list(result.scalars().all())
 
     async def get_topic_hierarchy(
-        self, session: AsyncSession, topic_id: str, max_depth: Optional[int] = None
-    ) -> Optional[TopicCategoryDB]:
+        self, session: AsyncSession, topic_id: str, max_depth: int | None = None
+    ) -> TopicCategoryDB | None:
         """Get topic with all its descendants loaded."""
         # For now, return the topic itself. Full hierarchy loading would require
         # recursive CTE or multiple queries
@@ -107,7 +104,7 @@ class TopicCategoryRepository(
 
     async def find_by_name(
         self, session: AsyncSession, name_query: str
-    ) -> List[TopicCategoryDB]:
+    ) -> list[TopicCategoryDB]:
         """Find topics by name (case-insensitive partial match)."""
         result = await session.execute(
             select(TopicCategoryDB)
@@ -118,7 +115,7 @@ class TopicCategoryRepository(
 
     async def find_by_type(
         self, session: AsyncSession, topic_type: str
-    ) -> List[TopicCategoryDB]:
+    ) -> list[TopicCategoryDB]:
         """Find topics by type."""
         result = await session.execute(
             select(TopicCategoryDB)
@@ -129,12 +126,12 @@ class TopicCategoryRepository(
 
     async def search_topics(
         self, session: AsyncSession, filters: TopicCategorySearchFilters
-    ) -> List[TopicCategoryDB]:
+    ) -> list[TopicCategoryDB]:
         """Search topics with advanced filters."""
         query = select(TopicCategoryDB)
 
         # Apply filters
-        conditions: List[Any] = []
+        conditions: list[Any] = []
 
         if filters.topic_ids:
             conditions.append(TopicCategoryDB.topic_id.in_(filters.topic_ids))
@@ -235,7 +232,7 @@ class TopicCategoryRepository(
 
     async def delete_by_topic_id(
         self, session: AsyncSession, topic_id: str
-    ) -> Optional[TopicCategoryDB]:
+    ) -> TopicCategoryDB | None:
         """Delete topic category by topic ID."""
         topic = await self.get_by_topic_id(session, topic_id)
         if topic:
@@ -244,8 +241,8 @@ class TopicCategoryRepository(
         return topic
 
     async def bulk_create(
-        self, session: AsyncSession, topics: List[TopicCategoryCreate]
-    ) -> List[TopicCategoryDB]:
+        self, session: AsyncSession, topics: list[TopicCategoryCreate]
+    ) -> list[TopicCategoryDB]:
         """Create multiple topics efficiently."""
         created_topics = []
 
@@ -262,10 +259,10 @@ class TopicCategoryRepository(
 
     async def get_topic_path(
         self, session: AsyncSession, topic_id: str
-    ) -> List[TopicCategoryDB]:
+    ) -> list[TopicCategoryDB]:
         """Get the path from root to the specified topic."""
-        path: List[TopicCategoryDB] = []
-        current_topic_id: Optional[str] = topic_id
+        path: list[TopicCategoryDB] = []
+        current_topic_id: str | None = topic_id
 
         # Traverse up the hierarchy
         while current_topic_id:

@@ -26,9 +26,7 @@ Related Tasks: T026-T029 (Feature 008: Transcript Segment Table - Phase 2)
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List
 
-import sqlalchemy as sa
 from alembic import op
 from sqlalchemy import text
 from sqlalchemy.orm import Session

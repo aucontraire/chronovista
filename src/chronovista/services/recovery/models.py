@@ -155,7 +155,7 @@ class CdxSnapshot(BaseModel):
             UTC-aware datetime parsed from the 14-digit timestamp.
         """
         return _dt.datetime.strptime(self.timestamp, "%Y%m%d%H%M%S").replace(
-            tzinfo=_dt.timezone.utc
+            tzinfo=_dt.UTC
         )
 
 
@@ -759,6 +759,6 @@ class CdxCacheEntry(BaseModel):
         bool
             True if the cache entry age is less than ``ttl_hours``.
         """
-        now = _dt.datetime.now(_dt.timezone.utc)
+        now = _dt.datetime.now(_dt.UTC)
         age = now - self.fetched_at
         return age < _dt.timedelta(hours=ttl_hours)

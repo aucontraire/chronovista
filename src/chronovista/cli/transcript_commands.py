@@ -9,11 +9,12 @@ Provides commands for navigating video transcripts by timestamp:
 
 from __future__ import annotations
 
-from typing import Annotated, List, Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console
 
+from chronovista.cli.sync.base import run_sync_operation
 from chronovista.config.database import db_manager
 from chronovista.models.youtube_types import VideoId
 from chronovista.repositories.transcript_segment_repository import (
@@ -32,7 +33,6 @@ from chronovista.services.segment_service import (
     format_segments_srt,
     parse_timestamp,
 )
-from chronovista.cli.sync.base import run_sync_operation
 
 # Initialize CLI app and console
 transcript_app = typer.Typer(
@@ -76,7 +76,7 @@ def segment_command(
         time_seconds = parse_timestamp(timestamp)
     except ValueError as e:
         err_console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(EXIT_INVALID_TIMESTAMP)
+        raise typer.Exit(EXIT_INVALID_TIMESTAMP) from e
 
     async def _query() -> int:
         """Query segment at timestamp."""
@@ -118,7 +118,9 @@ def segment_command(
                 return EXIT_NO_SEGMENT
 
             # Format output
-            from chronovista.models.transcript_segment import TranscriptSegment as TSPydantic
+            from chronovista.models.transcript_segment import (
+                TranscriptSegment as TSPydantic,
+            )
             pydantic_segment = TSPydantic.model_validate(segment)
 
             if format == OutputFormat.HUMAN:
@@ -161,7 +163,7 @@ def context_command(
         time_seconds = parse_timestamp(timestamp)
     except ValueError as e:
         err_console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(EXIT_INVALID_TIMESTAMP)
+        raise typer.Exit(EXIT_INVALID_TIMESTAMP) from e
 
     # Clamp window size per FR-CTX-02/03
     actual_window = window
@@ -203,12 +205,14 @@ def context_command(
 
             if not segments:
                 err_console.print(
-                    f"[yellow]No segments found in context window.[/yellow]"
+                    "[yellow]No segments found in context window.[/yellow]"
                 )
                 return EXIT_SUCCESS  # Not an error, just empty result
 
             # Convert to Pydantic
-            from chronovista.models.transcript_segment import TranscriptSegment as TSPydantic
+            from chronovista.models.transcript_segment import (
+                TranscriptSegment as TSPydantic,
+            )
             pydantic_segments = [TSPydantic.model_validate(s) for s in segments]
 
             # Format output
@@ -255,13 +259,13 @@ def range_command(
         start_seconds = parse_timestamp(start)
     except ValueError as e:
         err_console.print(f"[red]Error:[/red] Invalid start timestamp: {e}")
-        raise typer.Exit(EXIT_INVALID_TIMESTAMP)
+        raise typer.Exit(EXIT_INVALID_TIMESTAMP) from e
 
     try:
         end_seconds = parse_timestamp(end)
     except ValueError as e:
         err_console.print(f"[red]Error:[/red] Invalid end timestamp: {e}")
-        raise typer.Exit(EXIT_INVALID_TIMESTAMP)
+        raise typer.Exit(EXIT_INVALID_TIMESTAMP) from e
 
     # Validate range
     if end_seconds <= start_seconds:
@@ -306,7 +310,9 @@ def range_command(
                 return EXIT_SUCCESS
 
             # Convert to Pydantic
-            from chronovista.models.transcript_segment import TranscriptSegment as TSPydantic
+            from chronovista.models.transcript_segment import (
+                TranscriptSegment as TSPydantic,
+            )
             pydantic_segments = [TSPydantic.model_validate(s) for s in segments]
 
             # Format output

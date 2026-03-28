@@ -8,13 +8,15 @@ and management operations with rollback support.
 from __future__ import annotations
 
 import uuid
-from typing import Optional
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import TagOperationLog as TagOperationLogDB
-from chronovista.models.tag_operation_log import TagOperationLogCreate, TagOperationLogUpdate
+from chronovista.models.tag_operation_log import (
+    TagOperationLogCreate,
+    TagOperationLogUpdate,
+)
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
@@ -34,7 +36,7 @@ class TagOperationLogRepository(
 
     async def get(
         self, session: AsyncSession, id: uuid.UUID
-    ) -> Optional[TagOperationLogDB]:
+    ) -> TagOperationLogDB | None:
         """
         Get tag operation log entry by UUID primary key.
 
@@ -106,7 +108,7 @@ class TagOperationLogRepository(
 
     async def get_by_operation_id(
         self, session: AsyncSession, operation_id: uuid.UUID
-    ) -> Optional[TagOperationLogDB]:
+    ) -> TagOperationLogDB | None:
         """
         Get tag operation log entry by operation UUID.
 

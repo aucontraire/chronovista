@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import List, Optional, Set, Tuple
 
 from ..models.enums import LanguageCode, LanguagePreferenceType
 from ..models.user_language_preference import UserLanguagePreference
@@ -48,10 +47,10 @@ class DownloadPlan:
         Languages blocked because they're EXCLUDE (never download)
     """
 
-    fluent_downloads: List[str]
-    learning_pairs: List[Tuple[str, Optional[str]]]
-    skipped_curious: List[str]
-    blocked_excluded: List[str]
+    fluent_downloads: list[str]
+    learning_pairs: list[tuple[str, str | None]]
+    skipped_curious: list[str]
+    blocked_excluded: list[str]
 
 
 class PreferenceAwareTranscriptFilter:
@@ -92,8 +91,8 @@ class PreferenceAwareTranscriptFilter:
 
     def create_download_plan(
         self,
-        available_languages: List[str],
-        user_preferences: List[UserLanguagePreference],
+        available_languages: list[str],
+        user_preferences: list[UserLanguagePreference],
     ) -> DownloadPlan:
         """
         Create a download plan based on available languages and preferences.
@@ -172,8 +171,8 @@ class PreferenceAwareTranscriptFilter:
         return plan
 
     def _get_language_codes(
-        self, preferences: List[UserLanguagePreference]
-    ) -> Set[str]:
+        self, preferences: list[UserLanguagePreference]
+    ) -> set[str]:
         """
         Extract language codes from preferences.
 
@@ -187,7 +186,7 @@ class PreferenceAwareTranscriptFilter:
         Set[str]
             Set of language code strings
         """
-        codes: Set[str] = set()
+        codes: set[str] = set()
         for pref in preferences:
             # language_code is already a string due to use_enum_values=True
             # in the Pydantic model configuration
@@ -195,7 +194,7 @@ class PreferenceAwareTranscriptFilter:
             codes.add(lang_code)
         return codes
 
-    def _matches_preference(self, lang: str, pref_codes: Set[str]) -> bool:
+    def _matches_preference(self, lang: str, pref_codes: set[str]) -> bool:
         """
         Check if a language matches any preference (including base matching).
 
@@ -235,8 +234,8 @@ class PreferenceAwareTranscriptFilter:
         return base_lang in pref_bases
 
     def get_top_fluent_language(
-        self, fluent_prefs: List[UserLanguagePreference]
-    ) -> Optional[str]:
+        self, fluent_prefs: list[UserLanguagePreference]
+    ) -> str | None:
         """
         Get highest priority fluent language.
 
@@ -264,9 +263,9 @@ class PreferenceAwareTranscriptFilter:
     def get_translation_pair(
         self,
         learning_lang: str,
-        available_languages: List[str],
-        fluent_prefs: List[UserLanguagePreference],
-    ) -> Tuple[str, Optional[str]]:
+        available_languages: list[str],
+        fluent_prefs: list[UserLanguagePreference],
+    ) -> tuple[str, str | None]:
         """
         Get translation pair for a learning language.
 
@@ -306,7 +305,7 @@ class PreferenceAwareTranscriptFilter:
         return (learning_lang, None)
 
     def _matches_any_variant(
-        self, target_lang: str, available_languages: List[str]
+        self, target_lang: str, available_languages: list[str]
     ) -> bool:
         """
         Check if target language (or any variant) is in available languages.
@@ -343,9 +342,9 @@ class PreferenceAwareTranscriptFilter:
 
     def get_download_languages(
         self,
-        available_languages: List[str],
-        user_preferences: List[UserLanguagePreference],
-    ) -> List[str]:
+        available_languages: list[str],
+        user_preferences: list[UserLanguagePreference],
+    ) -> list[str]:
         """
         Get list of languages to download (simplified interface).
 

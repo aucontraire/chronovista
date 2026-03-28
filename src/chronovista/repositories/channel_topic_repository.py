@@ -7,7 +7,7 @@ topic analytics, and channel-topic relationship management.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from sqlalchemy import and_, delete, desc, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +23,7 @@ from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
 class ChannelTopicRepository(
-    BaseSQLAlchemyRepository[ChannelTopicDB, ChannelTopicCreate, ChannelTopicUpdate, Tuple[str, str]]
+    BaseSQLAlchemyRepository[ChannelTopicDB, ChannelTopicCreate, ChannelTopicUpdate, tuple[str, str]]
 ):
     """Repository for channel topic operations."""
 
@@ -31,20 +31,20 @@ class ChannelTopicRepository(
         super().__init__(ChannelTopicDB)
 
     async def get(
-        self, session: AsyncSession, id: Tuple[str, str]
-    ) -> Optional[ChannelTopicDB]:
+        self, session: AsyncSession, id: tuple[str, str]
+    ) -> ChannelTopicDB | None:
         """Get channel topic by composite key tuple (channel_id, topic_id)."""
         channel_id, topic_id = id
         return await self.get_by_composite_key(session, channel_id, topic_id)
 
-    async def exists(self, session: AsyncSession, id: Tuple[str, str]) -> bool:
+    async def exists(self, session: AsyncSession, id: tuple[str, str]) -> bool:
         """Check if channel topic exists by composite key tuple (channel_id, topic_id)."""
         channel_id, topic_id = id
         return await self.exists_by_composite_key(session, channel_id, topic_id)
 
     async def get_by_composite_key(
         self, session: AsyncSession, channel_id: str, topic_id: str
-    ) -> Optional[ChannelTopicDB]:
+    ) -> ChannelTopicDB | None:
         """Get channel topic by composite key (channel_id, topic_id)."""
         result = await session.execute(
             select(ChannelTopicDB).where(
@@ -72,7 +72,7 @@ class ChannelTopicRepository(
 
     async def get_topics_by_channel_id(
         self, session: AsyncSession, channel_id: str
-    ) -> List[ChannelTopicDB]:
+    ) -> list[ChannelTopicDB]:
         """Get all topics for a specific channel."""
         result = await session.execute(
             select(ChannelTopicDB)
@@ -83,7 +83,7 @@ class ChannelTopicRepository(
 
     async def get_channels_by_topic_id(
         self, session: AsyncSession, topic_id: str
-    ) -> List[ChannelTopicDB]:
+    ) -> list[ChannelTopicDB]:
         """Get all channels with a specific topic."""
         result = await session.execute(
             select(ChannelTopicDB)
@@ -111,8 +111,8 @@ class ChannelTopicRepository(
         self,
         session: AsyncSession,
         channel_id: str,
-        topic_ids: List[str],
-    ) -> List[ChannelTopicDB]:
+        topic_ids: list[str],
+    ) -> list[ChannelTopicDB]:
         """Create multiple topics for a channel efficiently."""
         created_topics = []
 
@@ -134,8 +134,8 @@ class ChannelTopicRepository(
         self,
         session: AsyncSession,
         channel_id: str,
-        topic_ids: List[str],
-    ) -> List[ChannelTopicDB]:
+        topic_ids: list[str],
+    ) -> list[ChannelTopicDB]:
         """Replace all topics for a channel with new ones."""
         # Delete existing topics for this channel
         await session.execute(
@@ -177,12 +177,12 @@ class ChannelTopicRepository(
 
     async def search_channel_topics(
         self, session: AsyncSession, filters: ChannelTopicSearchFilters
-    ) -> List[ChannelTopicDB]:
+    ) -> list[ChannelTopicDB]:
         """Search channel topics with advanced filters."""
         query = select(ChannelTopicDB)
 
         # Apply filters
-        conditions: List[Any] = []
+        conditions: list[Any] = []
 
         if filters.channel_ids:
             conditions.append(ChannelTopicDB.channel_id.in_(filters.channel_ids))
@@ -206,7 +206,7 @@ class ChannelTopicRepository(
 
     async def get_popular_topics(
         self, session: AsyncSession, limit: int = 50
-    ) -> List[Tuple[str, int]]:
+    ) -> list[tuple[str, int]]:
         """Get most popular topics by channel count."""
         result = await session.execute(
             select(
@@ -221,7 +221,7 @@ class ChannelTopicRepository(
 
     async def get_related_topics(
         self, session: AsyncSession, topic_id: str, limit: int = 20
-    ) -> List[Tuple[str, int]]:
+    ) -> list[tuple[str, int]]:
         """Get topics that frequently appear with the given topic."""
         # Find channels that have the specified topic
         channels_with_topic = select(ChannelTopicDB.channel_id).where(
@@ -286,7 +286,7 @@ class ChannelTopicRepository(
         most_common_topics = [(row[0], row[1]) for row in common_result]
 
         # Topic distribution (simplified - could be enhanced)
-        topic_distribution = {topic: count for topic, count in most_common_topics[:10]}
+        topic_distribution = dict(most_common_topics[:10])
 
         return ChannelTopicStatistics(
             total_channel_topics=total_channel_topics,
@@ -298,8 +298,8 @@ class ChannelTopicRepository(
         )
 
     async def find_channels_by_topics(
-        self, session: AsyncSession, topic_ids: List[str], match_all: bool = False
-    ) -> List[str]:
+        self, session: AsyncSession, topic_ids: list[str], match_all: bool = False
+    ) -> list[str]:
         """Find channel IDs that have specific topics."""
         if not topic_ids:
             return []
@@ -338,8 +338,8 @@ class ChannelTopicRepository(
         return result.scalar() or 0
 
     async def get_channel_count_by_topics(
-        self, session: AsyncSession, topic_ids: List[str]
-    ) -> Dict[str, int]:
+        self, session: AsyncSession, topic_ids: list[str]
+    ) -> dict[str, int]:
         """Get channel counts for multiple topics efficiently."""
         if not topic_ids:
             return {}
@@ -357,7 +357,7 @@ class ChannelTopicRepository(
 
     async def get_channel_topic_overlap(
         self, session: AsyncSession, channel_id_1: str, channel_id_2: str
-    ) -> List[str]:
+    ) -> list[str]:
         """Get common topics between two channels."""
         topics_1 = select(ChannelTopicDB.topic_id).where(
             ChannelTopicDB.channel_id == channel_id_1

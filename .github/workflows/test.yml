@@ -66,6 +66,9 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
 
+      - name: Run ruff
+        run: poetry run ruff check src/chronovista/
+
       - name: Run mypy
         run: poetry run mypy src/chronovista/ --strict --no-error-summary
 

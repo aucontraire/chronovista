@@ -11,8 +11,6 @@ from rich.panel import Panel
 from chronovista import __version__
 from chronovista.cli.auth_commands import auth_app
 from chronovista.cli.category_commands import category_app
-from chronovista.cli.correction_commands import correction_app
-from chronovista.cli.entity_commands import entity_app
 from chronovista.cli.commands.api import api_app
 from chronovista.cli.commands.cache import app as cache_app
 from chronovista.cli.commands.enrich import app as enrich_app
@@ -20,6 +18,8 @@ from chronovista.cli.commands.playlist import playlist_app
 from chronovista.cli.commands.recover import recover_app
 from chronovista.cli.commands.seed import seed_app
 from chronovista.cli.commands.takeout import takeout_app
+from chronovista.cli.correction_commands import correction_app
+from chronovista.cli.entity_commands import entity_app
 from chronovista.cli.language_commands import language_app
 from chronovista.cli.sync_commands import sync_app
 from chronovista.cli.tag_commands import tag_app

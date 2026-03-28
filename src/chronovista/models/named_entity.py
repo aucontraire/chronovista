@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -51,13 +51,13 @@ class NamedEntityBase(BaseModel):
 class NamedEntityCreate(NamedEntityBase):
     """Model for creating named entities."""
 
-    entity_subtype: Optional[str] = Field(
+    entity_subtype: str | None = Field(
         default=None, max_length=255, description="Finer-grained subtype"
     )
-    description: Optional[str] = Field(
+    description: str | None = Field(
         default=None, description="Human-readable description"
     )
-    external_ids: Dict[str, Any] = Field(
+    external_ids: dict[str, Any] = Field(
         default_factory=dict,
         description="External identifiers (Wikidata QID, MusicBrainz, etc.)",
     )
@@ -67,7 +67,7 @@ class NamedEntityCreate(NamedEntityBase):
         le=1.0,
         description="Confidence score between 0.0 and 1.0",
     )
-    merged_into_id: Optional[uuid.UUID] = Field(
+    merged_into_id: uuid.UUID | None = Field(
         default=None, description="Target entity ID if merged"
     )
 
@@ -92,23 +92,23 @@ class NamedEntityCreate(NamedEntityBase):
 class NamedEntityUpdate(BaseModel):
     """Model for updating named entities (PATCH-style, all fields optional)."""
 
-    canonical_name: Optional[str] = Field(
+    canonical_name: str | None = Field(
         default=None, min_length=1, max_length=500
     )
-    canonical_name_normalized: Optional[str] = Field(
+    canonical_name_normalized: str | None = Field(
         default=None, min_length=1, max_length=500
     )
-    entity_type: Optional[EntityType] = None
-    discovery_method: Optional[DiscoveryMethod] = None
-    status: Optional[TagStatus] = None
-    entity_subtype: Optional[str] = Field(default=None, max_length=255)
-    description: Optional[str] = None
-    external_ids: Optional[Dict[str, Any]] = None
-    confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    merged_into_id: Optional[uuid.UUID] = None
-    mention_count: Optional[int] = Field(default=None, ge=0)
-    video_count: Optional[int] = Field(default=None, ge=0)
-    channel_count: Optional[int] = Field(default=None, ge=0)
+    entity_type: EntityType | None = None
+    discovery_method: DiscoveryMethod | None = None
+    status: TagStatus | None = None
+    entity_subtype: str | None = Field(default=None, max_length=255)
+    description: str | None = None
+    external_ids: dict[str, Any] | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    merged_into_id: uuid.UUID | None = None
+    mention_count: int | None = Field(default=None, ge=0)
+    video_count: int | None = Field(default=None, ge=0)
+    channel_count: int | None = Field(default=None, ge=0)
 
     model_config = ConfigDict(
         validate_assignment=True,
@@ -119,13 +119,13 @@ class NamedEntity(NamedEntityBase):
     """Full named entity model with timestamps and identifiers."""
 
     id: uuid.UUID = Field(..., description="Named entity UUID (UUIDv7)")
-    entity_subtype: Optional[str] = Field(
+    entity_subtype: str | None = Field(
         default=None, max_length=255, description="Finer-grained subtype"
     )
-    description: Optional[str] = Field(
+    description: str | None = Field(
         default=None, description="Human-readable description"
     )
-    external_ids: Dict[str, Any] = Field(
+    external_ids: dict[str, Any] = Field(
         default_factory=dict,
         description="External identifiers (Wikidata QID, MusicBrainz, etc.)",
     )
@@ -144,7 +144,7 @@ class NamedEntity(NamedEntityBase):
         le=1.0,
         description="Confidence score between 0.0 and 1.0",
     )
-    merged_into_id: Optional[uuid.UUID] = Field(
+    merged_into_id: uuid.UUID | None = Field(
         default=None, description="Target entity ID if merged"
     )
     created_at: datetime = Field(..., description="When the record was created")

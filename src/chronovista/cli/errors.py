@@ -27,8 +27,6 @@ Examples:
 
 from __future__ import annotations
 
-from typing import Optional
-
 from rich.console import Console
 from rich.panel import Panel
 
@@ -107,9 +105,9 @@ def get_exit_code_for_category(category: str) -> int:
 def format_error(
     category: str,
     message: str,
-    expected: Optional[str] = None,
-    got: Optional[str] = None,
-    hint: Optional[str] = None,
+    expected: str | None = None,
+    got: str | None = None,
+    hint: str | None = None,
 ) -> str:
     """
     Format error message in standardized 4-part format.
@@ -224,9 +222,9 @@ def format_warning(message: str) -> str:
 def display_error_panel(
     category: str,
     message: str,
-    expected: Optional[str] = None,
-    got: Optional[str] = None,
-    hint: Optional[str] = None,
+    expected: str | None = None,
+    got: str | None = None,
+    hint: str | None = None,
     title: str = "Error",
 ) -> None:
     """
@@ -270,7 +268,7 @@ def display_error_panel(
 def display_success_panel(
     message: str,
     title: str = "Success",
-    extra_info: Optional[str] = None,
+    extra_info: str | None = None,
 ) -> None:
     """
     Display success message in a Rich panel.
@@ -308,7 +306,7 @@ def display_success_panel(
 def display_warning_panel(
     message: str,
     title: str = "Warning",
-    extra_info: Optional[str] = None,
+    extra_info: str | None = None,
 ) -> None:
     """
     Display warning message in a Rich panel.
@@ -345,7 +343,7 @@ def display_warning_panel(
 def display_info_panel(
     message: str,
     title: str = "Info",
-    extra_info: Optional[str] = None,
+    extra_info: str | None = None,
 ) -> None:
     """
     Display informational message in a Rich panel.
@@ -533,8 +531,8 @@ def format_not_found_error(resource_type: str, identifier: str) -> str:
 def format_validation_error(
     field: str,
     message: str,
-    expected: Optional[str] = None,
-    got: Optional[str] = None,
+    expected: str | None = None,
+    got: str | None = None,
 ) -> str:
     """
     Format a validation error message.
@@ -575,7 +573,7 @@ def format_validation_error(
 
 def format_conflict_error(
     message: str,
-    hint: Optional[str] = None,
+    hint: str | None = None,
 ) -> str:
     """
     Format a conflict error message.
@@ -609,7 +607,7 @@ def format_conflict_error(
 
 def format_database_error(
     operation: str,
-    details: Optional[str] = None,
+    details: str | None = None,
 ) -> str:
     """
     Format a database error message.
@@ -746,7 +744,7 @@ def format_auth_failure_message(status_code: int) -> str:
 def display_network_error(
     error_type: str,
     command_name: str = "Command",
-    details: Optional[str] = None,
+    details: str | None = None,
 ) -> None:
     """
     Display network failure error with rollback confirmation (T062).
@@ -819,7 +817,7 @@ def format_network_error_message(error_type: str) -> str:
 def display_database_commit_error(
     operation: str = "commit",
     command_name: str = "Command",
-    details: Optional[str] = None,
+    details: str | None = None,
 ) -> None:
     """
     Display database commit error with rollback confirmation (T063).

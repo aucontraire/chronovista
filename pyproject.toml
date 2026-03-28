@@ -270,12 +270,26 @@ ignore = [
     "S603",  # subprocess call: check for execution of untrusted input
     "S607",  # starting a process with a partial executable path
     "N805",  # first argument of a method should be named 'self' (conflicts with pydantic validators)
+    "N803",  # invalid argument name — external API callbacks use non-PEP8 names
+    "N813",  # camelcase imported as lowercase — Levenshtein library
+    "N815",  # mixed-case variable in class scope — matches external API field names
+    "N817",  # camelcase imported as acronym — common pattern (e.g., ET for ElementTree)
+    "N818",  # error suffix on exception name — project uses custom naming
+    "E402",  # module import not at top — conditional imports after sys.path manipulation
+    "S110",  # try-except-pass — intentional exception silencing
+    "S112",  # try-except-continue — intentional skip-and-continue patterns
+    "S324",  # hashlib insecure — md5 used for non-cryptographic cache keys
+    "S608",  # hardcoded SQL — SQLAlchemy text() expressions, not injection risk
+    "B023",  # function uses loop variable — intentional closure capture
+    "SIM102", # collapsible-if — readability preference for explicit nesting
+    "SIM105", # suppressible-exception — explicit try/except is clearer than contextlib.suppress
 ]
-unfixable = ["F401"]
+unfixable = []
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "S105", "S106", "S107", "S108"]
 "*/migrations/*" = ["N806", "N815"]
+"*/cli/*" = ["T201"]  # CLI commands use print() for user-facing output
 
 [tool.ruff.lint.isort]
 known-first-party = ["chronovista"]

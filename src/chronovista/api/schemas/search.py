@@ -1,7 +1,6 @@
 """Search API response schemas."""
 
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -16,24 +15,24 @@ class SearchResultSegment(BaseModel):
     segment_id: int
     video_id: str
     video_title: str
-    channel_title: Optional[str]
+    channel_title: str | None
     language_code: str
     text: str  # Matching segment text
     start_time: float
     end_time: float
-    context_before: Optional[str]  # Previous segment text (up to 200 chars)
-    context_after: Optional[str]  # Next segment text (up to 200 chars)
+    context_before: str | None  # Previous segment text (up to 200 chars)
+    context_after: str | None  # Next segment text (up to 200 chars)
     match_count: int  # Number of query terms matched
     video_upload_date: datetime  # For client-side grouping
     availability_status: str = "available"
 
 
-class SearchResponse(ApiResponse[List[SearchResultSegment]]):
+class SearchResponse(ApiResponse[list[SearchResultSegment]]):
     """Response for segment search endpoint."""
 
     model_config = ConfigDict(strict=True)
 
-    available_languages: List[str]  # All unique languages in full result set
+    available_languages: list[str]  # All unique languages in full result set
 
 
 class TitleSearchResult(BaseModel):
@@ -43,7 +42,7 @@ class TitleSearchResult(BaseModel):
 
     video_id: str
     title: str
-    channel_title: Optional[str]
+    channel_title: str | None
     upload_date: datetime
     availability_status: str = "available"
 
@@ -53,7 +52,7 @@ class TitleSearchResponse(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    data: List[TitleSearchResult]
+    data: list[TitleSearchResult]
     total_count: int
 
 
@@ -64,7 +63,7 @@ class DescriptionSearchResult(BaseModel):
 
     video_id: str
     title: str
-    channel_title: Optional[str]
+    channel_title: str | None
     upload_date: datetime
     snippet: str
     availability_status: str = "available"
@@ -75,5 +74,5 @@ class DescriptionSearchResponse(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    data: List[DescriptionSearchResult]
+    data: list[DescriptionSearchResult]
     total_count: int

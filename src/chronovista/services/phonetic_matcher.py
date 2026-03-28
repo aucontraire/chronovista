@@ -14,23 +14,27 @@ from __future__ import annotations
 import re
 import uuid
 
+import Levenshtein
+from metaphone import doublemetaphone  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from metaphone import doublemetaphone  # type: ignore[import-untyped]
-import Levenshtein
-
 from chronovista.db.models import (
     EntityAlias as EntityAliasDB,
+)
+from chronovista.db.models import (
     EntityMention as EntityMentionDB,
+)
+from chronovista.db.models import (
     NamedEntity as NamedEntityDB,
+)
+from chronovista.db.models import (
     TranscriptSegment as TranscriptSegmentDB,
 )
 from chronovista.repositories.entity_mention_repository import (
     EntityMentionRepository,
 )
-
 
 # ---------------------------------------------------------------------------
 # Result model

@@ -7,7 +7,7 @@ content organization analytics, and playlist management.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from sqlalchemy import and_, case, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,14 +15,12 @@ from sqlalchemy.orm import selectinload
 
 from chronovista.db.models import Playlist as PlaylistDB
 from chronovista.models.playlist import (
-    Playlist,
     PlaylistAnalytics,
     PlaylistCreate,
     PlaylistSearchFilters,
     PlaylistStatistics,
     PlaylistUpdate,
 )
-from chronovista.models.youtube_types import PlaylistId, is_youtube_playlist_id
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
@@ -36,7 +34,7 @@ class PlaylistRepository(
 
     async def get(
         self, session: AsyncSession, playlist_id: str
-    ) -> Optional[PlaylistDB]:
+    ) -> PlaylistDB | None:
         """Get playlist by playlist ID."""
         result = await session.execute(
             select(PlaylistDB).where(PlaylistDB.playlist_id == playlist_id)
@@ -52,7 +50,7 @@ class PlaylistRepository(
 
     async def get_by_playlist_id(
         self, session: AsyncSession, playlist_id: str
-    ) -> Optional[PlaylistDB]:
+    ) -> PlaylistDB | None:
         """Get playlist by playlist ID (alias for get method)."""
         return await self.get(session, playlist_id)
 
@@ -64,7 +62,7 @@ class PlaylistRepository(
 
     async def get_with_channel(
         self, session: AsyncSession, playlist_id: str
-    ) -> Optional[PlaylistDB]:
+    ) -> PlaylistDB | None:
         """Get playlist with channel information loaded."""
         result = await session.execute(
             select(PlaylistDB)
@@ -95,7 +93,7 @@ class PlaylistRepository(
 
     async def get_by_channel_id(
         self, session: AsyncSession, channel_id: str, skip: int = 0, limit: int = 100
-    ) -> List[PlaylistDB]:
+    ) -> list[PlaylistDB]:
         """Get all playlists for a specific channel."""
         result = await session.execute(
             select(PlaylistDB)
@@ -112,7 +110,7 @@ class PlaylistRepository(
         privacy_status: str,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[PlaylistDB]:
+    ) -> list[PlaylistDB]:
         """Get playlists by privacy status."""
         result = await session.execute(
             select(PlaylistDB)
@@ -125,7 +123,7 @@ class PlaylistRepository(
 
     async def get_by_language(
         self, session: AsyncSession, language_code: str, skip: int = 0, limit: int = 100
-    ) -> List[PlaylistDB]:
+    ) -> list[PlaylistDB]:
         """Get playlists by default language."""
         result = await session.execute(
             select(PlaylistDB)
@@ -138,12 +136,12 @@ class PlaylistRepository(
 
     async def search_playlists(
         self, session: AsyncSession, filters: PlaylistSearchFilters
-    ) -> List[PlaylistDB]:
+    ) -> list[PlaylistDB]:
         """Search playlists with advanced filters."""
         query = select(PlaylistDB)
 
         # Apply filters
-        conditions: List[Any] = []
+        conditions: list[Any] = []
 
         if filters.playlist_ids:
             conditions.append(PlaylistDB.playlist_id.in_(filters.playlist_ids))
@@ -219,7 +217,7 @@ class PlaylistRepository(
 
     async def get_popular_playlists(
         self, session: AsyncSession, limit: int = 50
-    ) -> List[PlaylistDB]:
+    ) -> list[PlaylistDB]:
         """Get most popular playlists by video count."""
         result = await session.execute(
             select(PlaylistDB)
@@ -231,7 +229,7 @@ class PlaylistRepository(
 
     async def get_recent_playlists(
         self, session: AsyncSession, limit: int = 50
-    ) -> List[PlaylistDB]:
+    ) -> list[PlaylistDB]:
         """Get most recently created playlists."""
         result = await session.execute(
             select(PlaylistDB).order_by(desc(PlaylistDB.created_at)).limit(limit)
@@ -240,7 +238,7 @@ class PlaylistRepository(
 
     async def get_playlists_by_size_range(
         self, session: AsyncSession, min_videos: int, max_videos: int
-    ) -> List[PlaylistDB]:
+    ) -> list[PlaylistDB]:
         """Get playlists within a specific video count range."""
         result = await session.execute(
             select(PlaylistDB)
@@ -369,8 +367,8 @@ class PlaylistRepository(
         return result.scalar() or 0
 
     async def get_playlists_by_multiple_channels(
-        self, session: AsyncSession, channel_ids: List[str]
-    ) -> Dict[str, List[PlaylistDB]]:
+        self, session: AsyncSession, channel_ids: list[str]
+    ) -> dict[str, list[PlaylistDB]]:
         """Get playlists for multiple channels efficiently."""
         if not channel_ids:
             return {}
@@ -383,7 +381,7 @@ class PlaylistRepository(
 
         # Group playlists by channel_id
         # Note: All results have non-null channel_id due to the WHERE IN clause
-        channel_playlists: Dict[str, List[PlaylistDB]] = {}
+        channel_playlists: dict[str, list[PlaylistDB]] = {}
         for playlist in result.scalars().all():
             if playlist.channel_id is None:
                 continue  # Skip playlists without channel_id (shouldn't happen due to query)
@@ -394,8 +392,8 @@ class PlaylistRepository(
         return channel_playlists
 
     async def bulk_create_playlists(
-        self, session: AsyncSession, playlists: List[PlaylistCreate]
-    ) -> List[PlaylistDB]:
+        self, session: AsyncSession, playlists: list[PlaylistCreate]
+    ) -> list[PlaylistDB]:
         """Create multiple playlists efficiently."""
         created_playlists = []
 
@@ -413,7 +411,7 @@ class PlaylistRepository(
         return created_playlists
 
     async def bulk_update_video_counts(
-        self, session: AsyncSession, playlist_counts: Dict[str, int]
+        self, session: AsyncSession, playlist_counts: dict[str, int]
     ) -> int:
         """Bulk update video counts for multiple playlists."""
         updated_count = 0
@@ -435,7 +433,7 @@ class PlaylistRepository(
 
     async def delete_by_playlist_id(
         self, session: AsyncSession, playlist_id: str
-    ) -> Optional[PlaylistDB]:
+    ) -> PlaylistDB | None:
         """Delete playlist by playlist ID."""
         playlist = await self.get_by_playlist_id(session, playlist_id)
         if playlist:
@@ -499,7 +497,7 @@ class PlaylistRepository(
 
     async def get_unlinked_playlists(
         self, session: AsyncSession, skip: int = 0, limit: int = 100
-    ) -> List[PlaylistDB]:
+    ) -> list[PlaylistDB]:
         """
         Get playlists with internal IDs (not linked to YouTube).
 
@@ -528,7 +526,7 @@ class PlaylistRepository(
 
     async def get_linked_playlists(
         self, session: AsyncSession, skip: int = 0, limit: int = 100
-    ) -> List[PlaylistDB]:
+    ) -> list[PlaylistDB]:
         """
         Get playlists with YouTube IDs (linked to YouTube).
 
@@ -560,7 +558,7 @@ class PlaylistRepository(
         )
         return list(result.scalars().all())
 
-    async def get_link_statistics(self, session: AsyncSession) -> Dict[str, int]:
+    async def get_link_statistics(self, session: AsyncSession) -> dict[str, int]:
         """
         Get statistics about playlist linking.
 
@@ -605,7 +603,7 @@ class PlaylistRepository(
 
     async def find_similar_playlists(
         self, session: AsyncSession, playlist_id: str, limit: int = 10
-    ) -> List[Tuple[PlaylistDB, float]]:
+    ) -> list[tuple[PlaylistDB, float]]:
         """Find playlists similar to the given playlist based on title and description."""
         target_playlist = await self.get_by_playlist_id(session, playlist_id)
         if not target_playlist:

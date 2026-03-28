@@ -8,7 +8,7 @@ structure validation and serialization support.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -23,7 +23,7 @@ class TopicCategoryBase(BaseModel):
     category_name: str = Field(
         ..., min_length=1, max_length=255, description="Human-readable topic name"
     )
-    parent_topic_id: Optional[TopicId] = Field(
+    parent_topic_id: TopicId | None = Field(
         default=None,
         description="Parent topic ID for hierarchical structure (validated)",
     )
@@ -32,12 +32,12 @@ class TopicCategoryBase(BaseModel):
     )
 
     # Dynamic topic resolution fields (Option 4 implementation)
-    wikipedia_url: Optional[str] = Field(
+    wikipedia_url: str | None = Field(
         default=None,
         max_length=500,
         description="Full Wikipedia URL from YouTube API",
     )
-    normalized_name: Optional[str] = Field(
+    normalized_name: str | None = Field(
         default=None,
         max_length=255,
         description="Lowercase, no underscores for matching",
@@ -91,15 +91,15 @@ class TopicCategoryCreate(TopicCategoryBase):
 class TopicCategoryUpdate(BaseModel):
     """Model for updating topic categories."""
 
-    category_name: Optional[str] = Field(None, min_length=1, max_length=255)
-    parent_topic_id: Optional[TopicId] = Field(
+    category_name: str | None = Field(None, min_length=1, max_length=255)
+    parent_topic_id: TopicId | None = Field(
         None, description="Parent topic ID (validated)"
     )
-    topic_type: Optional[TopicType] = None
+    topic_type: TopicType | None = None
 
     @field_validator("category_name")
     @classmethod
-    def validate_category_name(cls, v: Optional[str]) -> Optional[str]:
+    def validate_category_name(cls, v: str | None) -> str | None:
         """Validate category name."""
         if v is None:
             return v
@@ -134,31 +134,31 @@ class TopicCategory(TopicCategoryBase):
 class TopicCategorySearchFilters(BaseModel):
     """Filters for searching topic categories."""
 
-    topic_ids: Optional[List[TopicId]] = Field(
+    topic_ids: list[TopicId] | None = Field(
         default=None, description="Filter by specific topic IDs (validated)"
     )
-    category_name_query: Optional[str] = Field(
+    category_name_query: str | None = Field(
         default=None, min_length=1, description="Search in category names"
     )
-    parent_topic_ids: Optional[List[TopicId]] = Field(
+    parent_topic_ids: list[TopicId] | None = Field(
         default=None, description="Filter by parent topic IDs (validated)"
     )
-    topic_types: Optional[List[TopicType]] = Field(
+    topic_types: list[TopicType] | None = Field(
         default=None, description="Filter by topic types"
     )
-    is_root_topic: Optional[bool] = Field(
+    is_root_topic: bool | None = Field(
         default=None, description="Filter for root topics (no parent)"
     )
-    has_children: Optional[bool] = Field(
+    has_children: bool | None = Field(
         default=None, description="Filter topics that have child topics"
     )
-    max_depth: Optional[int] = Field(
+    max_depth: int | None = Field(
         default=None, ge=0, description="Maximum hierarchy depth"
     )
-    created_after: Optional[datetime] = Field(
+    created_after: datetime | None = Field(
         default=None, description="Filter by creation date"
     )
-    created_before: Optional[datetime] = Field(
+    created_before: datetime | None = Field(
         default=None, description="Filter by creation date"
     )
 
@@ -177,7 +177,7 @@ class TopicCategoryStatistics(BaseModel):
     topic_type_distribution: dict[TopicType, int] = Field(
         default_factory=dict, description="Distribution by topic type"
     )
-    most_popular_topics: List[tuple[str, int]] = Field(
+    most_popular_topics: list[tuple[str, int]] = Field(
         default_factory=list, description="Most referenced topics with usage counts"
     )
     hierarchy_distribution: dict[int, int] = Field(
@@ -196,10 +196,10 @@ class TopicCategoryHierarchy(BaseModel):
     category_name: str = Field(..., description="Topic name")
     topic_type: TopicType = Field(..., description="Topic type")
     level: int = Field(..., ge=0, description="Hierarchy level (0 = root)")
-    children: List["TopicCategoryHierarchy"] = Field(
+    children: list[TopicCategoryHierarchy] = Field(
         default_factory=list, description="Child topics"
     )
-    path: List[str] = Field(
+    path: list[str] = Field(
         default_factory=list, description="Path from root to this topic"
     )
 
@@ -211,10 +211,10 @@ class TopicCategoryHierarchy(BaseModel):
 class TopicCategoryAnalytics(BaseModel):
     """Advanced topic category analytics."""
 
-    topic_trends: dict[str, List[int]] = Field(
+    topic_trends: dict[str, list[int]] = Field(
         default_factory=dict, description="Topic usage trends over time"
     )
-    topic_relationships: dict[str, List[str]] = Field(
+    topic_relationships: dict[str, list[str]] = Field(
         default_factory=dict, description="Related topics mapping"
     )
     semantic_similarity: dict[str, float] = Field(

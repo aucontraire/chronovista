@@ -3,7 +3,6 @@
 import logging
 import re
 from datetime import datetime
-from typing import Optional, Union
 
 from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy import func, select
@@ -198,7 +197,7 @@ async def get_transcript_languages(
 @router.get("/videos/{video_id}/transcript", response_model=TranscriptResponse, responses=GET_ITEM_ERRORS)
 async def get_transcript(
     video_id: str = Path(..., min_length=11, max_length=11),
-    language: Optional[str] = Query(
+    language: str | None = Query(
         None, description="Language code (default: first available)"
     ),
     session: AsyncSession = Depends(get_db),
@@ -272,13 +271,13 @@ async def get_transcript(
 )
 async def get_transcript_segments(
     video_id: str = Path(..., min_length=11, max_length=11),
-    language: Optional[str] = Query(
+    language: str | None = Query(
         None, description="Language code (default: first available)"
     ),
-    start_time: Optional[float] = Query(
+    start_time: float | None = Query(
         None, ge=0, description="Filter segments starting at or after (seconds)"
     ),
-    end_time: Optional[float] = Query(
+    end_time: float | None = Query(
         None, ge=0, description="Filter segments ending before (seconds)"
     ),
     limit: int = Query(50, ge=1, le=200, description="Items per page"),
@@ -417,11 +416,11 @@ _DOWNLOAD_ERRORS = {
 )
 async def download_transcript(
     video_id: str = Path(..., description="YouTube video ID (11 characters)"),
-    language: Optional[str] = Query(
+    language: str | None = Query(
         None, description="BCP-47 language code (default: user's preferred language)"
     ),
     session: AsyncSession = Depends(get_db),
-) -> Union[ApiResponse[TranscriptDownloadResponse], ApiResponse[MultiTranscriptDownloadResponse]]:
+) -> ApiResponse[TranscriptDownloadResponse] | ApiResponse[MultiTranscriptDownloadResponse]:
     """Download a transcript from YouTube for the given video.
 
     Fetches the transcript from YouTube's transcript API and saves it
@@ -589,13 +588,14 @@ async def download_transcript(
                 language_codes=remaining_languages,
             )
         except TranscriptServiceUnavailableError as exc:
+            import uuid
+
             from chronovista.api.schemas.responses import (
+                ERROR_TITLES,
                 ErrorCode,
                 ProblemJSONResponse,
                 get_error_type_uri,
-                ERROR_TITLES,
             )
-            import uuid
 
             return ProblemJSONResponse(  # type: ignore[return-value]
                 status_code=503,
@@ -723,7 +723,7 @@ async def download_transcript(
 
 async def _download_single_language(
     video_id: str,
-    language: Optional[str],
+    language: str | None,
     session: AsyncSession,
 ) -> ApiResponse[TranscriptDownloadResponse]:
     """Download a single language transcript and return the standard response.
@@ -761,13 +761,14 @@ async def _download_single_language(
             hint="No transcript is available on YouTube for this video.",
         ) from exc
     except TranscriptServiceUnavailableError as exc:
+        import uuid
+
         from chronovista.api.schemas.responses import (
+            ERROR_TITLES,
             ErrorCode,
             ProblemJSONResponse,
             get_error_type_uri,
-            ERROR_TITLES,
         )
-        import uuid
 
         return ProblemJSONResponse(  # type: ignore[return-value]
             status_code=503,
@@ -784,13 +785,14 @@ async def _download_single_language(
     except TranscriptServiceError as exc:
         error_msg = str(exc).lower()
         if any(kw in error_msg for kw in ["rate limit", "too many", "quota"]):
+            import uuid
+
             from chronovista.api.schemas.responses import (
+                ERROR_TITLES,
                 ErrorCode,
                 ProblemJSONResponse,
                 get_error_type_uri,
-                ERROR_TITLES,
             )
-            import uuid
 
             return ProblemJSONResponse(  # type: ignore[return-value]
                 status_code=503,

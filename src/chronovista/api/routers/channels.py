@@ -12,9 +12,8 @@ All endpoints require authentication via the require_auth dependency.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Path, Query
 from fastapi.responses import JSONResponse
@@ -47,11 +46,19 @@ from chronovista.api.schemas.videos import (
     VideoListResponse,
 )
 from chronovista.db.models import Channel as ChannelDB
+from chronovista.db.models import (
+    TranscriptSegment,
+    VideoTopic,
+    VideoTranscript,
+)
 from chronovista.db.models import UserVideo as UserVideoDB
 from chronovista.db.models import Video as VideoDB
-from chronovista.db.models import VideoCategory, VideoTag, VideoTopic, TopicCategory
-from chronovista.db.models import TranscriptSegment, VideoTranscript
-from chronovista.exceptions import BadRequestError, CDXError, ConflictError, NotFoundError
+from chronovista.exceptions import (
+    BadRequestError,
+    CDXError,
+    ConflictError,
+    NotFoundError,
+)
 from chronovista.models.enums import AvailabilityStatus
 
 logger = logging.getLogger(__name__)
@@ -86,7 +93,7 @@ router = APIRouter(dependencies=[Depends(require_auth)])
 
 
 def _build_transcript_summary(
-    transcripts: List[VideoTranscript],
+    transcripts: list[VideoTranscript],
     has_corrections: bool = False,
 ) -> TranscriptSummary:
     """
@@ -132,10 +139,10 @@ async def list_channels(
     ),
     limit: int = Query(default=20, ge=1, le=100, description="Items per page"),
     offset: int = Query(default=0, ge=0, description="Number of items to skip"),
-    has_videos: Optional[bool] = Query(
+    has_videos: bool | None = Query(
         default=None, description="Filter to channels with/without videos"
     ),
-    is_subscribed: Optional[bool] = Query(
+    is_subscribed: bool | None = Query(
         default=None,
         description="Filter by subscription status: true=subscribed only, false=not subscribed only, omitted=all",
     ),
@@ -231,7 +238,7 @@ async def list_channels(
     channels = result.scalars().all()
 
     # Transform to response items
-    items: List[ChannelListItem] = []
+    items: list[ChannelListItem] = []
     for channel in channels:
         items.append(
             ChannelListItem(
@@ -460,7 +467,7 @@ async def get_channel_videos(
         }
 
     # Transform to response items
-    items: List[VideoListItem] = []
+    items: list[VideoListItem] = []
     for video in videos:
         transcript_summary = _build_transcript_summary(
             list(video.transcripts),
@@ -526,13 +533,13 @@ async def recover_channel_endpoint(
         max_length=24,
         description="YouTube channel ID (24 characters)",
     ),
-    start_year: Optional[int] = Query(
+    start_year: int | None = Query(
         None,
         ge=2005,
         le=2026,
         description="Only search snapshots from this year onward (2005-2026)",
     ),
-    end_year: Optional[int] = Query(
+    end_year: int | None = Query(
         None,
         ge=2005,
         le=2026,
@@ -613,11 +620,11 @@ async def recover_channel_endpoint(
 
     # T033: Idempotency guard — skip Wayback Machine if recently recovered
     if channel.recovered_at is not None:
-        now_utc = datetime.now(timezone.utc)
+        now_utc = datetime.now(UTC)
         # Ensure recovered_at is timezone-aware for comparison
         recovered_at = channel.recovered_at
         if recovered_at.tzinfo is None:
-            recovered_at = recovered_at.replace(tzinfo=timezone.utc)
+            recovered_at = recovered_at.replace(tzinfo=UTC)
         elapsed = now_utc - recovered_at
         if elapsed < timedelta(minutes=RECOVERY_IDEMPOTENCY_MINUTES):
             logger.info(

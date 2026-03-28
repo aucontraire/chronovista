@@ -7,15 +7,14 @@ operations and specialized queries for language management.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
-from sqlalchemy import and_, delete, select, update
+from sqlalchemy import and_, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.models import UserLanguagePreference as UserLanguagePreferenceDB
 from ..models.enums import LanguagePreferenceType
 from ..models.user_language_preference import (
-    UserLanguagePreference,
     UserLanguagePreferenceCreate,
     UserLanguagePreferenceUpdate,
 )
@@ -28,7 +27,7 @@ class UserLanguagePreferenceRepository(
         UserLanguagePreferenceDB,
         UserLanguagePreferenceCreate,
         UserLanguagePreferenceUpdate,
-        Tuple[str, str],
+        tuple[str, str],
     ]
 ):
     """Repository for user language preferences with specialized operations."""
@@ -38,8 +37,8 @@ class UserLanguagePreferenceRepository(
         super().__init__(UserLanguagePreferenceDB)
 
     async def get(
-        self, session: AsyncSession, id: Tuple[str, str]
-    ) -> Optional[UserLanguagePreferenceDB]:
+        self, session: AsyncSession, id: tuple[str, str]
+    ) -> UserLanguagePreferenceDB | None:
         """
         Get user language preference by composite primary key.
 
@@ -68,7 +67,7 @@ class UserLanguagePreferenceRepository(
 
     async def get_by_composite_key(
         self, session: AsyncSession, user_id: UserId, language_code: str
-    ) -> Optional[UserLanguagePreferenceDB]:
+    ) -> UserLanguagePreferenceDB | None:
         """
         Get user language preference by composite primary key (convenience method).
 
@@ -88,7 +87,7 @@ class UserLanguagePreferenceRepository(
         """
         return await self.get(session, (user_id, language_code))
 
-    async def exists(self, session: AsyncSession, id: Tuple[str, str]) -> bool:
+    async def exists(self, session: AsyncSession, id: tuple[str, str]) -> bool:
         """
         Check if user language preference exists.
 
@@ -139,7 +138,7 @@ class UserLanguagePreferenceRepository(
 
     async def get_user_preferences(
         self, session: AsyncSession, user_id: UserId
-    ) -> List[UserLanguagePreferenceDB]:
+    ) -> list[UserLanguagePreferenceDB]:
         """
         Get all language preferences for a user, ordered by priority.
 
@@ -167,7 +166,7 @@ class UserLanguagePreferenceRepository(
         session: AsyncSession,
         user_id: UserId,
         preference_type: LanguagePreferenceType,
-    ) -> List[UserLanguagePreferenceDB]:
+    ) -> list[UserLanguagePreferenceDB]:
         """
         Get user preferences filtered by type.
 
@@ -199,7 +198,7 @@ class UserLanguagePreferenceRepository(
 
     async def get_auto_download_languages(
         self, session: AsyncSession, user_id: UserId
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Get language codes where auto-download is enabled.
 
@@ -220,19 +219,19 @@ class UserLanguagePreferenceRepository(
             .where(
                 and_(
                     UserLanguagePreferenceDB.user_id == user_id,
-                    UserLanguagePreferenceDB.auto_download_transcripts == True,
+                    UserLanguagePreferenceDB.auto_download_transcripts,
                 )
             )
             .order_by(UserLanguagePreferenceDB.priority.asc())
         )
-        return [lang for lang in result.scalars().all()]
+        return list(result.scalars().all())
 
     async def save_preferences(
         self,
         session: AsyncSession,
         user_id: UserId,
-        preferences: List[UserLanguagePreferenceCreate],
-    ) -> List[UserLanguagePreferenceDB]:
+        preferences: list[UserLanguagePreferenceCreate],
+    ) -> list[UserLanguagePreferenceDB]:
         """
         Save multiple user language preferences.
 
@@ -286,7 +285,7 @@ class UserLanguagePreferenceRepository(
         user_id: UserId,
         language_code: str,
         new_priority: int,
-    ) -> Optional[UserLanguagePreferenceDB]:
+    ) -> UserLanguagePreferenceDB | None:
         """
         Update the priority of a specific language preference.
 
@@ -418,8 +417,8 @@ class UserLanguagePreferenceRepository(
         self,
         session: AsyncSession,
         user_id: str,
-        video_ids: List[str],
-    ) -> Dict[str, Dict[str, Any]]:
+        video_ids: list[str],
+    ) -> dict[str, dict[str, Any]]:
         """
         Get videos with localizations in user's preferred languages.
 
@@ -469,7 +468,7 @@ class UserLanguagePreferenceRepository(
         session: AsyncSession,
         user_id: str,
         limit: int = 20,
-    ) -> Dict[str, List[str]]:
+    ) -> dict[str, list[str]]:
         """
         Get recommended localization targets based on user preferences.
 
@@ -523,7 +522,7 @@ class UserLanguagePreferenceRepository(
         self,
         session: AsyncSession,
         user_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get localization coverage for user's preferred languages.
 
@@ -544,7 +543,7 @@ class UserLanguagePreferenceRepository(
         # Get user's language preferences
         preferences = await self.get_user_preferences(session, user_id)
 
-        user_languages: Dict[str, Any] = {
+        user_languages: dict[str, Any] = {
             pref.language_code: pref.preference_type for pref in preferences
         }
 
@@ -563,7 +562,7 @@ class UserLanguagePreferenceRepository(
 
         # Filter coverage for user's languages
         user_coverage = {
-            lang: language_coverage.get(lang, 0) for lang in user_languages.keys()
+            lang: language_coverage.get(lang, 0) for lang in user_languages
         }
 
         # Calculate summary statistics
@@ -592,6 +591,6 @@ class UserLanguagePreferenceRepository(
                         else 0.0
                     ),
                 }
-                for lang in user_languages.keys()
+                for lang in user_languages
             },
         }

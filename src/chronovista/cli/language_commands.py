@@ -60,7 +60,7 @@ import locale
 import shutil
 import sys
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import typer
 import yaml
@@ -293,7 +293,7 @@ LANGUAGE_NAMES: dict[str, str] = {
 # -------------------------------------------------------------------------
 
 
-def parse_language_input(input_str: str) -> List[str]:
+def parse_language_input(input_str: str) -> list[str]:
     """
     Parse comma-separated language codes with whitespace handling.
 
@@ -334,7 +334,7 @@ def parse_language_input(input_str: str) -> List[str]:
     return codes
 
 
-def validate_language_code(code: str) -> Optional[LanguageCode]:
+def validate_language_code(code: str) -> LanguageCode | None:
     """
     Validate and convert a language code string to LanguageCode enum.
 
@@ -433,7 +433,7 @@ def detect_system_locale() -> LanguageCode:
         return LanguageCode.ENGLISH
 
 
-def suggest_similar_codes(invalid_code: str, max_suggestions: int = 3) -> List[str]:
+def suggest_similar_codes(invalid_code: str, max_suggestions: int = 3) -> list[str]:
     """
     Find similar language codes using Levenshtein distance.
 
@@ -520,7 +520,7 @@ def get_language_display_name(code: str) -> str:
 # -------------------------------------------------------------------------
 
 
-async def _get_preferences(user_id: str) -> List[UserLanguagePreference]:
+async def _get_preferences(user_id: str) -> list[UserLanguagePreference]:
     """
     Get user language preferences from the database.
 
@@ -559,8 +559,8 @@ async def _get_preferences(user_id: str) -> List[UserLanguagePreference]:
 
 async def _list_preferences(
     user_id: str,
-    preference_type: Optional[LanguagePreferenceType] = None,
-) -> Dict[LanguagePreferenceType, List[UserLanguagePreference]]:
+    preference_type: LanguagePreferenceType | None = None,
+) -> dict[LanguagePreferenceType, list[UserLanguagePreference]]:
     """
     Fetch and group preferences by type.
 
@@ -592,7 +592,7 @@ async def _list_preferences(
         prefs = [p for p in prefs if p.preference_type == preference_type.value]
 
     # Initialize grouped dictionary
-    grouped: Dict[LanguagePreferenceType, List[UserLanguagePreference]] = {
+    grouped: dict[LanguagePreferenceType, list[UserLanguagePreference]] = {
         LanguagePreferenceType.FLUENT: [],
         LanguagePreferenceType.LEARNING: [],
         LanguagePreferenceType.CURIOUS: [],
@@ -608,7 +608,7 @@ async def _list_preferences(
 
 
 def _format_table_output(
-    grouped: Dict[LanguagePreferenceType, List[UserLanguagePreference]]
+    grouped: dict[LanguagePreferenceType, list[UserLanguagePreference]]
 ) -> None:
     """
     Format preferences as grouped Rich table or plain text.
@@ -758,7 +758,7 @@ def _format_table_output(
 
 
 def _format_json_output(
-    grouped: Dict[LanguagePreferenceType, List[UserLanguagePreference]]
+    grouped: dict[LanguagePreferenceType, list[UserLanguagePreference]]
 ) -> None:
     """
     Format preferences as JSON.
@@ -781,7 +781,7 @@ def _format_json_output(
     >>> _format_json_output(grouped_prefs)
     # Outputs JSON to stdout
     """
-    output: Dict[str, List[Dict[str, Any]]] = {
+    output: dict[str, list[dict[str, Any]]] = {
         "fluent": [],
         "learning": [],
         "curious": [],
@@ -793,7 +793,7 @@ def _format_json_output(
         for pref in prefs:
             # language_code is already a string due to use_enum_values=True
             lang_code = pref.language_code if isinstance(pref.language_code, str) else pref.language_code.value
-            pref_dict: Dict[str, Any] = {
+            pref_dict: dict[str, Any] = {
                 "language_code": lang_code,
                 "priority": pref.priority,
                 "auto_download": pref.auto_download_transcripts,
@@ -807,7 +807,7 @@ def _format_json_output(
 
 
 def _format_yaml_output(
-    grouped: Dict[LanguagePreferenceType, List[UserLanguagePreference]]
+    grouped: dict[LanguagePreferenceType, list[UserLanguagePreference]]
 ) -> None:
     """
     Format preferences as YAML.
@@ -830,7 +830,7 @@ def _format_yaml_output(
     >>> _format_yaml_output(grouped_prefs)
     # Outputs YAML to stdout
     """
-    output: Dict[str, List[Dict[str, Any]]] = {
+    output: dict[str, list[dict[str, Any]]] = {
         "fluent": [],
         "learning": [],
         "curious": [],
@@ -842,7 +842,7 @@ def _format_yaml_output(
         for pref in prefs:
             # language_code is already a string due to use_enum_values=True
             lang_code = pref.language_code if isinstance(pref.language_code, str) else pref.language_code.value
-            pref_dict: Dict[str, Any] = {
+            pref_dict: dict[str, Any] = {
                 "language_code": lang_code,
                 "priority": pref.priority,
                 "auto_download": pref.auto_download_transcripts,
@@ -913,7 +913,7 @@ def list_preferences(
     format: OutputFormat = typer.Option(
         OutputFormat.TABLE, "--format", "-f", help="Output format (table, json, yaml)"
     ),
-    preference_type: Optional[LanguagePreferenceType] = typer.Option(
+    preference_type: LanguagePreferenceType | None = typer.Option(
         None, "--type", "-t", help="Filter by preference type"
     ),
     available: bool = typer.Option(
@@ -968,7 +968,7 @@ def list_preferences(
 
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 # -------------------------------------------------------------------------
@@ -976,7 +976,7 @@ def list_preferences(
 # -------------------------------------------------------------------------
 
 
-def _show_first_run_defaults(detected_locale: LanguageCode) -> tuple[bool, List[str]]:
+def _show_first_run_defaults(detected_locale: LanguageCode) -> tuple[bool, list[str]]:
     """
     Show first-run defaults with detected locale and English fallback.
 
@@ -1021,7 +1021,7 @@ def _show_first_run_defaults(detected_locale: LanguageCode) -> tuple[bool, List[
 
     # Add English if different from detected
     if detected_locale != LanguageCode.ENGLISH:
-        console.print(f"  [x] English (en) - recommended fallback")
+        console.print("  [x] English (en) - recommended fallback")
     console.print()
 
     # Prompt for confirmation
@@ -1044,7 +1044,7 @@ def _show_first_run_defaults(detected_locale: LanguageCode) -> tuple[bool, List[
         return (True, default_langs)
 
 
-def _run_full_interactive_setup() -> Dict[LanguagePreferenceType, List[str]]:
+def _run_full_interactive_setup() -> dict[LanguagePreferenceType, list[str]]:
     """
     Run full interactive setup prompting for all preference types.
 
@@ -1063,7 +1063,7 @@ def _run_full_interactive_setup() -> Dict[LanguagePreferenceType, List[str]]:
     >>> print(prefs[LanguagePreferenceType.FLUENT])
     ['en', 'es']
     """
-    result: Dict[LanguagePreferenceType, List[str]] = {
+    result: dict[LanguagePreferenceType, list[str]] = {
         LanguagePreferenceType.FLUENT: [],
         LanguagePreferenceType.LEARNING: [],
         LanguagePreferenceType.CURIOUS: [],
@@ -1141,7 +1141,7 @@ def _run_full_interactive_setup() -> Dict[LanguagePreferenceType, List[str]]:
     return result
 
 
-def _prompt_learning_goals(languages: List[str]) -> Dict[str, str]:
+def _prompt_learning_goals(languages: list[str]) -> dict[str, str]:
     """
     Prompt for learning goals for each learning language.
 
@@ -1164,7 +1164,7 @@ def _prompt_learning_goals(languages: List[str]) -> Dict[str, str]:
     >>> print(goals["it"])
     'B2 by December'
     """
-    goals: Dict[str, str] = {}
+    goals: dict[str, str] = {}
 
     if not languages:
         return goals
@@ -1182,8 +1182,8 @@ def _prompt_learning_goals(languages: List[str]) -> Dict[str, str]:
 
 
 def _show_confirmation_summary(
-    grouped: Dict[LanguagePreferenceType, List[str]],
-    goals: Optional[Dict[str, str]] = None,
+    grouped: dict[LanguagePreferenceType, list[str]],
+    goals: dict[str, str] | None = None,
 ) -> None:
     """
     Show confirmation summary with Rich Panel.
@@ -1251,8 +1251,8 @@ def _show_confirmation_summary(
 
 async def _save_preferences(
     user_id: str,
-    prefs_dict: Dict[LanguagePreferenceType, List[str]],
-    goals_dict: Optional[Dict[str, str]] = None,
+    prefs_dict: dict[LanguagePreferenceType, list[str]],
+    goals_dict: dict[str, str] | None = None,
 ) -> None:
     """
     Save language preferences atomically.
@@ -1274,7 +1274,7 @@ async def _save_preferences(
     >>> await _save_preferences("default_user", grouped_prefs, {"it": "B2"})
     """
     goals_map = goals_dict or {}
-    preferences_to_save: List[UserLanguagePreferenceCreate] = []
+    preferences_to_save: list[UserLanguagePreferenceCreate] = []
 
     # Build preference objects with priorities
     for pref_type, lang_codes in prefs_dict.items():
@@ -1374,13 +1374,13 @@ def _handle_interactive_setup() -> None:
 
     if accepted:
         # User accepted defaults
-        interactive_prefs_dict: Dict[LanguagePreferenceType, List[str]] = {
+        interactive_prefs_dict: dict[LanguagePreferenceType, list[str]] = {
             LanguagePreferenceType.FLUENT: default_langs,
             LanguagePreferenceType.LEARNING: [],
             LanguagePreferenceType.CURIOUS: [],
             LanguagePreferenceType.EXCLUDE: [],
         }
-        interactive_goals_dict: Dict[str, str] = {}
+        interactive_goals_dict: dict[str, str] = {}
     else:
         # User chose to customize - run full interactive setup
         interactive_prefs_dict = _run_full_interactive_setup()
@@ -1396,7 +1396,7 @@ def _handle_interactive_setup() -> None:
     _show_confirmation_summary(interactive_prefs_dict, interactive_goals_dict)
 
 
-async def check_and_prompt_language_preferences(user_id: str) -> List[str]:
+async def check_and_prompt_language_preferences(user_id: str) -> list[str]:
     """
     Check for preferences and show upgrade prompt if needed (T081 - US8).
 
@@ -1471,8 +1471,8 @@ async def check_and_prompt_language_preferences(user_id: str) -> List[str]:
 
 
 def _validate_no_conflicts(
-    prefs_dict: Dict[LanguagePreferenceType, List[str]]
-) -> Optional[tuple[str, str, str]]:
+    prefs_dict: dict[LanguagePreferenceType, list[str]]
+) -> tuple[str, str, str] | None:
     """
     Validate that no language appears in multiple preference types.
 
@@ -1497,7 +1497,7 @@ def _validate_no_conflicts(
     ('en', 'fluent', 'learning')
     """
     # Build a map of language_code -> list of types it appears in
-    lang_to_types: Dict[str, List[str]] = {}
+    lang_to_types: dict[str, list[str]] = {}
 
     for pref_type, lang_codes in prefs_dict.items():
         for lang_code in lang_codes:
@@ -1516,7 +1516,7 @@ def _validate_no_conflicts(
 
 def _process_flag_input(
     flag_value: str, pref_type: LanguagePreferenceType
-) -> tuple[List[str], List[str]]:
+) -> tuple[list[str], list[str]]:
     """
     Process and validate comma-separated language codes from flag input.
 
@@ -1542,8 +1542,8 @@ def _process_flag_input(
     # Parse input
     codes = parse_language_input(flag_value)
 
-    valid_codes: List[str] = []
-    invalid_codes: List[str] = []
+    valid_codes: list[str] = []
+    invalid_codes: list[str] = []
 
     # Validate each code
     for code in codes:
@@ -1563,16 +1563,16 @@ def _process_flag_input(
 
 @language_app.command()
 def set(
-    fluent: Optional[str] = typer.Option(
+    fluent: str | None = typer.Option(
         None, "--fluent", help="Comma-separated fluent language codes"
     ),
-    learning: Optional[str] = typer.Option(
+    learning: str | None = typer.Option(
         None, "--learning", help="Comma-separated learning language codes"
     ),
-    curious: Optional[str] = typer.Option(
+    curious: str | None = typer.Option(
         None, "--curious", help="Comma-separated curious language codes"
     ),
-    exclude: Optional[str] = typer.Option(
+    exclude: str | None = typer.Option(
         None, "--exclude", help="Comma-separated excluded language codes"
     ),
     from_locale: bool = typer.Option(
@@ -1608,7 +1608,7 @@ def set(
         # Handle --from-locale mode
         if from_locale:
             detected = detect_system_locale()
-            detected_display = get_language_display_name(detected.value)
+            get_language_display_name(detected.value)
 
             # Build default language list
             if detected != LanguageCode.ENGLISH:
@@ -1617,7 +1617,7 @@ def set(
                 lang_codes = [LanguageCode.ENGLISH.value]
 
             # Build preferences dict
-            prefs_dict: Dict[LanguagePreferenceType, List[str]] = {
+            prefs_dict: dict[LanguagePreferenceType, list[str]] = {
                 LanguagePreferenceType.FLUENT: lang_codes,
                 LanguagePreferenceType.LEARNING: [],
                 LanguagePreferenceType.CURIOUS: [],
@@ -1633,8 +1633,8 @@ def set(
         # Handle flag-based mode (T043-T047)
         elif any([fluent, learning, curious, exclude]):
             # Process all flag inputs
-            all_invalid_codes: List[str] = []
-            flag_prefs_dict: Dict[LanguagePreferenceType, List[str]] = {
+            all_invalid_codes: list[str] = []
+            flag_prefs_dict: dict[LanguagePreferenceType, list[str]] = {
                 LanguagePreferenceType.FLUENT: [],
                 LanguagePreferenceType.LEARNING: [],
                 LanguagePreferenceType.CURIOUS: [],
@@ -1690,7 +1690,7 @@ def set(
                 existing_prefs = asyncio.run(_get_preferences(DEFAULT_USER_ID))
 
                 # Build existing preferences dict
-                existing_dict: Dict[LanguagePreferenceType, List[str]] = {
+                existing_dict: dict[LanguagePreferenceType, list[str]] = {
                     LanguagePreferenceType.FLUENT: [],
                     LanguagePreferenceType.LEARNING: [],
                     LanguagePreferenceType.CURIOUS: [],
@@ -1730,13 +1730,13 @@ def set(
 
             if accepted:
                 # User accepted defaults
-                interactive_prefs_dict: Dict[LanguagePreferenceType, List[str]] = {
+                interactive_prefs_dict: dict[LanguagePreferenceType, list[str]] = {
                     LanguagePreferenceType.FLUENT: default_langs,
                     LanguagePreferenceType.LEARNING: [],
                     LanguagePreferenceType.CURIOUS: [],
                     LanguagePreferenceType.EXCLUDE: [],
                 }
-                interactive_goals_dict: Dict[str, str] = {}
+                interactive_goals_dict: dict[str, str] = {}
             else:
                 # User chose to customize - run full interactive setup
                 interactive_prefs_dict = _run_full_interactive_setup()
@@ -1753,7 +1753,7 @@ def set(
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Setup cancelled. No changes saved.[/yellow]")
-        raise typer.Exit(130)
+        raise typer.Exit(130) from None
 
 
 # -------------------------------------------------------------------------
@@ -1763,7 +1763,7 @@ def set(
 
 async def _check_language_exists(
     user_id: str, language_code: str
-) -> Optional[LanguagePreferenceType]:
+) -> LanguagePreferenceType | None:
     """
     Check if language preference already exists for user.
 
@@ -1801,9 +1801,9 @@ async def _check_language_exists(
 
 
 def _calculate_priority(
-    existing_prefs: List[UserLanguagePreference],
+    existing_prefs: list[UserLanguagePreference],
     pref_type: LanguagePreferenceType,
-    requested_priority: Optional[int] = None,
+    requested_priority: int | None = None,
 ) -> int:
     """
     Calculate priority for new language preference.
@@ -1894,8 +1894,8 @@ async def _add_language_preference(
     user_id: str,
     validated_code: LanguageCode,
     preference_type: LanguagePreferenceType,
-    priority: Optional[int],
-    learning_goal: Optional[str],
+    priority: int | None,
+    learning_goal: str | None,
 ) -> tuple[int, bool]:
     """
     Add a language preference with proper priority handling.
@@ -1979,10 +1979,10 @@ def add(
     preference_type: LanguagePreferenceType = typer.Option(
         ..., "--type", "-t", help="Preference type (fluent, learning, curious, exclude)"
     ),
-    priority: Optional[int] = typer.Option(
+    priority: int | None = typer.Option(
         None, "--priority", "-p", help="Priority position (1 = highest)"
     ),
-    goal: Optional[str] = typer.Option(
+    goal: str | None = typer.Option(
         None, "--goal", "-g", help="Learning goal (for learning type only)"
     ),
 ) -> None:
@@ -2075,7 +2075,7 @@ def add(
         raise
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(3)
+        raise typer.Exit(3) from e
 
 
 
@@ -2149,7 +2149,7 @@ def remove(
     # Check if preference exists
     repo = UserLanguagePreferenceRepository()
 
-    async def _remove_preference() -> tuple[bool, Optional[str], Optional[LanguagePreferenceType]]:
+    async def _remove_preference() -> tuple[bool, str | None, LanguagePreferenceType | None]:
         """Helper to check and remove preference."""
         async for session in db_manager.get_session():
             # Get existing preference
@@ -2298,13 +2298,13 @@ def reset(
 
                 if accepted:
                     # User accepted defaults
-                    prefs_dict: Dict[LanguagePreferenceType, List[str]] = {
+                    prefs_dict: dict[LanguagePreferenceType, list[str]] = {
                         LanguagePreferenceType.FLUENT: default_langs,
                         LanguagePreferenceType.LEARNING: [],
                         LanguagePreferenceType.CURIOUS: [],
                         LanguagePreferenceType.EXCLUDE: [],
                     }
-                    goals_dict: Dict[str, str] = {}
+                    goals_dict: dict[str, str] = {}
                 else:
                     # User chose to customize
                     prefs_dict = _run_full_interactive_setup()
@@ -2319,4 +2319,4 @@ def reset(
         raise
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(2)
+        raise typer.Exit(2) from e

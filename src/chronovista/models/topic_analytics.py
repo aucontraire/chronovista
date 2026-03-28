@@ -8,7 +8,6 @@ relationship analysis, and statistical data.
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -69,7 +68,7 @@ class TopicRelationships(BaseModel):
     source_category_name: str = Field(..., description="Source topic name")
     total_videos: int = Field(0, description="Total videos in source topic")
     total_channels: int = Field(0, description="Total channels in source topic")
-    relationships: List[TopicRelationship] = Field(
+    relationships: list[TopicRelationship] = Field(
         default_factory=list, description="Related topics"
     )
     analysis_date: str = Field(..., description="Date of analysis (ISO format)")
@@ -120,9 +119,9 @@ class TopicStats(BaseModel):
     category_name: str = Field(..., description="Topic name")
     video_count: int = Field(0, description="Number of videos")
     channel_count: int = Field(0, description="Number of channels")
-    avg_views: Optional[Decimal] = Field(None, description="Average views per video")
-    avg_likes: Optional[Decimal] = Field(None, description="Average likes per video")
-    total_duration: Optional[int] = Field(None, description="Total duration in seconds")
+    avg_views: Decimal | None = Field(None, description="Average views per video")
+    avg_likes: Decimal | None = Field(None, description="Average likes per video")
+    total_duration: int | None = Field(None, description="Total duration in seconds")
 
 
 class TopicTrend(BaseModel):
@@ -169,13 +168,13 @@ class TopicDiscoveryAnalysis(BaseModel):
 
     total_users: int = Field(0, description="Total users analyzed")
     total_discoveries: int = Field(0, description="Total discovery events")
-    discovery_paths: List[TopicDiscoveryPath] = Field(
+    discovery_paths: list[TopicDiscoveryPath] = Field(
         default_factory=list, description="Topic discovery pathways"
     )
-    top_entry_topics: List[TopicPopularity] = Field(
+    top_entry_topics: list[TopicPopularity] = Field(
         default_factory=list, description="Topics most often discovered first"
     )
-    high_retention_topics: List[TopicPopularity] = Field(
+    high_retention_topics: list[TopicPopularity] = Field(
         default_factory=list, description="Topics with highest retention rates"
     )
     analysis_date: str = Field(..., description="Analysis date (ISO format)")
@@ -236,16 +235,16 @@ class TopicInsightCollection(BaseModel):
     topics_explored: int = Field(0, description="Number of unique topics explored")
 
     # Insight categories
-    emerging_interests: List[TopicInsight] = Field(
+    emerging_interests: list[TopicInsight] = Field(
         default_factory=list, description="Newly emerging topic interests"
     )
-    dominant_interests: List[TopicInsight] = Field(
+    dominant_interests: list[TopicInsight] = Field(
         default_factory=list, description="Primary topic interests"
     )
-    underexplored_topics: List[TopicInsight] = Field(
+    underexplored_topics: list[TopicInsight] = Field(
         default_factory=list, description="Topics to explore more"
     )
-    similar_recommendations: List[TopicInsight] = Field(
+    similar_recommendations: list[TopicInsight] = Field(
         default_factory=list, description="Similar topic recommendations"
     )
 
@@ -267,10 +266,10 @@ class TopicAnalyticsSummary(BaseModel):
     total_topics: int = Field(0, description="Total number of topics")
     total_videos: int = Field(0, description="Total number of videos with topics")
     total_channels: int = Field(0, description="Total number of channels with topics")
-    most_popular_topics: List[TopicPopularity] = Field(
+    most_popular_topics: list[TopicPopularity] = Field(
         default_factory=list, description="Top 5 popular topics"
     )
-    topic_distribution: Dict[str, int] = Field(
+    topic_distribution: dict[str, int] = Field(
         default_factory=dict, description="Topic distribution counts"
     )
     analysis_date: str = Field(..., description="Analysis date (ISO format)")

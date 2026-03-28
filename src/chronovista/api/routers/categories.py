@@ -9,8 +9,6 @@ to avoid path matching conflicts.
 
 from __future__ import annotations
 
-from typing import List
-
 from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,11 +24,18 @@ from chronovista.api.schemas.categories import (
 )
 from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.topics import TopicSummary
-from chronovista.api.schemas.videos import VideoListItem, VideoListResponse, TranscriptSummary
-from chronovista.db.models import Video, VideoCategory, VideoTag, VideoTopic, TopicCategory
+from chronovista.api.schemas.videos import (
+    TranscriptSummary,
+    VideoListItem,
+    VideoListResponse,
+)
+from chronovista.db.models import (
+    Video,
+    VideoCategory,
+    VideoTopic,
+)
 from chronovista.exceptions import NotFoundError
 from chronovista.models.enums import AvailabilityStatus
-
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -103,7 +108,7 @@ async def list_categories(
     rows = result.all()
 
     # Transform to response items
-    items: List[CategoryListItem] = []
+    items: list[CategoryListItem] = []
     for row in rows:
         items.append(
             CategoryListItem(
@@ -214,7 +219,7 @@ async def get_category_videos(
     videos = result.scalars().all()
 
     # Transform to response items (reusing pattern from topics)
-    items: List[VideoListItem] = []
+    items: list[VideoListItem] = []
     for video in videos:
         # Build transcript summary
         transcripts = list(video.transcripts) if video.transcripts else []

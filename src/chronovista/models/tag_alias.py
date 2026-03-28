@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -55,14 +54,14 @@ class TagAliasCreate(TagAliasBase):
 class TagAliasUpdate(BaseModel):
     """Model for updating tag aliases (PATCH-style, all fields optional)."""
 
-    raw_form: Optional[str] = Field(default=None, min_length=1, max_length=500)
-    normalized_form: Optional[str] = Field(
+    raw_form: str | None = Field(default=None, min_length=1, max_length=500)
+    normalized_form: str | None = Field(
         default=None, min_length=1, max_length=500
     )
-    canonical_tag_id: Optional[uuid.UUID] = None
-    creation_method: Optional[CreationMethod] = None
-    normalization_version: Optional[int] = Field(default=None, ge=1)
-    occurrence_count: Optional[int] = Field(default=None, ge=0)
+    canonical_tag_id: uuid.UUID | None = None
+    creation_method: CreationMethod | None = None
+    normalization_version: int | None = Field(default=None, ge=1)
+    occurrence_count: int | None = Field(default=None, ge=0)
 
     model_config = ConfigDict(
         validate_assignment=True,

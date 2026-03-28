@@ -11,8 +11,8 @@ from __future__ import annotations
 from typing import Any
 
 from chronovista.api.schemas.responses import (
-    ApiError,
     ERROR_TITLES,
+    ApiError,
     ErrorCode,
     get_error_type_uri,
 )

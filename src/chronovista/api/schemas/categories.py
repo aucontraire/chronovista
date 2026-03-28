@@ -8,7 +8,6 @@ response wrappers.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -52,7 +51,7 @@ class CategoryListResponse(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    data: List[CategoryListItem]
+    data: list[CategoryListItem]
     pagination: PaginationMeta
 
 

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -126,7 +126,7 @@ async def recover_video(
     >>> if result.success:
     ...     print(f"Recovered {len(result.fields_recovered)} fields")
     """
-    start_time = datetime.now(timezone.utc)
+    start_time = datetime.now(UTC)
 
     # Initialize repositories
     video_repo = VideoRepository()
@@ -139,7 +139,7 @@ async def recover_video(
 
         # Check eligibility: video must exist
         if video is None:
-            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+            duration = (datetime.now(UTC) - start_time).total_seconds()
             return RecoveryResult(
                 video_id=video_id,
                 success=False,
@@ -149,7 +149,7 @@ async def recover_video(
 
         # Check eligibility: video must not be AVAILABLE
         if video.availability_status == AvailabilityStatus.AVAILABLE.value:
-            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+            duration = (datetime.now(UTC) - start_time).total_seconds()
             return RecoveryResult(
                 video_id=video_id,
                 success=False,
@@ -165,8 +165,8 @@ async def recover_video(
                 ),
                 timeout=_RECOVERY_TIMEOUT_SECONDS,
             )
-        except asyncio.TimeoutError:
-            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+        except TimeoutError:
+            duration = (datetime.now(UTC) - start_time).total_seconds()
             return RecoveryResult(
                 video_id=video_id,
                 success=False,
@@ -174,7 +174,7 @@ async def recover_video(
                 duration_seconds=duration,
             )
         except CDXError as e:
-            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+            duration = (datetime.now(UTC) - start_time).total_seconds()
             logger.warning("CDX error for video %s: %s", video_id, e.message)
             return RecoveryResult(
                 video_id=video_id,
@@ -187,7 +187,7 @@ async def recover_video(
 
         # No snapshots available
         if snapshots_available == 0:
-            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+            duration = (datetime.now(UTC) - start_time).total_seconds()
             return RecoveryResult(
                 video_id=video_id,
                 success=False,
@@ -214,7 +214,7 @@ async def recover_video(
             # Extract metadata from snapshot
             try:
                 extracted_data = await page_parser.extract_metadata(snapshot)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     "Timeout extracting metadata from snapshot %s for video %s",
                     snapshot.timestamp,
@@ -241,7 +241,7 @@ async def recover_video(
 
         # No usable data found after trying all snapshots
         if recovered_data is None or (not dry_run and not recovered_data.has_data):
-            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+            duration = (datetime.now(UTC) - start_time).total_seconds()
             return RecoveryResult(
                 video_id=video_id,
                 success=False,
@@ -257,7 +257,7 @@ async def recover_video(
         )
 
         # Add recovery metadata (always set on success)
-        update_dict["recovered_at"] = datetime.now(timezone.utc)
+        update_dict["recovered_at"] = datetime.now(UTC)
         update_dict["recovery_source"] = recovered_data.recovery_source
 
         # Skip database write in dry-run mode
@@ -335,7 +335,7 @@ async def recover_video(
 
                 # Attempt auto-channel recovery with remaining time budget
                 try:
-                    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+                    elapsed = (datetime.now(UTC) - start_time).total_seconds()
                     remaining_timeout = max(
                         _RECOVERY_TIMEOUT_SECONDS - elapsed, 30.0
                     )
@@ -366,7 +366,7 @@ async def recover_video(
                     channel_failure_reason = f"exception: {e}"
 
         # Build success result
-        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+        duration = (datetime.now(UTC) - start_time).total_seconds()
         return RecoveryResult(
             video_id=video_id,
             success=True,
@@ -385,7 +385,7 @@ async def recover_video(
 
     except Exception as e:
         # Unexpected error during recovery
-        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+        duration = (datetime.now(UTC) - start_time).total_seconds()
         logger.error("Unexpected error recovering video %s: %s", video_id, e)
         return RecoveryResult(
             video_id=video_id,
@@ -659,7 +659,7 @@ async def recover_channel(
     >>> if result.success:
     ...     print(f"Recovered {len(result.fields_recovered)} fields")
     """
-    start_time = datetime.now(timezone.utc)
+    start_time = datetime.now(UTC)
 
     # Initialize repository
     channel_repo = ChannelRepository()
@@ -670,7 +670,7 @@ async def recover_channel(
 
         # Check eligibility: channel must exist
         if channel is None:
-            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+            duration = (datetime.now(UTC) - start_time).total_seconds()
             return ChannelRecoveryResult(
                 channel_id=channel_id,
                 success=False,
@@ -680,7 +680,7 @@ async def recover_channel(
 
         # Check eligibility: channel must not be AVAILABLE
         if channel.availability_status == AvailabilityStatus.AVAILABLE.value:
-            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+            duration = (datetime.now(UTC) - start_time).total_seconds()
             return ChannelRecoveryResult(
                 channel_id=channel_id,
                 success=False,
@@ -696,8 +696,8 @@ async def recover_channel(
                 ),
                 timeout=timeout_seconds,
             )
-        except asyncio.TimeoutError:
-            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+        except TimeoutError:
+            duration = (datetime.now(UTC) - start_time).total_seconds()
             return ChannelRecoveryResult(
                 channel_id=channel_id,
                 success=False,
@@ -705,7 +705,7 @@ async def recover_channel(
                 duration_seconds=duration,
             )
         except CDXError as e:
-            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+            duration = (datetime.now(UTC) - start_time).total_seconds()
             logger.warning("CDX error for channel %s: %s", channel_id, e.message)
             return ChannelRecoveryResult(
                 channel_id=channel_id,
@@ -718,7 +718,7 @@ async def recover_channel(
 
         # No snapshots available
         if snapshots_available == 0:
-            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+            duration = (datetime.now(UTC) - start_time).total_seconds()
             return ChannelRecoveryResult(
                 channel_id=channel_id,
                 success=False,
@@ -736,7 +736,7 @@ async def recover_channel(
             snapshots_tried += 1
 
             # Check remaining time budget
-            elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+            elapsed = (datetime.now(UTC) - start_time).total_seconds()
             if elapsed >= timeout_seconds:
                 logger.warning(
                     "Channel recovery timeout for %s after %d snapshots (%.1fs)",
@@ -751,7 +751,7 @@ async def recover_channel(
                 extracted_data = await page_parser.extract_channel_metadata(
                     snapshot, channel_id
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     "Timeout extracting channel metadata from snapshot %s for channel %s",
                     snapshot.timestamp,
@@ -777,7 +777,7 @@ async def recover_channel(
 
         # No usable data found after trying all snapshots
         if recovered_data is None:
-            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+            duration = (datetime.now(UTC) - start_time).total_seconds()
             return ChannelRecoveryResult(
                 channel_id=channel_id,
                 success=False,
@@ -793,7 +793,7 @@ async def recover_channel(
         )
 
         # Add recovery metadata (always set on success)
-        update_dict["recovered_at"] = datetime.now(timezone.utc)
+        update_dict["recovered_at"] = datetime.now(UTC)
         update_dict["recovery_source"] = recovered_data.recovery_source
 
         # Update channel in database
@@ -804,7 +804,7 @@ async def recover_channel(
         await session.commit()
 
         # Build success result
-        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+        duration = (datetime.now(UTC) - start_time).total_seconds()
         return ChannelRecoveryResult(
             channel_id=channel_id,
             success=True,
@@ -818,7 +818,7 @@ async def recover_channel(
 
     except Exception as e:
         # Unexpected error during recovery
-        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+        duration = (datetime.now(UTC) - start_time).total_seconds()
         logger.error("Unexpected error recovering channel %s: %s", channel_id, e)
         return ChannelRecoveryResult(
             channel_id=channel_id,

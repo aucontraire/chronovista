@@ -13,7 +13,6 @@ from __future__ import annotations
 import logging
 import time
 from collections import defaultdict
-from typing import Dict, List, Tuple
 
 from fastapi import APIRouter, Depends, Path, Query, Request
 from fastapi.responses import JSONResponse
@@ -44,7 +43,7 @@ RATE_LIMIT_AUTOCOMPLETE = 50  # requests per minute
 RATE_LIMIT_WINDOW_SECONDS = 60
 
 # Storage for rate limit tracking
-_autocomplete_request_counts: Dict[str, List[float]] = defaultdict(list)
+_autocomplete_request_counts: dict[str, list[float]] = defaultdict(list)
 
 
 def _get_client_id(request: Request) -> str:
@@ -71,9 +70,9 @@ def _get_client_id(request: Request) -> str:
 
 def _check_rate_limit(
     client_id: str,
-    request_counts: Dict[str, List[float]],
+    request_counts: dict[str, list[float]],
     rate_limit: int,
-) -> Tuple[bool, int]:
+) -> tuple[bool, int]:
     """
     Check if client has exceeded rate limit.
 
@@ -236,7 +235,7 @@ async def list_tags(
     result = await session.execute(query)
     rows = result.all()
 
-    items: List[TagListItem] = [
+    items: list[TagListItem] = [
         TagListItem(tag=row.tag, video_count=row.video_count)
         for row in rows
     ]
@@ -249,7 +248,7 @@ async def list_tags(
     )
 
     # T049b: Fuzzy suggestions when no prefix matches found
-    suggestions: List[str] | None = None
+    suggestions: list[str] | None = None
     if q is not None and len(items) == 0 and len(q) >= 2:
         try:
             # Optimization: Only consider tags with similar length
@@ -402,7 +401,7 @@ async def get_tag_videos(
     videos = result.scalars().all()
 
     # Transform to response (reuse pattern from topics router)
-    items: List[VideoListItem] = []
+    items: list[VideoListItem] = []
     for video in videos:
         # Build transcript summary
         transcripts = list(video.transcripts) if video.transcripts else []

@@ -7,16 +7,14 @@ with real metadata from historical takeout data.
 """
 
 import logging
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.channel import ChannelCreate, ChannelUpdate
 from ..models.takeout import (
     ChannelRecoveryAction,
-    HistoricalTakeout,
     RecoveredChannelMetadata,
     RecoveredVideoMetadata,
     RecoveryOptions,
@@ -44,8 +42,8 @@ class TakeoutRecoveryService:
 
     def __init__(
         self,
-        video_repository: Optional[VideoRepository] = None,
-        channel_repository: Optional[ChannelRepository] = None,
+        video_repository: VideoRepository | None = None,
+        channel_repository: ChannelRepository | None = None,
     ) -> None:
         """
         Initialize the recovery service.
@@ -64,7 +62,7 @@ class TakeoutRecoveryService:
         self,
         session: AsyncSession,
         takeout_base_path: Path,
-        options: Optional[RecoveryOptions] = None,
+        options: RecoveryOptions | None = None,
     ) -> RecoveryResult:
         """
         Recover metadata from historical takeout directories.
@@ -161,7 +159,7 @@ class TakeoutRecoveryService:
     async def _recover_videos(
         self,
         session: AsyncSession,
-        video_metadata: Dict[str, RecoveredVideoMetadata],
+        video_metadata: dict[str, RecoveredVideoMetadata],
         result: RecoveryResult,
         options: RecoveryOptions,
     ) -> None:
@@ -256,7 +254,7 @@ class TakeoutRecoveryService:
 
                 if not options.dry_run:
                     # Build update data based on what's needed
-                    update_fields: Dict[str, Any] = {}
+                    update_fields: dict[str, Any] = {}
 
                     if needs_title_update:
                         update_fields["title"] = recovered.title
@@ -317,7 +315,7 @@ class TakeoutRecoveryService:
     async def _recover_channels(
         self,
         session: AsyncSession,
-        channel_metadata: Dict[str, RecoveredChannelMetadata],
+        channel_metadata: dict[str, RecoveredChannelMetadata],
         result: RecoveryResult,
         options: RecoveryOptions,
     ) -> None:

@@ -7,8 +7,6 @@ concurrent sync operation at a time.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import APIRouter, Body, Depends, status
 
 from chronovista.api.deps import require_auth
@@ -46,7 +44,7 @@ router = APIRouter(dependencies=[Depends(require_auth)])
 )
 async def trigger_sync(
     operation: SyncOperationType,
-    request: Optional[TranscriptSyncRequest] = Body(default=None),
+    request: TranscriptSyncRequest | None = Body(default=None),
 ) -> SyncStartedResponse:
     """
     Trigger a sync operation.
@@ -116,7 +114,7 @@ async def trigger_sync(
         raise ConflictError(
             message=str(e),
             details={"reason": "concurrent_sync"},
-        )
+        ) from e
 
 
 @router.get(

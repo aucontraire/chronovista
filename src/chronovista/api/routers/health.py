@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict
@@ -22,8 +21,8 @@ class HealthChecks(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    database_latency_ms: Optional[int] = None
-    token_expiry_hours: Optional[float] = None
+    database_latency_ms: int | None = None
+    token_expiry_hours: float | None = None
 
 
 class HealthStatus(BaseModel):
@@ -36,7 +35,7 @@ class HealthStatus(BaseModel):
     database: str  # "connected", "disconnected"
     authenticated: bool  # OAuth tokens valid
     timestamp: datetime
-    checks: Optional[HealthChecks] = None
+    checks: HealthChecks | None = None
 
 
 class HealthResponse(ApiResponse[HealthStatus]):
@@ -60,7 +59,7 @@ async def health_check() -> HealthResponse:
     """
     # Check database connectivity
     db_status = "disconnected"
-    db_latency_ms: Optional[int] = None
+    db_latency_ms: int | None = None
     try:
         start = time.monotonic()
         async for session in db_manager.get_session():
@@ -88,7 +87,7 @@ async def health_check() -> HealthResponse:
         version=__version__,
         database=db_status,
         authenticated=authenticated,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         checks=HealthChecks(
             database_latency_ms=db_latency_ms,
         ),

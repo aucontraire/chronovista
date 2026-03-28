@@ -8,14 +8,12 @@ and metadata from Google Takeout data.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from .youtube_types import PlaylistId, VideoId
-
 from .playlist import Playlist
 from .video import Video
+from .youtube_types import PlaylistId, VideoId
 
 
 class PlaylistMembershipBase(BaseModel):
@@ -32,7 +30,7 @@ class PlaylistMembershipBase(BaseModel):
     position: int = Field(
         ..., ge=0, description="Position of video in playlist (0-based)"
     )
-    added_at: Optional[datetime] = Field(
+    added_at: datetime | None = Field(
         None, description="When video was added to playlist (from takeout data)"
     )
 
@@ -46,10 +44,10 @@ class PlaylistMembershipCreate(PlaylistMembershipBase):
 class PlaylistMembershipUpdate(BaseModel):
     """Update model for playlist membership."""
 
-    position: Optional[int] = Field(
+    position: int | None = Field(
         None, ge=0, description="New position of video in playlist"
     )
-    added_at: Optional[datetime] = Field(
+    added_at: datetime | None = Field(
         None, description="Updated timestamp when video was added"
     )
 

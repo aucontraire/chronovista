@@ -1,7 +1,6 @@
 """Video API response schemas."""
 
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -16,7 +15,7 @@ class TranscriptSummary(BaseModel):
     model_config = ConfigDict(strict=True)
 
     count: int  # Number of transcripts
-    languages: List[str]  # Available language codes (BCP-47)
+    languages: list[str]  # Available language codes (BCP-47)
     has_manual: bool  # Any manual/CC transcripts?
     has_corrections: bool = False  # Any segments with user corrections?
 
@@ -60,24 +59,24 @@ class VideoListItem(BaseModel):
 
     video_id: str  # 11-char YouTube ID
     title: str
-    channel_id: Optional[str]  # 24-char channel ID (can be null for orphaned)
-    channel_title: Optional[str]  # Channel name
+    channel_id: str | None  # 24-char channel ID (can be null for orphaned)
+    channel_title: str | None  # Channel name
     upload_date: datetime
     duration: int  # Seconds
-    view_count: Optional[int]
+    view_count: int | None
     transcript_summary: TranscriptSummary
 
     # Classification fields (Feature 020 - Video Classification Filters)
-    tags: List[str] = Field(default_factory=list, description="Video tags")
-    category_id: Optional[str] = Field(None, description="YouTube category ID")
-    category_name: Optional[str] = Field(None, description="Human-readable category")
-    topics: List["TopicSummary"] = Field(
+    tags: list[str] = Field(default_factory=list, description="Video tags")
+    category_id: str | None = Field(None, description="YouTube category ID")
+    category_name: str | None = Field(None, description="Human-readable category")
+    topics: list["TopicSummary"] = Field(
         default_factory=list, description="Associated topics"
     )
     availability_status: str = Field(..., description="Video availability status")
 
 
-class VideoListResponse(ApiResponse[List[VideoListItem]]):
+class VideoListResponse(ApiResponse[list[VideoListItem]]):
     """Response for video list endpoint."""
 
     pass
@@ -101,9 +100,9 @@ class VideoListResponseWithWarnings(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    data: List[VideoListItem]
+    data: list[VideoListItem]
     pagination: PaginationMeta
-    warnings: List[FilterWarning] = Field(
+    warnings: list[FilterWarning] = Field(
         default_factory=list,
         description="Warnings for invalid filter values that were ignored",
     )
@@ -119,25 +118,25 @@ class VideoDetail(BaseModel):
 
     video_id: str
     title: str
-    description: Optional[str]
-    channel_id: Optional[str]
-    channel_title: Optional[str]
+    description: str | None
+    channel_id: str | None
+    channel_title: str | None
     upload_date: datetime
     duration: int
-    view_count: Optional[int]
-    like_count: Optional[int]
-    comment_count: Optional[int]
-    tags: List[str]
-    category_id: Optional[str]
-    category_name: Optional[str]  # Human-readable category name
-    default_language: Optional[str]
+    view_count: int | None
+    like_count: int | None
+    comment_count: int | None
+    tags: list[str]
+    category_id: str | None
+    category_name: str | None  # Human-readable category name
+    default_language: str | None
     made_for_kids: bool
     transcript_summary: TranscriptSummary
-    topics: List[TopicSummary] = Field(default_factory=list)  # Associated topics
+    topics: list[TopicSummary] = Field(default_factory=list)  # Associated topics
     availability_status: str = Field(..., description="Video availability status")
-    alternative_url: Optional[str] = Field(None, description="Alternative URL for deleted/unavailable content")
-    recovered_at: Optional[datetime] = Field(None, description="Timestamp when metadata was recovered via Wayback Machine")
-    recovery_source: Optional[str] = Field(None, description="Source used for metadata recovery (e.g., wayback_machine)")
+    alternative_url: str | None = Field(None, description="Alternative URL for deleted/unavailable content")
+    recovered_at: datetime | None = Field(None, description="Timestamp when metadata was recovered via Wayback Machine")
+    recovery_source: str | None = Field(None, description="Source used for metadata recovery (e.g., wayback_machine)")
 
 
 class VideoDetailResponse(ApiResponse[VideoDetail]):
@@ -163,7 +162,7 @@ class VideoPlaylistsResponse(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    data: List[VideoPlaylistMembership]
+    data: list[VideoPlaylistMembership]
 
 
 class AlternativeUrlRequest(BaseModel):
@@ -171,7 +170,7 @@ class AlternativeUrlRequest(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    alternative_url: Optional[str] = Field(
+    alternative_url: str | None = Field(
         None,
         max_length=500,
         description="Alternative URL for unavailable video (max 500 characters). Set to null to clear.",
@@ -217,18 +216,18 @@ class VideoRecoveryResultData(BaseModel):
 
     video_id: str
     success: bool
-    snapshot_used: Optional[str] = None
-    fields_recovered: List[str] = Field(default_factory=list)
-    fields_skipped: List[str] = Field(default_factory=list)
+    snapshot_used: str | None = None
+    fields_recovered: list[str] = Field(default_factory=list)
+    fields_skipped: list[str] = Field(default_factory=list)
     snapshots_available: int = 0
     snapshots_tried: int = 0
-    failure_reason: Optional[str] = None
+    failure_reason: str | None = None
     duration_seconds: float = 0.0
-    channel_recovery_candidates: List[str] = Field(default_factory=list)
+    channel_recovery_candidates: list[str] = Field(default_factory=list)
     channel_recovered: bool = False
-    channel_fields_recovered: List[str] = Field(default_factory=list)
-    channel_fields_skipped: List[str] = Field(default_factory=list)
-    channel_failure_reason: Optional[str] = None
+    channel_fields_recovered: list[str] = Field(default_factory=list)
+    channel_fields_skipped: list[str] = Field(default_factory=list)
+    channel_failure_reason: str | None = None
 
 
 class VideoRecoveryResponse(ApiResponse[VideoRecoveryResultData]):
@@ -241,7 +240,6 @@ class VideoRecoveryResponse(ApiResponse[VideoRecoveryResultData]):
 # This is required for Pydantic V2 with TYPE_CHECKING imports
 def _rebuild_models() -> None:
     """Rebuild models after all imports are resolved."""
-    from chronovista.api.schemas.topics import TopicSummary
 
     VideoListItem.model_rebuild()
 

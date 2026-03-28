@@ -8,7 +8,6 @@ supporting entity resolution, merge tracking, and confidence scoring.
 from __future__ import annotations
 
 import uuid
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +33,7 @@ class NamedEntityRepository(
 
     async def get(
         self, session: AsyncSession, id: uuid.UUID
-    ) -> Optional[NamedEntityDB]:
+    ) -> NamedEntityDB | None:
         """Get named entity by UUID primary key."""
         result = await session.execute(
             select(NamedEntityDB).where(NamedEntityDB.id == id)

@@ -250,7 +250,6 @@ async def api_error_handler(request: Request, exc: APIError) -> ProblemJSONRespo
             "External service error: %s (details=%s)",
             exc.message,
             exc.details,
-            exc_info=True,
         )
         return _safe_problem_response(
             code=exc.error_code,
@@ -465,7 +464,6 @@ async def external_service_error_handler(
         "External service error: %s (details=%s)",
         exc.message,
         exc.details,
-        exc_info=True,
     )
 
     return _safe_problem_response(

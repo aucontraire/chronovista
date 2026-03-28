@@ -8,7 +8,6 @@ with validation and serialization support.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -57,13 +56,13 @@ class VideoTopicCreate(VideoTopicBase):
 class VideoTopicUpdate(BaseModel):
     """Model for updating video topics."""
 
-    relevance_type: Optional[str] = Field(
+    relevance_type: str | None = Field(
         None, description="Relevance type: primary, relevant, suggested"
     )
 
     @field_validator("relevance_type")
     @classmethod
-    def validate_relevance_type(cls, v: Optional[str]) -> Optional[str]:
+    def validate_relevance_type(cls, v: str | None) -> str | None:
         """Validate relevance type."""
         if v is None:
             return v
@@ -100,19 +99,19 @@ class VideoTopic(VideoTopicBase):
 class VideoTopicSearchFilters(BaseModel):
     """Filters for searching video topics."""
 
-    video_ids: Optional[List[VideoId]] = Field(
+    video_ids: list[VideoId] | None = Field(
         default=None, description="Filter by video IDs"
     )
-    topic_ids: Optional[List[TopicId]] = Field(
+    topic_ids: list[TopicId] | None = Field(
         default=None, description="Filter by topic IDs"
     )
-    relevance_types: Optional[List[str]] = Field(
+    relevance_types: list[str] | None = Field(
         default=None, description="Filter by relevance types"
     )
-    created_after: Optional[datetime] = Field(
+    created_after: datetime | None = Field(
         default=None, description="Filter by creation date"
     )
-    created_before: Optional[datetime] = Field(
+    created_before: datetime | None = Field(
         default=None, description="Filter by creation date"
     )
 
@@ -130,7 +129,7 @@ class VideoTopicStatistics(BaseModel):
     unique_topics: int = Field(..., description="Number of unique topics")
     unique_videos: int = Field(..., description="Number of unique videos with topics")
     avg_topics_per_video: float = Field(..., description="Average topics per video")
-    most_common_topics: List[tuple[str, int]] = Field(
+    most_common_topics: list[tuple[str, int]] = Field(
         default_factory=list, description="Most common topics with counts"
     )
     relevance_type_distribution: dict[str, int] = Field(
@@ -145,13 +144,13 @@ class VideoTopicStatistics(BaseModel):
 class VideoTopicAnalytics(BaseModel):
     """Advanced video topic analytics."""
 
-    topic_trends: dict[str, List[int]] = Field(
+    topic_trends: dict[str, list[int]] = Field(
         default_factory=dict, description="Topic usage trends over time"
     )
-    video_topic_clusters: dict[str, List[str]] = Field(
+    video_topic_clusters: dict[str, list[str]] = Field(
         default_factory=dict, description="Video clusters by topic similarity"
     )
-    topic_co_occurrence: dict[str, List[tuple[str, float]]] = Field(
+    topic_co_occurrence: dict[str, list[tuple[str, float]]] = Field(
         default_factory=dict, description="Topic co-occurrence patterns"
     )
     relevance_scores: dict[str, dict[str, float]] = Field(

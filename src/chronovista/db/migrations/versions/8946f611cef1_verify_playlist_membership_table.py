@@ -8,11 +8,6 @@ Create Date: 2025-07-29 21:33:23.814632
 
 from __future__ import annotations
 
-import sqlalchemy as sa
-
-
-from alembic import op
-
 # revision identifiers, used by Alembic.
 revision = "8946f611cef1"
 down_revision = "a45f4dccee22"

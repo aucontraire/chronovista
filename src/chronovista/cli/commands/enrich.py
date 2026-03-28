@@ -12,15 +12,13 @@ and logging to file for auditing purposes.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.prompt import Confirm
 from rich.table import Table
 
 from chronovista.exceptions import (
@@ -116,7 +114,7 @@ def _get_default_report_path() -> Path:
 
 
 def _setup_enrichment_logging(
-    timestamp: Optional[str] = None, verbose: bool = False
+    timestamp: str | None = None, verbose: bool = False
 ) -> Path:
     """
     Set up file logging for enrichment operation.
@@ -181,7 +179,7 @@ def _setup_enrichment_logging(
     return log_file
 
 
-def _save_report(report: "EnrichmentReport", output_path: Path) -> None:
+def _save_report(report: EnrichmentReport, output_path: Path) -> None:
     """
     Save enrichment report to JSON file.
 
@@ -268,7 +266,7 @@ def enrich_videos(
         "--sync-likes",
         help="After enrichment, sync liked status for existing videos from YouTube API (~2 extra quota units)",
     ),
-    output: Optional[Path] = typer.Option(
+    output: Path | None = typer.Option(
         None,
         "--output",
         "-o",
@@ -327,7 +325,7 @@ def enrich_videos(
     console.print()
 
     # Determine output path for JSON report (T056, T059)
-    report_output_path: Optional[Path] = None
+    report_output_path: Path | None = None
     if output is not None:
         # If output is specified as empty string or as flag without value,
         # use default path; otherwise use the provided path
@@ -382,7 +380,7 @@ def enrich_videos(
                         border_style="red",
                     )
                 )
-                raise typer.Exit(EXIT_CODE_LOCK_FAILED)
+                raise typer.Exit(EXIT_CODE_LOCK_FAILED) from e
 
             try:
                 # T096: Handle auto-seed for missing prerequisites
@@ -504,7 +502,7 @@ def enrich_videos(
                                 border_style="red",
                             )
                         )
-                        raise typer.Exit(EXIT_CODE_PREREQUISITES_MISSING)
+                        raise typer.Exit(EXIT_CODE_PREREQUISITES_MISSING) from e
 
                     except QuotaExceededException as e:
                         # T091: Quota exceeded - show partial progress
@@ -520,7 +518,7 @@ def enrich_videos(
                                 border_style="red",
                             )
                         )
-                        raise typer.Exit(EXIT_CODE_QUOTA_EXCEEDED)
+                        raise typer.Exit(EXIT_CODE_QUOTA_EXCEEDED) from e
 
                     except GracefulShutdownException as e:
                         # T093: Graceful shutdown requested
@@ -534,7 +532,7 @@ def enrich_videos(
                                 border_style="yellow",
                             )
                         )
-                        raise typer.Exit(EXIT_CODE_INTERRUPTED)
+                        raise typer.Exit(EXIT_CODE_INTERRUPTED) from e
 
                     # Note: Auto-resolution has been removed. Playlists are now linked
                     # directly from Google Takeout's playlists.csv during seeding.
@@ -583,7 +581,7 @@ def enrich_videos(
                                     border_style="red",
                                 )
                             )
-                            raise typer.Exit(EXIT_CODE_QUOTA_EXCEEDED)
+                            raise typer.Exit(EXIT_CODE_QUOTA_EXCEEDED) from None
 
                         except GracefulShutdownException:
                             progress.stop()
@@ -595,7 +593,7 @@ def enrich_videos(
                                     border_style="yellow",
                                 )
                             )
-                            raise typer.Exit(EXIT_CODE_INTERRUPTED)
+                            raise typer.Exit(EXIT_CODE_INTERRUPTED) from None
 
                     # Sync liked videos if enabled
                     likes_synced = 0
@@ -655,7 +653,7 @@ def enrich_videos(
                                     border_style="red",
                                 )
                             )
-                            raise typer.Exit(EXIT_CODE_QUOTA_EXCEEDED)
+                            raise typer.Exit(EXIT_CODE_QUOTA_EXCEEDED) from None
 
                         except GracefulShutdownException:
                             progress.stop()
@@ -667,7 +665,7 @@ def enrich_videos(
                                     border_style="yellow",
                                 )
                             )
-                            raise typer.Exit(EXIT_CODE_INTERRUPTED)
+                            raise typer.Exit(EXIT_CODE_INTERRUPTED) from None
 
                         except Exception as e:
                             # Non-fatal error - log and continue
@@ -760,13 +758,12 @@ def enrich_videos(
                 await service.lock.release(session)
 
         # Return empty report if we exit early (e.g., due to lock issues)
-        from datetime import timezone
 
         from chronovista.models.enrichment_report import EnrichmentSummary
 
         return (
             EnrichmentReport(
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 priority=priority,
                 summary=EnrichmentSummary(
                     videos_processed=0,
@@ -1061,7 +1058,7 @@ def _render_channel_enrichment_result(result: ChannelEnrichmentResult, dry_run: 
 
 @app.command("channels")
 def enrich_channels(
-    limit: Optional[int] = typer.Option(
+    limit: int | None = typer.Option(
         None,
         "--limit",
         "-l",
@@ -1168,7 +1165,7 @@ def enrich_channels(
                         border_style="red",
                     )
                 )
-                raise typer.Exit(EXIT_CODE_LOCK_FAILED)
+                raise typer.Exit(EXIT_CODE_LOCK_FAILED) from e
 
             try:
                 # Show configuration
@@ -1223,7 +1220,7 @@ def enrich_channels(
                                 border_style="red",
                             )
                         )
-                        raise typer.Exit(EXIT_CODE_QUOTA_EXCEEDED)
+                        raise typer.Exit(EXIT_CODE_QUOTA_EXCEEDED) from e
 
                     except GracefulShutdownException as e:
                         # T030/T042: Exit code 130 for SIGINT
@@ -1237,7 +1234,7 @@ def enrich_channels(
                                 border_style="yellow",
                             )
                         )
-                        raise typer.Exit(EXIT_CODE_INTERRUPTED)
+                        raise typer.Exit(EXIT_CODE_INTERRUPTED) from e
 
                     except AuthenticationError as e:
                         # T033/T042: Exit code 5 for auth failure
@@ -1251,7 +1248,7 @@ def enrich_channels(
                                 border_style="red",
                             )
                         )
-                        raise typer.Exit(EXIT_CODE_NO_CREDENTIALS)
+                        raise typer.Exit(EXIT_CODE_NO_CREDENTIALS) from e
 
                     except NetworkError as e:
                         # Network error - show warning but continue
@@ -1265,7 +1262,7 @@ def enrich_channels(
                                 border_style="red",
                             )
                         )
-                        raise typer.Exit(1)
+                        raise typer.Exit(1) from e
 
                     progress.update(task, description="Channel enrichment complete!")
 
@@ -1279,11 +1276,10 @@ def enrich_channels(
                 await service.lock.release(session)
 
         # Return empty result if we exit early
-        from datetime import timezone
 
         return ChannelEnrichmentResult(
-            started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
         )
 
     # Run the enrichment

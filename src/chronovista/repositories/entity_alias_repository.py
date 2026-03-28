@@ -8,7 +8,6 @@ Handles CRUD operations for entity aliases that map alternative names
 from __future__ import annotations
 
 import uuid
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +33,7 @@ class EntityAliasRepository(
 
     async def get(
         self, session: AsyncSession, id: uuid.UUID
-    ) -> Optional[EntityAliasDB]:
+    ) -> EntityAliasDB | None:
         """Get entity alias by UUID primary key."""
         result = await session.execute(
             select(EntityAliasDB).where(EntityAliasDB.id == id)

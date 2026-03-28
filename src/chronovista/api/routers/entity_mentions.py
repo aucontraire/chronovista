@@ -10,13 +10,13 @@ from __future__ import annotations
 import time
 import uuid
 from collections import defaultdict
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from fastapi import APIRouter, Body, Depends, Path, Query, Request, Response
 from fastapi.responses import JSONResponse
-from sqlalchemy import distinct, func, or_, select
-from sqlalchemy.orm import selectinload
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from chronovista.api.deps import get_db, require_auth
 from chronovista.api.schemas.entity_mentions import (
@@ -40,21 +40,33 @@ from chronovista.api.schemas.entity_mentions import (
     VideoEntitySummary,
 )
 from chronovista.api.schemas.responses import ApiResponse, PaginationMeta
+from chronovista.config.database import db_manager
+from chronovista.db.models import CanonicalTag as CanonicalTagDB
 from chronovista.db.models import EntityAlias as EntityAliasDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import Video as VideoDB
-from chronovista.db.models import CanonicalTag as CanonicalTagDB
-from chronovista.exceptions import APIValidationError, BadRequestError, ConflictError, NotFoundError
+from chronovista.exceptions import (
+    APIValidationError,
+    BadRequestError,
+    ConflictError,
+    NotFoundError,
+)
 from chronovista.models.entity_alias import EntityAliasCreate
-from chronovista.models.enums import DiscoveryMethod, EntityAliasType, EntityType, TagStatus
+from chronovista.models.enums import (
+    DiscoveryMethod,
+    EntityAliasType,
+    EntityType,
+    TagStatus,
+)
 from chronovista.models.named_entity import NamedEntityCreate
 from chronovista.repositories.canonical_tag_repository import CanonicalTagRepository
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
 from chronovista.repositories.tag_alias_repository import TagAliasRepository
-from chronovista.repositories.tag_operation_log_repository import TagOperationLogRepository
-from chronovista.config.database import db_manager
+from chronovista.repositories.tag_operation_log_repository import (
+    TagOperationLogRepository,
+)
 from chronovista.services.entity_mention_scan_service import EntityMentionScanService
 from chronovista.services.phonetic_matcher import PhoneticMatcher
 from chronovista.services.tag_management import TagManagementService
@@ -83,7 +95,7 @@ RATE_LIMIT_DUPLICATE_CHECK = 50
 RATE_LIMIT_WINDOW_SECONDS = 60
 
 # Storage for rate limit tracking
-_duplicate_check_counts: Dict[str, List[float]] = defaultdict(list)
+_duplicate_check_counts: dict[str, list[float]] = defaultdict(list)
 
 
 def _get_client_id(request: Request) -> str:
@@ -109,9 +121,9 @@ def _get_client_id(request: Request) -> str:
 
 def _check_rate_limit(
     client_id: str,
-    request_counts: Dict[str, List[float]],
+    request_counts: dict[str, list[float]],
     rate_limit: int,
-) -> Tuple[bool, int]:
+) -> tuple[bool, int]:
     """Check if client has exceeded rate limit.
 
     Cleans up old entries and checks if current request should be allowed.
@@ -528,8 +540,8 @@ async def get_entity_detail(
     """
     try:
         parsed_entity_id = uuid.UUID(entity_id)
-    except ValueError:
-        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
     entity_query = (
         select(NamedEntityDB)
@@ -619,8 +631,8 @@ async def get_entity_videos(
     # Parse entity_id string to UUID
     try:
         parsed_entity_id = uuid.UUID(entity_id)
-    except ValueError:
-        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
     # Check entity existence
     entity_query = select(NamedEntityDB.id).where(
@@ -706,8 +718,8 @@ async def create_entity_alias(
     # Parse entity_id
     try:
         parsed_entity_id = uuid.UUID(entity_id)
-    except ValueError:
-        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
     # Look up entity
     entity_query = select(NamedEntityDB).where(NamedEntityDB.id == parsed_entity_id)
@@ -886,8 +898,8 @@ async def add_exclusion_pattern(
     # Parse entity_id
     try:
         parsed_entity_id = uuid.UUID(entity_id)
-    except ValueError:
-        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
     # Look up entity
     entity = await session.get(NamedEntityDB, parsed_entity_id)
@@ -966,8 +978,8 @@ async def remove_exclusion_pattern(
     # Parse entity_id
     try:
         parsed_entity_id = uuid.UUID(entity_id)
-    except ValueError:
-        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
     # Look up entity
     entity = await session.get(NamedEntityDB, parsed_entity_id)
@@ -1044,8 +1056,8 @@ async def create_manual_association(
     # Parse entity_id to UUID
     try:
         parsed_entity_id = uuid.UUID(entity_id)
-    except ValueError:
-        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
     mention = await _mention_repo.create_manual_association(
         session, video_id=video_id, entity_id=parsed_entity_id
@@ -1104,8 +1116,8 @@ async def delete_manual_association(
     # Parse entity_id to UUID
     try:
         parsed_entity_id = uuid.UUID(entity_id)
-    except ValueError:
-        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
     await _mention_repo.delete_manual_association(
         session, video_id=video_id, entity_id=parsed_entity_id
@@ -1157,11 +1169,11 @@ async def classify_tag(
     """
     try:
         entity_type_enum = EntityType(body.entity_type)
-    except ValueError:
+    except ValueError as exc:
         raise BadRequestError(
             message=f"Invalid entity_type: {body.entity_type}",
             details={"entity_type": body.entity_type},
-        )
+        ) from exc
 
     try:
         result = await _tag_mgmt_service.classify(
@@ -1178,7 +1190,7 @@ async def classify_tag(
             raise NotFoundError(
                 resource_type="CanonicalTag",
                 identifier=body.normalized_form,
-            )
+            ) from exc
 
         if "already classified" in error_msg.lower():
             # Look up the canonical tag to get existing entity details
@@ -1204,13 +1216,13 @@ async def classify_tag(
                 details={"existing_entity": existing_entity_data}
                 if existing_entity_data
                 else None,
-            )
+            ) from exc
 
         # Other ValueError → 400 Bad Request
         raise BadRequestError(
             message=error_msg,
             details={"normalized_form": body.normalized_form},
-        )
+        ) from exc
 
     # After successful classification, look up the canonical tag to get entity_id
     tag_query = select(CanonicalTagDB).where(
@@ -1289,11 +1301,11 @@ async def create_entity(
     # 1. Convert entity_type string to enum
     try:
         entity_type_enum = EntityType(body.entity_type)
-    except ValueError:
+    except ValueError as exc:
         raise BadRequestError(
             message=f"Invalid entity_type: {body.entity_type}",
             details={"entity_type": body.entity_type},
-        )
+        ) from exc
 
     # 2. Normalize the name
     normalized_name = _normalizer.normalize(body.name)

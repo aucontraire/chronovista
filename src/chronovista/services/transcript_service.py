@@ -8,8 +8,8 @@ and convert them to our internal models, with fallback handling and error recove
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from youtube_transcript_api import FetchedTranscript, YouTubeTranscriptApi
@@ -29,6 +29,8 @@ except ImportError:
     RequestBlocked = None  # type: ignore
     IpBlocked = None  # type: ignore
     TRANSCRIPT_API_AVAILABLE = False
+
+import contextlib
 
 from ..models.enums import DownloadReason, LanguageCode
 from ..models.transcript_source import (
@@ -85,7 +87,7 @@ class TranscriptService(TranscriptServiceInterface):
     async def get_transcript(
         self,
         video_id: VideoId,
-        language_codes: Optional[List[str]] = None,
+        language_codes: list[str] | None = None,
         download_reason: DownloadReason = DownloadReason.USER_REQUEST,
     ) -> EnhancedVideoTranscriptBase:
         """
@@ -150,7 +152,7 @@ class TranscriptService(TranscriptServiceInterface):
 
         # Try official YouTube Data API v3 (placeholder for now)
         try:
-            official_transcript: Optional[EnhancedVideoTranscriptBase] = (
+            official_transcript: EnhancedVideoTranscriptBase | None = (
                 await self._get_transcript_from_official_api(
                     video_id, language_codes, download_reason
                 )
@@ -174,7 +176,7 @@ class TranscriptService(TranscriptServiceInterface):
         raise TranscriptNotFoundError(f"No transcript found for video {video_id}")
 
     async def _get_transcript_from_third_party_api(
-        self, video_id: VideoId, language_codes: List[str]
+        self, video_id: VideoId, language_codes: list[str]
     ) -> RawTranscriptData:
         """Get transcript using youtube-transcript-api (v1.2.2+ API)."""
 
@@ -236,19 +238,15 @@ class TranscriptService(TranscriptServiceInterface):
 
                 # If no preferred language found, try any English variant
                 if not transcript:
-                    try:
+                    with contextlib.suppress(Exception):
                         transcript = transcript_list.find_transcript(["en"])
-                    except Exception:
-                        pass
 
                 # If still no transcript, get any available generated transcript
                 if not transcript:
-                    try:
+                    with contextlib.suppress(Exception):
                         transcript = transcript_list.find_generated_transcript(
                             language_codes
                         )
-                    except Exception:
-                        pass
 
                 # Last resort: get any available transcript
                 if not transcript:
@@ -295,12 +293,12 @@ class TranscriptService(TranscriptServiceInterface):
             text = str(item["text"]) if item["text"] is not None else ""
             start = (
                 float(item["start"])
-                if isinstance(item["start"], (int, float, str))
+                if isinstance(item["start"], int | float | str)
                 else 0.0
             )
             duration = (
                 float(item["duration"])
-                if isinstance(item["duration"], (int, float, str))
+                if isinstance(item["duration"], int | float | str)
                 else 0.0
             )
 
@@ -334,9 +332,9 @@ class TranscriptService(TranscriptServiceInterface):
     async def _get_transcript_from_official_api(
         self,
         video_id: VideoId,
-        language_codes: List[str],
+        language_codes: list[str],
         download_reason: DownloadReason,
-    ) -> Optional[EnhancedVideoTranscriptBase]:
+    ) -> EnhancedVideoTranscriptBase | None:
         """
         Get transcript using official YouTube Data API v3.
 
@@ -424,7 +422,7 @@ class TranscriptService(TranscriptServiceInterface):
             logger.warning(f"Official API failed for {video_id}: {e}")
             return None
 
-    def _parse_srt_content(self, srt_content: str) -> List[TranscriptSnippet]:
+    def _parse_srt_content(self, srt_content: str) -> list[TranscriptSnippet]:
         """
         Parse SRT format content into TranscriptSnippet objects.
 
@@ -502,7 +500,7 @@ class TranscriptService(TranscriptServiceInterface):
         total_seconds = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000.0
         return total_seconds
 
-    def _resolve_language_code(self, language_code_str: str) -> Union[LanguageCode, str]:
+    def _resolve_language_code(self, language_code_str: str) -> LanguageCode | str:
         """
         Resolve a language code string to a LanguageCode enum or normalized string.
 
@@ -561,7 +559,7 @@ class TranscriptService(TranscriptServiceInterface):
             source=TranscriptSource.UNKNOWN,
             source_metadata={
                 "is_mock": True,
-                "created_at": datetime.now(timezone.utc),
+                "created_at": datetime.now(UTC),
                 "reason": "API unavailable - using mock data",
             },
         )
@@ -577,7 +575,7 @@ class TranscriptService(TranscriptServiceInterface):
         language_name: str,
         is_generated: bool,
         is_translatable: bool,
-        transcript_data: List[Dict[str, Any]],
+        transcript_data: list[dict[str, Any]],
     ) -> RawTranscriptData:
         """
         Convert raw snippet dicts from ``youtube-transcript-api`` into a
@@ -612,12 +610,12 @@ class TranscriptService(TranscriptServiceInterface):
             text = str(item["text"]) if item["text"] is not None else ""
             start = (
                 float(item["start"])
-                if isinstance(item["start"], (int, float, str))
+                if isinstance(item["start"], int | float | str)
                 else 0.0
             )
             duration = (
                 float(item["duration"])
-                if isinstance(item["duration"], (int, float, str))
+                if isinstance(item["duration"], int | float | str)
                 else 0.0
             )
             snippets.append(TranscriptSnippet(text=text, start=start, duration=duration))
@@ -678,10 +676,10 @@ class TranscriptService(TranscriptServiceInterface):
     async def get_transcripts_for_languages(
         self,
         video_id: VideoId,
-        language_codes: List[str],
+        language_codes: list[str],
         download_reason: DownloadReason = DownloadReason.USER_REQUEST,
         include_translations: bool = False,
-    ) -> Dict[str, Optional[EnhancedVideoTranscriptBase]]:
+    ) -> dict[str, EnhancedVideoTranscriptBase | None]:
         """
         Get transcripts for multiple languages with minimal API calls.
 
@@ -719,7 +717,7 @@ class TranscriptService(TranscriptServiceInterface):
             Mapping of language_code → transcript, or ``None`` if the language
             is not available for this video.
         """
-        results: Dict[str, Optional[EnhancedVideoTranscriptBase]] = {}
+        results: dict[str, EnhancedVideoTranscriptBase | None] = {}
 
         if not language_codes:
             return results
@@ -800,7 +798,7 @@ class TranscriptService(TranscriptServiceInterface):
                     raise TranscriptServiceUnavailableError(
                         "YouTube is temporarily blocking requests from this IP "
                         "address. Please try again later."
-                    )
+                    ) from exc
                 return results
 
             # Non-IP-block failure: keep the per-language fallback but terminate
@@ -867,11 +865,11 @@ class TranscriptService(TranscriptServiceInterface):
                 raise TranscriptServiceUnavailableError(
                     "YouTube is temporarily blocking requests from this IP "
                     "address. Please try again later."
-                )
+                ) from exc
             return results
 
         # Build a map of native transcripts: language_code (lower) → Transcript
-        native_map: Dict[str, Any] = {}
+        native_map: dict[str, Any] = {}
         for transcript in transcript_list:
             lc = transcript.language_code.lower()
             # Prefer manual (non-generated) transcripts if there is a duplicate
@@ -879,7 +877,7 @@ class TranscriptService(TranscriptServiceInterface):
                 native_map[lc] = transcript
 
         # Identify the best translation source (only when translations enabled)
-        translation_source: Optional[Any] = None
+        translation_source: Any | None = None
         if include_translations:
             for _lc, t in native_map.items():
                 if not t.is_generated and getattr(t, "is_translatable", False):
@@ -1028,7 +1026,7 @@ class TranscriptService(TranscriptServiceInterface):
 
         return results
 
-    async def get_available_languages(self, video_id: VideoId) -> List[Dict[str, Any]]:
+    async def get_available_languages(self, video_id: VideoId) -> list[dict[str, Any]]:
         """
         Get list of available transcript languages for a video.
 
@@ -1072,11 +1070,11 @@ class TranscriptService(TranscriptServiceInterface):
 
     async def batch_get_transcripts(
         self,
-        video_ids: List[VideoId],
-        language_codes: Optional[List[str]] = None,
+        video_ids: list[VideoId],
+        language_codes: list[str] | None = None,
         download_reason: DownloadReason = DownloadReason.USER_REQUEST,
         max_retries: int = 3,
-    ) -> Dict[VideoId, Optional[EnhancedVideoTranscriptBase]]:
+    ) -> dict[VideoId, EnhancedVideoTranscriptBase | None]:
         """
         Download transcripts for multiple videos.
 
@@ -1089,7 +1087,7 @@ class TranscriptService(TranscriptServiceInterface):
         Returns:
             Dictionary mapping video_id to transcript (or None if failed)
         """
-        results: Dict[VideoId, Optional[EnhancedVideoTranscriptBase]] = {}
+        results: dict[VideoId, EnhancedVideoTranscriptBase | None] = {}
 
         for video_id in video_ids:
             for attempt in range(max_retries + 1):

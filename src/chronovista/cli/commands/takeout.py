@@ -11,18 +11,17 @@ Commands:
 - sync: Sync selected data to database
 """
 
+from datetime import UTC
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
-    MofNCompleteColumn,
     Progress,
     SpinnerColumn,
-    TaskProgressColumn,
     TextColumn,
     TimeElapsedColumn,
 )
@@ -75,7 +74,7 @@ def peek_data(
         ...,
         help="Type of data to peek at: playlists, history, channels, subscriptions, comments, chats",
     ),
-    filter_name: Optional[str] = typer.Argument(
+    filter_name: str | None = typer.Argument(
         None, help="Optional filter/name (e.g., playlist name, channel name)"
     ),
     takeout_path: Path = typer.Option(
@@ -91,7 +90,7 @@ def peek_data(
     all_items: bool = typer.Option(
         False, "--all", "-a", help="Show all items (no limit)"
     ),
-    topic_filter: Optional[str] = typer.Option(
+    topic_filter: str | None = typer.Option(
         None,
         "--topic",
         help="Filter content by topic ID (requires synced topic associations)",
@@ -226,21 +225,21 @@ def peek_data(
             console.print("  • You've extracted the Takeout archive")
             console.print("  • You selected JSON format for watch history")
             console.print("  • The path points to the extracted folder")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from e
         except Exception as e:
             console.print(f"❌ Unexpected error: {e}")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from e
 
     asyncio.run(run_peek())
 
 
 async def _peek_playlists(
     takeout_service: TakeoutService,
-    limit: Optional[int],
+    limit: int | None,
     sort_order: str,
     progress: Progress,
     task_id: Any,
-    filter_name: Optional[str] = None,
+    filter_name: str | None = None,
 ) -> None:
     """Display playlists information in a rich table."""
     try:
@@ -271,7 +270,7 @@ async def _peek_playlists(
         if sort_order == "recent":
             # Sort by most recent video added (if timestamps available)
             def get_playlist_latest_timestamp(playlist: Any) -> datetime:
-                timestamps: List[datetime] = [
+                timestamps: list[datetime] = [
                     v.creation_timestamp
                     for v in playlist.videos
                     if v.creation_timestamp
@@ -282,15 +281,14 @@ async def _peek_playlists(
                     return latest_timestamp
                 else:
                     # Return a very old timezone-aware datetime for playlists with no timestamps
-                    from datetime import timezone
 
-                    return datetime.min.replace(tzinfo=timezone.utc)
+                    return datetime.min.replace(tzinfo=UTC)
 
             playlists.sort(key=get_playlist_latest_timestamp, reverse=True)
         elif sort_order == "oldest":
             # Sort by oldest video added (if timestamps available)
             def get_playlist_earliest_timestamp(playlist: Any) -> datetime:
-                timestamps: List[datetime] = [
+                timestamps: list[datetime] = [
                     v.creation_timestamp
                     for v in playlist.videos
                     if v.creation_timestamp
@@ -301,9 +299,8 @@ async def _peek_playlists(
                     return earliest_timestamp
                 else:
                     # Return a very recent timezone-aware datetime for playlists with no timestamps
-                    from datetime import timezone
 
-                    return datetime.max.replace(tzinfo=timezone.utc)
+                    return datetime.max.replace(tzinfo=UTC)
 
             playlists.sort(key=get_playlist_earliest_timestamp, reverse=False)
         else:
@@ -350,7 +347,7 @@ async def _peek_playlists(
         avg_size = total_videos / len(playlists) if playlists else 0
         largest_playlist = max(playlists, key=lambda p: len(p.videos))
 
-        console.print(f"\n💡 Insights:")
+        console.print("\n💡 Insights:")
         console.print(f"   • Total videos across all playlists: {total_videos:,}")
         console.print(f"   • Average playlist size: {avg_size:.1f} videos")
         console.print(
@@ -363,7 +360,7 @@ async def _peek_playlists(
             )
 
         if filter_name and len(playlists) > 1:
-            console.print(f"\n🔍 Filter Results:")
+            console.print("\n🔍 Filter Results:")
             console.print(
                 f"   • Found {len(playlists)} playlists matching '{filter_name}'"
             )
@@ -377,8 +374,8 @@ async def _peek_playlists(
 
 async def _show_detailed_playlist(
     playlist: Any,
-    limit: Optional[int],
-    takeout_service: Optional[TakeoutService] = None,
+    limit: int | None,
+    takeout_service: TakeoutService | None = None,
 ) -> None:
     """Show detailed view of a single playlist."""
     table = Table(
@@ -436,7 +433,7 @@ async def _show_detailed_playlist(
 
     # Show title matching info
     if takeout_service:
-        console.print(f"\n📊 Title Lookup Results:")
+        console.print("\n📊 Title Lookup Results:")
         console.print(f"   • Watch history entries: {total_watch_entries:,}")
         console.print(
             f"   • Video IDs extracted from watch history: {len(video_titles)}"
@@ -455,7 +452,7 @@ async def _show_detailed_playlist(
 
         if matched_titles == 0 and total_watch_entries > 0:
             console.print(
-                f"   💡 No matches found - playlist videos may not be in watch history"
+                "   💡 No matches found - playlist videos may not be in watch history"
             )
 
     # Show playlist insights
@@ -472,18 +469,18 @@ async def _show_detailed_playlist(
         month_counts = Counter(months)
         top_months = month_counts.most_common(3)
 
-        console.print(f"📊 Most active months:")
+        console.print("📊 Most active months:")
         for month, count in top_months:
             console.print(f"   • {month}: {count} videos added")
 
 
 async def _peek_watch_history(
     takeout_service: TakeoutService,
-    limit: Optional[int],
+    limit: int | None,
     sort_order: str,
     progress: Progress,
     task_id: Any,
-    filter_name: Optional[str] = None,
+    filter_name: str | None = None,
 ) -> None:
     """Display watch history information."""
     try:
@@ -519,17 +516,15 @@ async def _peek_watch_history(
         # Sort history based on sort_order
         if sort_order == "recent":
             # Use timezone-aware datetime for proper comparison
-            from datetime import timezone
 
             watch_history.sort(
-                key=lambda x: x.watched_at or datetime.min.replace(tzinfo=timezone.utc),
+                key=lambda x: x.watched_at or datetime.min.replace(tzinfo=UTC),
                 reverse=True,
             )
         elif sort_order == "oldest":
-            from datetime import timezone
 
             watch_history.sort(
-                key=lambda x: x.watched_at or datetime.max.replace(tzinfo=timezone.utc),
+                key=lambda x: x.watched_at or datetime.max.replace(tzinfo=UTC),
                 reverse=False,
             )
 
@@ -559,7 +554,7 @@ async def _peek_watch_history(
         console.print(table)
 
         # Analysis insights
-        channels: Dict[str, int] = {}
+        channels: dict[str, int] = {}
         for entry in watch_history:
             if entry.channel_name:
                 channels[entry.channel_name] = channels.get(entry.channel_name, 0) + 1
@@ -576,11 +571,11 @@ async def _peek_watch_history(
             date_range = "Unknown"
             avg_per_day = 0
 
-        console.print(f"\n💡 Insights:")
+        console.print("\n💡 Insights:")
         console.print(f"   • Date range: {date_range}")
         console.print(f"   • Average videos per day: {avg_per_day:.1f}")
         console.print(f"   • Unique channels: {len(channels)}")
-        console.print(f"   • Top 5 channels:")
+        console.print("   • Top 5 channels:")
         for channel, count in top_channels:
             console.print(f"     - {channel}: {count} videos")
 
@@ -590,7 +585,7 @@ async def _peek_watch_history(
             )
 
         if filter_name:
-            console.print(f"\n🔍 Filter Results:")
+            console.print("\n🔍 Filter Results:")
             console.print(
                 f"   • Found {len(watch_history)} videos from channels matching '{filter_name}'"
             )
@@ -601,10 +596,10 @@ async def _peek_watch_history(
 
 async def _peek_subscriptions(
     takeout_service: TakeoutService,
-    limit: Optional[int],
+    limit: int | None,
     progress: Progress,
     task_id: Any,
-    filter_name: Optional[str] = None,
+    filter_name: str | None = None,
 ) -> None:
     """Display subscriptions information."""
     try:
@@ -663,7 +658,7 @@ async def _peek_subscriptions(
         direct_ids = sum(1 for sub in subscriptions if sub.channel_id)
         custom_urls = len(subscriptions) - direct_ids
 
-        console.print(f"\n💡 Insights:")
+        console.print("\n💡 Insights:")
         console.print(f"   • Total subscriptions: {len(subscriptions)}")
         console.print(
             f"   • Channels with direct IDs: {direct_ids} ({direct_ids/len(subscriptions)*100:.1f}%)"
@@ -671,7 +666,7 @@ async def _peek_subscriptions(
         console.print(
             f"   • Channels with custom URLs: {custom_urls} ({custom_urls/len(subscriptions)*100:.1f}%)"
         )
-        console.print(f"   • Custom URLs need API resolution to get channel IDs")
+        console.print("   • Custom URLs need API resolution to get channel IDs")
 
         if limit is not None and len(subscriptions) > limit:
             console.print(
@@ -679,7 +674,7 @@ async def _peek_subscriptions(
             )
 
         if filter_name:
-            console.print(f"\n🔍 Filter Results:")
+            console.print("\n🔍 Filter Results:")
             console.print(
                 f"   • Found {len(subscriptions)} subscriptions matching '{filter_name}'"
             )
@@ -689,7 +684,7 @@ async def _peek_subscriptions(
 
 
 async def _apply_topic_filters(
-    analysis: Any, topic_filter: Optional[str], by_topic: bool
+    analysis: Any, topic_filter: str | None, by_topic: bool
 ) -> None:
     """Apply topic filtering and grouping to analysis results."""
     try:
@@ -749,7 +744,7 @@ def analyze_comprehensive(
         False, "--save", "-s", help="Save detailed report to file"
     ),
     by_topic: bool = typer.Option(False, "--by-topic", help="Group analysis by topics"),
-    topic_filter: Optional[str] = typer.Option(
+    topic_filter: str | None = typer.Option(
         None, "--topic", help="Filter analysis by topic ID"
     ),
 ) -> None:
@@ -800,7 +795,7 @@ def analyze_comprehensive(
 
         except Exception as e:
             console.print(f"❌ Analysis failed: {e}")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from e
 
     asyncio.run(run_analysis())
 
@@ -811,7 +806,7 @@ def _display_analysis_summary(analysis: Any) -> None:
     stats_text = f"""
 📊 Data Overview:
    • Videos Watched: {analysis.total_videos_watched:,}
-   • Unique Channels: {analysis.unique_channels:,}  
+   • Unique Channels: {analysis.unique_channels:,}
    • Playlists: {analysis.playlist_count:,}
    • Subscriptions: {analysis.subscription_count:,}
 
@@ -849,7 +844,7 @@ def _display_analysis_summary(analysis: Any) -> None:
 
     # Viewing patterns insights
     patterns = analysis.viewing_patterns
-    console.print(f"\n🕐 Viewing Patterns:")
+    console.print("\n🕐 Viewing Patterns:")
     # Format peak hours with counts and readable time format
     if patterns.peak_viewing_hours:
         formatted_hours = []
@@ -865,7 +860,7 @@ def _display_analysis_summary(analysis: Any) -> None:
             formatted_hours.append(time_str)
         console.print(f"   • Peak hours: {', '.join(formatted_hours)}")
     else:
-        console.print(f"   • Peak hours: None")
+        console.print("   • Peak hours: None")
     console.print(f"   • Peak days: {', '.join(patterns.peak_viewing_days)}")
     console.print(
         f"   • Viewing frequency: {patterns.viewing_frequency:.1f} videos/day"
@@ -905,7 +900,7 @@ def _display_analysis_summary(analysis: Any) -> None:
 
     # Playlist insights
     playlist_analysis = analysis.playlist_analysis
-    console.print(f"\n📁 Playlist Organization:")
+    console.print("\n📁 Playlist Organization:")
     console.print(
         f"   • Orphaned videos (not in playlists): {len(playlist_analysis.orphaned_videos)}"
     )
@@ -915,7 +910,7 @@ def _display_analysis_summary(analysis: Any) -> None:
 
     # Content gaps
     if analysis.content_gaps:
-        console.print(f"\n🎯 API Enrichment Opportunities:")
+        console.print("\n🎯 API Enrichment Opportunities:")
         console.print(f"   • Videos needing metadata: {len(analysis.content_gaps)}")
         console.print(
             f"   • High priority videos: {len(analysis.high_priority_videos)}"
@@ -975,10 +970,10 @@ def analyze_relationships(
 
         except TakeoutParsingError as e:
             console.print(f"❌ Error parsing Takeout data: {e}")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from e
         except Exception as e:
             console.print(f"❌ Relationship analysis failed: {e}")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from e
 
     asyncio.run(run_analysis())
 
@@ -1028,7 +1023,7 @@ def inspect_file(
 
         except Exception as e:
             console.print(f"❌ Error inspecting file: {e}")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from e
 
     asyncio.run(run_inspect())
 
@@ -1042,7 +1037,7 @@ async def _inspect_csv_file(
     progress.update(task_id, description="📊 Reading CSV file...")
 
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             reader = csv.DictReader(f)
             headers = list(reader.fieldnames) if reader.fieldnames else None
             rows = list(reader)
@@ -1075,7 +1070,7 @@ async def _inspect_json_file(
     progress.update(task_id, description="📊 Reading JSON file...")
 
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
 
         if not data:
@@ -1093,7 +1088,7 @@ async def _inspect_json_file(
         console.print(f"❌ Error reading JSON file: {e}")
 
 
-def _detect_csv_type(file_path: Path, headers: Optional[List[str]]) -> str:
+def _detect_csv_type(file_path: Path, headers: list[str] | None) -> str:
     """Detect the type of CSV file based on path and headers."""
     if "playlists" in str(file_path):
         return "playlist"
@@ -1109,8 +1104,8 @@ def _detect_csv_type(file_path: Path, headers: Optional[List[str]]) -> str:
 
 async def _display_playlist_csv(
     file_path: Path,
-    headers: Optional[List[str]],
-    rows: List[Dict[str, str]],
+    headers: list[str] | None,
+    rows: list[dict[str, str]],
     limit: int,
 ) -> None:
     """Display playlist CSV contents."""
@@ -1135,7 +1130,7 @@ async def _display_playlist_csv(
 
                 dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
                 formatted_time = dt.strftime("%Y-%m-%d %H:%M")
-            except:
+            except Exception:
                 formatted_time = timestamp
         else:
             formatted_time = "Unknown"
@@ -1165,7 +1160,7 @@ async def _display_playlist_csv(
                     try:
                         dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
                         dates.append(dt)
-                    except:
+                    except Exception:
                         continue
 
                 if dates:
@@ -1174,12 +1169,12 @@ async def _display_playlist_csv(
                     console.print(
                         f"\n📅 Playlist date range: {first_date} to {last_date}"
                     )
-            except:
+            except Exception:
                 pass
 
 
 async def _display_subscriptions_csv(
-    headers: Optional[List[str]], rows: List[Dict[str, str]], limit: int
+    headers: list[str] | None, rows: list[dict[str, str]], limit: int
 ) -> None:
     """Display subscriptions CSV contents."""
     table = Table(
@@ -1208,7 +1203,7 @@ async def _display_subscriptions_csv(
 
 
 async def _display_generic_csv(
-    headers: Optional[List[str]], rows: List[Dict[str, str]], limit: int
+    headers: list[str] | None, rows: list[dict[str, str]], limit: int
 ) -> None:
     """Display generic CSV contents."""
     table = Table(
@@ -1240,14 +1235,14 @@ async def _display_generic_csv(
             f"\n💡 Showing {limit} of {len(rows)} rows (use --limit to see more)"
         )
 
-    console.print(f"\n📊 File info:")
+    console.print("\n📊 File info:")
     if headers:
         console.print(f"   • Headers: {', '.join(headers)}")
     else:
         console.print("   • No headers found")
 
 
-async def _display_watch_history_json(data: List[Dict[str, Any]], limit: int) -> None:
+async def _display_watch_history_json(data: list[dict[str, Any]], limit: int) -> None:
     """Display watch history JSON contents."""
     youtube_entries = [entry for entry in data if entry.get("header") == "YouTube"]
 
@@ -1378,7 +1373,7 @@ async def _analyze_playlist_overlap(
     total_overlaps = len(all_overlaps)
     strong_overlaps = sum(1 for _, _, count in all_overlaps if count >= 10)
 
-    console.print(f"\n💡 Overlap Insights:")
+    console.print("\n💡 Overlap Insights:")
     console.print(f"   • Total playlist pairs with overlaps: {total_overlaps}")
     console.print(f"   • Strong relationships (10+ shared videos): {strong_overlaps}")
     console.print(
@@ -1440,7 +1435,7 @@ async def _analyze_channel_clusters(
             f"\n🧹 Inactive Subscriptions ({len(clusters['subscribed_inactive'])} channels):"
         )
         inactive_count = 0
-        for channel, data in clusters["subscribed_inactive"].items():
+        for channel, _data in clusters["subscribed_inactive"].items():
             if inactive_count < 10:
                 console.print(f"   • {channel}: No videos watched recently")
                 inactive_count += 1
@@ -1450,13 +1445,13 @@ async def _analyze_channel_clusters(
             )
 
     # Summary statistics
-    total_channels = (
+    (
         len(clusters["high_engagement"])
         + len(clusters["medium_engagement"])
         + len(clusters["low_engagement"])
     )
 
-    console.print(f"\n📊 Channel Engagement Summary:")
+    console.print("\n📊 Channel Engagement Summary:")
     console.print(f"   • High engagement: {len(clusters['high_engagement'])} channels")
     console.print(
         f"   • Medium engagement: {len(clusters['medium_engagement'])} channels"
@@ -1490,7 +1485,7 @@ async def _analyze_temporal_patterns(
    • Peak Hour: {patterns['peak_viewing_hour']}:00
    • Peak Day: {patterns['peak_viewing_day']}
    • Peak Month: {patterns['peak_viewing_month']}
-   
+
 📅 Activity Summary:
    • Total Active Days: {patterns['total_active_days']}
    • Longest Streak: {patterns['max_consecutive_days']} consecutive days
@@ -1538,7 +1533,7 @@ async def _analyze_temporal_patterns(
 
     # Daily distribution
     if patterns["daily_distribution"]:
-        console.print(f"\n📅 Weekly Pattern:")
+        console.print("\n📅 Weekly Pattern:")
         days_order = [
             "Monday",
             "Tuesday",
@@ -1558,7 +1553,7 @@ async def _analyze_temporal_patterns(
 
     # Top channel time preferences
     if patterns["channel_time_preferences"]:
-        console.print(f"\n🎯 Channel Time Preferences (Top 5):")
+        console.print("\n🎯 Channel Time Preferences (Top 5):")
 
         # Find channels with clear time preferences
         channel_preferences = []
@@ -1582,17 +1577,17 @@ async def _analyze_temporal_patterns(
             )
 
     console.print(
-        f"\n💡 Tip: Use this data to optimize your content discovery and subscription timing!"
+        "\n💡 Tip: Use this data to optimize your content discovery and subscription timing!"
     )
 
 
 async def _peek_comments(
     takeout_service: TakeoutService,
-    limit: Optional[int],
+    limit: int | None,
     sort_order: str,
     progress: Progress,
     task_id: Any,
-    filter_name: Optional[str] = None,
+    filter_name: str | None = None,
 ) -> None:
     """Display comments information."""
     import csv
@@ -1613,9 +1608,9 @@ async def _peek_comments(
         comment_files = list(comments_dir.glob("*.csv"))
 
         for comment_file in comment_files:
-            with open(comment_file, "r", encoding="utf-8") as f:
+            with open(comment_file, encoding="utf-8") as f:
                 # Try different CSV parsing approaches
-                content = f.read()
+                f.read()
                 f.seek(0)
                 reader = csv.DictReader(f, quoting=csv.QUOTE_ALL)
                 for row in reader:
@@ -1637,7 +1632,7 @@ async def _peek_comments(
                             comment_data["timestamp"] = datetime.fromisoformat(
                                 comment_data["timestamp_str"].replace("Z", "+00:00")
                             )
-                        except:
+                        except Exception:
                             pass
 
                     # Parse comment text (it's in JSON format)
@@ -1753,9 +1748,7 @@ async def _peek_comments(
             comment_text = comment["clean_text"]
 
             # Filter out problematic comments that are just symbols or very short
-            if not comment_text or comment_text.strip() in ["\\", "@", "", "\n", '""']:
-                comment_text = "[Comment text unavailable]"
-            elif len(comment_text.strip()) <= 2 and comment_text.strip() in [
+            if not comment_text or comment_text.strip() in ["\\", "@", "", "\n", '""'] or len(comment_text.strip()) <= 2 and comment_text.strip() in [
                 "@",
                 "\\",
                 "&",
@@ -1818,7 +1811,7 @@ async def _peek_comments(
                 avg_per_day = 0
 
             # Video distribution
-            video_counts: Dict[str, int] = {}
+            video_counts: dict[str, int] = {}
             for comment in comments:
                 if comment["video_id"]:
                     video_counts[comment["video_id"]] = (
@@ -1829,7 +1822,7 @@ async def _peek_comments(
                 max(video_counts.items(), key=lambda x: x[1]) if video_counts else None
             )
 
-            console.print(f"\n💡 Comments Insights:")
+            console.print("\n💡 Comments Insights:")
             console.print(f"   • Date range: {date_range}")
             console.print(f"   • Average comments per day: {avg_per_day:.1f}")
             console.print(f"   • Videos commented on: {len(video_counts)}")
@@ -1857,7 +1850,7 @@ async def _peek_comments(
                 console.print(f"   • Showing all {len(comments)} comments")
 
             if filter_name:
-                console.print(f"\n🔍 Filter Results:")
+                console.print("\n🔍 Filter Results:")
                 console.print(
                     f"   • Found {len(comments)} comments matching '{filter_name}'"
                 )
@@ -1868,11 +1861,11 @@ async def _peek_comments(
 
 async def _peek_live_chats(
     takeout_service: TakeoutService,
-    limit: Optional[int],
+    limit: int | None,
     sort_order: str,
     progress: Progress,
     task_id: Any,
-    filter_name: Optional[str] = None,
+    filter_name: str | None = None,
 ) -> None:
     """Display live chats information."""
     import csv
@@ -1893,7 +1886,7 @@ async def _peek_live_chats(
         chat_files = list(chats_dir.glob("*.csv"))
 
         for chat_file in chat_files:
-            with open(chat_file, "r", encoding="utf-8") as f:
+            with open(chat_file, encoding="utf-8") as f:
                 reader = csv.DictReader(f, quoting=csv.QUOTE_ALL)
                 for row in reader:
                     # Parse live chat data
@@ -1914,7 +1907,7 @@ async def _peek_live_chats(
                             chat_data["timestamp"] = datetime.fromisoformat(
                                 chat_data["timestamp_str"].replace("Z", "+00:00")
                             )
-                        except:
+                        except Exception:
                             pass
 
                     # Parse chat text (it's in JSON format like comments)
@@ -2030,9 +2023,7 @@ async def _peek_live_chats(
             chat_text = chat["clean_text"]
 
             # Filter out problematic chats that are just symbols or very short
-            if not chat_text or chat_text.strip() in ["\\", "@", "", "\n", '""']:
-                chat_text = "[Chat text unavailable]"
-            elif len(chat_text.strip()) <= 2 and chat_text.strip() in [
+            if not chat_text or chat_text.strip() in ["\\", "@", "", "\n", '""'] or len(chat_text.strip()) <= 2 and chat_text.strip() in [
                 "@",
                 "\\",
                 "&",
@@ -2095,7 +2086,7 @@ async def _peek_live_chats(
             avg_per_day = 0
 
         # Count unique videos
-        video_counts: Dict[str, int] = {}
+        video_counts: dict[str, int] = {}
         for chat in chats:
             if chat["video_id"]:
                 video_counts[chat["video_id"]] = (
@@ -2106,7 +2097,7 @@ async def _peek_live_chats(
             max(video_counts.items(), key=lambda x: x[1]) if video_counts else None
         )
 
-        console.print(f"\n💡 Live Chats Insights:")
+        console.print("\n💡 Live Chats Insights:")
         console.print(f"   • Date range: {date_range}")
         console.print(f"   • Average chats per day: {avg_per_day:.1f}")
         console.print(f"   • Videos with live chats: {len(video_counts)}")
@@ -2132,7 +2123,7 @@ async def _peek_live_chats(
             console.print(f"   • Showing all {len(chats)} chats")
 
         if filter_name:
-            console.print(f"\n🔍 Filter Results:")
+            console.print("\n🔍 Filter Results:")
             console.print(f"   • Found {len(chats)} chats matching '{filter_name}'")
 
     except Exception as e:
@@ -2158,12 +2149,12 @@ def seed_database(
         "--progress/--no-progress",
         help="Show progress tracking (default: enabled)",
     ),
-    only: Optional[str] = typer.Option(
+    only: str | None = typer.Option(
         None,
         "--only",
         help="Seed only specific data types (comma-separated): channels,videos,playlists,user_videos,playlist_memberships",
     ),
-    skip: Optional[str] = typer.Option(
+    skip: str | None = typer.Option(
         None,
         "--skip",
         help="Skip specific data types (comma-separated): channels,videos,playlists,user_videos,playlist_memberships",
@@ -2208,7 +2199,7 @@ def seed_database(
             valid_types = temp_seeding_service.get_available_types()
 
             if only:
-                only_types = set(t.strip() for t in only.split(","))
+                only_types = {t.strip() for t in only.split(",")}
                 invalid = only_types - valid_types
                 if invalid:
                     console.print(f"❌ Invalid data types in --only: {invalid}")
@@ -2216,7 +2207,7 @@ def seed_database(
                     raise typer.Exit(1)
 
             if skip:
-                skip_types = set(t.strip() for t in skip.split(","))
+                skip_types = {t.strip() for t in skip.split(",")}
                 invalid = skip_types - valid_types
                 if invalid:
                     console.print(f"❌ Invalid data types in --skip: {invalid}")
@@ -2267,10 +2258,10 @@ def seed_database(
                 # Total unique channels from subscriptions + watch history
                 subscription_channels = len(takeout_data.subscriptions)
                 watch_channels = len(
-                    set(
+                    {
                         entry.channel_id or entry.channel_name or "unknown"
                         for entry in takeout_data.watch_history
-                    )
+                    }
                 )
                 progress_totals["channels"] = subscription_channels + watch_channels
 
@@ -2368,13 +2359,13 @@ def seed_database(
 
             # Show filtering info if applied
             if only_types or skip_types:
-                console.print(f"\n🔍 Filtering Applied:")
+                console.print("\n🔍 Filtering Applied:")
                 if only_types:
                     console.print(f"   • Only processed: {', '.join(only_types)}")
                 if skip_types:
                     console.print(f"   • Skipped: {', '.join(skip_types)}")
 
-            console.print(f"\n✅ Database seeding completed successfully!")
+            console.print("\n✅ Database seeding completed successfully!")
 
         except TakeoutParsingError as e:
             console.print(f"❌ Error parsing Takeout data: {e}")
@@ -2382,10 +2373,10 @@ def seed_database(
             console.print("  • You've extracted the Takeout archive")
             console.print("  • You selected JSON format for watch history")
             console.print("  • The path points to the extracted folder")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from e
         except Exception as e:
             console.print(f"❌ Seeding failed: {e}")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from e
 
     asyncio.run(run_seeding())
 
@@ -2477,17 +2468,17 @@ async def _show_seeding_preview(
 
     # Show filtering info
     if only_types or skip_types:
-        console.print(f"\n🔍 Filtering Applied:")
+        console.print("\n🔍 Filtering Applied:")
         if only_types:
             console.print(f"   • Only processing: {', '.join(only_types)}")
         if skip_types:
             console.print(f"   • Skipping: {', '.join(skip_types)}")
 
-    console.print(f"\n💡 This is a dry run - no data will be written to the database")
-    console.print(f"💡 Remove --dry-run to perform actual seeding")
+    console.print("\n💡 This is a dry run - no data will be written to the database")
+    console.print("💡 Remove --dry-run to perform actual seeding")
 
 
-def _display_seeding_results(results: Dict[str, Any]) -> None:
+def _display_seeding_results(results: dict[str, Any]) -> None:
     """Display seeding results in a formatted table."""
     # Calculate totals across all data types
     total_created = sum(r.created for r in results.values())
@@ -2710,20 +2701,23 @@ def recover_metadata(
 
         except TakeoutParsingError as e:
             console.print(f"[red]Error parsing Takeout data: {e}[/red]")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from e
         except Exception as e:
             console.print(f"[red]Recovery failed: {e}[/red]")
             import traceback
             if verbose:
                 traceback.print_exc()
-            raise typer.Exit(1)
+            raise typer.Exit(1) from e
 
     asyncio.run(run_recovery())
 
 
 def _display_recovery_results(result: Any, verbose: bool) -> None:
     """Display recovery operation results."""
-    from ...models.takeout import ChannelRecoveryAction, RecoveryResult, VideoRecoveryAction
+    from ...models.takeout import (
+        ChannelRecoveryAction,
+        RecoveryResult,
+    )
 
     if not isinstance(result, RecoveryResult):
         console.print("[red]Invalid result type[/red]")

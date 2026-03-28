@@ -7,7 +7,6 @@ Defines Pydantic models for channel data with validation and serialization suppo
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -20,23 +19,23 @@ class ChannelBase(BaseModel):
 
     channel_id: ChannelId = Field(..., description="YouTube channel ID (validated)")
     title: str = Field(..., min_length=1, max_length=255, description="Channel title")
-    description: Optional[str] = Field(default=None, description="Channel description")
-    subscriber_count: Optional[int] = Field(
+    description: str | None = Field(default=None, description="Channel description")
+    subscriber_count: int | None = Field(
         default=None, ge=0, description="Number of subscribers"
     )
-    video_count: Optional[int] = Field(
+    video_count: int | None = Field(
         default=None, ge=0, description="Number of videos"
     )
-    default_language: Optional[LanguageCode] = Field(
+    default_language: LanguageCode | None = Field(
         default=None, description="Default language (BCP-47)"
     )
-    country: Optional[str] = Field(
+    country: str | None = Field(
         default=None,
         min_length=2,
         max_length=2,
         description="Country code (ISO 3166-1)",
     )
-    thumbnail_url: Optional[str] = Field(
+    thumbnail_url: str | None = Field(
         default=None, max_length=500, description="Channel thumbnail URL"
     )
     is_subscribed: bool = Field(
@@ -48,13 +47,13 @@ class ChannelBase(BaseModel):
         default=AvailabilityStatus.AVAILABLE,
         description="Current availability status on YouTube",
     )
-    recovered_at: Optional[datetime] = Field(
+    recovered_at: datetime | None = Field(
         default=None, description="When content was recovered"
     )
-    recovery_source: Optional[str] = Field(
+    recovery_source: str | None = Field(
         default=None, description="Source of recovery information"
     )
-    unavailability_first_detected: Optional[datetime] = Field(
+    unavailability_first_detected: datetime | None = Field(
         default=None, description="When unavailability was first detected"
     )
 
@@ -70,7 +69,7 @@ class ChannelBase(BaseModel):
 
     @field_validator("country")
     @classmethod
-    def validate_country(cls, v: Optional[str]) -> Optional[str]:
+    def validate_country(cls, v: str | None) -> str | None:
         """Validate country code format."""
         if v is not None:
             country = v.strip().upper()
@@ -97,22 +96,22 @@ class ChannelCreate(ChannelBase):
 class ChannelUpdate(BaseModel):
     """Model for updating channels."""
 
-    title: Optional[str] = Field(default=None, min_length=1, max_length=255)
-    description: Optional[str] = None
-    subscriber_count: Optional[int] = Field(default=None, ge=0)
-    video_count: Optional[int] = Field(default=None, ge=0)
-    default_language: Optional[LanguageCode] = None
-    country: Optional[str] = Field(default=None, min_length=2, max_length=2)
-    thumbnail_url: Optional[str] = Field(default=None, max_length=500)
-    is_subscribed: Optional[bool] = None
-    availability_status: Optional[AvailabilityStatus] = None
-    recovered_at: Optional[datetime] = None
-    recovery_source: Optional[str] = None
-    unavailability_first_detected: Optional[datetime] = None
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+    subscriber_count: int | None = Field(default=None, ge=0)
+    video_count: int | None = Field(default=None, ge=0)
+    default_language: LanguageCode | None = None
+    country: str | None = Field(default=None, min_length=2, max_length=2)
+    thumbnail_url: str | None = Field(default=None, max_length=500)
+    is_subscribed: bool | None = None
+    availability_status: AvailabilityStatus | None = None
+    recovered_at: datetime | None = None
+    recovery_source: str | None = None
+    unavailability_first_detected: datetime | None = None
 
     @field_validator("title")
     @classmethod
-    def validate_title(cls, v: Optional[str]) -> Optional[str]:
+    def validate_title(cls, v: str | None) -> str | None:
         """Validate title if provided."""
         if v is not None and (not v or not v.strip()):
             raise ValueError("Title cannot be empty")
@@ -120,7 +119,7 @@ class ChannelUpdate(BaseModel):
 
     @field_validator("country")
     @classmethod
-    def validate_country(cls, v: Optional[str]) -> Optional[str]:
+    def validate_country(cls, v: str | None) -> str | None:
         """Validate country code format."""
         if v is not None:
             country = v.strip().upper()
@@ -153,29 +152,29 @@ class Channel(ChannelBase):
 class ChannelSearchFilters(BaseModel):
     """Filters for searching channels."""
 
-    title_query: Optional[str] = Field(default=None, description="Search in title")
-    description_query: Optional[str] = Field(
+    title_query: str | None = Field(default=None, description="Search in title")
+    description_query: str | None = Field(
         default=None, description="Search in description"
     )
-    language_codes: Optional[List[LanguageCode]] = Field(
+    language_codes: list[LanguageCode] | None = Field(
         default=None, description="Filter by languages"
     )
-    countries: Optional[List[str]] = Field(
+    countries: list[str] | None = Field(
         default=None, description="Filter by countries"
     )
-    min_subscriber_count: Optional[int] = Field(
+    min_subscriber_count: int | None = Field(
         default=None, ge=0, description="Minimum subscribers"
     )
-    max_subscriber_count: Optional[int] = Field(
+    max_subscriber_count: int | None = Field(
         default=None, ge=0, description="Maximum subscribers"
     )
-    min_video_count: Optional[int] = Field(
+    min_video_count: int | None = Field(
         default=None, ge=0, description="Minimum video count"
     )
-    max_video_count: Optional[int] = Field(
+    max_video_count: int | None = Field(
         default=None, ge=0, description="Maximum video count"
     )
-    has_keywords: Optional[bool] = Field(
+    has_keywords: bool | None = Field(
         default=None, description="Filter channels with keywords"
     )
 
@@ -196,10 +195,10 @@ class ChannelStatistics(BaseModel):
         ..., description="Average subscribers per channel"
     )
     avg_videos_per_channel: float = Field(..., description="Average videos per channel")
-    top_countries: List[tuple[str, int]] = Field(
+    top_countries: list[tuple[str, int]] = Field(
         ..., description="Top countries by channel count"
     )
-    top_languages: List[tuple[str, int]] = Field(
+    top_languages: list[tuple[str, int]] = Field(
         ..., description="Top languages by channel count"
     )
 

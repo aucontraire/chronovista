@@ -11,7 +11,7 @@ requests to /topics/{topic_id}/videos.
 
 from __future__ import annotations
 
-from typing import Any, List, Optional, Union
+from typing import Any
 
 from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy import func, select
@@ -33,7 +33,6 @@ from chronovista.api.schemas.videos import VideoListItem, VideoListResponse
 from chronovista.db.models import ChannelTopic, TopicCategory, Video, VideoTopic
 from chronovista.exceptions import NotFoundError
 from chronovista.models.enums import AvailabilityStatus
-
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -105,7 +104,7 @@ async def list_topics(
     rows = result.all()
 
     # Transform to response items
-    items: List[TopicListItem] = []
+    items: list[TopicListItem] = []
     for row in rows:
         items.append(
             TopicListItem(
@@ -202,10 +201,10 @@ async def get_topic_hierarchy(
 
     def compute_depth_path_and_sort_key(
         topic_id: str,
-    ) -> tuple[int, Optional[str], List[str]]:
+    ) -> tuple[int, str | None, list[str]]:
         """Compute depth, parent path, and hierarchical sort key for a topic."""
         depth = 0
-        path_parts: List[str] = []
+        path_parts: list[str] = []
         current = topic_map.get(topic_id)
         if not current:
             return 0, None, []
@@ -226,8 +225,8 @@ async def get_topic_hierarchy(
         return depth, parent_path, sort_key
 
     # Build hierarchy items with computed depth and parent paths
-    items: List[TopicHierarchyItem] = []
-    sort_keys: dict[str, List[str]] = {}
+    items: list[TopicHierarchyItem] = []
+    sort_keys: dict[str, list[str]] = {}
     for row in rows:
         depth, parent_path, sort_key = compute_depth_path_and_sort_key(row.topic_id)
         sort_keys[row.topic_id] = sort_key
@@ -342,7 +341,7 @@ async def get_topic_videos(
     videos = result.scalars().all()
 
     # Transform to response items (reusing pattern from videos router)
-    items: List[VideoListItem] = []
+    items: list[VideoListItem] = []
     for video in videos:
         # Build transcript summary
         transcripts = list(video.transcripts) if video.transcripts else []
@@ -404,7 +403,7 @@ async def get_topic_videos(
 # and we need to handle it by forwarding to get_topic_videos.
 @router.get(
     "/topics/{topic_id:path}",
-    response_model=Union[TopicDetailResponse, VideoListResponse],
+    response_model=TopicDetailResponse | VideoListResponse,
     responses={
         200: {
             "description": "Topic details or videos list if path ends with /videos",
@@ -437,7 +436,7 @@ async def get_topic(
     session: AsyncSession = Depends(get_db),
     limit: int = Query(20, ge=1, le=100, description="Items per page (for /videos)"),
     offset: int = Query(0, ge=0, description="Pagination offset (for /videos)"),
-) -> Union[TopicDetailResponse, VideoListResponse]:
+) -> TopicDetailResponse | VideoListResponse:
     """
     Get topic details by ID.
 

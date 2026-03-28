@@ -5,7 +5,7 @@ Base seeder interface for modular database seeding.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Optional, Set
+from collections.abc import Callable
 
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,7 +38,7 @@ class SeedResult(BaseModel):
 class ProgressCallback:
     """Simple progress callback for visual-only progress bars."""
 
-    def __init__(self, callback_fn: Optional[Callable[[str], None]] = None):
+    def __init__(self, callback_fn: Callable[[str], None] | None = None):
         self.callback_fn = callback_fn
 
     def update(self, data_type: str) -> None:
@@ -50,7 +50,7 @@ class ProgressCallback:
 class BaseSeeder(ABC):
     """Base class for all data type seeders."""
 
-    def __init__(self, dependencies: Optional[Set[str]] = None):
+    def __init__(self, dependencies: set[str] | None = None):
         self.dependencies = dependencies or set()
 
     @abstractmethod
@@ -58,7 +58,7 @@ class BaseSeeder(ABC):
         self,
         session: AsyncSession,
         takeout_data: TakeoutData,
-        progress: Optional[ProgressCallback] = None,
+        progress: ProgressCallback | None = None,
     ) -> SeedResult:
         """Seed data for this specific data type."""
         pass
@@ -72,6 +72,6 @@ class BaseSeeder(ABC):
         """Check if this seeder has dependencies."""
         return len(self.dependencies) > 0
 
-    def get_dependencies(self) -> Set[str]:
+    def get_dependencies(self) -> set[str]:
         """Get list of dependencies."""
         return self.dependencies.copy()

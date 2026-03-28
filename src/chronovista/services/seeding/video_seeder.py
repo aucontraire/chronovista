@@ -10,8 +10,8 @@ NOTE: This seeder ONLY uses real YouTube IDs from the Takeout data.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,7 +33,7 @@ class VideoSeeder(BaseSeeder):
     No placeholder channels are created.
     """
 
-    def __init__(self, video_repo: VideoRepository, channel_repo: Optional[ChannelRepository] = None):
+    def __init__(self, video_repo: VideoRepository, channel_repo: ChannelRepository | None = None):
         super().__init__(dependencies={"channels"})  # Depends on channels existing
         self.video_repo = video_repo
         self.channel_repo = channel_repo or ChannelRepository()
@@ -45,7 +45,7 @@ class VideoSeeder(BaseSeeder):
         self,
         session: AsyncSession,
         takeout_data: TakeoutData,
-        progress: Optional[ProgressCallback] = None,
+        progress: ProgressCallback | None = None,
     ) -> SeedResult:
         """Seed videos from watch history."""
         start_time = datetime.now()
@@ -212,7 +212,7 @@ class VideoSeeder(BaseSeeder):
             channel_name_hint=channel_name_hint,
             title=title or f"[Placeholder] Video {video_id}",
             description="",  # Not available in Takeout
-            upload_date=entry.watched_at or datetime.now(timezone.utc),
+            upload_date=entry.watched_at or datetime.now(UTC),
             duration=0,  # Will be enriched via API
             availability_status=AvailabilityStatus.AVAILABLE,  # Only set to non-AVAILABLE after API verification - see docs
             made_for_kids=False,  # Will be enriched via API

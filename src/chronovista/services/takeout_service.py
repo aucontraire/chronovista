@@ -16,9 +16,9 @@ import json
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, TypedDict
+from typing import Any, TypedDict
 
 from ..models.takeout import (
     ChannelSummary,
@@ -51,9 +51,9 @@ class PlaylistMetadata(TypedDict):
 
     youtube_id: str
     title: str  # Original title from playlists.csv
-    created_at: Optional[datetime]
-    updated_at: Optional[datetime]
-    visibility: Optional[str]
+    created_at: datetime | None
+    updated_at: datetime | None
+    visibility: str | None
 
 
 class TakeoutParsingError(Exception):
@@ -124,7 +124,7 @@ class TakeoutService(TakeoutServiceInterface):
 
         return takeout_data
 
-    async def parse_watch_history(self) -> List[TakeoutWatchEntry]:
+    async def parse_watch_history(self) -> list[TakeoutWatchEntry]:
         """
         Parse watch history from JSON file.
 
@@ -147,10 +147,10 @@ class TakeoutService(TakeoutServiceInterface):
         logger.info(f"📺 Parsing watch history from {history_file}")
 
         try:
-            with open(history_file, "r", encoding="utf-8") as f:
+            with open(history_file, encoding="utf-8") as f:
                 history_data = json.load(f)
 
-            watch_entries: List[TakeoutWatchEntry] = []
+            watch_entries: list[TakeoutWatchEntry] = []
 
             skipped_community_posts = 0
             skipped_no_video_id = 0
@@ -216,11 +216,11 @@ class TakeoutService(TakeoutServiceInterface):
             return watch_entries
 
         except json.JSONDecodeError as e:
-            raise TakeoutParsingError(f"Invalid JSON in watch history file: {e}")
+            raise TakeoutParsingError(f"Invalid JSON in watch history file: {e}") from e
         except Exception as e:
-            raise TakeoutParsingError(f"Error parsing watch history: {e}")
+            raise TakeoutParsingError(f"Error parsing watch history: {e}") from e
 
-    def _parse_playlists_csv(self) -> Dict[str, PlaylistMetadata]:
+    def _parse_playlists_csv(self) -> dict[str, PlaylistMetadata]:
         """
         Parse playlists.csv file(s) to build youtube_id -> PlaylistMetadata mapping.
 
@@ -264,13 +264,13 @@ class TakeoutService(TakeoutServiceInterface):
 
         logger.info(f"📋 Found {len(playlist_csv_files)} playlist mapping file(s)")
 
-        id_to_metadata: Dict[str, PlaylistMetadata] = {}
+        id_to_metadata: dict[str, PlaylistMetadata] = {}
         # Track titles with multiple IDs for informational logging
-        title_id_map: Dict[str, List[str]] = {}
+        title_id_map: dict[str, list[str]] = {}
 
         for csv_file in playlist_csv_files:
             try:
-                with open(csv_file, "r", encoding="utf-8") as f:
+                with open(csv_file, encoding="utf-8") as f:
                     reader = csv.DictReader(f)
 
                     # Expected columns: "Playlist ID", "Add new videos to top",
@@ -291,9 +291,9 @@ class TakeoutService(TakeoutServiceInterface):
                             title_id_map[normalized_title].append(youtube_id)
 
                         # Parse timestamps gracefully
-                        created_at: Optional[datetime] = None
-                        updated_at: Optional[datetime] = None
-                        visibility: Optional[str] = None
+                        created_at: datetime | None = None
+                        updated_at: datetime | None = None
+                        visibility: str | None = None
 
                         # Parse created_at timestamp
                         created_at_raw = row.get("Playlist Create Timestamp", "").strip()
@@ -351,7 +351,7 @@ class TakeoutService(TakeoutServiceInterface):
         logger.info(f"✅ Loaded {len(id_to_metadata)} playlist ID mappings")
         return id_to_metadata
 
-    async def parse_playlists(self) -> List[TakeoutPlaylist]:
+    async def parse_playlists(self) -> list[TakeoutPlaylist]:
         """
         Parse playlists from CSV files in the playlists directory.
 
@@ -378,14 +378,14 @@ class TakeoutService(TakeoutServiceInterface):
         id_to_metadata = self._parse_playlists_csv()
 
         # Step 2: Build normalized_title -> list of youtube_ids mapping for matching
-        title_to_ids: Dict[str, List[str]] = {}
+        title_to_ids: dict[str, list[str]] = {}
         for youtube_id, metadata in id_to_metadata.items():
             normalized_title = normalize_for_comparison(metadata["title"])
             if normalized_title not in title_to_ids:
                 title_to_ids[normalized_title] = []
             title_to_ids[normalized_title].append(youtube_id)
 
-        playlists: List[TakeoutPlaylist] = []
+        playlists: list[TakeoutPlaylist] = []
         # Find video files (exclude playlists*.csv which are ID mapping files)
         playlist_files = [
             f for f in playlists_dir.glob("*.csv")
@@ -393,7 +393,7 @@ class TakeoutService(TakeoutServiceInterface):
         ]
 
         matched_count = 0
-        unmatched_names: List[str] = []
+        unmatched_names: list[str] = []
 
         for playlist_file in playlist_files:
             try:
@@ -403,8 +403,8 @@ class TakeoutService(TakeoutServiceInterface):
                     playlist_name = playlist_name[:-7]  # Remove "-videos" suffix
 
                 # Parse CSV file to get video list (shared across same-titled playlists)
-                videos: List[TakeoutPlaylistItem] = []
-                with open(playlist_file, "r", encoding="utf-8") as f:
+                videos: list[TakeoutPlaylistItem] = []
+                with open(playlist_file, encoding="utf-8") as f:
                     reader = csv.DictReader(f)
 
                     for row in reader:
@@ -481,7 +481,7 @@ class TakeoutService(TakeoutServiceInterface):
 
         return playlists
 
-    async def parse_subscriptions(self) -> List[TakeoutSubscription]:
+    async def parse_subscriptions(self) -> list[TakeoutSubscription]:
         """
         Parse channel subscriptions from CSV file.
 
@@ -499,8 +499,8 @@ class TakeoutService(TakeoutServiceInterface):
         logger.info(f"📺 Parsing subscriptions from {subscriptions_file}")
 
         try:
-            subscriptions: List[TakeoutSubscription] = []
-            with open(subscriptions_file, "r", encoding="utf-8") as f:
+            subscriptions: list[TakeoutSubscription] = []
+            with open(subscriptions_file, encoding="utf-8") as f:
                 reader = csv.DictReader(f)
 
                 for row in reader:
@@ -516,7 +516,7 @@ class TakeoutService(TakeoutServiceInterface):
             return subscriptions
 
         except Exception as e:
-            raise TakeoutParsingError(f"Error parsing subscriptions: {e}")
+            raise TakeoutParsingError(f"Error parsing subscriptions: {e}") from e
 
     async def analyze_viewing_patterns(
         self, takeout_data: TakeoutData
@@ -563,7 +563,7 @@ class TakeoutService(TakeoutServiceInterface):
             days = [dt.strftime("%A") for dt in watched_dates]
 
             # Find peak hours (top 3)
-            hour_counts: Dict[int, int] = {}
+            hour_counts: dict[int, int] = {}
             for hour in hours:
                 hour_counts[hour] = hour_counts.get(hour, 0) + 1
             peak_hours = sorted(
@@ -571,7 +571,7 @@ class TakeoutService(TakeoutServiceInterface):
             )[:3]
 
             # Find peak days (top 3)
-            day_counts: Dict[str, int] = {}
+            day_counts: dict[str, int] = {}
             for day in days:
                 day_counts[day] = day_counts.get(day, 0) + 1
             peak_days = sorted(
@@ -585,7 +585,7 @@ class TakeoutService(TakeoutServiceInterface):
                 viewing_frequency = len(takeout_data.watch_history) / total_days
 
         # Analyze channel patterns
-        channel_counts: Dict[str, int] = {}
+        channel_counts: dict[str, int] = {}
         for entry in takeout_data.watch_history:
             if entry.channel_name:
                 channel_counts[entry.channel_name] = (
@@ -593,7 +593,7 @@ class TakeoutService(TakeoutServiceInterface):
                 )
 
         # Create top channels summaries
-        top_channels: List[ChannelSummary] = []
+        top_channels: list[ChannelSummary] = []
         for channel_name, count in sorted(
             channel_counts.items(), key=lambda x: x[1], reverse=True
         )[:10]:
@@ -697,8 +697,8 @@ class TakeoutService(TakeoutServiceInterface):
             return PlaylistAnalysis()
 
         # Build playlist video mappings
-        playlist_videos: Dict[str, Set[str]] = {}
-        all_playlist_video_ids: Set[str] = set()
+        playlist_videos: dict[str, set[str]] = {}
+        all_playlist_video_ids: set[str] = set()
 
         for playlist in takeout_data.playlists:
             video_ids = {video.video_id for video in playlist.videos if video.video_id}
@@ -706,8 +706,8 @@ class TakeoutService(TakeoutServiceInterface):
             all_playlist_video_ids.update(video_ids)
 
         # Calculate overlap matrix
-        overlap_matrix: Dict[str, Dict[str, int]] = {}
-        overlap_percentages: Dict[str, Dict[str, float]] = {}
+        overlap_matrix: dict[str, dict[str, int]] = {}
+        overlap_percentages: dict[str, dict[str, float]] = {}
 
         for playlist1_name, videos1 in playlist_videos.items():
             overlap_matrix[playlist1_name] = {}
@@ -730,8 +730,8 @@ class TakeoutService(TakeoutServiceInterface):
         orphaned_videos = list(all_watched_video_ids - all_playlist_video_ids)
 
         # Find over-categorized videos (in many playlists)
-        video_playlist_counts: Dict[str, int] = {}
-        for playlist_name, video_ids in playlist_videos.items():
+        video_playlist_counts: dict[str, int] = {}
+        for _playlist_name, video_ids in playlist_videos.items():
             for video_id in video_ids:
                 video_playlist_counts[video_id] = (
                     video_playlist_counts.get(video_id, 0) + 1
@@ -751,7 +751,7 @@ class TakeoutService(TakeoutServiceInterface):
             if entry.video_id and entry.channel_name
         }
 
-        playlist_diversity_scores: Dict[str, float] = {}
+        playlist_diversity_scores: dict[str, float] = {}
         for playlist in takeout_data.playlists:
             # Simple diversity based on channel variety using watch history lookup
             channels = {
@@ -763,7 +763,7 @@ class TakeoutService(TakeoutServiceInterface):
             playlist_diversity_scores[playlist.name] = min(diversity, 1.0)
 
         # Get playlist sizes
-        playlist_sizes: Dict[str, int] = {
+        playlist_sizes: dict[str, int] = {
             playlist.name: len(playlist.videos) for playlist in takeout_data.playlists
         }
 
@@ -776,7 +776,7 @@ class TakeoutService(TakeoutServiceInterface):
             playlist_sizes=playlist_sizes,
         )
 
-    async def find_content_gaps(self, takeout_data: TakeoutData) -> List[ContentGap]:
+    async def find_content_gaps(self, takeout_data: TakeoutData) -> list[ContentGap]:
         """
         Identify content that lacks metadata and would benefit from API enrichment.
 
@@ -797,8 +797,8 @@ class TakeoutService(TakeoutServiceInterface):
             logger.info("✅ No content gaps - no watch history data")
             return []
 
-        content_gaps: List[ContentGap] = []
-        video_playlist_counts: Dict[str, int] = {}
+        content_gaps: list[ContentGap] = []
+        video_playlist_counts: dict[str, int] = {}
 
         # Count playlist memberships
         for playlist in takeout_data.playlists:
@@ -809,7 +809,7 @@ class TakeoutService(TakeoutServiceInterface):
                     )
 
         # Analyze each unique video
-        unique_videos: Dict[str, TakeoutWatchEntry] = {}
+        unique_videos: dict[str, TakeoutWatchEntry] = {}
         for entry in takeout_data.watch_history:
             if entry.video_id and entry.video_id not in unique_videos:
                 unique_videos[entry.video_id] = entry
@@ -840,7 +840,7 @@ class TakeoutService(TakeoutServiceInterface):
             # Higher priority for recent videos
             if entry.watched_at:
                 # Make datetime timezone-aware for comparison
-                now_utc = datetime.now(timezone.utc).replace(
+                now_utc = datetime.now(UTC).replace(
                     tzinfo=entry.watched_at.tzinfo
                 )
                 days_since = (now_utc - entry.watched_at).days
@@ -869,7 +869,7 @@ class TakeoutService(TakeoutServiceInterface):
         return content_gaps
 
     async def generate_comprehensive_analysis(
-        self, takeout_data: Optional[TakeoutData] = None
+        self, takeout_data: TakeoutData | None = None
     ) -> TakeoutAnalysis:
         """
         Generate comprehensive analysis of Takeout data.
@@ -944,8 +944,8 @@ class TakeoutService(TakeoutServiceInterface):
         return analysis
 
     async def analyze_playlist_overlap(
-        self, takeout_data: Optional[TakeoutData] = None
-    ) -> Dict[str, Dict[str, int]]:
+        self, takeout_data: TakeoutData | None = None
+    ) -> dict[str, dict[str, int]]:
         """
         Analyze overlap between playlists to identify similar content groupings.
 
@@ -968,13 +968,13 @@ class TakeoutService(TakeoutServiceInterface):
             return {}
 
         # Build video mappings for each playlist
-        playlist_videos: Dict[str, Set[str]] = {}
+        playlist_videos: dict[str, set[str]] = {}
         for playlist in takeout_data.playlists:
             video_ids = {video.video_id for video in playlist.videos if video.video_id}
             playlist_videos[playlist.name] = video_ids
 
         # Calculate overlap matrix
-        overlap_matrix: Dict[str, Dict[str, int]] = {}
+        overlap_matrix: dict[str, dict[str, int]] = {}
         for playlist1_name, videos1 in playlist_videos.items():
             overlap_matrix[playlist1_name] = {}
 
@@ -987,8 +987,8 @@ class TakeoutService(TakeoutServiceInterface):
         return overlap_matrix
 
     async def analyze_channel_clusters(
-        self, takeout_data: Optional[TakeoutData] = None
-    ) -> Dict[str, Dict[str, Any]]:
+        self, takeout_data: TakeoutData | None = None
+    ) -> dict[str, dict[str, Any]]:
         """
         Analyze channel viewing patterns to identify content clusters.
 
@@ -1008,7 +1008,7 @@ class TakeoutService(TakeoutServiceInterface):
         logger.info("📊 Analyzing channel clusters...")
 
         # Analyze channel viewing patterns
-        channel_patterns: Dict[str, Dict[str, Any]] = {}
+        channel_patterns: dict[str, dict[str, Any]] = {}
         for entry in takeout_data.watch_history:
             if not entry.channel_name:
                 continue
@@ -1037,7 +1037,7 @@ class TakeoutService(TakeoutServiceInterface):
             )
 
         # Calculate engagement metrics
-        for channel_name, pattern in channel_patterns.items():
+        for _channel_name, pattern in channel_patterns.items():
             # Calculate viewing frequency (videos per month)
             if pattern["watch_dates"]:
                 date_range = max(pattern["watch_dates"]) - min(pattern["watch_dates"])
@@ -1051,7 +1051,7 @@ class TakeoutService(TakeoutServiceInterface):
                     pattern["engagement_level"] = "medium"
 
         # Create clusters based on engagement levels
-        clusters: Dict[str, Dict[str, Dict[str, Any]]] = {
+        clusters: dict[str, dict[str, dict[str, Any]]] = {
             "high_engagement": {},
             "medium_engagement": {},
             "low_engagement": {},
@@ -1086,8 +1086,8 @@ class TakeoutService(TakeoutServiceInterface):
         return clusters
 
     async def analyze_temporal_patterns(
-        self, takeout_data: Optional[TakeoutData] = None
-    ) -> Dict[str, Any]:
+        self, takeout_data: TakeoutData | None = None
+    ) -> dict[str, Any]:
         """
         Analyze temporal patterns in viewing behavior.
 
@@ -1115,19 +1115,19 @@ class TakeoutService(TakeoutServiceInterface):
             return {"error": "No valid timestamps found in watch history"}
 
         # Analyze hourly patterns
-        hourly_counts: Dict[int, int] = {}
+        hourly_counts: dict[int, int] = {}
         for dt in watch_times:
             hour = dt.hour
             hourly_counts[hour] = hourly_counts.get(hour, 0) + 1
 
         # Analyze daily patterns (day of week)
-        daily_counts: Dict[str, int] = {}
+        daily_counts: dict[str, int] = {}
         for dt in watch_times:
             day = dt.strftime("%A")
             daily_counts[day] = daily_counts.get(day, 0) + 1
 
         # Analyze monthly patterns
-        monthly_counts: Dict[str, int] = {}
+        monthly_counts: dict[str, int] = {}
         for dt in watch_times:
             month = dt.strftime("%Y-%m")
             monthly_counts[month] = monthly_counts.get(month, 0) + 1
@@ -1146,7 +1146,7 @@ class TakeoutService(TakeoutServiceInterface):
         )
 
         # Calculate viewing streaks (consecutive days with activity)
-        dates_only = sorted(set(dt.date() for dt in watch_times))
+        dates_only = sorted({dt.date() for dt in watch_times})
         current_streak = 0
         max_streak = 0
 
@@ -1163,7 +1163,7 @@ class TakeoutService(TakeoutServiceInterface):
         max_streak = max(max_streak, current_streak)
 
         # Analyze content type patterns by time
-        channel_time_patterns: Dict[str, Dict[int, int]] = {}
+        channel_time_patterns: dict[str, dict[int, int]] = {}
         for entry in takeout_data.watch_history:
             if entry.channel_name and entry.watched_at:
                 hour = entry.watched_at.hour
@@ -1197,7 +1197,7 @@ class TakeoutService(TakeoutServiceInterface):
     @staticmethod
     def discover_historical_takeouts(
         base_path: Path, sort_oldest_first: bool = True
-    ) -> List[HistoricalTakeout]:
+    ) -> list[HistoricalTakeout]:
         """
         Discover historical takeout directories in the base path.
 
@@ -1227,7 +1227,7 @@ class TakeoutService(TakeoutServiceInterface):
         # Matches: "YouTube and YouTube Music YYYY-MM-DD" or just dates in folder names
         date_pattern = re.compile(r"(\d{4}-\d{2}-\d{2})")
 
-        historical_takeouts: List[HistoricalTakeout] = []
+        historical_takeouts: list[HistoricalTakeout] = []
 
         # Scan all directories in base path
         try:
@@ -1241,7 +1241,7 @@ class TakeoutService(TakeoutServiceInterface):
                     date_str = match.group(1)
                     try:
                         export_date = datetime.strptime(date_str, "%Y-%m-%d").replace(
-                            tzinfo=timezone.utc
+                            tzinfo=UTC
                         )
                     except ValueError:
                         logger.debug(f"Could not parse date from: {item.name}")
@@ -1298,7 +1298,7 @@ class TakeoutService(TakeoutServiceInterface):
                         try:
                             mtime = os.path.getmtime(item)
                             export_date = datetime.fromtimestamp(
-                                mtime, tz=timezone.utc
+                                mtime, tz=UTC
                             )
 
                             takeout = HistoricalTakeout(
@@ -1319,7 +1319,7 @@ class TakeoutService(TakeoutServiceInterface):
 
         except PermissionError as e:
             logger.error(f"Permission denied scanning {base_path}: {e}")
-            raise TakeoutParsingError(f"Cannot read directory: {base_path}")
+            raise TakeoutParsingError(f"Cannot read directory: {base_path}") from e
 
         # Sort by export date
         historical_takeouts.sort(
@@ -1331,7 +1331,7 @@ class TakeoutService(TakeoutServiceInterface):
 
     async def parse_historical_watch_history(
         self, takeout: HistoricalTakeout
-    ) -> List[TakeoutWatchEntry]:
+    ) -> list[TakeoutWatchEntry]:
         """
         Parse watch history from a historical takeout.
 
@@ -1363,10 +1363,10 @@ class TakeoutService(TakeoutServiceInterface):
         )
 
         try:
-            with open(history_file, "r", encoding="utf-8") as f:
+            with open(history_file, encoding="utf-8") as f:
                 history_data = json.load(f)
 
-            watch_entries: List[TakeoutWatchEntry] = []
+            watch_entries: list[TakeoutWatchEntry] = []
             skipped_community_posts = 0
             skipped_no_video_id = 0
 
@@ -1438,9 +1438,9 @@ class TakeoutService(TakeoutServiceInterface):
 
     async def build_recovery_metadata_map(
         self,
-        historical_takeouts: List[HistoricalTakeout],
+        historical_takeouts: list[HistoricalTakeout],
         process_oldest_first: bool = True,
-    ) -> Tuple[Dict[str, RecoveredVideoMetadata], Dict[str, RecoveredChannelMetadata]]:
+    ) -> tuple[dict[str, RecoveredVideoMetadata], dict[str, RecoveredChannelMetadata]]:
         """
         Build maps of video and channel metadata from historical takeouts.
 
@@ -1459,8 +1459,8 @@ class TakeoutService(TakeoutServiceInterface):
         Tuple[Dict[str, RecoveredVideoMetadata], Dict[str, RecoveredChannelMetadata]]
             Maps of video_id -> metadata and channel_id -> metadata
         """
-        video_metadata: Dict[str, RecoveredVideoMetadata] = {}
-        channel_metadata: Dict[str, RecoveredChannelMetadata] = {}
+        video_metadata: dict[str, RecoveredVideoMetadata] = {}
+        channel_metadata: dict[str, RecoveredChannelMetadata] = {}
 
         # Sort takeouts by date
         sorted_takeouts = sorted(
@@ -1521,8 +1521,8 @@ class TakeoutService(TakeoutServiceInterface):
         return video_metadata, channel_metadata
 
     def get_recovery_summary(
-        self, historical_takeouts: List[HistoricalTakeout]
-    ) -> Dict[str, Any]:
+        self, historical_takeouts: list[HistoricalTakeout]
+    ) -> dict[str, Any]:
         """
         Get a summary of available historical takeouts for recovery.
 

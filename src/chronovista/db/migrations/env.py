@@ -48,7 +48,7 @@ def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
     if url is None:
         raise ValueError("No database URL configured for migrations")
-    
+
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -71,12 +71,12 @@ def do_run_migrations(connection: Any) -> None:
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
     from sqlalchemy import create_engine
-    
+
     # Use the configured URL (which may be overridden via -x database_url)
     url = config.get_main_option("sqlalchemy.url")
     if url is None:
         raise ValueError("No database URL configured for migrations")
-    
+
     connectable = create_engine(url)
 
     with connectable.connect() as connection:

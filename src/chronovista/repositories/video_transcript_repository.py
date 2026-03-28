@@ -8,23 +8,19 @@ quality indicators, and specialized queries for transcript management.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from sqlalchemy.sql import ColumnElement
+    pass
 
-from sqlalchemy import and_, delete, func, or_, select, update
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from ..db.models import TranscriptSegment as TranscriptSegmentDB
-from ..db.models import Video as VideoDB
 from ..db.models import VideoTranscript as VideoTranscriptDB
 from ..models.enums import DownloadReason, LanguageCode, TrackKind, TranscriptType
 from ..models.video_transcript import (
     TranscriptSearchFilters,
-    VideoTranscript,
     VideoTranscriptCreate,
     VideoTranscriptUpdate,
     VideoTranscriptWithQuality,
@@ -40,7 +36,7 @@ class VideoTranscriptRepository(
         VideoTranscriptDB,
         VideoTranscriptCreate,
         VideoTranscriptUpdate,
-        Tuple[str, str],
+        tuple[str, str],
     ]
 ):
     """Repository for video transcripts with multi-language and quality support."""
@@ -50,8 +46,8 @@ class VideoTranscriptRepository(
         super().__init__(VideoTranscriptDB)
 
     async def get(
-        self, session: AsyncSession, id: Tuple[str, str]
-    ) -> Optional[VideoTranscriptDB]:
+        self, session: AsyncSession, id: tuple[str, str]
+    ) -> VideoTranscriptDB | None:
         """
         Get video transcript by composite primary key.
 
@@ -80,7 +76,7 @@ class VideoTranscriptRepository(
 
     async def get_by_composite_key(
         self, session: AsyncSession, video_id: VideoId, language_code: str
-    ) -> Optional[VideoTranscriptDB]:
+    ) -> VideoTranscriptDB | None:
         """
         Get video transcript by composite primary key (convenience method).
 
@@ -105,7 +101,7 @@ class VideoTranscriptRepository(
         session: AsyncSession,
         video_id: str,
         language_code: str,
-    ) -> Optional[VideoTranscriptDB]:
+    ) -> VideoTranscriptDB | None:
         """
         Get a single transcript for a video by language code (case-insensitive).
 
@@ -134,7 +130,7 @@ class VideoTranscriptRepository(
         )
         return result.scalar_one_or_none()
 
-    async def exists(self, session: AsyncSession, id: Tuple[str, str]) -> bool:
+    async def exists(self, session: AsyncSession, id: tuple[str, str]) -> bool:
         """
         Check if video transcript exists.
 
@@ -185,7 +181,7 @@ class VideoTranscriptRepository(
 
     async def get_video_transcripts(
         self, session: AsyncSession, video_id: VideoId
-    ) -> List[VideoTranscriptDB]:
+    ) -> list[VideoTranscriptDB]:
         """
         Get all transcripts for a specific video, ordered by quality.
 
@@ -213,8 +209,8 @@ class VideoTranscriptRepository(
         return list(result.scalars().all())
 
     async def get_transcripts_by_language(
-        self, session: AsyncSession, language_code: str, limit: Optional[int] = None
-    ) -> List[VideoTranscriptDB]:
+        self, session: AsyncSession, language_code: str, limit: int | None = None
+    ) -> list[VideoTranscriptDB]:
         """
         Get all transcripts for a specific language.
 
@@ -246,7 +242,7 @@ class VideoTranscriptRepository(
 
     async def get_high_quality_transcripts(
         self, session: AsyncSession, video_id: VideoId
-    ) -> List[VideoTranscriptDB]:
+    ) -> list[VideoTranscriptDB]:
         """
         Get high-quality transcripts for a video (CC, manual, or high confidence).
 
@@ -284,7 +280,7 @@ class VideoTranscriptRepository(
 
     async def search_transcripts(
         self, session: AsyncSession, filters: TranscriptSearchFilters
-    ) -> List[VideoTranscriptDB]:
+    ) -> list[VideoTranscriptDB]:
         """
         Search transcripts with advanced filtering.
 
@@ -301,7 +297,7 @@ class VideoTranscriptRepository(
             List of matching transcripts
         """
         query = select(VideoTranscriptDB)
-        conditions: List[Any] = []
+        conditions: list[Any] = []
 
         # Video ID filters
         if filters.video_ids:
@@ -384,7 +380,7 @@ class VideoTranscriptRepository(
 
     async def get_available_languages(
         self, session: AsyncSession, video_id: VideoId
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Get list of available languages for a video.
 
@@ -406,11 +402,11 @@ class VideoTranscriptRepository(
             .distinct()
             .order_by(VideoTranscriptDB.language_code.asc())
         )
-        return [lang for lang in result.scalars().all()]
+        return list(result.scalars().all())
 
     async def get_transcript_statistics(
-        self, session: AsyncSession, video_id: Optional[VideoId] = None
-    ) -> Dict[str, Any]:
+        self, session: AsyncSession, video_id: VideoId | None = None
+    ) -> dict[str, Any]:
         """
         Get transcript statistics by type and language.
 
@@ -444,7 +440,7 @@ class VideoTranscriptRepository(
 
         result = await session.execute(query)
 
-        stats: Dict[str, Any] = {
+        stats: dict[str, Any] = {
             "total": 0,
             "by_type": {},
             "by_language": {},
@@ -534,10 +530,10 @@ class VideoTranscriptRepository(
         session: AsyncSession,
         video_id: VideoId,
         language_code: str,
-        confidence_score: Optional[float] = None,
-        is_cc: Optional[bool] = None,
-        transcript_type: Optional[TranscriptType] = None,
-    ) -> Optional[VideoTranscriptDB]:
+        confidence_score: float | None = None,
+        is_cc: bool | None = None,
+        transcript_type: TranscriptType | None = None,
+    ) -> VideoTranscriptDB | None:
         """
         Update quality indicators for a transcript.
 
@@ -580,7 +576,7 @@ class VideoTranscriptRepository(
 
     async def get_transcripts_with_quality_scores(
         self, session: AsyncSession, video_id: VideoId
-    ) -> List[VideoTranscriptWithQuality]:
+    ) -> list[VideoTranscriptWithQuality]:
         """
         Get transcripts with computed quality scores.
 
@@ -695,7 +691,7 @@ class VideoTranscriptRepository(
             # This provides a fallback for unknown language codes
             return LanguageCode.ENGLISH
 
-    def _derive_metadata(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _derive_metadata(self, raw_data: dict[str, Any]) -> dict[str, Any]:
         """
         Derive metadata columns from raw transcript data.
 
@@ -757,7 +753,7 @@ class VideoTranscriptRepository(
         session: AsyncSession,
         obj_in: VideoTranscriptCreate,
         *,
-        raw_transcript_data: Optional[Dict[str, Any]] = None,
+        raw_transcript_data: dict[str, Any] | None = None,
     ) -> VideoTranscriptDB:
         """
         Create or update a transcript with optional raw data.
@@ -878,7 +874,7 @@ class VideoTranscriptRepository(
         session: AsyncSession,
         video_id: str,
         language_code: str,
-        raw_data: Dict[str, Any],
+        raw_data: dict[str, Any],
     ) -> int:
         """
         Create transcript segments from raw transcript data.
@@ -1030,15 +1026,15 @@ class VideoTranscriptRepository(
         self,
         session: AsyncSession,
         *,
-        has_timestamps: Optional[bool] = None,
-        min_segment_count: Optional[int] = None,
-        max_segment_count: Optional[int] = None,
-        min_duration: Optional[float] = None,
-        max_duration: Optional[float] = None,
-        source: Optional[str] = None,
+        has_timestamps: bool | None = None,
+        min_segment_count: int | None = None,
+        max_segment_count: int | None = None,
+        min_duration: float | None = None,
+        max_duration: float | None = None,
+        source: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[VideoTranscriptDB]:
+    ) -> list[VideoTranscriptDB]:
         """
         Filter transcripts by metadata criteria.
 
@@ -1074,7 +1070,7 @@ class VideoTranscriptRepository(
         - None values for filters are ignored (not applied)
         """
         query = select(VideoTranscriptDB)
-        conditions: List[Any] = []
+        conditions: list[Any] = []
 
         # Filter by timestamp availability
         if has_timestamps is not None:
@@ -1132,7 +1128,7 @@ class VideoTranscriptRepository(
         session: AsyncSession,
         video_id: str,
         language_code: str,
-    ) -> Optional[VideoTranscriptDB]:
+    ) -> VideoTranscriptDB | None:
         """
         Retrieve transcript with raw timestamp data.
 

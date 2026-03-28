@@ -14,7 +14,6 @@ from __future__ import annotations
 import hashlib
 import logging
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -99,7 +98,7 @@ class PlaylistSeeder(BaseSeeder):
         self,
         session: AsyncSession,
         takeout_data: TakeoutData,
-        progress: Optional[ProgressCallback] = None,
+        progress: ProgressCallback | None = None,
         clear_existing: bool = False,
     ) -> SeedResult:
         """
@@ -243,7 +242,7 @@ class PlaylistSeeder(BaseSeeder):
         )
 
     def _map_visibility_to_privacy_status(
-        self, visibility: Optional[str]
+        self, visibility: str | None
     ) -> PrivacyStatus:
         """
         Map takeout visibility string to PrivacyStatus enum.

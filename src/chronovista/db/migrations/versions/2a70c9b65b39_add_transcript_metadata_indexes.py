@@ -18,8 +18,6 @@ These indexes optimize common query patterns for transcript metadata filtering.
 from __future__ import annotations
 
 import sqlalchemy as sa
-
-
 from alembic import op
 
 # revision identifiers, used by Alembic.

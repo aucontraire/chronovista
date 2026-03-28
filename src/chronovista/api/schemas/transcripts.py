@@ -1,7 +1,6 @@
 """Transcript API response schemas."""
 
 from datetime import datetime
-from typing import List
 
 from pydantic import BaseModel, ConfigDict
 
@@ -20,7 +19,7 @@ class TranscriptLanguage(BaseModel):
     downloaded_at: datetime
 
 
-class TranscriptLanguagesResponse(ApiResponse[List[TranscriptLanguage]]):
+class TranscriptLanguagesResponse(ApiResponse[list[TranscriptLanguage]]):
     """Response for transcript languages endpoint."""
 
     pass
@@ -60,7 +59,7 @@ class TranscriptSegment(BaseModel):
     correction_count: int = 0  # Total audit records for this segment
 
 
-class SegmentListResponse(ApiResponse[List[TranscriptSegment]]):
+class SegmentListResponse(ApiResponse[list[TranscriptSegment]]):
     """Response for transcript segments endpoint."""
 
     pass

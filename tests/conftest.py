@@ -4,6 +4,7 @@ Pytest configuration and fixtures for chronovista tests.
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -106,29 +107,31 @@ def container_reset():
 
 
 @pytest.fixture(autouse=True)
-def _strip_ansi_from_cli_output(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Strip ANSI escape codes from Click/Typer CliRunner results.
+def _strip_ansi_from_cli_output() -> None:
+    """Strip ANSI escape codes from Click/Typer CliRunner results in CI.
 
-    Typer/Rich emit ANSI sequences in CI (no TTY) which break string
-    assertions like ``assert '--flag' in result.stdout``.
+    Typer/Rich emit ANSI sequences when there is no TTY. Rather than
+    patching Click internals (which breaks some test patterns), we
+    monkey-patch the ``Result`` class to post-process stdout/output.
     """
     from click.testing import Result
 
-    _orig_stdout = Result.stdout  # type: ignore[attr-defined]
-    _orig_output = Result.output  # type: ignore[attr-defined]
+    _orig_stdout_prop = Result.__dict__["stdout"]
+    _orig_output_prop = Result.__dict__["output"]
 
-    @property  # type: ignore[misc]
     def _clean_stdout(self: Result) -> str:
-        raw = _orig_stdout.fget(self)  # type: ignore[union-attr]
-        return _ANSI_RE.sub("", raw) if raw else raw
+        raw = _orig_stdout_prop.fget(self)  # type: ignore[union-attr]
+        return _ANSI_RE.sub("", raw) if isinstance(raw, str) else (raw or "")
 
-    @property  # type: ignore[misc]
     def _clean_output(self: Result) -> str:
-        raw = _orig_output.fget(self)  # type: ignore[union-attr]
-        return _ANSI_RE.sub("", raw) if raw else raw
+        raw = _orig_output_prop.fget(self)  # type: ignore[union-attr]
+        return _ANSI_RE.sub("", raw) if isinstance(raw, str) else (raw or "")
 
-    monkeypatch.setattr(Result, "stdout", _clean_stdout)
-    monkeypatch.setattr(Result, "output", _clean_output)
+    Result.stdout = property(_clean_stdout)  # type: ignore[assignment]
+    Result.output = property(_clean_output)  # type: ignore[assignment]
+    yield
+    Result.stdout = _orig_stdout_prop  # type: ignore[assignment]
+    Result.output = _orig_output_prop  # type: ignore[assignment]
 
 
 def pytest_configure(config):

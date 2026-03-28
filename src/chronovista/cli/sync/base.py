@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable, Coroutine
 from functools import wraps
-from typing import Any, Awaitable, Callable, Coroutine, Optional, TypeVar, cast
+from typing import Any, TypeVar, cast
 
 import typer
 from googleapiclient.errors import HttpError
@@ -155,7 +156,7 @@ def display_auth_error(command_name: str = "Sync") -> None:
     )
 
 
-def require_auth(command_name: str = "Sync") -> Callable[[Callable[..., T]], Callable[..., Optional[T]]]:
+def require_auth(command_name: str = "Sync") -> Callable[[Callable[..., T]], Callable[..., T | None]]:
     """
     Decorator that checks authentication before running a sync command.
 
@@ -177,9 +178,9 @@ def require_auth(command_name: str = "Sync") -> Callable[[Callable[..., T]], Cal
     ...     pass
     """
 
-    def decorator(func: Callable[..., T]) -> Callable[..., Optional[T]]:
+    def decorator(func: Callable[..., T]) -> Callable[..., T | None]:
         @wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Optional[T]:
+        def wrapper(*args: Any, **kwargs: Any) -> T | None:
             if not check_authenticated():
                 display_auth_error(command_name)
                 return None
@@ -193,7 +194,7 @@ def require_auth(command_name: str = "Sync") -> Callable[[Callable[..., T]], Cal
 def run_sync_operation(
     async_fn: Callable[[], Awaitable[T]],
     operation_name: str = "Sync",
-) -> Optional[T]:
+) -> T | None:
     """
     Run an async sync operation with standardized error handling.
 
@@ -233,7 +234,7 @@ def run_sync_operation(
 
         # Check if we're already in an async context (e.g., pytest-asyncio tests)
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             # Event loop is already running, use nest_asyncio pattern
             # Create a new thread to run the coroutine
             import concurrent.futures
@@ -270,12 +271,12 @@ def run_sync_operation(
                     )
                 )
                 logger.error(f"Quota exceeded during {operation_name}")
-                raise typer.Exit(EXIT_QUOTA_EXCEEDED)
+                raise typer.Exit(EXIT_QUOTA_EXCEEDED) from e
             else:
                 # Authentication error - Exit 2
                 display_auth_api_error(status_code, operation_name)
                 logger.error(f"Authentication failed (HTTP {status_code}) during {operation_name}")
-                raise typer.Exit(EXIT_AUTH_FAILURE)
+                raise typer.Exit(EXIT_AUTH_FAILURE) from e
         else:
             # Other HTTP errors
             console.print(
@@ -286,26 +287,26 @@ def run_sync_operation(
                 )
             )
             logger.error(f"API error (HTTP {status_code}) during {operation_name}: {e}")
-            raise typer.Exit(EXIT_USER_ERROR)
+            raise typer.Exit(EXIT_USER_ERROR) from e
 
     except SQLAlchemyError as e:
         # T063: Handle database errors - Exit 5
         display_database_error(operation_name, str(e))
         logger.error(f"Database error during {operation_name}: {e}")
-        raise typer.Exit(EXIT_DATABASE_ERROR)
+        raise typer.Exit(EXIT_DATABASE_ERROR) from e
 
     except (ConnectionError, TimeoutError, ConnectionResetError, BrokenPipeError) as e:
         # T062: Handle network errors - Exit 3
         display_network_failure(type(e).__name__, operation_name, str(e))
         logger.error(f"Network error ({type(e).__name__}) during {operation_name}: {e}")
-        raise typer.Exit(EXIT_NETWORK_ERROR)
+        raise typer.Exit(EXIT_NETWORK_ERROR) from e
 
     except OSError as e:
         # Network-related OS errors (DNS failures, socket errors)
         if "getaddrinfo" in str(e) or "Name or service not known" in str(e):
             display_network_failure("DNS Resolution Error", operation_name, str(e))
             logger.error(f"DNS error during {operation_name}: {e}")
-            raise typer.Exit(EXIT_NETWORK_ERROR)
+            raise typer.Exit(EXIT_NETWORK_ERROR) from e
         else:
             # Other OS errors
             console.print(
@@ -316,7 +317,7 @@ def run_sync_operation(
                 )
             )
             logger.error(f"OS error during {operation_name}: {e}")
-            raise typer.Exit(EXIT_USER_ERROR)
+            raise typer.Exit(EXIT_USER_ERROR) from e
 
     except Exception as e:
         console.print(
@@ -334,7 +335,7 @@ def display_sync_results(
     result: SyncResult,
     title: str = "Sync Results",
     show_table: bool = True,
-    extra_info: Optional[str] = None,
+    extra_info: str | None = None,
 ) -> None:
     """
     Display sync results in a standardized format.
@@ -512,7 +513,7 @@ def display_auth_api_error(status_code: int, command_name: str = "Command") -> N
 def display_network_failure(
     error_type: str,
     command_name: str = "Command",
-    details: Optional[str] = None,
+    details: str | None = None,
 ) -> None:
     """
     Display network failure error with rollback confirmation (T062).
@@ -556,7 +557,7 @@ def display_network_failure(
 
 def display_database_error(
     command_name: str = "Command",
-    details: Optional[str] = None,
+    details: str | None = None,
 ) -> None:
     """
     Display database commit error with rollback confirmation (T063).

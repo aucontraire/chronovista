@@ -7,7 +7,7 @@ including list/detail responses and video position tracking.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -27,7 +27,7 @@ class PlaylistListItem(BaseModel):
 
     playlist_id: str = Field(..., description="Playlist ID (YouTube, system, or internal)")
     title: str = Field(..., description="Playlist title")
-    description: Optional[str] = Field(None, description="Playlist description")
+    description: str | None = Field(None, description="Playlist description")
     video_count: int = Field(0, description="Number of videos in playlist")
     privacy_status: str = Field(..., description="Privacy status: public, private, unlisted")
     is_linked: bool = Field(..., description="Whether playlist is linked to YouTube")
@@ -73,9 +73,9 @@ class PlaylistDetail(PlaylistListItem):
 
     model_config = ConfigDict(strict=True, from_attributes=True)
 
-    default_language: Optional[str] = Field(None, description="Default language code")
-    channel_id: Optional[str] = Field(None, description="Owner channel ID")
-    published_at: Optional[datetime] = Field(None, description="Playlist creation date")
+    default_language: str | None = Field(None, description="Default language code")
+    channel_id: str | None = Field(None, description="Owner channel ID")
+    published_at: datetime | None = Field(None, description="Playlist creation date")
     deleted_flag: bool = Field(False, description="Whether playlist is marked deleted")
     playlist_type: str = Field("regular", description="Playlist type")
     created_at: datetime = Field(..., description="Record creation timestamp")
@@ -114,8 +114,8 @@ class PlaylistDetail(PlaylistListItem):
                 "published_at": getattr(data, "published_at", None),
                 "deleted_flag": getattr(data, "deleted_flag", False),
                 "playlist_type": getattr(data, "playlist_type", "regular"),
-                "created_at": getattr(data, "created_at"),
-                "updated_at": getattr(data, "updated_at"),
+                "created_at": data.created_at,
+                "updated_at": data.updated_at,
             }
         return data
 
@@ -132,11 +132,11 @@ class PlaylistVideoListItem(BaseModel):
     # Video fields (matching VideoListItem structure)
     video_id: str = Field(..., description="YouTube video ID (11 chars)")
     title: str = Field(..., description="Video title")
-    channel_id: Optional[str] = Field(None, description="Channel ID (24 chars)")
-    channel_title: Optional[str] = Field(None, description="Channel name")
+    channel_id: str | None = Field(None, description="Channel ID (24 chars)")
+    channel_title: str | None = Field(None, description="Channel name")
     upload_date: datetime = Field(..., description="Video upload date")
     duration: int = Field(..., description="Duration in seconds")
-    view_count: Optional[int] = Field(None, description="View count")
+    view_count: int | None = Field(None, description="View count")
     transcript_summary: TranscriptSummary = Field(
         ..., description="Transcript availability summary"
     )
@@ -154,7 +154,7 @@ class PlaylistListResponse(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    data: List[PlaylistListItem]
+    data: list[PlaylistListItem]
     pagination: PaginationMeta
 
 
@@ -171,5 +171,5 @@ class PlaylistVideoListResponse(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    data: List[PlaylistVideoListItem]
+    data: list[PlaylistVideoListItem]
     pagination: PaginationMeta

@@ -13,8 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,7 +54,7 @@ class PlaylistMembershipSeeder(BaseSeeder):
         self,
         session: AsyncSession,
         takeout_data: TakeoutData,
-        progress: Optional[ProgressCallback] = None,
+        progress: ProgressCallback | None = None,
     ) -> SeedResult:
         """
         Seed playlist memberships from takeout data.
@@ -235,7 +234,7 @@ class PlaylistMembershipSeeder(BaseSeeder):
                 channel_name_hint=None,  # Unknown channel - will be resolved via API
                 title=f"[Placeholder] Video {video_id}",
                 description="Placeholder video created during playlist import - original may be deleted or private",
-                upload_date=datetime.now(timezone.utc),
+                upload_date=datetime.now(UTC),
                 duration=0,
                 made_for_kids=False,
                 availability_status=AvailabilityStatus.AVAILABLE,  # Only set to non-AVAILABLE after API verification - see docs

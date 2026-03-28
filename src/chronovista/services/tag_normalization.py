@@ -226,10 +226,7 @@ class TagNormalizationService:
         title_case_forms = [(form, count) for form, count in forms if form.istitle()]
 
         # Step 2: Determine the candidate pool
-        if title_case_forms:
-            candidates = title_case_forms
-        else:
-            candidates = forms
+        candidates = title_case_forms or forms
 
         # Step 3: Find the maximum occurrence count
         max_count = max(count for _, count in candidates)

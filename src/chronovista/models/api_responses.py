@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
@@ -82,13 +82,13 @@ class ResourceId(BaseYouTubeModel):
     """
 
     kind: str = Field(default="", description="Resource type (e.g., youtube#video)")
-    video_id: Optional[str] = Field(
+    video_id: str | None = Field(
         default=None, alias="videoId", description="Video ID if resource is a video"
     )
-    channel_id: Optional[str] = Field(
+    channel_id: str | None = Field(
         default=None, alias="channelId", description="Channel ID if resource is a channel"
     )
-    playlist_id: Optional[str] = Field(
+    playlist_id: str | None = Field(
         default=None,
         alias="playlistId",
         description="Playlist ID if resource is a playlist",
@@ -143,17 +143,17 @@ class RelatedPlaylists(BaseYouTubeModel):
     Contains IDs for system playlists like uploads, likes, favorites.
     """
 
-    likes: Optional[str] = Field(
+    likes: str | None = Field(
         default=None, description="Playlist ID for liked videos"
     )
     uploads: str = Field(default="", description="Playlist ID for channel uploads")
-    favorites: Optional[str] = Field(
+    favorites: str | None = Field(
         default=None, description="Playlist ID for favorited videos (deprecated)"
     )
-    watch_history: Optional[str] = Field(
+    watch_history: str | None = Field(
         default=None, alias="watchHistory", description="Playlist ID for watch history"
     )
-    watch_later: Optional[str] = Field(
+    watch_later: str | None = Field(
         default=None, alias="watchLater", description="Playlist ID for Watch Later"
     )
 
@@ -191,17 +191,17 @@ class VideoSnippet(BaseYouTubeModel):
         alias="liveBroadcastContent",
         description="Live broadcast status (none, live, upcoming)",
     )
-    default_language: Optional[str] = Field(
+    default_language: str | None = Field(
         default=None,
         alias="defaultLanguage",
         description="Default language (BCP-47)",
     )
-    default_audio_language: Optional[str] = Field(
+    default_audio_language: str | None = Field(
         default=None,
         alias="defaultAudioLanguage",
         description="Default audio language (BCP-47)",
     )
-    localized: Optional[LocalizedString] = Field(
+    localized: LocalizedString | None = Field(
         default=None, description="Localized title and description"
     )
 
@@ -231,7 +231,7 @@ class ChannelSnippet(BaseYouTubeModel):
 
     title: str = Field(default="", description="Channel name")
     description: str = Field(default="", description="Channel description")
-    custom_url: Optional[str] = Field(
+    custom_url: str | None = Field(
         default=None, alias="customUrl", description="Custom channel URL handle"
     )
     published_at: datetime = Field(
@@ -240,15 +240,15 @@ class ChannelSnippet(BaseYouTubeModel):
     thumbnails: dict[str, Thumbnail] = Field(
         default_factory=dict, description="Channel thumbnails"
     )
-    default_language: Optional[str] = Field(
+    default_language: str | None = Field(
         default=None,
         alias="defaultLanguage",
         description="Default language (BCP-47)",
     )
-    localized: Optional[LocalizedString] = Field(
+    localized: LocalizedString | None = Field(
         default=None, description="Localized title and description"
     )
-    country: Optional[str] = Field(
+    country: str | None = Field(
         default=None, description="Country code (ISO 3166-1)"
     )
 
@@ -288,12 +288,12 @@ class PlaylistSnippet(BaseYouTubeModel):
     channel_title: str = Field(
         default="", alias="channelTitle", description="Owner channel name"
     )
-    default_language: Optional[str] = Field(
+    default_language: str | None = Field(
         default=None,
         alias="defaultLanguage",
         description="Default language (BCP-47)",
     )
-    localized: Optional[LocalizedString] = Field(
+    localized: LocalizedString | None = Field(
         default=None, description="Localized title and description"
     )
 
@@ -338,12 +338,12 @@ class PlaylistItemSnippet(BaseYouTubeModel):
     resource_id: ResourceId = Field(
         alias="resourceId", description="Identifies the video resource"
     )
-    video_owner_channel_title: Optional[str] = Field(
+    video_owner_channel_title: str | None = Field(
         default=None,
         alias="videoOwnerChannelTitle",
         description="Video owner channel name",
     )
-    video_owner_channel_id: Optional[str] = Field(
+    video_owner_channel_id: str | None = Field(
         default=None,
         alias="videoOwnerChannelId",
         description="Video owner channel ID",
@@ -416,7 +416,7 @@ class CaptionSnippet(BaseYouTubeModel):
     """
 
     video_id: str = Field(alias="videoId", description="ID of the video")
-    last_updated: Optional[datetime] = Field(
+    last_updated: datetime | None = Field(
         default=None, alias="lastUpdated", description="Last update timestamp"
     )
     track_kind: str = Field(
@@ -460,7 +460,7 @@ class CaptionSnippet(BaseYouTubeModel):
         default="serving",
         description="Caption track status (serving, syncing, failed)",
     )
-    failure_reason: Optional[str] = Field(
+    failure_reason: str | None = Field(
         default=None,
         alias="failureReason",
         description="Reason for processing failure if any",
@@ -536,10 +536,10 @@ class VideoStatisticsResponse(BaseYouTubeModel):
     """
 
     view_count: int = Field(default=0, alias="viewCount", description="View count")
-    like_count: Optional[int] = Field(
+    like_count: int | None = Field(
         default=None, alias="likeCount", description="Like count (may be hidden)"
     )
-    dislike_count: Optional[int] = Field(
+    dislike_count: int | None = Field(
         default=None,
         alias="dislikeCount",
         description="Dislike count (deprecated, always 0)",
@@ -547,7 +547,7 @@ class VideoStatisticsResponse(BaseYouTubeModel):
     favorite_count: int = Field(
         default=0, alias="favoriteCount", description="Favorite count (deprecated)"
     )
-    comment_count: Optional[int] = Field(
+    comment_count: int | None = Field(
         default=None, alias="commentCount", description="Comment count (may be hidden)"
     )
 
@@ -556,7 +556,7 @@ class VideoStatisticsResponse(BaseYouTubeModel):
         mode="before"
     )
     @classmethod
-    def parse_count(cls, v: Any) -> Optional[int]:
+    def parse_count(cls, v: Any) -> int | None:
         """Parse count from string or int."""
         if v is None:
             return None
@@ -581,7 +581,7 @@ class ChannelStatisticsResponse(BaseYouTubeModel):
     view_count: int = Field(
         default=0, alias="viewCount", description="Total channel view count"
     )
-    subscriber_count: Optional[int] = Field(
+    subscriber_count: int | None = Field(
         default=None,
         alias="subscriberCount",
         description="Subscriber count (may be hidden)",
@@ -599,7 +599,7 @@ class ChannelStatisticsResponse(BaseYouTubeModel):
         "view_count", "subscriber_count", "video_count", mode="before"
     )
     @classmethod
-    def parse_count(cls, v: Any) -> Optional[int]:
+    def parse_count(cls, v: Any) -> int | None:
         """Parse count from string or int."""
         if v is None:
             return None
@@ -638,12 +638,12 @@ class VideoContentDetails(BaseYouTubeModel):
         alias="licensedContent",
         description="Whether video is licensed content",
     )
-    region_restriction: Optional[RegionRestriction] = Field(
+    region_restriction: RegionRestriction | None = Field(
         default=None,
         alias="regionRestriction",
         description="Region restrictions for the video",
     )
-    content_rating: Optional[dict[str, Any]] = Field(
+    content_rating: dict[str, Any] | None = Field(
         default=None,
         alias="contentRating",
         description="Content ratings from various systems",
@@ -685,14 +685,14 @@ class PlaylistItemContentDetails(BaseYouTubeModel):
     """
 
     video_id: str = Field(alias="videoId", description="ID of the video")
-    start_at: Optional[str] = Field(
+    start_at: str | None = Field(
         default=None, alias="startAt", description="Video start time (ISO 8601)"
     )
-    end_at: Optional[str] = Field(
+    end_at: str | None = Field(
         default=None, alias="endAt", description="Video end time (ISO 8601)"
     )
-    note: Optional[str] = Field(default=None, description="User note for the item")
-    video_published_at: Optional[datetime] = Field(
+    note: str | None = Field(default=None, description="User note for the item")
+    video_published_at: datetime | None = Field(
         default=None,
         alias="videoPublishedAt",
         description="When the video was published",
@@ -716,12 +716,12 @@ class VideoStatus(BaseYouTubeModel):
         alias="uploadStatus",
         description="Upload status (processed, uploaded, etc.)",
     )
-    failure_reason: Optional[str] = Field(
+    failure_reason: str | None = Field(
         default=None,
         alias="failureReason",
         description="Reason for upload failure if any",
     )
-    rejection_reason: Optional[str] = Field(
+    rejection_reason: str | None = Field(
         default=None,
         alias="rejectionReason",
         description="Reason for video rejection if any",
@@ -731,7 +731,7 @@ class VideoStatus(BaseYouTubeModel):
         alias="privacyStatus",
         description="Privacy status (public, unlisted, private)",
     )
-    publish_at: Optional[datetime] = Field(
+    publish_at: datetime | None = Field(
         default=None,
         alias="publishAt",
         description="Scheduled publish time",
@@ -751,7 +751,7 @@ class VideoStatus(BaseYouTubeModel):
         alias="madeForKids",
         description="Whether video is made for kids",
     )
-    self_declared_made_for_kids: Optional[bool] = Field(
+    self_declared_made_for_kids: bool | None = Field(
         default=None,
         alias="selfDeclaredMadeForKids",
         description="Creator's made for kids declaration",
@@ -794,12 +794,12 @@ class ChannelStatus(BaseYouTubeModel):
         alias="longUploadsStatus",
         description="Whether long uploads are allowed",
     )
-    made_for_kids: Optional[bool] = Field(
+    made_for_kids: bool | None = Field(
         default=None,
         alias="madeForKids",
         description="Whether channel is made for kids",
     )
-    self_declared_made_for_kids: Optional[bool] = Field(
+    self_declared_made_for_kids: bool | None = Field(
         default=None,
         alias="selfDeclaredMadeForKids",
         description="Creator's made for kids declaration",
@@ -821,28 +821,28 @@ class YouTubeVideoResponse(BaseYouTubeModel):
     kind: str = Field(default="youtube#video", description="Resource type")
     etag: str = Field(default="", description="ETag for caching")
     id: str = Field(description="Video ID")
-    snippet: Optional[VideoSnippet] = Field(
+    snippet: VideoSnippet | None = Field(
         default=None, description="Basic video metadata"
     )
-    content_details: Optional[VideoContentDetails] = Field(
+    content_details: VideoContentDetails | None = Field(
         default=None, alias="contentDetails", description="Technical video details"
     )
-    statistics: Optional[VideoStatisticsResponse] = Field(
+    statistics: VideoStatisticsResponse | None = Field(
         default=None, description="Video statistics"
     )
-    status: Optional[VideoStatus] = Field(
+    status: VideoStatus | None = Field(
         default=None, description="Video status information"
     )
-    topic_details: Optional[TopicDetails] = Field(
+    topic_details: TopicDetails | None = Field(
         default=None, alias="topicDetails", description="Topic classification"
     )
-    localizations: Optional[dict[str, LocalizedString]] = Field(
+    localizations: dict[str, LocalizedString] | None = Field(
         default=None, description="Localized versions"
     )
 
     @field_validator("localizations", mode="before")
     @classmethod
-    def parse_localizations(cls, v: Any) -> Optional[dict[str, LocalizedString]]:
+    def parse_localizations(cls, v: Any) -> dict[str, LocalizedString] | None:
         """Parse localizations dictionary from API response."""
         if not v:
             return None
@@ -867,22 +867,22 @@ class YouTubeChannelResponse(BaseYouTubeModel):
     kind: str = Field(default="youtube#channel", description="Resource type")
     etag: str = Field(default="", description="ETag for caching")
     id: str = Field(description="Channel ID")
-    snippet: Optional[ChannelSnippet] = Field(
+    snippet: ChannelSnippet | None = Field(
         default=None, description="Basic channel metadata"
     )
-    content_details: Optional[ChannelContentDetails] = Field(
+    content_details: ChannelContentDetails | None = Field(
         default=None, alias="contentDetails", description="Related playlists"
     )
-    statistics: Optional[ChannelStatisticsResponse] = Field(
+    statistics: ChannelStatisticsResponse | None = Field(
         default=None, description="Channel statistics"
     )
-    status: Optional[ChannelStatus] = Field(
+    status: ChannelStatus | None = Field(
         default=None, description="Channel status information"
     )
-    topic_details: Optional[TopicDetails] = Field(
+    topic_details: TopicDetails | None = Field(
         default=None, alias="topicDetails", description="Topic classification"
     )
-    branding_settings: Optional[dict[str, Any]] = Field(
+    branding_settings: dict[str, Any] | None = Field(
         default=None, alias="brandingSettings", description="Branding settings"
     )
 
@@ -897,22 +897,22 @@ class YouTubePlaylistResponse(BaseYouTubeModel):
     kind: str = Field(default="youtube#playlist", description="Resource type")
     etag: str = Field(default="", description="ETag for caching")
     id: str = Field(description="Playlist ID")
-    snippet: Optional[PlaylistSnippet] = Field(
+    snippet: PlaylistSnippet | None = Field(
         default=None, description="Basic playlist metadata"
     )
-    content_details: Optional[PlaylistContentDetails] = Field(
+    content_details: PlaylistContentDetails | None = Field(
         default=None, alias="contentDetails", description="Item count"
     )
-    status: Optional[PlaylistStatus] = Field(
+    status: PlaylistStatus | None = Field(
         default=None, description="Playlist status information"
     )
-    localizations: Optional[dict[str, LocalizedString]] = Field(
+    localizations: dict[str, LocalizedString] | None = Field(
         default=None, description="Localized versions"
     )
 
     @field_validator("localizations", mode="before")
     @classmethod
-    def parse_localizations(cls, v: Any) -> Optional[dict[str, LocalizedString]]:
+    def parse_localizations(cls, v: Any) -> dict[str, LocalizedString] | None:
         """Parse localizations dictionary from API response."""
         if not v:
             return None
@@ -937,13 +937,13 @@ class YouTubePlaylistItemResponse(BaseYouTubeModel):
     kind: str = Field(default="youtube#playlistItem", description="Resource type")
     etag: str = Field(default="", description="ETag for caching")
     id: str = Field(description="Playlist item ID")
-    snippet: Optional[PlaylistItemSnippet] = Field(
+    snippet: PlaylistItemSnippet | None = Field(
         default=None, description="Playlist item metadata"
     )
-    content_details: Optional[PlaylistItemContentDetails] = Field(
+    content_details: PlaylistItemContentDetails | None = Field(
         default=None, alias="contentDetails", description="Video ID and timing"
     )
-    status: Optional[PlaylistStatus] = Field(
+    status: PlaylistStatus | None = Field(
         default=None, description="Item status information"
     )
 
@@ -958,7 +958,7 @@ class YouTubeSearchResponse(BaseYouTubeModel):
     kind: str = Field(default="youtube#searchResult", description="Resource type")
     etag: str = Field(default="", description="ETag for caching")
     id: ResourceId = Field(description="Identifies the result resource")
-    snippet: Optional[SearchSnippet] = Field(
+    snippet: SearchSnippet | None = Field(
         default=None, description="Search result metadata"
     )
 
@@ -973,7 +973,7 @@ class YouTubeCaptionResponse(BaseYouTubeModel):
     kind: str = Field(default="youtube#caption", description="Resource type")
     etag: str = Field(default="", description="ETag for caching")
     id: str = Field(description="Caption track ID")
-    snippet: Optional[CaptionSnippet] = Field(
+    snippet: CaptionSnippet | None = Field(
         default=None, description="Caption track metadata"
     )
 
@@ -988,15 +988,15 @@ class YouTubeSubscriptionResponse(BaseYouTubeModel):
     kind: str = Field(default="youtube#subscription", description="Resource type")
     etag: str = Field(default="", description="ETag for caching")
     id: str = Field(description="Subscription ID")
-    snippet: Optional[SubscriptionSnippet] = Field(
+    snippet: SubscriptionSnippet | None = Field(
         default=None, description="Subscription metadata"
     )
-    subscriber_snippet: Optional[dict[str, Any]] = Field(
+    subscriber_snippet: dict[str, Any] | None = Field(
         default=None,
         alias="subscriberSnippet",
         description="Subscriber channel info",
     )
-    content_details: Optional[dict[str, Any]] = Field(
+    content_details: dict[str, Any] | None = Field(
         default=None,
         alias="contentDetails",
         description="Subscription content details",
@@ -1013,7 +1013,7 @@ class YouTubeVideoCategoryResponse(BaseYouTubeModel):
     kind: str = Field(default="youtube#videoCategory", description="Resource type")
     etag: str = Field(default="", description="ETag for caching")
     id: str = Field(description="Category ID")
-    snippet: Optional[CategorySnippet] = Field(
+    snippet: CategorySnippet | None = Field(
         default=None, description="Category metadata"
     )
 

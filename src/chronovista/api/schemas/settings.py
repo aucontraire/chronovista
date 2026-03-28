@@ -8,7 +8,6 @@ multi-language transcript downloads.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -32,8 +31,8 @@ class CacheStatusResponse(BaseModel):
     total_count: int
     total_size_bytes: int
     total_size_display: str
-    oldest_file: Optional[datetime] = None
-    newest_file: Optional[datetime] = None
+    oldest_file: datetime | None = None
+    newest_file: datetime | None = None
 
 
 class CachePurgeResponse(BaseModel):
@@ -66,7 +65,7 @@ class AppInfoResponse(BaseModel):
     backend_version: str
     frontend_version: str
     database_stats: DatabaseStats
-    sync_timestamps: dict[str, Optional[datetime]]
+    sync_timestamps: dict[str, datetime | None]
 
 
 class TranscriptDownloadResult(BaseModel):

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Optional, Set
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,7 +40,7 @@ class ChannelSeeder(BaseSeeder):
         self,
         session: AsyncSession,
         takeout_data: TakeoutData,
-        progress: Optional[ProgressCallback] = None,
+        progress: ProgressCallback | None = None,
     ) -> SeedResult:
         """Seed channels from subscriptions and watch history."""
         start_time = datetime.now()
@@ -82,7 +81,7 @@ class ChannelSeeder(BaseSeeder):
         self,
         session: AsyncSession,
         subscriptions: list[TakeoutSubscription],
-        progress: Optional[ProgressCallback],
+        progress: ProgressCallback | None,
     ) -> SeedResult:
         """Seed channels from subscription data (Phase 1).
 
@@ -161,7 +160,7 @@ class ChannelSeeder(BaseSeeder):
         self,
         session: AsyncSession,
         watch_history: list[TakeoutWatchEntry],
-        progress: Optional[ProgressCallback],
+        progress: ProgressCallback | None,
     ) -> SeedResult:
         """Seed additional channels from watch history (Phase 2).
 
@@ -245,7 +244,7 @@ class ChannelSeeder(BaseSeeder):
 
     def _transform_subscription_to_channel(
         self, subscription: TakeoutSubscription
-    ) -> Optional[ChannelCreate]:
+    ) -> ChannelCreate | None:
         """Transform subscription data to ChannelCreate model.
 
         Returns None if subscription has no real channel_id (we don't generate fake IDs).
@@ -271,7 +270,7 @@ class ChannelSeeder(BaseSeeder):
 
     def _transform_watch_entry_to_channel(
         self, entry: TakeoutWatchEntry
-    ) -> Optional[ChannelCreate]:
+    ) -> ChannelCreate | None:
         """Transform watch entry to ChannelCreate model.
 
         Returns None if entry has no real channel_id (we don't generate fake IDs).

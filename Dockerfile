@@ -9,8 +9,8 @@ WORKDIR /build
 
 COPY pyproject.toml poetry.lock ./
 
-# Export base dependencies (excluding dev, docs, recovery groups)
-RUN poetry export -f requirements.txt --without dev,docs,recovery --output requirements.txt
+# Export base dependencies (excluding dev and docs groups)
+RUN poetry export -f requirements.txt --without dev,docs --output requirements.txt
 
 # Optionally include NLP dependencies
 ARG INCLUDE_NLP=false

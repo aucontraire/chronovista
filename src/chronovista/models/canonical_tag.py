@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -28,7 +27,7 @@ class CanonicalTagBase(BaseModel):
         max_length=500,
         description="Machine key (lowercased, accent-folded)",
     )
-    entity_type: Optional[EntityType] = Field(
+    entity_type: EntityType | None = Field(
         default=None, description="Entity type classification (nullable)"
     )
     status: TagStatus = Field(
@@ -47,10 +46,10 @@ class CanonicalTagCreate(CanonicalTagBase):
     video_count: int = Field(
         default=0, ge=0, description="Number of videos using this tag"
     )
-    entity_id: Optional[uuid.UUID] = Field(
+    entity_id: uuid.UUID | None = Field(
         default=None, description="Link to named entity"
     )
-    merged_into_id: Optional[uuid.UUID] = Field(
+    merged_into_id: uuid.UUID | None = Field(
         default=None, description="Target tag ID if merged"
     )
 
@@ -67,18 +66,18 @@ class CanonicalTagCreate(CanonicalTagBase):
 class CanonicalTagUpdate(BaseModel):
     """Model for updating canonical tags (PATCH-style, all fields optional)."""
 
-    canonical_form: Optional[str] = Field(
+    canonical_form: str | None = Field(
         default=None, min_length=1, max_length=500
     )
-    normalized_form: Optional[str] = Field(
+    normalized_form: str | None = Field(
         default=None, min_length=1, max_length=500
     )
-    entity_type: Optional[EntityType] = None
-    status: Optional[TagStatus] = None
-    alias_count: Optional[int] = Field(default=None, ge=0)
-    video_count: Optional[int] = Field(default=None, ge=0)
-    entity_id: Optional[uuid.UUID] = None
-    merged_into_id: Optional[uuid.UUID] = None
+    entity_type: EntityType | None = None
+    status: TagStatus | None = None
+    alias_count: int | None = Field(default=None, ge=0)
+    video_count: int | None = Field(default=None, ge=0)
+    entity_id: uuid.UUID | None = None
+    merged_into_id: uuid.UUID | None = None
 
     model_config = ConfigDict(
         validate_assignment=True,
@@ -93,10 +92,10 @@ class CanonicalTag(CanonicalTagBase):
     video_count: int = Field(
         ..., ge=0, description="Number of videos using this tag"
     )
-    entity_id: Optional[uuid.UUID] = Field(
+    entity_id: uuid.UUID | None = Field(
         default=None, description="Link to named entity"
     )
-    merged_into_id: Optional[uuid.UUID] = Field(
+    merged_into_id: uuid.UUID | None = Field(
         default=None, description="Target tag ID if merged"
     )
     created_at: datetime = Field(..., description="When the record was created")

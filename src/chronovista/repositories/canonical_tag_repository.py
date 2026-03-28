@@ -8,12 +8,12 @@ deduplicated form of video tags with lifecycle management and merge tracking.
 from __future__ import annotations
 
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import desc, distinct, exists, func, or_, select
-from sqlalchemy.sql import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.sql import Select
 
 from chronovista.db.models import CanonicalTag as CanonicalTagDB
 from chronovista.db.models import TagAlias as TagAliasDB
@@ -39,7 +39,7 @@ class CanonicalTagRepository(
 
     async def get(
         self, session: AsyncSession, id: uuid.UUID
-    ) -> Optional[CanonicalTagDB]:
+    ) -> CanonicalTagDB | None:
         """Get canonical tag by UUID primary key."""
         result = await session.execute(
             select(CanonicalTagDB).where(CanonicalTagDB.id == id)

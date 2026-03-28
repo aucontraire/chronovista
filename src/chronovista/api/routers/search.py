@@ -1,6 +1,5 @@
 """Search endpoints for transcript segment search."""
 
-from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import and_, func, or_, select
@@ -8,15 +7,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from chronovista.api.deps import get_db, require_auth
-from chronovista.api.routers.responses import LIST_ERRORS, BAD_REQUEST_RESPONSE, UNAUTHORIZED_RESPONSE, INTERNAL_ERROR_RESPONSE
+from chronovista.api.routers.responses import (
+    BAD_REQUEST_RESPONSE,
+    INTERNAL_ERROR_RESPONSE,
+    LIST_ERRORS,
+    UNAUTHORIZED_RESPONSE,
+)
 from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.search import (
+    DescriptionSearchResponse,
+    DescriptionSearchResult,
     SearchResponse,
     SearchResultSegment,
     TitleSearchResponse,
     TitleSearchResult,
-    DescriptionSearchResponse,
-    DescriptionSearchResult,
 )
 from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import TranscriptSegment as SegmentDB
@@ -25,7 +29,6 @@ from chronovista.db.models import VideoTranscript as TranscriptDB
 from chronovista.exceptions import BadRequestError
 from chronovista.models.enums import AvailabilityStatus
 from chronovista.repositories.transcript_segment_repository import _escape_like_pattern
-
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -39,7 +42,7 @@ def _display_text(seg: "SegmentDB") -> str:
     return seg.text
 
 
-def count_query_matches(text: str, query_terms: List[str]) -> int:
+def count_query_matches(text: str, query_terms: list[str]) -> int:
     """
     Count how many query terms appear in the text.
 
@@ -64,10 +67,10 @@ async def search_segments(
     q: str = Query(
         ..., min_length=2, max_length=500, description="Search query (2-500 characters)"
     ),
-    video_id: Optional[str] = Query(
+    video_id: str | None = Query(
         None, min_length=11, max_length=11, description="Limit to specific video"
     ),
-    language: Optional[str] = Query(None, description="Limit to specific language"),
+    language: str | None = Query(None, description="Limit to specific language"),
     include_unavailable: bool = Query(
         False,
         description="Include unavailable records in results",
@@ -207,11 +210,11 @@ async def search_segments(
     rows = result.all()
 
     # Build response items with context
-    items: List[SearchResultSegment] = []
-    for segment, transcript, video, channel in rows:
+    items: list[SearchResultSegment] = []
+    for segment, _transcript, video, channel in rows:
         # Get adjacent segments for context
-        context_before: Optional[str] = None
-        context_after: Optional[str] = None
+        context_before: str | None = None
+        context_after: str | None = None
 
         # Previous segment
         prev_query = (
@@ -485,7 +488,7 @@ async def search_descriptions(
     escaped_query = _escape_like_pattern(query_text)
 
     # Build conditions for reuse
-    conditions: List[ColumnElement[bool]] = [VideoDB.description.isnot(None)]
+    conditions: list[ColumnElement[bool]] = [VideoDB.description.isnot(None)]
     # Apply availability filter unless include_unavailable is True
     if not include_unavailable:
         conditions.append(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)

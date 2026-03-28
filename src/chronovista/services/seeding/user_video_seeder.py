@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,7 +35,7 @@ class UserVideoSeeder(BaseSeeder):
         self,
         session: AsyncSession,
         takeout_data: TakeoutData,
-        progress: Optional[ProgressCallback] = None,
+        progress: ProgressCallback | None = None,
     ) -> SeedResult:
         """Seed user-video relationships from watch history."""
         start_time = datetime.now()
@@ -99,7 +99,7 @@ class UserVideoSeeder(BaseSeeder):
 
         return result
 
-    def _transform_entry(self, entry: Any) -> Optional[UserVideoCreate]:
+    def _transform_entry(self, entry: Any) -> UserVideoCreate | None:
         """Transform watch entry into UserVideo create model.
 
         IMPORTANT: Only process entries with real video IDs.

@@ -20,9 +20,8 @@ The migration supports transcript timestamp preservation per feature 007.
 from __future__ import annotations
 
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
-
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = "b67b55651f2f"

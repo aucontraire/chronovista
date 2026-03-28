@@ -12,10 +12,10 @@ FR-018, NFR-005).
 from __future__ import annotations
 
 import datetime
-from typing import Any, Optional, Union
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, case, distinct, func, literal, select
+from sqlalchemy import and_, case, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
@@ -65,7 +65,7 @@ class TranscriptCorrectionRepository(
         session: AsyncSession,
         *,
         db_obj: TranscriptCorrectionDB,
-        obj_in: Union[TranscriptCorrectionCreate, dict[str, Any]],
+        obj_in: TranscriptCorrectionCreate | dict[str, Any],
     ) -> TranscriptCorrectionDB:
         """Raise unconditionally — corrections are immutable.
 
@@ -83,7 +83,7 @@ class TranscriptCorrectionRepository(
         session: AsyncSession,
         *,
         id: UUID,
-    ) -> Optional[TranscriptCorrectionDB]:
+    ) -> TranscriptCorrectionDB | None:
         """Raise unconditionally — corrections are immutable.
 
         Raises
@@ -103,7 +103,7 @@ class TranscriptCorrectionRepository(
         self,
         session: AsyncSession,
         id: UUID,
-    ) -> Optional[TranscriptCorrectionDB]:
+    ) -> TranscriptCorrectionDB | None:
         """
         Get a correction by its UUID primary key.
 
@@ -298,10 +298,10 @@ class TranscriptCorrectionRepository(
         self,
         session: AsyncSession,
         *,
-        video_ids: Optional[list[str]] = None,
-        correction_type: Optional[CorrectionType] = None,
-        since: Optional[datetime.datetime] = None,
-        until: Optional[datetime.datetime] = None,
+        video_ids: list[str] | None = None,
+        correction_type: CorrectionType | None = None,
+        since: datetime.datetime | None = None,
+        until: datetime.datetime | None = None,
     ) -> list[TranscriptCorrectionDB]:
         """
         Get corrections matching the provided filters.
@@ -367,7 +367,7 @@ class TranscriptCorrectionRepository(
         self,
         session: AsyncSession,
         *,
-        language: Optional[str] = None,
+        language: str | None = None,
         top: int = 10,
     ) -> dict[str, Any]:
         """

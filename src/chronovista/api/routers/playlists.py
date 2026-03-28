@@ -8,7 +8,6 @@ and video listing with position ordering.
 from __future__ import annotations
 
 from enum import Enum
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy import func, select
@@ -29,10 +28,15 @@ from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.sorting import SortOrder
 from chronovista.api.schemas.videos import TranscriptSummary
 from chronovista.db.models import Playlist as PlaylistDB
-from chronovista.db.models import PlaylistMembership, TranscriptSegment, UserVideo, Video as VideoDB, VideoTranscript
+from chronovista.db.models import (
+    PlaylistMembership,
+    TranscriptSegment,
+    UserVideo,
+    VideoTranscript,
+)
+from chronovista.db.models import Video as VideoDB
 from chronovista.exceptions import BadRequestError, NotFoundError
 from chronovista.models.enums import AvailabilityStatus
-
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -54,7 +58,7 @@ class PlaylistVideoSortField(str, Enum):
 
 
 def build_transcript_summary(
-    transcripts: List[VideoTranscript],
+    transcripts: list[VideoTranscript],
     has_corrections: bool = False,
 ) -> TranscriptSummary:
     """Build transcript summary from transcript list.
@@ -90,11 +94,11 @@ def build_transcript_summary(
 @router.get("/playlists", response_model=PlaylistListResponse, responses=LIST_ERRORS)
 async def list_playlists(
     session: AsyncSession = Depends(get_db),
-    linked: Optional[bool] = Query(
+    linked: bool | None = Query(
         None,
         description="Filter for YouTube-linked playlists (PL/LL/WL/HL prefix)",
     ),
-    unlinked: Optional[bool] = Query(
+    unlinked: bool | None = Query(
         None,
         description="Filter for internal playlists (int_ prefix)",
     ),
@@ -473,7 +477,7 @@ async def get_playlist_videos(
         }
 
     # Transform to response items
-    items: List[PlaylistVideoListItem] = []
+    items: list[PlaylistVideoListItem] = []
     for membership, video in rows:
         transcript_summary = build_transcript_summary(
             list(video.transcripts),

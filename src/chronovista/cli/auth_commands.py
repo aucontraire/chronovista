@@ -4,6 +4,8 @@ Authentication CLI commands for chronovista.
 
 from __future__ import annotations
 
+from datetime import UTC
+
 import typer
 from rich.console import Console
 from rich.panel import Panel
@@ -86,10 +88,10 @@ def login() -> None:
         expires_str = "Unknown"
         if token_info.get("expires_in"):
             try:
-                from datetime import datetime, timezone
+                from datetime import datetime
 
                 expires_timestamp = float(token_info["expires_in"])
-                expires_dt = datetime.fromtimestamp(expires_timestamp, tz=timezone.utc)
+                expires_dt = datetime.fromtimestamp(expires_timestamp, tz=UTC)
                 expires_str = expires_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
             except (ValueError, TypeError):
                 expires_str = str(token_info["expires_in"])
@@ -263,7 +265,7 @@ def refresh() -> None:
 
         # Get authenticated service (this will trigger refresh if needed)
         console.print("[blue]🔄 Refreshing authentication tokens...[/blue]")
-        service = youtube_oauth.get_authenticated_service()
+        youtube_oauth.get_authenticated_service()
 
         console.print(
             Panel(

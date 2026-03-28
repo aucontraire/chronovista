@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import exists, select, text
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
@@ -134,8 +134,8 @@ class TranscriptCorrectionService:
         # Step 3: No-op prevention
         if corrected_text == effective_text:
             raise ValueError(
-                f"corrected_text is identical to the segment's current "
-                f"effective text — no-op corrections are not permitted"
+                "corrected_text is identical to the segment's current "
+                "effective text — no-op corrections are not permitted"
             )
 
         # Step 4: Get latest version (acquires FOR UPDATE lock)
@@ -175,7 +175,7 @@ class TranscriptCorrectionService:
         if transcript is not None:
             transcript.has_corrections = True
             transcript.correction_count = transcript.correction_count + 1
-            transcript.last_corrected_at = datetime.now(tz=timezone.utc)
+            transcript.last_corrected_at = datetime.now(tz=UTC)
             await session.flush()
 
         # Step 10: Emit structured INFO log (NFR-006)
@@ -316,7 +316,7 @@ class TranscriptCorrectionService:
         )
         if transcript is not None:
             # FR-014c: a revert is always a correction event
-            transcript.last_corrected_at = datetime.now(tz=timezone.utc)
+            transcript.last_corrected_at = datetime.now(tz=UTC)
 
             if is_revert_to_original:
                 # FR-014a: decrement correction_count (one fewer active correction)

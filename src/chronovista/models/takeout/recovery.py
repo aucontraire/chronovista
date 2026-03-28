@@ -6,11 +6,10 @@ These models support the gap-fill functionality that enriches placeholder videos
 with real metadata from historical takeout data.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Dict, List, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 
 class HistoricalTakeout(BaseModel):
@@ -44,10 +43,10 @@ class RecoveredVideoMetadata(BaseModel):
 
     video_id: str = Field(..., description="YouTube video ID")
     title: str = Field(..., description="Video title from historical takeout")
-    channel_name: Optional[str] = Field(default=None, description="Channel name from takeout")
-    channel_id: Optional[str] = Field(default=None, description="Channel ID if available")
-    channel_url: Optional[str] = Field(default=None, description="Channel URL from takeout")
-    watched_at: Optional[datetime] = Field(default=None, description="When the video was watched")
+    channel_name: str | None = Field(default=None, description="Channel name from takeout")
+    channel_id: str | None = Field(default=None, description="Channel ID if available")
+    channel_url: str | None = Field(default=None, description="Channel URL from takeout")
+    watched_at: datetime | None = Field(default=None, description="When the video was watched")
     source_takeout: Path = Field(..., description="Path to source takeout directory")
     source_date: datetime = Field(
         ..., description="Export date of source takeout"
@@ -64,7 +63,7 @@ class RecoveredChannelMetadata(BaseModel):
 
     channel_id: str = Field(..., description="YouTube channel ID")
     channel_name: str = Field(..., description="Channel name from takeout")
-    channel_url: Optional[str] = Field(default=None, description="Channel URL from takeout")
+    channel_url: str | None = Field(default=None, description="Channel URL from takeout")
     source_takeout: Path = Field(..., description="Path to source takeout directory")
     source_date: datetime = Field(
         ..., description="Export date of source takeout"
@@ -89,7 +88,7 @@ class RecoveryCandidate(BaseModel):
     is_placeholder: bool = Field(
         default=False, description="Whether current title is a placeholder"
     )
-    channel_id: Optional[str] = Field(default=None, description="Current channel ID if known")
+    channel_id: str | None = Field(default=None, description="Current channel ID if known")
     channel_is_placeholder: bool = Field(
         default=False, description="Whether channel is a placeholder"
     )
@@ -106,9 +105,9 @@ class VideoRecoveryAction(BaseModel):
     video_id: str = Field(..., description="YouTube video ID")
     old_title: str = Field(..., description="Current placeholder title")
     new_title: str = Field(..., description="Recovered actual title")
-    old_channel_id: Optional[str] = Field(default=None, description="Current channel ID")
-    new_channel_id: Optional[str] = Field(default=None, description="Recovered channel ID")
-    channel_name: Optional[str] = Field(default=None, description="Recovered channel name")
+    old_channel_id: str | None = Field(default=None, description="Current channel ID")
+    new_channel_id: str | None = Field(default=None, description="Recovered channel ID")
+    channel_name: str | None = Field(default=None, description="Recovered channel name")
     source_date: datetime = Field(
         ..., description="Date of source takeout"
     )
@@ -127,7 +126,7 @@ class ChannelRecoveryAction(BaseModel):
 
     channel_id: str = Field(..., description="YouTube channel ID")
     channel_name: str = Field(..., description="Channel name from takeout")
-    channel_url: Optional[str] = Field(default=None, description="Channel URL from takeout")
+    channel_url: str | None = Field(default=None, description="Channel URL from takeout")
     action_type: str = Field(
         default="create", description="Type of action: create, update_name"
     )
@@ -160,40 +159,40 @@ class RecoveryResult(BaseModel):
     takeouts_scanned: int = Field(
         default=0, description="Number of historical takeouts scanned"
     )
-    oldest_takeout_date: Optional[datetime] = Field(
+    oldest_takeout_date: datetime | None = Field(
         default=None, description="Date of oldest takeout found"
     )
-    newest_takeout_date: Optional[datetime] = Field(
+    newest_takeout_date: datetime | None = Field(
         default=None, description="Date of newest takeout found"
     )
 
     # Detailed actions (for verbose output or dry-run)
-    video_actions: List[VideoRecoveryAction] = Field(
+    video_actions: list[VideoRecoveryAction] = Field(
         default_factory=list, description="List of video recovery actions"
     )
-    channel_actions: List[ChannelRecoveryAction] = Field(
+    channel_actions: list[ChannelRecoveryAction] = Field(
         default_factory=list, description="List of channel recovery actions"
     )
-    videos_not_recovered: List[str] = Field(
+    videos_not_recovered: list[str] = Field(
         default_factory=list, description="Video IDs that could not be recovered"
     )
 
     # Processing metadata
     dry_run: bool = Field(default=False, description="Whether this was a dry run")
     started_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="When recovery started",
     )
-    completed_at: Optional[datetime] = Field(
+    completed_at: datetime | None = Field(
         default=None, description="When recovery completed"
     )
-    errors: List[str] = Field(
+    errors: list[str] = Field(
         default_factory=list, description="Any errors encountered during recovery"
     )
 
     def mark_complete(self) -> None:
         """Mark the recovery operation as complete."""
-        self.completed_at = datetime.now(timezone.utc)
+        self.completed_at = datetime.now(UTC)
 
     def add_error(self, error: str) -> None:
         """Add an error message."""
@@ -265,7 +264,7 @@ def is_placeholder_channel_name(name: str) -> bool:
     )
 
 
-def extract_video_id_from_placeholder(title: str) -> Optional[str]:
+def extract_video_id_from_placeholder(title: str) -> str | None:
     """
     Extract video ID from a placeholder title.
 

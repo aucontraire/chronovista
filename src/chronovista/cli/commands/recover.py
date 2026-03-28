@@ -11,9 +11,6 @@ dry-run mode for preview, and detailed summary reports.
 from __future__ import annotations
 
 import asyncio
-import sys
-from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -24,10 +21,9 @@ from rich.table import Table
 from chronovista.config.database import db_manager
 from chronovista.config.settings import settings
 from chronovista.exceptions import (
-    CDXError,
     EXIT_CODE_NETWORK_ERROR,
+    CDXError,
     PageParseError,
-    RecoveryDependencyError,
 )
 from chronovista.models.enums import AvailabilityStatus
 from chronovista.repositories.video_repository import VideoRepository
@@ -57,7 +53,7 @@ recover_app = typer.Typer(
 
 @recover_app.command(name="video")
 def recover_video_command(
-    video_id: Optional[str] = typer.Option(
+    video_id: str | None = typer.Option(
         None,
         "--video-id",
         "-v",
@@ -69,7 +65,7 @@ def recover_video_command(
         "-a",
         help="Recover all unavailable videos",
     ),
-    limit: Optional[int] = typer.Option(
+    limit: int | None = typer.Option(
         None,
         "--limit",
         "-l",
@@ -87,14 +83,14 @@ def recover_video_command(
         help="Delay in seconds between videos (batch mode only)",
         min=0.0,
     ),
-    start_year: Optional[int] = typer.Option(
+    start_year: int | None = typer.Option(
         None,
         "--start-year",
         help="Only search Wayback snapshots from this year onward (e.g., 2018).",
         min=2005,
         max=2026,
     ),
-    end_year: Optional[int] = typer.Option(
+    end_year: int | None = typer.Option(
         None,
         "--end-year",
         help="Only search Wayback snapshots up to this year (e.g., 2020).",
@@ -157,17 +153,17 @@ def recover_video_command(
         asyncio.run(_recover_async(video_id, all_videos, limit, dry_run, delay, start_year, end_year))
     except KeyboardInterrupt:
         console.print("\n[yellow]Recovery interrupted by user[/yellow]")
-        raise typer.Exit(code=130)
+        raise typer.Exit(code=130) from None
 
 
 async def _recover_async(
-    video_id: Optional[str],
+    video_id: str | None,
     all_videos: bool,
-    limit: Optional[int],
+    limit: int | None,
     dry_run: bool,
     delay: float,
-    start_year: Optional[int] = None,
-    end_year: Optional[int] = None,
+    start_year: int | None = None,
+    end_year: int | None = None,
 ) -> None:
     """
     Async implementation of video recovery.
@@ -228,8 +224,8 @@ async def _recover_single_video(
     page_parser: PageParser,
     rate_limiter: RateLimiter,
     dry_run: bool,
-    start_year: Optional[int] = None,
-    end_year: Optional[int] = None,
+    start_year: int | None = None,
+    end_year: int | None = None,
 ) -> None:
     """
     Recover a single video by ID.
@@ -286,10 +282,10 @@ async def _recover_single_video(
 
         except CDXError as e:
             console.print(f"[red]CDX API error: {e.message}[/red]")
-            raise typer.Exit(code=EXIT_CODE_NETWORK_ERROR)
+            raise typer.Exit(code=EXIT_CODE_NETWORK_ERROR) from e
         except PageParseError as e:
             console.print(f"[red]Page parsing error: {e.message}[/red]")
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from e
 
     raise typer.Exit(code=exit_code)
 
@@ -298,11 +294,11 @@ async def _recover_batch(
     cdx_client: CDXClient,
     page_parser: PageParser,
     rate_limiter: RateLimiter,
-    limit: Optional[int],
+    limit: int | None,
     dry_run: bool,
     delay: float,
-    start_year: Optional[int] = None,
-    end_year: Optional[int] = None,
+    start_year: int | None = None,
+    end_year: int | None = None,
 ) -> None:
     """
     Recover all unavailable videos in batch mode.
@@ -327,12 +323,13 @@ async def _recover_batch(
         Only search Wayback snapshots up to this year (default: None).
     """
     # T053: Query unavailable videos
-    video_repo = VideoRepository()
+    VideoRepository()
 
     exit_code = 1
     async for session in db_manager.get_session(echo=False):
         # Query unavailable videos (ordered by unavailability_first_detected ASC NULLS LAST, then created_at ASC)
         from sqlalchemy import asc, select
+
         from chronovista.db.models import Video as VideoDB
 
         stmt = (

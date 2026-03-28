@@ -14,25 +14,31 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from typing import Annotated, List, Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+)
 from rich.table import Table
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 
 from chronovista.config.database import db_manager
 from chronovista.db.models import EntityAlias as EntityAliasDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import TagOperationLog as TagOperationLogDB
+from chronovista.models.entity_alias import EntityAliasCreate
 from chronovista.models.enums import (
     DiscoveryMethod,
     EntityAliasType,
     EntityType,
 )
-from chronovista.models.entity_alias import EntityAliasCreate
 from chronovista.models.named_entity import NamedEntityCreate
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
@@ -77,12 +83,12 @@ def create_entity(
             "event, work, technical_term, concept, other."
         ),
     ),
-    description: Optional[str] = typer.Option(
+    description: str | None = typer.Option(
         None,
         "--description",
         help="Human-readable description of the entity.",
     ),
-    alias: Optional[List[str]] = typer.Option(
+    alias: list[str] | None = typer.Option(
         None,
         "--alias",
         help="Additional alias name (repeatable).",
@@ -116,7 +122,7 @@ def create_entity(
                     border_style="red",
                 )
             )
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from None
 
         # Normalize the name
         normalizer = TagNormalizationService()
@@ -233,7 +239,7 @@ def add_alias(
     entity_name: str = typer.Argument(
         ..., help="Canonical name of the entity to add alias to."
     ),
-    alias: List[str] = typer.Option(
+    alias: list[str] = typer.Option(
         ...,
         "--alias",
         help="Alias name to add (repeatable).",
@@ -344,7 +350,7 @@ def add_alias(
 
 @entity_app.command("list")
 def list_entities(
-    type_str: Optional[str] = typer.Option(
+    type_str: str | None = typer.Option(
         None,
         "--type",
         help="Filter by entity type.",
@@ -352,7 +358,7 @@ def list_entities(
     limit: int = typer.Option(
         50, "--limit", "-l", help="Maximum number of entities to show."
     ),
-    search: Optional[str] = typer.Option(
+    search: str | None = typer.Option(
         None,
         "--search",
         "-q",
@@ -367,7 +373,7 @@ def list_entities(
         typer.Option("--no-mentions", help="Show only entities without mentions"),
     ] = False,
     sort: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--sort", help="Sort by: name (default), mentions"),
     ] = None,
 ) -> None:
@@ -386,7 +392,7 @@ def list_entities(
 
     async def _run() -> None:
         # Validate entity type filter if provided
-        parsed_type: Optional[EntityType] = None
+        parsed_type: EntityType | None = None
         if type_str is not None:
             try:
                 parsed_type = EntityType(type_str)
@@ -400,7 +406,7 @@ def list_entities(
                         border_style="red",
                     )
                 )
-                raise typer.Exit(code=1)
+                raise typer.Exit(code=1) from None
 
         async for session in db_manager.get_session(echo=False):
             # Build query
@@ -533,7 +539,7 @@ def add_exclusion(
     entity_name: str = typer.Argument(
         ..., help="Canonical name of the entity to add exclusion pattern(s) to."
     ),
-    pattern: List[str] = typer.Option(
+    pattern: list[str] = typer.Option(
         ...,
         "--pattern",
         help="Exclusion pattern to add (repeatable).",
@@ -590,7 +596,7 @@ def add_exclusion(
                     raise typer.Exit(code=1)
 
             # Build updated list, checking for duplicates
-            current_patterns: List[str] = list(entity.exclusion_patterns or [])
+            current_patterns: list[str] = list(entity.exclusion_patterns or [])
 
             if len(current_patterns) >= 10:
                 console.print(
@@ -599,7 +605,7 @@ def add_exclusion(
                     f"whether all patterns are still necessary.[/yellow]"
                 )
 
-            added_patterns: List[str] = []
+            added_patterns: list[str] = []
             for pat in pattern:
                 trimmed = pat.strip()
                 if trimmed in current_patterns:
@@ -677,7 +683,7 @@ def remove_exclusion(
                 raise typer.Exit(code=1)
 
             trimmed = pattern.strip()
-            current_patterns: List[str] = list(entity.exclusion_patterns or [])
+            current_patterns: list[str] = list(entity.exclusion_patterns or [])
 
             if trimmed not in current_patterns:
                 console.print(
@@ -825,15 +831,15 @@ def backfill_descriptions(
 @entity_app.command("scan")
 def scan_entities(
     entity_type: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--entity-type", help="Filter by entity type"),
     ] = None,
     video_id: Annotated[
-        Optional[List[str]],
+        list[str] | None,
         typer.Option("--video-id", help="Filter by video ID (repeatable)"),
     ] = None,
     language: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--language", help="Filter by language code"),
     ] = None,
     batch_size: Annotated[
@@ -864,7 +870,7 @@ def scan_entities(
         ),
     ] = False,
     entity_id: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--entity-id", help="Scan for a single entity"),
     ] = None,
 ) -> None:
@@ -888,10 +894,10 @@ def scan_entities(
                     border_style="red",
                 )
             )
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from None
 
     # Validate --entity-id UUID format if provided
-    parsed_entity_uuid: Optional[uuid.UUID] = None
+    parsed_entity_uuid: uuid.UUID | None = None
     if entity_id is not None:
         try:
             parsed_entity_uuid = uuid.UUID(entity_id)
@@ -904,7 +910,7 @@ def scan_entities(
                     border_style="red",
                 )
             )
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from None
 
     session_factory = db_manager.get_session_factory()
     service = EntityMentionScanService(session_factory=session_factory)
@@ -954,9 +960,9 @@ def scan_entities(
             return
 
         # Resolve --entity-id: validate existence and status, then set scan params
-        effective_entity_type: Optional[str] = entity_type
+        effective_entity_type: str | None = entity_type
         effective_new_entities_only: bool = new_entities_only
-        effective_entity_ids: Optional[List[uuid.UUID]] = None
+        effective_entity_ids: list[uuid.UUID] | None = None
 
         if parsed_entity_uuid is not None:
             async for session in db_manager.get_session(echo=False):
@@ -1119,7 +1125,7 @@ def scan_entities(
 @entity_app.command("stats")
 def entity_stats(
     entity_type: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--entity-type", help="Filter statistics by entity type."),
     ] = None,
     top: Annotated[
@@ -1144,7 +1150,7 @@ def entity_stats(
                         border_style="red",
                     )
                 )
-                raise typer.Exit(code=1)
+                raise typer.Exit(code=1) from None
 
         repo = EntityMentionRepository()
 

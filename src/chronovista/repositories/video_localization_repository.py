@@ -7,7 +7,7 @@ multi-language content management, and language analytics.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from sqlalchemy import and_, case, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +16,6 @@ from sqlalchemy.orm import selectinload
 from chronovista.db.models import VideoLocalization as VideoLocalizationDB
 from chronovista.models.enums import LanguageCode
 from chronovista.models.video_localization import (
-    VideoLocalization,
     VideoLocalizationCreate,
     VideoLocalizationSearchFilters,
     VideoLocalizationStatistics,
@@ -30,7 +29,7 @@ class VideoLocalizationRepository(
         VideoLocalizationDB,
         VideoLocalizationCreate,
         VideoLocalizationUpdate,
-        Tuple[str, str],
+        tuple[str, str],
     ]
 ):
     """Repository for video localization operations."""
@@ -39,20 +38,20 @@ class VideoLocalizationRepository(
         super().__init__(VideoLocalizationDB)
 
     async def get(
-        self, session: AsyncSession, id: Tuple[str, str]
-    ) -> Optional[VideoLocalizationDB]:
+        self, session: AsyncSession, id: tuple[str, str]
+    ) -> VideoLocalizationDB | None:
         """Get video localization by composite key tuple (video_id, language_code)."""
         video_id, language_code = id
         return await self.get_by_composite_key(session, video_id, language_code)
 
-    async def exists(self, session: AsyncSession, id: Tuple[str, str]) -> bool:
+    async def exists(self, session: AsyncSession, id: tuple[str, str]) -> bool:
         """Check if video localization exists by composite key tuple (video_id, language_code)."""
         video_id, language_code = id
         return await self.exists_by_composite_key(session, video_id, language_code)
 
     async def get_by_composite_key(
         self, session: AsyncSession, video_id: str, language_code: str
-    ) -> Optional[VideoLocalizationDB]:
+    ) -> VideoLocalizationDB | None:
         """Get video localization by composite key (video_id, language_code)."""
         result = await session.execute(
             select(VideoLocalizationDB).where(
@@ -80,7 +79,7 @@ class VideoLocalizationRepository(
 
     async def get_by_video_id(
         self, session: AsyncSession, video_id: str
-    ) -> List[VideoLocalizationDB]:
+    ) -> list[VideoLocalizationDB]:
         """Get all localizations for a specific video."""
         result = await session.execute(
             select(VideoLocalizationDB)
@@ -91,7 +90,7 @@ class VideoLocalizationRepository(
 
     async def get_by_language_code(
         self, session: AsyncSession, language_code: str, skip: int = 0, limit: int = 100
-    ) -> List[VideoLocalizationDB]:
+    ) -> list[VideoLocalizationDB]:
         """Get all localizations for a specific language."""
         result = await session.execute(
             select(VideoLocalizationDB)
@@ -104,7 +103,7 @@ class VideoLocalizationRepository(
 
     async def get_with_video(
         self, session: AsyncSession, video_id: str, language_code: str
-    ) -> Optional[VideoLocalizationDB]:
+    ) -> VideoLocalizationDB | None:
         """Get video localization with video information loaded."""
         result = await session.execute(
             select(VideoLocalizationDB)
@@ -139,12 +138,12 @@ class VideoLocalizationRepository(
 
     async def search_localizations(
         self, session: AsyncSession, filters: VideoLocalizationSearchFilters
-    ) -> List[VideoLocalizationDB]:
+    ) -> list[VideoLocalizationDB]:
         """Search video localizations with advanced filters."""
         query = select(VideoLocalizationDB)
 
         # Apply filters
-        conditions: List[Any] = []
+        conditions: list[Any] = []
 
         if filters.video_ids:
             conditions.append(VideoLocalizationDB.video_id.in_(filters.video_ids))
@@ -198,7 +197,7 @@ class VideoLocalizationRepository(
 
     async def get_supported_languages(
         self, session: AsyncSession, video_id: str
-    ) -> List[str]:
+    ) -> list[str]:
         """Get list of languages supported for a specific video."""
         result = await session.execute(
             select(VideoLocalizationDB.language_code)
@@ -209,7 +208,7 @@ class VideoLocalizationRepository(
 
     async def get_videos_by_language(
         self, session: AsyncSession, language_code: str, skip: int = 0, limit: int = 100
-    ) -> List[str]:
+    ) -> list[str]:
         """Get list of video IDs that have localizations in a specific language."""
         result = await session.execute(
             select(VideoLocalizationDB.video_id)
@@ -222,7 +221,7 @@ class VideoLocalizationRepository(
 
     async def get_multilingual_videos(
         self, session: AsyncSession, min_languages: int = 2
-    ) -> List[Tuple[str, int]]:
+    ) -> list[tuple[str, int]]:
         """Get videos that have localizations in multiple languages."""
         result = await session.execute(
             select(
@@ -235,7 +234,7 @@ class VideoLocalizationRepository(
         )
         return [(row[0], row[1]) for row in result]
 
-    async def get_language_coverage(self, session: AsyncSession) -> Dict[str, int]:
+    async def get_language_coverage(self, session: AsyncSession) -> dict[str, int]:
         """Get the number of videos available in each language."""
         result = await session.execute(
             select(
@@ -250,9 +249,9 @@ class VideoLocalizationRepository(
     async def find_missing_localizations(
         self,
         session: AsyncSession,
-        target_languages: List[str],
-        video_ids: Optional[List[str]] = None,
-    ) -> Dict[str, List[str]]:
+        target_languages: list[str],
+        video_ids: list[str] | None = None,
+    ) -> dict[str, list[str]]:
         """Find videos that are missing localizations in target languages."""
         query = select(VideoLocalizationDB.video_id, VideoLocalizationDB.language_code)
 
@@ -262,14 +261,14 @@ class VideoLocalizationRepository(
         result = await session.execute(query)
 
         # Build a map of video_id -> available languages
-        video_languages: Dict[str, set[str]] = {}
+        video_languages: dict[str, set[str]] = {}
         for video_id, language_code in result:
             if video_id not in video_languages:
                 video_languages[video_id] = set()
             video_languages[video_id].add(language_code)
 
         # Find missing languages for each video
-        missing_localizations: Dict[str, List[str]] = {}
+        missing_localizations: dict[str, list[str]] = {}
         for video_id, available_languages in video_languages.items():
             missing_languages = [
                 lang for lang in target_languages if lang not in available_languages
@@ -362,8 +361,8 @@ class VideoLocalizationRepository(
         )
 
     async def bulk_create_localizations(
-        self, session: AsyncSession, localizations: List[VideoLocalizationCreate]
-    ) -> List[VideoLocalizationDB]:
+        self, session: AsyncSession, localizations: list[VideoLocalizationCreate]
+    ) -> list[VideoLocalizationDB]:
         """Create multiple video localizations efficiently."""
         created_localizations = []
 
@@ -384,8 +383,8 @@ class VideoLocalizationRepository(
         self,
         session: AsyncSession,
         video_id: str,
-        localizations_data: Dict[str, Dict[str, str]],
-    ) -> List[VideoLocalizationDB]:
+        localizations_data: dict[str, dict[str, str]],
+    ) -> list[VideoLocalizationDB]:
         """Create multiple localizations for a single video efficiently."""
         created_localizations = []
 
@@ -446,7 +445,7 @@ class VideoLocalizationRepository(
 
     async def delete_by_composite_key(
         self, session: AsyncSession, video_id: str, language_code: str
-    ) -> Optional[VideoLocalizationDB]:
+    ) -> VideoLocalizationDB | None:
         """Delete video localization by composite key."""
         localization = await self.get_by_composite_key(session, video_id, language_code)
         if localization:
@@ -457,9 +456,9 @@ class VideoLocalizationRepository(
     async def get_preferred_localizations(
         self,
         session: AsyncSession,
-        video_ids: List[str],
-        preferred_languages: List[str],
-    ) -> Dict[str, Optional[VideoLocalizationDB]]:
+        video_ids: list[str],
+        preferred_languages: list[str],
+    ) -> dict[str, VideoLocalizationDB | None]:
         """Get preferred localizations for videos based on language preference order."""
         if not video_ids or not preferred_languages:
             return {}
@@ -472,14 +471,14 @@ class VideoLocalizationRepository(
         )
 
         # Group localizations by video_id
-        video_localizations: Dict[str, List[VideoLocalizationDB]] = {}
+        video_localizations: dict[str, list[VideoLocalizationDB]] = {}
         for localization in result.scalars().all():
             if localization.video_id not in video_localizations:
                 video_localizations[localization.video_id] = []
             video_localizations[localization.video_id].append(localization)
 
         # Find preferred localization for each video
-        preferred_localizations: Dict[str, Optional[VideoLocalizationDB]] = {}
+        preferred_localizations: dict[str, VideoLocalizationDB | None] = {}
         for video_id in video_ids:
             localizations = video_localizations.get(video_id, [])
             preferred_localization = None
@@ -503,7 +502,7 @@ class VideoLocalizationRepository(
 
     async def find_similar_content(
         self, session: AsyncSession, video_id: str, language_code: str, limit: int = 10
-    ) -> List[Tuple[VideoLocalizationDB, float]]:
+    ) -> list[tuple[VideoLocalizationDB, float]]:
         """Find localizations with similar content based on title similarity."""
         target_localization = await self.get_by_composite_key(
             session, video_id, language_code
@@ -546,7 +545,7 @@ class VideoLocalizationRepository(
 
     async def get_localization_quality_metrics(
         self, session: AsyncSession
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get quality metrics for localizations (placeholder for future ML analysis)."""
         # Basic quality metrics based on content completeness
         metrics = {

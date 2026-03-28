@@ -8,7 +8,7 @@ YouTube analytics database schema.
 from __future__ import annotations
 
 import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
@@ -25,7 +25,8 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func, text
 from uuid_utils import uuid7
@@ -47,27 +48,27 @@ class Channel(Base):
 
     # Channel metadata
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text)
-    subscriber_count: Mapped[Optional[int]] = mapped_column(BigInteger)
-    video_count: Mapped[Optional[int]] = mapped_column(Integer)
-    default_language: Mapped[Optional[str]] = mapped_column(
+    description: Mapped[str | None] = mapped_column(Text)
+    subscriber_count: Mapped[int | None] = mapped_column(BigInteger)
+    video_count: Mapped[int | None] = mapped_column(Integer)
+    default_language: Mapped[str | None] = mapped_column(
         String(10)
     )  # LanguageCode enum value
-    country: Mapped[Optional[str]] = mapped_column(String(2))
-    thumbnail_url: Mapped[Optional[str]] = mapped_column(String(500))
+    country: Mapped[str | None] = mapped_column(String(2))
+    thumbnail_url: Mapped[str | None] = mapped_column(String(500))
 
     # Subscription status
     is_subscribed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Status tracking
     availability_status: Mapped[str] = mapped_column(String(20), default="available")
-    recovered_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+    recovered_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
-    recovery_source: Mapped[Optional[str]] = mapped_column(
+    recovery_source: Mapped[str | None] = mapped_column(
         String(50), nullable=True, default=None
     )
-    unavailability_first_detected: Mapped[Optional[datetime.datetime]] = mapped_column(
+    unavailability_first_detected: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
 
@@ -80,11 +81,11 @@ class Channel(Base):
     )
 
     # Relationships
-    videos: Mapped[list["Video"]] = relationship("Video", back_populates="channel")
-    keywords: Mapped[list["ChannelKeyword"]] = relationship(
+    videos: Mapped[list[Video]] = relationship("Video", back_populates="channel")
+    keywords: Mapped[list[ChannelKeyword]] = relationship(
         "ChannelKeyword", back_populates="channel"
     )
-    channel_topics: Mapped[list["ChannelTopic"]] = relationship(
+    channel_topics: Mapped[list[ChannelTopic]] = relationship(
         "ChannelTopic", back_populates="channel"
     )
 
@@ -123,7 +124,7 @@ class VideoCategory(Base):
     )
 
     # Relationship to videos
-    videos: Mapped[list["Video"]] = relationship("Video", back_populates="category")
+    videos: Mapped[list[Video]] = relationship("Video", back_populates="category")
 
 
 class Video(Base):
@@ -135,13 +136,13 @@ class Video(Base):
     video_id: Mapped[str] = mapped_column(String(20), primary_key=True)
 
     # Foreign keys
-    channel_id: Mapped[Optional[str]] = mapped_column(
+    channel_id: Mapped[str | None] = mapped_column(
         String(24), ForeignKey("channels.channel_id"), nullable=True
     )
-    channel_name_hint: Mapped[Optional[str]] = mapped_column(
+    channel_name_hint: Mapped[str | None] = mapped_column(
         String(255), nullable=True, comment="Original channel name when channel_id is NULL"
     )
-    category_id: Mapped[Optional[str]] = mapped_column(
+    category_id: Mapped[str | None] = mapped_column(
         String(10),
         ForeignKey("video_categories.category_id"),
         nullable=True,
@@ -150,7 +151,7 @@ class Video(Base):
 
     # Video metadata
     title: Mapped[str] = mapped_column(Text, nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
     upload_date: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -163,39 +164,39 @@ class Video(Base):
     self_declared_made_for_kids: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Language support (LanguageCode enum values stored as strings)
-    default_language: Mapped[Optional[str]] = mapped_column(
+    default_language: Mapped[str | None] = mapped_column(
         String(10)
     )  # LanguageCode enum value
-    default_audio_language: Mapped[Optional[str]] = mapped_column(
+    default_audio_language: Mapped[str | None] = mapped_column(
         String(10)
     )  # LanguageCode enum value
-    available_languages: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+    available_languages: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB
     )  # JSONB array of BCP-47 codes
 
     # Regional and content restrictions
-    region_restriction: Mapped[Optional[Dict[str, Union[List[str], str]]]] = (
+    region_restriction: Mapped[dict[str, list[str] | str] | None] = (
         mapped_column(JSONB)
     )
-    content_rating: Mapped[Optional[Dict[str, str]]] = mapped_column(JSONB)
+    content_rating: Mapped[dict[str, str] | None] = mapped_column(JSONB)
 
     # Engagement metrics
-    like_count: Mapped[Optional[int]] = mapped_column(Integer)
-    view_count: Mapped[Optional[int]] = mapped_column(BigInteger)
-    comment_count: Mapped[Optional[int]] = mapped_column(Integer)
+    like_count: Mapped[int | None] = mapped_column(Integer)
+    view_count: Mapped[int | None] = mapped_column(BigInteger)
+    comment_count: Mapped[int | None] = mapped_column(Integer)
 
     # Status tracking
     availability_status: Mapped[str] = mapped_column(String(20), default="available")
-    alternative_url: Mapped[Optional[str]] = mapped_column(
+    alternative_url: Mapped[str | None] = mapped_column(
         String(500), nullable=True, default=None
     )
-    recovered_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+    recovered_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
-    recovery_source: Mapped[Optional[str]] = mapped_column(
+    recovery_source: Mapped[str | None] = mapped_column(
         String(50), nullable=True, default=None
     )
-    unavailability_first_detected: Mapped[Optional[datetime.datetime]] = mapped_column(
+    unavailability_first_detected: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
 
@@ -208,24 +209,24 @@ class Video(Base):
     )
 
     # Relationships
-    channel: Mapped[Optional["Channel"]] = relationship("Channel", back_populates="videos")
-    category: Mapped[Optional["VideoCategory"]] = relationship(
+    channel: Mapped[Channel | None] = relationship("Channel", back_populates="videos")
+    category: Mapped[VideoCategory | None] = relationship(
         "VideoCategory", back_populates="videos"
     )
-    transcripts: Mapped[list["VideoTranscript"]] = relationship(
+    transcripts: Mapped[list[VideoTranscript]] = relationship(
         "VideoTranscript", back_populates="video"
     )
-    tags: Mapped[list["VideoTag"]] = relationship("VideoTag", back_populates="video")
-    localizations: Mapped[list["VideoLocalization"]] = relationship(
+    tags: Mapped[list[VideoTag]] = relationship("VideoTag", back_populates="video")
+    localizations: Mapped[list[VideoLocalization]] = relationship(
         "VideoLocalization", back_populates="video"
     )
-    user_videos: Mapped[list["UserVideo"]] = relationship(
+    user_videos: Mapped[list[UserVideo]] = relationship(
         "UserVideo", back_populates="video"
     )
-    video_topics: Mapped[list["VideoTopic"]] = relationship(
+    video_topics: Mapped[list[VideoTopic]] = relationship(
         "VideoTopic", back_populates="video"
     )
-    playlist_memberships: Mapped[list["PlaylistMembership"]] = relationship(
+    playlist_memberships: Mapped[list[PlaylistMembership]] = relationship(
         "PlaylistMembership", back_populates="video"
     )
 
@@ -247,7 +248,7 @@ class UserLanguagePreference(Base):
     )  # FLUENT, LEARNING, INTERESTED
     priority: Mapped[int] = mapped_column(Integer)
     auto_download_transcripts: Mapped[bool] = mapped_column(Boolean, default=False)
-    learning_goal: Mapped[Optional[str]] = mapped_column(Text)
+    learning_goal: Mapped[str | None] = mapped_column(Text)
 
     # Timestamps
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -276,7 +277,7 @@ class VideoTranscript(Base):
     download_reason: Mapped[str] = mapped_column(
         String(30)
     )  # USER_REQUEST, AUTO_PREFERRED, LEARNING_LANGUAGE
-    confidence_score: Mapped[Optional[float]] = mapped_column(Float)
+    confidence_score: Mapped[float | None] = mapped_column(Float)
 
     # Quality indicators
     is_cc: Mapped[bool] = mapped_column(
@@ -288,7 +289,7 @@ class VideoTranscript(Base):
     track_kind: Mapped[str] = mapped_column(
         String(20), default="standard"
     )  # standard, ASR, forced
-    caption_name: Mapped[Optional[str]] = mapped_column(
+    caption_name: Mapped[str | None] = mapped_column(
         String(255)
     )  # Caption track name/description
 
@@ -298,17 +299,17 @@ class VideoTranscript(Base):
     )
 
     # Raw transcript data with timestamps (Feature 007)
-    raw_transcript_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+    raw_transcript_data: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB, nullable=True, comment="Complete raw API response with timestamps"
     )
     has_timestamps: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False,
         comment="Whether raw data includes timing information"
     )
-    segment_count: Mapped[Optional[int]] = mapped_column(
+    segment_count: Mapped[int | None] = mapped_column(
         Integer, nullable=True, comment="Number of transcript segments"
     )
-    total_duration: Mapped[Optional[float]] = mapped_column(
+    total_duration: Mapped[float | None] = mapped_column(
         Float, nullable=True, comment="Total transcript duration in seconds"
     )
     source: Mapped[str] = mapped_column(
@@ -321,7 +322,7 @@ class VideoTranscript(Base):
         Boolean, default=False, nullable=False, server_default=text("false"),
         comment="Whether any segment has active corrections"
     )
-    last_corrected_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+    last_corrected_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,
         comment="Timestamp of most recent correction"
     )
@@ -331,14 +332,14 @@ class VideoTranscript(Base):
     )
 
     # Relationships
-    video: Mapped["Video"] = relationship("Video", back_populates="transcripts")
-    segments: Mapped[list["TranscriptSegment"]] = relationship(
+    video: Mapped[Video] = relationship("Video", back_populates="transcripts")
+    segments: Mapped[list[TranscriptSegment]] = relationship(
         "TranscriptSegment",
         back_populates="transcript",
         order_by="TranscriptSegment.sequence_number",
         cascade="all, delete-orphan",
     )
-    corrections: Mapped[list["TranscriptCorrection"]] = relationship(
+    corrections: Mapped[list[TranscriptCorrection]] = relationship(
         "TranscriptCorrection",
         back_populates="transcript",
         order_by="TranscriptCorrection.corrected_at.desc()",
@@ -359,7 +360,7 @@ class TranscriptSegment(Base):
 
     # Segment content
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    corrected_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    corrected_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     has_correction: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Timing information
@@ -386,10 +387,10 @@ class TranscriptSegment(Base):
     )
 
     # Relationships
-    transcript: Mapped["VideoTranscript"] = relationship(
+    transcript: Mapped[VideoTranscript] = relationship(
         "VideoTranscript", back_populates="segments"
     )
-    entity_mentions: Mapped[list["EntityMention"]] = relationship(
+    entity_mentions: Mapped[list[EntityMention]] = relationship(
         "EntityMention", back_populates="segment", lazy="select"
     )
 
@@ -406,7 +407,7 @@ class VideoTag(Base):
     tag: Mapped[str] = mapped_column(String(500), primary_key=True)
 
     # Tag metadata
-    tag_order: Mapped[Optional[int]] = mapped_column(Integer)  # Order from YouTube API
+    tag_order: Mapped[int | None] = mapped_column(Integer)  # Order from YouTube API
 
     # Timestamps
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -414,7 +415,7 @@ class VideoTag(Base):
     )
 
     # Relationships
-    video: Mapped["Video"] = relationship("Video", back_populates="tags")
+    video: Mapped[Video] = relationship("Video", back_populates="tags")
 
 
 class VideoLocalization(Base):
@@ -432,7 +433,7 @@ class VideoLocalization(Base):
 
     # Localized content
     localized_title: Mapped[str] = mapped_column(Text, nullable=False)
-    localized_description: Mapped[Optional[str]] = mapped_column(Text)
+    localized_description: Mapped[str | None] = mapped_column(Text)
 
     # Timestamps
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -440,7 +441,7 @@ class VideoLocalization(Base):
     )
 
     # Relationships
-    video: Mapped["Video"] = relationship("Video", back_populates="localizations")
+    video: Mapped[Video] = relationship("Video", back_populates="localizations")
 
 
 class ChannelKeyword(Base):
@@ -455,7 +456,7 @@ class ChannelKeyword(Base):
     keyword: Mapped[str] = mapped_column(String(100), primary_key=True)
 
     # Keyword metadata
-    keyword_order: Mapped[Optional[int]] = mapped_column(
+    keyword_order: Mapped[int | None] = mapped_column(
         Integer
     )  # Order from channel branding
 
@@ -465,7 +466,7 @@ class ChannelKeyword(Base):
     )
 
     # Relationships
-    channel: Mapped["Channel"] = relationship("Channel", back_populates="keywords")
+    channel: Mapped[Channel] = relationship("Channel", back_populates="keywords")
 
 
 class TopicCategory(Base):
@@ -478,7 +479,7 @@ class TopicCategory(Base):
 
     # Topic metadata
     category_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    parent_topic_id: Mapped[Optional[str]] = mapped_column(
+    parent_topic_id: Mapped[str | None] = mapped_column(
         String(50), ForeignKey("topic_categories.topic_id")
     )
     topic_type: Mapped[str] = mapped_column(
@@ -486,16 +487,16 @@ class TopicCategory(Base):
     )  # youtube, custom
 
     # Dynamic topic resolution fields (Option 4 implementation)
-    wikipedia_url: Mapped[Optional[str]] = mapped_column(
+    wikipedia_url: Mapped[str | None] = mapped_column(
         String(500), unique=True, nullable=True
     )  # Full Wikipedia URL from YouTube API
-    normalized_name: Mapped[Optional[str]] = mapped_column(
+    normalized_name: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )  # Lowercase, no underscores for matching
     source: Mapped[str] = mapped_column(
         String(20), default="seeded", nullable=False
     )  # 'seeded' or 'dynamic'
-    last_seen_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+    last_seen_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )  # Last time seen in API response
     occurrence_count: Mapped[int] = mapped_column(
@@ -508,21 +509,21 @@ class TopicCategory(Base):
     )
 
     # Self-referential relationship for hierarchical topics
-    children: Mapped[list["TopicCategory"]] = relationship(
+    children: Mapped[list[TopicCategory]] = relationship(
         "TopicCategory", back_populates="parent"
     )
-    parent: Mapped[Optional["TopicCategory"]] = relationship(
+    parent: Mapped[TopicCategory | None] = relationship(
         "TopicCategory", back_populates="children", remote_side="TopicCategory.topic_id"
     )
 
     # Junction table relationships
-    video_topics: Mapped[list["VideoTopic"]] = relationship(
+    video_topics: Mapped[list[VideoTopic]] = relationship(
         "VideoTopic", back_populates="topic_category"
     )
-    channel_topics: Mapped[list["ChannelTopic"]] = relationship(
+    channel_topics: Mapped[list[ChannelTopic]] = relationship(
         "ChannelTopic", back_populates="topic_category"
     )
-    aliases: Mapped[list["TopicAlias"]] = relationship(
+    aliases: Mapped[list[TopicAlias]] = relationship(
         "TopicAlias", back_populates="topic_category", cascade="all, delete-orphan"
     )
 
@@ -552,7 +553,7 @@ class TopicAlias(Base):
     )
 
     # Relationship back to topic
-    topic_category: Mapped["TopicCategory"] = relationship(
+    topic_category: Mapped[TopicCategory] = relationship(
         "TopicCategory", back_populates="aliases"
     )
 
@@ -581,8 +582,8 @@ class VideoTopic(Base):
     )
 
     # Relationships
-    video: Mapped["Video"] = relationship("Video", back_populates="video_topics")
-    topic_category: Mapped["TopicCategory"] = relationship(
+    video: Mapped[Video] = relationship("Video", back_populates="video_topics")
+    topic_category: Mapped[TopicCategory] = relationship(
         "TopicCategory", back_populates="video_topics"
     )
 
@@ -606,10 +607,10 @@ class ChannelTopic(Base):
     )
 
     # Relationships
-    channel: Mapped["Channel"] = relationship(
+    channel: Mapped[Channel] = relationship(
         "Channel", back_populates="channel_topics"
     )
-    topic_category: Mapped["TopicCategory"] = relationship(
+    topic_category: Mapped[TopicCategory] = relationship(
         "TopicCategory", back_populates="channel_topics"
     )
 
@@ -626,7 +627,7 @@ class UserVideo(Base):
     )
 
     # Interaction metadata
-    watched_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+    watched_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
     rewatch_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -644,7 +645,7 @@ class UserVideo(Base):
     )
 
     # Relationships
-    video: Mapped["Video"] = relationship("Video", back_populates="user_videos")
+    video: Mapped[Video] = relationship("Video", back_populates="user_videos")
 
 
 class Playlist(Base):
@@ -657,10 +658,10 @@ class Playlist(Base):
 
     # Playlist metadata
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
 
     # Language and privacy (LanguageCode enum values stored as strings)
-    default_language: Mapped[Optional[str]] = mapped_column(
+    default_language: Mapped[str | None] = mapped_column(
         String(10)
     )  # LanguageCode enum value
     privacy_status: Mapped[str] = mapped_column(
@@ -668,7 +669,7 @@ class Playlist(Base):
     )  # private, public, unlisted
 
     # Channel association (nullable to support system playlists)
-    channel_id: Mapped[Optional[str]] = mapped_column(
+    channel_id: Mapped[str | None] = mapped_column(
         String(24), ForeignKey("channels.channel_id"), nullable=True
     )
 
@@ -676,7 +677,7 @@ class Playlist(Base):
     video_count: Mapped[int] = mapped_column(Integer, default=0)
 
     # Playlist creation date from YouTube API
-    published_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+    published_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
@@ -697,8 +698,8 @@ class Playlist(Base):
     )
 
     # Relationships
-    channel: Mapped[Optional["Channel"]] = relationship("Channel")
-    memberships: Mapped[list["PlaylistMembership"]] = relationship(
+    channel: Mapped[Channel | None] = relationship("Channel")
+    memberships: Mapped[list[PlaylistMembership]] = relationship(
         "PlaylistMembership",
         back_populates="playlist",
         order_by="PlaylistMembership.position",
@@ -722,7 +723,7 @@ class PlaylistMembership(Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # Metadata from takeout
-    added_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+    added_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
 
@@ -732,10 +733,10 @@ class PlaylistMembership(Base):
     )
 
     # Relationships
-    playlist: Mapped["Playlist"] = relationship(
+    playlist: Mapped[Playlist] = relationship(
         "Playlist", back_populates="memberships"
     )
-    video: Mapped["Video"] = relationship(
+    video: Mapped[Video] = relationship(
         "Video", back_populates="playlist_memberships"
     )
 
@@ -752,16 +753,16 @@ class NamedEntity(Base):
     canonical_name: Mapped[str] = mapped_column(String(500), nullable=False)
     canonical_name_normalized: Mapped[str] = mapped_column(String(500), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    entity_subtype: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    entity_subtype: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # External references (JSONB for flexibility)
-    external_ids: Mapped[Dict[str, Any]] = mapped_column(
+    external_ids: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
 
     # Exclusion patterns for entity mention detection
-    exclusion_patterns: Mapped[List[Any]] = mapped_column(
+    exclusion_patterns: Mapped[list[Any]] = mapped_column(
         JSONB, server_default=text("'[]'::jsonb"), nullable=False
     )
 
@@ -776,7 +777,7 @@ class NamedEntity(Base):
 
     # Status and merging
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
-    merged_into_id: Mapped[Optional[UUID]] = mapped_column(
+    merged_into_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("named_entities.id"), nullable=True
     )
 
@@ -810,16 +811,16 @@ class NamedEntity(Base):
     )
 
     # Relationships
-    aliases: Mapped[list["EntityAlias"]] = relationship(
+    aliases: Mapped[list[EntityAlias]] = relationship(
         "EntityAlias", back_populates="entity", cascade="all, delete-orphan"
     )
-    canonical_tags: Mapped[list["CanonicalTag"]] = relationship(
+    canonical_tags: Mapped[list[CanonicalTag]] = relationship(
         "CanonicalTag", back_populates="entity", foreign_keys="CanonicalTag.entity_id"
     )
-    merged_into: Mapped[Optional["NamedEntity"]] = relationship(
+    merged_into: Mapped[NamedEntity | None] = relationship(
         "NamedEntity", remote_side="NamedEntity.id"
     )
-    mentions: Mapped[list["EntityMention"]] = relationship(
+    mentions: Mapped[list[EntityMention]] = relationship(
         "EntityMention", back_populates="entity", lazy="select"
     )
 
@@ -863,7 +864,7 @@ class EntityAlias(Base):
     )
 
     # Relationships
-    entity: Mapped["NamedEntity"] = relationship("NamedEntity", back_populates="aliases")
+    entity: Mapped[NamedEntity] = relationship("NamedEntity", back_populates="aliases")
 
 
 class CanonicalTag(Base):
@@ -883,14 +884,14 @@ class CanonicalTag(Base):
     video_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Entity linking (optional)
-    entity_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    entity_id: Mapped[Optional[UUID]] = mapped_column(
+    entity_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    entity_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("named_entities.id", ondelete="SET NULL"), nullable=True
     )
 
     # Status and merging
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
-    merged_into_id: Mapped[Optional[UUID]] = mapped_column(
+    merged_into_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("canonical_tags.id"), nullable=True
     )
 
@@ -927,13 +928,13 @@ class CanonicalTag(Base):
     )
 
     # Relationships
-    aliases: Mapped[list["TagAlias"]] = relationship(
+    aliases: Mapped[list[TagAlias]] = relationship(
         "TagAlias", back_populates="canonical_tag", cascade="all, delete-orphan"
     )
-    entity: Mapped[Optional["NamedEntity"]] = relationship(
+    entity: Mapped[NamedEntity | None] = relationship(
         "NamedEntity", back_populates="canonical_tags", foreign_keys=[entity_id]
     )
-    merged_into: Mapped[Optional["CanonicalTag"]] = relationship(
+    merged_into: Mapped[CanonicalTag | None] = relationship(
         "CanonicalTag", remote_side="CanonicalTag.id"
     )
 
@@ -986,7 +987,7 @@ class TagAlias(Base):
     )
 
     # Relationships
-    canonical_tag: Mapped["CanonicalTag"] = relationship("CanonicalTag", back_populates="aliases")
+    canonical_tag: Mapped[CanonicalTag] = relationship("CanonicalTag", back_populates="aliases")
 
 
 class TagOperationLog(Base):
@@ -999,27 +1000,27 @@ class TagOperationLog(Base):
 
     # Operation details
     operation_type: Mapped[str] = mapped_column(String(30), nullable=False)
-    source_canonical_ids: Mapped[List[Any]] = mapped_column(
+    source_canonical_ids: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
-    target_canonical_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
-    affected_alias_ids: Mapped[List[Any]] = mapped_column(
+    target_canonical_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    affected_alias_ids: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
 
     # Context and recovery
-    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     performed_by: Mapped[str] = mapped_column(String(100), nullable=False, default="system")
     performed_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    rollback_data: Mapped[Dict[str, Any]] = mapped_column(
+    rollback_data: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
 
     # Rollback tracking
     rolled_back: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    rolled_back_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+    rolled_back_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
@@ -1050,7 +1051,7 @@ class TranscriptCorrection(Base):
     language_code: Mapped[str] = mapped_column(String(10), nullable=False)
 
     # Segment linkage (optional FK to transcript_segments)
-    segment_id: Mapped[Optional[int]] = mapped_column(
+    segment_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("transcript_segments.id", ondelete="RESTRICT"), nullable=True
     )
 
@@ -1058,10 +1059,10 @@ class TranscriptCorrection(Base):
     correction_type: Mapped[str] = mapped_column(String(30), nullable=False)
     original_text: Mapped[str] = mapped_column(Text, nullable=False)
     corrected_text: Mapped[str] = mapped_column(Text, nullable=False)
-    correction_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    correction_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Audit metadata
-    corrected_by_user_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    corrected_by_user_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     corrected_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -1070,7 +1071,7 @@ class TranscriptCorrection(Base):
     # Batch grouping (Feature 045 — Correction Intelligence Pipeline)
     # Groups corrections applied together in a single batch run. NULL for
     # corrections that were not part of a batch operation.
-    batch_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    batch_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
 
     # Table constraints
     __table_args__ = (
@@ -1087,10 +1088,10 @@ class TranscriptCorrection(Base):
     )
 
     # Relationships
-    transcript: Mapped["VideoTranscript"] = relationship(
+    transcript: Mapped[VideoTranscript] = relationship(
         "VideoTranscript", back_populates="corrections"
     )
-    segment: Mapped[Optional["TranscriptSegment"]] = relationship(
+    segment: Mapped[TranscriptSegment | None] = relationship(
         "TranscriptSegment"
     )
 
@@ -1115,7 +1116,7 @@ class EntityMention(Base):
     )
 
     # Foreign key to transcript_segments (nullable for manual mentions)
-    segment_id: Mapped[Optional[int]] = mapped_column(
+    segment_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("transcript_segments.id", ondelete="CASCADE"),
         nullable=True,
@@ -1124,7 +1125,7 @@ class EntityMention(Base):
     # Denormalized for direct querying without segment join
     video_id: Mapped[str] = mapped_column(String(20), nullable=False)
     # nullable for manual mentions that lack a specific language context
-    language_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    language_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     # Mention content
     mention_text: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -1134,14 +1135,14 @@ class EntityMention(Base):
         String(30), nullable=False, default="rule_match"
     )
     # nullable for manual mentions (no statistical confidence applies)
-    confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=1.0)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True, default=1.0)
 
     # Character-level position within segment text
-    match_start: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    match_end: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    match_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    match_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Link to the correction that triggered this mention (if any)
-    correction_id: Mapped[Optional[UUID]] = mapped_column(
+    correction_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("transcript_corrections.id", ondelete="SET NULL"),
         nullable=True,
@@ -1194,13 +1195,13 @@ class EntityMention(Base):
     )
 
     # Relationships
-    entity: Mapped["NamedEntity"] = relationship(
+    entity: Mapped[NamedEntity] = relationship(
         "NamedEntity", back_populates="mentions"
     )
-    segment: Mapped["TranscriptSegment"] = relationship(
+    segment: Mapped[TranscriptSegment] = relationship(
         "TranscriptSegment", back_populates="entity_mentions"
     )
-    correction: Mapped[Optional["TranscriptCorrection"]] = relationship(
+    correction: Mapped[TranscriptCorrection | None] = relationship(
         "TranscriptCorrection", foreign_keys=[correction_id]
     )
 

@@ -9,10 +9,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 from sqlalchemy import and_, desc, func, select, text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config.database import db_manager
 from ..db.models import Channel, TopicCategory, UserVideo, Video, VideoTopic
@@ -27,7 +26,6 @@ from ..models.topic_analytics import (
     TopicPopularity,
     TopicRelationship,
     TopicRelationships,
-    TopicStats,
     TopicTrend,
 )
 from ..models.youtube_types import TopicId
@@ -44,7 +42,7 @@ class TopicAnalyticsService:
         self.topic_category_repository = TopicCategoryRepository()
         self.video_topic_repository = VideoTopicRepository()
         self.channel_topic_repository = ChannelTopicRepository()
-        self._cache: Dict[str, tuple[datetime, object]] = {}
+        self._cache: dict[str, tuple[datetime, object]] = {}
         self._cache_ttl = 300  # 5 minutes cache TTL
 
     def _get_cache_key(self, method: str, *args: str) -> str:
@@ -55,7 +53,7 @@ class TopicAnalyticsService:
         """Check if cached result is still valid."""
         return (datetime.now() - timestamp).total_seconds() < self._cache_ttl
 
-    def _get_cached_result(self, cache_key: str) -> Optional[object]:
+    def _get_cached_result(self, cache_key: str) -> object | None:
         """Get cached result if valid."""
         if cache_key in self._cache:
             timestamp, result = self._cache[cache_key]
@@ -74,7 +72,7 @@ class TopicAnalyticsService:
         self,
         metric: Literal["videos", "channels", "combined"] = "videos",
         limit: int = 20,
-    ) -> List[TopicPopularity]:
+    ) -> list[TopicPopularity]:
         """
         Get topics ranked by popularity.
 
@@ -341,7 +339,7 @@ class TopicAnalyticsService:
                     SELECT video_id FROM video_topics WHERE topic_id = :topic_id
                 ),
                 related_topics AS (
-                    SELECT 
+                    SELECT
                         vt.topic_id,
                         tc.category_name,
                         COUNT(DISTINCT vt.video_id) as shared_videos,
@@ -352,7 +350,7 @@ class TopicAnalyticsService:
                       AND vt.topic_id != :topic_id
                     GROUP BY vt.topic_id, tc.category_name
                 )
-                SELECT 
+                SELECT
                     topic_id,
                     category_name,
                     shared_videos,
@@ -459,10 +457,10 @@ class TopicAnalyticsService:
                     SELECT video_id FROM video_topics WHERE topic_id = :topic2_id
                 ),
                 overlap_stats AS (
-                    SELECT 
+                    SELECT
                         (SELECT COUNT(*) FROM topic1_videos) as topic1_count,
                         (SELECT COUNT(*) FROM topic2_videos) as topic2_count,
-                        (SELECT COUNT(*) FROM topic1_videos t1 
+                        (SELECT COUNT(*) FROM topic1_videos t1
                          JOIN topic2_videos t2 ON t1.video_id = t2.video_id) as shared_count
                 )
                 SELECT topic1_count, topic2_count, shared_count FROM overlap_stats
@@ -484,10 +482,10 @@ class TopicAnalyticsService:
                     SELECT channel_id FROM channel_topics WHERE topic_id = :topic2_id
                 ),
                 overlap_stats AS (
-                    SELECT 
+                    SELECT
                         (SELECT COUNT(*) FROM topic1_channels) as topic1_count,
                         (SELECT COUNT(*) FROM topic2_channels) as topic2_count,
-                        (SELECT COUNT(*) FROM topic1_channels t1 
+                        (SELECT COUNT(*) FROM topic1_channels t1
                          JOIN topic2_channels t2 ON t1.channel_id = t2.channel_id) as shared_count
                 )
                 SELECT topic1_count, topic2_count, shared_count FROM overlap_stats
@@ -656,7 +654,7 @@ class TopicAnalyticsService:
             distribution_result = await session.execute(distribution_query)
             distribution_rows = distribution_result.fetchall()
 
-            topic_distribution: Dict[str, int] = {}
+            topic_distribution: dict[str, int] = {}
             for row in distribution_rows:
                 topic_distribution[row.category_name] = getattr(row, "count", 0)
 
@@ -687,7 +685,7 @@ class TopicAnalyticsService:
 
     async def get_similar_topics(
         self, topic_id: TopicId, min_similarity: float = 0.5, limit: int = 10
-    ) -> List[TopicPopularity]:
+    ) -> list[TopicPopularity]:
         """
         Get topics that are similar to the given topic based on content patterns.
 
@@ -984,14 +982,14 @@ class TopicAnalyticsService:
                     ORDER BY uv.user_id, uv.watched_at ASC
                 ),
                 entry_topic_stats AS (
-                    SELECT 
+                    SELECT
                         topic_id,
                         category_name,
                         COUNT(*) as entry_count
                     FROM user_first_topics
                     GROUP BY topic_id, category_name
                 )
-                SELECT 
+                SELECT
                     topic_id,
                     category_name,
                     entry_count as video_count,
@@ -1031,11 +1029,11 @@ class TopicAnalyticsService:
             retention_topics_query = text(
                 """
                 WITH topic_retention AS (
-                    SELECT 
+                    SELECT
                         vt.topic_id,
                         tc.category_name,
                         COUNT(DISTINCT uv.user_id) as total_users,
-                        COUNT(DISTINCT CASE WHEN interaction_stats.interaction_count > :min_interactions 
+                        COUNT(DISTINCT CASE WHEN interaction_stats.interaction_count > :min_interactions
                                THEN uv.user_id END) as retained_users
                     FROM user_videos uv
                     JOIN video_topics vt ON uv.video_id = vt.video_id
@@ -1050,7 +1048,7 @@ class TopicAnalyticsService:
                     GROUP BY vt.topic_id, tc.category_name
                     HAVING COUNT(DISTINCT uv.user_id) >= 2
                 )
-                SELECT 
+                SELECT
                     topic_id,
                     category_name,
                     total_users as video_count,
@@ -1112,7 +1110,7 @@ class TopicAnalyticsService:
 
     async def get_topic_trends(
         self, period: str = "monthly", limit_topics: int = 20, months_back: int = 12
-    ) -> List[TopicTrend]:
+    ) -> list[TopicTrend]:
         """
         Analyze topic popularity trends over time.
 
@@ -1180,33 +1178,33 @@ class TopicAnalyticsService:
                         ) AS period_date
                 ),
                 topic_periods AS (
-                    SELECT 
+                    SELECT
                         tc.topic_id,
                         tc.category_name,
                         TO_CHAR(ds.period_date, '{date_format}') as period,
                         ds.period_date,
-                        
+
                         -- Count videos uploaded in this period
-                        COALESCE(COUNT(DISTINCT CASE 
-                            WHEN v.upload_date >= ds.period_date 
+                        COALESCE(COUNT(DISTINCT CASE
+                            WHEN v.upload_date >= ds.period_date
                                 AND v.upload_date < ds.period_date + INTERVAL '{interval}'
-                            THEN v.video_id 
+                            THEN v.video_id
                         END), 0) as period_videos,
-                        
+
                         -- Count user interactions in this period
-                        COALESCE(COUNT(DISTINCT CASE 
-                            WHEN uv.watched_at >= ds.period_date 
+                        COALESCE(COUNT(DISTINCT CASE
+                            WHEN uv.watched_at >= ds.period_date
                                 AND uv.watched_at < ds.period_date + INTERVAL '{interval}'
-                            THEN uv.user_id 
+                            THEN uv.user_id
                         END), 0) as period_interactions,
-                        
-                        -- Count new channels added in this period  
-                        COALESCE(COUNT(DISTINCT CASE 
-                            WHEN c.created_at >= ds.period_date 
+
+                        -- Count new channels added in this period
+                        COALESCE(COUNT(DISTINCT CASE
+                            WHEN c.created_at >= ds.period_date
                                 AND c.created_at < ds.period_date + INTERVAL '{interval}'
-                            THEN c.channel_id 
+                            THEN c.channel_id
                         END), 0) as period_channels
-                        
+
                     FROM date_series ds
                     CROSS JOIN topic_categories tc
                     LEFT JOIN video_topics vt ON tc.topic_id = vt.topic_id
@@ -1219,7 +1217,7 @@ class TopicAnalyticsService:
                     ORDER BY tc.topic_id, ds.period_date
                 ),
                 trend_calculations AS (
-                    SELECT 
+                    SELECT
                         topic_id,
                         category_name,
                         period,
@@ -1228,38 +1226,38 @@ class TopicAnalyticsService:
                         period_interactions,
                         period_channels,
                         period_videos + period_interactions + period_channels as total_activity,
-                        
+
                         -- Calculate growth rate compared to previous period
-                        LAG(period_videos + period_interactions + period_channels, 1, 0) 
+                        LAG(period_videos + period_interactions + period_channels, 1, 0)
                             OVER (PARTITION BY topic_id ORDER BY period_date) as prev_activity,
-                            
+
                         ROW_NUMBER() OVER (PARTITION BY topic_id ORDER BY period_date DESC) as recency_rank
-                        
+
                     FROM topic_periods
                     WHERE period_date >= NOW() - INTERVAL '{months_back} months'
                 )
-                SELECT 
+                SELECT
                     topic_id,
                     category_name,
                     period,
                     period_videos as video_count,
                     period_channels as channel_count,
-                    
+
                     -- Calculate growth rate
-                    CASE 
-                        WHEN prev_activity > 0 THEN 
+                    CASE
+                        WHEN prev_activity > 0 THEN
                             ROUND(((total_activity - prev_activity) * 100.0 / prev_activity), 2)
                         WHEN total_activity > 0 AND prev_activity = 0 THEN 100.0
                         ELSE 0.0
                     END as growth_rate,
-                    
+
                     -- Determine trend direction
-                    CASE 
+                    CASE
                         WHEN total_activity > prev_activity THEN 'growing'
-                        WHEN total_activity < prev_activity THEN 'declining' 
+                        WHEN total_activity < prev_activity THEN 'declining'
                         ELSE 'stable'
                     END as trend_direction
-                    
+
                 FROM trend_calculations
                 WHERE recency_rank = 1  -- Only get the most recent period for each topic
                     AND total_activity > 0  -- Only include topics with activity
@@ -1697,7 +1695,7 @@ class TopicAnalyticsService:
         if cached_result:
             return cached_result  # type: ignore
 
-        async for session in db_manager.get_session():
+        async for _session in db_manager.get_session():
             # Get popular topics to build graph around
             popular_topics = await self.get_popular_topics(
                 metric="combined", limit=max_topics
@@ -1795,7 +1793,7 @@ class TopicAnalyticsService:
 
     async def generate_topic_graph_json(
         self, min_confidence: float = 0.1, max_topics: int = 50
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Generate topic relationship graph in JSON format for D3.js and other visualizations.
 
@@ -1818,7 +1816,7 @@ class TopicAnalyticsService:
         if cached_result:
             return cached_result  # type: ignore
 
-        async for session in db_manager.get_session():
+        async for _session in db_manager.get_session():
             # Get popular topics to build graph around
             popular_topics = await self.get_popular_topics(
                 metric="combined", limit=max_topics
@@ -1920,8 +1918,8 @@ class TopicAnalyticsService:
         }
 
     async def get_topic_engagement_scores(
-        self, topic_id: Optional[TopicId] = None, limit: int = 20
-    ) -> List[Dict[str, Any]]:
+        self, topic_id: TopicId | None = None, limit: int = 20
+    ) -> list[dict[str, Any]]:
         """
         Calculate engagement scores for topics based on likes, views, and comments.
 
@@ -2037,7 +2035,7 @@ class TopicAnalyticsService:
 
     async def get_channel_engagement_by_topic(
         self, topic_id: TopicId, limit: int = 10
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Get channel engagement metrics for a specific topic.
 

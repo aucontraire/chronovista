@@ -1,6 +1,5 @@
 """Language preferences endpoints."""
 
-from typing import List
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +16,6 @@ from chronovista.container import container
 from chronovista.exceptions import BadRequestError
 from chronovista.models.enums import LanguageCode, LanguagePreferenceType
 from chronovista.models.user_language_preference import UserLanguagePreferenceCreate
-
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -121,8 +119,8 @@ async def update_language_preferences(
         by_type[pref.preference_type].append(pref)
 
     # Create preference objects with auto-assigned priorities
-    creates: List[UserLanguagePreferenceCreate] = []
-    for pref_type, prefs_in_type in by_type.items():
+    creates: list[UserLanguagePreferenceCreate] = []
+    for _pref_type, prefs_in_type in by_type.items():
         # Sort by provided priority (None last), then by order
         prefs_in_type.sort(key=lambda p: (p.priority is None, p.priority or 0))
 

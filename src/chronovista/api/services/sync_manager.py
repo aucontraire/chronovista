@@ -10,9 +10,9 @@ from __future__ import annotations
 import logging
 import secrets
 import string
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from threading import Lock
-from typing import Optional, TypedDict
+from typing import TypedDict
 
 from chronovista.api.schemas.sync import (
     SyncOperationStatus,
@@ -32,11 +32,11 @@ class _OperationState(TypedDict):
     operation_type: SyncOperationType
     status: str
     started_at: datetime
-    completed_at: Optional[datetime]
+    completed_at: datetime | None
     processed_items: int
-    total_items: Optional[int]
-    current_item: Optional[str]
-    error_message: Optional[str]
+    total_items: int | None
+    current_item: str | None
+    error_message: str | None
 
 
 class SyncManager:
@@ -64,7 +64,7 @@ class SyncManager:
 
     def __init__(self) -> None:
         """Initialize the SyncManager with empty state."""
-        self._current_operation: Optional[_OperationState] = None
+        self._current_operation: _OperationState | None = None
         self._last_successful_sync: dict[str, datetime] = {}
         self._lock = Lock()
 
@@ -106,7 +106,7 @@ class SyncManager:
             last_sync = self._last_successful_sync.get(operation_type.value)
 
             # Build progress if available
-            progress: Optional[SyncProgress] = None
+            progress: SyncProgress | None = None
             if op["processed_items"] is not None:
                 progress = SyncProgress(
                     total_items=op["total_items"],
@@ -155,7 +155,7 @@ class SyncManager:
                 )
 
             operation_id = self._generate_operation_id(operation_type)
-            op_started_at = datetime.now(timezone.utc)
+            op_started_at = datetime.now(UTC)
 
             self._current_operation = _OperationState(
                 operation_id=operation_id,
@@ -184,8 +184,8 @@ class SyncManager:
     def update_progress(
         self,
         processed: int,
-        total: Optional[int] = None,
-        current_item: Optional[str] = None,
+        total: int | None = None,
+        current_item: str | None = None,
     ) -> None:
         """Update the progress of the current sync operation.
 
@@ -221,7 +221,7 @@ class SyncManager:
     def complete_operation(
         self,
         success: bool = True,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
     ) -> None:
         """Complete the current sync operation.
 
@@ -241,7 +241,7 @@ class SyncManager:
             if self._current_operation is None:
                 raise RuntimeError("No sync operation is currently running")
 
-            completed_at = datetime.now(timezone.utc)
+            completed_at = datetime.now(UTC)
             operation_type = self._current_operation["operation_type"]
             operation_id = self._current_operation["operation_id"]
 
@@ -284,7 +284,7 @@ class SyncManager:
         str
             Unique operation ID string.
         """
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         random_suffix = "".join(
             secrets.choice(string.ascii_lowercase + string.digits) for _ in range(6)
         )
@@ -292,7 +292,7 @@ class SyncManager:
 
     def get_last_successful_sync(
         self, operation_type: SyncOperationType
-    ) -> Optional[datetime]:
+    ) -> datetime | None:
         """Get the last successful sync timestamp for an operation type.
 
         Parameters

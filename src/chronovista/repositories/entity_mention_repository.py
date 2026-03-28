@@ -8,7 +8,7 @@ for the entity_mentions table.
 from __future__ import annotations
 
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import (
     String,
@@ -21,24 +21,37 @@ from sqlalchemy import (
     select,
     type_coerce,
     union,
-    union_all,
     update,
 )
-
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from uuid_utils import uuid7
 
 from chronovista.db.models import (
     CanonicalTag as CanonicalTagDB,
+)
+from chronovista.db.models import (
     Channel,
+)
+from chronovista.db.models import (
     EntityAlias as EntityAliasDB,
+)
+from chronovista.db.models import (
     EntityMention as EntityMentionDB,
+)
+from chronovista.db.models import (
     NamedEntity as NamedEntityDB,
+)
+from chronovista.db.models import (
     TagAlias as TagAliasDB,
+)
+from chronovista.db.models import (
     TranscriptSegment as TranscriptSegmentDB,
+)
+from chronovista.db.models import (
     Video as VideoDB,
+)
+from chronovista.db.models import (
     VideoTag as VideoTagDB,
 )
 from chronovista.exceptions import APIValidationError, ConflictError, NotFoundError
@@ -63,7 +76,7 @@ class EntityMentionRepository(
 
     async def get(
         self, session: AsyncSession, id: uuid.UUID
-    ) -> Optional[EntityMentionDB]:
+    ) -> EntityMentionDB | None:
         """Get entity mention by UUID primary key.
 
         Parameters

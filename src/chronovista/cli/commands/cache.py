@@ -9,7 +9,6 @@ exponential backoff, dry-run mode, and graceful interrupt handling.
 from __future__ import annotations
 
 import asyncio
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -22,7 +21,6 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 from rich.table import Table
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.config.database import db_manager
@@ -77,7 +75,7 @@ def warm(
         "--quality",
         help="Video thumbnail quality level",
     ),
-    limit: Optional[int] = typer.Option(
+    limit: int | None = typer.Option(
         None,
         "--limit",
         "-l",
@@ -147,7 +145,7 @@ def warm(
         )
     except KeyboardInterrupt:
         console.print("\n[yellow]Cache warming interrupted by user[/yellow]")
-        raise typer.Exit(code=130)
+        raise typer.Exit(code=130) from None
 
 
 async def _warm_async(
@@ -478,7 +476,7 @@ def status() -> None:
         asyncio.run(_status_async())
     except KeyboardInterrupt:
         console.print("\n[yellow]Status check interrupted by user[/yellow]")
-        raise typer.Exit(code=130)
+        raise typer.Exit(code=130) from None
 
 
 async def _status_async() -> None:
@@ -588,7 +586,7 @@ def purge(
         asyncio.run(_purge_async(type_=type_, force=force))
     except KeyboardInterrupt:
         console.print("\n[yellow]Purge interrupted by user[/yellow]")
-        raise typer.Exit(code=130)
+        raise typer.Exit(code=130) from None
 
 
 async def _purge_async(*, type_: str, force: bool) -> None:

@@ -6,7 +6,7 @@ Handles CRUD operations and queries for YouTube channels with subscription track
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,7 +37,7 @@ class ChannelRepository(
         """Initialize repository with Channel model."""
         super().__init__(ChannelDB)
 
-    async def get(self, session: AsyncSession, id: ChannelId) -> Optional[ChannelDB]:
+    async def get(self, session: AsyncSession, id: ChannelId) -> ChannelDB | None:
         """Get channel by channel_id (primary key)."""
         return await self.get_by_channel_id(session, id)
 
@@ -47,7 +47,7 @@ class ChannelRepository(
 
     async def get_by_channel_id(
         self, session: AsyncSession, channel_id: ChannelId
-    ) -> Optional[ChannelDB]:
+    ) -> ChannelDB | None:
         """
         Get channel by YouTube channel ID.
 
@@ -91,7 +91,7 @@ class ChannelRepository(
         )
         return result.first() is not None
 
-    async def find_by_title(self, session: AsyncSession, title: str) -> List[ChannelDB]:
+    async def find_by_title(self, session: AsyncSession, title: str) -> list[ChannelDB]:
         """
         Find channels by title (case-insensitive search).
 
@@ -116,7 +116,7 @@ class ChannelRepository(
 
     async def find_by_language(
         self, session: AsyncSession, language: str
-    ) -> List[ChannelDB]:
+    ) -> list[ChannelDB]:
         """
         Find channels by default language.
 
@@ -141,7 +141,7 @@ class ChannelRepository(
 
     async def find_by_country(
         self, session: AsyncSession, country: str
-    ) -> List[ChannelDB]:
+    ) -> list[ChannelDB]:
         """
         Find channels by country.
 
@@ -166,7 +166,7 @@ class ChannelRepository(
 
     async def get_with_videos(
         self, session: AsyncSession, channel_id: ChannelId
-    ) -> Optional[ChannelDB]:
+    ) -> ChannelDB | None:
         """
         Get channel with all associated videos loaded.
 
@@ -191,7 +191,7 @@ class ChannelRepository(
 
     async def get_with_keywords(
         self, session: AsyncSession, channel_id: ChannelId
-    ) -> Optional[ChannelDB]:
+    ) -> ChannelDB | None:
         """
         Get channel with all keywords loaded.
 
@@ -216,7 +216,7 @@ class ChannelRepository(
 
     async def search_channels(
         self, session: AsyncSession, filters: ChannelSearchFilters
-    ) -> List[ChannelDB]:
+    ) -> list[ChannelDB]:
         """
         Search channels with advanced filtering.
 
@@ -233,7 +233,7 @@ class ChannelRepository(
             List of matching channels
         """
         query = select(ChannelDB)
-        conditions: List[Any] = []
+        conditions: list[Any] = []
 
         # Text search in title
         if filters.title_query:
@@ -313,7 +313,7 @@ class ChannelRepository(
 
     async def get_top_channels_by_subscribers(
         self, session: AsyncSession, limit: int = 10
-    ) -> List[ChannelDB]:
+    ) -> list[ChannelDB]:
         """
         Get top channels by subscriber count.
 
@@ -442,7 +442,7 @@ class ChannelRepository(
 
     async def get_subscribed_channels(
         self, session: AsyncSession, limit: int = 100
-    ) -> List[ChannelDB]:
+    ) -> list[ChannelDB]:
         """
         Get channels that the user is subscribed to.
 
@@ -460,7 +460,7 @@ class ChannelRepository(
         """
         result = await session.execute(
             select(ChannelDB)
-            .where(ChannelDB.is_subscribed == True)
+            .where(ChannelDB.is_subscribed)
             .order_by(ChannelDB.title)
             .limit(limit)
         )
@@ -468,7 +468,7 @@ class ChannelRepository(
 
     async def get_watched_only_channels(
         self, session: AsyncSession, limit: int = 100
-    ) -> List[ChannelDB]:
+    ) -> list[ChannelDB]:
         """
         Get channels that the user has watched but is not subscribed to.
 
@@ -486,7 +486,7 @@ class ChannelRepository(
         """
         result = await session.execute(
             select(ChannelDB)
-            .where(ChannelDB.is_subscribed == False)
+            .where(~ChannelDB.is_subscribed)
             .order_by(ChannelDB.title)
             .limit(limit)
         )
@@ -494,7 +494,7 @@ class ChannelRepository(
 
     async def get_subscription_statistics(
         self, session: AsyncSession
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get subscription vs watch-only statistics.
 
@@ -513,10 +513,10 @@ class ChannelRepository(
             select(
                 func.count().label("total_channels"),
                 func.count()
-                .filter(ChannelDB.is_subscribed == True)
+                .filter(ChannelDB.is_subscribed)
                 .label("subscribed_channels"),
                 func.count()
-                .filter(ChannelDB.is_subscribed == False)
+                .filter(~ChannelDB.is_subscribed)
                 .label("watched_only_channels"),
             )
         )
@@ -547,9 +547,9 @@ class ChannelRepository(
         self,
         session: AsyncSession,
         *,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         offset: int = 0,
-    ) -> List[ChannelDB]:
+    ) -> list[ChannelDB]:
         """
         Get channels that need enrichment from YouTube API.
 
@@ -631,8 +631,8 @@ class ChannelRepository(
     async def get_channels_by_ids(
         self,
         session: AsyncSession,
-        channel_ids: List[ChannelId],
-    ) -> List[ChannelDB]:
+        channel_ids: list[ChannelId],
+    ) -> list[ChannelDB]:
         """
         Get multiple channels by their IDs.
 

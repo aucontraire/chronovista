@@ -258,7 +258,7 @@ def downgrade() -> None:
     2. Dropping topic_aliases table
     3. Removing new columns from topic_categories
     """
-    conn = op.get_bind()
+    op.get_bind()
     logger.info("Starting rollback of dynamic topic resolution migration")
 
     # Drop indexes

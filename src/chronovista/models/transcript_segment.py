@@ -8,9 +8,9 @@ following the Base/Create/Full model hierarchy per the project Constitution.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, ValidationInfo
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from chronovista.models.youtube_types import VideoId
 
@@ -108,9 +108,9 @@ class TranscriptSegmentCreate(TranscriptSegmentBase):
         cls,
         video_id: VideoId,
         language_code: str,
-        snippet: Dict[str, Any],
+        snippet: dict[str, Any],
         sequence_number: int,
-    ) -> "TranscriptSegmentCreate":
+    ) -> TranscriptSegmentCreate:
         """Create segment from raw JSONB snippet.
 
         Parameters
@@ -155,7 +155,7 @@ class TranscriptSegment(TranscriptSegmentBase):
         default=False,
         description="Whether this segment has been corrected",
     )
-    corrected_text: Optional[str] = Field(
+    corrected_text: str | None = Field(
         default=None,
         description="User-corrected text (Phase 3)",
     )
@@ -200,7 +200,7 @@ class TranscriptSegmentResponse(BaseModel):
     end_formatted: str = Field(..., description="Formatted end time (e.g., '0:01:32')")
 
     @classmethod
-    def from_segment(cls, segment: TranscriptSegment) -> "TranscriptSegmentResponse":
+    def from_segment(cls, segment: TranscriptSegment) -> TranscriptSegmentResponse:
         """Create response from segment model.
 
         Parameters

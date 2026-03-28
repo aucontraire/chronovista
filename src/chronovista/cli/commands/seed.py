@@ -20,9 +20,7 @@ from rich.table import Table
 
 from chronovista.config.database import db_manager
 from chronovista.container import container
-from chronovista.services.enrichment.seeders import TopicSeeder
-
-from chronovista.services.enrichment.seeders import CategorySeeder
+from chronovista.services.enrichment.seeders import CategorySeeder, TopicSeeder
 
 console = Console()
 
@@ -181,7 +179,7 @@ async def _show_topics_dry_run(seeder: TopicSeeder) -> None:
 
     console.print(f"\n[cyan]Would seed {expected_count} topic categories:[/cyan]\n")
 
-    for parent_id, category_name, child_count in parent_info:
+    for _parent_id, category_name, child_count in parent_info:
         console.print(f"  - {category_name} ({child_count} children)")
 
     console.print(

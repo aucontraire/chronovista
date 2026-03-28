@@ -7,14 +7,13 @@ topic analytics, and video-topic relationship management.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from sqlalchemy import and_, delete, desc, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import VideoTopic as VideoTopicDB
 from chronovista.models.video_topic import (
-    VideoTopic,
     VideoTopicCreate,
     VideoTopicSearchFilters,
     VideoTopicStatistics,
@@ -24,7 +23,7 @@ from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
 class VideoTopicRepository(
-    BaseSQLAlchemyRepository[VideoTopicDB, VideoTopicCreate, VideoTopicUpdate, Tuple[str, str]]
+    BaseSQLAlchemyRepository[VideoTopicDB, VideoTopicCreate, VideoTopicUpdate, tuple[str, str]]
 ):
     """Repository for video topic operations."""
 
@@ -32,20 +31,20 @@ class VideoTopicRepository(
         super().__init__(VideoTopicDB)
 
     async def get(
-        self, session: AsyncSession, id: Tuple[str, str]
-    ) -> Optional[VideoTopicDB]:
+        self, session: AsyncSession, id: tuple[str, str]
+    ) -> VideoTopicDB | None:
         """Get video topic by composite key tuple (video_id, topic_id)."""
         video_id, topic_id = id
         return await self.get_by_composite_key(session, video_id, topic_id)
 
-    async def exists(self, session: AsyncSession, id: Tuple[str, str]) -> bool:
+    async def exists(self, session: AsyncSession, id: tuple[str, str]) -> bool:
         """Check if video topic exists by composite key tuple (video_id, topic_id)."""
         video_id, topic_id = id
         return await self.exists_by_composite_key(session, video_id, topic_id)
 
     async def get_by_composite_key(
         self, session: AsyncSession, video_id: str, topic_id: str
-    ) -> Optional[VideoTopicDB]:
+    ) -> VideoTopicDB | None:
         """Get video topic by composite key (video_id, topic_id)."""
         result = await session.execute(
             select(VideoTopicDB).where(
@@ -71,7 +70,7 @@ class VideoTopicRepository(
 
     async def get_topics_by_video_id(
         self, session: AsyncSession, video_id: str
-    ) -> List[VideoTopicDB]:
+    ) -> list[VideoTopicDB]:
         """Get all topics for a specific video."""
         result = await session.execute(
             select(VideoTopicDB)
@@ -82,7 +81,7 @@ class VideoTopicRepository(
 
     async def get_videos_by_topic_id(
         self, session: AsyncSession, topic_id: str
-    ) -> List[VideoTopicDB]:
+    ) -> list[VideoTopicDB]:
         """Get all videos with a specific topic."""
         result = await session.execute(
             select(VideoTopicDB)
@@ -111,9 +110,9 @@ class VideoTopicRepository(
         self,
         session: AsyncSession,
         video_id: str,
-        topic_ids: List[str],
-        relevance_types: Optional[List[str]] = None,
-    ) -> List[VideoTopicDB]:
+        topic_ids: list[str],
+        relevance_types: list[str] | None = None,
+    ) -> list[VideoTopicDB]:
         """Create multiple topics for a video efficiently."""
         created_topics = []
 
@@ -141,9 +140,9 @@ class VideoTopicRepository(
         self,
         session: AsyncSession,
         video_id: str,
-        topic_ids: List[str],
-        relevance_types: Optional[List[str]] = None,
-    ) -> List[VideoTopicDB]:
+        topic_ids: list[str],
+        relevance_types: list[str] | None = None,
+    ) -> list[VideoTopicDB]:
         """Replace all topics for a video with new ones."""
         # Delete existing topics for this video
         await session.execute(
@@ -187,12 +186,12 @@ class VideoTopicRepository(
 
     async def search_video_topics(
         self, session: AsyncSession, filters: VideoTopicSearchFilters
-    ) -> List[VideoTopicDB]:
+    ) -> list[VideoTopicDB]:
         """Search video topics with advanced filters."""
         query = select(VideoTopicDB)
 
         # Apply filters
-        conditions: List[Any] = []
+        conditions: list[Any] = []
 
         if filters.video_ids:
             conditions.append(VideoTopicDB.video_id.in_(filters.video_ids))
@@ -221,7 +220,7 @@ class VideoTopicRepository(
 
     async def get_popular_topics(
         self, session: AsyncSession, limit: int = 50
-    ) -> List[Tuple[str, int]]:
+    ) -> list[tuple[str, int]]:
         """Get most popular topics by video count."""
         result = await session.execute(
             select(
@@ -236,7 +235,7 @@ class VideoTopicRepository(
 
     async def get_related_topics(
         self, session: AsyncSession, topic_id: str, limit: int = 20
-    ) -> List[Tuple[str, int]]:
+    ) -> list[tuple[str, int]]:
         """Get topics that frequently appear with the given topic."""
         # Find videos that have the specified topic
         videos_with_topic = select(VideoTopicDB.video_id).where(
@@ -318,8 +317,8 @@ class VideoTopicRepository(
         )
 
     async def find_videos_by_topics(
-        self, session: AsyncSession, topic_ids: List[str], match_all: bool = False
-    ) -> List[str]:
+        self, session: AsyncSession, topic_ids: list[str], match_all: bool = False
+    ) -> list[str]:
         """Find video IDs that have specific topics."""
         if not topic_ids:
             return []
@@ -355,8 +354,8 @@ class VideoTopicRepository(
         return result.scalar() or 0
 
     async def get_video_count_by_topics(
-        self, session: AsyncSession, topic_ids: List[str]
-    ) -> Dict[str, int]:
+        self, session: AsyncSession, topic_ids: list[str]
+    ) -> dict[str, int]:
         """Get video counts for multiple topics efficiently."""
         if not topic_ids:
             return {}
@@ -373,7 +372,7 @@ class VideoTopicRepository(
 
     async def get_topics_by_relevance_type(
         self, session: AsyncSession, relevance_type: str
-    ) -> List[VideoTopicDB]:
+    ) -> list[VideoTopicDB]:
         """Get all video topics with specific relevance type."""
         result = await session.execute(
             select(VideoTopicDB)

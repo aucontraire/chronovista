@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
@@ -138,7 +138,7 @@ class TopicSeeder:
     # Format: topic_id -> (category_name, parent_topic_id, wikipedia_slug)
     # Parent topics have None as parent_topic_id
     # wikipedia_slug is the path component after /wiki/ in the Wikipedia URL
-    YOUTUBE_TOPICS: dict[str, tuple[str, Optional[str], Optional[str]]] = {
+    YOUTUBE_TOPICS: dict[str, tuple[str, str | None, str | None]] = {
         # =================================================================
         # PARENT TOPICS (7 root categories)
         # Format: topic_id -> (name, parent_id, wikipedia_slug)
@@ -465,8 +465,8 @@ class TopicSeeder:
         session: AsyncSession,
         topic_id: str,
         category_name: str,
-        parent_topic_id: Optional[str],
-        wikipedia_slug: Optional[str],
+        parent_topic_id: str | None,
+        wikipedia_slug: str | None,
         result: TopicSeedResult,
     ) -> None:
         """
@@ -688,7 +688,7 @@ class TopicSeeder:
     @classmethod
     def get_topic_by_id(
         cls, topic_id: str
-    ) -> Optional[tuple[str, Optional[str], Optional[str]]]:
+    ) -> tuple[str, str | None, str | None] | None:
         """
         Get topic information by ID.
 

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -52,13 +51,13 @@ class EntityAliasCreate(EntityAliasBase):
 class EntityAliasUpdate(BaseModel):
     """Model for updating entity aliases (PATCH-style, all fields optional)."""
 
-    alias_name: Optional[str] = Field(default=None, min_length=1, max_length=500)
-    alias_name_normalized: Optional[str] = Field(
+    alias_name: str | None = Field(default=None, min_length=1, max_length=500)
+    alias_name_normalized: str | None = Field(
         default=None, min_length=1, max_length=500
     )
-    alias_type: Optional[EntityAliasType] = None
-    entity_id: Optional[uuid.UUID] = None
-    occurrence_count: Optional[int] = Field(default=None, ge=0)
+    alias_type: EntityAliasType | None = None
+    entity_id: uuid.UUID | None = None
+    occurrence_count: int | None = Field(default=None, ge=0)
 
     model_config = ConfigDict(
         validate_assignment=True,

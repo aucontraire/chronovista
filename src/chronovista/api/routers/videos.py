@@ -6,9 +6,9 @@ import asyncio
 import logging
 import time
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 from fastapi import APIRouter, Body, Depends, Path, Query, Request
 from fastapi.responses import JSONResponse
@@ -41,9 +41,22 @@ from chronovista.api.schemas.videos import (
     VideoRecoveryResponse,
     VideoRecoveryResultData,
 )
-from chronovista.db.models import TopicCategory, TranscriptSegment, UserVideo as UserVideoDB, Video as VideoDB, VideoCategory
-from chronovista.db.models import VideoTag, VideoTopic, VideoTranscript
-from chronovista.exceptions import BadRequestError, CDXError, ConflictError, NotFoundError
+from chronovista.db.models import (
+    TopicCategory,
+    TranscriptSegment,
+    VideoCategory,
+    VideoTag,
+    VideoTopic,
+    VideoTranscript,
+)
+from chronovista.db.models import UserVideo as UserVideoDB
+from chronovista.db.models import Video as VideoDB
+from chronovista.exceptions import (
+    BadRequestError,
+    CDXError,
+    ConflictError,
+    NotFoundError,
+)
 from chronovista.models.enums import AvailabilityStatus
 from chronovista.repositories.canonical_tag_repository import (
     CanonicalTagRepository,
@@ -85,7 +98,7 @@ RATE_LIMIT_FILTER_QUERIES = 100  # requests per minute
 RATE_LIMIT_WINDOW_SECONDS = 60
 
 # Storage for rate limit tracking
-_filter_request_counts: Dict[str, List[float]] = defaultdict(list)
+_filter_request_counts: dict[str, list[float]] = defaultdict(list)
 
 # Query timeout per FR-036 (T099)
 QUERY_TIMEOUT_SECONDS = 10
@@ -119,9 +132,9 @@ def _get_client_id(request: Request) -> str:
 
 def _check_rate_limit(
     client_id: str,
-    request_counts: Dict[str, List[float]],
+    request_counts: dict[str, list[float]],
     rate_limit: int,
-) -> Tuple[bool, int]:
+) -> tuple[bool, int]:
     """
     Check if client has exceeded rate limit.
 
@@ -168,7 +181,7 @@ router = APIRouter(dependencies=[Depends(require_auth)])
 
 
 def build_transcript_summary(
-    transcripts: List[VideoTranscript],
+    transcripts: list[VideoTranscript],
     has_corrections: bool = False,
 ) -> TranscriptSummary:
     """
@@ -203,10 +216,10 @@ def build_transcript_summary(
 
 
 def _validate_filter_limits(
-    tags: List[str],
-    canonical_tags: List[str],
-    topic_ids: List[str],
-    category: Optional[str],
+    tags: list[str],
+    canonical_tags: list[str],
+    topic_ids: list[str],
+    category: str | None,
 ) -> None:
     """
     Validate filter limits per FR-034.
@@ -293,7 +306,7 @@ def _validate_filter_limits(
 def _build_parent_path(
     topic: TopicCategory,
     topic_cache: dict[str, TopicCategory],
-) -> Optional[str]:
+) -> str | None:
     """
     Build parent path string for a topic.
 
@@ -312,8 +325,8 @@ def _build_parent_path(
     if not topic.parent_topic_id:
         return None
 
-    path_parts: List[str] = []
-    current_id: Optional[str] = topic.parent_topic_id
+    path_parts: list[str] = []
+    current_id: str | None = topic.parent_topic_id
 
     # Walk up the parent chain
     while current_id is not None and current_id in topic_cache:
@@ -326,8 +339,8 @@ def _build_parent_path(
 
 async def _validate_tags(
     session: AsyncSession,
-    tags: List[str],
-) -> Tuple[List[str], List[FilterWarning]]:
+    tags: list[str],
+) -> tuple[list[str], list[FilterWarning]]:
     """
     Validate tag filter values exist in the database (FR-042, FR-044, FR-045).
 
@@ -356,8 +369,8 @@ async def _validate_tags(
     result = await session.execute(existing_tags_query)
     existing_tags = {row[0] for row in result.fetchall()}
 
-    valid_tags: List[str] = []
-    warnings: List[FilterWarning] = []
+    valid_tags: list[str] = []
+    warnings: list[FilterWarning] = []
 
     for tag in tags:
         if tag in existing_tags:
@@ -382,8 +395,8 @@ async def _validate_tags(
 
 async def _validate_category(
     session: AsyncSession,
-    category: Optional[str],
-) -> Tuple[Optional[str], List[FilterWarning]]:
+    category: str | None,
+) -> tuple[str | None, list[FilterWarning]]:
     """
     Validate category filter value exists in the database (FR-042, FR-045).
 
@@ -432,8 +445,8 @@ async def _validate_category(
 
 async def _validate_topics(
     session: AsyncSession,
-    topic_ids: List[str],
-) -> Tuple[List[str], List[FilterWarning]]:
+    topic_ids: list[str],
+) -> tuple[list[str], list[FilterWarning]]:
     """
     Validate topic filter values exist in the database (FR-043, FR-045).
 
@@ -464,8 +477,8 @@ async def _validate_topics(
     result = await session.execute(existing_topics_query)
     existing_topics = {row[0] for row in result.fetchall()}
 
-    valid_topics: List[str] = []
-    warnings: List[FilterWarning] = []
+    valid_topics: list[str] = []
+    warnings: list[FilterWarning] = []
 
     for topic_id in topic_ids:
         if topic_id in existing_topics:
@@ -490,7 +503,7 @@ async def _validate_topics(
 
 @router.get(
     "/videos",
-    response_model=Union[VideoListResponse, VideoListResponseWithWarnings],
+    response_model=VideoListResponse | VideoListResponseWithWarnings,
     responses={
         **LIST_ERRORS,
         429: {"description": "Rate limit exceeded"},
@@ -500,38 +513,38 @@ async def _validate_topics(
 async def list_videos(
     request: Request,
     session: AsyncSession = Depends(get_db),
-    channel_id: Optional[str] = Query(
+    channel_id: str | None = Query(
         None,
         min_length=24,
         max_length=24,
         description="Filter by channel ID",
     ),
-    has_transcript: Optional[bool] = Query(
+    has_transcript: bool | None = Query(
         None,
         description="Filter by transcript availability",
     ),
-    uploaded_after: Optional[datetime] = Query(
+    uploaded_after: datetime | None = Query(
         None,
         description="Filter by upload date (ISO 8601)",
     ),
-    uploaded_before: Optional[datetime] = Query(
+    uploaded_before: datetime | None = Query(
         None,
         description="Filter by upload date (ISO 8601)",
     ),
     # Classification filters (Feature 020)
-    tag: List[str] = Query(
+    tag: list[str] = Query(
         default=[],
         description="Filter by tag(s) - OR logic between multiple tags. Max 10.",
     ),
-    category: Optional[str] = Query(
+    category: str | None = Query(
         None,
         description="Filter by YouTube category ID (single value)",
     ),
-    canonical_tag: List[str] = Query(
+    canonical_tag: list[str] = Query(
         default=[],
         description="Filter by canonical tag(s) - OR logic between multiple. Max 10.",
     ),
-    topic_id: List[str] = Query(
+    topic_id: list[str] = Query(
         default=[],
         description="Filter by topic ID(s) - OR logic between multiple topics. Max 10.",
     ),
@@ -553,7 +566,7 @@ async def list_videos(
     ),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
-) -> Union[VideoListResponse, VideoListResponseWithWarnings, JSONResponse]:
+) -> VideoListResponse | VideoListResponseWithWarnings | JSONResponse:
     """
     List videos with pagination and filtering.
 
@@ -627,7 +640,7 @@ async def list_videos(
     _validate_filter_limits(tag, canonical_tag, topic_id, category)
 
     # Validate filter values and collect warnings (FR-042 through FR-045)
-    all_warnings: List[FilterWarning] = []
+    all_warnings: list[FilterWarning] = []
 
     # Validate tags
     valid_tags, tag_warnings = await _validate_tags(session, tag)
@@ -740,7 +753,7 @@ async def list_videos(
 
     # T099: Execute query with timeout (FR-036: 10s timeout)
     try:
-        async def execute_queries() -> Tuple[int, List[VideoDB], Dict[str, TopicCategory], set[str]]:
+        async def execute_queries() -> tuple[int, list[VideoDB], dict[str, TopicCategory], set[str]]:
             """Execute all database queries for video listing."""
             # Get total count (before pagination)
             count_query = select(func.count()).select_from(query.subquery())
@@ -806,7 +819,7 @@ async def list_videos(
             execute_queries(),
             timeout=QUERY_TIMEOUT_SECONDS,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.error(
             "[videos] Query timeout exceeded (%ds) for client %s",
             QUERY_TIMEOUT_SECONDS,
@@ -822,7 +835,7 @@ async def list_videos(
         )
 
     # Transform to response items with classification data
-    items: List[VideoListItem] = []
+    items: list[VideoListItem] = []
     for video in videos:
         transcript_summary = build_transcript_summary(
             list(video.transcripts),
@@ -838,7 +851,7 @@ async def list_videos(
         category_name = video.category.name if video.category else None
 
         # Extract topics with parent paths
-        topics_list: List[TopicSummary] = []
+        topics_list: list[TopicSummary] = []
         if video.video_topics:
             for vt in video.video_topics:
                 tc = vt.topic_category
@@ -996,7 +1009,7 @@ async def get_video(
             for tc in parent_result.scalars().all():
                 topic_cache[tc.topic_id] = tc
 
-    topics_list: List[TopicSummary] = []
+    topics_list: list[TopicSummary] = []
     if video.video_topics:
         for vt in video.video_topics:
             tc = vt.topic_category
@@ -1109,7 +1122,7 @@ async def get_video_playlists(
     memberships = await membership_repo.get_video_playlists(session, video_id)
 
     # Transform to response schema
-    playlist_memberships: List[VideoPlaylistMembership] = []
+    playlist_memberships: list[VideoPlaylistMembership] = []
     for membership in memberships:
         playlist = membership.playlist
         if playlist and not playlist.deleted_flag:
@@ -1276,7 +1289,7 @@ async def update_alternative_url(
             for tc in parent_result.scalars().all():
                 topic_cache[tc.topic_id] = tc
 
-    topics_list: List[TopicSummary] = []
+    topics_list: list[TopicSummary] = []
     if video.video_topics:
         for vt in video.video_topics:
             tc = vt.topic_category
@@ -1335,13 +1348,13 @@ async def recover_video_endpoint(
         description="YouTube video ID (11 characters)",
         example="dQw4w9WgXcQ",
     ),
-    start_year: Optional[int] = Query(
+    start_year: int | None = Query(
         None,
         ge=2005,
         le=2026,
         description="Only search snapshots from this year onward (2005-2026)",
     ),
-    end_year: Optional[int] = Query(
+    end_year: int | None = Query(
         None,
         ge=2005,
         le=2026,
@@ -1422,11 +1435,11 @@ async def recover_video_endpoint(
 
     # T033: Idempotency guard — skip Wayback Machine if recently recovered
     if video.recovered_at is not None:
-        now_utc = datetime.now(timezone.utc)
+        now_utc = datetime.now(UTC)
         # Ensure recovered_at is timezone-aware for comparison
         recovered_at = video.recovered_at
         if recovered_at.tzinfo is None:
-            recovered_at = recovered_at.replace(tzinfo=timezone.utc)
+            recovered_at = recovered_at.replace(tzinfo=UTC)
         elapsed = now_utc - recovered_at
         if elapsed < timedelta(minutes=RECOVERY_IDEMPOTENCY_MINUTES):
             logger.info(

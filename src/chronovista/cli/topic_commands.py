@@ -10,10 +10,9 @@ import asyncio
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import typer
-from sqlalchemy.ext.asyncio import AsyncSession
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import (
@@ -26,6 +25,7 @@ from rich.progress import (
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from rich.tree import Tree
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.config.database import db_manager
 from chronovista.config.settings import settings
@@ -43,7 +43,7 @@ async def resolve_topic_identifier(
     session: AsyncSession,
     topic_repo: TopicCategoryRepository,
     identifier: str,
-) -> Optional[Any]:
+) -> Any | None:
     """
     Resolve a topic identifier (ID or name) to a topic object.
 
@@ -73,7 +73,8 @@ async def resolve_topic_identifier(
         return topic
 
     # Try exact name match (case-insensitive)
-    from sqlalchemy import select, func
+    from sqlalchemy import func, select
+
     from chronovista.db.models import TopicCategory as TopicCategoryDB
 
     result = await session.execute(
@@ -1036,7 +1037,7 @@ def export_topics(
     format: str = typer.Option(
         "csv", "--format", "-f", help="Export format: csv, json"
     ),
-    output: Optional[str] = typer.Option(
+    output: str | None = typer.Option(
         None, "--output", "-o", help="Output file path (optional)"
     ),
     include_videos: bool = typer.Option(
@@ -1091,7 +1092,7 @@ def export_topics(
 
                 # Export topic categories
                 topics = await topic_repo.get_multi(session, skip=0, limit=1000)
-                topic_data: List[Dict[str, Any]] = []
+                topic_data: list[dict[str, Any]] = []
                 for topic in topics:
                     topic_data.append(
                         {
@@ -1113,7 +1114,7 @@ def export_topics(
                     video_topics = await video_topic_repo.get_multi(
                         session, skip=0, limit=10000
                     )
-                    video_topic_data: List[Dict[str, Any]] = []
+                    video_topic_data: list[dict[str, Any]] = []
 
                     for vt in video_topics:
                         # Get video details for additional context
@@ -1146,7 +1147,7 @@ def export_topics(
                     channel_topics = await channel_topic_repo.get_multi(
                         session, skip=0, limit=10000
                     )
-                    channel_topic_data: List[Dict[str, Any]] = []
+                    channel_topic_data: list[dict[str, Any]] = []
 
                     for ct in channel_topics:
                         # Get channel details for additional context
@@ -1233,7 +1234,7 @@ def export_topics(
                             if include_channels
                             else ""
                         )
-                        + f"\n[dim]Data includes topic metadata and association details for analysis.[/dim]",
+                        + "\n[dim]Data includes topic metadata and association details for analysis.[/dim]",
                         title="Export Summary",
                         border_style="green",
                     )
@@ -1256,7 +1257,7 @@ def topic_graph_export(
     format: str = typer.Option(
         "dot", "--format", "-f", help="Export format: dot, json"
     ),
-    output: Optional[str] = typer.Option(
+    output: str | None = typer.Option(
         None,
         "--output",
         "-o",
@@ -1404,7 +1405,7 @@ def topic_graph_export(
 
 @topic_app.command("heatmap")
 def topic_heatmap_export(
-    output: Optional[str] = typer.Option(
+    output: str | None = typer.Option(
         None, "--output", "-o", help="Output file path (optional)"
     ),
     period: str = typer.Option(
@@ -1479,7 +1480,7 @@ def topic_heatmap_export(
                     return
 
                 # Create heatmap data structure
-                heatmap_data: Dict[str, Any] = {
+                heatmap_data: dict[str, Any] = {
                     "metadata": {
                         "period": period,
                         "months_back": months_back,
@@ -1503,7 +1504,7 @@ def topic_heatmap_export(
                     all_periods.add(trend.period)
 
                 # Sort periods chronologically
-                sorted_periods = sorted(list(all_periods))
+                sorted_periods = sorted(all_periods)
                 heatmap_data["periods"] = sorted_periods
 
                 # Build topics list and matrix
@@ -1679,10 +1680,7 @@ def topic_chart(
                     value = topic.total_content_count
 
                 # Calculate bar length (proportional to max value)
-                if max_value > 0:
-                    bar_length = int((value / max_value) * width)
-                else:
-                    bar_length = 0
+                bar_length = int(value / max_value * width) if max_value > 0 else 0
 
                 # Create the bar using Unicode block characters for better visual effect
                 full_blocks = bar_length
@@ -1844,7 +1842,7 @@ async def show_full_hierarchy(
 
 @topic_app.command("tree")
 def topic_tree(
-    topic_id: Optional[str] = typer.Argument(
+    topic_id: str | None = typer.Argument(
         None, help="Root topic ID to show relationships for (omit to show full hierarchy)"
     ),
     max_depth: int = typer.Option(
@@ -2179,7 +2177,7 @@ def interactive_topic_exploration(
                 f"\n[green]✅ Loaded {len(topics)} topics successfully![/green]"
             )
 
-            selected_topics: List[Any] = []
+            selected_topics: list[Any] = []
             continue_exploring = True
 
             while continue_exploring:
@@ -2333,7 +2331,7 @@ def interactive_topic_exploration(
                             # If auto-advance mode, automatically proceed to done
                             if auto_advance:
                                 console.print(
-                                    f"[dim]Auto-advance mode: proceeding to analysis...[/dim]"
+                                    "[dim]Auto-advance mode: proceeding to analysis...[/dim]"
                                 )
                                 continue_exploring = False
                         else:
@@ -2349,7 +2347,7 @@ def interactive_topic_exploration(
             # Phase 3: Final analysis of selected topics
             if selected_topics:
                 console.print(
-                    f"\n[bold green]🎉 Topic exploration complete![/bold green]"
+                    "\n[bold green]🎉 Topic exploration complete![/bold green]"
                 )
                 console.print(
                     f"[green]Selected {len(selected_topics)} topics for analysis[/green]"
@@ -2400,7 +2398,7 @@ def topic_discovery_analysis(
         "-m",
         help="Minimum interactions to be considered active",
     ),
-    discovery_method: Optional[str] = typer.Option(
+    discovery_method: str | None = typer.Option(
         None,
         "--method",
         help="Filter by discovery method: liked_content, watched_complete, watched_partial, browsed",
@@ -2450,7 +2448,7 @@ def topic_discovery_analysis(
                 return
 
             # Display overall summary
-            console.print(f"\n[bold]📊 Discovery Overview[/bold]")
+            console.print("\n[bold]📊 Discovery Overview[/bold]")
 
             summary_table = Table(show_header=True, header_style="bold cyan")
             summary_table.add_column("Metric", style="cyan")
@@ -2467,7 +2465,7 @@ def topic_discovery_analysis(
 
             # Display discovery paths
             if analysis.discovery_paths:
-                console.print(f"\n[bold]🛤️ Discovery Methods[/bold]")
+                console.print("\n[bold]🛤️ Discovery Methods[/bold]")
 
                 # Filter by discovery method if specified
                 paths_to_show = analysis.discovery_paths
@@ -2482,7 +2480,7 @@ def topic_discovery_analysis(
                             f"[yellow]No data found for discovery method: {discovery_method}[/yellow]"
                         )
                         console.print(
-                            f"Available methods: {', '.join(set(p.discovery_method for p in analysis.discovery_paths))}"
+                            f"Available methods: {', '.join({p.discovery_method for p in analysis.discovery_paths})}"
                         )
                         return
 
@@ -2528,7 +2526,7 @@ def topic_discovery_analysis(
 
             # Display top entry topics
             if analysis.top_entry_topics:
-                console.print(f"\n[bold]🚪 Top Entry Topics[/bold]")
+                console.print("\n[bold]🚪 Top Entry Topics[/bold]")
                 console.print(
                     "[dim]Topics users discover first when starting their journey[/dim]"
                 )
@@ -2564,7 +2562,7 @@ def topic_discovery_analysis(
 
             # Display high retention topics
             if analysis.high_retention_topics:
-                console.print(f"\n[bold]🎯 High Retention Topics[/bold]")
+                console.print("\n[bold]🎯 High Retention Topics[/bold]")
                 console.print("[dim]Topics that keep users engaged long-term[/dim]")
 
                 retention_table = Table(show_header=True, header_style="bold purple")
@@ -2639,7 +2637,7 @@ def topic_trends_analysis(
         min=1,
         max=60,
     ),
-    trend_direction: Optional[str] = typer.Option(
+    trend_direction: str | None = typer.Option(
         None,
         "--direction",
         "-d",
@@ -2829,7 +2827,7 @@ def topic_trends_analysis(
 
             # Show analysis insights
             if trends:
-                console.print(f"\n[bold]🔍 Trend Insights[/bold]")
+                console.print("\n[bold]🔍 Trend Insights[/bold]")
 
                 # Top growers
                 top_growers = sorted(trends, key=lambda x: x.growth_rate, reverse=True)[
@@ -2960,7 +2958,7 @@ def topic_insights_analysis(
 
             # Display dominant interests
             if insights.dominant_interests:
-                console.print(f"\n[bold]🎯 Your Dominant Interests[/bold]")
+                console.print("\n[bold]🎯 Your Dominant Interests[/bold]")
                 console.print(
                     "[dim]Topics you engage with most frequently and deeply[/dim]"
                 )
@@ -3030,7 +3028,7 @@ def topic_insights_analysis(
 
             # Display emerging interests
             if insights.emerging_interests:
-                console.print(f"\n[bold]🌱 Emerging Interests[/bold]")
+                console.print("\n[bold]🌱 Emerging Interests[/bold]")
                 console.print(
                     "[dim]Topics showing recent growth in your engagement[/dim]"
                 )
@@ -3074,7 +3072,7 @@ def topic_insights_analysis(
 
             # Display underexplored topics
             if insights.underexplored_topics:
-                console.print(f"\n[bold]🔍 Topics to Explore[/bold]")
+                console.print("\n[bold]🔍 Topics to Explore[/bold]")
                 console.print(
                     "[dim]Popular topics you haven't fully explored yet[/dim]"
                 )
@@ -3118,7 +3116,7 @@ def topic_insights_analysis(
 
             # Display similar recommendations
             if insights.similar_recommendations:
-                console.print(f"\n[bold]🎯 Similar Topic Recommendations[/bold]")
+                console.print("\n[bold]🎯 Similar Topic Recommendations[/bold]")
                 console.print(
                     "[dim]Topics similar to your favorites that you might enjoy[/dim]"
                 )
@@ -3161,7 +3159,7 @@ def topic_insights_analysis(
                 console.print(similar_table)
 
             # Show personalized insights summary
-            console.print(f"\n[bold]💡 Key Insights[/bold]")
+            console.print("\n[bold]💡 Key Insights[/bold]")
 
             # Calculate some interesting stats
             total_insights = (
@@ -3214,7 +3212,7 @@ def topic_insights_analysis(
 
 
 async def show_selected_topics_analysis(
-    selected_topics: List[Any],
+    selected_topics: list[Any],
     analytics_service: TopicAnalyticsService,
     topic_repo: TopicCategoryRepository,
     console: Console,
@@ -3260,7 +3258,7 @@ async def show_selected_topics_analysis(
             await asyncio.sleep(0.1)
 
     # Display results
-    console.print(f"\n[bold green]📈 Analysis Results[/bold green]")
+    console.print("\n[bold green]📈 Analysis Results[/bold green]")
 
     for i, analysis in enumerate(topic_analyses, 1):
         topic = analysis["topic"]
@@ -3281,12 +3279,12 @@ async def show_selected_topics_analysis(
                     f"   🔗 Related topics: {', '.join([r.category_name for r in relationships.relationships[:3]])}"
                 )
             else:
-                console.print(f"   🔗 No strong relationships found")
+                console.print("   🔗 No strong relationships found")
         else:
             console.print(f"   📋 Topic type: {topic.topic_type}")
 
 
-async def export_selected_topics(selected_topics: List[Any], console: Console) -> None:
+async def export_selected_topics(selected_topics: list[Any], console: Console) -> None:
     """Export selected topics to a file with progress bar."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"selected_topics_{timestamp}.json"
@@ -3338,7 +3336,7 @@ async def export_selected_topics(selected_topics: List[Any], console: Console) -
 
 @topic_app.command("engagement")
 def topic_engagement_analysis(
-    topic_id: Optional[str] = typer.Option(
+    topic_id: str | None = typer.Option(
         None, "--topic-id", "-t", help="Specific topic ID to analyze (optional)"
     ),
     limit: int = typer.Option(
@@ -3436,7 +3434,7 @@ def topic_engagement_analysis(
 
             # Create engagement table
             table = Table(
-                title=f"🚀 Topic Engagement Metrics",
+                title="🚀 Topic Engagement Metrics",
                 show_header=True,
                 header_style="bold magenta",
             )

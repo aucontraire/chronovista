@@ -9,7 +9,6 @@ exposes it as "Topic" for simplicity.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -36,7 +35,7 @@ class TopicSummary(BaseModel):
 
     topic_id: str = Field(..., description="Topic ID (/m/xxx format)")
     name: str = Field(..., description="Human-readable topic name")
-    parent_path: Optional[str] = Field(
+    parent_path: str | None = Field(
         None,
         description="Hierarchy path (e.g., 'Arts > Music')",
     )
@@ -68,8 +67,8 @@ class TopicHierarchyItem(BaseModel):
 
     topic_id: str = Field(..., description="Topic ID")
     name: str = Field(..., description="Topic name")
-    parent_topic_id: Optional[str] = Field(None, description="Parent topic ID")
-    parent_path: Optional[str] = Field(
+    parent_topic_id: str | None = Field(None, description="Parent topic ID")
+    parent_path: str | None = Field(
         None,
         description="Full ancestry path (e.g., 'Society > Lifestyle > Fashion')",
     )
@@ -86,7 +85,7 @@ class TopicHierarchyResponse(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    data: List[TopicHierarchyItem]
+    data: list[TopicHierarchyItem]
 
 
 class TopicListItem(BaseModel):
@@ -115,10 +114,10 @@ class TopicDetail(TopicListItem):
     Extends TopicListItem with additional metadata fields.
     """
 
-    parent_topic_id: Optional[str] = Field(None, description="Parent topic ID")
+    parent_topic_id: str | None = Field(None, description="Parent topic ID")
     topic_type: str = Field("youtube", description="Topic type: youtube or custom")
-    wikipedia_url: Optional[str] = Field(None, description="Wikipedia URL for topic")
-    normalized_name: Optional[str] = Field(None, description="Normalized topic name")
+    wikipedia_url: str | None = Field(None, description="Wikipedia URL for topic")
+    normalized_name: str | None = Field(None, description="Normalized topic name")
     source: str = Field("seeded", description="Topic source: seeded or dynamic")
     created_at: datetime = Field(..., description="Record creation timestamp")
 
@@ -131,7 +130,7 @@ class TopicListResponse(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    data: List[TopicListItem]
+    data: list[TopicListItem]
     pagination: PaginationMeta
 
 

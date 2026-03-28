@@ -6,8 +6,6 @@ such as category navigation with video counts.
 
 from __future__ import annotations
 
-from typing import List
-
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +15,6 @@ from chronovista.api.routers.responses import LIST_ERRORS
 from chronovista.api.schemas.sidebar import SidebarCategory, SidebarCategoryResponse
 from chronovista.db.models import Video, VideoCategory
 from chronovista.models.enums import AvailabilityStatus
-
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -80,7 +77,7 @@ async def get_sidebar_categories(
     rows = result.all()
 
     # Transform to response items with href
-    items: List[SidebarCategory] = []
+    items: list[SidebarCategory] = []
     for row in rows:
         items.append(
             SidebarCategory(

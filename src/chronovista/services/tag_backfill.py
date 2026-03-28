@@ -26,7 +26,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress
 from rich.table import Table
-from sqlalchemy import distinct, func, inspect as sa_inspect, select, update
+from sqlalchemy import distinct, func, select, update
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
@@ -424,7 +425,7 @@ class TagBackfillService:
         # Step 2: Query distinct tags from video_tags
         repo = VideoTagRepository()
         raw_tags = await repo.get_distinct_tags_with_counts(session)
-        distinct_tags: dict[str, int] = {tag: count for tag, count in raw_tags}
+        distinct_tags: dict[str, int] = dict(raw_tags)
 
         logger.info("Found %d distinct tags in video_tags", len(distinct_tags))
 
@@ -539,7 +540,7 @@ class TagBackfillService:
             if len(casefolded_set) < 2:
                 continue
 
-            total_count = sum(count for _, count in aliases)
+            sum(count for _, count in aliases)
             is_known = normalized_form in KNOWN_FALSE_MERGE_PATTERNS
 
             collisions.append(
@@ -609,7 +610,7 @@ class TagBackfillService:
         # Step 2: Query distinct tags from video_tags
         repo = VideoTagRepository()
         raw_tags = await repo.get_distinct_tags_with_counts(session)
-        distinct_tags: dict[str, int] = {tag: count for tag, count in raw_tags}
+        distinct_tags: dict[str, int] = dict(raw_tags)
 
         # Step 3: Normalize and group
         groups, skip_list = self._normalize_and_group_core(distinct_tags)

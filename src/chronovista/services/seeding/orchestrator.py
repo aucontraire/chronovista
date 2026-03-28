@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Set
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,7 +22,7 @@ class SeedingOrchestrator:
     """Orchestrates seeding operations with dependency resolution."""
 
     def __init__(self) -> None:
-        self.seeders: Dict[str, BaseSeeder] = {}
+        self.seeders: dict[str, BaseSeeder] = {}
 
     def register_seeder(self, seeder: BaseSeeder) -> None:
         """Register a seeder for a specific data type."""
@@ -31,7 +30,7 @@ class SeedingOrchestrator:
         self.seeders[data_type] = seeder
         logger.debug(f"Registered seeder for {data_type}")
 
-    def get_available_types(self) -> Set[str]:
+    def get_available_types(self) -> set[str]:
         """Get all available data types."""
         return set(self.seeders.keys())
 
@@ -39,9 +38,9 @@ class SeedingOrchestrator:
         self,
         session: AsyncSession,
         takeout_data: TakeoutData,
-        types_to_process: Optional[Set[str]] = None,
-        progress: Optional[ProgressCallback] = None,
-    ) -> Dict[str, SeedResult]:
+        types_to_process: set[str] | None = None,
+        progress: ProgressCallback | None = None,
+    ) -> dict[str, SeedResult]:
         """Execute seeding for specified types in dependency order."""
         start_time = datetime.now()
 
@@ -95,7 +94,7 @@ class SeedingOrchestrator:
 
         return results
 
-    def _resolve_dependencies(self, requested_types: Set[str]) -> List[str]:
+    def _resolve_dependencies(self, requested_types: set[str]) -> list[str]:
         """
         Resolve execution order based on dependencies.
 
@@ -136,7 +135,7 @@ class SeedingOrchestrator:
 
         return resolved
 
-    def _expand_with_dependencies(self, requested_types: Set[str]) -> Set[str]:
+    def _expand_with_dependencies(self, requested_types: set[str]) -> set[str]:
         """
         Expand requested types to include all required dependencies.
         """

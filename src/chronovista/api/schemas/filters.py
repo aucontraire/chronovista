@@ -7,7 +7,6 @@ error responses, and partial success handling per FR-034, FR-049-052.
 from __future__ import annotations
 
 from enum import Enum
-from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -87,26 +86,26 @@ class VideoFilterParams(BaseModel):
 
     model_config = ConfigDict(from_attributes=True, strict=True)
 
-    tags: List[str] = Field(
+    tags: list[str] = Field(
         default_factory=list,
         description="Filter by tag(s) - OR logic between multiple",
     )
-    canonical_tags: List[str] = Field(
+    canonical_tags: list[str] = Field(
         default_factory=list,
         description="Filter by canonical tag(s) - AND logic between multiple",
     )
-    category: Optional[str] = Field(
+    category: str | None = Field(
         None,
         description="Filter by category ID (single value)",
     )
-    topic_ids: List[str] = Field(
+    topic_ids: list[str] = Field(
         default_factory=list,
         description="Filter by topic ID(s) - OR logic between multiple",
     )
 
     @field_validator("tags")
     @classmethod
-    def validate_tags_limit(cls, v: List[str]) -> List[str]:
+    def validate_tags_limit(cls, v: list[str]) -> list[str]:
         """Validate maximum 10 tags per FR-034.
 
         Parameters
@@ -133,7 +132,7 @@ class VideoFilterParams(BaseModel):
 
     @field_validator("canonical_tags")
     @classmethod
-    def validate_canonical_tags_limit(cls, v: List[str]) -> List[str]:
+    def validate_canonical_tags_limit(cls, v: list[str]) -> list[str]:
         """Validate maximum 10 canonical tags.
 
         Parameters
@@ -160,7 +159,7 @@ class VideoFilterParams(BaseModel):
 
     @field_validator("topic_ids")
     @classmethod
-    def validate_topics_limit(cls, v: List[str]) -> List[str]:
+    def validate_topics_limit(cls, v: list[str]) -> list[str]:
         """Validate maximum 10 topics per FR-034.
 
         Parameters

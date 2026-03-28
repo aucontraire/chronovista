@@ -8,7 +8,6 @@ in YouTube data) to their canonical normalized representations.
 from __future__ import annotations
 
 import uuid
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +33,7 @@ class TagAliasRepository(
 
     async def get(
         self, session: AsyncSession, id: uuid.UUID
-    ) -> Optional[TagAliasDB]:
+    ) -> TagAliasDB | None:
         """Get tag alias by UUID primary key."""
         result = await session.execute(
             select(TagAliasDB).where(TagAliasDB.id == id)

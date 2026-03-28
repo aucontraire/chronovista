@@ -5,9 +5,8 @@ Database configuration and connection management.
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from typing import Optional
 
-from sqlalchemy import Engine, MetaData, create_engine
+from sqlalchemy import Engine, create_engine
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -69,12 +68,12 @@ class DatabaseManager:
         return self._session_factory
 
     async def get_session(
-        self, echo: Optional[bool] = None
+        self, echo: bool | None = None
     ) -> AsyncGenerator[AsyncSession, None]:
         """Get async database session."""
         if echo is not None:
             # Create a temporary session factory with custom echo setting
-            engine = self.get_engine()
+            self.get_engine()
             # Create a new engine with custom echo setting
             database_url = settings.effective_database_url
             engine_kwargs = {

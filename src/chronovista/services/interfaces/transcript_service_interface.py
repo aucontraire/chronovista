@@ -10,7 +10,7 @@ This interface defines the contract for transcript acquisition, enabling:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ...models.enums import DownloadReason
 from ...models.video_transcript import EnhancedVideoTranscriptBase
@@ -42,7 +42,7 @@ class TranscriptServiceInterface(ABC):
     async def get_transcript(
         self,
         video_id: VideoId,
-        language_codes: Optional[List[str]] = None,
+        language_codes: list[str] | None = None,
         download_reason: DownloadReason = DownloadReason.USER_REQUEST,
     ) -> EnhancedVideoTranscriptBase:
         """
@@ -73,7 +73,7 @@ class TranscriptServiceInterface(ABC):
         pass
 
     @abstractmethod
-    async def get_available_languages(self, video_id: VideoId) -> List[Dict[str, Any]]:
+    async def get_available_languages(self, video_id: VideoId) -> list[dict[str, Any]]:
         """
         Get list of available transcript languages for a video.
 
@@ -96,11 +96,11 @@ class TranscriptServiceInterface(ABC):
     @abstractmethod
     async def batch_get_transcripts(
         self,
-        video_ids: List[VideoId],
-        language_codes: Optional[List[str]] = None,
+        video_ids: list[VideoId],
+        language_codes: list[str] | None = None,
         download_reason: DownloadReason = DownloadReason.USER_REQUEST,
         max_retries: int = 3,
-    ) -> Dict[VideoId, Optional[EnhancedVideoTranscriptBase]]:
+    ) -> dict[VideoId, EnhancedVideoTranscriptBase | None]:
         """
         Download transcripts for multiple videos.
 
@@ -126,10 +126,10 @@ class TranscriptServiceInterface(ABC):
     async def get_transcripts_for_languages(
         self,
         video_id: VideoId,
-        language_codes: List[str],
+        language_codes: list[str],
         download_reason: DownloadReason = DownloadReason.USER_REQUEST,
         include_translations: bool = False,
-    ) -> Dict[str, Optional["EnhancedVideoTranscriptBase"]]:
+    ) -> dict[str, EnhancedVideoTranscriptBase | None]:
         """
         Get transcripts for multiple languages with minimal API calls.
 

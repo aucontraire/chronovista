@@ -15,9 +15,10 @@ from __future__ import annotations
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 from urllib.parse import unquote
 
 from pydantic import BaseModel, Field
@@ -26,7 +27,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.exceptions import (
     AuthenticationError,
-    ChannelEnrichmentError,
     GracefulShutdownException,
     NetworkError,
     PrerequisiteError,
@@ -44,8 +44,6 @@ from chronovista.models.enrichment_report import (
     EnrichmentSummary,
 )
 from chronovista.models.enums import AvailabilityStatus
-from chronovista.services.enrichment.shutdown_handler import get_shutdown_handler
-
 from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.repositories.playlist_repository import PlaylistRepository
 from chronovista.repositories.topic_category_repository import (
@@ -57,6 +55,7 @@ from chronovista.repositories.video_category_repository import (
 from chronovista.repositories.video_repository import VideoRepository
 from chronovista.repositories.video_tag_repository import VideoTagRepository
 from chronovista.repositories.video_topic_repository import VideoTopicRepository
+from chronovista.services.enrichment.shutdown_handler import get_shutdown_handler
 from chronovista.services.image_cache import ImageCacheConfig, ImageCacheService
 from chronovista.services.youtube_service import YouTubeService
 
@@ -431,10 +430,10 @@ class ChannelEnrichmentResult(BaseModel):
     )
 
     # Timing
-    started_at: Optional[datetime] = Field(
+    started_at: datetime | None = Field(
         default=None, description="When enrichment started"
     )
-    completed_at: Optional[datetime] = Field(
+    completed_at: datetime | None = Field(
         default=None, description="When enrichment completed"
     )
     duration_seconds: float = Field(
@@ -453,13 +452,13 @@ class ChannelEnrichmentResult(BaseModel):
     )
 
     # Detailed results (optional, for verbose mode)
-    enriched_channel_ids: List[str] = Field(
+    enriched_channel_ids: list[str] = Field(
         default_factory=list, description="IDs of successfully enriched channels"
     )
-    failed_channel_ids: List[str] = Field(
+    failed_channel_ids: list[str] = Field(
         default_factory=list, description="IDs of channels that failed enrichment"
     )
-    skipped_channel_ids: List[str] = Field(
+    skipped_channel_ids: list[str] = Field(
         default_factory=list, description="IDs of channels that were skipped"
     )
 
@@ -810,7 +809,7 @@ class EnrichmentLock:
         # Force release PostgreSQL lock
         if session is not None:
             try:
-                await session.execute(text(f"SELECT pg_advisory_unlock_all()"))
+                await session.execute(text("SELECT pg_advisory_unlock_all()"))
             except Exception as e:
                 logger.debug(f"pg_advisory_unlock_all failed: {e}")
 
@@ -876,7 +875,7 @@ class EnrichmentService:
         video_category_repository: VideoCategoryRepository,
         topic_category_repository: TopicCategoryRepository,
         youtube_service: YouTubeService,
-        playlist_repository: Optional[PlaylistRepository] = None,
+        playlist_repository: PlaylistRepository | None = None,
     ) -> None:
         """
         Initialize EnrichmentService.
@@ -938,7 +937,7 @@ class EnrichmentService:
         from chronovista.db.models import TopicCategory as TopicCategoryDB
         from chronovista.db.models import VideoCategory as VideoCategoryDB
 
-        missing_tables: List[str] = []
+        missing_tables: list[str] = []
 
         # Check topic_categories (FR-059)
         topic_count_query = select(func.count(TopicCategoryDB.topic_id))
@@ -1035,8 +1034,8 @@ class EnrichmentService:
         GracefulShutdownException
             If shutdown signal received (partial report included).
         """
-        started_at = datetime.now(timezone.utc)
-        details: List[EnrichmentDetail] = []
+        started_at = datetime.now(UTC)
+        details: list[EnrichmentDetail] = []
 
         # Initialize counters
         videos_processed = 0
@@ -1105,7 +1104,7 @@ class EnrichmentService:
         # Cache video data BEFORE the API call to avoid SQLAlchemy lazy-load issues
         # after long-running operations. The API call can take minutes, during which
         # the DB connection may become stale, causing MissingGreenlet errors.
-        video_cache: Dict[str, Dict[str, Any]] = {
+        video_cache: dict[str, dict[str, Any]] = {
             v.video_id: {
                 "video_id": v.video_id,
                 "title": v.title,
@@ -1169,7 +1168,7 @@ class EnrichmentService:
             raise
 
         # Create a map of video_id -> API data for quick lookup
-        api_data_map: Dict[str, YouTubeVideoResponse] = {
+        api_data_map: dict[str, YouTubeVideoResponse] = {
             v.id: v for v in api_videos
         }
 
@@ -1267,7 +1266,7 @@ class EnrichmentService:
                 if video.availability_status != AvailabilityStatus.AVAILABLE:
                     old_status = video.availability_status
                     video.availability_status = AvailabilityStatus.AVAILABLE
-                    video.recovered_at = datetime.now(timezone.utc)
+                    video.recovered_at = datetime.now(UTC)
                     video.recovery_source = "sync"
                     video.unavailability_first_detected = None
                     logger.info(
@@ -1434,7 +1433,7 @@ class EnrichmentService:
         limit: int | None,
         include_deleted: bool,
         refresh_topics: bool = False,
-    ) -> List[Any]:
+    ) -> list[Any]:
         """
         Query videos that need enrichment based on priority level.
 
@@ -1648,7 +1647,7 @@ class EnrichmentService:
     async def get_priority_tier_counts(
         self,
         session: AsyncSession,
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         """
         Get count of videos in each priority tier.
 
@@ -1762,7 +1761,7 @@ class EnrichmentService:
             return True
         else:
             # First cycle: mark as pending confirmation
-            video.unavailability_first_detected = datetime.now(timezone.utc)
+            video.unavailability_first_detected = datetime.now(UTC)
             logger.info(
                 f"Video {video.video_id} not found on API — "
                 f"flagged for confirmation on next sync cycle"
@@ -1805,7 +1804,7 @@ class EnrichmentService:
             logger.warning(f"Video {video_id} not found for unavailability marking")
             return False
 
-    def _extract_video_update_from_dict(self, api_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _extract_video_update_from_dict(self, api_data: dict[str, Any]) -> dict[str, Any]:
         """
         Extract video update data from YouTube API response (dict format).
 
@@ -1823,7 +1822,7 @@ class EnrichmentService:
         content_details = api_data.get("contentDetails") or {}
         statistics = api_data.get("statistics") or {}
 
-        update_data: Dict[str, Any] = {}
+        update_data: dict[str, Any] = {}
 
         # Title and description (sanitize to remove NULL bytes)
         if snippet.get("title"):
@@ -2562,7 +2561,7 @@ class EnrichmentService:
         )
 
         # Create a map of playlist_id -> API data for quick lookup
-        api_data_map: Dict[str, YouTubePlaylistResponse] = {
+        api_data_map: dict[str, YouTubePlaylistResponse] = {
             p.id: p for p in api_playlists
         }
 
@@ -2707,9 +2706,8 @@ class EnrichmentService:
         AuthenticationError
             If OAuth credentials are invalid or missing.
         """
-        from chronovista.models.channel import ChannelUpdate
 
-        started_at = datetime.now(timezone.utc)
+        started_at = datetime.now(UTC)
         result = ChannelEnrichmentResult(started_at=started_at)
 
         # Get shutdown handler for graceful shutdown support (T030)
@@ -2726,7 +2724,7 @@ class EnrichmentService:
 
         if not channels_to_enrich:
             logger.info("No channels found needing enrichment")
-            result.completed_at = datetime.now(timezone.utc)
+            result.completed_at = datetime.now(UTC)
             result.duration_seconds = (result.completed_at - started_at).total_seconds()
             return result
 
@@ -2739,7 +2737,7 @@ class EnrichmentService:
             result.channels_skipped = len(channel_ids)
             if verbose:
                 result.skipped_channel_ids = channel_ids
-            result.completed_at = datetime.now(timezone.utc)
+            result.completed_at = datetime.now(UTC)
             result.duration_seconds = (result.completed_at - started_at).total_seconds()
             logger.info(f"Dry run: would enrich {len(channel_ids)} channels")
             return result
@@ -2764,7 +2762,7 @@ class EnrichmentService:
                     logger.error(f"Error committing on shutdown: {e}")
                     await session.rollback()
                 result.was_interrupted = True
-                result.completed_at = datetime.now(timezone.utc)
+                result.completed_at = datetime.now(UTC)
                 result.duration_seconds = (result.completed_at - started_at).total_seconds()
                 raise
 
@@ -2779,7 +2777,7 @@ class EnrichmentService:
                 consecutive_failures = 0
 
                 # Create a map of channel_id -> API data for quick lookup
-                api_data_map: Dict[str, YouTubeChannelResponse] = {
+                api_data_map: dict[str, YouTubeChannelResponse] = {
                     c.id: c for c in api_channels
                 }
 
@@ -2809,7 +2807,7 @@ class EnrichmentService:
                                 else:
                                     # First cycle: flag for confirmation
                                     channel.unavailability_first_detected = (
-                                        datetime.now(timezone.utc)
+                                        datetime.now(UTC)
                                     )
                                     logger.info(
                                         f"Channel {channel_id} not found on API — "
@@ -2844,7 +2842,7 @@ class EnrichmentService:
                         if channel.availability_status != AvailabilityStatus.AVAILABLE:
                             old_status = channel.availability_status
                             channel.availability_status = AvailabilityStatus.AVAILABLE
-                            channel.recovered_at = datetime.now(timezone.utc)
+                            channel.recovered_at = datetime.now(UTC)
                             channel.recovery_source = "sync"
                             channel.unavailability_first_detected = None
                             logger.info(
@@ -2916,7 +2914,7 @@ class EnrichmentService:
                 except Exception as e:
                     logger.error(f"Error committing on quota exceeded: {e}")
                     await session.rollback()
-                result.completed_at = datetime.now(timezone.utc)
+                result.completed_at = datetime.now(UTC)
                 result.duration_seconds = (result.completed_at - started_at).total_seconds()
                 raise
 
@@ -2951,12 +2949,12 @@ class EnrichmentService:
                 # T033: Handle authentication errors per FR-022
                 logger.error(f"Authentication error during channel enrichment: {e}")
                 # Try to refresh token and retry is handled by YouTubeService
-                result.completed_at = datetime.now(timezone.utc)
+                result.completed_at = datetime.now(UTC)
                 result.duration_seconds = (result.completed_at - started_at).total_seconds()
                 raise
 
         # Final completion
-        result.completed_at = datetime.now(timezone.utc)
+        result.completed_at = datetime.now(UTC)
         result.duration_seconds = (result.completed_at - started_at).total_seconds()
 
         logger.info(
@@ -2969,7 +2967,7 @@ class EnrichmentService:
 
     def _extract_channel_update(
         self, api_data: YouTubeChannelResponse
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Extract channel update data from YouTube API response.
 
@@ -2983,7 +2981,7 @@ class EnrichmentService:
         Dict[str, Any]
             Dictionary of fields to update on the channel.
         """
-        update_data: Dict[str, Any] = {}
+        update_data: dict[str, Any] = {}
 
         # Extract from snippet
         if api_data.snippet:
@@ -3026,7 +3024,7 @@ class EnrichmentService:
 
     async def get_channel_enrichment_status(
         self, session: AsyncSession
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get current channel enrichment status.
 

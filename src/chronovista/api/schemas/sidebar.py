@@ -6,8 +6,6 @@ such as category navigation with video counts.
 
 from __future__ import annotations
 
-from typing import List
-
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -46,4 +44,4 @@ class SidebarCategoryResponse(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    data: List[SidebarCategory]
+    data: list[SidebarCategory]

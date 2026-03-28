@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from enum import Enum
-from typing import Optional, Sequence
+
 from chronovista.models.transcript_segment import TranscriptSegment
 
 
@@ -177,7 +178,7 @@ def format_timestamp_srt(seconds: float) -> str:
 
 
 def format_segment_human(
-    segment: "TranscriptSegment",
+    segment: TranscriptSegment,
     max_text_length: int = 80,
 ) -> str:
     """Format a single segment for human-readable display.
@@ -222,7 +223,7 @@ def format_segment_human(
     return f"#{segment.id} [{start}-{end}] {text}"
 
 
-def format_segment_json(segment: "TranscriptSegment") -> str:
+def format_segment_json(segment: TranscriptSegment) -> str:
     """Format a single segment as JSON.
 
     Newlines are preserved as \\n escape sequences per FR-EDGE-16.
@@ -248,7 +249,7 @@ def format_segment_json(segment: "TranscriptSegment") -> str:
     return response.model_dump_json(indent=2)
 
 
-def format_segment_srt(segment: "TranscriptSegment", sequence: int) -> str:
+def format_segment_srt(segment: TranscriptSegment, sequence: int) -> str:
     """Format a single segment as SRT subtitle.
 
     Newlines are preserved literally for multi-line subtitles per FR-EDGE-17.
@@ -283,8 +284,8 @@ def format_segment_srt(segment: "TranscriptSegment", sequence: int) -> str:
 
 
 def format_segments_human(
-    segments: Sequence["TranscriptSegment"],
-    title: Optional[str] = None,
+    segments: Sequence[TranscriptSegment],
+    title: str | None = None,
 ) -> str:
     """Format multiple segments for human-readable display.
 
@@ -324,9 +325,9 @@ def format_segments_human(
 
 
 def format_segments_json(
-    segments: Sequence["TranscriptSegment"],
-    video_id: Optional[str] = None,
-    language_code: Optional[str] = None,
+    segments: Sequence[TranscriptSegment],
+    video_id: str | None = None,
+    language_code: str | None = None,
 ) -> str:
     """Format multiple segments as JSON.
 
@@ -366,7 +367,7 @@ def format_segments_json(
     return json.dumps(output, indent=2)
 
 
-def format_segments_srt(segments: Sequence["TranscriptSegment"]) -> str:
+def format_segments_srt(segments: Sequence[TranscriptSegment]) -> str:
     """Format multiple segments as SRT subtitles.
 
     Parameters

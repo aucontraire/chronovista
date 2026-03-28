@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
-from typing import Any, Callable, Coroutine
+from typing import Any
 
 from chronovista.api.schemas.tasks import BackgroundTask
 from chronovista.models.enums import OperationType, TaskStatus

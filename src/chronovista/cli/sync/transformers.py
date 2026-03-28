@@ -8,8 +8,7 @@ to chronovista database models.
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from chronovista.models.api_responses import (
     YouTubeChannelResponse,
@@ -19,7 +18,12 @@ from chronovista.models.api_responses import (
     YouTubeVideoResponse,
 )
 from chronovista.models.channel import ChannelCreate
-from chronovista.models.enums import AvailabilityStatus, LanguageCode, PrivacyStatus, TopicType
+from chronovista.models.enums import (
+    AvailabilityStatus,
+    LanguageCode,
+    PrivacyStatus,
+    TopicType,
+)
 from chronovista.models.playlist import PlaylistCreate
 from chronovista.models.playlist_membership import PlaylistMembershipCreate
 from chronovista.models.topic_category import TopicCategoryCreate
@@ -35,7 +39,7 @@ class DataTransformers:
     """
 
     @staticmethod
-    def parse_duration(duration_str: Optional[str]) -> int:
+    def parse_duration(duration_str: str | None) -> int:
         """
         Parse ISO 8601 duration string to seconds.
 
@@ -74,7 +78,7 @@ class DataTransformers:
         return hours * 3600 + minutes * 60 + seconds
 
     @staticmethod
-    def cast_language_code(language_str: Optional[str]) -> Optional[LanguageCode]:
+    def cast_language_code(language_str: str | None) -> LanguageCode | None:
         """
         Safely cast a language string to LanguageCode enum.
 
@@ -151,7 +155,7 @@ class DataTransformers:
         statistics = channel.statistics
 
         # Extract thumbnail URL
-        thumbnail_url: Optional[str] = None
+        thumbnail_url: str | None = None
         if snippet and snippet.thumbnails:
             high_thumb = snippet.thumbnails.get("high")
             if high_thumb:
@@ -176,7 +180,7 @@ class DataTransformers:
     @staticmethod
     def extract_video_create(
         video: YouTubeVideoResponse,
-        channel_id: Optional[str] = None,
+        channel_id: str | None = None,
     ) -> VideoCreate:
         """
         Convert YouTube video response to VideoCreate.
@@ -209,7 +213,7 @@ class DataTransformers:
         # Handle upload date - required field, default to epoch if missing
         upload_date = snippet.published_at if snippet else None
         if upload_date is None:
-            upload_date = datetime.now(timezone.utc)
+            upload_date = datetime.now(UTC)
 
         # T050: Channel ID from snippet or override, with NULL support
         # If we have a valid channel_id (override or from snippet), use it
@@ -317,7 +321,7 @@ class DataTransformers:
     @staticmethod
     def extract_playlist_membership_create(
         item: YouTubePlaylistItemResponse,
-    ) -> Optional[PlaylistMembershipCreate]:
+    ) -> PlaylistMembershipCreate | None:
         """
         Convert YouTube playlist item response to PlaylistMembershipCreate.
 

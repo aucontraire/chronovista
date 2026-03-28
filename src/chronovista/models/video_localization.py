@@ -8,8 +8,6 @@ and serialization support.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional, Union
-
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -22,11 +20,11 @@ class VideoLocalizationBase(BaseModel):
     """Base model for video localizations."""
 
     video_id: VideoId = Field(..., description="YouTube video ID (validated)")
-    language_code: Union[LanguageCode, str] = Field(
+    language_code: LanguageCode | str = Field(
         ..., description="BCP-47 language code (enum or string for regional variants)"
     )
     localized_title: str = Field(..., min_length=1, description="Localized video title")
-    localized_description: Optional[str] = Field(
+    localized_description: str | None = Field(
         default=None, description="Localized video description"
     )
 
@@ -94,7 +92,7 @@ class VideoLocalizationBase(BaseModel):
 
     @field_validator("localized_description")
     @classmethod
-    def validate_localized_description(cls, v: Optional[str]) -> Optional[str]:
+    def validate_localized_description(cls, v: str | None) -> str | None:
         """Validate localized description."""
         if v is None:
             return v
@@ -122,12 +120,12 @@ class VideoLocalizationCreate(VideoLocalizationBase):
 class VideoLocalizationUpdate(BaseModel):
     """Model for updating video localizations."""
 
-    localized_title: Optional[str] = Field(default=None)
-    localized_description: Optional[str] = None
+    localized_title: str | None = Field(default=None)
+    localized_description: str | None = None
 
     @field_validator("localized_title")
     @classmethod
-    def validate_localized_title(cls, v: Optional[str]) -> Optional[str]:
+    def validate_localized_title(cls, v: str | None) -> str | None:
         """Validate localized title."""
         if v is None:
             return v
@@ -143,7 +141,7 @@ class VideoLocalizationUpdate(BaseModel):
 
     @field_validator("localized_description")
     @classmethod
-    def validate_localized_description(cls, v: Optional[str]) -> Optional[str]:
+    def validate_localized_description(cls, v: str | None) -> str | None:
         """Validate localized description."""
         if v is None:
             return v
@@ -176,25 +174,25 @@ class VideoLocalization(VideoLocalizationBase):
 class VideoLocalizationSearchFilters(BaseModel):
     """Filters for searching video localizations."""
 
-    video_ids: Optional[List[VideoId]] = Field(
+    video_ids: list[VideoId] | None = Field(
         default=None, description="Filter by video IDs"
     )
-    language_codes: Optional[List[str]] = Field(
+    language_codes: list[str] | None = Field(
         default=None, description="Filter by language codes"
     )
-    title_query: Optional[str] = Field(
+    title_query: str | None = Field(
         default=None, min_length=1, description="Search in localized titles"
     )
-    description_query: Optional[str] = Field(
+    description_query: str | None = Field(
         default=None, min_length=1, description="Search in localized descriptions"
     )
-    has_description: Optional[bool] = Field(
+    has_description: bool | None = Field(
         default=None, description="Filter by presence of localized description"
     )
-    created_after: Optional[datetime] = Field(
+    created_after: datetime | None = Field(
         default=None, description="Filter by creation date"
     )
-    created_before: Optional[datetime] = Field(
+    created_before: datetime | None = Field(
         default=None, description="Filter by creation date"
     )
 
@@ -212,7 +210,7 @@ class VideoLocalizationStatistics(BaseModel):
     avg_localizations_per_video: float = Field(
         ..., description="Average localizations per video"
     )
-    top_languages: List[tuple[str, int]] = Field(
+    top_languages: list[tuple[str, int]] = Field(
         default_factory=list, description="Most common languages with counts"
     )
     localization_coverage: dict[str, int] = Field(

@@ -9,7 +9,7 @@ select when uploading (e.g., "Comedy", "Music", "Gaming").
 from __future__ import annotations
 
 import asyncio
-from typing import Any, List, Optional, cast
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -30,7 +30,7 @@ async def resolve_category_identifier(
     session: Any,
     category_repo: VideoCategoryRepository,
     identifier: str,
-) -> Optional[VideoCategoryDB]:
+) -> VideoCategoryDB | None:
     """
     Resolve a category identifier (ID or name) to a category object.
 
@@ -65,7 +65,7 @@ async def resolve_category_identifier(
             func.lower(VideoCategoryDB.name) == identifier.lower()
         )
     )
-    matches: List[VideoCategoryDB] = list(result.scalars().all())
+    matches: list[VideoCategoryDB] = list(result.scalars().all())
 
     if len(matches) == 1:
         return matches[0]
@@ -367,7 +367,7 @@ def videos_by_category(
                 )
                 if total_count > limit:
                     console.print(
-                        f"[dim]Use --limit to see more videos[/dim]"
+                        "[dim]Use --limit to see more videos[/dim]"
                     )
 
         except Exception as e:

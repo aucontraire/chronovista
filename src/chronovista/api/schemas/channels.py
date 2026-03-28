@@ -8,7 +8,6 @@ and response wrappers.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -48,11 +47,11 @@ class ChannelListItem(BaseModel):
 
     channel_id: str = Field(..., description="YouTube channel ID (24 chars)")
     title: str = Field(..., description="Channel title")
-    description: Optional[str] = Field(None, description="Channel description")
-    subscriber_count: Optional[int] = Field(None, description="Subscriber count")
-    video_count: Optional[int] = Field(None, description="Number of videos")
-    thumbnail_url: Optional[str] = Field(None, description="Channel thumbnail URL")
-    custom_url: Optional[str] = Field(
+    description: str | None = Field(None, description="Channel description")
+    subscriber_count: int | None = Field(None, description="Subscriber count")
+    video_count: int | None = Field(None, description="Number of videos")
+    thumbnail_url: str | None = Field(None, description="Channel thumbnail URL")
+    custom_url: str | None = Field(
         default=None,
         description="Custom channel URL (e.g., @username). Currently always None.",
     )
@@ -82,12 +81,12 @@ class ChannelDetail(ChannelListItem):
         Channel availability status (inherited from ChannelListItem).
     """
 
-    default_language: Optional[str] = Field(None, description="Default language code")
-    country: Optional[str] = Field(None, description="Country code (ISO 3166-1)")
+    default_language: str | None = Field(None, description="Default language code")
+    country: str | None = Field(None, description="Country code (ISO 3166-1)")
     created_at: datetime = Field(..., description="Record creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
-    recovered_at: Optional[datetime] = Field(None, description="Timestamp when metadata was recovered via Wayback Machine")
-    recovery_source: Optional[str] = Field(None, description="Source used for metadata recovery (e.g., wayback_machine)")
+    recovered_at: datetime | None = Field(None, description="Timestamp when metadata was recovered via Wayback Machine")
+    recovery_source: str | None = Field(None, description="Source used for metadata recovery (e.g., wayback_machine)")
 
 
 class ChannelListResponse(BaseModel):
@@ -105,7 +104,7 @@ class ChannelListResponse(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    data: List[ChannelListItem]
+    data: list[ChannelListItem]
     pagination: PaginationMeta
 
 
@@ -157,12 +156,12 @@ class ChannelRecoveryResultData(BaseModel):
 
     channel_id: str
     success: bool
-    snapshot_used: Optional[str] = None
-    fields_recovered: List[str] = Field(default_factory=list)
-    fields_skipped: List[str] = Field(default_factory=list)
+    snapshot_used: str | None = None
+    fields_recovered: list[str] = Field(default_factory=list)
+    fields_skipped: list[str] = Field(default_factory=list)
     snapshots_available: int = 0
     snapshots_tried: int = 0
-    failure_reason: Optional[str] = None
+    failure_reason: str | None = None
     duration_seconds: float = 0.0
 
 

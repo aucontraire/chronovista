@@ -8,9 +8,8 @@ Pydantic models for parsing Google Takeout data files.
 - Other data: Various CSV formats
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import List, Optional, Set, Tuple
 from urllib.parse import parse_qs, urlparse
 
 from pydantic import BaseModel, Field, model_validator
@@ -26,18 +25,18 @@ class TakeoutWatchEntry(BaseModel):
     # Required fields first
     title: str = Field(..., description="Video title (with 'Watched ' prefix removed)")
     title_url: str = Field(..., description="Original YouTube URL")
-    
+
     # Optional fields second
-    video_id: Optional[str] = Field(
+    video_id: str | None = Field(
         default=None, description="YouTube video ID extracted from URL"
     )
-    channel_name: Optional[str] = Field(default=None, description="Channel name from subtitles")
-    channel_url: Optional[str] = Field(default=None, description="Channel URL from subtitles")
-    channel_id: Optional[str] = Field(default=None, description="Channel ID extracted from URL")
-    watched_at: Optional[datetime] = Field(
+    channel_name: str | None = Field(default=None, description="Channel name from subtitles")
+    channel_url: str | None = Field(default=None, description="Channel URL from subtitles")
+    channel_id: str | None = Field(default=None, description="Channel ID extracted from URL")
+    watched_at: datetime | None = Field(
         default=None, description="When the video was watched"
     )
-    raw_time: Optional[str] = Field(
+    raw_time: str | None = Field(
         default=None, description="Original time string from takeout"
     )
 
@@ -106,10 +105,10 @@ class TakeoutPlaylistItem(BaseModel):
     """Represents a single video in a takeout playlist."""
 
     video_id: str = Field(..., description="YouTube video ID from CSV")
-    creation_timestamp: Optional[datetime] = Field(
+    creation_timestamp: datetime | None = Field(
         default=None, description="When video was added to playlist"
     )
-    raw_timestamp: Optional[str] = Field(
+    raw_timestamp: str | None = Field(
         default=None, description="Original timestamp string from CSV"
     )
 
@@ -136,23 +135,23 @@ class TakeoutPlaylist(BaseModel):
 
     name: str = Field(..., description="Playlist name (derived from filename)")
     file_path: Path = Field(..., description="Path to the playlist CSV file")
-    videos: List[TakeoutPlaylistItem] = Field(
+    videos: list[TakeoutPlaylistItem] = Field(
         default_factory=list, description="Videos in the playlist"
     )
     video_count: int = Field(default=0, description="Number of videos in playlist")
-    youtube_id: Optional[str] = Field(
+    youtube_id: str | None = Field(
         default=None,
         description="YouTube playlist ID from playlists.csv (PL prefix, LL, WL, or HL)",
     )
-    created_at: Optional[datetime] = Field(
+    created_at: datetime | None = Field(
         default=None,
         description="Playlist creation timestamp from playlists.csv",
     )
-    updated_at: Optional[datetime] = Field(
+    updated_at: datetime | None = Field(
         default=None,
         description="Playlist update timestamp from playlists.csv",
     )
-    visibility: Optional[str] = Field(
+    visibility: str | None = Field(
         default=None,
         description="Playlist visibility (Private/Public/Unlisted) from playlists.csv",
     )
@@ -172,7 +171,7 @@ class TakeoutSubscription(BaseModel):
     Parsed from subscriptions.csv.
     """
 
-    channel_id: Optional[str] = Field(default=None, description="YouTube channel ID")
+    channel_id: str | None = Field(default=None, description="YouTube channel ID")
     channel_title: str = Field(..., description="Channel name/title")
     channel_url: str = Field(..., description="Channel URL")
 
@@ -199,26 +198,26 @@ class TakeoutData(BaseModel):
     """
 
     takeout_path: Path = Field(..., description="Path to the takeout directory")
-    watch_history: List[TakeoutWatchEntry] = Field(
+    watch_history: list[TakeoutWatchEntry] = Field(
         default_factory=list, description="Watch history entries"
     )
-    playlists: List[TakeoutPlaylist] = Field(
+    playlists: list[TakeoutPlaylist] = Field(
         default_factory=list, description="User playlists"
     )
-    subscriptions: List[TakeoutSubscription] = Field(
+    subscriptions: list[TakeoutSubscription] = Field(
         default_factory=list, description="Channel subscriptions"
     )
 
     # Metadata
     parsed_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc), description="When this data was parsed"
+        default_factory=lambda: datetime.now(UTC), description="When this data was parsed"
     )
     total_videos_watched: int = Field(
         default=0, description="Total unique videos in watch history"
     )
     total_playlists: int = Field(default=0, description="Total playlists found")
     total_subscriptions: int = Field(default=0, description="Total channel subscriptions")
-    date_range: Optional[Tuple[datetime, datetime]] = Field(
+    date_range: tuple[datetime, datetime] | None = Field(
         default=None, description="Date range of watch history"
     )
 
@@ -254,7 +253,7 @@ class TakeoutData(BaseModel):
             self.date_range = (min(dates), max(dates))
         return self
 
-    def get_unique_video_ids(self) -> Set[str]:
+    def get_unique_video_ids(self) -> set[str]:
         """Get set of all unique video IDs across all data sources."""
         video_ids = set()
 
@@ -271,7 +270,7 @@ class TakeoutData(BaseModel):
 
         return video_ids
 
-    def get_unique_channel_ids(self) -> Set[str]:
+    def get_unique_channel_ids(self) -> set[str]:
         """Get set of all unique channel IDs across all data sources."""
         channel_ids = set()
 

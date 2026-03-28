@@ -39,6 +39,8 @@ jobs:
 
       - name: Run unit tests
         run: poetry run pytest tests/unit/ -x -q -o "addopts=-v --strict-markers --strict-config" -m "not db"
+        env:
+          NO_COLOR: "1"
 
   mypy:
     name: Type Check (mypy)
@@ -143,3 +145,5 @@ jobs:
 
       - name: Run integration tests
         run: poetry run pytest tests/integration/ -q -o "addopts=-v --strict-markers --strict-config" -m "not docker and not slow and not auth"
+        env:
+          NO_COLOR: "1"

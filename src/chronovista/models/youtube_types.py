@@ -546,57 +546,49 @@ if __name__ == "__main__":
         # Valid YouTube playlist IDs
         playlist1 = validate_playlist_id("PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")
         playlist2 = create_test_playlist_id("music")
-        print(f"Valid YouTube playlist IDs: {playlist1}, {playlist2}")
 
         # Valid internal playlist IDs
         internal_id = create_test_playlist_id("internal", internal=True)
-        print(f"Valid internal playlist ID: {internal_id}")
 
         # Test uppercase INT_ normalization
         uppercase_int = validate_playlist_id("INT_F7ABE60F1234567890ABCDEF12345678")
-        print(f"Normalized internal ID: {uppercase_int}")
 
         # Test helper functions
-        print(f"is_internal_playlist_id(internal_id): {is_internal_playlist_id(internal_id)}")
-        print(f"is_youtube_playlist_id(playlist1): {is_youtube_playlist_id(playlist1)}")
 
         # Invalid playlist ID (too short for PL)
         validate_playlist_id("PLshort")
-    except ValueError as e:
-        print(f"Expected validation error: {e}")
+    except ValueError:
+        pass
 
     # Test channel ID creation
     try:
         # Valid channel IDs
         channel1 = validate_channel_id("UCuAXFkgsw1L7xaCfnd5JJOw")
         channel2 = create_test_channel_id("rick")
-        print(f"Valid channel IDs: {channel1}, {channel2}")
 
         # Invalid channel ID (wrong prefix)
         validate_channel_id("PLuAXFkgsw1L7xaCfnd5JJOw")
-    except ValueError as e:
-        print(f"Expected validation error: {e}")
+    except ValueError:
+        pass
 
     # Test video ID creation
     try:
         # Valid video IDs
         video1 = validate_video_id("dQw4w9WgXcQ")
         video2 = create_test_video_id("rick")
-        print(f"Valid video IDs: {video1}, {video2}")
 
         # Invalid video ID (too long)
         validate_video_id("dQw4w9WgXcQTooLong")
-    except ValueError as e:
-        print(f"Expected validation error: {e}")
+    except ValueError:
+        pass
 
     # Test user ID creation
     try:
         # Valid user IDs
         user1 = validate_user_id("user_test_123")
         user2 = create_test_user_id("alice")
-        print(f"Valid user IDs: {user1}, {user2}")
 
         # Invalid user ID (empty)
         validate_user_id("   ")
-    except ValueError as e:
-        print(f"Expected validation error: {e}")
+    except ValueError:
+        pass

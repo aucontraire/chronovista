@@ -27,10 +27,9 @@ from datetime import datetime
 from typing import Any, TypeVar
 from uuid import UUID
 
-from uuid_utils import uuid7
-
-from sqlalchemy import and_, distinct, func, select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from uuid_utils import uuid7
 
 from chronovista.api.schemas.batch_corrections import (
     BatchApplyResult,
@@ -38,8 +37,8 @@ from chronovista.api.schemas.batch_corrections import (
 )
 from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
-from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
+from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as VideoTranscriptDB
 from chronovista.models.batch_correction_models import (
@@ -2012,10 +2011,10 @@ class BatchCorrectionService:
                 timeout=self._REGEX_TIMEOUT_SECONDS,
             )
             return result
-        except asyncio.TimeoutError:
+        except TimeoutError as exc:
             raise ValueError(
                 "Pattern timed out after 5 seconds \u2014 simplify your regex"
-            )
+            ) from exc
 
     @staticmethod
     def _find_match_offsets(

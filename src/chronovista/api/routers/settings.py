@@ -6,7 +6,6 @@ import logging
 import os
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
@@ -15,9 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from chronovista import __version__
 from chronovista.api.deps import get_db, require_auth
 from chronovista.api.schemas.responses import (
+    ERROR_TITLES,
     ApiResponse,
     ErrorCode,
-    ERROR_TITLES,
     ProblemJSONResponse,
     get_error_type_uri,
 )
@@ -284,7 +283,7 @@ async def get_app_info(
         SyncOperationType.PLAYLISTS,
         SyncOperationType.TOPICS,
     ]
-    sync_timestamps: dict[str, Optional[datetime]] = {
+    sync_timestamps: dict[str, datetime | None] = {
         op_type.value: sync_manager.get_last_successful_sync(op_type)
         for op_type in sync_types
     }

@@ -11,7 +11,6 @@ Use Cases:
 """
 
 from collections.abc import Iterable
-from typing import List, Tuple
 
 import Levenshtein as _levenshtein
 
@@ -58,7 +57,7 @@ def find_similar(
     max_distance: int = 2,
     limit: int = 3,
     case_sensitive: bool = False,
-) -> List[str]:
+) -> list[str]:
     """
     Find candidates within max_distance of query, sorted by distance.
 
@@ -95,7 +94,7 @@ def find_similar(
     []
     """
     normalized_query = query if case_sensitive else query.lower()
-    matches: List[Tuple[int, str]] = []
+    matches: list[tuple[int, str]] = []
 
     for candidate in candidates:
         compare_value = candidate if case_sensitive else candidate.lower()

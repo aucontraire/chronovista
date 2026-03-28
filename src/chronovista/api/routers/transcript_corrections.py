@@ -11,7 +11,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.deps import get_db, require_auth
-from chronovista.models.correction_actors import ACTOR_USER_LOCAL
 from chronovista.api.schemas.responses import ApiResponse, PaginationMeta
 from chronovista.api.schemas.transcript_corrections import (
     CorrectionAuditRecord,
@@ -24,6 +23,7 @@ from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
 from chronovista.db.models import TranscriptSegment as SegmentDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.exceptions import APIValidationError, NotFoundError
+from chronovista.models.correction_actors import ACTOR_USER_LOCAL
 from chronovista.repositories.transcript_correction_repository import (
     TranscriptCorrectionRepository,
 )

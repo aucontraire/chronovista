@@ -14,7 +14,11 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import FileResponse, Response
 
 from chronovista.api.exception_handlers import register_exception_handlers
-from chronovista.api.middleware import RequestIdFilter, RequestIdMiddleware, get_request_id
+from chronovista.api.middleware import (
+    RequestIdFilter,
+    RequestIdMiddleware,
+    get_request_id,
+)
 from chronovista.api.routers import (
     batch_corrections,
     canonical_tags,

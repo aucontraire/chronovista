@@ -8,8 +8,8 @@ integration, watch history tracking, and specialized analytics queries.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import and_, delete, desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,7 +32,7 @@ class UserVideoRepository(
         UserVideoDB,
         UserVideoCreate,
         UserVideoUpdate,
-        Tuple[str, str],
+        tuple[str, str],
     ]
 ):
     """Repository for user-video interactions with Google Takeout support."""
@@ -42,8 +42,8 @@ class UserVideoRepository(
         super().__init__(UserVideoDB)
 
     async def get(
-        self, session: AsyncSession, id: Tuple[str, str]
-    ) -> Optional[UserVideoDB]:
+        self, session: AsyncSession, id: tuple[str, str]
+    ) -> UserVideoDB | None:
         """
         Get user video interaction by composite primary key.
 
@@ -72,7 +72,7 @@ class UserVideoRepository(
 
     async def get_by_composite_key(
         self, session: AsyncSession, user_id: UserId, video_id: VideoId
-    ) -> Optional[UserVideoDB]:
+    ) -> UserVideoDB | None:
         """
         Get user video interaction by composite primary key (convenience method).
 
@@ -92,7 +92,7 @@ class UserVideoRepository(
         """
         return await self.get(session, (user_id, video_id))
 
-    async def exists(self, session: AsyncSession, id: Tuple[str, str]) -> bool:
+    async def exists(self, session: AsyncSession, id: tuple[str, str]) -> bool:
         """
         Check if user video interaction exists.
 
@@ -145,9 +145,9 @@ class UserVideoRepository(
         self,
         session: AsyncSession,
         user_id: UserId,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         offset: int = 0,
-    ) -> List[UserVideoDB]:
+    ) -> list[UserVideoDB]:
         """
         Get user's watch history ordered by most recent.
 
@@ -184,8 +184,8 @@ class UserVideoRepository(
         return list(result.scalars().all())
 
     async def get_user_liked_videos(
-        self, session: AsyncSession, user_id: UserId, limit: Optional[int] = None
-    ) -> List[UserVideoDB]:
+        self, session: AsyncSession, user_id: UserId, limit: int | None = None
+    ) -> list[UserVideoDB]:
         """
         Get user's liked videos.
 
@@ -222,7 +222,7 @@ class UserVideoRepository(
 
     async def get_most_watched_videos(
         self, session: AsyncSession, user_id: UserId, limit: int = 10
-    ) -> List[UserVideoDB]:
+    ) -> list[UserVideoDB]:
         """
         Get user's most watched videos (highest rewatch count).
 
@@ -253,7 +253,7 @@ class UserVideoRepository(
 
     async def search_user_videos(
         self, session: AsyncSession, filters: UserVideoSearchFilters
-    ) -> List[UserVideoDB]:
+    ) -> list[UserVideoDB]:
         """
         Search user video interactions with advanced filtering.
 
@@ -270,7 +270,7 @@ class UserVideoRepository(
             List of matching user video interactions
         """
         query = select(UserVideoDB)
-        conditions: List[Any] = []
+        conditions: list[Any] = []
 
         # User ID filters
         if filters.user_ids:
@@ -452,8 +452,8 @@ class UserVideoRepository(
         self,
         session: AsyncSession,
         user_id: UserId,
-        takeout_items: List[GoogleTakeoutWatchHistoryItem],
-    ) -> Dict[str, int]:
+        takeout_items: list[GoogleTakeoutWatchHistoryItem],
+    ) -> dict[str, int]:
         """
         Import watch history from Google Takeout data in batch.
 
@@ -472,7 +472,7 @@ class UserVideoRepository(
             Import statistics: created, updated, skipped, errors
         """
         stats = {"created": 0, "updated": 0, "skipped": 0, "errors": 0}
-        video_counts: Dict[str, int] = defaultdict(int)
+        video_counts: dict[str, int] = defaultdict(int)
 
         for item in takeout_items:
             try:
@@ -502,7 +502,7 @@ class UserVideoRepository(
                     # Create new interaction
                     # Set rewatch count based on how many times we've seen this video
                     user_video_create.rewatch_count = video_counts[video_id] - 1
-                    new_interaction = await self.create(
+                    await self.create(
                         session, obj_in=user_video_create
                     )
                     stats["created"] += 1
@@ -518,7 +518,7 @@ class UserVideoRepository(
         session: AsyncSession,
         user_id: UserId,
         video_id: VideoId,
-        watched_at: Optional[datetime] = None,
+        watched_at: datetime | None = None,
     ) -> UserVideoDB:
         """
         Record or update a watch interaction.
@@ -557,7 +557,7 @@ class UserVideoRepository(
             new_interaction = UserVideoCreate(
                 user_id=user_id,
                 video_id=video_id,
-                watched_at=watched_at or datetime.now(timezone.utc),
+                watched_at=watched_at or datetime.now(UTC),
                 rewatch_count=0,
             )
             return await self.create(session, obj_in=new_interaction)
@@ -616,7 +616,7 @@ class UserVideoRepository(
         self,
         session: AsyncSession,
         user_id: UserId,
-        video_ids: List[VideoId],
+        video_ids: list[VideoId],
         liked: bool = True,
     ) -> int:
         """
@@ -685,7 +685,7 @@ class UserVideoRepository(
         user_id: UserId,
         start_date: datetime,
         end_date: datetime,
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         """
         Get watch count aggregated by date within a range.
 

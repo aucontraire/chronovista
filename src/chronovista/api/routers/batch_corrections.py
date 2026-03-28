@@ -9,12 +9,11 @@ reverting entire batches.
 import uuid
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
 from chronovista.api.deps import get_db, require_auth
-from sqlalchemy import case, func, select
-
 from chronovista.api.schemas.batch_corrections import (
     BatchApplyRequest,
     BatchApplyResult,
@@ -28,7 +27,11 @@ from chronovista.api.schemas.batch_corrections import (
     DiffErrorPatternResponse,
 )
 from chronovista.api.schemas.responses import ApiResponse, PaginationMeta
+from chronovista.db.models import EntityAlias as EntityAliasDB
+from chronovista.db.models import NamedEntity as NamedEntityDB
+from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.exceptions import APIValidationError, ConflictError, NotFoundError
+from chronovista.models.batch_correction_models import BatchCorrectionResult
 from chronovista.models.correction_actors import ACTOR_USER_BATCH
 from chronovista.models.enums import CorrectionType
 from chronovista.repositories.transcript_correction_repository import (
@@ -40,19 +43,15 @@ from chronovista.repositories.transcript_segment_repository import (
 from chronovista.repositories.video_transcript_repository import (
     VideoTranscriptRepository,
 )
-from chronovista.db.models import EntityAlias as EntityAliasDB
-from chronovista.db.models import NamedEntity as NamedEntityDB
-from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
-from chronovista.models.batch_correction_models import BatchCorrectionResult
 from chronovista.services.batch_correction_service import (
     BatchCorrectionService,
     word_level_diff,
 )
 from chronovista.services.cross_segment_discovery import CrossSegmentDiscovery
-from chronovista.utils.text import strip_boundary_punctuation
 from chronovista.services.transcript_correction_service import (
     TranscriptCorrectionService,
 )
+from chronovista.utils.text import strip_boundary_punctuation
 
 router = APIRouter(prefix="", tags=["batch-corrections"], dependencies=[Depends(require_auth)])
 
@@ -198,7 +197,7 @@ async def apply_batch_corrections(
             message=f"Invalid correction_type: {request.correction_type}"
         )
         exc._error_code_value = "VALIDATION_ERROR"
-        raise exc
+        raise exc from None
 
     # Generate a batch_id so all corrections from this API call share
     # the same provenance identifier (mirrors CLI find_and_replace behaviour).

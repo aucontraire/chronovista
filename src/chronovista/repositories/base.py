@@ -7,7 +7,7 @@ Provides common CRUD operations and patterns for all repositories.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Generic, List, Optional, Union
+from typing import Any, Generic
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,14 +51,14 @@ class BaseRepository(ABC, Generic[ModelType, CreateSchemaType, UpdateSchemaType,
         pass
 
     @abstractmethod
-    async def get(self, session: AsyncSession, id: IdType) -> Optional[ModelType]:
+    async def get(self, session: AsyncSession, id: IdType) -> ModelType | None:
         """Get entity by ID."""
         pass
 
     @abstractmethod
     async def get_multi(
         self, session: AsyncSession, *, skip: int = 0, limit: int = 100
-    ) -> List[ModelType]:
+    ) -> list[ModelType]:
         """Get multiple entities with pagination."""
         pass
 
@@ -68,13 +68,13 @@ class BaseRepository(ABC, Generic[ModelType, CreateSchemaType, UpdateSchemaType,
         session: AsyncSession,
         *,
         db_obj: ModelType,
-        obj_in: Union[UpdateSchemaType, dict[str, Any]],
+        obj_in: UpdateSchemaType | dict[str, Any],
     ) -> ModelType:
         """Update an existing entity."""
         pass
 
     @abstractmethod
-    async def delete(self, session: AsyncSession, *, id: IdType) -> Optional[ModelType]:
+    async def delete(self, session: AsyncSession, *, id: IdType) -> ModelType | None:
         """Delete an entity by ID."""
         pass
 
@@ -124,7 +124,7 @@ class BaseSQLAlchemyRepository(
         await session.refresh(db_obj)
         return db_obj
 
-    async def get(self, session: AsyncSession, id: IdType) -> Optional[ModelType]:
+    async def get(self, session: AsyncSession, id: IdType) -> ModelType | None:
         """Get entity by primary key."""
         # This method should be overridden by subclasses since different models
         # may use different primary key column names
@@ -132,7 +132,7 @@ class BaseSQLAlchemyRepository(
 
     async def get_multi(
         self, session: AsyncSession, *, skip: int = 0, limit: int = 100
-    ) -> List[ModelType]:
+    ) -> list[ModelType]:
         """Get multiple entities with pagination."""
         result = await session.execute(select(self.model).offset(skip).limit(limit))
         return list(result.scalars().all())
@@ -142,7 +142,7 @@ class BaseSQLAlchemyRepository(
         session: AsyncSession,
         *,
         db_obj: ModelType,
-        obj_in: Union[UpdateSchemaType, dict[str, Any]],
+        obj_in: UpdateSchemaType | dict[str, Any],
     ) -> ModelType:
         """Update an existing entity."""
         if hasattr(obj_in, "model_dump"):
@@ -164,7 +164,7 @@ class BaseSQLAlchemyRepository(
         await session.refresh(db_obj)
         return db_obj
 
-    async def delete(self, session: AsyncSession, *, id: IdType) -> Optional[ModelType]:
+    async def delete(self, session: AsyncSession, *, id: IdType) -> ModelType | None:
         """Delete an entity by ID."""
         db_obj = await self.get(session, id)
         if db_obj:

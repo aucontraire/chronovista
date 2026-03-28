@@ -7,11 +7,11 @@ token exchange, token storage and refresh, and credential management.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import secrets
 import webbrowser
-from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -165,14 +165,11 @@ class YouTubeOAuthService:
         """
         authorization_url, state = self.get_authorization_url()
 
-        print("🔐 Opening browser for YouTube authorization...")
-        print(f"If browser doesn't open, visit: {authorization_url}")
 
         # Open browser
         webbrowser.open(authorization_url)
 
         # Wait for user to complete authorization and paste callback URL
-        print("\n📋 After authorizing, copy the full callback URL and paste it here:")
         callback_url = input("Callback URL: ").strip()
 
         return self.authorize_from_callback(callback_url, state)
@@ -199,7 +196,7 @@ class YouTubeOAuthService:
             # If token is expired but we have a refresh token, try to refresh it
             if credentials.refresh_token is not None:
                 try:
-                    credentials.refresh(Request())
+                    credentials.refresh(Request())  # type: ignore[no-untyped-call]
                     self._save_token(credentials)
                     return bool(credentials.valid)
                 except RefreshError:
@@ -236,7 +233,7 @@ class YouTubeOAuthService:
         # Refresh token if needed
         if not credentials.valid and credentials.refresh_token:
             try:
-                credentials.refresh(Request())
+                credentials.refresh(Request())  # type: ignore[no-untyped-call]
                 self._save_token(credentials)
             except RefreshError as e:
                 raise AuthenticationError(
@@ -263,7 +260,7 @@ class YouTubeOAuthService:
                 credentials = self._load_token()
                 if credentials.valid:
                     # Attempt to revoke the token
-                    credentials.revoke(Request())
+                    credentials.revoke(Request())  # type: ignore[no-untyped-call]
             except Exception:
                 # Continue with deletion even if revocation fails
                 pass
@@ -327,14 +324,12 @@ class YouTubeOAuthService:
         # Parse expiry time if available
         expiry = None
         if token_data.get("expiry"):
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 expiry = datetime.fromisoformat(
                     token_data["expiry"].replace("Z", "+00:00")
                 )
-            except (ValueError, TypeError):
-                pass
 
-        return Credentials(
+        return Credentials(  # type: ignore[no-untyped-call]
             token=token_data.get("token"),
             refresh_token=token_data.get("refresh_token"),
             token_uri=token_data.get("token_uri"),

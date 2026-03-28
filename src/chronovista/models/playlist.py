@@ -8,7 +8,7 @@ validation and serialization support.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, List, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -24,21 +24,21 @@ class PlaylistBase(BaseModel):
         description="Playlist ID - either YouTube ID (PL prefix, LL, WL, HL) or internal (int_ prefix)",
     )
     title: str = Field(..., min_length=1, max_length=255, description="Playlist title")
-    description: Optional[str] = Field(default=None, description="Playlist description")
-    default_language: Optional[LanguageCode] = Field(
+    description: str | None = Field(default=None, description="Playlist description")
+    default_language: LanguageCode | None = Field(
         default=None, description="BCP-47 language code"
     )
     privacy_status: PrivacyStatus = Field(
         default=PrivacyStatus.PRIVATE, description="Playlist privacy setting"
     )
-    channel_id: Optional[ChannelId] = Field(
+    channel_id: ChannelId | None = Field(
         default=None,
         description="Channel ID that owns the playlist. NULL for user playlists from Takeout until linked via OAuth.",
     )
     video_count: int = Field(
         default=0, ge=0, description="Number of videos in playlist"
     )
-    published_at: Optional[datetime] = Field(
+    published_at: datetime | None = Field(
         default=None, description="When the playlist was created on YouTube"
     )
     deleted_flag: bool = Field(
@@ -68,7 +68,7 @@ class PlaylistBase(BaseModel):
 
     @field_validator("description")
     @classmethod
-    def validate_description(cls, v: Optional[str]) -> Optional[str]:
+    def validate_description(cls, v: str | None) -> str | None:
         """Validate playlist description."""
         if v is None:
             return v
@@ -100,27 +100,27 @@ class PlaylistCreate(PlaylistBase):
 class PlaylistUpdate(BaseModel):
     """Model for updating playlists."""
 
-    title: Optional[str] = Field(None, min_length=1, max_length=255)
-    description: Optional[str] = None
-    default_language: Optional[LanguageCode] = None
-    privacy_status: Optional[PrivacyStatus] = None
-    channel_id: Optional[ChannelId] = Field(
+    title: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = None
+    default_language: LanguageCode | None = None
+    privacy_status: PrivacyStatus | None = None
+    channel_id: ChannelId | None = Field(
         default=None,
         description="Channel ID to link playlist to after OAuth authentication",
     )
-    video_count: Optional[int] = Field(None, ge=0)
-    published_at: Optional[datetime] = None
-    deleted_flag: Optional[bool] = None
+    video_count: int | None = Field(None, ge=0)
+    published_at: datetime | None = None
+    deleted_flag: bool | None = None
 
     # Playlist type (for system playlist handling)
-    playlist_type: Optional[PlaylistType] = Field(
+    playlist_type: PlaylistType | None = Field(
         default=None,
         description="Type of playlist: regular, liked, watch_later, history, favorites",
     )
 
     @field_validator("title")
     @classmethod
-    def validate_title(cls, v: Optional[str]) -> Optional[str]:
+    def validate_title(cls, v: str | None) -> str | None:
         """Validate playlist title."""
         if v is None:
             return v
@@ -136,7 +136,7 @@ class PlaylistUpdate(BaseModel):
 
     @field_validator("description")
     @classmethod
-    def validate_description(cls, v: Optional[str]) -> Optional[str]:
+    def validate_description(cls, v: str | None) -> str | None:
         """Validate playlist description."""
         if v is None:
             return v
@@ -172,46 +172,46 @@ class Playlist(PlaylistBase):
 class PlaylistSearchFilters(BaseModel):
     """Filters for searching playlists."""
 
-    playlist_ids: Optional[List[PlaylistId]] = Field(
+    playlist_ids: list[PlaylistId] | None = Field(
         default=None, description="Filter by specific playlist IDs"
     )
-    channel_ids: Optional[List[ChannelId]] = Field(
+    channel_ids: list[ChannelId] | None = Field(
         default=None, description="Filter by channel IDs"
     )
-    title_query: Optional[str] = Field(
+    title_query: str | None = Field(
         default=None, min_length=1, description="Search in playlist titles"
     )
-    description_query: Optional[str] = Field(
+    description_query: str | None = Field(
         default=None, min_length=1, description="Search in playlist descriptions"
     )
-    language_codes: Optional[List[LanguageCode]] = Field(
+    language_codes: list[LanguageCode] | None = Field(
         default=None, description="Filter by language codes"
     )
-    privacy_statuses: Optional[List[PrivacyStatus]] = Field(
+    privacy_statuses: list[PrivacyStatus] | None = Field(
         default=None, description="Filter by privacy status"
     )
-    min_video_count: Optional[int] = Field(
+    min_video_count: int | None = Field(
         default=None, ge=0, description="Minimum number of videos"
     )
-    max_video_count: Optional[int] = Field(
+    max_video_count: int | None = Field(
         default=None, ge=0, description="Maximum number of videos"
     )
-    has_description: Optional[bool] = Field(
+    has_description: bool | None = Field(
         default=None, description="Filter by presence of description"
     )
-    created_after: Optional[datetime] = Field(
+    created_after: datetime | None = Field(
         default=None, description="Filter by creation date"
     )
-    created_before: Optional[datetime] = Field(
+    created_before: datetime | None = Field(
         default=None, description="Filter by creation date"
     )
-    updated_after: Optional[datetime] = Field(
+    updated_after: datetime | None = Field(
         default=None, description="Filter by update date"
     )
-    updated_before: Optional[datetime] = Field(
+    updated_before: datetime | None = Field(
         default=None, description="Filter by update date"
     )
-    linked_status: Optional[Literal["linked", "unlinked", "all"]] = Field(
+    linked_status: Literal["linked", "unlinked", "all"] | None = Field(
         default="all",
         description="Filter by YouTube ID link status",
     )
@@ -236,7 +236,7 @@ class PlaylistStatistics(BaseModel):
     language_distribution: dict[str, int] = Field(
         default_factory=dict, description="Distribution by language"
     )
-    top_channels_by_playlists: List[tuple[str, int]] = Field(
+    top_channels_by_playlists: list[tuple[str, int]] = Field(
         default_factory=list, description="Channels with most playlists"
     )
     playlist_size_distribution: dict[str, int] = Field(
@@ -254,7 +254,7 @@ class PlaylistStatistics(BaseModel):
 class PlaylistAnalytics(BaseModel):
     """Advanced playlist analytics."""
 
-    creation_trends: dict[str, List[int]] = Field(
+    creation_trends: dict[str, list[int]] = Field(
         default_factory=dict, description="Playlist creation trends over time"
     )
     content_analysis: dict[str, Any] = Field(
@@ -263,7 +263,7 @@ class PlaylistAnalytics(BaseModel):
     engagement_metrics: dict[str, float] = Field(
         default_factory=dict, description="Playlist engagement metrics"
     )
-    similarity_clusters: List[dict[str, Any]] = Field(
+    similarity_clusters: list[dict[str, Any]] = Field(
         default_factory=list, description="Similar playlists clustered together"
     )
 

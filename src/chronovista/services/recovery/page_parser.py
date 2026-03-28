@@ -27,10 +27,11 @@ YOUTUBE_CATEGORY_MAP
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from bs4 import BeautifulSoup, Tag
@@ -377,7 +378,7 @@ class PageParser:
                 )
                 if selenium_result is not None:
                     return selenium_result
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     "Selenium timeout for snapshot %s",
                     snapshot.timestamp,
@@ -447,10 +448,8 @@ class PageParser:
         view_count: int | None = None
         view_count_str = video_details.get("viewCount")
         if view_count_str is not None:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 view_count = int(view_count_str)
-            except (ValueError, TypeError):
-                pass
 
         # Extract from microformat
         upload_date: datetime | None = None
@@ -461,12 +460,10 @@ class PageParser:
 
         publish_date_str = renderer.get("publishDate")
         if publish_date_str:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 upload_date = datetime.strptime(
                     publish_date_str, "%Y-%m-%d"
-                ).replace(tzinfo=timezone.utc)
-            except (ValueError, TypeError):
-                pass
+                ).replace(tzinfo=UTC)
 
         category_name = renderer.get("category")
         if category_name:
@@ -568,12 +565,10 @@ class PageParser:
         if date_meta:
             date_str = date_meta.get("content")
             if date_str:
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     upload_date = datetime.strptime(
                         str(date_str), "%Y-%m-%d"
-                    ).replace(tzinfo=timezone.utc)
-                except (ValueError, TypeError):
-                    pass
+                    ).replace(tzinfo=UTC)
 
         # Extract itemprop="interactionCount" -> view_count
         view_count: int | None = None
@@ -581,10 +576,8 @@ class PageParser:
         if interaction_meta:
             count_str = interaction_meta.get("content")
             if count_str:
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     view_count = int(str(count_str))
-                except (ValueError, TypeError):
-                    pass
 
         # Extract itemprop="genre" -> category_id (via YOUTUBE_CATEGORY_MAP)
         category_id: str | None = None

@@ -17,8 +17,8 @@ CDXClient
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime as _dt
-import json
 import logging
 from pathlib import Path
 from typing import cast
@@ -502,10 +502,8 @@ class CDXClient:
                 video_id,
                 cache_file,
             )
-            try:
+            with contextlib.suppress(OSError):
                 cache_file.unlink()
-            except OSError:
-                pass
             return None
 
         if not entry.is_valid(ttl_hours=_CACHE_TTL_HOURS):
@@ -544,7 +542,7 @@ class CDXClient:
 
         entry = CdxCacheEntry(
             video_id=video_id,
-            fetched_at=_dt.datetime.now(_dt.timezone.utc),
+            fetched_at=_dt.datetime.now(_dt.UTC),
             snapshots=snapshots,
             raw_count=raw_count,
         )
@@ -854,10 +852,8 @@ class CDXClient:
                 channel_id,
                 cache_file,
             )
-            try:
+            with contextlib.suppress(OSError):
                 cache_file.unlink()
-            except OSError:
-                pass
             return None
 
         if not entry.is_valid(ttl_hours=_CACHE_TTL_HOURS):
@@ -898,7 +894,7 @@ class CDXClient:
 
         entry = CdxCacheEntry(
             video_id=channel_id,
-            fetched_at=_dt.datetime.now(_dt.timezone.utc),
+            fetched_at=_dt.datetime.now(_dt.UTC),
             snapshots=snapshots,
             raw_count=raw_count,
         )

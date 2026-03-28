@@ -14,7 +14,6 @@ import asyncio
 import logging
 import time
 from collections import defaultdict
-from typing import Dict, List, Tuple
 
 from fastapi import APIRouter, Depends, Path, Query, Request
 from fastapi.responses import JSONResponse
@@ -32,7 +31,11 @@ from chronovista.api.schemas.canonical_tags import (
     TagAliasItem,
 )
 from chronovista.api.schemas.responses import PaginationMeta
-from chronovista.api.schemas.videos import TranscriptSummary, VideoListItem, VideoListResponse
+from chronovista.api.schemas.videos import (
+    TranscriptSummary,
+    VideoListItem,
+    VideoListResponse,
+)
 from chronovista.db.models import CanonicalTag as CanonicalTagDB
 from chronovista.exceptions import NotFoundError
 from chronovista.repositories.canonical_tag_repository import CanonicalTagRepository
@@ -52,7 +55,7 @@ RATE_LIMIT_WINDOW_SECONDS = 60
 FUZZY_CANDIDATE_POOL_SIZE = 5000
 
 # Storage for rate limit tracking
-_request_counts: Dict[str, List[float]] = defaultdict(list)
+_request_counts: dict[str, list[float]] = defaultdict(list)
 
 
 def _get_client_id(request: Request) -> str:
@@ -79,9 +82,9 @@ def _get_client_id(request: Request) -> str:
 
 def _check_rate_limit(
     client_id: str,
-    request_counts: Dict[str, List[float]],
+    request_counts: dict[str, list[float]],
     rate_limit: int,
-) -> Tuple[bool, int]:
+) -> tuple[bool, int]:
     """
     Check if client has exceeded rate limit.
 
@@ -205,7 +208,7 @@ async def get_canonical_tag_videos(
             ),
             timeout=QUERY_TIMEOUT_SECONDS,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.error(
             "[canonical-tags] Query timeout exceeded (%ds) for normalized_form=%s",
             QUERY_TIMEOUT_SECONDS,
@@ -224,7 +227,7 @@ async def get_canonical_tag_videos(
         )
 
     # Build response items following the same pattern as tags.py / videos.py
-    items: List[VideoListItem] = []
+    items: list[VideoListItem] = []
     for video in videos:
         # Build transcript summary
         transcripts = list(video.transcripts) if video.transcripts else []
@@ -343,7 +346,7 @@ async def resolve_canonical_tag(
         session, tag.id, limit=alias_limit
     )
 
-    alias_items: List[TagAliasItem] = [
+    alias_items: list[TagAliasItem] = [
         TagAliasItem(
             raw_form=alias.raw_form,
             occurrence_count=alias.occurrence_count,
@@ -420,7 +423,7 @@ async def get_canonical_tag_detail(
     )
 
     # Build alias items
-    alias_items: List[TagAliasItem] = [
+    alias_items: list[TagAliasItem] = [
         TagAliasItem(
             raw_form=alias.raw_form,
             occurrence_count=alias.occurrence_count,
@@ -529,7 +532,7 @@ async def list_canonical_tags(
         session, q=q, skip=offset, limit=limit
     )
 
-    items: List[CanonicalTagListItem] = [
+    items: list[CanonicalTagListItem] = [
         CanonicalTagListItem(
             canonical_form=tag.canonical_form,
             normalized_form=tag.normalized_form,
@@ -547,7 +550,7 @@ async def list_canonical_tags(
     )
 
     # T015: Fuzzy suggestions when no prefix matches found
-    suggestions: List[CanonicalTagSuggestion] | None = None
+    suggestions: list[CanonicalTagSuggestion] | None = None
     if q is not None and len(items) == 0 and len(q) >= 2:
         try:
             # Load top N active canonical tags ordered by video_count DESC

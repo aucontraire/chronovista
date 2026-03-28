@@ -4,8 +4,8 @@ Takeout Analysis Models
 Pydantic models for analyzing patterns and relationships in Google Takeout data.
 """
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -26,21 +26,21 @@ class DateRange(BaseModel):
 class ChannelSummary(BaseModel):
     """Summary statistics for a channel based on takeout data."""
 
-    channel_id: Optional[str] = Field(None, description="YouTube channel ID")
+    channel_id: str | None = Field(None, description="YouTube channel ID")
     channel_name: str = Field(..., description="Channel display name")
-    channel_url: Optional[str] = Field(None, description="Channel URL")
+    channel_url: str | None = Field(None, description="Channel URL")
 
     # Viewing statistics
     videos_watched: int = Field(
         0, description="Number of videos watched from this channel"
     )
-    total_watch_time_minutes: Optional[int] = Field(
+    total_watch_time_minutes: int | None = Field(
         None, description="Estimated total watch time"
     )
-    first_watched: Optional[datetime] = Field(
+    first_watched: datetime | None = Field(
         None, description="First video watched from channel"
     )
-    last_watched: Optional[datetime] = Field(
+    last_watched: datetime | None = Field(
         None, description="Most recent video watched"
     )
 
@@ -66,9 +66,9 @@ class ContentGap(BaseModel):
 
     video_id: str = Field(..., description="YouTube video ID")
     title: str = Field(..., description="Video title from takeout")
-    channel_name: Optional[str] = Field(None, description="Channel name")
+    channel_name: str | None = Field(None, description="Channel name")
 
-    missing_fields: List[str] = Field(
+    missing_fields: list[str] = Field(
         default_factory=list, description="Fields that could be enriched from API"
     )
     priority_score: float = Field(0.0, description="Priority for API fetching (0-1)")
@@ -78,7 +78,7 @@ class ContentGap(BaseModel):
         0, description="Number of playlists containing this video"
     )
     watch_count: int = Field(0, description="Number of times watched (if available)")
-    last_watched: Optional[datetime] = Field(None, description="When last watched")
+    last_watched: datetime | None = Field(None, description="When last watched")
 
 
 class PlaylistSuggestion(BaseModel):
@@ -86,7 +86,7 @@ class PlaylistSuggestion(BaseModel):
 
     suggested_name: str = Field(..., description="Suggested playlist name")
     reason: str = Field(..., description="Why this playlist is suggested")
-    video_ids: List[str] = Field(
+    video_ids: list[str] = Field(
         ..., description="Videos that would fit in this playlist"
     )
     confidence_score: float = Field(
@@ -94,10 +94,10 @@ class PlaylistSuggestion(BaseModel):
     )
 
     # Supporting data
-    common_themes: List[str] = Field(
+    common_themes: list[str] = Field(
         default_factory=list, description="Common themes among videos"
     )
-    channel_overlap: Dict[str, int] = Field(
+    channel_overlap: dict[str, int] = Field(
         default_factory=dict, description="Channels represented"
     )
 
@@ -106,22 +106,22 @@ class ViewingPatterns(BaseModel):
     """Analysis of user viewing patterns from takeout data."""
 
     # Temporal patterns
-    peak_viewing_hours: List[int] = Field(
+    peak_viewing_hours: list[int] = Field(
         default_factory=list, description="Hours of day with most activity"
     )
-    peak_viewing_days: List[str] = Field(
+    peak_viewing_days: list[str] = Field(
         default_factory=list, description="Days of week with most activity"
     )
     viewing_frequency: float = Field(0.0, description="Average videos per day")
 
     # Content patterns
-    top_channels: List[ChannelSummary] = Field(
+    top_channels: list[ChannelSummary] = Field(
         default_factory=list, description="Most watched channels"
     )
     channel_diversity: float = Field(
         0.0, description="How diverse channel watching is (0-1)"
     )
-    content_categories: Dict[str, int] = Field(
+    content_categories: dict[str, int] = Field(
         default_factory=dict, description="Estimated content categories"
     )
 
@@ -138,37 +138,37 @@ class PlaylistAnalysis(BaseModel):
     """Analysis of playlist relationships and organization."""
 
     # Overlap analysis
-    playlist_overlap_matrix: Dict[str, Dict[str, int]] = Field(
+    playlist_overlap_matrix: dict[str, dict[str, int]] = Field(
         default_factory=dict,
         description="Matrix showing video overlap between playlists",
     )
-    overlap_percentages: Dict[str, Dict[str, float]] = Field(
+    overlap_percentages: dict[str, dict[str, float]] = Field(
         default_factory=dict, description="Percentage overlap between playlists"
     )
 
     # Organization insights
-    orphaned_videos: List[str] = Field(
+    orphaned_videos: list[str] = Field(
         default_factory=list, description="Video IDs that aren't in any playlist"
     )
-    over_categorized_videos: List[str] = Field(
+    over_categorized_videos: list[str] = Field(
         default_factory=list,
         description="Videos that appear in many playlists (potential over-categorization)",
     )
 
     # Playlist quality metrics
-    playlist_diversity_scores: Dict[str, float] = Field(
+    playlist_diversity_scores: dict[str, float] = Field(
         default_factory=dict, description="Diversity score for each playlist (0-1)"
     )
-    playlist_sizes: Dict[str, int] = Field(
+    playlist_sizes: dict[str, int] = Field(
         default_factory=dict, description="Number of videos in each playlist"
     )
 
     # Suggestions
-    suggested_new_playlists: List[PlaylistSuggestion] = Field(
+    suggested_new_playlists: list[PlaylistSuggestion] = Field(
         default_factory=list,
         description="Suggestions for new playlists based on orphaned content",
     )
-    merge_suggestions: List[Tuple[str, str, str]] = Field(
+    merge_suggestions: list[tuple[str, str, str]] = Field(
         default_factory=list,
         description="Playlist pairs that could be merged (playlist1, playlist2, reason)",
     )
@@ -190,7 +190,7 @@ class TakeoutAnalysis(BaseModel):
     subscription_count: int = Field(..., description="Number of channel subscriptions")
 
     # Date information
-    date_range: Optional[DateRange] = Field(
+    date_range: DateRange | None = Field(
         None, description="Date range of available data"
     )
     data_completeness: float = Field(
@@ -204,22 +204,22 @@ class TakeoutAnalysis(BaseModel):
     playlist_analysis: PlaylistAnalysis = Field(
         ..., description="Playlist organization analysis"
     )
-    top_channels: List[ChannelSummary] = Field(
+    top_channels: list[ChannelSummary] = Field(
         ..., description="Most significant channels"
     )
 
     # Content gaps and opportunities
-    content_gaps: List[ContentGap] = Field(
+    content_gaps: list[ContentGap] = Field(
         default_factory=list,
         description="Content that would benefit from API enrichment",
     )
-    high_priority_videos: List[str] = Field(
+    high_priority_videos: list[str] = Field(
         default_factory=list,
         description="Video IDs that should be prioritized for API fetching",
     )
 
     # Language and diversity insights
-    estimated_language_distribution: Dict[str, float] = Field(
+    estimated_language_distribution: dict[str, float] = Field(
         default_factory=dict,
         description="Estimated language distribution based on channel names",
     )
@@ -229,13 +229,13 @@ class TakeoutAnalysis(BaseModel):
 
     # Analysis metadata
     analyzed_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc), description="When this analysis was performed"
+        default_factory=lambda: datetime.now(UTC), description="When this analysis was performed"
     )
     analysis_version: str = Field(
         "1.0", description="Version of analysis algorithm used"
     )
 
-    def get_api_fetch_priorities(self, max_videos: int = 100) -> List[str]:
+    def get_api_fetch_priorities(self, max_videos: int = 100) -> list[str]:
         """
         Get prioritized list of video IDs to fetch from API.
 
@@ -271,7 +271,7 @@ class TakeoutAnalysis(BaseModel):
 
         return unique_prioritized[:max_videos]
 
-    def get_channel_fetch_priorities(self, max_channels: int = 20) -> List[str]:
+    def get_channel_fetch_priorities(self, max_channels: int = 20) -> list[str]:
         """
         Get prioritized list of channel IDs to fetch from API.
 

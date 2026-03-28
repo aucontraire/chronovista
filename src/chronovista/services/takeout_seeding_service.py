@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Dict, Optional, Set
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -63,10 +62,10 @@ class TakeoutSeedingService:
         self,
         session: AsyncSession,
         takeout_data: TakeoutData,
-        data_types: Optional[Set[str]] = None,
-        skip_types: Optional[Set[str]] = None,
-        progress_callback: Optional[ProgressCallback] = None,
-    ) -> Dict[str, SeedResult]:
+        data_types: set[str] | None = None,
+        skip_types: set[str] | None = None,
+        progress_callback: ProgressCallback | None = None,
+    ) -> dict[str, SeedResult]:
         """
         Seed database with takeout data.
 
@@ -127,7 +126,7 @@ class TakeoutSeedingService:
 
         return results
 
-    def get_available_types(self) -> Set[str]:
+    def get_available_types(self) -> set[str]:
         """Get all available data types."""
         return self.orchestrator.get_available_types()
 
@@ -135,10 +134,10 @@ class TakeoutSeedingService:
         self,
         session: AsyncSession,
         takeout_data: TakeoutData,
-        data_types: Optional[Set[str]] = None,
-        skip_types: Optional[Set[str]] = None,
-        progress_callback: Optional[ProgressCallback] = None,
-    ) -> Dict[str, SeedResult]:
+        data_types: set[str] | None = None,
+        skip_types: set[str] | None = None,
+        progress_callback: ProgressCallback | None = None,
+    ) -> dict[str, SeedResult]:
         """
         Incremental seeding (same as full seeding for now).
 

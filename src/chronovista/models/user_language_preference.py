@@ -8,7 +8,7 @@ and serialization support.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional, Union
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -20,7 +20,7 @@ class UserLanguagePreferenceBase(BaseModel):
     """Base model for user language preferences."""
 
     user_id: UserId = Field(..., description="User identifier (validated)")
-    language_code: Union[LanguageCode, str] = Field(
+    language_code: LanguageCode | str = Field(
         ...,
         description="BCP-47 language code (e.g., 'en-US', 'it-IT'). Can be enum or string for regional variants.",
     )
@@ -34,7 +34,7 @@ class UserLanguagePreferenceBase(BaseModel):
         default=False,
         description="Whether to automatically download transcripts in this language",
     )
-    learning_goal: Optional[str] = Field(
+    learning_goal: str | None = Field(
         default=None, description="Optional learning goal description"
     )
 
@@ -102,10 +102,10 @@ class UserLanguagePreferenceCreate(UserLanguagePreferenceBase):
 class UserLanguagePreferenceUpdate(BaseModel):
     """Model for updating user language preferences."""
 
-    preference_type: Optional[LanguagePreferenceType] = None
-    priority: Optional[int] = Field(None, ge=1)
-    auto_download_transcripts: Optional[bool] = None
-    learning_goal: Optional[str] = None
+    preference_type: LanguagePreferenceType | None = None
+    priority: int | None = Field(None, ge=1)
+    auto_download_transcripts: bool | None = None
+    learning_goal: str | None = None
 
     model_config = ConfigDict(
         use_enum_values=True,

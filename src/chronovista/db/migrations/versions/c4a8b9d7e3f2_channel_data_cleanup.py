@@ -20,7 +20,7 @@ NFRs: NFR-022, NFR-023, NFR-024
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 import sqlalchemy as sa
 from alembic import op
@@ -37,7 +37,7 @@ depends_on = None
 ENRICHMENT_LOCK_ID = hash("chronovista.enrichment") & 0x7FFFFFFF
 
 # Backup storage for rollback capability
-PLACEHOLDER_BACKUP: Dict[str, str] = {}
+PLACEHOLDER_BACKUP: dict[str, str] = {}
 
 # Batch size for updates
 BATCH_SIZE = 1000

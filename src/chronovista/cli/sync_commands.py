@@ -4,7 +4,7 @@ Data synchronization CLI commands for chronovista.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -32,13 +32,12 @@ from chronovista.models.api_responses import (
 )
 from chronovista.models.channel import ChannelCreate
 from chronovista.models.channel_topic import ChannelTopicCreate
-from chronovista.models.video import VideoCreate
-from chronovista.models.video_topic import VideoTopicCreate
 from chronovista.models.enums import AvailabilityStatus, DownloadReason
-from chronovista.models.video import VideoSearchFilters
 from chronovista.models.transcript_source import resolve_language_code
-from chronovista.models.video_transcript import VideoTranscriptCreate
 from chronovista.models.user_language_preference import UserLanguagePreference
+from chronovista.models.video import VideoCreate, VideoSearchFilters
+from chronovista.models.video_topic import VideoTopicCreate
+from chronovista.models.video_transcript import VideoTranscriptCreate
 from chronovista.models.youtube_types import UserId
 from chronovista.services import youtube_service
 from chronovista.services.preference_aware_transcript_filter import (
@@ -47,7 +46,6 @@ from chronovista.services.preference_aware_transcript_filter import (
 )
 from chronovista.services.transcript_service import (
     TranscriptNotFoundError,
-    TranscriptService,
 )
 
 console = Console()
@@ -93,10 +91,9 @@ sync_app = typer.Typer(
 
 
 async def process_watch_history_batch(
-    batch: List[Any], user_id: UserId
-) -> Dict[str, int]:
+    batch: list[Any], user_id: UserId
+) -> dict[str, int]:
     """Process a batch of watch history entries."""
-    from chronovista.parsers.takeout_parser import WatchHistoryEntry
 
     results = {
         "videos_created": 0,
@@ -441,7 +438,7 @@ async def _sync_playlist_items(
             items = await youtube_service.get_playlist_videos(playlist_id)
 
             if not items:
-                console.print(f"   [dim]No items found in playlist[/dim]")
+                console.print("   [dim]No items found in playlist[/dim]")
                 continue
 
             console.print(f"   [dim]Found {len(items)} items[/dim]")
@@ -658,8 +655,8 @@ def playlists(
 
 
 async def _show_transcripts_dry_run(
-    videos: List[VideoDB],
-    language_codes: List[str],
+    videos: list[VideoDB],
+    language_codes: list[str],
     force: bool,
 ) -> None:
     """
@@ -740,10 +737,10 @@ def transcripts(
     limit: int = typer.Option(
         100, "--limit", "-l", help="Maximum number of videos to process"
     ),
-    video_id: Optional[List[str]] = typer.Option(
+    video_id: list[str] | None = typer.Option(
         None, "--video-id", "-v", help="Sync specific video ID(s)"
     ),
-    language: List[str] = typer.Option(
+    language: list[str] = typer.Option(
         ["en"], "--language", help="Preferred language code(s)"
     ),
     force: bool = typer.Option(
@@ -795,7 +792,7 @@ def transcripts(
         transcript_filter = PreferenceAwareTranscriptFilter()
 
         # Load user preferences (use "default" as user_id for now)
-        user_preferences: List[UserLanguagePreference] = []
+        user_preferences: list[UserLanguagePreference] = []
         using_preferences = False
         language_override = len(language) > 0 and language != ["en"]
 
@@ -836,7 +833,7 @@ def transcripts(
             console.print()
 
         # Determine which videos to process
-        videos_to_process: List[VideoDB] = []
+        videos_to_process: list[VideoDB] = []
 
         async for session in db_manager.get_session():
             if video_id:
@@ -906,8 +903,8 @@ def transcripts(
 
             try:
                 # Determine languages to download based on preferences or flag
-                languages_to_download: List[str] = []
-                download_plan: Optional[DownloadPlan] = None
+                languages_to_download: list[str] = []
+                download_plan: DownloadPlan | None = None
 
                 if using_preferences and user_preferences:
                     # Get available transcript languages for this video
@@ -1588,9 +1585,9 @@ def channel(
 
 
 async def _create_videos_with_channels(
-    videos_to_create: List[YouTubeVideoResponse],
+    videos_to_create: list[YouTubeVideoResponse],
     user_id: str,
-) -> tuple[List[VideoDB], int]:
+) -> tuple[list[VideoDB], int]:
     """
     Helper function to create videos and their associated channels with batch channel fetching.
 
@@ -1608,7 +1605,7 @@ async def _create_videos_with_channels(
     tuple[List[VideoDB], int]
         Tuple of (created videos, count of new channels created)
     """
-    created_videos: List[VideoDB] = []
+    created_videos: list[VideoDB] = []
     new_channels_count = 0
 
     # Get repositories from container
@@ -1729,8 +1726,8 @@ async def _create_videos_with_channels(
 async def _show_liked_videos_dry_run(
     videos: list[YouTubeVideoResponse],
     user_id: str,
-    existing_video_ids: List[str],
-    missing_video_ids: List[str],
+    existing_video_ids: list[str],
+    missing_video_ids: list[str],
     create_missing: bool,
 ) -> None:
     """
@@ -1941,8 +1938,8 @@ def liked(
         video_repository = container.create_video_repository()
         user_video_repository = container.create_user_video_repository()
 
-        existing_video_ids: List[str] = []
-        missing_video_ids: List[str] = []
+        existing_video_ids: list[str] = []
+        missing_video_ids: list[str] = []
 
         async for session in db_manager.get_session():
             for video_data in liked_videos:

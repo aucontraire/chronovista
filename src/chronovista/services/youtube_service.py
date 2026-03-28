@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any, List, Optional
+from typing import Any
 
 from googleapiclient.errors import HttpError
 from pydantic import ValidationError as PydanticValidationError
@@ -279,7 +279,7 @@ class YouTubeService(YouTubeServiceInterface):
             self._service = youtube_oauth.get_authenticated_service()
         return self._service
 
-    async def get_my_channel(self) -> Optional[YouTubeChannelResponse]:
+    async def get_my_channel(self) -> YouTubeChannelResponse | None:
         """
         Get information about the authenticated user's channel.
 
@@ -474,7 +474,7 @@ class YouTubeService(YouTubeServiceInterface):
         return results
 
     async def fetch_videos_batched(
-        self, video_ids: List[str], batch_size: int = 50
+        self, video_ids: list[str], batch_size: int = 50
     ) -> tuple[list[YouTubeVideoResponse], set[str]]:
         """
         Fetch video details in batches, handling pagination for large lists.
@@ -798,7 +798,7 @@ class YouTubeService(YouTubeServiceInterface):
 
     async def download_caption(
         self, caption_id: str, fmt: str = "srt"
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Download caption content using YouTube Data API v3.
 
@@ -824,11 +824,9 @@ class YouTubeService(YouTubeServiceInterface):
             elif isinstance(caption_content, str):
                 return caption_content
             else:
-                print(f"Unexpected caption content type: {type(caption_content)}")
                 return None
 
-        except Exception as e:
-            print(f"Could not download caption {caption_id}: {e}")
+        except Exception:
             return None
 
     async def get_my_watch_later_videos(
@@ -912,8 +910,7 @@ class YouTubeService(YouTubeServiceInterface):
             response = await asyncio.to_thread(request.execute)
 
             return len(response.get("items", [])) > 0
-        except Exception as e:
-            print(f"Could not check video {video_id} in playlist {playlist_id}: {e}")
+        except Exception:
             return False
 
     async def get_user_playlists_for_video(self, video_id: VideoId) -> list[str]:
@@ -948,7 +945,7 @@ class YouTubeService(YouTubeServiceInterface):
             return []
 
     async def get_liked_videos(
-        self, max_results: Optional[int] = None
+        self, max_results: int | None = None
     ) -> list[YouTubeVideoResponse]:
         """
         Get videos that the authenticated user has liked.
@@ -1002,7 +999,7 @@ class YouTubeService(YouTubeServiceInterface):
 
             # Paginate through all liked videos
             all_video_ids: list[str] = []
-            page_token: Optional[str] = None
+            page_token: str | None = None
             page_number = 0
 
             while True:
@@ -1172,7 +1169,7 @@ class YouTubeService(YouTubeServiceInterface):
         return results
 
     async def fetch_playlists_batched(
-        self, playlist_ids: List[str], batch_size: int = 50
+        self, playlist_ids: list[str], batch_size: int = 50
     ) -> tuple[list[YouTubePlaylistResponse], set[str]]:
         """
         Fetch playlist details in batches, handling pagination for large lists.

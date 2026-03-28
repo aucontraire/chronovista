@@ -9,9 +9,9 @@ This module defines models for handling transcript data from different sources:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -19,7 +19,7 @@ from .enums import LanguageCode
 from .youtube_types import CaptionId, VideoId
 
 
-def resolve_language_code(language_code_str: str) -> Union[LanguageCode, str]:
+def resolve_language_code(language_code_str: str) -> LanguageCode | str:
     """
     Resolve a language code string to a LanguageCode enum or normalized string.
 
@@ -122,22 +122,22 @@ class RawTranscriptData(BaseModel):
     """Raw transcript data from external APIs before processing."""
 
     video_id: VideoId = Field(..., description="YouTube video ID (validated)")
-    language_code: Union[LanguageCode, str] = Field(
+    language_code: LanguageCode | str = Field(
         ..., description="BCP-47 language code (enum or string for regional variants)"
     )
-    language_name: Optional[str] = Field(
+    language_name: str | None = Field(
         None, description="Human-readable language name"
     )
-    snippets: List[TranscriptSnippet] = Field(..., min_length=1)
+    snippets: list[TranscriptSnippet] = Field(..., min_length=1)
     is_generated: bool = Field(..., description="Whether transcript is auto-generated")
-    is_translatable: Optional[bool] = Field(
+    is_translatable: bool | None = Field(
         None, description="Whether can be translated"
     )
     source: TranscriptSource = Field(..., description="Source of transcript data")
-    source_metadata: Optional[Dict[str, Any]] = Field(
+    source_metadata: dict[str, Any] | None = Field(
         None, description="Additional source-specific data"
     )
-    retrieved_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    retrieved_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @property
     def total_duration(self) -> float:
@@ -157,7 +157,7 @@ class RawTranscriptData(BaseModel):
         """Get number of transcript snippets."""
         return len(self.snippets)
 
-    def get_text_at_time(self, time_seconds: float) -> Optional[str]:
+    def get_text_at_time(self, time_seconds: float) -> str | None:
         """Get transcript text at specific time."""
         for snippet in self.snippets:
             if snippet.start <= time_seconds <= snippet.end:
@@ -176,8 +176,8 @@ class YouTubeTranscriptApiResponse(BaseModel):
     language: str
     language_code: str  # Will be converted to LanguageCode enum
     is_generated: bool
-    snippets: List[
-        Dict[str, Any]
+    snippets: list[
+        dict[str, Any]
     ]  # Raw format: [{'text': str, 'start': float, 'duration': float}]
 
     def to_raw_transcript_data(self) -> RawTranscriptData:
@@ -224,7 +224,7 @@ class YouTubeDataApiCaptionMetadata(BaseModel):
     is_draft: bool = Field(default=False)
     is_auto_synced: bool = Field(default=False, description="Whether auto-generated")
     status: str = Field(..., description="Caption status")
-    last_updated: Optional[datetime] = Field(None)
+    last_updated: datetime | None = Field(None)
 
     @property
     def is_generated(self) -> bool:
@@ -239,7 +239,7 @@ class YouTubeDataApiCaptionFile(BaseModel):
     video_id: VideoId = Field(..., description="YouTube video ID (validated)")
     file_format: str = Field(..., description="Original file format (srt, vtt, etc.)")
     raw_content: str = Field(..., description="Raw file content")
-    parsed_snippets: List[TranscriptSnippet] = Field(..., min_length=1)
+    parsed_snippets: list[TranscriptSnippet] = Field(..., min_length=1)
     metadata: YouTubeDataApiCaptionMetadata
 
     def to_raw_transcript_data(self) -> RawTranscriptData:
@@ -273,19 +273,19 @@ class TranscriptComparison(BaseModel):
     """Model for comparing transcripts from different sources."""
 
     video_id: VideoId = Field(..., description="YouTube video ID (validated)")
-    language_code: Union[LanguageCode, str]
+    language_code: LanguageCode | str
     primary_transcript: RawTranscriptData
     secondary_transcript: RawTranscriptData
-    comparison_metrics: Dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    comparison_metrics: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @property
-    def text_similarity_score(self) -> Optional[float]:
+    def text_similarity_score(self) -> float | None:
         """Get text similarity score if calculated."""
         return self.comparison_metrics.get("text_similarity")
 
     @property
-    def timing_difference_avg(self) -> Optional[float]:
+    def timing_difference_avg(self) -> float | None:
         """Get average timing difference if calculated."""
         return self.comparison_metrics.get("timing_difference_avg")
 
@@ -297,22 +297,22 @@ class TranscriptComparison(BaseModel):
 class TranscriptSearchFilters(BaseModel):
     """Filters for searching transcript data."""
 
-    video_ids: Optional[List[VideoId]] = Field(None, description="Filter by video IDs")
-    language_codes: Optional[List[Union[LanguageCode, str]]] = Field(
+    video_ids: list[VideoId] | None = Field(None, description="Filter by video IDs")
+    language_codes: list[LanguageCode | str] | None = Field(
         None, description="Filter by languages (enum or string for regional variants)"
     )
-    sources: Optional[List[TranscriptSource]] = Field(
+    sources: list[TranscriptSource] | None = Field(
         None, description="Filter by sources"
     )
-    is_generated_only: Optional[bool] = Field(
+    is_generated_only: bool | None = Field(
         None, description="Filter by generation type"
     )
-    min_duration: Optional[float] = Field(None, ge=0.0, description="Minimum duration")
-    text_search: Optional[str] = Field(None, description="Search in transcript text")
-    retrieved_after: Optional[datetime] = Field(
+    min_duration: float | None = Field(None, ge=0.0, description="Minimum duration")
+    text_search: str | None = Field(None, description="Search in transcript text")
+    retrieved_after: datetime | None = Field(
         None, description="Retrieved after date"
     )
-    retrieved_before: Optional[datetime] = Field(
+    retrieved_before: datetime | None = Field(
         None, description="Retrieved before date"
     )
 

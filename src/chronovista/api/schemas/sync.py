@@ -7,7 +7,6 @@ tracking progress, and reporting status.
 import re
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -113,14 +112,14 @@ class SyncProgress(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    total_items: Optional[int] = Field(
+    total_items: int | None = Field(
         None, description="Total items to process (None if unknown)"
     )
     processed_items: int = Field(0, ge=0, description="Number of items processed so far")
-    current_item: Optional[str] = Field(
+    current_item: str | None = Field(
         None, description="Identifier of the item currently being processed"
     )
-    estimated_remaining: Optional[int] = Field(
+    estimated_remaining: int | None = Field(
         None, ge=0, description="Estimated seconds remaining (None if unknown)"
     )
 
@@ -135,31 +134,31 @@ class SyncStatus(BaseModel):
     model_config = ConfigDict(strict=True)
 
     status: SyncOperationStatus
-    operation_type: Optional[SyncOperationType] = Field(
+    operation_type: SyncOperationType | None = Field(
         None, description="Type of current/last operation"
     )
-    operation_id: Optional[str] = Field(
+    operation_id: str | None = Field(
         None, description="ID of current/last operation"
     )
-    progress: Optional[SyncProgress] = Field(
+    progress: SyncProgress | None = Field(
         None, description="Progress info (only when running)"
     )
-    last_successful_sync: Optional[datetime] = Field(
+    last_successful_sync: datetime | None = Field(
         None, description="Timestamp of last successful sync"
     )
-    error_message: Optional[str] = Field(
+    error_message: str | None = Field(
         None, description="Error message if status is failed"
     )
-    started_at: Optional[datetime] = Field(
+    started_at: datetime | None = Field(
         None, description="When the current/last operation started"
     )
-    completed_at: Optional[datetime] = Field(
+    completed_at: datetime | None = Field(
         None, description="When the current/last operation completed"
     )
 
     @field_validator("operation_id")
     @classmethod
-    def validate_operation_id_format(cls, v: Optional[str]) -> Optional[str]:
+    def validate_operation_id_format(cls, v: str | None) -> str | None:
         """Validate operation_id follows the expected format if provided.
 
         Format: {type}_{timestamp}_{random}
@@ -209,7 +208,7 @@ class TranscriptSyncRequest(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    video_ids: Optional[list[str]] = Field(
+    video_ids: list[str] | None = Field(
         None,
         description="Video IDs to sync transcripts for. "
         "If None, syncs all videos without transcripts.",
@@ -225,7 +224,7 @@ class TranscriptSyncRequest(BaseModel):
 
     @field_validator("video_ids")
     @classmethod
-    def validate_video_ids(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+    def validate_video_ids(cls, v: list[str] | None) -> list[str] | None:
         """Validate video IDs are non-empty strings if provided.
 
         Parameters

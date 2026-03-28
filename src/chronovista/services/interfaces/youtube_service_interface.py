@@ -10,7 +10,6 @@ This interface defines the contract for YouTube API access, enabling:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
 
 from ...models.api_responses import (
     YouTubeCaptionResponse,
@@ -50,7 +49,7 @@ class YouTubeServiceInterface(ABC):
     # -------------------------------------------------------------------------
 
     @abstractmethod
-    async def get_my_channel(self) -> Optional[YouTubeChannelResponse]:
+    async def get_my_channel(self) -> YouTubeChannelResponse | None:
         """
         Get information about the authenticated user's channel.
 
@@ -149,7 +148,7 @@ class YouTubeServiceInterface(ABC):
 
     @abstractmethod
     async def fetch_videos_batched(
-        self, video_ids: List[str], batch_size: int = 50
+        self, video_ids: list[str], batch_size: int = 50
     ) -> tuple[list[YouTubeVideoResponse], set[str]]:
         """
         Fetch video details in batches, handling pagination for large lists.
@@ -196,7 +195,7 @@ class YouTubeServiceInterface(ABC):
     @abstractmethod
     async def download_caption(
         self, caption_id: str, fmt: str = "srt"
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Download caption content using YouTube Data API v3.
 
@@ -330,7 +329,7 @@ class YouTubeServiceInterface(ABC):
 
     @abstractmethod
     async def fetch_playlists_batched(
-        self, playlist_ids: List[str], batch_size: int = 50
+        self, playlist_ids: list[str], batch_size: int = 50
     ) -> tuple[list[YouTubePlaylistResponse], set[str]]:
         """
         Fetch playlist details in batches, handling pagination for large lists.
@@ -412,7 +411,7 @@ class YouTubeServiceInterface(ABC):
 
     @abstractmethod
     async def get_liked_videos(
-        self, max_results: Optional[int] = None
+        self, max_results: int | None = None
     ) -> list[YouTubeVideoResponse]:
         """
         Get videos that the authenticated user has liked.

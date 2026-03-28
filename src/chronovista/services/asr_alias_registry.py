@@ -77,10 +77,7 @@ def is_valid_asr_alias(alias_text: str) -> bool:
     if not tokens:
         return False
 
-    if all(t in _HIGH_FREQUENCY_WORDS for t in tokens):
-        return False
-
-    return True
+    return not all(t in _HIGH_FREQUENCY_WORDS for t in tokens)
 
 
 async def resolve_entity_id_from_text(

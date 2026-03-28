@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, ValidationInfo
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from chronovista.models.enums import CorrectionType
 

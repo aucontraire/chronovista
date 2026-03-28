@@ -9,12 +9,10 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.db.models import TopicCategory as TopicCategoryDB
-from chronovista.db.models import Video as VideoDB
 from chronovista.models.topic_category import TopicCategorySearchFilters
 from chronovista.repositories.topic_category_repository import TopicCategoryRepository
 from chronovista.repositories.video_repository import VideoRepository
@@ -28,9 +26,9 @@ class TopicNode:
     topic_id: str
     category_name: str
     topic_type: str
-    parent_topic_id: Optional[str] = None
-    children: Optional[Set[str]] = None
-    related_videos: Optional[Set[str]] = None
+    parent_topic_id: str | None = None
+    children: set[str] | None = None
+    related_videos: set[str] | None = None
     level: int = 0
 
     def __post_init__(self) -> None:
@@ -48,7 +46,7 @@ class TopicEdge:
     target_topic_id: str
     relationship_type: str  # 'parent_child', 'content_similarity', 'co_occurrence'
     weight: float = 1.0
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if self.metadata is None:
@@ -59,16 +57,16 @@ class TopicEdge:
 class TopicGraph:
     """Complete topic knowledge graph with nodes and edges."""
 
-    nodes: Dict[str, TopicNode]
-    edges: List[TopicEdge]
-    root_topics: Set[str]
+    nodes: dict[str, TopicNode]
+    edges: list[TopicEdge]
+    root_topics: set[str]
     max_depth: int
 
-    def get_node(self, topic_id: str) -> Optional[TopicNode]:
+    def get_node(self, topic_id: str) -> TopicNode | None:
         """Get a topic node by ID."""
         return self.nodes.get(topic_id)
 
-    def get_children(self, topic_id: str) -> List[TopicNode]:
+    def get_children(self, topic_id: str) -> list[TopicNode]:
         """Get all child nodes of a topic."""
         node = self.nodes.get(topic_id)
         if not node:
@@ -79,10 +77,10 @@ class TopicGraph:
             if child_id in self.nodes
         ]
 
-    def get_path_to_root(self, topic_id: str) -> List[TopicNode]:
+    def get_path_to_root(self, topic_id: str) -> list[TopicNode]:
         """Get the path from a topic to its root ancestor."""
-        path: List[TopicNode] = []
-        current_id: Optional[str] = topic_id
+        path: list[TopicNode] = []
+        current_id: str | None = topic_id
 
         while current_id and current_id in self.nodes:
             node = self.nodes[current_id]
@@ -93,7 +91,7 @@ class TopicGraph:
 
     def find_related_topics(
         self, topic_id: str, max_distance: int = 2
-    ) -> List[Tuple[TopicNode, int]]:
+    ) -> list[tuple[TopicNode, int]]:
         """Find topics related to the given topic within max_distance."""
         if topic_id not in self.nodes:
             return []
@@ -165,7 +163,7 @@ class TopicGraphService:
                 parent_node.children.add(topic_id)
 
         # Calculate levels (depth from root)
-        def calculate_level(topic_id: str, visited: Optional[Set[str]] = None) -> int:
+        def calculate_level(topic_id: str, visited: set[str] | None = None) -> int:
             if visited is None:
                 visited = set()
 
@@ -214,7 +212,7 @@ class TopicGraphService:
         # For now, we'll simulate this based on the existing schema
 
         # Group videos by topics (simulated - would need actual video-topic relationships)
-        topic_video_map: Dict[str, Set[str]] = defaultdict(set)
+        defaultdict(set)
 
         # In a real implementation, you'd have a query like:
         # SELECT topic_id, video_id FROM video_topic_categories
@@ -262,7 +260,7 @@ class TopicGraphService:
         # Build tag co-occurrence relationships
         tag_similarity_edges = []
 
-        for i, tag_a in enumerate(tag_names):
+        for _i, tag_a in enumerate(tag_names):
             # Get related tags that frequently appear with tag_a
             related_tags = await self.video_tag_repo.get_related_tags(
                 session, tag_a, limit=20
@@ -288,7 +286,7 @@ class TopicGraphService:
                     tag_similarity_edges.append(edge)
 
         # Add tag-based nodes to the graph
-        for tag_name, count in popular_tags:
+        for tag_name, _count in popular_tags:
             tag_node = TopicNode(
                 topic_id=f"tag:{tag_name}",
                 category_name=f"Tag: {tag_name}",
@@ -314,7 +312,7 @@ class TopicGraphService:
         tag_stats = await self.video_tag_repo.get_video_tag_statistics(session)
 
         # Add tag nodes to the graph
-        for tag_name, count in tag_stats.most_common_tags:
+        for tag_name, _count in tag_stats.most_common_tags:
             tag_node = TopicNode(
                 topic_id=f"tag:{tag_name}",
                 category_name=f"Tag: {tag_name}",
@@ -363,7 +361,7 @@ class TopicGraphService:
 
     async def analyze_tag_topic_relationships(
         self, session: AsyncSession
-    ) -> Dict[str, Dict[str, float]]:
+    ) -> dict[str, dict[str, float]]:
         """Analyze relationships between user tags and formal topic categories."""
         # Get tag statistics
         tag_stats = await self.video_tag_repo.get_video_tag_statistics(session)
@@ -372,10 +370,10 @@ class TopicGraphService:
         filters = TopicCategorySearchFilters()
         all_topics = await self.topic_repo.search_topics(session, filters)
 
-        relationships: Dict[str, Dict[str, float]] = {}
+        relationships: dict[str, dict[str, float]] = {}
 
         # For each tag, analyze its relationship with formal topics
-        for tag_name, tag_count in tag_stats.most_common_tags:
+        for tag_name, _tag_count in tag_stats.most_common_tags:
             relationships[tag_name] = {}
 
             # Simple analysis based on name similarity
@@ -409,7 +407,7 @@ class TopicGraphService:
 
     async def get_topic_clusters(
         self, graph: TopicGraph, cluster_method: str = "hierarchical"
-    ) -> Dict[str, List[str]]:
+    ) -> dict[str, list[str]]:
         """Group topics into clusters based on relationships."""
         clusters = {}
 
@@ -442,20 +440,20 @@ class TopicGraphService:
                     similarity_groups[group_key].add(edge.source_topic_id)
                     similarity_groups[group_key].add(edge.target_topic_id)
 
-            for i, (key, topic_set) in enumerate(similarity_groups.items()):
+            for i, (_key, topic_set) in enumerate(similarity_groups.items()):
                 clusters[f"similarity_cluster_{i}"] = list(topic_set)
 
         return clusters
 
     async def analyze_topic_importance(
         self, session: AsyncSession, graph: TopicGraph
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Calculate importance scores for topics based on graph metrics and tag data."""
         importance_scores = {}
 
         # Get tag statistics for enhanced scoring
         tag_stats = await self.video_tag_repo.get_video_tag_statistics(session)
-        tag_popularity = {tag: count for tag, count in tag_stats.most_common_tags}
+        tag_popularity = dict(tag_stats.most_common_tags)
 
         for topic_id, node in graph.nodes.items():
             score = 0.0
@@ -498,14 +496,14 @@ class TopicGraphService:
 
     async def find_topic_paths(
         self, graph: TopicGraph, source_topic_id: str, target_topic_id: str
-    ) -> List[List[str]]:
+    ) -> list[list[str]]:
         """Find all paths between two topics in the graph."""
         if source_topic_id not in graph.nodes or target_topic_id not in graph.nodes:
             return []
 
         def find_paths_recursive(
-            current_id: str, target_id: str, path: List[str], visited: Set[str]
-        ) -> List[List[str]]:
+            current_id: str, target_id: str, path: list[str], visited: set[str]
+        ) -> list[list[str]]:
             if current_id == target_id:
                 return [path + [current_id]]
 
@@ -542,7 +540,7 @@ class TopicGraphService:
 
         return find_paths_recursive(source_topic_id, target_topic_id, [], set())
 
-    def export_graph_for_visualization(self, graph: TopicGraph) -> Dict[str, Any]:
+    def export_graph_for_visualization(self, graph: TopicGraph) -> dict[str, Any]:
         """Export graph in a format suitable for visualization tools (D3.js, NetworkX, etc.)."""
         nodes_export = []
         edges_export = []

@@ -9,6 +9,7 @@ writes, and placeholder SVG generation for missing images.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Callable
 from datetime import datetime
@@ -498,10 +499,8 @@ class ImageCacheService:
             logger.warning(
                 "Corrupted cache file (too small), deleting: %s", cache_path
             )
-            try:
+            with contextlib.suppress(OSError):
                 cache_path.unlink()
-            except OSError:
-                pass
             return None
         return "HIT"
 
@@ -899,10 +898,8 @@ class ImageCacheService:
 
             # Remove .missing marker before re-attempt
             if missing_path.is_file():
-                try:
+                with contextlib.suppress(OSError):
                     missing_path.unlink()
-                except OSError:
-                    pass
 
             # Fetch with retry
             success, reason = await self._fetch_with_warm_retry(
@@ -1028,10 +1025,8 @@ class ImageCacheService:
 
                 # Remove .missing marker before re-attempt
                 if missing_path.is_file():
-                    try:
+                    with contextlib.suppress(OSError):
                         missing_path.unlink()
-                    except OSError:
-                        pass
 
                 # Deterministic URL
                 thumbnail_url = (

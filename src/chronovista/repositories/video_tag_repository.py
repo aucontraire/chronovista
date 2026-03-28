@@ -7,14 +7,13 @@ tag analytics, and video-tag relationship management.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
-from sqlalchemy import and_, delete, desc, func, literal, or_, select
+from sqlalchemy import and_, delete, desc, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import VideoTag as VideoTagDB
 from chronovista.models.video_tag import (
-    VideoTag,
     VideoTagCreate,
     VideoTagSearchFilters,
     VideoTagStatistics,
@@ -24,7 +23,7 @@ from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
 class VideoTagRepository(
-    BaseSQLAlchemyRepository[VideoTagDB, VideoTagCreate, VideoTagUpdate, Tuple[str, str]]
+    BaseSQLAlchemyRepository[VideoTagDB, VideoTagCreate, VideoTagUpdate, tuple[str, str]]
 ):
     """Repository for video tag operations."""
 
@@ -32,20 +31,20 @@ class VideoTagRepository(
         super().__init__(VideoTagDB)
 
     async def get(
-        self, session: AsyncSession, id: Tuple[str, str]
-    ) -> Optional[VideoTagDB]:
+        self, session: AsyncSession, id: tuple[str, str]
+    ) -> VideoTagDB | None:
         """Get video tag by composite key tuple (video_id, tag)."""
         video_id, tag = id
         return await self.get_by_composite_key(session, video_id, tag)
 
-    async def exists(self, session: AsyncSession, id: Tuple[str, str]) -> bool:
+    async def exists(self, session: AsyncSession, id: tuple[str, str]) -> bool:
         """Check if video tag exists by composite key tuple (video_id, tag)."""
         video_id, tag = id
         return await self.exists_by_composite_key(session, video_id, tag)
 
     async def get_by_composite_key(
         self, session: AsyncSession, video_id: str, tag: str
-    ) -> Optional[VideoTagDB]:
+    ) -> VideoTagDB | None:
         """Get video tag by composite key (video_id, tag)."""
         result = await session.execute(
             select(VideoTagDB).where(
@@ -67,7 +66,7 @@ class VideoTagRepository(
 
     async def get_by_video_id(
         self, session: AsyncSession, video_id: str
-    ) -> List[VideoTagDB]:
+    ) -> list[VideoTagDB]:
         """Get all tags for a specific video."""
         result = await session.execute(
             select(VideoTagDB)
@@ -76,7 +75,7 @@ class VideoTagRepository(
         )
         return list(result.scalars().all())
 
-    async def get_by_tag(self, session: AsyncSession, tag: str) -> List[VideoTagDB]:
+    async def get_by_tag(self, session: AsyncSession, tag: str) -> list[VideoTagDB]:
         """Get all videos with a specific tag."""
         result = await session.execute(
             select(VideoTagDB)
@@ -105,9 +104,9 @@ class VideoTagRepository(
         self,
         session: AsyncSession,
         video_id: str,
-        tags: List[str],
-        tag_orders: Optional[List[int]] = None,
-    ) -> List[VideoTagDB]:
+        tags: list[str],
+        tag_orders: list[int] | None = None,
+    ) -> list[VideoTagDB]:
         """Create multiple tags for a video efficiently."""
         created_tags = []
 
@@ -131,9 +130,9 @@ class VideoTagRepository(
         self,
         session: AsyncSession,
         video_id: str,
-        tags: List[str],
-        tag_orders: Optional[List[int]] = None,
-    ) -> List[VideoTagDB]:
+        tags: list[str],
+        tag_orders: list[int] | None = None,
+    ) -> list[VideoTagDB]:
         """Replace all tags for a video with new ones."""
         # Delete existing tags for this video
         await session.execute(delete(VideoTagDB).where(VideoTagDB.video_id == video_id))
@@ -169,12 +168,12 @@ class VideoTagRepository(
 
     async def search_tags(
         self, session: AsyncSession, filters: VideoTagSearchFilters
-    ) -> List[VideoTagDB]:
+    ) -> list[VideoTagDB]:
         """Search video tags with advanced filters."""
         query = select(VideoTagDB)
 
         # Apply filters
-        conditions: List[Any] = []
+        conditions: list[Any] = []
 
         if filters.video_ids:
             conditions.append(VideoTagDB.video_id.in_(filters.video_ids))
@@ -209,7 +208,7 @@ class VideoTagRepository(
 
     async def get_popular_tags(
         self, session: AsyncSession, limit: int = 50
-    ) -> List[Tuple[str, int]]:
+    ) -> list[tuple[str, int]]:
         """Get most popular tags by video count."""
         result = await session.execute(
             select(VideoTagDB.tag, func.count(VideoTagDB.video_id).label("video_count"))
@@ -221,7 +220,7 @@ class VideoTagRepository(
 
     async def get_related_tags(
         self, session: AsyncSession, tag: str, limit: int = 20
-    ) -> List[Tuple[str, int]]:
+    ) -> list[tuple[str, int]]:
         """Get tags that frequently appear with the given tag."""
         # Find videos that have the specified tag
         videos_with_tag = select(VideoTagDB.video_id).where(VideoTagDB.tag == tag)
@@ -277,7 +276,7 @@ class VideoTagRepository(
         most_common_tags = [(row[0], row[1]) for row in common_result]
 
         # Tag distribution (simplified - could be enhanced)
-        tag_distribution = {tag: count for tag, count in most_common_tags[:10]}
+        tag_distribution = dict(most_common_tags[:10])
 
         return VideoTagStatistics(
             total_tags=total_tags,
@@ -288,8 +287,8 @@ class VideoTagRepository(
         )
 
     async def find_videos_by_tags(
-        self, session: AsyncSession, tags: List[str], match_all: bool = False
-    ) -> List[str]:
+        self, session: AsyncSession, tags: list[str], match_all: bool = False
+    ) -> list[str]:
         """Find video IDs that have specific tags."""
         if not tags:
             return []
@@ -323,8 +322,8 @@ class VideoTagRepository(
         return result.scalar() or 0
 
     async def get_video_count_by_tags(
-        self, session: AsyncSession, tags: List[str]
-    ) -> Dict[str, int]:
+        self, session: AsyncSession, tags: list[str]
+    ) -> dict[str, int]:
         """Get video counts for multiple tags efficiently."""
         if not tags:
             return {}
@@ -347,7 +346,7 @@ class VideoTagRepository(
 
     async def get_distinct_tags_with_counts(
         self, session: AsyncSession
-    ) -> List[Tuple[str, int]]:
+    ) -> list[tuple[str, int]]:
         """
         Retrieve all distinct tags with their occurrence counts.
 

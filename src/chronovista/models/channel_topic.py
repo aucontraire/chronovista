@@ -8,7 +8,6 @@ with validation and serialization support.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -60,16 +59,16 @@ class ChannelTopic(ChannelTopicBase):
 class ChannelTopicSearchFilters(BaseModel):
     """Filters for searching channel topics."""
 
-    channel_ids: Optional[List[ChannelId]] = Field(
+    channel_ids: list[ChannelId] | None = Field(
         default=None, description="Filter by channel IDs"
     )
-    topic_ids: Optional[List[TopicId]] = Field(
+    topic_ids: list[TopicId] | None = Field(
         default=None, description="Filter by topic IDs"
     )
-    created_after: Optional[datetime] = Field(
+    created_after: datetime | None = Field(
         default=None, description="Filter by creation date"
     )
-    created_before: Optional[datetime] = Field(
+    created_before: datetime | None = Field(
         default=None, description="Filter by creation date"
     )
 
@@ -89,7 +88,7 @@ class ChannelTopicStatistics(BaseModel):
         ..., description="Number of unique channels with topics"
     )
     avg_topics_per_channel: float = Field(..., description="Average topics per channel")
-    most_common_topics: List[tuple[str, int]] = Field(
+    most_common_topics: list[tuple[str, int]] = Field(
         default_factory=list, description="Most common topics with counts"
     )
     topic_distribution: dict[str, int] = Field(
@@ -104,13 +103,13 @@ class ChannelTopicStatistics(BaseModel):
 class ChannelTopicAnalytics(BaseModel):
     """Advanced channel topic analytics."""
 
-    topic_trends: dict[str, List[int]] = Field(
+    topic_trends: dict[str, list[int]] = Field(
         default_factory=dict, description="Topic usage trends over time"
     )
-    channel_topic_clusters: dict[str, List[str]] = Field(
+    channel_topic_clusters: dict[str, list[str]] = Field(
         default_factory=dict, description="Channel clusters by topic similarity"
     )
-    topic_dominance: dict[str, List[tuple[str, float]]] = Field(
+    topic_dominance: dict[str, list[tuple[str, float]]] = Field(
         default_factory=dict, description="Topic dominance patterns by channel"
     )
     cross_topic_analysis: dict[str, dict[str, float]] = Field(

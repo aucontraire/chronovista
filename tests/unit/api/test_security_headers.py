@@ -40,7 +40,7 @@ class TestSecurityHeaders:
         csp = response.headers.get("content-security-policy")
         assert csp is not None
         assert "default-src 'self'" in csp
-        assert "script-src 'self'" in csp
+        assert "script-src 'self' https://www.youtube.com" in csp
         assert "object-src 'none'" in csp
         assert "frame-src https://www.youtube-nocookie.com" in csp
 

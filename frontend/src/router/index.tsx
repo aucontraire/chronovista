@@ -2,8 +2,14 @@
  * Router configuration for Chronovista application.
  *
  * FR-021: Implements scroll position restoration for improved navigation UX.
+ *
+ * Route-level code splitting: each page component is loaded on-demand via
+ * React.lazy() so the initial bundle only contains the shell and the page
+ * the user is navigating to.  Other pages are fetched in the background
+ * when their route is first visited.
  */
 
+import { lazy, Suspense } from "react";
 import {
   createBrowserRouter,
   Navigate,
@@ -11,21 +17,91 @@ import {
 } from "react-router-dom";
 
 import { AppShell } from "../components/layout";
-import { BatchCorrectionsPage } from "../pages/BatchCorrectionsPage";
-import { BatchHistoryPage } from "../pages/BatchHistoryPage";
-import { ChannelDetailPage } from "../pages/ChannelDetailPage";
-import { ChannelsPage } from "../pages/ChannelsPage";
-import { DiffAnalysisPage } from "../pages/DiffAnalysisPage";
-import { EntitiesPage } from "../pages/EntitiesPage";
-import { EntityDetailPage } from "../pages/EntityDetailPage";
-import { HomePage } from "../pages/HomePage";
 import { NotFoundPage } from "../pages/NotFoundPage";
-import { OnboardingPage } from "../pages/OnboardingPage";
-import { PlaylistDetailPage } from "../pages/PlaylistDetailPage";
-import { PlaylistsPage } from "../pages/PlaylistsPage";
-import { SearchPage } from "../pages/SearchPage";
-import { SettingsPage } from "../pages/SettingsPage";
-import { VideoDetailPage } from "../pages/VideoDetailPage";
+
+// Lazy-loaded page components (downloaded on first navigation)
+const HomePage = lazy(() =>
+  import("../pages/HomePage").then((m) => ({ default: m.HomePage })),
+);
+const VideoDetailPage = lazy(() =>
+  import("../pages/VideoDetailPage").then((m) => ({
+    default: m.VideoDetailPage,
+  })),
+);
+const SearchPage = lazy(() =>
+  import("../pages/SearchPage").then((m) => ({ default: m.SearchPage })),
+);
+const ChannelsPage = lazy(() =>
+  import("../pages/ChannelsPage").then((m) => ({ default: m.ChannelsPage })),
+);
+const ChannelDetailPage = lazy(() =>
+  import("../pages/ChannelDetailPage").then((m) => ({
+    default: m.ChannelDetailPage,
+  })),
+);
+const PlaylistsPage = lazy(() =>
+  import("../pages/PlaylistsPage").then((m) => ({
+    default: m.PlaylistsPage,
+  })),
+);
+const PlaylistDetailPage = lazy(() =>
+  import("../pages/PlaylistDetailPage").then((m) => ({
+    default: m.PlaylistDetailPage,
+  })),
+);
+const EntitiesPage = lazy(() =>
+  import("../pages/EntitiesPage").then((m) => ({
+    default: m.EntitiesPage,
+  })),
+);
+const EntityDetailPage = lazy(() =>
+  import("../pages/EntityDetailPage").then((m) => ({
+    default: m.EntityDetailPage,
+  })),
+);
+const BatchCorrectionsPage = lazy(() =>
+  import("../pages/BatchCorrectionsPage").then((m) => ({
+    default: m.BatchCorrectionsPage,
+  })),
+);
+const BatchHistoryPage = lazy(() =>
+  import("../pages/BatchHistoryPage").then((m) => ({
+    default: m.BatchHistoryPage,
+  })),
+);
+const DiffAnalysisPage = lazy(() =>
+  import("../pages/DiffAnalysisPage").then((m) => ({
+    default: m.DiffAnalysisPage,
+  })),
+);
+const OnboardingPage = lazy(() =>
+  import("../pages/OnboardingPage").then((m) => ({
+    default: m.OnboardingPage,
+  })),
+);
+const SettingsPage = lazy(() =>
+  import("../pages/SettingsPage").then((m) => ({
+    default: m.SettingsPage,
+  })),
+);
+
+/**
+ * Loading fallback shown while a lazy-loaded page chunk is being fetched.
+ */
+function PageLoadingFallback() {
+  return (
+    <div className="flex items-center justify-center min-h-[50vh]">
+      <div className="text-slate-500 text-sm">Loading...</div>
+    </div>
+  );
+}
+
+/**
+ * Wrap a lazy-loaded page element in Suspense with the shared fallback.
+ */
+function lazySuspense(element: React.ReactNode) {
+  return <Suspense fallback={<PageLoadingFallback />}>{element}</Suspense>;
+}
 
 /**
  * Root layout wrapper with scroll restoration.
@@ -71,59 +147,59 @@ export const router = createBrowserRouter([
       },
       {
         path: "videos",
-        element: <HomePage />,
+        element: lazySuspense(<HomePage />),
       },
       {
         path: "videos/:videoId",
-        element: <VideoDetailPage />,
+        element: lazySuspense(<VideoDetailPage />),
       },
       {
         path: "search",
-        element: <SearchPage />,
+        element: lazySuspense(<SearchPage />),
       },
       {
         path: "channels",
-        element: <ChannelsPage />,
+        element: lazySuspense(<ChannelsPage />),
       },
       {
         path: "channels/:channelId",
-        element: <ChannelDetailPage />,
+        element: lazySuspense(<ChannelDetailPage />),
       },
       {
         path: "playlists",
-        element: <PlaylistsPage />,
+        element: lazySuspense(<PlaylistsPage />),
       },
       {
         path: "playlists/:playlistId",
-        element: <PlaylistDetailPage />,
+        element: lazySuspense(<PlaylistDetailPage />),
       },
       {
         path: "entities",
-        element: <EntitiesPage />,
+        element: lazySuspense(<EntitiesPage />),
       },
       {
         path: "entities/:entityId",
-        element: <EntityDetailPage />,
+        element: lazySuspense(<EntityDetailPage />),
       },
       {
         path: "corrections/batch",
-        element: <BatchCorrectionsPage />,
+        element: lazySuspense(<BatchCorrectionsPage />),
       },
       {
         path: "corrections/batch/history",
-        element: <BatchHistoryPage />,
+        element: lazySuspense(<BatchHistoryPage />),
       },
       {
         path: "corrections/diff-analysis",
-        element: <DiffAnalysisPage />,
+        element: lazySuspense(<DiffAnalysisPage />),
       },
       {
         path: "onboarding",
-        element: <OnboardingPage />,
+        element: lazySuspense(<OnboardingPage />),
       },
       {
         path: "settings",
-        element: <SettingsPage />,
+        element: lazySuspense(<SettingsPage />),
       },
       {
         path: "*",

@@ -128,13 +128,13 @@ async def add_security_headers(
         "camera=(), microphone=(), geolocation=()"
     )
     # CSP: allow self-origin resources; inline styles needed for Rich/Tailwind;
-    # YouTube iframe embeds require frame-src
+    # YouTube IFrame API requires script-src + frame-src for youtube.com
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self'; "
+        "script-src 'self' https://www.youtube.com; "
         "style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' https://i.ytimg.com https://yt3.ggpht.com https://i9.ytimg.com data:; "
-        "frame-src https://www.youtube-nocookie.com; "
+        "img-src 'self' https://i.ytimg.com https://img.youtube.com https://yt3.ggpht.com https://i9.ytimg.com data:; "
+        "frame-src https://www.youtube-nocookie.com https://www.youtube.com; "
         "connect-src 'self'; "
         "font-src 'self'; "
         "object-src 'none'; "

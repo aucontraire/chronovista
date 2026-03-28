@@ -13,15 +13,10 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
-from chronovista.models.video_category import VideoCategoryCreate
 from chronovista.repositories.topic_category_repository import TopicCategoryRepository
 from chronovista.repositories.video_category_repository import VideoCategoryRepository
 from chronovista.services.enrichment.seeders import CategorySeeder, TopicSeeder
 from chronovista.services.youtube_service import YouTubeService
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestTopicSeederIdempotency:
@@ -483,7 +478,7 @@ class TestSC015IdempotencyVerification:
     async def test_topic_seeder_preserves_parent_child_relationships(self) -> None:
         """Test that TopicSeeder preserves parent-child relationships."""
         # All child topics should have valid parent references
-        for topic_id, (name, parent_id, wiki_slug) in TopicSeeder.YOUTUBE_TOPICS.items():
+        for _topic_id, (_name, parent_id, _wiki_slug) in TopicSeeder.YOUTUBE_TOPICS.items():
             if parent_id is not None:
                 # Parent must exist in the topics dict
                 assert parent_id in TopicSeeder.YOUTUBE_TOPICS

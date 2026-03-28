@@ -15,16 +15,13 @@ Test Coverage:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import List, Tuple
-from unittest.mock import MagicMock
+from datetime import UTC, datetime
 
 import pytest
 
 from chronovista.models.enums import LanguageCode, LanguagePreferenceType
 from chronovista.models.user_language_preference import UserLanguagePreference
 from chronovista.services.preference_aware_transcript_filter import (
-    DownloadPlan,
     PreferenceAwareTranscriptFilter,
 )
 
@@ -87,7 +84,7 @@ def create_preference(
         priority=priority,
         auto_download_transcripts=auto_download,
         learning_goal=learning_goal if learning_goal else None,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 
@@ -235,7 +232,7 @@ class TestPreferenceAwareDownloadFlow:
         the system should provide an empty download list, allowing
         the caller to implement locale-based fallback.
         """
-        prefs: List[UserLanguagePreference] = []  # No preferences
+        prefs: list[UserLanguagePreference] = []  # No preferences
         available = ["en", "es", "fr"]
 
         filter_service = PreferenceAwareTranscriptFilter()
@@ -527,7 +524,7 @@ class TestEdgeCases:
             create_preference("es", "fluent", priority=2),
         ]
 
-        available: List[str] = []
+        available: list[str] = []
 
         filter_service = PreferenceAwareTranscriptFilter()
         plan = filter_service.create_download_plan(available, prefs)

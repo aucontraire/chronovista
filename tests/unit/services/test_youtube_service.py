@@ -7,16 +7,13 @@ typed Pydantic models instead of Dict[str, Any].
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from chronovista.exceptions import ValidationError, YouTubeAPIError
 from chronovista.services.youtube_service import YouTubeService
-
-pytestmark = pytest.mark.asyncio
 
 
 # Helper function to create valid mock API responses
@@ -300,7 +297,7 @@ class TestYouTubeService:
         """Test get_my_channel when no channel found."""
         youtube_service._service = mock_service_client
 
-        mock_response: Dict[str, Any] = {"items": []}
+        mock_response: dict[str, Any] = {"items": []}
         mock_request = MagicMock()
         mock_request.execute.return_value = mock_response
         mock_service_client.channels.return_value.list.return_value = mock_request
@@ -344,7 +341,7 @@ class TestYouTubeService:
         """Test get_channel_details when channel not found."""
         youtube_service._service = mock_service_client
 
-        mock_response: Dict[str, Any] = {"items": []}
+        mock_response: dict[str, Any] = {"items": []}
         mock_request = MagicMock()
         mock_request.execute.return_value = mock_response
         mock_service_client.channels.return_value.list.return_value = mock_request
@@ -408,7 +405,7 @@ class TestYouTubeService:
         }
 
         # Mock empty playlist response
-        mock_playlist_response: Dict[str, Any] = {"items": []}
+        mock_playlist_response: dict[str, Any] = {"items": []}
 
         mock_request1 = MagicMock()
         mock_request1.execute.return_value = mock_channel_response
@@ -456,7 +453,7 @@ class TestYouTubeService:
         """Test get_video_details with empty video list."""
         youtube_service._service = mock_service_client
 
-        mock_response: Dict[str, Any] = {"items": []}
+        mock_response: dict[str, Any] = {"items": []}
         mock_request = MagicMock()
         mock_request.execute.return_value = mock_response
         mock_service_client.videos.return_value.list.return_value = mock_request
@@ -701,7 +698,7 @@ class TestYouTubeServiceErrorHandling:
         """Test get_my_playlists with empty response."""
         youtube_service._service = mock_service_client
 
-        mock_response: Dict[str, Any] = {"items": []}
+        mock_response: dict[str, Any] = {"items": []}
         mock_request = MagicMock()
         mock_request.execute.return_value = mock_response
         mock_service_client.playlists.return_value.list.return_value = mock_request
@@ -717,7 +714,7 @@ class TestYouTubeServiceErrorHandling:
         """Test get_video_captions with empty response."""
         youtube_service._service = mock_service_client
 
-        mock_response: Dict[str, Any] = {"items": []}
+        mock_response: dict[str, Any] = {"items": []}
         mock_request = MagicMock()
         mock_request.execute.return_value = mock_response
         mock_service_client.captions.return_value.list.return_value = mock_request
@@ -733,7 +730,7 @@ class TestYouTubeServiceErrorHandling:
         """Test search_my_videos with empty query."""
         youtube_service._service = mock_service_client
 
-        mock_response: Dict[str, Any] = {"items": []}
+        mock_response: dict[str, Any] = {"items": []}
         mock_request = MagicMock()
         mock_request.execute.return_value = mock_response
         mock_service_client.search.return_value.list.return_value = mock_request
@@ -785,7 +782,7 @@ class TestYouTubeServiceEdgeCases:
             ]
         }
 
-        mock_playlist_response: Dict[str, Any] = {"items": []}
+        mock_playlist_response: dict[str, Any] = {"items": []}
 
         mock_request1 = MagicMock()
         mock_request1.execute.return_value = mock_channel_response
@@ -911,7 +908,7 @@ class TestYouTubeServiceIntegration:
                     {"contentDetails": {"relatedPlaylists": {"uploads": "UUtest123456789012345"}}}
                 ]
             }
-            mock_video_response: Dict[str, Any] = {"items": []}
+            mock_video_response: dict[str, Any] = {"items": []}
 
             # Mock the two different calls for get_channel_videos
             def mock_execute_side_effect():
@@ -955,7 +952,7 @@ class TestYouTubeServiceMissingCoverage:
         youtube_service._service = mock_service_client
 
         # Mock empty response for channel details
-        mock_response: Dict[str, Any] = {"items": []}
+        mock_response: dict[str, Any] = {"items": []}
         mock_request = MagicMock()
         mock_request.execute.return_value = mock_response
         mock_service_client.channels.return_value.list.return_value = mock_request
@@ -1031,7 +1028,7 @@ class TestYouTubeServiceMissingCoverage:
         youtube_service._service = mock_service_client
 
         # Mock empty channel response
-        mock_response: Dict[str, Any] = {"items": []}
+        mock_response: dict[str, Any] = {"items": []}
         mock_request = MagicMock()
         mock_request.execute.return_value = mock_response
         mock_service_client.channels.return_value.list.return_value = mock_request
@@ -1082,7 +1079,7 @@ class TestYouTubeServiceMissingCoverage:
         }
 
         # Mock empty playlist response
-        mock_playlist_response: Dict[str, Any] = {"items": []}
+        mock_playlist_response: dict[str, Any] = {"items": []}
 
         # Mock the channel call
         mock_request1 = MagicMock()
@@ -1215,7 +1212,7 @@ class TestYouTubeServiceMissingCoverage:
     ):
         """Test video categories when no categories found."""
         # Mock empty response
-        mock_response: Dict[str, Any] = {"items": []}
+        mock_response: dict[str, Any] = {"items": []}
         mock_request = MagicMock()
         mock_request.execute.return_value = mock_response
         mock_service_client.videoCategories.return_value.list.return_value = (
@@ -1443,7 +1440,7 @@ class TestYouTubeServicePagination:
         """Test get_my_playlists with empty results."""
         object.__setattr__(youtube_service, "_service", mock_service_client)
 
-        mock_response: Dict[str, Any] = {"items": []}
+        mock_response: dict[str, Any] = {"items": []}
 
         mock_request = MagicMock()
         mock_request.execute.return_value = mock_response
@@ -1618,7 +1615,7 @@ class TestYouTubeServicePagination:
         """Test get_playlist_videos with empty results."""
         object.__setattr__(youtube_service, "_service", mock_service_client)
 
-        mock_response: Dict[str, Any] = {"items": []}
+        mock_response: dict[str, Any] = {"items": []}
 
         mock_request = MagicMock()
         mock_request.execute.return_value = mock_response

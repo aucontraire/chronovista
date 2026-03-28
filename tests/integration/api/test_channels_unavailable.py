@@ -7,8 +7,7 @@ return 200 with full metadata, and only truly non-existent channel IDs return 40
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 from unittest.mock import patch
 
 import pytest
@@ -18,8 +17,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import Channel
 from chronovista.models.enums import AvailabilityStatus
-
-pytestmark = pytest.mark.asyncio
 
 
 @pytest.fixture

@@ -8,19 +8,12 @@ stats, and by-video commands. These test the CLI interface for YouTube video tag
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
 
 from chronovista.cli.tag_commands import tag_app
-from chronovista.db.models import Video as VideoDB
-from chronovista.db.models import VideoTag as VideoTagDB
-from chronovista.models.video_tag import VideoTagStatistics
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestTagCommands:
@@ -98,7 +91,7 @@ class TestTagCommands:
         self, mock_asyncio: MagicMock, runner: CliRunner
     ) -> None:
         """Test show tag command with -r short flag."""
-        result = runner.invoke(tag_app, ["show", "--tag", "music", "-r", "5"])
+        runner.invoke(tag_app, ["show", "--tag", "music", "-r", "5"])
 
     @patch("chronovista.cli.tag_commands.asyncio.run")
     def test_show_tag_with_dash_prefix(
@@ -135,7 +128,7 @@ class TestTagCommands:
         self, mock_asyncio: MagicMock, runner: CliRunner
     ) -> None:
         """Test videos by tag command with -l short flag."""
-        result = runner.invoke(tag_app, ["videos", "--tag", "gaming", "-l", "15"])
+        runner.invoke(tag_app, ["videos", "--tag", "gaming", "-l", "15"])
 
     @patch("chronovista.cli.tag_commands.asyncio.run")
     def test_videos_by_tag_with_dash_prefix(
@@ -172,7 +165,7 @@ class TestTagCommands:
         self, mock_asyncio: MagicMock, runner: CliRunner
     ) -> None:
         """Test search tags command with -l short flag."""
-        result = runner.invoke(tag_app, ["search", "--pattern", "music", "-l", "40"])
+        runner.invoke(tag_app, ["search", "--pattern", "music", "-l", "40"])
 
     @patch("chronovista.cli.tag_commands.asyncio.run")
     def test_search_tags_with_dash_prefix(

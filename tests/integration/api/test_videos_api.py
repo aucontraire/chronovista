@@ -1,14 +1,10 @@
 """Integration tests for video list endpoint (US1)."""
 
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 from urllib.parse import quote
 
-import pytest
 from httpx import AsyncClient
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestListVideos:
@@ -166,7 +162,7 @@ class TestVideoFilters:
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
             # Use URL-encoded ISO format with timezone
-            date = (datetime.now(timezone.utc) - timedelta(days=30)).strftime(
+            date = (datetime.now(UTC) - timedelta(days=30)).strftime(
                 "%Y-%m-%dT%H:%M:%S+00:00"
             )
             encoded_date = quote(date)
@@ -180,7 +176,7 @@ class TestVideoFilters:
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
             # Use URL-encoded ISO format with timezone
-            date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+            date = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S+00:00")
             encoded_date = quote(date)
             response = await async_client.get(
                 f"/api/v1/videos?uploaded_before={encoded_date}"

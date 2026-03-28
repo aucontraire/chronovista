@@ -6,16 +6,16 @@ Tests filter logic for tags, categories, and topics per FR-019 through FR-053.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, AsyncGenerator, List
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
-
-from uuid_utils import uuid7
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from uuid_utils import uuid7
 
 from chronovista.db.models import (
     CanonicalTag,
@@ -32,12 +32,10 @@ from tests.factories.id_factory import YouTubeIdFactory
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
-pytestmark = pytest.mark.asyncio
-
 
 @pytest.fixture
 async def test_data_session(
-    integration_session_factory: "async_sessionmaker[AsyncSession]",
+    integration_session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncGenerator[AsyncSession, None]:
     """Provide a session for test data setup and cleanup."""
     async with integration_session_factory() as session:
@@ -117,7 +115,7 @@ async def sample_videos_with_filters(
     sample_channel: Channel,
     sample_category: VideoCategory,
     sample_topic: TopicCategory,
-) -> List[Video]:
+) -> list[Video]:
     """Create sample videos with tags, categories, and topics for filter testing."""
     videos = []
 
@@ -148,7 +146,7 @@ async def sample_videos_with_filters(
             channel_id=sample_channel.channel_id,
             title="Music Video Test",
             description="A test video with music content",
-            upload_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            upload_date=datetime(2024, 1, 15, tzinfo=UTC),
             duration=300,
             category_id=sample_category.category_id,
         )
@@ -180,7 +178,7 @@ async def sample_videos_with_filters(
             channel_id=sample_channel.channel_id,
             title="Rock Music Test",
             description="A test video with rock music",
-            upload_date=datetime(2024, 1, 16, tzinfo=timezone.utc),
+            upload_date=datetime(2024, 1, 16, tzinfo=UTC),
             duration=240,
             category_id=sample_category.category_id,
         )
@@ -203,7 +201,7 @@ async def sample_videos_with_filters(
             channel_id=sample_channel.channel_id,
             title="Unclassified Video",
             description="A video with no classification",
-            upload_date=datetime(2024, 1, 17, tzinfo=timezone.utc),
+            upload_date=datetime(2024, 1, 17, tzinfo=UTC),
             duration=180,
         )
         test_data_session.add(video3)
@@ -251,7 +249,7 @@ class TestTagFilter:
     async def test_single_tag_filter_returns_matching_videos(
         self,
         async_client: AsyncClient,
-        sample_videos_with_filters: List[Video],
+        sample_videos_with_filters: list[Video],
         cleanup_test_data: None,
     ) -> None:
         """Test that single tag filter returns only videos with that tag."""
@@ -268,7 +266,7 @@ class TestTagFilter:
     async def test_multiple_tags_or_logic(
         self,
         async_client: AsyncClient,
-        sample_videos_with_filters: List[Video],
+        sample_videos_with_filters: list[Video],
         cleanup_test_data: None,
     ) -> None:
         """Test that multiple tags use OR logic (T023)."""
@@ -285,7 +283,7 @@ class TestTagFilter:
     async def test_invalid_tag_is_ignored_with_warning(
         self,
         async_client: AsyncClient,
-        sample_videos_with_filters: List[Video],
+        sample_videos_with_filters: list[Video],
         cleanup_test_data: None,
     ) -> None:
         """Test that non-existent tag is ignored with warning (FR-042, FR-045)."""
@@ -319,14 +317,14 @@ class TestCategoryFilter:
     async def test_category_filter_returns_matching_videos(
         self,
         async_client: AsyncClient,
-        sample_videos_with_filters: List[Video],
+        sample_videos_with_filters: list[Video],
         sample_category: VideoCategory,
         cleanup_test_data: None,
     ) -> None:
         """Test that category filter returns only videos in that category."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(f"/api/v1/videos?category=10")
+            response = await async_client.get("/api/v1/videos?category=10")
             assert response.status_code == 200
             data = response.json()
             video_ids = [v["video_id"] for v in data["data"]]
@@ -339,7 +337,7 @@ class TestCategoryFilter:
     async def test_invalid_category_is_ignored_with_warning(
         self,
         async_client: AsyncClient,
-        sample_videos_with_filters: List[Video],
+        sample_videos_with_filters: list[Video],
         cleanup_test_data: None,
     ) -> None:
         """Test that non-existent category is ignored with warning (FR-042, FR-045)."""
@@ -362,7 +360,7 @@ class TestTopicFilter:
     async def test_single_topic_filter_returns_matching_videos(
         self,
         async_client: AsyncClient,
-        sample_videos_with_filters: List[Video],
+        sample_videos_with_filters: list[Video],
         sample_topic: TopicCategory,
         cleanup_test_data: None,
     ) -> None:
@@ -380,7 +378,7 @@ class TestTopicFilter:
     async def test_invalid_topic_is_ignored_with_warning(
         self,
         async_client: AsyncClient,
-        sample_videos_with_filters: List[Video],
+        sample_videos_with_filters: list[Video],
         cleanup_test_data: None,
     ) -> None:
         """Test that non-existent topic is ignored with warning (FR-043, FR-045)."""
@@ -412,7 +410,7 @@ class TestCombinedFilters:
     async def test_tag_and_category_combined(
         self,
         async_client: AsyncClient,
-        sample_videos_with_filters: List[Video],
+        sample_videos_with_filters: list[Video],
         cleanup_test_data: None,
     ) -> None:
         """Test that tag AND category filters use AND logic (FR-020)."""
@@ -430,7 +428,7 @@ class TestCombinedFilters:
     async def test_all_three_filters_combined(
         self,
         async_client: AsyncClient,
-        sample_videos_with_filters: List[Video],
+        sample_videos_with_filters: list[Video],
         sample_topic: TopicCategory,
         cleanup_test_data: None,
     ) -> None:
@@ -465,7 +463,7 @@ class TestPaginationWithFilters:
     async def test_pagination_with_tag_filter(
         self,
         async_client: AsyncClient,
-        sample_videos_with_filters: List[Video],
+        sample_videos_with_filters: list[Video],
         cleanup_test_data: None,
     ) -> None:
         """Test that pagination works correctly with tag filter."""
@@ -483,7 +481,7 @@ class TestPaginationWithFilters:
     async def test_pagination_total_reflects_filtered_results(
         self,
         async_client: AsyncClient,
-        sample_videos_with_filters: List[Video],
+        sample_videos_with_filters: list[Video],
         cleanup_test_data: None,
     ) -> None:
         """Test that pagination total reflects filtered count, not all videos."""
@@ -507,7 +505,7 @@ class TestPartialSuccessResponse:
     async def test_partial_success_with_invalid_tag(
         self,
         async_client: AsyncClient,
-        sample_videos_with_filters: List[Video],
+        sample_videos_with_filters: list[Video],
         cleanup_test_data: None,
     ) -> None:
         """Test partial success when one tag is invalid (FR-049)."""
@@ -531,7 +529,7 @@ class TestPartialSuccessResponse:
     async def test_response_without_warnings_when_all_valid(
         self,
         async_client: AsyncClient,
-        sample_videos_with_filters: List[Video],
+        sample_videos_with_filters: list[Video],
         cleanup_test_data: None,
     ) -> None:
         """Test response has no warnings when all filters are valid."""
@@ -551,7 +549,7 @@ class TestEmptyResults:
     async def test_filters_with_no_matches_returns_empty_list(
         self,
         async_client: AsyncClient,
-        sample_videos_with_filters: List[Video],
+        sample_videos_with_filters: list[Video],
         cleanup_test_data: None,
     ) -> None:
         """Test that filters with no matches return empty list with valid pagination."""
@@ -569,7 +567,7 @@ class TestEmptyResults:
     async def test_all_filters_invalid_returns_all_videos(
         self,
         async_client: AsyncClient,
-        sample_videos_with_filters: List[Video],
+        sample_videos_with_filters: list[Video],
         cleanup_test_data: None,
     ) -> None:
         """Test that when all filter values are invalid, all videos are returned."""
@@ -753,7 +751,7 @@ class TestCanonicalTagFilter:
                     channel_id=_CT_CHANNEL_ID,
                     title=f"Canonical Tag Test Video {idx}",
                     description=f"Test video {idx} for canonical tag filter",
-                    upload_date=datetime(2024, 3, idx, tzinfo=timezone.utc),
+                    upload_date=datetime(2024, 3, idx, tzinfo=UTC),
                     duration=200 + idx * 10,
                 )
                 session.add(v)

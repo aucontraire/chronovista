@@ -7,7 +7,7 @@ including CRUD, composite key handling, multi-language analytics, and search.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -29,8 +29,6 @@ from tests.factories import (
     VideoLocalizationTestData,
     create_video_localization_create,
 )
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestVideoLocalizationRepository:
@@ -59,7 +57,7 @@ class TestVideoLocalizationRepository:
             language_code=LanguageCode.ENGLISH.value,
             localized_title="Never Gonna Give You Up",
             localized_description="Official music video description",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
     @pytest.fixture
@@ -85,7 +83,7 @@ class TestVideoLocalizationRepository:
             language_code=LanguageCode.ENGLISH.value,
             localized_title="Test Title",
             localized_description="Test Description",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         mock_result = MagicMock()
@@ -130,7 +128,7 @@ class TestVideoLocalizationRepository:
             language_code=LanguageCode.ENGLISH.value,
             localized_title="Test Title",
             localized_description="Test Description",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         mock_result = MagicMock()
@@ -215,14 +213,14 @@ class TestVideoLocalizationRepository:
                 language_code=LanguageCode.ENGLISH.value,
                 localized_title="English Title",
                 localized_description="English Description",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
             VideoLocalizationDB(
                 video_id="dQw4w9WgXcQ",
                 language_code=LanguageCode.SPANISH.value,
                 localized_title="Título en Español",
                 localized_description="Descripción en español",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
         ]
 
@@ -250,14 +248,14 @@ class TestVideoLocalizationRepository:
                 language_code=LanguageCode.ENGLISH.value,
                 localized_title="English Title 1",
                 localized_description="English Description 1",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
             VideoLocalizationDB(
                 video_id="9bZkp7q19f0",
                 language_code=LanguageCode.ENGLISH.value,
                 localized_title="English Title 2",
                 localized_description="English Description 2",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
         ]
 
@@ -285,7 +283,7 @@ class TestVideoLocalizationRepository:
             language_code=LanguageCode.ENGLISH.value,
             localized_title="Test Title",
             localized_description="Test Description",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         mock_result = MagicMock()
@@ -318,7 +316,7 @@ class TestVideoLocalizationRepository:
             language_code=sample_localization_create.language_code,
             localized_title=sample_localization_create.localized_title,
             localized_description=sample_localization_create.localized_description,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         # Mock that localization doesn't exist
@@ -355,7 +353,7 @@ class TestVideoLocalizationRepository:
             language_code=sample_localization_create.language_code,
             localized_title="Old Title",
             localized_description="Old Description",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         updated_localization = VideoLocalizationDB(
@@ -363,7 +361,7 @@ class TestVideoLocalizationRepository:
             language_code=sample_localization_create.language_code,
             localized_title=sample_localization_create.localized_title,
             localized_description=sample_localization_create.localized_description,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         # Mock that localization exists
@@ -405,7 +403,7 @@ class TestVideoLocalizationRepository:
                 language_code=LanguageCode.ENGLISH.value,
                 localized_title="Tutorial Video",
                 localized_description="Learning tutorial",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
         ]
 
@@ -433,14 +431,14 @@ class TestVideoLocalizationRepository:
                 language_code=LanguageCode.ENGLISH.value,
                 localized_title="Title 1",
                 localized_description="Description 1",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
             VideoLocalizationDB(
                 video_id="9bZkp7q19f0",
                 language_code=LanguageCode.SPANISH.value,
                 localized_title="Título 2",
                 localized_description="Descripción 2",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
         ]
 
@@ -678,14 +676,14 @@ class TestVideoLocalizationRepository:
                 language_code=LanguageCode.ENGLISH.value,
                 localized_title="Title 1",
                 localized_description="Description 1",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
             VideoLocalizationDB(
                 video_id="9bZkp7q19f0",
                 language_code=LanguageCode.SPANISH.value,
                 localized_title="Título 2",
                 localized_description="Descripción 2",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
         ]
 
@@ -731,14 +729,14 @@ class TestVideoLocalizationRepository:
                 language_code=LanguageCode.ENGLISH.value,
                 localized_title="English Title",
                 localized_description="English Description",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
             VideoLocalizationDB(
                 video_id=video_id,
                 language_code=LanguageCode.SPANISH.value,
                 localized_title="Título en Español",
                 localized_description="Descripción en español",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
         ]
 
@@ -774,14 +772,14 @@ class TestVideoLocalizationRepository:
                 language_code=LanguageCode.ENGLISH.value,
                 localized_title="English Title",
                 localized_description="English Description",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
             VideoLocalizationDB(
                 video_id="dQw4w9WgXcQ",
                 language_code=LanguageCode.SPANISH.value,
                 localized_title="Título en Español",
                 localized_description="Descripción en español",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
         ]
 
@@ -818,14 +816,14 @@ class TestVideoLocalizationRepository:
                 language_code=LanguageCode.ENGLISH.value,
                 localized_title="Title 1",
                 localized_description="Description 1",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
             VideoLocalizationDB(
                 video_id="9bZkp7q19f0",
                 language_code=LanguageCode.ENGLISH.value,
                 localized_title="Title 2",
                 localized_description="Description 2",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
         ]
 
@@ -862,7 +860,7 @@ class TestVideoLocalizationRepository:
             language_code=LanguageCode.ENGLISH.value,
             localized_title="Title to Delete",
             localized_description="Description to delete",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         mock_result = MagicMock()
@@ -899,21 +897,21 @@ class TestVideoLocalizationRepository:
                 language_code=LanguageCode.ENGLISH.value,
                 localized_title="Video 1 English",
                 localized_description="English description",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
             VideoLocalizationDB(
                 video_id="dQw4w9WgXcQ",
                 language_code=LanguageCode.SPANISH.value,
                 localized_title="Video 1 Español",
                 localized_description="Descripción en español",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
             VideoLocalizationDB(
                 video_id="9bZkp7q19f0",
                 language_code=LanguageCode.ENGLISH.value,
                 localized_title="Video 2 English",
                 localized_description="English description",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
         ]
 
@@ -948,7 +946,7 @@ class TestVideoLocalizationRepository:
             language_code=LanguageCode.ENGLISH.value,
             localized_title="Python Programming Tutorial",
             localized_description="Learn Python programming",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         similar_localizations = [
@@ -957,14 +955,14 @@ class TestVideoLocalizationRepository:
                 language_code=LanguageCode.ENGLISH.value,
                 localized_title="Advanced Python Programming",
                 localized_description="Advanced Python concepts",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
             VideoLocalizationDB(
                 video_id="similar_video2",
                 language_code=LanguageCode.ENGLISH.value,
                 localized_title="JavaScript Tutorial",
                 localized_description="Learn JavaScript",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
         ]
 
@@ -1130,10 +1128,10 @@ class TestVideoLocalizationRepositoryErrorHandling:
     ):
         """Test handling None values in composite key operations."""
         # Act & Assert
-        result = await repository.get_by_composite_key(mock_session, None, LanguageCode.ENGLISH.value)  # type: ignore
+        await repository.get_by_composite_key(mock_session, None, LanguageCode.ENGLISH.value)  # type: ignore
         # Should handle gracefully without crashing
 
-        result = await repository.get_by_composite_key(mock_session, "video_id", None)  # type: ignore
+        await repository.get_by_composite_key(mock_session, "video_id", None)  # type: ignore
         # Should handle gracefully without crashing
 
     @pytest.mark.asyncio

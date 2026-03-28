@@ -5,30 +5,21 @@ Tests the ChannelTopicRepository class for managing channel-topic relationships
 with comprehensive coverage of CRUD operations, search, and analytics.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import ChannelTopic as ChannelTopicDB
-from chronovista.models.channel_topic import (
-    ChannelTopicCreate,
-    ChannelTopicSearchFilters,
-    ChannelTopicUpdate,
-)
 from chronovista.repositories.channel_topic_repository import ChannelTopicRepository
 from tests.factories import (
-    ChannelTopicTestData,
     TestIds,
     create_channel_topic_create,
     create_channel_topic_filters,
-    create_channel_topic_update,
 )
 
 # Mark all tests as async for this module
-pytestmark = pytest.mark.asyncio
-
 
 class TestChannelTopicRepository:
     """Test ChannelTopicRepository functionality."""
@@ -56,7 +47,7 @@ class TestChannelTopicRepository:
         return ChannelTopicDB(
             channel_id=TestIds.TEST_CHANNEL_1,
             topic_id=TestIds.MUSIC_TOPIC,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
     @pytest.mark.asyncio
@@ -171,7 +162,7 @@ class TestChannelTopicRepository:
             side_effect=lambda session, obj_in: ChannelTopicDB(
                 channel_id=obj_in.channel_id,
                 topic_id=obj_in.topic_id,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
         )
 
@@ -404,7 +395,7 @@ class TestChannelTopicRepository:
             ChannelTopicDB(
                 channel_id=TestIds.TEST_CHANNEL_1,
                 topic_id=TestIds.MUSIC_TOPIC,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
         ]
         repository.bulk_create_channel_topics = AsyncMock(return_value=created_topics)
@@ -447,7 +438,7 @@ class TestChannelTopicRepository:
         new_topic = ChannelTopicDB(
             channel_id=TestIds.TEST_CHANNEL_1,
             topic_id=TestIds.MUSIC_TOPIC,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         repository.create = AsyncMock(return_value=new_topic)
 

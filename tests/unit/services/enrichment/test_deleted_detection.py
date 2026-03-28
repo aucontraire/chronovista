@@ -7,17 +7,15 @@ Covers T040a-c:
 - T040c: Unit test verifying local recovery doesn't set availability_status to unavailable
 """
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List
+from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.api_responses import YouTubeVideoResponse
-from chronovista.models.enrichment_report import EnrichmentReport, EnrichmentSummary
+from chronovista.models.enums import AvailabilityStatus
 from chronovista.services.enrichment.enrichment_service import (
-    BATCH_SIZE,
     EnrichmentService,
 )
 
@@ -29,20 +27,18 @@ def make_video_response(video_id: str, **kwargs: Any) -> YouTubeVideoResponse:
     This helper ensures tests return proper Pydantic objects instead of dicts.
     The snippet field requires publishedAt and channelId, so we provide defaults.
     """
-    data: Dict[str, Any] = {"id": video_id, **kwargs}
+    data: dict[str, Any] = {"id": video_id, **kwargs}
 
     # If snippet is provided, ensure required fields are present
     if "snippet" in data:
         snippet = data["snippet"]
         if isinstance(snippet, dict):
             if "publishedAt" not in snippet:
-                snippet["publishedAt"] = datetime.now(timezone.utc).isoformat()
+                snippet["publishedAt"] = datetime.now(UTC).isoformat()
             if "channelId" not in snippet:
                 snippet["channelId"] = "UC_test_channel"
 
     return YouTubeVideoResponse.model_validate(data)
-
-pytestmark = pytest.mark.asyncio
 
 
 @pytest.mark.asyncio
@@ -408,7 +404,7 @@ class TestGetVideosForEnrichmentDeletedFilter:
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Call the actual method to check query construction
-        result = await service._get_videos_for_enrichment(
+        await service._get_videos_for_enrichment(
             mock_session, "high", None, include_deleted=False
         )
 
@@ -433,7 +429,7 @@ class TestGetVideosForEnrichmentDeletedFilter:
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Call with include_deleted=True
-        result = await service._get_videos_for_enrichment(
+        await service._get_videos_for_enrichment(
             mock_session, "high", None, include_deleted=True
         )
 
@@ -624,8 +620,8 @@ class TestLocalRecoveryDoesNotSetAvailabilityStatusUnavailable:
         "availability_status should only be set to unavailable after YouTube API verification"
         """
         from chronovista.models.takeout.takeout_data import TakeoutWatchEntry
-        from chronovista.services.seeding.video_seeder import VideoSeeder
         from chronovista.repositories.video_repository import VideoRepository
+        from chronovista.services.seeding.video_seeder import VideoSeeder
 
         # Create a seeder
         seeder = VideoSeeder(video_repo=VideoRepository())
@@ -640,7 +636,7 @@ class TestLocalRecoveryDoesNotSetAvailabilityStatusUnavailable:
                 channel_name="RickAstleyVEVO",
                 channel_url="https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw",
                 channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",
-                watched_at=datetime.now(timezone.utc),
+                watched_at=datetime.now(UTC),
                 raw_time="2024-01-15T10:30:00Z",
             ),
             # Entry with missing channel info (common for deleted videos in Takeout)
@@ -651,7 +647,7 @@ class TestLocalRecoveryDoesNotSetAvailabilityStatusUnavailable:
                 channel_name=None,
                 channel_url=None,
                 channel_id=None,
-                watched_at=datetime.now(timezone.utc),
+                watched_at=datetime.now(UTC),
                 raw_time="2024-01-15T10:30:00Z",
             ),
             # Entry with URL as title (indicates incomplete data)
@@ -662,7 +658,7 @@ class TestLocalRecoveryDoesNotSetAvailabilityStatusUnavailable:
                 channel_name=None,
                 channel_url=None,
                 channel_id=None,
-                watched_at=datetime.now(timezone.utc),
+                watched_at=datetime.now(UTC),
                 raw_time="2024-01-15T10:30:00Z",
             ),
         ]
@@ -701,15 +697,13 @@ class TestLocalRecoveryDoesNotSetAvailabilityStatusUnavailable:
         When creating placeholder videos for playlist items not in watch history,
         availability_status must be available.
         """
-        from chronovista.services.seeding.playlist_membership_seeder import (
-            PlaylistMembershipSeeder,
-        )
-        from chronovista.repositories.video_repository import VideoRepository
-        from chronovista.repositories.playlist_repository import PlaylistRepository
-
         # The seeder creates VideoCreate with availability_status=AvailabilityStatus.AVAILABLE
         # We verify this by checking the source code documentation
         import inspect
+
+        from chronovista.services.seeding.playlist_membership_seeder import (
+            PlaylistMembershipSeeder,
+        )
         source = inspect.getsource(PlaylistMembershipSeeder)
 
         # Verify the code explicitly sets availability_status=AvailabilityStatus.AVAILABLE
@@ -738,7 +732,7 @@ class TestLocalRecoveryDoesNotSetAvailabilityStatusUnavailable:
             channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",  # 24 characters starting with UC
             title="Complete Video",
             description="",
-            upload_date=datetime.now(timezone.utc),
+            upload_date=datetime.now(UTC),
             duration=0,
             availability_status=AvailabilityStatus.AVAILABLE,  # This is what Takeout recovery uses
         )
@@ -750,7 +744,7 @@ class TestLocalRecoveryDoesNotSetAvailabilityStatusUnavailable:
             channel_id="UCplaceholder01234567890",  # 24 characters (UC + 22)
             title="[Placeholder] Video abc123XYZ_-",
             description="",
-            upload_date=datetime.now(timezone.utc),
+            upload_date=datetime.now(UTC),
             duration=0,
             availability_status=AvailabilityStatus.AVAILABLE,  # Still False even for placeholders
         )
@@ -762,8 +756,8 @@ class TestLocalRecoveryDoesNotSetAvailabilityStatusUnavailable:
 
         This is a code analysis test that ensures our invariant is maintained.
         """
-        from pathlib import Path
         import re
+        from pathlib import Path
 
         # Get the project source directory
         src_dir = Path(__file__).parent.parent.parent.parent.parent / "src"

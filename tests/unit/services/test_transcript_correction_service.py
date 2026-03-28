@@ -28,9 +28,9 @@ References
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, call, patch
-from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -44,8 +44,6 @@ from chronovista.models.transcript_correction import TranscriptCorrectionCreate
 # CRITICAL: Module-level asyncio marker ensures async tests run properly
 # with coverage tools, avoiding silent test-skipping (see CLAUDE.md).
 # ---------------------------------------------------------------------------
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -109,7 +107,7 @@ def _make_correction_record(
     rec.corrected_text = corrected_text
     rec.corrected_by_user_id = corrected_by_user_id
     rec.correction_type = correction_type
-    rec.corrected_at = datetime.now(timezone.utc)
+    rec.corrected_at = datetime.now(UTC)
     return rec
 
 
@@ -225,7 +223,7 @@ class TestApplyCorrection:
         mock_correction_repo.get_latest_version.return_value = 0
         mock_correction_repo.create.return_value = created_record
 
-        result = await service.apply_correction(
+        await service.apply_correction(
             mock_session,
             video_id="dQw4w9WgXcQ",
             language_code="en",

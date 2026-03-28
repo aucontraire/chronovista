@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import itertools
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -26,8 +26,6 @@ from uuid import uuid4
 import pytest
 
 # Mark all tests in this module as async by default
-pytestmark = pytest.mark.asyncio
-
 
 @pytest.fixture(autouse=True)
 def _clean_test_cache():
@@ -123,8 +121,8 @@ def make_recovered_video_data(**overrides: Any) -> dict[str, Any]:
         "channel_id": f"UC{uuid4().hex[:22]}",  # Valid ChannelId format
         "view_count": 10000,
         "like_count": 500,
-        "upload_date": datetime(2021, 6, 15, 12, 0, 0, tzinfo=timezone.utc),
-        "thumbnail_url": f"https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+        "upload_date": datetime(2021, 6, 15, 12, 0, 0, tzinfo=UTC),
+        "thumbnail_url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
         "tags": ["music", "entertainment", "viral"],
         "category_id": "10",  # Music category
         "snapshot_timestamp": timestamp,
@@ -246,7 +244,7 @@ def make_cdx_cache_entry(**overrides: Any) -> dict[str, Any]:
 
     defaults = {
         "video_id": video_id,
-        "fetched_at": datetime.now(timezone.utc),
+        "fetched_at": datetime.now(UTC),
         "snapshots": default_snapshots,
         "raw_count": 25,  # Total snapshots before filtering
     }

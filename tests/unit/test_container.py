@@ -16,17 +16,15 @@ Test Organization:
 - Async tests use pytestmark for proper coverage integration
 """
 
-import pytest
-from pathlib import Path
-from contextvars import ContextVar
 from unittest.mock import MagicMock
 
-# Module-level marker ensures all async tests work with coverage
-pytestmark = pytest.mark.asyncio
+import pytest
 
-from chronovista.container import Container, RequestContext, container
+# Module-level marker ensures all async tests work with coverage
+from chronovista.container import Container, RequestContext
 from chronovista.repositories import (
     ChannelRepository,
+    ChannelTopicRepository,
     PlaylistRepository,
     TopicCategoryRepository,
     UserVideoRepository,
@@ -34,12 +32,10 @@ from chronovista.repositories import (
     VideoRepository,
     VideoTagRepository,
     VideoTopicRepository,
-    ChannelTopicRepository,
 )
 from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
 )
-
 
 # =============================================================================
 # Phase 2 Completion: T013-T014 (Test Setup)

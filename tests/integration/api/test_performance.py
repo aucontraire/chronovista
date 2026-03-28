@@ -18,8 +18,6 @@ import pytest
 from httpx import AsyncClient
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 class TestConcurrentRequestsCore:
     """Test SC-008: Core concurrent request handling (stateless endpoints)."""
@@ -267,7 +265,7 @@ class TestConcurrentRequestsWithAuth:
             # All should complete without 5xx errors (server errors)
             server_errors = [
                 (ep, status)
-                for ep, status in zip(endpoints_hit, status_codes)
+                for ep, status in zip(endpoints_hit, status_codes, strict=False)
                 if status >= 500
             ]
             assert len(server_errors) == 0, f"Found server errors: {server_errors}"
@@ -313,7 +311,7 @@ class TestConcurrentWriteRequests:
                         },
                     )
                     return lang_code, response.status_code
-                except Exception as e:
+                except Exception:
                     # Return exception as status 0 for analysis
                     return lang_code, 0
 
@@ -390,11 +388,7 @@ class TestFilterApiPerformance:
             )
 
             # Log results for debugging
-            avg = sum(times) / len(times)
-            print(f"\nAutocomplete performance (NFR-003):")
-            print(f"  Average: {avg:.1f}ms")
-            print(f"  p95: {p95:.1f}ms")
-            print(f"  Max: {max(times):.1f}ms")
+            sum(times) / len(times)
 
     async def test_sidebar_categories_load_under_300ms_p95(
         self, async_client: AsyncClient
@@ -433,11 +427,7 @@ class TestFilterApiPerformance:
             )
 
             # Log results for debugging
-            avg = sum(times) / len(times)
-            print(f"\nSidebar categories performance (NFR-004):")
-            print(f"  Average: {avg:.1f}ms")
-            print(f"  p95: {p95:.1f}ms")
-            print(f"  Max: {max(times):.1f}ms")
+            sum(times) / len(times)
 
     async def test_topic_hierarchy_api_under_500ms_p95(
         self, async_client: AsyncClient
@@ -476,11 +466,7 @@ class TestFilterApiPerformance:
             )
 
             # Log results for debugging
-            avg = sum(times) / len(times)
-            print(f"\nTopic hierarchy performance (NFR-002):")
-            print(f"  Average: {avg:.1f}ms")
-            print(f"  p95: {p95:.1f}ms")
-            print(f"  Max: {max(times):.1f}ms")
+            sum(times) / len(times)
 
 
 class TestRateLimitingBehavior:

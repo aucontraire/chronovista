@@ -7,8 +7,8 @@ with sensible defaults and easy customization.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, cast
+from datetime import UTC, datetime
+from typing import Any
 
 import factory
 from factory import Faker, LazyAttribute
@@ -57,7 +57,7 @@ class ChannelTopicFactory(ChannelTopicBaseFactory):
     class Meta:
         model = ChannelTopic
 
-    created_at: Any = Faker("date_time", tzinfo=timezone.utc)
+    created_at: Any = Faker("date_time", tzinfo=UTC)
 
 
 class ChannelTopicSearchFiltersFactory(factory.Factory[ChannelTopicSearchFilters]):
@@ -72,8 +72,8 @@ class ChannelTopicSearchFiltersFactory(factory.Factory[ChannelTopicSearchFilters
     topic_ids: Any = factory.LazyFunction(
         lambda: ["topic_music", "topic_gaming", "topic_education"]
     )
-    created_after: Any = Faker("date_time", tzinfo=timezone.utc)
-    created_before: Any = Faker("date_time", tzinfo=timezone.utc)
+    created_after: Any = Faker("date_time", tzinfo=UTC)
+    created_before: Any = Faker("date_time", tzinfo=UTC)
 
 
 class ChannelTopicStatisticsFactory(factory.Factory[ChannelTopicStatistics]):
@@ -207,6 +207,6 @@ class ChannelTopicTestData:
         return {
             "channel_ids": cls.VALID_CHANNEL_IDS[:2],
             "topic_ids": cls.VALID_TOPIC_IDS[:3],
-            "created_after": datetime(2023, 1, 1, tzinfo=timezone.utc),
-            "created_before": datetime(2023, 12, 31, tzinfo=timezone.utc),
+            "created_after": datetime(2023, 1, 1, tzinfo=UTC),
+            "created_before": datetime(2023, 12, 31, tzinfo=UTC),
         }

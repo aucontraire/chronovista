@@ -16,26 +16,20 @@ Test Coverage
 
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime, timezone
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import Video as VideoDB
 from chronovista.models.enums import AvailabilityStatus
-from chronovista.repositories.video_repository import VideoRepository
-from chronovista.repositories.video_tag_repository import VideoTagRepository
 from chronovista.services.recovery.cdx_client import CDXClient, RateLimiter
 from chronovista.services.recovery.models import CdxSnapshot, RecoveredVideoData
 from chronovista.services.recovery.orchestrator import recover_video
 from chronovista.services.recovery.page_parser import PageParser
 
 # Mark all tests in this module as async
-pytestmark = pytest.mark.asyncio
-
 
 @pytest.fixture(autouse=True)
 def _mock_channel_repo():
@@ -66,20 +60,20 @@ class TestOverwritePolicy:
             video_id="testVid0001",
             title="Existing Title",
             description="Existing Description",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id=None,  # NULL - should be filled
             category_id=None,  # NULL - should be filled
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data with immutable field values
         recovered_data = RecoveredVideoData(
             channel_id="UC1234567890123456789012",
             category_id="10",
-            upload_date=datetime(2019, 6, 15, tzinfo=timezone.utc),
+            upload_date=datetime(2019, 6, 15, tzinfo=UTC),
             snapshot_timestamp="20220106075526",
         )
 
@@ -140,13 +134,13 @@ class TestOverwritePolicy:
             video_id="testVid0002",
             title="Existing Title",
             description="Existing Description",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC_EXISTING_CHANNEL_ID",  # Has value - should NOT be overwritten
             category_id="20",  # Has value - should NOT be overwritten
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data attempting to overwrite immutable fields
@@ -208,15 +202,15 @@ class TestOverwritePolicy:
             video_id="testVid0003",
             title="Placeholder Title",
             description=None,  # NULL - should be filled
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",
             view_count=None,  # NULL - should be filled
             like_count=None,  # NULL - should be filled
             channel_name_hint=None,  # NULL - should be filled
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data with mutable field values
@@ -283,16 +277,16 @@ class TestOverwritePolicy:
             video_id="testVid0004",
             title="Old Recovered Title",
             description="Old Recovered Description",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",
             view_count=50000,
             like_count=2000,
             recovery_source="wayback:20200106075526",  # Older snapshot
-            recovered_at=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            recovered_at=datetime(2023, 1, 1, tzinfo=UTC),
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data from a newer snapshot
@@ -357,14 +351,14 @@ class TestOverwritePolicy:
             video_id="testVid0005",
             title="Existing Title",
             description="Existing Description",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",
             view_count=50000,
             like_count=2000,
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data with NULL/missing fields but one valid field
@@ -429,14 +423,14 @@ class TestOverwritePolicy:
             video_id="testVid0006",
             title="Test Video",
             description="Test Description",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",
             recovered_at=None,
             recovery_source=None,
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data
@@ -496,19 +490,19 @@ class TestOverwritePolicy:
             video_id="testVid0007",
             title="Test Video",
             description="Test Description",
-            upload_date=datetime(2026, 1, 25, tzinfo=timezone.utc),  # Bad date (future)
+            upload_date=datetime(2026, 1, 25, tzinfo=UTC),  # Bad date (future)
             duration=120,
             channel_id="UC1234567890123456789012",
             recovery_source="wayback:20180301000000",  # Older snapshot
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data with correct upload_date from newer snapshot
         recovered_data = RecoveredVideoData(
             title="Recovered Title",
-            upload_date=datetime(2018, 2, 22, tzinfo=timezone.utc),  # Correct date
+            upload_date=datetime(2018, 2, 22, tzinfo=UTC),  # Correct date
             snapshot_timestamp="20200101000000",  # Newer snapshot
         )
 
@@ -563,19 +557,19 @@ class TestOverwritePolicy:
             video_id="testVid0008",
             title="Test Video",
             description="Test Description",
-            upload_date=datetime(2018, 2, 22, tzinfo=timezone.utc),
+            upload_date=datetime(2018, 2, 22, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",
             recovery_source="wayback:20210101000000",  # Newer snapshot
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data from an older snapshot
         recovered_data = RecoveredVideoData(
             title="Recovered Title",
-            upload_date=datetime(2018, 1, 15, tzinfo=timezone.utc),
+            upload_date=datetime(2018, 1, 15, tzinfo=UTC),
             snapshot_timestamp="20200101000000",  # Older snapshot
         )
 
@@ -639,12 +633,12 @@ class TestEligibilityChecks:
             video_id="testVid0007",
             title="Available Video",
             description="This video is still available",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",
             availability_status=AvailabilityStatus.AVAILABLE.value,  # AVAILABLE
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Mock dependencies
@@ -696,12 +690,12 @@ class TestEligibilityChecks:
                 video_id=vid_id,
                 title=f"Video with status {status.value}",
                 description="Test video",
-                upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                upload_date=datetime(2020, 1, 1, tzinfo=UTC),
                 duration=120,
                 channel_id="UC1234567890123456789012",
                 availability_status=status.value,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
 
             with patch(
@@ -781,12 +775,12 @@ class TestEligibilityChecks:
             video_id="testVid0008",
             title="Deleted Video",
             description="Test video",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Mock dependencies
@@ -854,12 +848,12 @@ class TestSnapshotIteration:
             video_id="testVid0009",
             title="Deleted Video",
             description="Test video",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Multiple snapshots (newest-first order from CDXClient)
@@ -927,7 +921,7 @@ class TestSnapshotIteration:
                 mock_tag_repo_class.return_value = mock_tag_repo
 
                 # WHEN: We recover the video
-                result = await recover_video(
+                await recover_video(
                     session=session,
                     video_id="testVid0009",
                     cdx_client=cdx_client,
@@ -947,12 +941,12 @@ class TestSnapshotIteration:
             video_id="testVid0010",
             title="Deleted Video",
             description="Test video",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Snapshots with removal notices
@@ -1031,12 +1025,12 @@ class TestSnapshotIteration:
             video_id="testVid0011",
             title="Deleted Video",
             description="Test video",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Multiple snapshots (all could succeed)
@@ -1116,12 +1110,12 @@ class TestSnapshotIteration:
             video_id="testVid0012",
             title="Deleted Video",
             description="Test video",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: 30 snapshots (more than the 20 limit)
@@ -1184,12 +1178,12 @@ class TestSnapshotIteration:
             video_id="testVid0013",
             title="Deleted Video",
             description="Test video",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: 5 snapshots
@@ -1270,12 +1264,12 @@ class TestTagRecovery:
             video_id="testVid0014",
             title="Deleted Video",
             description="Test video",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data with tags
@@ -1316,7 +1310,7 @@ class TestTagRecovery:
                 mock_tag_repo_class.return_value = mock_tag_repo
 
                 # WHEN: We recover the video
-                result = await recover_video(
+                await recover_video(
                     session=session,
                     video_id="testVid0014",
                     cdx_client=cdx_client,
@@ -1339,12 +1333,12 @@ class TestTagRecovery:
             video_id="testVid0015",
             title="Deleted Video",
             description="Test video",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data with no tags
@@ -1385,7 +1379,7 @@ class TestTagRecovery:
                 mock_tag_repo_class.return_value = mock_tag_repo
 
                 # WHEN: We recover the video
-                result = await recover_video(
+                await recover_video(
                     session=session,
                     video_id="testVid0015",
                     cdx_client=cdx_client,
@@ -1404,12 +1398,12 @@ class TestTagRecovery:
             video_id="testVid0016",
             title="Deleted Video",
             description="Test video",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data with tags
@@ -1483,13 +1477,13 @@ class TestRecoveryResultConstruction:
             video_id="testVid0017",
             title="Existing Title",  # Existing
             description=None,  # NULL - will be filled
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",  # Existing - will be skipped
             view_count=None,  # NULL - will be filled
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data
@@ -1581,12 +1575,12 @@ class TestRecoveryResultConstruction:
             video_id="testVid0018",
             title="Deleted Video",
             description="Test video",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data
@@ -1647,12 +1641,12 @@ class TestRecoveryResultConstruction:
             video_id="testVid0019",
             title="Deleted Video",
             description="Test video",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id=None,  # Orphaned - no channel
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data with a channel ID
@@ -1701,8 +1695,8 @@ class TestRecoveryResultConstruction:
                     channel_id=recovered_channel_id,
                     title="Deleted Channel",
                     availability_status=AvailabilityStatus.DELETED.value,
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(UTC),
+                    updated_at=datetime.now(UTC),
                 )
                 mock_channel_repo.get.return_value = unavailable_channel
 
@@ -1742,12 +1736,12 @@ class TestIdempotency:
             video_id="testVid0020",
             title="Original Title",
             description=None,
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data from a snapshot
@@ -1802,7 +1796,7 @@ class TestIdempotency:
                 video.title = "Recovered Title"
                 video.description = "Recovered Description"
                 video.recovery_source = "wayback:20220106075526"
-                video.recovered_at = datetime.now(timezone.utc)
+                video.recovered_at = datetime.now(UTC)
 
                 # WHEN: We recover the video second time (same snapshot)
                 result2 = await recover_video(
@@ -1829,16 +1823,16 @@ class TestIdempotency:
             video_id="testVid0021",
             title="Newer Recovered Title",
             description="Newer Recovered Description",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",
             view_count=100000,  # From newer snapshot
             like_count=None,  # Still NULL
             recovery_source="wayback:20220106075526",  # Newer snapshot
-            recovered_at=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            recovered_at=datetime(2023, 1, 1, tzinfo=UTC),
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data from an older snapshot
@@ -1906,15 +1900,15 @@ class TestIdempotency:
             video_id="testVid0022",
             title="Older Recovered Title",
             description="Older Recovered Description",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC1234567890123456789012",
             view_count=50000,  # From older snapshot
             recovery_source="wayback:20200106075526",  # Older snapshot
-            recovered_at=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            recovered_at=datetime(2023, 1, 1, tzinfo=UTC),
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data from a newer snapshot
@@ -1992,12 +1986,12 @@ class TestEdgeCases:
             video_id="edgCdxTmt01",
             title="Deleted Video",
             description="Test video",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UCEdgeChannelId12345678",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Mock dependencies
@@ -2014,7 +2008,7 @@ class TestEdgeCases:
             mock_repo.get_by_video_id.return_value = video
 
             # Mock CDX client to raise TimeoutError
-            cdx_client.fetch_snapshots.side_effect = asyncio.TimeoutError()
+            cdx_client.fetch_snapshots.side_effect = TimeoutError()
 
             # WHEN: We attempt to recover the video
             result = await recover_video(
@@ -2038,12 +2032,12 @@ class TestEdgeCases:
             video_id="edgNoSnap02",
             title="Deleted Video",
             description="Test video",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UCEdgeChannelId12345678",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Mock dependencies
@@ -2086,12 +2080,12 @@ class TestEdgeCases:
             video_id="edgDryRun03",
             title="Deleted Video",
             description=None,
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UCEdgeChannelId12345678",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Mock dependencies
@@ -2148,12 +2142,12 @@ class TestEdgeCases:
             video_id="edgExtTmt04",
             title="Deleted Video",
             description="Test video",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UCEdgeChannelId12345678",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Multiple snapshots
@@ -2189,7 +2183,7 @@ class TestEdgeCases:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                raise asyncio.TimeoutError()
+                raise TimeoutError()
             else:
                 return RecoveredVideoData(
                     title="Recovered Title",
@@ -2234,12 +2228,12 @@ class TestEdgeCases:
             video_id="edgExtErr05",
             title="Deleted Video",
             description="Test video",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UCEdgeChannelId12345678",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Multiple snapshots
@@ -2365,8 +2359,8 @@ class TestStubChannelCreation:
             duration=120,
             channel_id=None,
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data with channel_id and channel_name_hint
@@ -2441,8 +2435,8 @@ class TestStubChannelCreation:
             duration=120,
             channel_id=None,
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         recovered_data = RecoveredVideoData(
@@ -2509,8 +2503,8 @@ class TestStubChannelCreation:
             duration=120,
             channel_id=None,
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         recovered_data = RecoveredVideoData(
@@ -2578,8 +2572,8 @@ class TestStubChannelCreation:
             duration=120,
             channel_id=None,
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         recovered_data = RecoveredVideoData(
@@ -2646,8 +2640,8 @@ class TestStubChannelCreation:
             duration=120,
             channel_id=None,
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         session = AsyncMock(spec=AsyncSession)
@@ -2707,11 +2701,11 @@ class TestYearFiltering:
             video_id="yearTest001",
             title="Year Filter Test",
             description="Testing year filtering",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         session = AsyncMock(spec=AsyncSession)
@@ -2752,11 +2746,11 @@ class TestYearFiltering:
             video_id="yearTest002",
             title="Year Filter Test",
             description="Testing year filtering",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         session = AsyncMock(spec=AsyncSession)
@@ -2795,11 +2789,11 @@ class TestYearFiltering:
             video_id="yearTest003",
             title="Year Filter Test",
             description="Testing year filtering",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         session = AsyncMock(spec=AsyncSession)
@@ -2839,11 +2833,11 @@ class TestYearFiltering:
             video_id="yearTest004",
             title="Year Filter Test",
             description="Testing year filtering",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         session = AsyncMock(spec=AsyncSession)
@@ -2894,8 +2888,8 @@ class TestRecoverChannel:
             title="Old Title",
             description="Old Description",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered channel data
@@ -2969,8 +2963,8 @@ class TestRecoverChannel:
             title="Test Channel",
             description="Test Description",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Mock dependencies
@@ -3016,8 +3010,8 @@ class TestRecoverChannel:
             title="Test Channel",
             description="Test Description",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Mock dependencies
@@ -3113,8 +3107,8 @@ class TestRecoverChannel:
             title="Available Channel",
             description="This channel is available",
             availability_status=AvailabilityStatus.AVAILABLE.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Mock dependencies
@@ -3155,8 +3149,8 @@ class TestRecoverChannel:
             title="Test Channel",
             description="Test Description",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Mock dependencies
@@ -3218,8 +3212,8 @@ class TestBuildChannelUpdate:
             country=None,  # NULL - should be filled
             default_language=None,  # NULL - should be filled
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data with values for NULL fields
@@ -3265,8 +3259,8 @@ class TestBuildChannelUpdate:
             subscriber_count=10000,
             recovery_source="wayback:20220101000000",  # Older snapshot
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data from newer snapshot
@@ -3307,8 +3301,8 @@ class TestBuildChannelUpdate:
             subscriber_count=25000,
             recovery_source="wayback:20220101000000",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data with NULL values (should not overwrite)
@@ -3352,8 +3346,8 @@ class TestBuildChannelUpdate:
             default_language="en",
             recovery_source="wayback:20230615120000",  # Newer snapshot
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered data with older timestamp (should skip)
@@ -3394,12 +3388,12 @@ class TestAutoChannelRecovery:
             video_id="autoTest001",
             title="Test Video",
             description="Test Description",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC0123456789ABCDEFGHIJKa",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: An unavailable channel
@@ -3410,8 +3404,8 @@ class TestAutoChannelRecovery:
             title="Old Channel Title",
             description="Old Description",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered video data
@@ -3506,12 +3500,12 @@ class TestAutoChannelRecovery:
             video_id="autoTest002",
             title="Test Video",
             description="Test Description",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC0223456789ABCDEFGHIJKa",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: An unavailable channel
@@ -3522,8 +3516,8 @@ class TestAutoChannelRecovery:
             title="Old Channel Title",
             description="Old Description",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered video data
@@ -3615,12 +3609,12 @@ class TestAutoChannelRecovery:
             video_id="autoTest003",
             title="Test Video",
             description="Test Description",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC0333456789ABCDEFGHIJKa",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: An available channel
@@ -3631,8 +3625,8 @@ class TestAutoChannelRecovery:
             title="Available Channel",
             description="Available Description",
             availability_status=AvailabilityStatus.AVAILABLE.value,  # Available!
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered video data
@@ -3710,12 +3704,12 @@ class TestAutoChannelRecovery:
             video_id="autoTest004",
             title="Test Video",
             description="Test Description",
-            upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 1, 1, tzinfo=UTC),
             duration=120,
             channel_id="UC0443456789ABCDEFGHIJKa",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: An unavailable channel
@@ -3726,8 +3720,8 @@ class TestAutoChannelRecovery:
             title="Old Channel Title",
             description="Old Description",
             availability_status=AvailabilityStatus.DELETED.value,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         # GIVEN: Recovered video data

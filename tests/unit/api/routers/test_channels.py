@@ -14,19 +14,17 @@ Tests:
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.api.main import app
 from chronovista.api.deps import get_db
+from chronovista.api.main import app
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Fixtures
@@ -455,7 +453,7 @@ def _make_video_row(
     row.video_id = video_id
     row.title = title
     row.channel_id = channel_id
-    row.upload_date = upload_date or datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+    row.upload_date = upload_date or datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
     row.duration = duration
     row.view_count = view_count
     row.category_id = category_id

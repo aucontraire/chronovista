@@ -8,8 +8,7 @@ parameters, exit codes, and error handling.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,7 +16,6 @@ import typer
 from typer.testing import CliRunner
 
 from chronovista.cli.commands import cache as cache_module
-from chronovista.models.enums import ImageQuality
 from chronovista.services.image_cache import CacheStats, WarmResult
 
 # Create test apps that wrap each command
@@ -96,12 +94,11 @@ class TestCacheWarmCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=mock_image_cache_service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(test_warm_app, ["--dry-run"])
+            result = runner.invoke(test_warm_app, ["--dry-run"])
 
         assert result.exit_code == 0
         output = result.output if result.output else result.stdout
@@ -127,12 +124,11 @@ class TestCacheWarmCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=mock_image_cache_service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(test_warm_app, [ "--type", "channels"])
+            result = runner.invoke(test_warm_app, [ "--type", "channels"])
 
         assert result.exit_code == 0
 
@@ -151,12 +147,11 @@ class TestCacheWarmCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=mock_image_cache_service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(test_warm_app, [ "--type", "videos"])
+            result = runner.invoke(test_warm_app, [ "--type", "videos"])
 
         assert result.exit_code == 0
 
@@ -175,12 +170,11 @@ class TestCacheWarmCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=mock_image_cache_service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(test_warm_app, [ "--type", "all"])
+            result = runner.invoke(test_warm_app, [ "--type", "all"])
 
         assert result.exit_code == 0
 
@@ -199,12 +193,11 @@ class TestCacheWarmCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=mock_image_cache_service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(test_warm_app, [ "--limit", "5"])
+            result = runner.invoke(test_warm_app, [ "--limit", "5"])
 
         assert result.exit_code == 0
 
@@ -226,12 +219,11 @@ class TestCacheWarmCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=mock_image_cache_service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(test_warm_app, [ "--delay", "1.0"])
+            result = runner.invoke(test_warm_app, [ "--delay", "1.0"])
 
         assert result.exit_code == 0
 
@@ -300,12 +292,11 @@ class TestCacheWarmCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=service_with_failures,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(test_warm_app, [])
+            result = runner.invoke(test_warm_app, [])
 
         assert result.exit_code == 1
 
@@ -320,12 +311,11 @@ class TestCacheWarmCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=mock_image_cache_service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(test_warm_app, [])
+            result = runner.invoke(test_warm_app, [])
 
         assert result.exit_code == 0
 
@@ -369,12 +359,11 @@ class TestCacheWarmCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=service_with_no_urls,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(test_warm_app, [ "--type", "channels"])
+            result = runner.invoke(test_warm_app, [ "--type", "channels"])
 
         assert result.exit_code == 0
         # The summary table should include the No URL column with value 10
@@ -392,12 +381,11 @@ class TestCacheWarmCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=mock_image_cache_service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(test_warm_app, [ "--type", "videos"])
+            result = runner.invoke(test_warm_app, [ "--type", "videos"])
 
         assert result.exit_code == 0
 
@@ -416,14 +404,13 @@ class TestCacheWarmCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=mock_image_cache_service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(
-                    test_warm_app, ["--type", "videos", "--quality", "hqdefault"]
-                )
+            result = runner.invoke(
+                test_warm_app, ["--type", "videos", "--quality", "hqdefault"]
+            )
 
         assert result.exit_code == 0
 
@@ -442,12 +429,11 @@ class TestCacheWarmCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=mock_image_cache_service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(test_warm_app, [])
+            result = runner.invoke(test_warm_app, [])
 
         assert result.exit_code == 0
 
@@ -466,12 +452,11 @@ class TestCacheWarmCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=mock_image_cache_service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(test_warm_app, [])
+            result = runner.invoke(test_warm_app, [])
 
         assert result.exit_code == 0
 
@@ -503,8 +488,8 @@ class TestCacheStatusCommand:
                 video_count=2500,
                 video_missing_count=12,
                 total_size_bytes=500_000_000,  # 500 MB
-                oldest_file=datetime(2023, 1, 15, tzinfo=timezone.utc),
-                newest_file=datetime(2024, 12, 20, tzinfo=timezone.utc),
+                oldest_file=datetime(2023, 1, 15, tzinfo=UTC),
+                newest_file=datetime(2024, 12, 20, tzinfo=UTC),
             )
 
         service.get_stats = AsyncMock(side_effect=mock_get_stats)
@@ -534,8 +519,8 @@ class TestCacheStatusCommand:
                 video_count=1000,
                 video_missing_count=25,
                 total_size_bytes=100_000_000,
-                oldest_file=datetime(2023, 6, 1, tzinfo=timezone.utc),
-                newest_file=datetime(2024, 11, 30, tzinfo=timezone.utc),
+                oldest_file=datetime(2023, 6, 1, tzinfo=UTC),
+                newest_file=datetime(2024, 11, 30, tzinfo=UTC),
             )
 
         service.get_stats = AsyncMock(side_effect=mock_get_stats)
@@ -564,8 +549,8 @@ class TestCacheStatusCommand:
                 video_count=500,
                 video_missing_count=3,
                 total_size_bytes=50_000_000,
-                oldest_file=datetime(2023, 3, 10, tzinfo=timezone.utc),
-                newest_file=datetime(2024, 10, 15, tzinfo=timezone.utc),
+                oldest_file=datetime(2023, 3, 10, tzinfo=UTC),
+                newest_file=datetime(2024, 10, 15, tzinfo=UTC),
             )
 
         service.get_stats = AsyncMock(side_effect=mock_get_stats)
@@ -593,8 +578,8 @@ class TestCacheStatusCommand:
                 video_count=800,
                 video_missing_count=5,
                 total_size_bytes=75_000_000,
-                oldest_file=datetime(2023, 1, 1, tzinfo=timezone.utc),
-                newest_file=datetime(2024, 12, 31, tzinfo=timezone.utc),
+                oldest_file=datetime(2023, 1, 1, tzinfo=UTC),
+                newest_file=datetime(2024, 12, 31, tzinfo=UTC),
             )
 
         service.get_stats = AsyncMock(side_effect=mock_get_stats)
@@ -623,8 +608,8 @@ class TestCacheStatusCommand:
                 video_count=100,
                 video_missing_count=0,
                 total_size_bytes=10_000_000,
-                oldest_file=datetime(2024, 1, 1, tzinfo=timezone.utc),
-                newest_file=datetime(2024, 12, 1, tzinfo=timezone.utc),
+                oldest_file=datetime(2024, 1, 1, tzinfo=UTC),
+                newest_file=datetime(2024, 12, 1, tzinfo=UTC),
             )
 
         service.get_stats = AsyncMock(side_effect=mock_get_stats)
@@ -698,12 +683,11 @@ class TestCachePurgeCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(test_purge_app, ["--force"])
+            result = runner.invoke(test_purge_app, ["--force"])
 
         assert result.exit_code == 0
         output = result.output if result.output else result.stdout
@@ -734,12 +718,11 @@ class TestCachePurgeCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(test_purge_app, ["--force"])
+            result = runner.invoke(test_purge_app, ["--force"])
 
         assert result.exit_code == 0
 
@@ -768,14 +751,13 @@ class TestCachePurgeCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(
-                    test_purge_app, ["--type", "channels", "--force"]
-                )
+            result = runner.invoke(
+                test_purge_app, ["--type", "channels", "--force"]
+            )
 
         assert result.exit_code == 0
 
@@ -804,12 +786,11 @@ class TestCachePurgeCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(test_purge_app, ["--type", "videos", "--force"])
+            result = runner.invoke(test_purge_app, ["--type", "videos", "--force"])
 
         assert result.exit_code == 0
 
@@ -846,12 +827,11 @@ class TestCachePurgeCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(test_purge_app, ["--force"])
+            result = runner.invoke(test_purge_app, ["--force"])
 
         assert result.exit_code == 0
         output = result.output if result.output else result.stdout
@@ -880,13 +860,12 @@ class TestCachePurgeCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                # Simulate user typing "y" at the confirmation prompt
-                result = runner.invoke(test_purge_app, [], input="y\n")
+            # Simulate user typing "y" at the confirmation prompt
+            result = runner.invoke(test_purge_app, [], input="y\n")
 
         assert result.exit_code == 0
         # Verify purge was actually called
@@ -913,13 +892,12 @@ class TestCachePurgeCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                # Simulate user typing "n" at the confirmation prompt
-                result = runner.invoke(test_purge_app, [], input="n\n")
+            # Simulate user typing "n" at the confirmation prompt
+            result = runner.invoke(test_purge_app, [], input="n\n")
 
         assert result.exit_code == 1
         output = result.output if result.output else result.stdout
@@ -948,12 +926,11 @@ class TestCachePurgeCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(test_purge_app, ["--force"])
+            result = runner.invoke(test_purge_app, ["--force"])
 
         assert result.exit_code == 0
         output = result.output if result.output else result.stdout
@@ -986,11 +963,10 @@ class TestCachePurgeCommand:
         with patch(
             "chronovista.cli.commands.cache._build_cache_service",
             return_value=service,
+        ), patch(
+            "chronovista.cli.commands.cache.db_manager.get_session",
+            side_effect=mock_get_session,
         ):
-            with patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
-                side_effect=mock_get_session,
-            ):
-                result = runner.invoke(test_purge_app, ["--force"])
+            result = runner.invoke(test_purge_app, ["--force"])
 
         assert result.exit_code == 0

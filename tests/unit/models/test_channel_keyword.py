@@ -7,7 +7,7 @@ for all ChannelKeyword model variants using factory pattern for DRY.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import cast
 
 import pytest
@@ -209,7 +209,7 @@ class TestChannelKeyword:
 
     def test_create_valid_channel_keyword(self):
         """Test creating valid ChannelKeyword with keyword arguments."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         keyword = cast(
             ChannelKeyword,
             ChannelKeywordFactory.build(
@@ -233,7 +233,7 @@ class TestChannelKeyword:
             channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
             keyword = "unboxing"
             keyword_order = 7
-            created_at = datetime.now(timezone.utc)
+            created_at = datetime.now(UTC)
 
         mock_db = MockChannelKeywordDB()
         keyword = ChannelKeyword.model_validate(mock_db, from_attributes=True)
@@ -449,7 +449,7 @@ class TestChannelKeywordModelInteractions:
         )
 
         # Simulate creation
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         keyword_full = ChannelKeywordFactory.build(
             channel_id=keyword_create.channel_id,
             keyword=keyword_create.keyword,

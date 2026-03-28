@@ -8,18 +8,15 @@ methods in TakeoutService (T025a-T025d coverage).
 import json
 import shutil
 import tempfile
-from datetime import datetime, timezone
+from collections.abc import Generator
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, Generator, List
+from typing import Any
 
 import pytest
 
-pytestmark = pytest.mark.asyncio
-
 from chronovista.models.takeout.recovery import (
     HistoricalTakeout,
-    RecoveredChannelMetadata,
-    RecoveredVideoMetadata,
 )
 from chronovista.services.takeout_service import TakeoutService
 
@@ -187,7 +184,7 @@ class TestParseHistoricalWatchHistory:
         shutil.rmtree(temp_dir)
 
     @pytest.fixture
-    def sample_watch_history(self) -> List[dict[str, Any]]:
+    def sample_watch_history(self) -> list[dict[str, Any]]:
         """Sample watch history JSON data."""
         return [
             {
@@ -214,7 +211,7 @@ class TestParseHistoricalWatchHistory:
         ]
 
     async def test_parse_valid_watch_history(
-        self, temp_takeout_dir: Path, sample_watch_history: List[dict[str, Any]]
+        self, temp_takeout_dir: Path, sample_watch_history: list[dict[str, Any]]
     ) -> None:
         """Test parsing a valid watch history file."""
         youtube_dir = temp_takeout_dir / "YouTube and YouTube Music"
@@ -228,7 +225,7 @@ class TestParseHistoricalWatchHistory:
 
         takeout = HistoricalTakeout(
             path=youtube_dir,
-            export_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            export_date=datetime(2024, 1, 15, tzinfo=UTC),
             has_watch_history=True,
             has_playlists=False,
             has_subscriptions=False,
@@ -254,7 +251,7 @@ class TestParseHistoricalWatchHistory:
 
         takeout = HistoricalTakeout(
             path=youtube_dir,
-            export_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            export_date=datetime(2024, 1, 15, tzinfo=UTC),
             has_watch_history=True,
             has_playlists=False,
             has_subscriptions=False,
@@ -291,7 +288,7 @@ class TestParseHistoricalWatchHistory:
 
         takeout = HistoricalTakeout(
             path=youtube_dir,
-            export_date=datetime.now(timezone.utc),
+            export_date=datetime.now(UTC),
             has_watch_history=True,
             has_playlists=False,
             has_subscriptions=False,
@@ -330,7 +327,7 @@ class TestParseHistoricalWatchHistory:
 
         takeout = HistoricalTakeout(
             path=youtube_dir,
-            export_date=datetime.now(timezone.utc),
+            export_date=datetime.now(UTC),
             has_watch_history=True,
             has_playlists=False,
             has_subscriptions=False,
@@ -351,7 +348,7 @@ class TestParseHistoricalWatchHistory:
 
         takeout = HistoricalTakeout(
             path=youtube_dir,
-            export_date=datetime.now(timezone.utc),
+            export_date=datetime.now(UTC),
             has_watch_history=False,  # No watch history
             has_playlists=False,
             has_subscriptions=False,
@@ -373,7 +370,7 @@ class TestParseHistoricalWatchHistory:
 
         takeout = HistoricalTakeout(
             path=youtube_dir,
-            export_date=datetime.now(timezone.utc),
+            export_date=datetime.now(UTC),
             has_watch_history=True,
             has_playlists=False,
             has_subscriptions=False,
@@ -398,7 +395,7 @@ class TestBuildRecoveryMetadataMap:
         self,
         base_path: Path,
         name: str,
-        history_data: List[Dict[str, Any]],
+        history_data: list[dict[str, Any]],
     ) -> HistoricalTakeout:
         """Helper to create a takeout with watch history."""
         takeout_dir = base_path / name
@@ -416,10 +413,10 @@ class TestBuildRecoveryMetadataMap:
         date_match = re.search(r"(\d{4}-\d{2}-\d{2})", name)
         if date_match:
             export_date = datetime.strptime(date_match.group(1), "%Y-%m-%d").replace(
-                tzinfo=timezone.utc
+                tzinfo=UTC
             )
         else:
-            export_date = datetime.now(timezone.utc)
+            export_date = datetime.now(UTC)
 
         return HistoricalTakeout(
             path=youtube_dir,
@@ -573,7 +570,7 @@ class TestGetRecoverySummary:
         """Test summary with a single takeout."""
         takeout = HistoricalTakeout(
             path=Path("/takeouts/2024-01-15"),
-            export_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            export_date=datetime(2024, 1, 15, tzinfo=UTC),
             has_watch_history=True,
             has_playlists=True,
             has_subscriptions=False,
@@ -595,21 +592,21 @@ class TestGetRecoverySummary:
         takeouts = [
             HistoricalTakeout(
                 path=Path("/takeouts/2023-01-15"),
-                export_date=datetime(2023, 1, 15, tzinfo=timezone.utc),
+                export_date=datetime(2023, 1, 15, tzinfo=UTC),
                 has_watch_history=True,
                 has_playlists=False,
                 has_subscriptions=False,
             ),
             HistoricalTakeout(
                 path=Path("/takeouts/2024-06-15"),
-                export_date=datetime(2024, 6, 15, tzinfo=timezone.utc),
+                export_date=datetime(2024, 6, 15, tzinfo=UTC),
                 has_watch_history=True,
                 has_playlists=True,
                 has_subscriptions=False,
             ),
             HistoricalTakeout(
                 path=Path("/takeouts/2024-12-01"),
-                export_date=datetime(2024, 12, 1, tzinfo=timezone.utc),
+                export_date=datetime(2024, 12, 1, tzinfo=UTC),
                 has_watch_history=False,
                 has_playlists=False,
                 has_subscriptions=True,

@@ -38,7 +38,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import (
@@ -68,8 +67,6 @@ DEFAULT_CHANNEL_ID: str = channel_id(seed="cross_seg_test")
 
 # CRITICAL: This line ensures async tests work with coverage tools,
 # avoiding silent test-skipping when pytest-cov is used (see CLAUDE.md).
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Seed helpers

@@ -12,20 +12,16 @@ Tests cover:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import Video as VideoDB
-
-pytestmark = pytest.mark.asyncio
-
 
 # =============================================================================
 # Test Fixtures
@@ -35,7 +31,7 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture
 async def video_not_recovered(
     integration_session_factory,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create a video with recovered_at=NULL and recovery_source=NULL.
 
@@ -69,7 +65,7 @@ async def video_not_recovered(
             channel_id="UCrec123456789012345678",
             title="Not Recovered Video",
             description="A video that was never recovered",
-            upload_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            upload_date=datetime(2024, 1, 15, tzinfo=UTC),
             duration=300,
             made_for_kids=False,
             availability_status="available",
@@ -110,7 +106,7 @@ async def video_not_recovered(
 @pytest.fixture
 async def video_recovered(
     integration_session_factory,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create a video with recovered_at and recovery_source populated.
 
@@ -139,13 +135,13 @@ async def video_recovered(
             await session.refresh(channel)
 
         # Create video with recovery fields populated
-        recovery_timestamp = datetime(2024, 2, 10, 14, 30, 0, tzinfo=timezone.utc)
+        recovery_timestamp = datetime(2024, 2, 10, 14, 30, 0, tzinfo=UTC)
         video = VideoDB(
             video_id="yesrecovr01",  # 11 chars
             channel_id="UCrec123456789012345678",
             title="Recovered Video",
             description="A video that was recovered from Wayback Machine",
-            upload_date=datetime(2023, 5, 20, tzinfo=timezone.utc),
+            upload_date=datetime(2023, 5, 20, tzinfo=UTC),
             duration=420,
             made_for_kids=False,
             availability_status="deleted",
@@ -186,7 +182,7 @@ async def video_recovered(
 @pytest.fixture
 async def channel_not_recovered(
     integration_session_factory,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create a channel with recovered_at=NULL and recovery_source=NULL.
 
@@ -237,14 +233,14 @@ async def channel_not_recovered(
 @pytest.fixture
 async def channel_recovered(
     integration_session_factory,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create a channel with recovered_at and recovery_source populated.
 
     Returns channel data dict for use in tests.
     """
     async with integration_session_factory() as session:
-        recovery_timestamp = datetime(2024, 3, 5, 10, 15, 0, tzinfo=timezone.utc)
+        recovery_timestamp = datetime(2024, 3, 5, 10, 15, 0, tzinfo=UTC)
         channel = ChannelDB(
             channel_id="UCyesrec1234567890123456",
             title="Recovered Channel",
@@ -297,7 +293,7 @@ class TestVideoRecoveryFields:
     async def test_video_detail_fields_null_when_not_recovered(
         self,
         async_client: AsyncClient,
-        video_not_recovered: Dict[str, Any],
+        video_not_recovered: dict[str, Any],
     ) -> None:
         """Test that recovered_at and recovery_source are null for non-recovered video."""
         video_id = video_not_recovered["video_id"]
@@ -327,7 +323,7 @@ class TestVideoRecoveryFields:
     async def test_video_detail_fields_populated_when_recovered(
         self,
         async_client: AsyncClient,
-        video_recovered: Dict[str, Any],
+        video_recovered: dict[str, Any],
     ) -> None:
         """Test that recovered_at and recovery_source are populated for recovered video."""
         video_id = video_recovered["video_id"]
@@ -374,7 +370,7 @@ class TestChannelRecoveryFields:
     async def test_channel_detail_fields_null_when_not_recovered(
         self,
         async_client: AsyncClient,
-        channel_not_recovered: Dict[str, Any],
+        channel_not_recovered: dict[str, Any],
     ) -> None:
         """Test that recovered_at and recovery_source are null for non-recovered channel."""
         channel_id = channel_not_recovered["channel_id"]
@@ -404,7 +400,7 @@ class TestChannelRecoveryFields:
     async def test_channel_detail_fields_populated_when_recovered(
         self,
         async_client: AsyncClient,
-        channel_recovered: Dict[str, Any],
+        channel_recovered: dict[str, Any],
     ) -> None:
         """Test that recovered_at and recovery_source are populated for recovered channel."""
         channel_id = channel_recovered["channel_id"]

@@ -7,7 +7,6 @@ operations to existing services via the TaskManager.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 from collections.abc import Callable, Coroutine
@@ -272,29 +271,22 @@ class OnboardingService:
             recently created video (or ``None``).
         """
         async with self._session_factory() as session:
-            # Run all count queries concurrently (9 independent queries).
-            # asyncio.gather returns tuple[object, ...] for mixed types,
-            # so we cast the result to the expected shape.
-            results: Any = await asyncio.gather(
-                self._count(session, Channel),
-                self._count(session, Video),
-                self._count_available_videos(session),
-                self._count_enriched_videos(session),
-                self._count(session, Playlist),
-                self._count(session, VideoTranscript),
-                self._count(session, VideoCategory),
-                self._count(session, CanonicalTag),
-                session.execute(select(func.max(Video.created_at))),
+            # Sequential queries — AsyncSession is not safe for concurrent
+            # use via asyncio.gather() (causes IllegalStateChangeError).
+            channels = await self._count(session, Channel)
+            videos = await self._count(session, Video)
+            available_videos = await self._count_available_videos(session)
+            enriched_videos = await self._count_enriched_videos(session)
+            playlists = await self._count(session, Playlist)
+            transcripts = await self._count(session, VideoTranscript)
+            categories = await self._count(session, VideoCategory)
+            canonical_tags = await self._count(session, CanonicalTag)
+
+            # Also fetch last-loaded timestamp in the same session
+            result = await session.execute(
+                select(func.max(Video.created_at))
             )
-            channels: int = results[0]
-            videos: int = results[1]
-            available_videos: int = results[2]
-            enriched_videos: int = results[3]
-            playlists: int = results[4]
-            transcripts: int = results[5]
-            categories: int = results[6]
-            canonical_tags: int = results[7]
-            latest = results[8].scalar_one_or_none()
+            latest = result.scalar_one_or_none()
             last_loaded_at = latest.timestamp() if latest is not None else None
 
         counts = OnboardingCounts(

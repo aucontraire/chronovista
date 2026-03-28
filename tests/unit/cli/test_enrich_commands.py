@@ -5,18 +5,18 @@ Covers T048c: CLI tests for --priority flag in tests/unit/cli/test_enrich_comman
 Also covers T035f: CLI tests for `chronovista enrich` with flags
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
-import sys
+
+from datetime import UTC
 
 import pytest
 from typer.testing import CliRunner
 
 from chronovista.cli.commands.enrich import (
+    EXIT_CODE_PARTIAL_SUCCESS,
+    EXIT_CODE_SUCCESS,
+    VALID_PRIORITIES,
     app,
     validate_priority,
-    VALID_PRIORITIES,
-    EXIT_CODE_SUCCESS,
-    EXIT_CODE_PARTIAL_SUCCESS,
 )
 
 runner = CliRunner()
@@ -473,10 +473,10 @@ class TestStatusCommandWithMockedDatabase:
 
     def test_status_command_uses_rich_console(self) -> None:
         """Test that status command uses Rich for formatted output."""
-        from chronovista.cli.commands.enrich import console
-
         # Console should be a Rich Console instance
         from rich.console import Console
+
+        from chronovista.cli.commands.enrich import console
         assert isinstance(console, Console)
 
 
@@ -498,7 +498,7 @@ class TestOutputFlagCLI:
         # Check if --output or related option is in help
         # Note: This test documents expected behavior - if --output is not
         # yet implemented, this test will fail and guide implementation
-        output_lower = result.output.lower()
+        result.output.lower()
         # The flag may be named --output, --report, or similar
         has_output_option = (
             "--output" in result.output
@@ -683,7 +683,6 @@ class TestEnrichmentLoggingSetup:
     def test_setup_logging_returns_path(self) -> None:
         """Test that _setup_enrichment_logging returns a Path object."""
         from pathlib import Path
-        import shutil
 
         from chronovista.cli.commands.enrich import _setup_enrichment_logging
 
@@ -705,7 +704,6 @@ class TestEnrichmentLoggingSetup:
     def test_setup_logging_creates_logs_directory(self) -> None:
         """Test that _setup_enrichment_logging creates logs directory if needed."""
         from pathlib import Path
-        import shutil
 
         from chronovista.cli.commands.enrich import _setup_enrichment_logging
 
@@ -713,7 +711,7 @@ class TestEnrichmentLoggingSetup:
 
         # Note: we don't delete logs dir as it may have other log files
         try:
-            log_file = _setup_enrichment_logging("20250115-103046")
+            _setup_enrichment_logging("20250115-103046")
 
             # The logs directory should exist
             assert log_dir.exists()
@@ -725,7 +723,6 @@ class TestEnrichmentLoggingSetup:
 
     def test_setup_logging_creates_log_file(self) -> None:
         """Test that _setup_enrichment_logging creates the log file."""
-        from pathlib import Path
 
         from chronovista.cli.commands.enrich import _setup_enrichment_logging
 
@@ -741,7 +738,6 @@ class TestEnrichmentLoggingSetup:
 
     def test_setup_logging_auto_generates_timestamp_if_none(self) -> None:
         """Test that _setup_enrichment_logging generates timestamp if None."""
-        from pathlib import Path
 
         from chronovista.cli.commands.enrich import _setup_enrichment_logging
 
@@ -1153,7 +1149,6 @@ class TestSyncLikesFlag:
 
         # Verify that the logic is implemented in the actual code
         # by reading the implementation file
-        import inspect
         from pathlib import Path
 
         enrich_file = Path(__file__).parent.parent.parent.parent / "src" / "chronovista" / "cli" / "commands" / "enrich.py"
@@ -1489,8 +1484,6 @@ class TestNoAutoResolveFlag:
         a message should inform the user how many playlists were skipped.
         """
         # Simulate scenario: 5 playlists total, 2 already linked, 3 unlinked
-        total_playlists = 5
-        linked_playlists = 2
         unlinked_playlists = 3
         no_auto_resolve = True
 
@@ -1646,7 +1639,6 @@ class TestSkipUnresolvedFlag:
         - Show count of skipped/unmatched playlists
         - Exit with code 4 (partial success)
         """
-        skip_unresolved = True
         linked = 8
         unmatched = 2
 
@@ -1672,7 +1664,6 @@ class TestSkipUnresolvedFlag:
         - All playlists are linked successfully
         - Exit code is 0 (success)
         """
-        skip_unresolved = True
         unambiguous_count = 10
         ambiguous_count = 0
 
@@ -1692,7 +1683,6 @@ class TestSkipUnresolvedFlag:
         FR-010 specifies Exit Code 4 for partial success with --skip-unresolved.
         """
         skip_unresolved = True
-        linked = 5
         ambiguous = 3
 
         # When ambiguous matches exist and skip_unresolved is True
@@ -1737,7 +1727,6 @@ class TestSkipUnresolvedFlag:
         - --no-auto-resolve takes precedence (no auto-resolution at all)
         - --skip-unresolved has no effect
         """
-        skip_unresolved = True
         no_auto_resolve = True
         include_playlists = True
 
@@ -1754,7 +1743,7 @@ class TestSaveReport:
 
     def test_save_report_creates_file(self) -> None:
         """Test that _save_report creates the output file."""
-        from datetime import datetime, timezone
+        from datetime import datetime
         from pathlib import Path
 
         from chronovista.cli.commands.enrich import _save_report
@@ -1765,7 +1754,7 @@ class TestSaveReport:
         )
 
         report = EnrichmentReport(
-            timestamp=datetime(2025, 1, 15, 10, 30, 45, tzinfo=timezone.utc),
+            timestamp=datetime(2025, 1, 15, 10, 30, 45, tzinfo=UTC),
             priority="high",
             summary=EnrichmentSummary(
                 videos_processed=5,
@@ -1808,9 +1797,9 @@ class TestSaveReport:
 
     def test_save_report_creates_parent_directories(self) -> None:
         """Test that _save_report creates parent directories if needed."""
-        from datetime import datetime, timezone
-        from pathlib import Path
         import shutil
+        from datetime import datetime
+        from pathlib import Path
 
         from chronovista.cli.commands.enrich import _save_report
         from chronovista.models.enrichment_report import (
@@ -1819,7 +1808,7 @@ class TestSaveReport:
         )
 
         report = EnrichmentReport(
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             priority="medium",
             summary=EnrichmentSummary(
                 videos_processed=0,
@@ -1850,9 +1839,9 @@ class TestSaveReport:
 
     def test_save_report_serializes_datetime_as_iso8601(self) -> None:
         """Test that _save_report serializes datetime in ISO 8601 format."""
-        from datetime import datetime, timezone
-        from pathlib import Path
         import json
+        from datetime import datetime
+        from pathlib import Path
 
         from chronovista.cli.commands.enrich import _save_report
         from chronovista.models.enrichment_report import (
@@ -1861,7 +1850,7 @@ class TestSaveReport:
         )
 
         report = EnrichmentReport(
-            timestamp=datetime(2025, 1, 15, 10, 30, 45, tzinfo=timezone.utc),
+            timestamp=datetime(2025, 1, 15, 10, 30, 45, tzinfo=UTC),
             priority="low",
             summary=EnrichmentSummary(
                 videos_processed=0,
@@ -1895,9 +1884,9 @@ class TestSaveReport:
 
     def test_save_report_includes_error_messages(self) -> None:
         """Test that _save_report includes error messages in details (T060)."""
-        from datetime import datetime, timezone
-        from pathlib import Path
         import json
+        from datetime import datetime
+        from pathlib import Path
 
         from chronovista.cli.commands.enrich import _save_report
         from chronovista.models.enrichment_report import (
@@ -1907,7 +1896,7 @@ class TestSaveReport:
         )
 
         report = EnrichmentReport(
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             priority="high",
             summary=EnrichmentSummary(
                 videos_processed=2,

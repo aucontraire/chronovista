@@ -20,8 +20,9 @@ Pattern mirrors test_transcript_corrections_api.py:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -31,8 +32,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import (
     Channel as ChannelDB,
+)
+from chronovista.db.models import (
     TranscriptSegment as TranscriptSegmentDB,
+)
+from chronovista.db.models import (
     Video as VideoDB,
+)
+from chronovista.db.models import (
     VideoTranscript as VideoTranscriptDB,
 )
 from chronovista.models.enums import DownloadReason
@@ -48,8 +55,6 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
 # CRITICAL: Ensures all async tests in this module run with pytest-asyncio
-pytestmark = pytest.mark.asyncio
-
 # ---------------------------------------------------------------------------
 # Stable IDs — generated via YouTubeIdFactory with deterministic seeds
 # ---------------------------------------------------------------------------
@@ -146,7 +151,7 @@ def _make_enhanced_transcript(
 
 @pytest.fixture
 async def seed_video_without_transcript(
-    integration_session_factory: "async_sessionmaker[AsyncSession]",
+    integration_session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncGenerator[dict[str, Any], None]:
     """Seed a channel and video record with NO pre-existing transcript.
 
@@ -179,7 +184,7 @@ async def seed_video_without_transcript(
                 channel_id=_CHANNEL_ID,
                 title="Transcript Download Test Video",
                 description="Integration test video for transcript download endpoint",
-                upload_date=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                upload_date=datetime(2024, 1, 1, tzinfo=UTC),
                 duration=300,
             )
             session.add(video)
@@ -216,7 +221,7 @@ async def seed_video_without_transcript(
 
 @pytest.fixture
 async def seed_video_with_existing_transcript(
-    integration_session_factory: "async_sessionmaker[AsyncSession]",
+    integration_session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncGenerator[dict[str, Any], None]:
     """Seed a channel, video, and an existing transcript to test 409 conflict.
 
@@ -249,7 +254,7 @@ async def seed_video_with_existing_transcript(
                 channel_id=_CHANNEL_ID,
                 title="Video With Pre-existing Transcript",
                 description="Already has a transcript — triggers 409",
-                upload_date=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                upload_date=datetime(2024, 1, 1, tzinfo=UTC),
                 duration=180,
             )
             session.add(video)
@@ -396,7 +401,7 @@ class TestDownloadHappyPath:
         self,
         async_client: AsyncClient,
         seed_video_without_transcript: dict[str, Any],
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """Successful download returns 200 with TranscriptDownloadResponse payload."""
         video_id = seed_video_without_transcript["video_id"]
@@ -428,7 +433,7 @@ class TestDownloadHappyPath:
         self,
         async_client: AsyncClient,
         seed_video_without_transcript: dict[str, Any],
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """After a successful download the transcript row is saved in the database."""
         video_id = seed_video_without_transcript["video_id"]
@@ -465,7 +470,7 @@ class TestDownloadHappyPath:
         self,
         async_client: AsyncClient,
         seed_video_without_transcript: dict[str, Any],
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """After download the TranscriptSegment rows are created from raw data snippets."""
         video_id = seed_video_without_transcript["video_id"]
@@ -911,7 +916,7 @@ class TestDownloadDatabaseState:
         self,
         async_client: AsyncClient,
         seed_video_without_transcript: dict[str, Any],
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """The persisted VideoTranscript row has the language code from the service response."""
         video_id = seed_video_without_transcript["video_id"]
@@ -946,7 +951,7 @@ class TestDownloadDatabaseState:
         self,
         async_client: AsyncClient,
         seed_video_without_transcript: dict[str, Any],
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """Each saved TranscriptSegment has start_time, end_time, and duration set."""
         video_id = seed_video_without_transcript["video_id"]
@@ -984,7 +989,7 @@ class TestDownloadDatabaseState:
         self,
         async_client: AsyncClient,
         seed_video_without_transcript: dict[str, Any],
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """Segments are stored with ascending sequence_number matching snippet order."""
         video_id = seed_video_without_transcript["video_id"]
@@ -1019,7 +1024,7 @@ class TestDownloadDatabaseState:
         self,
         async_client: AsyncClient,
         seed_video_without_transcript: dict[str, Any],
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """All persisted TranscriptSegment rows carry the correct video_id FK."""
         video_id = seed_video_without_transcript["video_id"]
@@ -1053,7 +1058,7 @@ class TestDownloadDatabaseState:
         self,
         async_client: AsyncClient,
         seed_video_without_transcript: dict[str, Any],
-        integration_session_factory: "async_sessionmaker[AsyncSession]",
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """No transcript or segment rows are persisted when the service raises an error.
 

@@ -1,13 +1,10 @@
 """Integration tests for health endpoint."""
 from datetime import datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
-import pytest
 from httpx import AsyncClient
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 class TestHealthEndpoint:
     """Tests for GET /api/v1/health endpoint."""

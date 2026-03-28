@@ -4,7 +4,7 @@ Tests for ChannelRepository functionality.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,8 +18,6 @@ from chronovista.models.channel import (
 )
 from chronovista.models.enums import LanguageCode
 from chronovista.repositories.channel_repository import ChannelRepository
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestChannelRepository:
@@ -47,8 +45,8 @@ class TestChannelRepository:
             default_language="en",
             country="GB",
             thumbnail_url="https://yt3.ggpht.com/test.jpg",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
     @pytest.fixture
@@ -298,7 +296,7 @@ class TestChannelRepository:
             repository,
             "get_channel_statistics",
             new=AsyncMock(return_value=expected_stats),
-        ) as mock_get_stats:
+        ):
 
             result = await repository.get_channel_statistics(mock_session)
 

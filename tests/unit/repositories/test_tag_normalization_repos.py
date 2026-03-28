@@ -8,8 +8,7 @@ tag aliases, named entities, and entity aliases.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,21 +16,16 @@ from uuid_utils import uuid7
 
 from chronovista.db.models import (
     CanonicalTag as CanonicalTagDB,
+)
+from chronovista.db.models import (
     EntityAlias as EntityAliasDB,
+)
+from chronovista.db.models import (
     NamedEntity as NamedEntityDB,
+)
+from chronovista.db.models import (
     TagAlias as TagAliasDB,
 )
-from chronovista.models.canonical_tag import CanonicalTagCreate
-from chronovista.models.entity_alias import EntityAliasCreate
-from chronovista.models.enums import (
-    CreationMethod,
-    DiscoveryMethod,
-    EntityAliasType,
-    EntityType,
-    TagStatus,
-)
-from chronovista.models.named_entity import NamedEntityCreate
-from chronovista.models.tag_alias import TagAliasCreate
 from chronovista.repositories.canonical_tag_repository import CanonicalTagRepository
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.named_entity_repository import NamedEntityRepository

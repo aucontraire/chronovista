@@ -5,13 +5,10 @@ Tests human, JSON, and SRT output formats with special character handling.
 """
 
 import json
-from datetime import datetime, timezone
-
-import pytest
+from datetime import UTC, datetime
 
 from chronovista.models.transcript_segment import (
     TranscriptSegment,
-    TranscriptSegmentResponse,
 )
 from chronovista.services.segment_service import (
     OutputFormat,
@@ -65,7 +62,7 @@ def create_test_segment(
         sequence_number=id - 1,
         has_correction=has_correction,
         corrected_text=corrected_text,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 

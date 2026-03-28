@@ -26,7 +26,7 @@ from __future__ import annotations
 import csv
 import io
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
@@ -57,8 +57,6 @@ from chronovista.services.transcript_correction_service import (
 # CRITICAL: Module-level asyncio marker ensures async tests run properly
 # with coverage tools, avoiding silent test-skipping (see CLAUDE.md).
 # ---------------------------------------------------------------------------
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # DB seed helpers
@@ -70,7 +68,7 @@ async def _seed_video(session: AsyncSession, video_id: str = "dQw4w9WgXcQ") -> V
     video = VideoDB(
         video_id=video_id,
         title="Integration Test Video",
-        upload_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+        upload_date=datetime(2020, 1, 1, tzinfo=UTC),
         duration=300,
     )
     session.add(video)
@@ -799,7 +797,7 @@ class TestBatchCorrectionIntegration:
             sequence_number=0,
             start_time=0.0,
         )
-        seg_b = await _seed_segment(
+        await _seed_segment(
             db_session,
             video_id=video_id,
             language_code=language_code,

@@ -15,6 +15,7 @@ Feature 038 — Entity Mention Detection (ASR alias hook)
 from __future__ import annotations
 
 import uuid
+from datetime import UTC
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -26,8 +27,6 @@ from chronovista.models.enums import EntityAliasType
 # CRITICAL: Module-level asyncio marker ensures async tests run properly
 # with coverage tools, avoiding silent test-skipping (see CLAUDE.md).
 # ---------------------------------------------------------------------------
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -1075,7 +1074,7 @@ def _make_correction_db(
     batch_id: Any = None,
 ) -> MagicMock:
     """Create a mock TranscriptCorrectionDB for testing."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     c = MagicMock()
     c.id = id
@@ -1087,7 +1086,7 @@ def _make_correction_db(
     c.corrected_text = corrected_text
     c.correction_note = correction_note
     c.corrected_by_user_id = corrected_by_user_id
-    c.corrected_at = corrected_at or datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+    c.corrected_at = corrected_at or datetime(2025, 1, 15, 12, 0, 0, tzinfo=UTC)
     c.version_number = version_number
     c.batch_id = batch_id
     return c
@@ -1447,12 +1446,13 @@ class TestExportCorrections:
         mock_correction_repo: AsyncMock,
     ) -> None:
         """All filter params are passed through to the repository."""
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         from chronovista.models.enums import CorrectionType
 
         mock_correction_repo.get_all_filtered.return_value = []
-        since = datetime(2025, 1, 1, tzinfo=timezone.utc)
-        until = datetime(2025, 12, 31, tzinfo=timezone.utc)
+        since = datetime(2025, 1, 1, tzinfo=UTC)
+        until = datetime(2025, 12, 31, tzinfo=UTC)
 
         await service.export_corrections(
             mock_session,
@@ -1730,7 +1730,6 @@ class TestGetPatterns:
         mock_correction_repo: AsyncMock,
     ) -> None:
         """Return type is list[CorrectionPattern]."""
-        from chronovista.models.batch_correction_models import CorrectionPattern
 
         mock_correction_repo.get_correction_patterns.return_value = []
 
@@ -4700,9 +4699,9 @@ class TestMinimalTokenAliasRegistration:
         registered for the entity. The sub-token diff produces ("Chomski",
         "Chomsky") which must trigger a second alias registration.
         """
+        import uuid
         from unittest.mock import AsyncMock, MagicMock, patch
 
-        import uuid
         from uuid_utils import uuid7
 
         entity_id = uuid.UUID(bytes=uuid7().bytes)
@@ -4755,9 +4754,9 @@ class TestMinimalTokenAliasRegistration:
         implementation must attempt alias creation for every non-empty,
         non-duplicate changed pair.
         """
+        import uuid
         from unittest.mock import AsyncMock, MagicMock, patch
 
-        import uuid
         from uuid_utils import uuid7
 
         entity_id = uuid.UUID(bytes=uuid7().bytes)
@@ -4808,9 +4807,9 @@ class TestMinimalTokenAliasRegistration:
         registering the same ASR error form twice.  With "Chomski" → "Chomsky"
         the single token equals the full string, so only one alias is created.
         """
+        import uuid
         from unittest.mock import AsyncMock, MagicMock, patch
 
-        import uuid
         from uuid_utils import uuid7
 
         entity_id = uuid.UUID(bytes=uuid7().bytes)
@@ -4861,7 +4860,7 @@ class TestMinimalTokenAliasRegistration:
         The hook is a no-op when the corrected text does not match any known
         entity — no alias repository calls must be made.
         """
-        from unittest.mock import AsyncMock, MagicMock, patch
+        from unittest.mock import AsyncMock, patch
 
         mock_session = AsyncMock()
 

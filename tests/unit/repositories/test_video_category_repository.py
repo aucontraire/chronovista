@@ -7,7 +7,7 @@ video categories.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,8 +19,6 @@ from chronovista.models.video_category import (
     VideoCategoryUpdate,
 )
 from chronovista.repositories.video_category_repository import VideoCategoryRepository
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestVideoCategoryRepository:
@@ -43,7 +41,7 @@ class TestVideoCategoryRepository:
             category_id="10",
             name="Music",
             assignable=True,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         return category
 
@@ -193,17 +191,16 @@ class TestVideoCategoryRepository:
 
         with patch.object(
             repository, "get", new=AsyncMock(return_value=None)
-        ) as mock_get:
-            with patch.object(
-                repository, "create", new=AsyncMock(return_value=sample_category_db)
-            ) as mock_create:
-                result = await repository.bulk_create(
-                    mock_session, categories_to_create
-                )
+        ) as mock_get, patch.object(
+            repository, "create", new=AsyncMock(return_value=sample_category_db)
+        ) as mock_create:
+            result = await repository.bulk_create(
+                mock_session, categories_to_create
+            )
 
-                assert len(result) == 2
-                assert mock_get.call_count == 2
-                assert mock_create.call_count == 2
+            assert len(result) == 2
+            assert mock_get.call_count == 2
+            assert mock_create.call_count == 2
 
     async def test_bulk_create_existing_categories(
         self,
@@ -243,17 +240,16 @@ class TestVideoCategoryRepository:
 
         with patch.object(
             repository, "get", new=AsyncMock(side_effect=mock_get_side_effect)
-        ) as mock_get:
-            with patch.object(
-                repository, "create", new=AsyncMock(return_value=sample_category_db)
-            ) as mock_create:
-                result = await repository.bulk_create(
-                    mock_session, categories_to_create
-                )
+        ) as mock_get, patch.object(
+            repository, "create", new=AsyncMock(return_value=sample_category_db)
+        ) as mock_create:
+            result = await repository.bulk_create(
+                mock_session, categories_to_create
+            )
 
-                assert len(result) == 3
-                assert mock_get.call_count == 3
-                assert mock_create.call_count == 2  # Only for new categories
+            assert len(result) == 3
+            assert mock_get.call_count == 3
+            assert mock_create.call_count == 2  # Only for new categories
 
     async def test_bulk_create_empty_list(
         self, repository: VideoCategoryRepository, mock_session: MagicMock
@@ -289,21 +285,20 @@ class TestVideoCategoryRepository:
         """Test creating a new category via create_or_update."""
         with patch.object(
             repository, "get", new=AsyncMock(return_value=None)
-        ) as mock_get:
-            with patch.object(
-                repository, "create", new=AsyncMock(return_value=sample_category_db)
-            ) as mock_create:
-                result = await repository.create_or_update(
-                    mock_session, sample_category_create
-                )
+        ) as mock_get, patch.object(
+            repository, "create", new=AsyncMock(return_value=sample_category_db)
+        ) as mock_create:
+            result = await repository.create_or_update(
+                mock_session, sample_category_create
+            )
 
-                assert result == sample_category_db
-                mock_get.assert_called_once_with(
-                    mock_session, sample_category_create.category_id
-                )
-                mock_create.assert_called_once_with(
-                    mock_session, obj_in=sample_category_create
-                )
+            assert result == sample_category_db
+            mock_get.assert_called_once_with(
+                mock_session, sample_category_create.category_id
+            )
+            mock_create.assert_called_once_with(
+                mock_session, obj_in=sample_category_create
+            )
 
     async def test_create_or_update_existing_category(
         self,
@@ -315,19 +310,18 @@ class TestVideoCategoryRepository:
         """Test updating an existing category via create_or_update."""
         with patch.object(
             repository, "get", new=AsyncMock(return_value=sample_category_db)
-        ) as mock_get:
-            with patch.object(
-                repository, "update", new=AsyncMock(return_value=sample_category_db)
-            ) as mock_update:
-                result = await repository.create_or_update(
-                    mock_session, sample_category_create
-                )
+        ) as mock_get, patch.object(
+            repository, "update", new=AsyncMock(return_value=sample_category_db)
+        ) as mock_update:
+            result = await repository.create_or_update(
+                mock_session, sample_category_create
+            )
 
-                assert result == sample_category_db
-                mock_get.assert_called_once_with(
-                    mock_session, sample_category_create.category_id
-                )
-                mock_update.assert_called_once()
+            assert result == sample_category_db
+            mock_get.assert_called_once_with(
+                mock_session, sample_category_create.category_id
+            )
+            mock_update.assert_called_once()
 
     async def test_delete_by_category_id(
         self,
@@ -518,15 +512,14 @@ class TestVideoCategoryRepositoryAdditionalMethods:
 
         with patch.object(
             repository, "get", new=AsyncMock(return_value=None)
+        ), patch.object(
+            repository, "create", new=AsyncMock(side_effect=mock_categories_db)
         ):
-            with patch.object(
-                repository, "create", new=AsyncMock(side_effect=mock_categories_db)
-            ):
-                result = await repository.bulk_create(mock_session, categories)
+            result = await repository.bulk_create(mock_session, categories)
 
-                # Should return in same order as input
-                assert len(result) == 3
-                assert result == mock_categories_db
+            # Should return in same order as input
+            assert len(result) == 3
+            assert result == mock_categories_db
 
     async def test_create_or_update_preserves_fields(
         self, repository: VideoCategoryRepository, mock_session
@@ -545,19 +538,18 @@ class TestVideoCategoryRepositoryAdditionalMethods:
 
         with patch.object(
             repository, "get", new=AsyncMock(return_value=existing_category)
-        ):
-            with patch.object(
-                repository, "update", new=AsyncMock(return_value=existing_category)
-            ) as mock_update:
-                await repository.create_or_update(mock_session, category_create)
+        ), patch.object(
+            repository, "update", new=AsyncMock(return_value=existing_category)
+        ) as mock_update:
+            await repository.create_or_update(mock_session, category_create)
 
-                # Verify update was called with correct data
-                mock_update.assert_called_once()
-                call_args = mock_update.call_args
-                update_obj = call_args.kwargs["obj_in"]
-                assert isinstance(update_obj, VideoCategoryUpdate)
-                assert update_obj.name == "New Music Name"
-                assert update_obj.assignable is False
+            # Verify update was called with correct data
+            mock_update.assert_called_once()
+            call_args = mock_update.call_args
+            update_obj = call_args.kwargs["obj_in"]
+            assert isinstance(update_obj, VideoCategoryUpdate)
+            assert update_obj.name == "New Music Name"
+            assert update_obj.assignable is False
 
     async def test_find_by_name_with_special_characters(
         self, repository: VideoCategoryRepository, mock_session

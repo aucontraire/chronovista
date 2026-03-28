@@ -11,9 +11,9 @@ These tests focus on the actual CLI command entry points that weren't covered
 in the existing test_takeout.py file.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, mock_open, patch
+from unittest.mock import AsyncMock, mock_open, patch
 
 import pytest
 import typer
@@ -339,8 +339,8 @@ class TestAnalyzeComprehensiveCommand:
             playlist_count=5,
             subscription_count=50,
             date_range=DateRange(
-                start_date=datetime(2022, 1, 1, tzinfo=timezone.utc),
-                end_date=datetime(2023, 12, 31, tzinfo=timezone.utc),
+                start_date=datetime(2022, 1, 1, tzinfo=UTC),
+                end_date=datetime(2023, 12, 31, tzinfo=UTC),
                 total_days=730,
             ),
             data_completeness=0.8,

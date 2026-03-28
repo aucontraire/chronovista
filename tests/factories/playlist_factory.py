@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from datetime import datetime, timezone
-from typing import Any, cast
+from datetime import UTC, datetime
+from typing import Any
 
 import factory
 from factory import Faker, LazyAttribute
@@ -73,8 +73,8 @@ class PlaylistFactory(PlaylistBaseFactory):
     class Meta:
         model = Playlist
 
-    created_at: Any = Faker("date_time", tzinfo=timezone.utc)
-    updated_at: Any = Faker("date_time", tzinfo=timezone.utc)
+    created_at: Any = Faker("date_time", tzinfo=UTC)
+    updated_at: Any = Faker("date_time", tzinfo=UTC)
 
     @classmethod
     def with_youtube_id(cls, youtube_id: str | None = None, **kwargs: Any) -> Playlist:
@@ -124,10 +124,10 @@ class PlaylistSearchFiltersFactory(factory.Factory[PlaylistSearchFilters]):
     min_video_count: Any = Faker("random_int", min=1, max=10)
     max_video_count: Any = Faker("random_int", min=11, max=100)
     has_description: Any = Faker("boolean")
-    created_after: Any = Faker("date_time", tzinfo=timezone.utc)
-    created_before: Any = Faker("date_time", tzinfo=timezone.utc)
-    updated_after: Any = Faker("date_time", tzinfo=timezone.utc)
-    updated_before: Any = Faker("date_time", tzinfo=timezone.utc)
+    created_after: Any = Faker("date_time", tzinfo=UTC)
+    created_before: Any = Faker("date_time", tzinfo=UTC)
+    updated_after: Any = Faker("date_time", tzinfo=UTC)
+    updated_before: Any = Faker("date_time", tzinfo=UTC)
 
 
 class PlaylistStatisticsFactory(factory.Factory[PlaylistStatistics]):
@@ -410,10 +410,10 @@ class PlaylistTestData:
             "min_video_count": 5,
             "max_video_count": 100,
             "has_description": True,
-            "created_after": datetime(2023, 1, 1, tzinfo=timezone.utc),
-            "created_before": datetime(2023, 12, 31, tzinfo=timezone.utc),
-            "updated_after": datetime(2023, 6, 1, tzinfo=timezone.utc),
-            "updated_before": datetime(2023, 12, 31, tzinfo=timezone.utc),
+            "created_after": datetime(2023, 1, 1, tzinfo=UTC),
+            "created_before": datetime(2023, 12, 31, tzinfo=UTC),
+            "updated_after": datetime(2023, 6, 1, tzinfo=UTC),
+            "updated_before": datetime(2023, 12, 31, tzinfo=UTC),
         }
 
     @classmethod

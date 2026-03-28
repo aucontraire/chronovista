@@ -11,7 +11,8 @@ and verify the channel → dependent model data flow.
 
 from __future__ import annotations
 
-from typing import Any, Awaitable, Dict
+from collections.abc import Awaitable
+from typing import Any
 
 import pytest
 from sqlalchemy import delete
@@ -26,8 +27,6 @@ from chronovista.models.enums import PrivacyStatus
 from chronovista.models.playlist import PlaylistCreate, PlaylistUpdate
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 
-pytestmark = pytest.mark.asyncio
-
 
 @pytest.mark.integration
 @pytest.mark.api
@@ -38,7 +37,7 @@ class TestChannelKeywordFromAPI:
     async def test_channel_keyword_extraction(
         self,
         authenticated_youtube_service,
-        established_channel: Awaitable[Dict[str, Any] | None],
+        established_channel: Awaitable[dict[str, Any] | None],
         integration_db_session,
     ):
         """Test extracting and storing channel keywords from real channel data."""
@@ -122,7 +121,7 @@ class TestChannelKeywordFromAPI:
 
     async def test_channel_keyword_uniqueness(
         self,
-        established_channel: Awaitable[Dict[str, Any] | None],
+        established_channel: Awaitable[dict[str, Any] | None],
         integration_db_session,
     ):
         """Test that duplicate keywords for same channel are handled properly."""
@@ -202,7 +201,7 @@ class TestPlaylistFromAPI:
     async def test_playlist_creation_from_api(
         self,
         authenticated_youtube_service,
-        established_channel: Awaitable[Dict[str, Any] | None],
+        established_channel: Awaitable[dict[str, Any] | None],
         integration_db_session,
     ):
         """Test creating playlists from YouTube API data."""
@@ -301,7 +300,7 @@ class TestPlaylistFromAPI:
     async def test_playlist_statistics_update(
         self,
         authenticated_youtube_service,
-        established_channel: Awaitable[Dict[str, Any] | None],
+        established_channel: Awaitable[dict[str, Any] | None],
         integration_db_session,
     ):
         """Test updating playlist statistics from API."""
@@ -383,7 +382,7 @@ class TestPlaylistFromAPI:
 
     async def test_playlist_video_relationship_preparation(
         self,
-        established_channel: Awaitable[Dict[str, Any] | None],
+        established_channel: Awaitable[dict[str, Any] | None],
         integration_db_session,
     ):
         """Test playlist creation in preparation for video relationships (Tier 3)."""
@@ -400,7 +399,6 @@ class TestPlaylistFromAPI:
                     DBPlaylist, PlaylistCreate, PlaylistUpdate
                 ] = BaseSQLAlchemyRepository(DBPlaylist)
 
-                import time
 
                 # test_suffix = f"prep_test_{int(time.time())}"
                 # Create multiple playlists that will be used in Tier 3 video tests

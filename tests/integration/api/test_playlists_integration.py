@@ -13,21 +13,24 @@ Uses the integration test database with real data insertion.
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import delete, select, text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete
 
 from chronovista.db.models import (
     Channel,
-    Playlist as PlaylistDB,
     PlaylistMembership,
     UserVideo,
-    Video as VideoDB,
     VideoTranscript,
+)
+from chronovista.db.models import (
+    Playlist as PlaylistDB,
+)
+from chronovista.db.models import (
+    Video as VideoDB,
 )
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
@@ -117,7 +120,7 @@ async def seed_playlist_data(
                 video_id="vid_test_0001",
                 channel_id=CHANNEL_ID,
                 title="Alpha Video",
-                upload_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+                upload_date=datetime(2024, 1, 15, tzinfo=UTC),
                 duration=300,
                 availability_status="available",
             ),
@@ -125,7 +128,7 @@ async def seed_playlist_data(
                 video_id="vid_test_0002",
                 channel_id=CHANNEL_ID,
                 title="Beta Video",
-                upload_date=datetime(2024, 3, 20, tzinfo=timezone.utc),
+                upload_date=datetime(2024, 3, 20, tzinfo=UTC),
                 duration=450,
                 availability_status="available",
             ),
@@ -133,7 +136,7 @@ async def seed_playlist_data(
                 video_id="vid_test_0003",
                 channel_id=CHANNEL_ID,
                 title="Charlie Video",
-                upload_date=datetime(2024, 2, 10, tzinfo=timezone.utc),
+                upload_date=datetime(2024, 2, 10, tzinfo=UTC),
                 duration=600,
                 availability_status="deleted",  # unavailable
             ),
@@ -141,7 +144,7 @@ async def seed_playlist_data(
                 video_id="vid_test_0004",
                 channel_id=CHANNEL_ID,
                 title="Delta Video",
-                upload_date=datetime(2024, 5, 1, tzinfo=timezone.utc),
+                upload_date=datetime(2024, 5, 1, tzinfo=UTC),
                 duration=180,
                 availability_status="available",
             ),
@@ -149,7 +152,7 @@ async def seed_playlist_data(
                 video_id="vid_test_0005",
                 channel_id=CHANNEL_ID,
                 title="Echo Video",
-                upload_date=datetime(2024, 4, 10, tzinfo=timezone.utc),
+                upload_date=datetime(2024, 4, 10, tzinfo=UTC),
                 duration=240,
                 availability_status="available",
             ),

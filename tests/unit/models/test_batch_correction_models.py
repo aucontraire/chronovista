@@ -23,8 +23,6 @@ from chronovista.models.batch_correction_models import (
 )
 
 # CRITICAL: Ensure async tests work with coverage tooling.
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers

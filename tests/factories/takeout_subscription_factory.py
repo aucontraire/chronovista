@@ -7,7 +7,7 @@ with realistic and consistent test data.
 
 from __future__ import annotations
 
-from typing import Any, Any, List, cast
+from typing import Any
 
 import factory
 
@@ -193,7 +193,7 @@ def create_handle_takeout_subscription(**kwargs: Any) -> TakeoutSubscription:
     return result
 
 
-def create_batch_takeout_subscriptions(count: int = 5) -> List[TakeoutSubscription]:
+def create_batch_takeout_subscriptions(count: int = 5) -> list[TakeoutSubscription]:
     """Create a batch of TakeoutSubscription instances for testing."""
     subscriptions = []
     base_channels = [

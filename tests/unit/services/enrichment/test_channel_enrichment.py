@@ -7,9 +7,9 @@ dry-run mode, limit parameter, shutdown handling, error isolation, and field ext
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from typing import Any, cast
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -25,8 +25,6 @@ from chronovista.services.enrichment.enrichment_service import (
 )
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 def make_channel_response(
     channel_id: str,
@@ -77,7 +75,7 @@ def make_channel_response(
         country=country,
         defaultLanguage=default_language,
         customUrl=custom_url,
-        publishedAt=datetime.now(timezone.utc),
+        publishedAt=datetime.now(UTC),
     )
 
     statistics = ChannelStatisticsResponse(
@@ -152,8 +150,8 @@ class TestChannelEnrichmentResultModel:
 
     def test_timing_fields(self) -> None:
         """Test timing fields on ChannelEnrichmentResult."""
-        started = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
-        completed = datetime(2024, 1, 15, 12, 5, 30, tzinfo=timezone.utc)
+        started = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
+        completed = datetime(2024, 1, 15, 12, 5, 30, tzinfo=UTC)
 
         result = ChannelEnrichmentResult(
             started_at=started,
@@ -255,7 +253,7 @@ class TestExtractChannelUpdate:
             snippet=ChannelSnippet(
                 title="Test Channel",
                 description="Test description",
-                publishedAt=datetime.now(timezone.utc),
+                publishedAt=datetime.now(UTC),
             ),
             statistics=None,
         )

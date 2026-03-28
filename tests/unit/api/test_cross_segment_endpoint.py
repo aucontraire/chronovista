@@ -27,8 +27,6 @@ from chronovista.api.main import app
 from chronovista.services.cross_segment_discovery import CrossSegmentCandidate
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Helpers

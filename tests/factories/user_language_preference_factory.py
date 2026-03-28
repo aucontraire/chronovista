@@ -7,8 +7,8 @@ with realistic and consistent test data.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, List, cast
+from datetime import UTC, datetime
+from typing import Any
 
 import factory
 
@@ -82,7 +82,7 @@ class UserLanguagePreferenceFactory(factory.Factory[UserLanguagePreference]):
         lambda: "Cultural interest in French media and cinema"
     )
     created_at: Any = factory.LazyFunction(
-        lambda: datetime(2023, 10, 15, 14, 30, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 10, 15, 14, 30, 0, tzinfo=UTC)
     )
 
 
@@ -177,7 +177,7 @@ def create_user_language_preference(**kwargs: Any) -> UserLanguagePreference:
 
 def create_batch_user_language_preferences(
     count: int = 5,
-) -> List[UserLanguagePreference]:
+) -> list[UserLanguagePreference]:
     """Create a batch of UserLanguagePreference instances for testing."""
     preferences = []
     base_user_ids = ["user_001", "user_002", "user_003", "user_004", "user_005"]

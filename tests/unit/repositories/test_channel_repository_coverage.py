@@ -6,17 +6,14 @@ Focuses on uncovered lines in channel repository methods.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import Channel as ChannelDB
-from chronovista.models.channel import ChannelCreate, ChannelUpdate
+from chronovista.models.channel import ChannelCreate
 from chronovista.repositories.channel_repository import ChannelRepository
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestChannelRepositoryCoverage:

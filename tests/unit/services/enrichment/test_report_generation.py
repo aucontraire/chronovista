@@ -14,10 +14,8 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-
-import pytest
 
 from chronovista.models.enrichment_report import (
     EnrichmentDetail,
@@ -31,7 +29,7 @@ def create_sample_report(
     num_details: int = 3,
 ) -> EnrichmentReport:
     """Create a sample EnrichmentReport for testing."""
-    timestamp = datetime.now(timezone.utc)
+    timestamp = datetime.now(UTC)
     summary = EnrichmentSummary(
         videos_processed=num_details,
         videos_updated=num_details - 1 if num_details > 0 else 0,
@@ -98,7 +96,7 @@ def generate_default_report_path(
         Full path to the report file
     """
     if timestamp is None:
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
 
     # Format: enrichment-YYYYMMDD-HHMMSS.json
     timestamp_str = timestamp.strftime("%Y%m%d-%H%M%S")
@@ -294,12 +292,12 @@ class TestDefaultPathGeneration:
 
     def test_default_path_format(self, tmp_path: Path) -> None:
         """Test that default path follows expected format."""
-        timestamp = datetime(2024, 6, 15, 14, 30, 45, tzinfo=timezone.utc)
+        timestamp = datetime(2024, 6, 15, 14, 30, 45, tzinfo=UTC)
         path = generate_default_report_path(tmp_path, timestamp)
 
         # Verify path format
         assert path.parent.name == "exports"
-        assert "enrichment-20240615-143045.json" == path.name
+        assert path.name == "enrichment-20240615-143045.json"
 
     def test_default_path_in_exports_directory(self, tmp_path: Path) -> None:
         """Test that default path is in exports directory."""
@@ -310,7 +308,7 @@ class TestDefaultPathGeneration:
 
     def test_default_path_includes_timestamp(self, tmp_path: Path) -> None:
         """Test that default path includes timestamp."""
-        timestamp = datetime(2024, 12, 25, 8, 0, 0, tzinfo=timezone.utc)
+        timestamp = datetime(2024, 12, 25, 8, 0, 0, tzinfo=UTC)
         path = generate_default_report_path(tmp_path, timestamp)
 
         # Should contain date components
@@ -416,7 +414,7 @@ class TestReportIncludesAllDetails:
 
     def test_report_includes_error_details(self, tmp_path: Path) -> None:
         """Test that report includes error details with messages."""
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
         summary = EnrichmentSummary(
             videos_processed=2,
             videos_updated=0,
@@ -476,7 +474,7 @@ class TestReportIncludesAllDetails:
 
     def test_report_includes_mixed_status_details(self, tmp_path: Path) -> None:
         """Test that report includes details with all status types."""
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
         summary = EnrichmentSummary(
             videos_processed=4,
             videos_updated=1,
@@ -536,7 +534,7 @@ class TestReportTimestamp:
 
     def test_report_preserves_utc_timezone(self, tmp_path: Path) -> None:
         """Test that report preserves UTC timezone."""
-        timestamp = datetime(2024, 6, 15, 12, 30, 45, tzinfo=timezone.utc)
+        timestamp = datetime(2024, 6, 15, 12, 30, 45, tzinfo=UTC)
         summary = EnrichmentSummary(
             videos_processed=0,
             videos_updated=0,

@@ -12,8 +12,9 @@ isolation from other integration test files.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
@@ -23,9 +24,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import (
     Channel as ChannelDB,
+)
+from chronovista.db.models import (
     TranscriptCorrection as TranscriptCorrectionDB,
+)
+from chronovista.db.models import (
     TranscriptSegment as TranscriptSegmentDB,
+)
+from chronovista.db.models import (
     Video as VideoDB,
+)
+from chronovista.db.models import (
     VideoTranscript as VideoTranscriptDB,
 )
 
@@ -33,8 +42,6 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
 # CRITICAL: Ensures all async tests in this module run with pytest-asyncio
-pytestmark = pytest.mark.asyncio
-
 # ---------------------------------------------------------------------------
 # Unique stable IDs — chosen to avoid collisions with other test files
 # ---------------------------------------------------------------------------
@@ -63,7 +70,7 @@ def _revert_url(video_id: str, segment_id: int | str) -> str:
 
 @pytest.fixture
 async def seed_test_data(
-    integration_session_factory: "async_sessionmaker[AsyncSession]",
+    integration_session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncGenerator[dict[str, Any], None]:
     """Seed database with a channel, video, transcript, and segment for correction tests.
 
@@ -98,7 +105,7 @@ async def seed_test_data(
                 channel_id=_CHANNEL_ID,
                 title="Transcript Correction Test Video",
                 description="Integration test video for Feature 034",
-                upload_date=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                upload_date=datetime(2024, 1, 1, tzinfo=UTC),
                 duration=300,
             )
             session.add(video)
@@ -919,7 +926,7 @@ def _segments_url(video_id: str) -> str:
 
 @pytest.fixture
 async def seed_enrichment_data(
-    integration_session_factory: "async_sessionmaker[AsyncSession]",
+    integration_session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncGenerator[dict[str, Any], None]:
     """Seed database with a channel, video, transcript, and 2 segments for enrichment tests.
 
@@ -956,7 +963,7 @@ async def seed_enrichment_data(
                 channel_id=_ENR_CHANNEL_ID,
                 title="Enrichment Test Video",
                 description="Integration test video for T013 segment enrichment",
-                upload_date=datetime(2024, 6, 1, tzinfo=timezone.utc),
+                upload_date=datetime(2024, 6, 1, tzinfo=UTC),
                 duration=120,
             )
             session.add(video)

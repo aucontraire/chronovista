@@ -7,11 +7,10 @@ with realistic and consistent test data.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, List, cast
+from datetime import UTC, datetime
+from typing import Any
 
 import factory
-from factory import LazyFunction
 
 from chronovista.models.channel import (
     Channel,
@@ -101,10 +100,10 @@ class ChannelFactory(factory.Factory[Channel]):
         lambda: "https://yt3.ggpht.com/ytc/AKedOLStephenColbert=s240-c-k-c0x00ffffff-no-rj"
     )
     created_at: Any = factory.LazyFunction(
-        lambda: datetime(2023, 10, 15, 9, 30, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 10, 15, 9, 30, 0, tzinfo=UTC)
     )
     updated_at: Any = factory.LazyFunction(
-        lambda: datetime(2023, 12, 1, 14, 45, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 12, 1, 14, 45, 0, tzinfo=UTC)
     )
 
 
@@ -245,7 +244,7 @@ def create_channel_statistics(**kwargs: Any) -> ChannelStatistics:
     return result
 
 
-def create_batch_channels(count: int = 5) -> List[Channel]:
+def create_batch_channels(count: int = 5) -> list[Channel]:
     """Create a batch of Channel instances for testing."""
     channels = []
     base_channel_ids = [

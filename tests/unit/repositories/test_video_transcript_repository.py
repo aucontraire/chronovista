@@ -7,8 +7,8 @@ transcript management, quality indicators, and specialized queries.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List
+from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -28,8 +28,6 @@ from chronovista.models.video_transcript import (
 from chronovista.repositories.video_transcript_repository import (
     VideoTranscriptRepository,
 )
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestVideoTranscriptRepository:
@@ -60,7 +58,7 @@ class TestVideoTranscriptRepository:
             is_auto_synced=False,
             track_kind=TrackKind.STANDARD.value,
             caption_name="English (CC)",
-            downloaded_at=datetime.now(timezone.utc),
+            downloaded_at=datetime.now(UTC),
         )
 
     @pytest.fixture
@@ -80,9 +78,9 @@ class TestVideoTranscriptRepository:
         )
 
     @pytest.fixture
-    def sample_transcripts_list(self) -> List[VideoTranscriptDB]:
+    def sample_transcripts_list(self) -> list[VideoTranscriptDB]:
         """Create list of sample transcripts."""
-        base_time = datetime.now(timezone.utc)
+        base_time = datetime.now(UTC)
         return [
             VideoTranscriptDB(
                 video_id="dQw4w9WgXcQ",
@@ -188,7 +186,7 @@ class TestVideoTranscriptRepository:
         self,
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
-        sample_transcripts_list: List[VideoTranscriptDB],
+        sample_transcripts_list: list[VideoTranscriptDB],
     ):
         """Test getting all transcripts for a video."""
         # Mock execute to return scalars
@@ -208,7 +206,7 @@ class TestVideoTranscriptRepository:
         self,
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
-        sample_transcripts_list: List[VideoTranscriptDB],
+        sample_transcripts_list: list[VideoTranscriptDB],
     ):
         """Test getting transcripts filtered by language."""
         # Filter list to only English transcripts
@@ -232,7 +230,7 @@ class TestVideoTranscriptRepository:
         self,
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
-        sample_transcripts_list: List[VideoTranscriptDB],
+        sample_transcripts_list: list[VideoTranscriptDB],
     ):
         """Test getting transcripts by language with limit."""
         mock_result = MagicMock()
@@ -253,7 +251,7 @@ class TestVideoTranscriptRepository:
         self,
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
-        sample_transcripts_list: List[VideoTranscriptDB],
+        sample_transcripts_list: list[VideoTranscriptDB],
     ):
         """Test getting high-quality transcripts."""
         # Filter to high-quality transcripts (CC, manual, or high confidence)
@@ -281,7 +279,7 @@ class TestVideoTranscriptRepository:
         self,
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
-        sample_transcripts_list: List[VideoTranscriptDB],
+        sample_transcripts_list: list[VideoTranscriptDB],
     ):
         """Test searching transcripts with various filters."""
         filters = TranscriptSearchFilters(
@@ -308,7 +306,7 @@ class TestVideoTranscriptRepository:
         self,
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
-        sample_transcripts_list: List[VideoTranscriptDB],
+        sample_transcripts_list: list[VideoTranscriptDB],
     ):
         """Test searching transcripts with empty filters (returns all)."""
         filters = TranscriptSearchFilters()
@@ -485,7 +483,7 @@ class TestVideoTranscriptRepository:
         self,
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
-        sample_transcripts_list: List[VideoTranscriptDB],
+        sample_transcripts_list: list[VideoTranscriptDB],
     ):
         """Test getting transcripts with computed quality scores."""
         with patch.object(
@@ -584,7 +582,7 @@ class TestVideoTranscriptRepository:
             confidence_score=0.3,
             track_kind=TrackKind.ASR.value,
             is_auto_synced=True,
-            downloaded_at=datetime.now(timezone.utc),
+            downloaded_at=datetime.now(UTC),
         )
 
         score = repository._compute_quality_score(low_quality_transcript)
@@ -654,7 +652,7 @@ class TestVideoTranscriptRepositoryEdgeCases:
         self, repository: VideoTranscriptRepository, mock_session: AsyncMock
     ):
         """Test search with date range filters."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         filters = TranscriptSearchFilters(
             downloaded_after=now,
             downloaded_before=now,
@@ -721,7 +719,7 @@ class TestVideoTranscriptRepositoryEdgeCases:
             confidence_score=None,  # Missing confidence
             track_kind=TrackKind.STANDARD.value,
             is_auto_synced=False,
-            downloaded_at=datetime.now(timezone.utc),
+            downloaded_at=datetime.now(UTC),
         )
 
         score = repository._compute_quality_score(transcript)
@@ -748,7 +746,7 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
         return AsyncMock(spec=AsyncSession)
 
     @pytest.fixture
-    def sample_raw_transcript_data(self) -> Dict[str, Any]:
+    def sample_raw_transcript_data(self) -> dict[str, Any]:
         """Sample raw transcript data with timestamps."""
         return {
             "video_id": "dQw4w9WgXcQ",
@@ -766,7 +764,7 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
         }
 
     @pytest.fixture
-    def sample_raw_transcript_data_empty_snippets(self) -> Dict[str, Any]:
+    def sample_raw_transcript_data_empty_snippets(self) -> dict[str, Any]:
         """Sample raw transcript data with empty snippets array."""
         return {
             "video_id": "dQw4w9WgXcQ",
@@ -781,7 +779,7 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
 
     @pytest.fixture
     def sample_transcript_create_with_raw_data(
-        self, sample_raw_transcript_data: Dict[str, Any]
+        self, sample_raw_transcript_data: dict[str, Any]
     ) -> VideoTranscriptCreate:
         """Create sample transcript creation object for testing."""
         return VideoTranscriptCreate(
@@ -798,7 +796,7 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
         )
 
     def test_derive_metadata_with_valid_snippets(
-        self, repository: VideoTranscriptRepository, sample_raw_transcript_data: Dict[str, Any]
+        self, repository: VideoTranscriptRepository, sample_raw_transcript_data: dict[str, Any]
     ):
         """T016: Test _derive_metadata with valid raw data containing snippets.
 
@@ -823,7 +821,7 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
     def test_derive_metadata_with_empty_snippets(
         self,
         repository: VideoTranscriptRepository,
-        sample_raw_transcript_data_empty_snippets: Dict[str, Any]
+        sample_raw_transcript_data_empty_snippets: dict[str, Any]
     ):
         """T017: Test _derive_metadata with empty snippets array.
 
@@ -890,7 +888,7 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
         sample_transcript_create_with_raw_data: VideoTranscriptCreate,
-        sample_raw_transcript_data: Dict[str, Any],
+        sample_raw_transcript_data: dict[str, Any],
     ):
         """T019: Test create_or_update creating a NEW transcript with raw_transcript_data.
 
@@ -907,7 +905,7 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
             mock_get.return_value = None
 
             # Mock the database object that will be created
-            mock_created_transcript = VideoTranscriptDB(
+            VideoTranscriptDB(
                 video_id="dQw4w9WgXcQ",
                 language_code="en",
                 transcript_text="Never gonna give you up Never gonna let you down Never gonna run around and desert you",
@@ -918,7 +916,7 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
                 is_auto_synced=False,
                 track_kind=TrackKind.STANDARD.value,
                 caption_name="English (CC)",
-                downloaded_at=datetime.now(timezone.utc),
+                downloaded_at=datetime.now(UTC),
                 # Feature 007 fields
                 raw_transcript_data=sample_raw_transcript_data,
                 has_timestamps=True,
@@ -937,7 +935,7 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
             mock_execute_result.rowcount = 0
             mock_session.execute.return_value = mock_execute_result
 
-            result = await repository.create_or_update(
+            await repository.create_or_update(
                 mock_session,
                 sample_transcript_create_with_raw_data,
                 raw_transcript_data=sample_raw_transcript_data,
@@ -971,7 +969,7 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
         sample_transcript_create_with_raw_data: VideoTranscriptCreate,
-        sample_raw_transcript_data: Dict[str, Any],
+        sample_raw_transcript_data: dict[str, Any],
     ):
         """T020: Test create_or_update UPDATING an existing transcript with fresh raw_transcript_data.
 
@@ -993,7 +991,7 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
             is_auto_synced=True,
             track_kind=TrackKind.ASR.value,
             caption_name="English (Auto)",
-            downloaded_at=datetime.now(timezone.utc),
+            downloaded_at=datetime.now(UTC),
             # Old Feature 007 fields
             raw_transcript_data={"old": "data"},
             has_timestamps=False,
@@ -1018,7 +1016,7 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
             mock_execute_result.rowcount = 0
             mock_session.execute.return_value = mock_execute_result
 
-            result = await repository.create_or_update(
+            await repository.create_or_update(
                 mock_session,
                 sample_transcript_create_with_raw_data,
                 raw_transcript_data=sample_raw_transcript_data,
@@ -1064,7 +1062,7 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
             is_auto_synced=False,
             track_kind=TrackKind.STANDARD.value,
             caption_name="English (CC)",
-            downloaded_at=datetime.now(timezone.utc),
+            downloaded_at=datetime.now(UTC),
             # Feature 007 fields
             raw_transcript_data={"snippets": [{"text": "test", "start": 0.0, "duration": 1.0}]},
             has_timestamps=True,
@@ -1116,7 +1114,7 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
             mock_session.refresh.return_value = None
 
             # Call WITHOUT raw_transcript_data parameter
-            result = await repository.create_or_update(
+            await repository.create_or_update(
                 mock_session,
                 sample_transcript_create_with_raw_data,
                 # No raw_transcript_data parameter
@@ -1161,9 +1159,9 @@ class TestVideoTranscriptRepositoryMetadataQueries:
         return AsyncMock(spec=AsyncSession)
 
     @pytest.fixture
-    def sample_transcripts_with_metadata(self) -> List[VideoTranscriptDB]:
+    def sample_transcripts_with_metadata(self) -> list[VideoTranscriptDB]:
         """Create sample transcripts with varying metadata for filter testing."""
-        base_time = datetime.now(timezone.utc)
+        base_time = datetime.now(UTC)
 
         return [
             # Transcript 1: Has timestamps, 3 segments, 7.8 seconds
@@ -1253,7 +1251,7 @@ class TestVideoTranscriptRepositoryMetadataQueries:
         self,
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
-        sample_transcripts_with_metadata: List[VideoTranscriptDB],
+        sample_transcripts_with_metadata: list[VideoTranscriptDB],
     ):
         """T031: Test filter_by_metadata with has_timestamps=True filter.
 
@@ -1289,7 +1287,7 @@ class TestVideoTranscriptRepositoryMetadataQueries:
         self,
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
-        sample_transcripts_with_metadata: List[VideoTranscriptDB],
+        sample_transcripts_with_metadata: list[VideoTranscriptDB],
     ):
         """T032: Test filter_by_metadata with min_segment_count filter.
 
@@ -1327,7 +1325,7 @@ class TestVideoTranscriptRepositoryMetadataQueries:
         self,
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
-        sample_transcripts_with_metadata: List[VideoTranscriptDB],
+        sample_transcripts_with_metadata: list[VideoTranscriptDB],
     ):
         """T033: Test filter_by_metadata with min_duration filter (600 seconds = 10 minutes).
 
@@ -1367,7 +1365,7 @@ class TestVideoTranscriptRepositoryMetadataQueries:
         self,
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
-        sample_transcripts_with_metadata: List[VideoTranscriptDB],
+        sample_transcripts_with_metadata: list[VideoTranscriptDB],
     ):
         """T034: Test filter_by_metadata with combined filters (AND logic).
 
@@ -1415,7 +1413,7 @@ class TestVideoTranscriptRepositoryMetadataQueries:
         self,
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
-        sample_transcripts_with_metadata: List[VideoTranscriptDB],
+        sample_transcripts_with_metadata: list[VideoTranscriptDB],
     ):
         """T035: Test filter_by_metadata pagination (limit/offset).
 
@@ -1485,7 +1483,7 @@ class TestVideoTranscriptRepositoryMetadataQueries:
             is_auto_synced=True,
             track_kind=TrackKind.ASR.value,
             caption_name="English (Auto)",
-            downloaded_at=datetime.now(timezone.utc),
+            downloaded_at=datetime.now(UTC),
             # No timestamps
             raw_transcript_data=None,
             has_timestamps=False,
@@ -1524,7 +1522,7 @@ class TestVideoTranscriptRepositoryMetadataQueries:
             is_auto_synced=False,
             track_kind=TrackKind.STANDARD.value,
             caption_name="English (CC)",
-            downloaded_at=datetime.now(timezone.utc),
+            downloaded_at=datetime.now(UTC),
             # Has timestamps
             raw_transcript_data={"snippets": [{"text": "test", "start": 0.0, "duration": 2.5}]},
             has_timestamps=True,
@@ -1572,7 +1570,7 @@ class TestVideoTranscriptRepositorySourceTracking:
         return AsyncMock(spec=AsyncSession)
 
     @pytest.fixture
-    def sample_raw_data_with_source(self) -> Dict[str, Any]:
+    def sample_raw_data_with_source(self) -> dict[str, Any]:
         """Create sample raw data with source field set."""
         return {
             "video_id": "srcTest1234",  # Valid 11-character video ID
@@ -1588,7 +1586,7 @@ class TestVideoTranscriptRepositorySourceTracking:
         }
 
     @pytest.fixture
-    def sample_raw_data_without_source(self) -> Dict[str, Any]:
+    def sample_raw_data_without_source(self) -> dict[str, Any]:
         """Create sample raw data missing source field."""
         return {
             "video_id": "noSrcTest12",  # Valid 11-character video ID
@@ -1608,7 +1606,7 @@ class TestVideoTranscriptRepositorySourceTracking:
         self,
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
-        sample_raw_data_with_source: Dict[str, Any],
+        sample_raw_data_with_source: dict[str, Any],
     ):
         """T049: Test that source is extracted from raw_transcript_data during create_or_update.
 
@@ -1677,7 +1675,7 @@ class TestVideoTranscriptRepositorySourceTracking:
         Verifies that filter_by_metadata correctly filters transcripts by their
         source field, returning only transcripts from the specified source.
         """
-        base_time = datetime.now(timezone.utc)
+        base_time = datetime.now(UTC)
 
         # Create sample transcripts with different sources
         transcripts_mixed_sources = [
@@ -1774,7 +1772,7 @@ class TestVideoTranscriptRepositorySourceTracking:
         self,
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
-        sample_raw_data_without_source: Dict[str, Any],
+        sample_raw_data_without_source: dict[str, Any],
     ):
         """T051: Test default source value when missing from raw_data.
 
@@ -1856,7 +1854,7 @@ class TestSegmentCreationInCreateOrUpdate:
         return session
 
     @pytest.fixture
-    def sample_raw_transcript_data(self) -> Dict[str, Any]:
+    def sample_raw_transcript_data(self) -> dict[str, Any]:
         """Sample raw transcript data with timestamps."""
         return {
             "video_id": "dQw4w9WgXcQ",
@@ -1892,7 +1890,7 @@ class TestSegmentCreationInCreateOrUpdate:
         self,
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
-        sample_raw_transcript_data: Dict[str, Any],
+        sample_raw_transcript_data: dict[str, Any],
     ) -> None:
         """Test that _create_segments_from_raw_data creates segment records."""
         # Call the private method directly
@@ -1922,7 +1920,7 @@ class TestSegmentCreationInCreateOrUpdate:
         self,
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
-        sample_raw_transcript_data: Dict[str, Any],
+        sample_raw_transcript_data: dict[str, Any],
     ) -> None:
         """Test that segments are created with correct field values."""
         from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
@@ -1956,7 +1954,7 @@ class TestSegmentCreationInCreateOrUpdate:
         self,
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
-        sample_raw_transcript_data: Dict[str, Any],
+        sample_raw_transcript_data: dict[str, Any],
     ) -> None:
         """Test that existing segments are deleted before creating new ones (idempotent)."""
         # Mock execute to show some rows were deleted
@@ -1981,7 +1979,7 @@ class TestSegmentCreationInCreateOrUpdate:
         mock_session: AsyncMock,
     ) -> None:
         """Test handling of empty snippets array."""
-        raw_data: Dict[str, Any] = {
+        raw_data: dict[str, Any] = {
             "video_id": "dQw4w9WgXcQ",
             "language_code": "en",
             "snippets": [],
@@ -2011,7 +2009,7 @@ class TestSegmentCreationInCreateOrUpdate:
         mock_session: AsyncMock,
     ) -> None:
         """Test handling when snippets is not a list."""
-        raw_data: Dict[str, Any] = {
+        raw_data: dict[str, Any] = {
             "video_id": "dQw4w9WgXcQ",
             "language_code": "en",
             "snippets": "not a list",  # Invalid type
@@ -2039,7 +2037,7 @@ class TestSegmentCreationInCreateOrUpdate:
         mock_session: AsyncMock,
     ) -> None:
         """Test that malformed snippets are skipped without failing."""
-        raw_data: Dict[str, Any] = {
+        raw_data: dict[str, Any] = {
             "video_id": "dQw4w9WgXcQ",
             "language_code": "en",
             "snippets": [
@@ -2072,7 +2070,7 @@ class TestSegmentCreationInCreateOrUpdate:
         mock_session: AsyncMock,
     ) -> None:
         """Test that type conversion errors in snippets are handled gracefully."""
-        raw_data: Dict[str, Any] = {
+        raw_data: dict[str, Any] = {
             "video_id": "dQw4w9WgXcQ",
             "language_code": "en",
             "snippets": [
@@ -2099,7 +2097,7 @@ class TestSegmentCreationInCreateOrUpdate:
         repository: VideoTranscriptRepository,
         mock_session: AsyncMock,
         sample_transcript_create: VideoTranscriptCreate,
-        sample_raw_transcript_data: Dict[str, Any],
+        sample_raw_transcript_data: dict[str, Any],
     ) -> None:
         """Test that create_or_update calls _create_segments_from_raw_data."""
         # Mock get_by_composite_key to return None (new transcript)

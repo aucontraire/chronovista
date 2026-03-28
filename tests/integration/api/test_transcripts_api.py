@@ -2,10 +2,7 @@
 
 from unittest.mock import patch
 
-import pytest
 from httpx import AsyncClient
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestTranscriptLanguages:
@@ -319,8 +316,8 @@ class TestTranscriptSegments:
                 assert "start_time" in segment
                 assert "end_time" in segment
                 assert "duration" in segment
-                assert isinstance(segment["start_time"], (int, float))
-                assert isinstance(segment["end_time"], (int, float))
+                assert isinstance(segment["start_time"], int | float)
+                assert isinstance(segment["end_time"], int | float)
 
     async def test_get_segments_pagination_has_more(
         self, async_client: AsyncClient

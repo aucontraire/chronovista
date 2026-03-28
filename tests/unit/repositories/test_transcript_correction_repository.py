@@ -21,7 +21,7 @@ follows the pattern used in ``test_canonical_tag_repository.py`` and
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -31,7 +31,6 @@ from uuid_utils import uuid7
 
 from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
 from chronovista.models.enums import CorrectionType
-from chronovista.models.transcript_correction import TranscriptCorrectionCreate
 from chronovista.repositories.transcript_correction_repository import (
     TranscriptCorrectionRepository,
 )
@@ -42,8 +41,6 @@ from tests.factories.transcript_correction_factory import (
 
 # Ensures every async test in this module is recognised by pytest-asyncio
 # regardless of how coverage is invoked (see CLAUDE.md §pytest-asyncio section).
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -111,7 +108,7 @@ def _make_correction_db(
         corrected_text=corrected_text,
         correction_note=correction_note,
         corrected_by_user_id=corrected_by_user_id,
-        corrected_at=corrected_at or datetime.now(tz=timezone.utc),
+        corrected_at=corrected_at or datetime.now(tz=UTC),
         version_number=version_number,
     )
 
@@ -876,7 +873,6 @@ class TestTranscriptCorrectionRepositoryBatchId:
         batch_id: count, actor, pattern/replacement text, and timestamp.
         """
         from chronovista.models.batch_correction_models import BatchListItem
-        from tests.factories.batch_correction_factory import BatchListItemFactory
 
         batch_id_a = _make_uuid()
         batch_id_b = _make_uuid()
@@ -888,7 +884,7 @@ class TestTranscriptCorrectionRepositoryBatchId:
         row_a.corrected_by_user_id = "user:batch"
         row_a.pattern = "Chomski"
         row_a.replacement = "Chomsky"
-        row_a.batch_timestamp = datetime(2025, 2, 1, 10, 0, 0, tzinfo=timezone.utc)
+        row_a.batch_timestamp = datetime(2025, 2, 1, 10, 0, 0, tzinfo=UTC)
 
         row_b = MagicMock()
         row_b.batch_id = batch_id_b
@@ -896,7 +892,7 @@ class TestTranscriptCorrectionRepositoryBatchId:
         row_b.corrected_by_user_id = "cli"
         row_b.pattern = "teh"
         row_b.replacement = "the"
-        row_b.batch_timestamp = datetime(2025, 1, 15, 8, 0, 0, tzinfo=timezone.utc)
+        row_b.batch_timestamp = datetime(2025, 1, 15, 8, 0, 0, tzinfo=UTC)
 
         mock_result = MagicMock()
         mock_result.all.return_value = [row_a, row_b]
@@ -1006,7 +1002,7 @@ class TestTranscriptCorrectionRepositoryBatchId:
         row_a.corrected_by_user_id = "user:batch"
         row_a.pattern = "errr"
         row_a.replacement = "err"
-        row_a.batch_timestamp = datetime(2025, 3, 1, tzinfo=timezone.utc)
+        row_a.batch_timestamp = datetime(2025, 3, 1, tzinfo=UTC)
 
         row_b = MagicMock()
         row_b.batch_id = batch_id_b
@@ -1014,7 +1010,7 @@ class TestTranscriptCorrectionRepositoryBatchId:
         row_b.corrected_by_user_id = "cli"
         row_b.pattern = "seperate"
         row_b.replacement = "separate"
-        row_b.batch_timestamp = datetime(2025, 2, 1, tzinfo=timezone.utc)
+        row_b.batch_timestamp = datetime(2025, 2, 1, tzinfo=UTC)
 
         mock_result = MagicMock()
         mock_result.all.return_value = [row_a, row_b]
@@ -1085,7 +1081,6 @@ class TestTranscriptCorrectionRepositoryBatchId:
         matches the shape expected from the real repository's aggregation result.
         """
         from tests.factories.batch_correction_factory import (
-            BatchListItemFactory,
             create_batch_list_item,
         )
 
@@ -1114,7 +1109,7 @@ class TestTranscriptCorrectionRepositoryBatchId:
         model definition.
         """
         batch_id = _make_uuid()
-        ts = datetime(2025, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+        ts = datetime(2025, 6, 1, 12, 0, 0, tzinfo=UTC)
 
         row = MagicMock()
         row.batch_id = batch_id

@@ -21,16 +21,13 @@ from googleapiclient.errors import HttpError
 from sqlalchemy.exc import SQLAlchemyError
 
 from chronovista.exceptions import (
-    AuthenticationError,
     EXIT_CODE_AUTHENTICATION_FAILED,
-    EXIT_CODE_GENERAL_ERROR,
+    AuthenticationError,
     NetworkError,
     YouTubeAPIError,
 )
 
 # Mark all async tests in this module
-pytestmark = pytest.mark.asyncio
-
 
 # =============================================================================
 # Test Helpers

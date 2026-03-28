@@ -5,15 +5,14 @@ Covers T035a-g: batch video fetch, video field updates, channel creation,
 quota estimation, and enrichment flow.
 """
 
-from datetime import datetime, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.api_responses import YouTubeVideoResponse
-from chronovista.models.enrichment_report import EnrichmentReport, EnrichmentSummary
+from chronovista.models.enums import AvailabilityStatus
 from chronovista.services.enrichment.enrichment_service import (
     BATCH_SIZE,
     EnrichmentService,
@@ -31,20 +30,18 @@ def make_video_response(video_id: str, **kwargs: Any) -> YouTubeVideoResponse:
     This helper ensures tests return proper Pydantic objects instead of dicts.
     The snippet field requires publishedAt and channelId, so we provide defaults.
     """
-    data: Dict[str, Any] = {"id": video_id, **kwargs}
+    data: dict[str, Any] = {"id": video_id, **kwargs}
 
     # If snippet is provided, ensure required fields are present
     if "snippet" in data:
         snippet = data["snippet"]
         if isinstance(snippet, dict):
             if "publishedAt" not in snippet:
-                snippet["publishedAt"] = datetime.now(timezone.utc).isoformat()
+                snippet["publishedAt"] = datetime.now(UTC).isoformat()
             if "channelId" not in snippet:
                 snippet["channelId"] = "UC_test_channel"
 
     return YouTubeVideoResponse.model_validate(data)
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestParseISO8601Duration:
@@ -201,7 +198,7 @@ class TestExtractVideoUpdate:
             "snippet": {"publishedAt": "2024-01-15T14:30:00Z"},
         }
         update = service._extract_video_update_from_dict(api_data)
-        assert update["upload_date"] == datetime(2024, 1, 15, 14, 30, 0, tzinfo=timezone.utc)
+        assert update["upload_date"] == datetime(2024, 1, 15, 14, 30, 0, tzinfo=UTC)
 
     def test_extract_statistics(self, service: EnrichmentService) -> None:
         """Test extracting view/like/comment counts."""

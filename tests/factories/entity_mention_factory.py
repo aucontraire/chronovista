@@ -8,7 +8,7 @@ with sensible defaults and easy customization.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import factory
@@ -82,7 +82,7 @@ class EntityMentionFactory(factory.Factory[EntityMention]):
     match_end: Any = None
     correction_id: Any = None
     created_at: Any = LazyFunction(
-        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
     )
 
 
@@ -104,7 +104,7 @@ class ManualEntityMentionFactory(factory.Factory[EntityMention]):
     match_end: Any = None
     correction_id: Any = None
     created_at: Any = LazyFunction(
-        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
     )
 
 
@@ -283,7 +283,7 @@ class EntityMentionTestData:
         data.update(
             {
                 "id": _uuid7(),
-                "created_at": datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+                "created_at": datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
             }
         )
         return data

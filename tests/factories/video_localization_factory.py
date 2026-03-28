@@ -7,8 +7,8 @@ with sensible defaults and easy customization.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, cast
+from datetime import UTC, datetime
+from typing import Any
 
 import factory
 from factory import Faker, LazyAttribute
@@ -71,7 +71,7 @@ class VideoLocalizationFactory(VideoLocalizationBaseFactory):
     class Meta:
         model = VideoLocalization
 
-    created_at: Any = Faker("date_time", tzinfo=timezone.utc)
+    created_at: Any = Faker("date_time", tzinfo=UTC)
 
 
 class VideoLocalizationSearchFiltersFactory(factory.Factory[VideoLocalizationSearchFilters]):
@@ -87,8 +87,8 @@ class VideoLocalizationSearchFiltersFactory(factory.Factory[VideoLocalizationSea
     title_query: Any = Faker("word")
     description_query: Any = Faker("word")
     has_description: Any = Faker("boolean")
-    created_after: Any = Faker("date_time", tzinfo=timezone.utc)
-    created_before: Any = Faker("date_time", tzinfo=timezone.utc)
+    created_after: Any = Faker("date_time", tzinfo=UTC)
+    created_before: Any = Faker("date_time", tzinfo=UTC)
 
 
 class VideoLocalizationStatisticsFactory(factory.Factory[VideoLocalizationStatistics]):
@@ -243,6 +243,6 @@ class VideoLocalizationTestData:
             "title_query": "tutorial",
             "description_query": "how to",
             "has_description": True,
-            "created_after": datetime(2023, 1, 1, tzinfo=timezone.utc),
-            "created_before": datetime(2023, 12, 31, tzinfo=timezone.utc),
+            "created_after": datetime(2023, 1, 1, tzinfo=UTC),
+            "created_before": datetime(2023, 12, 31, tzinfo=UTC),
         }

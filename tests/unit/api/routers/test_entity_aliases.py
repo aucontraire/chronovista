@@ -21,11 +21,10 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,8 +32,6 @@ from chronovista.api.deps import get_db, require_auth
 from chronovista.api.main import app
 
 # CRITICAL: ensures all async tests in this module are picked up by pytest-asyncio
-pytestmark = pytest.mark.asyncio
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -111,8 +108,8 @@ def _make_alias_db_row(
     row.alias_name = alias_name
     row.alias_type = alias_type
     row.occurrence_count = occurrence_count
-    row.first_seen_at = datetime(2024, 1, 15, tzinfo=timezone.utc)
-    row.last_seen_at = datetime(2024, 1, 15, tzinfo=timezone.utc)
+    row.first_seen_at = datetime(2024, 1, 15, tzinfo=UTC)
+    row.last_seen_at = datetime(2024, 1, 15, tzinfo=UTC)
     return row
 
 

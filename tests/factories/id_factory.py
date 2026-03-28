@@ -8,14 +8,13 @@ playlist IDs, and user IDs that meet all validation requirements.
 import hashlib
 import random
 import string
-from typing import Optional
 
 
 class YouTubeIdFactory:
     """Factory for generating valid YouTube IDs."""
 
     @staticmethod
-    def create_channel_id(seed: Optional[str] = None) -> str:
+    def create_channel_id(seed: str | None = None) -> str:
         """
         Create a valid 24-character YouTube channel ID starting with 'UC'.
 
@@ -41,7 +40,7 @@ class YouTubeIdFactory:
         return f"UC{hash_value}"
 
     @staticmethod
-    def create_video_id(seed: Optional[str] = None) -> str:
+    def create_video_id(seed: str | None = None) -> str:
         """
         Create a valid 11-character YouTube video ID.
 
@@ -66,7 +65,7 @@ class YouTubeIdFactory:
         return hash_value
 
     @staticmethod
-    def create_playlist_id(seed: Optional[str] = None) -> str:
+    def create_playlist_id(seed: str | None = None) -> str:
         """
         Create a valid 30-34 character YouTube playlist ID starting with 'PL'.
 
@@ -91,7 +90,7 @@ class YouTubeIdFactory:
         return f"PL{hash_value}"
 
     @staticmethod
-    def create_user_id(seed: Optional[str] = None) -> str:
+    def create_user_id(seed: str | None = None) -> str:
         """
         Create a valid user ID.
 
@@ -111,7 +110,7 @@ class YouTubeIdFactory:
             return f"user_{''.join(random.choices(string.ascii_lowercase + string.digits, k=16))}"
 
     @staticmethod
-    def create_topic_id(seed: Optional[str] = None) -> str:
+    def create_topic_id(seed: str | None = None) -> str:
         """
         Create a valid topic ID.
 
@@ -138,27 +137,27 @@ class YouTubeIdFactory:
 
 
 # Convenience functions for easy access
-def channel_id(seed: Optional[str] = None) -> str:
+def channel_id(seed: str | None = None) -> str:
     """Generate a valid channel ID."""
     return YouTubeIdFactory.create_channel_id(seed)
 
 
-def video_id(seed: Optional[str] = None) -> str:
+def video_id(seed: str | None = None) -> str:
     """Generate a valid video ID."""
     return YouTubeIdFactory.create_video_id(seed)
 
 
-def playlist_id(seed: Optional[str] = None) -> str:
+def playlist_id(seed: str | None = None) -> str:
     """Generate a valid playlist ID."""
     return YouTubeIdFactory.create_playlist_id(seed)
 
 
-def user_id(seed: Optional[str] = None) -> str:
+def user_id(seed: str | None = None) -> str:
     """Generate a valid user ID."""
     return YouTubeIdFactory.create_user_id(seed)
 
 
-def topic_id(seed: Optional[str] = None) -> str:
+def topic_id(seed: str | None = None) -> str:
     """Generate a valid topic ID."""
     return YouTubeIdFactory.create_topic_id(seed)
 

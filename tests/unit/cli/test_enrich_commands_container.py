@@ -11,7 +11,7 @@ Coverage targets:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -38,7 +38,7 @@ def runner() -> CliRunner:
 def mock_enrichment_report() -> EnrichmentReport:
     """Create a mock enrichment report."""
     return EnrichmentReport(
-        timestamp=datetime(2025, 1, 22, 10, 30, 45, tzinfo=timezone.utc),
+        timestamp=datetime(2025, 1, 22, 10, 30, 45, tzinfo=UTC),
         priority="high",
         summary=EnrichmentSummary(
             videos_processed=10,
@@ -140,7 +140,7 @@ class TestEnrichRunCommandContainerIntegration:
         )
 
         # Execute command
-        result = runner.invoke(app, ["run", "--dry-run"])
+        runner.invoke(app, ["run", "--dry-run"])
 
         # Verify container method was called
         mock_container.create_enrichment_service.assert_called_once()
@@ -193,7 +193,7 @@ class TestEnrichRunCommandContainerIntegration:
         mock_enrichment_service.enrich_playlists = AsyncMock(return_value=(5, 4, 1))
 
         # Execute command with include-playlists
-        result = runner.invoke(app, ["run", "--include-playlists", "--dry-run"])
+        runner.invoke(app, ["run", "--include-playlists", "--dry-run"])
 
         # Verify container was called with include_playlists=True
         mock_container.create_enrichment_service.assert_called_once_with(
@@ -247,7 +247,7 @@ class TestEnrichRunCommandContainerIntegration:
         )
 
         # Execute command without include-playlists
-        result = runner.invoke(app, ["run", "--dry-run"])
+        runner.invoke(app, ["run", "--dry-run"])
 
         # Verify container was called with include_playlists=False
         mock_container.create_enrichment_service.assert_called_once_with(
@@ -307,7 +307,6 @@ class TestEnrichStatusCommandContainerIntegration:
         mock_enrichment_service.get_status = AsyncMock()
         # Create an EnrichmentStatus object from the dict
         from chronovista.services.enrichment.enrichment_service import (
-            EnrichmentStatus,
             PriorityTierEstimate,
         )
 
@@ -381,8 +380,8 @@ class TestEnrichChannelsCommandContainerIntegration:
         )
 
         mock_result = ChannelEnrichmentResult(
-            started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
             channels_processed=20,
             channels_enriched=18,
             channels_skipped=2,
@@ -393,7 +392,7 @@ class TestEnrichChannelsCommandContainerIntegration:
         mock_enrichment_service.enrich_channels = AsyncMock(return_value=mock_result)
 
         # Execute command
-        result = runner.invoke(app, ["channels", "--dry-run"])
+        runner.invoke(app, ["channels", "--dry-run"])
 
         # Verify container method was called
         mock_container.create_enrichment_service.assert_called_once()
@@ -489,7 +488,7 @@ class TestAutoSeedFlagContainerIntegration:
         )
 
         # Execute command with auto-seed
-        result = runner.invoke(app, ["run", "--auto-seed", "--dry-run"])
+        runner.invoke(app, ["run", "--auto-seed", "--dry-run"])
 
         # Verify topic seeder was created
         mock_container.create_topic_seeder.assert_called_once()
@@ -560,7 +559,7 @@ class TestAutoSeedFlagContainerIntegration:
         )
 
         # Execute command with auto-seed
-        result = runner.invoke(app, ["run", "--auto-seed", "--dry-run"])
+        runner.invoke(app, ["run", "--auto-seed", "--dry-run"])
 
         # Verify category seeder was created
         mock_container.create_category_seeder.assert_called_once()
@@ -629,7 +628,7 @@ class TestSyncLikesFlagContainerIntegration:
             snippet=ChannelSnippet(
                 title="Test Channel",
                 description="",
-                publishedAt=datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+                publishedAt=datetime(2020, 1, 1, 0, 0, 0, tzinfo=UTC),
             ),
         )
         mock_video = YouTubeVideoResponse(
@@ -639,7 +638,7 @@ class TestSyncLikesFlagContainerIntegration:
                 description="",
                 channelId="UC1234567890123456789012",
                 channelTitle="Test Channel",
-                publishedAt=datetime(2022, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+                publishedAt=datetime(2022, 1, 1, 0, 0, 0, tzinfo=UTC),
             ),
         )
 
@@ -648,7 +647,7 @@ class TestSyncLikesFlagContainerIntegration:
 
         # Execute command with sync-likes (but dry-run to avoid actual DB operations)
         # Note: sync-likes is skipped in dry-run mode
-        result = runner.invoke(app, ["run", "--sync-likes", "--limit", "1"])
+        runner.invoke(app, ["run", "--sync-likes", "--limit", "1"])
 
         # Verify youtube_service was accessed from container
         assert mock_container.youtube_service is mock_youtube_service

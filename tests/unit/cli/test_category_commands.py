@@ -15,10 +15,7 @@ import pytest
 from typer.testing import CliRunner
 
 from chronovista.cli.category_commands import category_app, resolve_category_identifier
-from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoCategory as VideoCategoryDB
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestCategoryCommands:

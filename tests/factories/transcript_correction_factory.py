@@ -9,7 +9,7 @@ with sensible defaults and easy customization.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import factory
@@ -46,7 +46,7 @@ class TranscriptCorrectionFactory(factory.Factory[TranscriptCorrectionDB]):
     corrected_text: Any = Sequence(lambda n: f"corrected text {n}")
     correction_note: Any = LazyFunction(lambda: None)
     corrected_by_user_id: Any = LazyFunction(lambda: "cli")
-    corrected_at: Any = LazyFunction(lambda: datetime.now(tz=timezone.utc))
+    corrected_at: Any = LazyFunction(lambda: datetime.now(tz=UTC))
     version_number: Any = LazyFunction(lambda: 1)
 
 
@@ -90,7 +90,7 @@ class TranscriptCorrectionTestData:
         "corrected_text": "the quick brown fox",
         "correction_note": None,
         "corrected_by_user_id": "cli",
-        "corrected_at": datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+        "corrected_at": datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
         "version_number": 1,
     }
 

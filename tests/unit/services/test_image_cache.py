@@ -14,23 +14,19 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.responses import Response
 
 from chronovista.services.image_cache import (
-    ImageCacheConfig,
-    ImageCacheService,
     _CACHE_CONTROL_HIT,
     _CACHE_CONTROL_PLACEHOLDER,
     _CHANNEL_PLACEHOLDER_SVG,
     _MAX_IMAGE_BYTES,
-    _MIN_IMAGE_BYTES,
     _VIDEO_PLACEHOLDER_SVG,
+    ImageCacheConfig,
+    ImageCacheService,
 )
 from tests.factories.channel_factory import ChannelTestData
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Fixtures
@@ -1000,7 +996,7 @@ class TestCacheInvalidation:
         This test verifies the service provides invalidation as a tool, but
         does NOT automatically invalidate on NULL → URL transitions.
         """
-        service = ImageCacheService(config=image_cache_config)
+        ImageCacheService(config=image_cache_config)
         channel_id = ChannelTestData.VALID_CHANNEL_IDS[0]
 
         # Create cached file (simulating old state with NULL URL that somehow
@@ -1032,7 +1028,7 @@ class TestCacheInvalidation:
 
         This supports FR-006 (image preservation for deleted content).
         """
-        service = ImageCacheService(config=image_cache_config)
+        ImageCacheService(config=image_cache_config)
         channel_id = ChannelTestData.VALID_CHANNEL_IDS[1]
 
         # Create cached file (from old non-NULL URL)

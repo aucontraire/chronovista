@@ -7,7 +7,7 @@ serialization, and business logic testing using factory-boy for DRY principles.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -267,8 +267,8 @@ class TestChannelFactory:
 
     def test_channel_timestamps(self):
         """Test Channel with custom timestamps."""
-        created_time = datetime(2023, 1, 1, tzinfo=timezone.utc)
-        updated_time = datetime(2023, 12, 1, tzinfo=timezone.utc)
+        created_time = datetime(2023, 1, 1, tzinfo=UTC)
+        updated_time = datetime(2023, 12, 1, tzinfo=UTC)
 
         channel = ChannelFactory.build(created_at=created_time, updated_at=updated_time)
 
@@ -286,8 +286,8 @@ class TestChannelFactory:
             "default_language": "en",
             "country": "CA",
             "thumbnail_url": "https://yt3.ggpht.com/orm-test=s240-c-k-c0x00ffffff-no-rj",
-            "created_at": datetime(2023, 6, 15, 10, 30, tzinfo=timezone.utc),
-            "updated_at": datetime(2023, 12, 1, 16, 45, tzinfo=timezone.utc),
+            "created_at": datetime(2023, 6, 15, 10, 30, tzinfo=UTC),
+            "updated_at": datetime(2023, 12, 1, 16, 45, tzinfo=UTC),
         }
 
         channel = Channel.model_validate(channel_data)

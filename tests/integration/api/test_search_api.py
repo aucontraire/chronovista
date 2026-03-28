@@ -2,10 +2,7 @@
 
 from unittest.mock import patch
 
-import pytest
 from httpx import AsyncClient
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestSearchSegments:
@@ -189,8 +186,8 @@ class TestSearchSegments:
                 assert isinstance(result["video_id"], str)
                 assert isinstance(result["video_title"], str)
                 assert isinstance(result["text"], str)
-                assert isinstance(result["start_time"], (int, float))
-                assert isinstance(result["end_time"], (int, float))
+                assert isinstance(result["start_time"], int | float)
+                assert isinstance(result["end_time"], int | float)
                 assert isinstance(result["match_count"], int)
                 assert isinstance(result["language_code"], str)
 

@@ -7,11 +7,10 @@ with realistic and consistent test data.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, List, cast
+from datetime import UTC, datetime
+from typing import Any
 
 import factory
-from factory import LazyFunction
 
 from chronovista.models.user_video import (
     GoogleTakeoutWatchHistoryItem,
@@ -33,7 +32,7 @@ class UserVideoBaseFactory(factory.Factory[UserVideoBase]):
     user_id: Any = factory.LazyFunction(lambda: "test_user_123")
     video_id: Any = factory.LazyFunction(lambda: "dQw4w9WgXcQ")
     watched_at: Any = factory.LazyFunction(
-        lambda: datetime(2023, 12, 1, 10, 30, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 12, 1, 10, 30, 0, tzinfo=UTC)
     )
     rewatch_count: Any = factory.LazyFunction(lambda: 1)
     liked: Any = factory.LazyFunction(lambda: True)
@@ -49,7 +48,7 @@ class UserVideoCreateFactory(factory.Factory[UserVideoCreate]):
     user_id: Any = factory.LazyFunction(lambda: "test_user_456")
     video_id: Any = factory.LazyFunction(lambda: "9bZkp7q19f0")
     watched_at: Any = factory.LazyFunction(
-        lambda: datetime(2023, 11, 15, 14, 20, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 11, 15, 14, 20, 0, tzinfo=UTC)
     )
     rewatch_count: Any = factory.LazyFunction(lambda: 0)
     liked: Any = factory.LazyFunction(lambda: False)
@@ -80,16 +79,16 @@ class UserVideoFactory(factory.Factory[UserVideo]):
     user_id: Any = factory.LazyFunction(lambda: "test_user_789")
     video_id: Any = factory.LazyFunction(lambda: "3tmd-ClpJxA")
     watched_at: Any = factory.LazyFunction(
-        lambda: datetime(2023, 10, 20, 9, 15, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 10, 20, 9, 15, 0, tzinfo=UTC)
     )
     rewatch_count: Any = factory.LazyFunction(lambda: 3)
     liked: Any = factory.LazyFunction(lambda: True)
     saved_to_playlist: Any = factory.LazyFunction(lambda: True)
     created_at: Any = factory.LazyFunction(
-        lambda: datetime(2023, 10, 20, 9, 15, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 10, 20, 9, 15, 0, tzinfo=UTC)
     )
     updated_at: Any = factory.LazyFunction(
-        lambda: datetime(2023, 12, 1, 10, 30, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 12, 1, 10, 30, 0, tzinfo=UTC)
     )
 
 
@@ -130,19 +129,19 @@ class UserVideoSearchFiltersFactory(factory.Factory[UserVideoSearchFilters]):
         lambda: ["dQw4w9WgXcQ", "9bZkp7q19f0", "3tmd-ClpJxA"]
     )
     watched_after: Any = factory.LazyFunction(
-        lambda: datetime(2023, 1, 1, tzinfo=timezone.utc)
+        lambda: datetime(2023, 1, 1, tzinfo=UTC)
     )
     watched_before: Any = factory.LazyFunction(
-        lambda: datetime(2023, 12, 31, tzinfo=timezone.utc)
+        lambda: datetime(2023, 12, 31, tzinfo=UTC)
     )
     liked_only: Any = factory.LazyFunction(lambda: True)
     playlist_saved_only: Any = factory.LazyFunction(lambda: True)
     min_rewatch_count: Any = factory.LazyFunction(lambda: 1)
     created_after: Any = factory.LazyFunction(
-        lambda: datetime(2023, 6, 1, tzinfo=timezone.utc)
+        lambda: datetime(2023, 6, 1, tzinfo=UTC)
     )
     created_before: Any = factory.LazyFunction(
-        lambda: datetime(2023, 12, 1, tzinfo=timezone.utc)
+        lambda: datetime(2023, 12, 1, tzinfo=UTC)
     )
 
 
@@ -158,7 +157,7 @@ class UserVideoStatisticsFactory(factory.Factory[UserVideoStatistics]):
     rewatch_count: Any = factory.LazyFunction(lambda: 25)
     unique_videos: Any = factory.LazyFunction(lambda: 125)
     most_watched_date: Any = factory.LazyFunction(
-        lambda: datetime(2023, 11, 15, tzinfo=timezone.utc)
+        lambda: datetime(2023, 11, 15, tzinfo=UTC)
     )
     watch_streak_days: Any = factory.LazyFunction(lambda: 14)
 
@@ -261,7 +260,7 @@ def create_user_video_statistics(**kwargs: Any) -> UserVideoStatistics:
     return result
 
 
-def create_batch_user_videos(count: int = 5) -> List[UserVideo]:
+def create_batch_user_videos(count: int = 5) -> list[UserVideo]:
     """Create a batch of UserVideo instances for testing."""
     videos = []
     base_user_ids = ["user1", "user2", "user3"]

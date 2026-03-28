@@ -31,8 +31,6 @@ from chronovista.api.main import app
 from chronovista.models.batch_correction_models import CorrectionPattern
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Helpers

@@ -7,7 +7,7 @@ Tests verify:
 3. ABCs define the expected abstract methods
 """
 
-from typing import Any, FrozenSet
+from typing import Any
 
 import pytest
 
@@ -37,7 +37,7 @@ class TestYouTubeServiceInterface:
 
     def test_interface_has_expected_abstract_methods(self) -> None:
         """Verify YouTubeServiceInterface defines expected abstract methods."""
-        abstract_methods: FrozenSet[str] = getattr(
+        abstract_methods: frozenset[str] = getattr(
             YouTubeServiceInterface, "__abstractmethods__", frozenset()
         )
 
@@ -85,7 +85,7 @@ class TestTranscriptServiceInterface:
 
     def test_interface_has_expected_abstract_methods(self) -> None:
         """Verify TranscriptServiceInterface defines expected abstract methods."""
-        abstract_methods: FrozenSet[str] = getattr(
+        abstract_methods: frozenset[str] = getattr(
             TranscriptServiceInterface, "__abstractmethods__", frozenset()
         )
 
@@ -117,7 +117,7 @@ class TestTakeoutServiceInterface:
 
     def test_interface_has_expected_abstract_methods(self) -> None:
         """Verify TakeoutServiceInterface defines expected abstract methods."""
-        abstract_methods: FrozenSet[str] = getattr(
+        abstract_methods: frozenset[str] = getattr(
             TakeoutServiceInterface, "__abstractmethods__", frozenset()
         )
 

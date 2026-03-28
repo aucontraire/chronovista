@@ -20,8 +20,6 @@ import uuid
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from chronovista.models.enums import EntityAliasType
 from chronovista.services.asr_alias_registry import (
     is_valid_asr_alias,
@@ -33,8 +31,6 @@ from chronovista.services.asr_alias_registry import (
 # CRITICAL: Module-level asyncio marker ensures async tests run properly
 # with coverage tools, avoiding silent test-skipping (see CLAUDE.md).
 # ---------------------------------------------------------------------------
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Helpers

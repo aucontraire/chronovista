@@ -7,8 +7,8 @@ with sensible defaults and easy customization.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, cast
+from datetime import UTC, datetime
+from typing import Any
 
 import factory
 from factory import Faker, LazyAttribute
@@ -61,7 +61,7 @@ class TopicCategoryFactory(TopicCategoryBaseFactory):
     class Meta:
         model = TopicCategory
 
-    created_at: Any = Faker("date_time", tzinfo=timezone.utc)
+    created_at: Any = Faker("date_time", tzinfo=UTC)
 
 
 class TopicCategorySearchFiltersFactory(factory.Factory[TopicCategorySearchFilters]):
@@ -77,8 +77,8 @@ class TopicCategorySearchFiltersFactory(factory.Factory[TopicCategorySearchFilte
     is_root_topic: Any = Faker("boolean")
     has_children: Any = Faker("boolean")
     max_depth: Any = Faker("random_int", min=1, max=5)
-    created_after: Any = Faker("date_time", tzinfo=timezone.utc)
-    created_before: Any = Faker("date_time", tzinfo=timezone.utc)
+    created_after: Any = Faker("date_time", tzinfo=UTC)
+    created_before: Any = Faker("date_time", tzinfo=UTC)
 
 
 class TopicCategoryStatisticsFactory(factory.Factory[TopicCategoryStatistics]):
@@ -357,8 +357,8 @@ class TopicCategoryTestData:
             "is_root_topic": False,
             "has_children": True,
             "max_depth": 3,
-            "created_after": datetime(2023, 1, 1, tzinfo=timezone.utc),
-            "created_before": datetime(2023, 12, 31, tzinfo=timezone.utc),
+            "created_after": datetime(2023, 1, 1, tzinfo=UTC),
+            "created_before": datetime(2023, 12, 31, tzinfo=UTC),
         }
 
     @classmethod

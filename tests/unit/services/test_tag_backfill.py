@@ -15,8 +15,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -81,7 +80,7 @@ class TestNormalizeAndGroupCore:
         assert raw_forms == {"Python", "python", "#Python"}
 
         # Verify counts
-        counts_by_form = {form: count for form, count in groups["python"]}
+        counts_by_form = dict(groups["python"])
         assert counts_by_form["Python"] == 10
         assert counts_by_form["python"] == 5
         assert counts_by_form["#Python"] == 3
@@ -106,7 +105,7 @@ class TestNormalizeAndGroupCore:
         assert skipped_forms == {"#", "", "  "}
 
         # Verify counts
-        counts_by_form = {form: count for form, count in skip_list}
+        counts_by_form = dict(skip_list)
         assert counts_by_form["#"] == 3
         assert counts_by_form[""] == 0
         assert counts_by_form["  "] == 5
@@ -167,7 +166,7 @@ class TestNormalizeAndGroupCore:
         assert raw_forms == {"café", "cafe", "CAFE"}
 
         # Verify counts
-        counts_by_form = {form: count for form, count in groups["cafe"]}
+        counts_by_form = dict(groups["cafe"])
         assert counts_by_form["café"] == 80
         assert counts_by_form["cafe"] == 45
         assert counts_by_form["CAFE"] == 20
@@ -563,7 +562,7 @@ class TestKnownFalseMergePatterns:
     def test_contains_expected_patterns(self) -> None:
         """Verify the expected false-merge patterns are present."""
         expected = {"cafe", "resume", "cliche", "naive", "rape"}
-        assert KNOWN_FALSE_MERGE_PATTERNS == expected
+        assert expected == KNOWN_FALSE_MERGE_PATTERNS
 
     def test_is_frozenset(self) -> None:
         """Verify KNOWN_FALSE_MERGE_PATTERNS is immutable (frozenset)."""
@@ -795,6 +794,7 @@ class TestRunAnalysis:
     ) -> None:
         """Verify table format renders output and returns None."""
         import io
+
         from rich.console import Console
 
         # Mock table existence check

@@ -7,7 +7,7 @@ for all VideoTag model variants using factory pattern for DRY.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import cast
 
 import pytest
@@ -188,7 +188,7 @@ class TestVideoTag:
 
     def test_create_valid_video_tag(self):
         """Test creating valid VideoTag with keyword arguments."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         tag = cast(VideoTag, VideoTagFactory.build(
             video_id="dQw4w9WgXcQ", tag="tutorial", tag_order=1, created_at=now
         ))
@@ -206,7 +206,7 @@ class TestVideoTag:
             video_id = "dQw4w9WgXcQ"
             tag = "education"
             tag_order = 2
-            created_at = datetime.now(timezone.utc)
+            created_at = datetime.now(UTC)
 
         mock_db = MockVideoTagDB()
         tag = VideoTag.model_validate(mock_db, from_attributes=True)
@@ -356,7 +356,7 @@ class TestVideoTagModelInteractions:
         )
 
         # Simulate creation
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         tag_full = VideoTagFactory.build(
             video_id=tag_create.video_id,
             tag=tag_create.tag,

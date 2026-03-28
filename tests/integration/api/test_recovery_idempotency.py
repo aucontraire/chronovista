@@ -14,22 +14,18 @@ Tests cover:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.models.enums import AvailabilityStatus
 from chronovista.services.recovery.models import ChannelRecoveryResult, RecoveryResult
-
-pytestmark = pytest.mark.asyncio
-
 
 # =============================================================================
 # Video Recovery Idempotency Fixtures
@@ -39,7 +35,7 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture
 async def idempotency_channel(
     integration_session_factory,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create a test channel for FK constraints in idempotency tests.
 
@@ -76,22 +72,22 @@ async def idempotency_channel(
 @pytest.fixture
 async def recently_recovered_video(
     integration_session_factory,
-    idempotency_channel: Dict[str, Any],
-) -> Dict[str, Any]:
+    idempotency_channel: dict[str, Any],
+) -> dict[str, Any]:
     """
     Create a deleted video that was recovered 2 minutes ago.
 
     This should trigger the idempotency guard (< 5 min).
     """
     async with integration_session_factory() as session:
-        recovered_time = datetime.now(timezone.utc) - timedelta(minutes=2)
+        recovered_time = datetime.now(UTC) - timedelta(minutes=2)
 
         video = VideoDB(
             video_id="recvid00001",  # 11 chars
             channel_id=idempotency_channel["channel_id"],
             title="Recently Recovered Video",
             description="Recovered 2 minutes ago",
-            upload_date=datetime(2023, 1, 15, tzinfo=timezone.utc),
+            upload_date=datetime(2023, 1, 15, tzinfo=UTC),
             duration=300,
             made_for_kids=False,
             availability_status=AvailabilityStatus.DELETED.value,
@@ -127,22 +123,22 @@ async def recently_recovered_video(
 @pytest.fixture
 async def stale_recovered_video(
     integration_session_factory,
-    idempotency_channel: Dict[str, Any],
-) -> Dict[str, Any]:
+    idempotency_channel: dict[str, Any],
+) -> dict[str, Any]:
     """
     Create a deleted video that was recovered 10 minutes ago.
 
     This should NOT trigger the idempotency guard (> 5 min).
     """
     async with integration_session_factory() as session:
-        recovered_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+        recovered_time = datetime.now(UTC) - timedelta(minutes=10)
 
         video = VideoDB(
             video_id="oldvid00001",  # 11 chars
             channel_id=idempotency_channel["channel_id"],
             title="Stale Recovered Video",
             description="Recovered 10 minutes ago",
-            upload_date=datetime(2023, 1, 15, tzinfo=timezone.utc),
+            upload_date=datetime(2023, 1, 15, tzinfo=UTC),
             duration=300,
             made_for_kids=False,
             availability_status=AvailabilityStatus.DELETED.value,
@@ -178,8 +174,8 @@ async def stale_recovered_video(
 @pytest.fixture
 async def never_recovered_video(
     integration_session_factory,
-    idempotency_channel: Dict[str, Any],
-) -> Dict[str, Any]:
+    idempotency_channel: dict[str, Any],
+) -> dict[str, Any]:
     """
     Create a deleted video that has never been recovered (recovered_at is None).
 
@@ -191,7 +187,7 @@ async def never_recovered_video(
             channel_id=idempotency_channel["channel_id"],
             title="Never Recovered Video",
             description="Has never been recovered",
-            upload_date=datetime(2023, 1, 15, tzinfo=timezone.utc),
+            upload_date=datetime(2023, 1, 15, tzinfo=UTC),
             duration=300,
             made_for_kids=False,
             availability_status=AvailabilityStatus.DELETED.value,
@@ -221,8 +217,8 @@ async def never_recovered_video(
 @pytest.fixture
 async def edge_case_video(
     integration_session_factory,
-    idempotency_channel: Dict[str, Any],
-) -> Dict[str, Any]:
+    idempotency_channel: dict[str, Any],
+) -> dict[str, Any]:
     """
     Create a deleted video recovered exactly 5 minutes ago.
 
@@ -230,14 +226,14 @@ async def edge_case_video(
     timedelta(minutes=5), so the guard should NOT trigger.
     """
     async with integration_session_factory() as session:
-        recovered_time = datetime.now(timezone.utc) - timedelta(minutes=5)
+        recovered_time = datetime.now(UTC) - timedelta(minutes=5)
 
         video = VideoDB(
             video_id="edgvid00001",  # 11 chars
             channel_id=idempotency_channel["channel_id"],
             title="Edge Case Video",
             description="Recovered exactly 5 minutes ago",
-            upload_date=datetime(2023, 1, 15, tzinfo=timezone.utc),
+            upload_date=datetime(2023, 1, 15, tzinfo=UTC),
             duration=300,
             made_for_kids=False,
             availability_status=AvailabilityStatus.DELETED.value,
@@ -278,14 +274,14 @@ async def edge_case_video(
 @pytest.fixture
 async def recently_recovered_channel(
     integration_session_factory,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create a deleted channel that was recovered 2 minutes ago.
 
     This should trigger the idempotency guard (< 5 min).
     """
     async with integration_session_factory() as session:
-        recovered_time = datetime.now(timezone.utc) - timedelta(minutes=2)
+        recovered_time = datetime.now(UTC) - timedelta(minutes=2)
 
         channel = ChannelDB(
             channel_id="UCrecent_recovery_test01",
@@ -326,14 +322,14 @@ async def recently_recovered_channel(
 @pytest.fixture
 async def stale_recovered_channel(
     integration_session_factory,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create a deleted channel that was recovered 10 minutes ago.
 
     This should NOT trigger the idempotency guard (> 5 min).
     """
     async with integration_session_factory() as session:
-        recovered_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+        recovered_time = datetime.now(UTC) - timedelta(minutes=10)
 
         channel = ChannelDB(
             channel_id="UCstale_recovery_test001",
@@ -374,7 +370,7 @@ async def stale_recovered_channel(
 @pytest.fixture
 async def never_recovered_channel(
     integration_session_factory,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create a deleted channel that has never been recovered.
 
@@ -414,14 +410,14 @@ async def never_recovered_channel(
 @pytest.fixture
 async def edge_case_channel(
     integration_session_factory,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create a deleted channel recovered exactly 5 minutes ago.
 
     At exactly 5 minutes, the guard should NOT trigger.
     """
     async with integration_session_factory() as session:
-        recovered_time = datetime.now(timezone.utc) - timedelta(minutes=5)
+        recovered_time = datetime.now(UTC) - timedelta(minutes=5)
 
         channel = ChannelDB(
             channel_id="UCedge_recovery_test0001",
@@ -470,7 +466,7 @@ class TestVideoRecoveryIdempotency:
     async def test_recently_recovered_video_returns_cached(
         self,
         async_client: AsyncClient,
-        recently_recovered_video: Dict[str, Any],
+        recently_recovered_video: dict[str, Any],
     ) -> None:
         """
         Video recovered < 5 min ago should return 200 with empty fields_recovered.
@@ -511,7 +507,7 @@ class TestVideoRecoveryIdempotency:
     async def test_stale_recovered_video_proceeds_to_orchestrator(
         self,
         async_client: AsyncClient,
-        stale_recovered_video: Dict[str, Any],
+        stale_recovered_video: dict[str, Any],
     ) -> None:
         """
         Video recovered > 5 min ago should proceed normally to orchestrator.
@@ -555,7 +551,7 @@ class TestVideoRecoveryIdempotency:
     async def test_never_recovered_video_proceeds_to_orchestrator(
         self,
         async_client: AsyncClient,
-        never_recovered_video: Dict[str, Any],
+        never_recovered_video: dict[str, Any],
     ) -> None:
         """
         Video with recovered_at=None should proceed normally to orchestrator.
@@ -598,7 +594,7 @@ class TestVideoRecoveryIdempotency:
     async def test_edge_case_exactly_5_min_proceeds(
         self,
         async_client: AsyncClient,
-        edge_case_video: Dict[str, Any],
+        edge_case_video: dict[str, Any],
     ) -> None:
         """
         Video recovered exactly 5 min ago should proceed to orchestrator.
@@ -648,7 +644,7 @@ class TestChannelRecoveryIdempotency:
     async def test_recently_recovered_channel_returns_cached(
         self,
         async_client: AsyncClient,
-        recently_recovered_channel: Dict[str, Any],
+        recently_recovered_channel: dict[str, Any],
     ) -> None:
         """
         Channel recovered < 5 min ago should return 200 with empty fields_recovered.
@@ -689,7 +685,7 @@ class TestChannelRecoveryIdempotency:
     async def test_stale_recovered_channel_proceeds_to_orchestrator(
         self,
         async_client: AsyncClient,
-        stale_recovered_channel: Dict[str, Any],
+        stale_recovered_channel: dict[str, Any],
     ) -> None:
         """
         Channel recovered > 5 min ago should proceed normally to orchestrator.
@@ -733,7 +729,7 @@ class TestChannelRecoveryIdempotency:
     async def test_never_recovered_channel_proceeds_to_orchestrator(
         self,
         async_client: AsyncClient,
-        never_recovered_channel: Dict[str, Any],
+        never_recovered_channel: dict[str, Any],
     ) -> None:
         """
         Channel with recovered_at=None should proceed normally to orchestrator.
@@ -776,7 +772,7 @@ class TestChannelRecoveryIdempotency:
     async def test_edge_case_exactly_5_min_proceeds(
         self,
         async_client: AsyncClient,
-        edge_case_channel: Dict[str, Any],
+        edge_case_channel: dict[str, Any],
     ) -> None:
         """
         Channel recovered exactly 5 min ago should proceed to orchestrator.

@@ -9,8 +9,8 @@ include_unavailable, tag, category, topic_id).
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -21,8 +21,6 @@ from chronovista.api.main import app
 from chronovista.api.routers.videos import VideoSortField
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Fixtures
@@ -40,7 +38,7 @@ def _make_video_row(
     video.video_id = video_id
     video.title = title
     video.channel_id = channel_id
-    video.upload_date = upload_date or datetime(2024, 1, 15, tzinfo=timezone.utc)
+    video.upload_date = upload_date or datetime(2024, 1, 15, tzinfo=UTC)
     video.duration = 300
     video.view_count = 1000
     video.category_id = None

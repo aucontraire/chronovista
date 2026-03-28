@@ -4,15 +4,13 @@ Tests for UserVideoSeeder - creates user-video relationships from watch history.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 # Mark all async tests in this module
-pytestmark = pytest.mark.asyncio
-
 from chronovista.models.takeout.takeout_data import TakeoutData
 from chronovista.models.user_video import UserVideoCreate
 from chronovista.repositories.user_video_repository import UserVideoRepository
@@ -85,7 +83,7 @@ class TestUserVideoSeederSeeding:
                     title="Never Gonna Give You Up",
                     title_url=f"https://www.youtube.com/watch?v={TestIds.NEVER_GONNA_GIVE_YOU_UP}",
                     channel_name="Rick Astley",
-                    watched_at=datetime.now(timezone.utc),
+                    watched_at=datetime.now(UTC),
                     video_id=TestIds.NEVER_GONNA_GIVE_YOU_UP,
                     channel_id=TestIds.RICK_ASTLEY_CHANNEL,
                 ),
@@ -93,7 +91,7 @@ class TestUserVideoSeederSeeding:
                     title="Test Video 1",
                     title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
                     channel_name="Test Channel",
-                    watched_at=datetime.now(timezone.utc),
+                    watched_at=datetime.now(UTC),
                     video_id=TestIds.TEST_VIDEO_1,
                     channel_id=TestIds.TEST_CHANNEL_1,
                 ),
@@ -101,7 +99,7 @@ class TestUserVideoSeederSeeding:
                     title="Test Video 2",
                     title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_2}",
                     channel_name="Test Channel 2",
-                    watched_at=datetime.now(timezone.utc),
+                    watched_at=datetime.now(UTC),
                     video_id=TestIds.TEST_VIDEO_2,
                     channel_id=TestIds.TEST_CHANNEL_2,
                 ),
@@ -142,7 +140,7 @@ class TestUserVideoSeederSeeding:
                 "get_by_composite_key",
                 new_callable=AsyncMock,
                 return_value=None,
-            ) as mock_get,
+            ),
             patch.object(
                 seeder.user_video_repo, "create", new_callable=AsyncMock
             ) as mock_create,
@@ -201,7 +199,7 @@ class TestUserVideoSeederSeeding:
             return_value=None,
         ):
 
-            result = await seeder.seed(mock_session, sample_takeout_data, progress)
+            await seeder.seed(mock_session, sample_takeout_data, progress)
 
             assert "user_videos" in progress_calls
 
@@ -234,7 +232,7 @@ class TestUserVideoSeederSeeding:
             title="Test Video",
             title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
             channel_name="Test Channel",
-            watched_at=datetime.now(timezone.utc),
+            watched_at=datetime.now(UTC),
             video_id=TestIds.TEST_VIDEO_1,
             channel_id=TestIds.TEST_CHANNEL_1,
         )
@@ -259,7 +257,7 @@ class TestUserVideoSeederSeeding:
             title="With Timestamp",
             title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
             channel_name="Test Channel",
-            watched_at=datetime.now(timezone.utc),  # Has timestamp
+            watched_at=datetime.now(UTC),  # Has timestamp
             video_id=TestIds.TEST_VIDEO_1,
             channel_id=TestIds.TEST_CHANNEL_1,
             channel_url=f"https://www.youtube.com/channel/{TestIds.TEST_CHANNEL_1}",
@@ -281,7 +279,7 @@ class TestUserVideoSeederSeeding:
             title="With Timestamp 2",
             title_url=f"https://www.youtube.com/watch?v={TestIds.NEVER_GONNA_GIVE_YOU_UP}",
             channel_name="Rick Astley",
-            watched_at=datetime.now(timezone.utc),  # Has timestamp
+            watched_at=datetime.now(UTC),  # Has timestamp
             video_id=TestIds.NEVER_GONNA_GIVE_YOU_UP,
             channel_id=TestIds.RICK_ASTLEY_CHANNEL,
             channel_url=f"https://www.youtube.com/channel/{TestIds.RICK_ASTLEY_CHANNEL}",
@@ -306,7 +304,7 @@ class TestUserVideoSeederSeeding:
                 "get_by_composite_key",
                 new_callable=AsyncMock,
                 return_value=None,
-            ) as mock_get,
+            ),
             patch.object(
                 seeder.user_video_repo, "create", new_callable=AsyncMock
             ) as mock_create,
@@ -354,7 +352,7 @@ class TestUserVideoSeederBatchProcessing:
                     title=f"Video {i}",
                     title_url=f"https://www.youtube.com/watch?v={YouTubeIdFactory.create_video_id(f'video_{i}')}",
                     channel_name=f"Channel {i}",
-                    watched_at=datetime.now(timezone.utc),
+                    watched_at=datetime.now(UTC),
                     video_id=YouTubeIdFactory.create_video_id(f"video_{i}"),
                     channel_id=YouTubeIdFactory.create_channel_id(f"channel_{i}"),
                 )
@@ -415,7 +413,7 @@ class TestUserVideoSeederEdgeCases:
                     title="Video Without ID",
                     title_url="https://www.youtube.com/watch?v=invalid",
                     channel_name="Test Channel",
-                    watched_at=datetime.now(timezone.utc),
+                    watched_at=datetime.now(UTC),
                     video_id=None,  # Missing video ID
                     channel_id=TestIds.TEST_CHANNEL_1,
                 ),
@@ -433,7 +431,7 @@ class TestUserVideoSeederEdgeCases:
     ) -> None:
         """Test creating user video from watch entry with edge case timestamp."""
         # Create watch entry with very old timestamp
-        old_timestamp = datetime(1990, 1, 1, tzinfo=timezone.utc)
+        old_timestamp = datetime(1990, 1, 1, tzinfo=UTC)
         watch_entry = create_takeout_watch_entry(
             title="Old Video",
             title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
@@ -452,7 +450,7 @@ class TestUserVideoSeederEdgeCases:
         self, seeder: UserVideoSeeder, mock_session: AsyncMock
     ) -> None:
         """Test handling duplicate watches of same video at same time."""
-        same_timestamp = datetime.now(timezone.utc)
+        same_timestamp = datetime.now(UTC)
 
         data = create_takeout_data(
             takeout_path=Path("/test/takeout"),
@@ -499,7 +497,7 @@ class TestUserVideoSeederEdgeCases:
             title="Test Video",
             title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
             channel_name="Test Channel",
-            watched_at=datetime.now(timezone.utc),
+            watched_at=datetime.now(UTC),
             video_id=TestIds.TEST_VIDEO_1,
             channel_id=TestIds.TEST_CHANNEL_1,
         )
@@ -519,7 +517,7 @@ class TestUserVideoSeederEdgeCases:
             title="Test Video",
             title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
             channel_name="Test Channel",
-            watched_at=datetime.now(timezone.utc),
+            watched_at=datetime.now(UTC),
             video_id=TestIds.TEST_VIDEO_1,
             channel_id=TestIds.TEST_CHANNEL_1,
         )
@@ -528,8 +526,8 @@ class TestUserVideoSeederEdgeCases:
 
         # Check fields that actually exist in the implementation
         assert user_video_create is not None
-        assert user_video_create.liked == False  # Default value
-        assert user_video_create.saved_to_playlist == False  # Default value
+        assert not user_video_create.liked  # Default value
+        assert not user_video_create.saved_to_playlist  # Default value
 
 
 class TestUserVideoSeederDependencies:

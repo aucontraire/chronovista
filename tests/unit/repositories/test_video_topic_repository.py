@@ -5,30 +5,21 @@ Tests the VideoTopicRepository class for managing video-topic relationships
 with comprehensive coverage of CRUD operations, search, and analytics.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import VideoTopic as VideoTopicDB
-from chronovista.models.video_topic import (
-    VideoTopicCreate,
-    VideoTopicSearchFilters,
-    VideoTopicUpdate,
-)
 from chronovista.repositories.video_topic_repository import VideoTopicRepository
 from tests.factories import (
     TestIds,
-    VideoTopicTestData,
     create_video_topic_create,
     create_video_topic_filters,
-    create_video_topic_update,
 )
 
 # Mark all tests as async for this module
-pytestmark = pytest.mark.asyncio
-
 
 class TestVideoTopicRepository:
     """Test VideoTopicRepository functionality."""
@@ -59,7 +50,7 @@ class TestVideoTopicRepository:
             video_id=TestIds.TEST_VIDEO_1,
             topic_id=TestIds.MUSIC_TOPIC,
             relevance_type="primary",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
     @pytest.mark.asyncio
@@ -175,7 +166,7 @@ class TestVideoTopicRepository:
                 video_id=obj_in.video_id,
                 topic_id=obj_in.topic_id,
                 relevance_type=obj_in.relevance_type,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
         )
 
@@ -404,7 +395,7 @@ class TestVideoTopicRepository:
                 video_id=TestIds.TEST_VIDEO_1,
                 topic_id=TestIds.MUSIC_TOPIC,
                 relevance_type="primary",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
         ]
         repository.bulk_create_video_topics = AsyncMock(return_value=created_topics)
@@ -432,7 +423,7 @@ class TestVideoTopicRepository:
             video_id=sample_video_topic_create.video_id,
             topic_id=sample_video_topic_create.topic_id,
             relevance_type="secondary",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         repository.get_by_composite_key = AsyncMock(return_value=existing_topic)
         repository.update = AsyncMock(return_value=existing_topic)
@@ -461,7 +452,7 @@ class TestVideoTopicRepository:
             video_id=sample_video_topic_create.video_id,
             topic_id=sample_video_topic_create.topic_id,
             relevance_type=sample_video_topic_create.relevance_type,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         repository.create = AsyncMock(return_value=new_topic)
 
@@ -489,7 +480,7 @@ class TestVideoTopicRepository:
             video_id=TestIds.TEST_VIDEO_1,
             topic_id=TestIds.MUSIC_TOPIC,
             relevance_type="primary",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         def mock_get_existing(session, video_id, topic_id):
@@ -504,7 +495,7 @@ class TestVideoTopicRepository:
             video_id=TestIds.TEST_VIDEO_1,
             topic_id=TestIds.GAMING_TOPIC,
             relevance_type="relevant",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         repository.create = AsyncMock(return_value=new_topic)
 

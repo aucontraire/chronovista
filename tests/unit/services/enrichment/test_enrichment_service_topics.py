@@ -20,22 +20,17 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import unquote
 
 import pytest
 
-from chronovista.models.topic_category import TopicCategory, TopicCategoryCreate
-from chronovista.models.video_topic import VideoTopic, VideoTopicCreate
-from chronovista.models.youtube_types import create_test_topic_id, create_test_video_id
+from chronovista.models.topic_category import TopicCategoryCreate
+from chronovista.models.video_topic import VideoTopicCreate
 from chronovista.services.enrichment.enrichment_service import (
-    BATCH_SIZE,
     EnrichmentService,
 )
-
-pytestmark = pytest.mark.asyncio
 
 # Valid test IDs (must match validation constraints)
 VALID_VIDEO_ID = "dQw4w9WgXcQ"  # 11 characters
@@ -131,11 +126,6 @@ class TestEnrichTopicsMethod:
         """Test that enrich_topics() extracts topics from API data correctly."""
         # Given API data with topic URLs
         video_id = VALID_VIDEO_ID
-        topic_urls = [
-            "https://en.wikipedia.org/wiki/Music",
-            "https://en.wikipedia.org/wiki/Rock_music",
-            "https://en.wikipedia.org/wiki/Pop_music",
-        ]
 
         # Mock topic category repository to return matching topics
         music_topic = MagicMock(topic_id=VALID_TOPIC_ID_MUSIC, category_name="Music")
@@ -161,8 +151,6 @@ class TestEnrichTopicsMethod:
         self, service: EnrichmentService, mock_session: AsyncMock
     ) -> None:
         """Test that enrich_topics() handles empty topic URL list correctly."""
-        video_id = VALID_VIDEO_ID
-        topic_urls: List[str] = []
 
         # When topic_urls is empty, should return 0 without calling repository
         # (similar to enrich_tags behavior)
@@ -180,7 +168,7 @@ class TestEnrichTopicsMethod:
         video_id = VALID_VIDEO_ID
 
         # API response without topicDetails field
-        api_data: Dict[str, Any] = {
+        api_data: dict[str, Any] = {
             "id": video_id,
             "snippet": {
                 "title": "Video Title",
@@ -205,7 +193,7 @@ class TestEnrichTopicsMethod:
         video_id = VALID_VIDEO_ID
 
         # API response with explicit None topicCategories
-        api_data: Dict[str, Any] = {
+        api_data: dict[str, Any] = {
             "id": video_id,
             "topicDetails": {
                 "topicCategories": None,  # Explicit None
@@ -245,7 +233,7 @@ class TestEnrichTopicsMethod:
 class TestWikipediaURLParsing:
     """Tests for Wikipedia URL parsing (regex) (T084b)."""
 
-    def extract_topic_name_from_url(self, url: str) -> Optional[str]:
+    def extract_topic_name_from_url(self, url: str) -> str | None:
         """
         Extract topic name from Wikipedia URL.
 
@@ -592,7 +580,6 @@ class TestUnrecognizedTopicHandling:
         topic_name = "UnknownGenre"
 
         # Expected log message format
-        expected_log_content = f"Unrecognized topic"
 
         # When processing unrecognized topic, implementation should log:
         # logger.warning(f"Unrecognized topic '{topic_name}' from URL: {url}")
@@ -610,13 +597,11 @@ class TestUnrecognizedTopicHandling:
     ) -> None:
         """Test that unrecognized topics are skipped (not created)."""
         # Given topic URLs with one recognized and one unrecognized
-        recognized_url = "https://en.wikipedia.org/wiki/Music"
-        unrecognized_url = "https://en.wikipedia.org/wiki/UnknownTopic"
 
         music_topic = MagicMock(topic_id=VALID_TOPIC_ID_MUSIC, category_name="Music")
 
         # Repository returns match for Music, no match for UnknownTopic
-        async def find_by_name_mock(session: Any, name: str) -> List[MagicMock]:
+        async def find_by_name_mock(session: Any, name: str) -> list[MagicMock]:
             if name == "Music" or name.lower() == "music":
                 return [music_topic]
             return []
@@ -656,7 +641,7 @@ class TestUnrecognizedTopicHandling:
         rock_topic = MagicMock(topic_id=VALID_TOPIC_ID_ROCK, category_name="Rock music")
 
         # Repository returns matches for known topics
-        async def find_by_name_mock(session: Any, name: str) -> List[MagicMock]:
+        async def find_by_name_mock(session: Any, name: str) -> list[MagicMock]:
             name_normalized = name.replace("_", " ").lower()
             if name_normalized == "music":
                 return [music_topic]
@@ -669,7 +654,7 @@ class TestUnrecognizedTopicHandling:
         )
 
         # When processing all URLs
-        matched_topics: List[MagicMock] = []
+        matched_topics: list[MagicMock] = []
         skipped_count = 0
 
         for url in topic_urls:
@@ -715,7 +700,7 @@ class TestUnrecognizedTopicHandling:
 class TestMalformedURLHandling:
     """Tests for malformed URL handling (T084e)."""
 
-    def extract_topic_name_from_url(self, url: Optional[str]) -> Optional[str]:
+    def extract_topic_name_from_url(self, url: str | None) -> str | None:
         """Helper to extract topic name from URL with error handling."""
         if url is None:
             return None
@@ -796,7 +781,7 @@ class TestMalformedURLHandling:
         ]
 
         # Processing should not raise exceptions
-        results: List[Optional[str]] = []
+        results: list[str | None] = []
         for url in malformed_urls:
             try:
                 result = self.extract_topic_name_from_url(url)
@@ -850,7 +835,6 @@ class TestTopicReplacement:
     ) -> None:
         """Test that existing topics are deleted before inserting new ones."""
         video_id = VALID_VIDEO_ID
-        old_topic_ids = ["/m/old1", "/m/old2", "/m/old3"]
         new_topic_ids = [VALID_TOPIC_ID_MUSIC, VALID_TOPIC_ID_ROCK]
 
         # First: delete existing topics
@@ -879,7 +863,7 @@ class TestTopicReplacement:
 
         mock_topics_db = [
             MagicMock(video_id=video_id, topic_id=t, relevance_type=r)
-            for t, r in zip(new_topic_ids, relevance_types)
+            for t, r in zip(new_topic_ids, relevance_types, strict=False)
         ]
         mock_video_topic_repository.replace_video_topics = AsyncMock(
             return_value=mock_topics_db
@@ -933,7 +917,7 @@ class TestTopicReplacement:
     ) -> None:
         """Test that replacing with empty list clears all topics."""
         video_id = VALID_VIDEO_ID
-        new_topic_ids: List[str] = []
+        new_topic_ids: list[str] = []
 
         mock_video_topic_repository.replace_video_topics = AsyncMock(return_value=[])
 
@@ -1117,7 +1101,7 @@ class TestMultipleTopicsPerVideo:
 
         mock_topics_db = [
             MagicMock(video_id=video_id, topic_id=t, relevance_type=r)
-            for t, r in zip(topic_ids, relevance_types)
+            for t, r in zip(topic_ids, relevance_types, strict=False)
         ]
         mock_video_topic_repository.replace_video_topics = AsyncMock(
             return_value=mock_topics_db
@@ -1163,10 +1147,9 @@ class TestVideosWithNoTopics:
         self, mock_session: AsyncMock
     ) -> None:
         """Test that no placeholder topics are created for videos without topics."""
-        from typing import Any, Dict
 
         video_id = VALID_VIDEO_ID
-        api_data: Dict[str, Any] = {
+        api_data: dict[str, Any] = {
             "id": video_id,
             "snippet": {
                 "title": "Video Without Topics",
@@ -1183,10 +1166,9 @@ class TestVideosWithNoTopics:
         self, mock_session: AsyncMock
     ) -> None:
         """Test that empty topicCategories array results in no placeholder topics."""
-        from typing import Any, Dict
 
         video_id = VALID_VIDEO_ID
-        api_data: Dict[str, Any] = {
+        api_data: dict[str, Any] = {
             "id": video_id,
             "topicDetails": {
                 "topicCategories": [],  # Empty array
@@ -1202,9 +1184,8 @@ class TestVideosWithNoTopics:
         self, mock_session: AsyncMock
     ) -> None:
         """Test that count of videos without topics is tracked."""
-        from typing import Any, Dict, List
 
-        videos_data: List[Dict[str, Any]] = [
+        videos_data: list[dict[str, Any]] = [
             {
                 "id": "vid1",
                 "topicDetails": {
@@ -1309,9 +1290,8 @@ class TestTopicEnrichmentIntegration:
         self, service: EnrichmentService, mock_session: AsyncMock
     ) -> None:
         """Test topic enrichment within batch video processing."""
-        from typing import Any, Dict, List
 
-        videos: List[Dict[str, Any]] = [
+        videos: list[dict[str, Any]] = [
             {
                 "id": "vid1_abcdef",
                 "topicDetails": {

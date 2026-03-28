@@ -8,7 +8,6 @@ specialized queries, and edge case handling.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Dict, List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,8 +19,6 @@ from chronovista.models.user_language_preference import UserLanguagePreferenceCr
 from chronovista.repositories.user_language_preference_repository import (
     UserLanguagePreferenceRepository,
 )
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestUserLanguagePreferenceRepository:
@@ -62,7 +59,7 @@ class TestUserLanguagePreferenceRepository:
         )
 
     @pytest.fixture
-    def sample_preferences_list(self) -> List[UserLanguagePreferenceDB]:
+    def sample_preferences_list(self) -> list[UserLanguagePreferenceDB]:
         """Create list of sample preferences."""
         return [
             UserLanguagePreferenceDB(
@@ -161,7 +158,7 @@ class TestUserLanguagePreferenceRepository:
         self,
         repository: UserLanguagePreferenceRepository,
         mock_session: AsyncMock,
-        sample_preferences_list: List[UserLanguagePreferenceDB],
+        sample_preferences_list: list[UserLanguagePreferenceDB],
     ):
         """Test getting all preferences for a user."""
         # Mock execute to return scalars
@@ -181,7 +178,7 @@ class TestUserLanguagePreferenceRepository:
         self,
         repository: UserLanguagePreferenceRepository,
         mock_session: AsyncMock,
-        sample_preferences_list: List[UserLanguagePreferenceDB],
+        sample_preferences_list: list[UserLanguagePreferenceDB],
     ):
         """Test getting preferences filtered by type."""
         # Filter list to only fluent preferences
@@ -289,7 +286,7 @@ class TestUserLanguagePreferenceRepository:
             repository,
             "get_by_composite_key",
             new=AsyncMock(return_value=sample_preference_db),
-        ) as mock_get:
+        ):
 
             result = await repository.update_priority(
                 mock_session, "test_user", "en-US", 5
@@ -308,7 +305,7 @@ class TestUserLanguagePreferenceRepository:
         """Test updating priority of non-existent preference."""
         with patch.object(
             repository, "get_by_composite_key", new=AsyncMock(return_value=None)
-        ) as mock_get:
+        ):
 
             result = await repository.update_priority(
                 mock_session, "test_user", "non-existent", 5
@@ -420,7 +417,7 @@ class TestUserLanguagePreferenceRepository:
         await repository.get_by_composite_key(mock_session, "test_user", "EN-US")
 
         # Verify the query used lowercase language code
-        call_args = mock_session.execute.call_args[0][0]
+        mock_session.execute.call_args[0][0]
         # This is a simplified check - in a real test you'd inspect the SQL query
         mock_session.execute.assert_called_once()
 
@@ -566,7 +563,7 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
         return AsyncMock(spec=AsyncSession)
 
     @pytest.fixture
-    def sample_preferences_with_priorities(self) -> List[UserLanguagePreferenceDB]:
+    def sample_preferences_with_priorities(self) -> list[UserLanguagePreferenceDB]:
         """Create sample preferences with different priorities and types."""
         return [
             UserLanguagePreferenceDB(
@@ -671,7 +668,7 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
         self,
         repository: UserLanguagePreferenceRepository,
         mock_session: AsyncMock,
-        sample_preferences_with_priorities: List[UserLanguagePreferenceDB],
+        sample_preferences_with_priorities: list[UserLanguagePreferenceDB],
     ):
         """Test successful video localization retrieval."""
         # Mock get_user_preferences
@@ -740,7 +737,7 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
         self,
         repository: UserLanguagePreferenceRepository,
         mock_session: AsyncMock,
-        sample_preferences_with_priorities: List[UserLanguagePreferenceDB],
+        sample_preferences_with_priorities: list[UserLanguagePreferenceDB],
     ):
         """Test successful localization targets retrieval."""
         # Mock get_user_preferences
@@ -807,7 +804,7 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
         self,
         repository: UserLanguagePreferenceRepository,
         mock_session: AsyncMock,
-        sample_preferences_with_priorities: List[UserLanguagePreferenceDB],
+        sample_preferences_with_priorities: list[UserLanguagePreferenceDB],
     ):
         """Test successful localization coverage analysis."""
         # Mock get_user_preferences
@@ -889,7 +886,7 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
         self,
         repository: UserLanguagePreferenceRepository,
         mock_session: AsyncMock,
-        sample_preferences_with_priorities: List[UserLanguagePreferenceDB],
+        sample_preferences_with_priorities: list[UserLanguagePreferenceDB],
     ):
         """Test localization coverage when there are no videos with localizations."""
         # Mock get_user_preferences
@@ -897,10 +894,10 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
             repository,
             "get_user_preferences",
             new=AsyncMock(return_value=sample_preferences_with_priorities),
-        ) as mock_get_prefs:
+        ):
 
             # Mock empty language coverage
-            mock_language_coverage: Dict[str, int] = {}
+            mock_language_coverage: dict[str, int] = {}
 
             with patch(
                 "chronovista.repositories.video_localization_repository.VideoLocalizationRepository"
@@ -934,7 +931,7 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
         self,
         repository: UserLanguagePreferenceRepository,
         mock_session: AsyncMock,
-        sample_preferences_with_priorities: List[UserLanguagePreferenceDB],
+        sample_preferences_with_priorities: list[UserLanguagePreferenceDB],
     ):
         """Test localization coverage when user has no localized videos."""
         # Mock get_user_preferences
@@ -942,7 +939,7 @@ class TestUserLanguagePreferenceRepositoryVideoIntegration:
             repository,
             "get_user_preferences",
             new=AsyncMock(return_value=sample_preferences_with_priorities),
-        ) as mock_get_prefs:
+        ):
 
             # Mock language coverage with languages not in user's preferences
             mock_language_coverage = {

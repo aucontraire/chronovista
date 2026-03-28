@@ -4,7 +4,7 @@ Tests for takeout data models.
 Comprehensive test coverage for Google Takeout data parsing models.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from tests.factories.takeout_data_factory import (
@@ -143,7 +143,7 @@ class TestTakeoutWatchEntry:
             title_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
             raw_time="2023-01-15T14:30:00Z",
         )
-        expected_time = datetime(2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc)
+        expected_time = datetime(2023, 1, 15, 14, 30, 0, tzinfo=UTC)
         assert entry.watched_at == expected_time
 
     def test_watched_at_parsing_iso_format_with_timezone(self):
@@ -170,7 +170,7 @@ class TestTakeoutWatchEntry:
 
     def test_watched_at_provided_explicitly(self):
         """Test that explicitly provided watched_at is preserved."""
-        explicit_time = datetime(2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc)
+        explicit_time = datetime(2023, 1, 15, 14, 30, 0, tzinfo=UTC)
         entry = create_minimal_takeout_watch_entry(
             title="Test Video",
             title_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -181,7 +181,7 @@ class TestTakeoutWatchEntry:
 
     def test_all_fields_present(self):
         """Test creation with all fields present."""
-        watched_time = datetime(2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc)
+        watched_time = datetime(2023, 1, 15, 14, 30, 0, tzinfo=UTC)
         entry = create_takeout_watch_entry(
             video_id="dQw4w9WgXcQ",
             title="Test Video",
@@ -246,7 +246,7 @@ class TestTakeoutPlaylistItem:
 
     def test_explicit_creation_timestamp_preserved(self):
         """Test that explicitly provided creation_timestamp is preserved."""
-        explicit_time = datetime(2023, 1, 15, 14, 30, 0, tzinfo=timezone.utc)
+        explicit_time = datetime(2023, 1, 15, 14, 30, 0, tzinfo=UTC)
         item = create_takeout_playlist_item(
             video_id="dQw4w9WgXcQ",
             raw_timestamp="2023-06-15T14:30:00+00:00",
@@ -480,9 +480,9 @@ class TestTakeoutData:
 
     def test_date_range_calculation(self):
         """Test date range calculation from watch history."""
-        time1 = datetime(2023, 1, 15, tzinfo=timezone.utc)
-        time2 = datetime(2023, 6, 15, tzinfo=timezone.utc)
-        time3 = datetime(2023, 3, 15, tzinfo=timezone.utc)
+        time1 = datetime(2023, 1, 15, tzinfo=UTC)
+        time2 = datetime(2023, 6, 15, tzinfo=UTC)
+        time3 = datetime(2023, 3, 15, tzinfo=UTC)
 
         watch_entries = [
             create_takeout_watch_entry(
@@ -539,8 +539,8 @@ class TestTakeoutData:
 
     def test_date_range_preserved_when_provided(self):
         """Test that explicitly provided date_range is preserved."""
-        time1 = datetime(2023, 1, 15, tzinfo=timezone.utc)
-        time2 = datetime(2023, 6, 15, tzinfo=timezone.utc)
+        time1 = datetime(2023, 1, 15, tzinfo=UTC)
+        time2 = datetime(2023, 6, 15, tzinfo=UTC)
         explicit_range = (time1, time2)
 
         data = create_takeout_data(

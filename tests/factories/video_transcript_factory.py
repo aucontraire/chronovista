@@ -7,11 +7,10 @@ with realistic and consistent test data.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, List, cast
+from datetime import UTC, datetime
+from typing import Any
 
 import factory
-from factory import LazyFunction
 
 from chronovista.models.enums import (
     DownloadReason,
@@ -106,7 +105,7 @@ class VideoTranscriptFactory(factory.Factory[VideoTranscript]):
     track_kind: Any = factory.LazyFunction(lambda: TrackKind.STANDARD)
     caption_name: Any = factory.LazyFunction(lambda: "Español (manual)")
     downloaded_at: Any = factory.LazyFunction(
-        lambda: datetime(2023, 12, 15, 16, 30, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 12, 15, 16, 30, 0, tzinfo=UTC)
     )
     # Feature 007: Raw transcript data with timestamps
     raw_transcript_data: Any = factory.LazyFunction(
@@ -150,7 +149,7 @@ class VideoTranscriptWithQualityFactory(factory.Factory[VideoTranscriptWithQuali
     track_kind: Any = factory.LazyFunction(lambda: TrackKind.STANDARD)
     caption_name: Any = factory.LazyFunction(lambda: "English (Professional)")
     downloaded_at: Any = factory.LazyFunction(
-        lambda: datetime(2023, 9, 22, 14, 0, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 9, 22, 14, 0, 0, tzinfo=UTC)
     )
     quality_score: Any = factory.LazyFunction(lambda: 0.94)
     is_high_quality: Any = factory.LazyFunction(lambda: True)
@@ -178,10 +177,10 @@ class TranscriptSearchFiltersFactory(factory.Factory[TranscriptSearchFilters]):
     is_cc_only: Any = factory.LazyFunction(lambda: True)
     is_manual_only: Any = factory.LazyFunction(lambda: False)
     downloaded_after: Any = factory.LazyFunction(
-        lambda: datetime(2023, 1, 1, tzinfo=timezone.utc)
+        lambda: datetime(2023, 1, 1, tzinfo=UTC)
     )
     downloaded_before: Any = factory.LazyFunction(
-        lambda: datetime(2023, 12, 31, tzinfo=timezone.utc)
+        lambda: datetime(2023, 12, 31, tzinfo=UTC)
     )
 
 
@@ -317,7 +316,7 @@ def create_transcript_search_filters(**kwargs: Any) -> TranscriptSearchFilters:
     return result
 
 
-def create_batch_video_transcripts(count: int = 5) -> List[VideoTranscript]:
+def create_batch_video_transcripts(count: int = 5) -> list[VideoTranscript]:
     """Create a batch of VideoTranscript instances for testing."""
     transcripts = []
     base_video_ids = [

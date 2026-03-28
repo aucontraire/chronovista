@@ -7,14 +7,19 @@ fixtures for systematic integration testing across model tiers.
 
 from __future__ import annotations
 
-import os
 import asyncio
-from collections.abc import AsyncGenerator
-from typing import Any, Awaitable, Callable, Dict, Generator
+import os
+from collections.abc import AsyncGenerator, Awaitable
+from typing import Any
 
 import pytest
+
+# FastAPI test client imports
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from chronovista.api.deps import get_db
+from chronovista.api.main import app
 from chronovista.auth.oauth_service import YouTubeOAuthService
 from chronovista.config.settings import get_settings
 from chronovista.db.models import Base
@@ -28,12 +33,6 @@ from chronovista.repositories.video_transcript_repository import (
     VideoTranscriptRepository,
 )
 from chronovista.services.youtube_service import YouTubeService
-
-# FastAPI test client imports
-from httpx import ASGITransport, AsyncClient
-
-from chronovista.api.main import app
-from chronovista.api.deps import get_db
 
 
 async def check_database_availability(engine) -> bool:
@@ -88,7 +87,6 @@ def integration_db_schema_setup(integration_test_db_url):
 
     Uses autouse=True so it runs automatically for all integration tests.
     """
-    import asyncio
 
     engine = create_async_engine(
         integration_test_db_url,
@@ -177,7 +175,7 @@ class SessionWithCheck:
     def __init__(
         self,
         factory: async_sessionmaker[AsyncSession],
-        checker: "DatabaseAvailabilityChecker",
+        checker: DatabaseAvailabilityChecker,
     ) -> None:
         self._factory = factory
         self._checker = checker
@@ -388,7 +386,7 @@ async def established_channel(
     authenticated_youtube_service,
     integration_db_session,
     sample_youtube_channel_ids,
-) -> Dict[str, Any] | None:
+) -> dict[str, Any] | None:
     """
     Provide an established channel in the database for dependent model testing.
 
@@ -479,9 +477,9 @@ async def established_channel(
 async def established_videos(
     authenticated_youtube_service,
     integration_db_session,
-    established_channel: Awaitable[Dict[str, Any] | None],
+    established_channel: Awaitable[dict[str, Any] | None],
     sample_youtube_video_ids,
-) -> list[Dict[str, Any]] | None:
+) -> list[dict[str, Any]] | None:
     """
     Provide established videos in the database for dependent model testing.
 
@@ -585,9 +583,6 @@ async def established_videos(
                 )
 
             await session.commit()
-            print(
-                f"DEBUG: Returning {len(videos)} videos from established_videos fixture"
-            )
             return videos
     except Exception as e:
         pytest.skip(f"Could not establish test videos: {e}")

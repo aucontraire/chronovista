@@ -21,8 +21,6 @@ from chronovista.api.schemas.sync import SyncOperationType
 from chronovista.models.enums import LanguageCode
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Fixtures

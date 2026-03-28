@@ -13,19 +13,16 @@ Tests cover:
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.api.main import app
 from chronovista.api.deps import get_db
+from chronovista.api.main import app
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Fixtures
@@ -329,6 +326,6 @@ class TestPlaylistVideoNotFound:
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
             response = await async_client_no_playlist.get(
-                f"/api/v1/playlists/PLnonexistent12345678901/videos"
+                "/api/v1/playlists/PLnonexistent12345678901/videos"
             )
             assert response.status_code == 404

@@ -46,8 +46,6 @@ if TYPE_CHECKING:
     from _pytest.logging import LogCaptureFixture
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 # UUID regex pattern for validation
 UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
@@ -388,7 +386,7 @@ class TestRequestIdLogging:
                 exc_info=None
             )
             filter_instance.filter(test_record_2)
-            assert getattr(test_record_2, "request_id") == test_request_id
+            assert test_record_2.request_id == test_request_id  # type: ignore[attr-defined]
         finally:
             request_id_var.reset(token)
 
@@ -573,7 +571,6 @@ class TestContentTypeCompliance:
         from unittest.mock import MagicMock
 
         from fastapi.exceptions import RequestValidationError
-        from pydantic_core import InitErrorDetails, ValidationError
 
         from chronovista.api.exception_handlers import validation_error_handler
         from chronovista.api.middleware.request_id import request_id_var
@@ -639,7 +636,6 @@ class TestContentTypeCompliance:
         from unittest.mock import MagicMock
 
         from fastapi import Request
-        from starlette.datastructures import URL
 
         from chronovista.api.exception_handlers import generic_error_handler
         from chronovista.api.middleware.request_id import request_id_var

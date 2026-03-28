@@ -7,7 +7,7 @@ serialization, and business logic testing using factory-boy for DRY principles.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -164,7 +164,7 @@ class TestVideoBaseFactory:
             "channel_id": "UCuAXFkgsw1L7xaCfnd5JJOw",  # Valid 24-char channel ID
             "title": "Validation Test Video",
             "description": "Test video for validation",
-            "upload_date": datetime(2023, 12, 1, 10, 30, 0, tzinfo=timezone.utc),
+            "upload_date": datetime(2023, 12, 1, 10, 30, 0, tzinfo=UTC),
             "duration": 300,
             "made_for_kids": False,
             "self_declared_made_for_kids": False,
@@ -278,8 +278,8 @@ class TestVideoFactory:
 
     def test_video_timestamps(self):
         """Test Video with custom timestamps."""
-        created_time = datetime(2023, 1, 1, tzinfo=timezone.utc)
-        updated_time = datetime(2023, 12, 1, tzinfo=timezone.utc)
+        created_time = datetime(2023, 1, 1, tzinfo=UTC)
+        updated_time = datetime(2023, 12, 1, tzinfo=UTC)
 
         video = VideoFactory.build(created_at=created_time, updated_at=updated_time)
 
@@ -293,7 +293,7 @@ class TestVideoFactory:
             "channel_id": "UCuAXFkgsw1L7xaCfnd5JJOw",
             "title": "ORM Test Video",
             "description": "Testing ORM compatibility",
-            "upload_date": datetime(2023, 6, 15, 10, 30, tzinfo=timezone.utc),
+            "upload_date": datetime(2023, 6, 15, 10, 30, tzinfo=UTC),
             "duration": 600,
             "made_for_kids": False,
             "self_declared_made_for_kids": False,
@@ -301,8 +301,8 @@ class TestVideoFactory:
             "view_count": 25000,
             "like_count": 1500,
             "availability_status": "available",
-            "created_at": datetime(2023, 6, 15, 10, 30, tzinfo=timezone.utc),
-            "updated_at": datetime(2023, 6, 15, 12, 45, tzinfo=timezone.utc),
+            "created_at": datetime(2023, 6, 15, 10, 30, tzinfo=UTC),
+            "updated_at": datetime(2023, 6, 15, 12, 45, tzinfo=UTC),
         }
 
         video = Video.model_validate(video_data)
@@ -348,8 +348,8 @@ class TestVideoSearchFiltersFactory:
 
     def test_video_search_filters_comprehensive(self):
         """Test VideoSearchFilters with all fields."""
-        upload_after = datetime(2023, 1, 1, tzinfo=timezone.utc)
-        upload_before = datetime(2023, 12, 31, tzinfo=timezone.utc)
+        upload_after = datetime(2023, 1, 1, tzinfo=UTC)
+        upload_before = datetime(2023, 12, 31, tzinfo=UTC)
 
         filters = VideoSearchFiltersFactory.build(
             channel_ids=[

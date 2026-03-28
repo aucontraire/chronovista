@@ -16,20 +16,17 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, Mock, mock_open, patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
 
-from chronovista.exceptions import CDXError
 from chronovista.services.recovery.cdx_client import CDXClient, RateLimiter
 from chronovista.services.recovery.models import CdxCacheEntry, CdxSnapshot
 
 # Mark all tests in this module as async by default
-pytestmark = pytest.mark.asyncio
-
 
 # =============================================================================
 # TestRateLimiter - Token-bucket rate limiting logic
@@ -517,7 +514,7 @@ class TestCDXCaching:
         # Create a fresh cache entry (fetched 1 hour ago)
         cache_entry = CdxCacheEntry(
             video_id="dQw4w9WgXcQ",
-            fetched_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            fetched_at=datetime.now(UTC) - timedelta(hours=1),
             snapshots=[
                 CdxSnapshot(
                     timestamp="20220106075526",
@@ -605,7 +602,7 @@ class TestCDXCaching:
         # Create an expired cache entry (fetched 25 hours ago)
         cache_entry = CdxCacheEntry(
             video_id="dQw4w9WgXcQ",
-            fetched_at=datetime.now(timezone.utc) - timedelta(hours=25),
+            fetched_at=datetime.now(UTC) - timedelta(hours=25),
             snapshots=[
                 CdxSnapshot(
                     timestamp="20220106075526",
@@ -1018,7 +1015,7 @@ class TestCDXYearFilteringIntegration:
         # Create a fresh cache entry (stored newest-first, as _parse_cdx_response does)
         cache_entry = CdxCacheEntry(
             video_id="dQw4w9WgXcQ",
-            fetched_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            fetched_at=datetime.now(UTC) - timedelta(hours=1),
             snapshots=[
                 CdxSnapshot(
                     timestamp="20200601120000",
@@ -1409,7 +1406,7 @@ class TestFetchChannelSnapshots:
         # Create a fresh cache entry (fetched 1 hour ago)
         cache_entry = CdxCacheEntry(
             video_id="UCuAXFkgsw1L7xaCfnd5JJOw",
-            fetched_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            fetched_at=datetime.now(UTC) - timedelta(hours=1),
             snapshots=[
                 CdxSnapshot(
                     timestamp="20220106075526",
@@ -1592,7 +1589,7 @@ class TestFetchChannelSnapshots:
         # Create a fresh cache entry (stored newest-first, as _parse_cdx_response does)
         cache_entry = CdxCacheEntry(
             video_id="UCuAXFkgsw1L7xaCfnd5JJOw",
-            fetched_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            fetched_at=datetime.now(UTC) - timedelta(hours=1),
             snapshots=[
                 CdxSnapshot(
                     timestamp="20200601120000",

@@ -7,9 +7,9 @@ with realistic and consistent test data.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Any, List, Optional, Tuple, cast
+from typing import Any
 
 import factory
 
@@ -37,7 +37,7 @@ class TakeoutDataFactory(factory.Factory[TakeoutData]):
     playlists: Any = factory.LazyFunction(lambda: create_batch_takeout_playlists(3))
     subscriptions: Any = factory.LazyFunction(lambda: create_batch_takeout_subscriptions(5))
     parsed_at: Any = factory.LazyFunction(
-        lambda: datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        lambda: datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
     )
 
     # These will be calculated automatically from the data
@@ -60,7 +60,7 @@ class TakeoutDataMinimalFactory(factory.Factory[TakeoutData]):
     watch_history: Any = factory.LazyFunction(list)  # Empty list
     playlists: Any = factory.LazyFunction(list)  # Empty list
     subscriptions: Any = factory.LazyFunction(list)  # Empty list
-    parsed_at: Any = factory.LazyFunction(lambda: datetime.now(timezone.utc))
+    parsed_at: Any = factory.LazyFunction(lambda: datetime.now(UTC))
     total_videos_watched = 0
     total_playlists = 0
     total_subscriptions = 0
@@ -80,7 +80,7 @@ class TakeoutDataLargeFactory(factory.Factory[TakeoutData]):
     playlists: Any = factory.LazyFunction(lambda: create_batch_takeout_playlists(15))
     subscriptions: Any = factory.LazyFunction(lambda: create_batch_takeout_subscriptions(50))
     parsed_at: Any = factory.LazyFunction(
-        lambda: datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        lambda: datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
     )
     total_videos_watched = 0
     total_playlists = 0
@@ -99,7 +99,7 @@ class TakeoutDataHistoricalFactory(factory.Factory[TakeoutData]):
     playlists: Any = factory.LazyFunction(lambda: create_batch_takeout_playlists(5))
     subscriptions: Any = factory.LazyFunction(lambda: create_batch_takeout_subscriptions(10))
     parsed_at: Any = factory.LazyFunction(
-        lambda: datetime(2020, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+        lambda: datetime(2020, 6, 1, 12, 0, 0, tzinfo=UTC)
     )
     total_videos_watched = 0
     total_playlists = 0
@@ -118,7 +118,7 @@ class TakeoutDataWithExplicitTotalsFactory(factory.Factory[TakeoutData]):
     playlists: Any = factory.LazyFunction(lambda: create_batch_takeout_playlists(2))
     subscriptions: Any = factory.LazyFunction(lambda: create_batch_takeout_subscriptions(3))
     parsed_at: Any = factory.LazyFunction(
-        lambda: datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        lambda: datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
     )
 
     # Explicitly set totals (won't be auto-calculated)
@@ -127,8 +127,8 @@ class TakeoutDataWithExplicitTotalsFactory(factory.Factory[TakeoutData]):
     total_subscriptions = 50
     date_range: Any = factory.LazyFunction(
         lambda: (
-            datetime(2020, 1, 1, tzinfo=timezone.utc),
-            datetime(2024, 1, 1, tzinfo=timezone.utc),
+            datetime(2020, 1, 1, tzinfo=UTC),
+            datetime(2024, 1, 1, tzinfo=UTC),
         )
     )
 
@@ -149,20 +149,20 @@ class TakeoutDataTestData:
     ]
 
     VALID_PARSED_AT_TIMESTAMPS = [
-        datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc),
-        datetime(2020, 6, 1, 12, 0, 0, tzinfo=timezone.utc),
-        datetime(2023, 12, 31, 23, 59, 59, tzinfo=timezone.utc),
-        datetime.now(timezone.utc),
+        datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC),
+        datetime(2020, 6, 1, 12, 0, 0, tzinfo=UTC),
+        datetime(2023, 12, 31, 23, 59, 59, tzinfo=UTC),
+        datetime.now(UTC),
     ]
 
     VALID_DATE_RANGES = [
         (
-            datetime(2020, 1, 1, tzinfo=timezone.utc),
-            datetime(2024, 1, 1, tzinfo=timezone.utc),
+            datetime(2020, 1, 1, tzinfo=UTC),
+            datetime(2024, 1, 1, tzinfo=UTC),
         ),
         (
-            datetime(2023, 1, 1, tzinfo=timezone.utc),
-            datetime(2023, 12, 31, tzinfo=timezone.utc),
+            datetime(2023, 1, 1, tzinfo=UTC),
+            datetime(2023, 12, 31, tzinfo=UTC),
         ),
         None,  # Can be None
     ]
@@ -207,7 +207,7 @@ def create_takeout_data_with_explicit_totals(**kwargs: Any) -> TakeoutData:
     return result
 
 
-def create_empty_takeout_data(takeout_path: Optional[Path] = None) -> TakeoutData:
+def create_empty_takeout_data(takeout_path: Path | None = None) -> TakeoutData:
     """Create a TakeoutData with no watch history, playlists, or subscriptions."""
     if takeout_path is None:
         takeout_path = Path("/tmp/empty-takeout")
@@ -238,7 +238,7 @@ def create_takeout_data_with_counts(
     return result
 
 
-def create_batch_takeout_data(count: int = 3) -> List[TakeoutData]:
+def create_batch_takeout_data(count: int = 3) -> list[TakeoutData]:
     """Create a batch of TakeoutData instances for testing."""
     takeout_data_list = []
 
@@ -248,7 +248,7 @@ def create_batch_takeout_data(count: int = 3) -> List[TakeoutData]:
         playlist_count = i + 1  # 1, 2, 3, etc.
         subscription_count = (i + 1) * 2  # 2, 4, 6, etc.
 
-        parsed_at = datetime(2024, 1, 1 + i, 10, 0, 0, tzinfo=timezone.utc)
+        parsed_at = datetime(2024, 1, 1 + i, 10, 0, 0, tzinfo=UTC)
 
         takeout_data = create_takeout_data_with_counts(
             video_count=video_count,

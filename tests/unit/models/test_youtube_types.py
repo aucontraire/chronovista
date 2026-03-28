@@ -5,7 +5,6 @@ Comprehensive test coverage for YouTube ID validation functions and type aliases
 """
 
 import re
-from typing import Any
 
 import pytest
 

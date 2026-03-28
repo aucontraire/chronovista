@@ -457,14 +457,13 @@ class TestAuthCommandsEdgeCases:
         # Check that commands are registered using typer's command inspection
         commands = auth_app.registered_commands
         if hasattr(commands, "values"):
-            command_names = [cmd.name for cmd in commands.values()]
+            [cmd.name for cmd in commands.values()]
         else:
             # If it's a list, extract command names differently
-            command_names = [
+            [
                 cmd.name if hasattr(cmd, "name") else str(cmd) for cmd in commands
             ]
 
-        expected_commands = ["login", "logout", "status", "refresh"]
 
         # Check that auth app has expected commands
         assert isinstance(auth_app, object)

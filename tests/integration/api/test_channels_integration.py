@@ -7,8 +7,9 @@ Also tests channel video sort and liked filter (US-5).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, List
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -18,8 +19,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import Channel, UserVideo, Video
 from chronovista.models.enums import AvailabilityStatus
-
-pytestmark = pytest.mark.asyncio
 
 # Test channel IDs (all exactly 24 characters)
 CH_SUB_A = "UCsort_sub_a_1234567890"  # subscribed, video_count=500, title="Alpha"
@@ -560,9 +559,9 @@ async def channel_video_data(
 
     # Create videos
     video_specs = [
-        (VID_ALPHA, "Alpha Video", datetime(2024, 1, 10, tzinfo=timezone.utc)),
-        (VID_BRAVO, "Bravo Video", datetime(2024, 3, 15, tzinfo=timezone.utc)),
-        (VID_CHARLIE, "Charlie Video", datetime(2024, 2, 20, tzinfo=timezone.utc)),
+        (VID_ALPHA, "Alpha Video", datetime(2024, 1, 10, tzinfo=UTC)),
+        (VID_BRAVO, "Bravo Video", datetime(2024, 3, 15, tzinfo=UTC)),
+        (VID_CHARLIE, "Charlie Video", datetime(2024, 2, 20, tzinfo=UTC)),
     ]
     for vid_id, title, upload_date in video_specs:
         video = Video(

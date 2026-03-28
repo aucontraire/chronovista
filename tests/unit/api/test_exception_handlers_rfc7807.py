@@ -11,12 +11,12 @@ the legacy ErrorResponse format. They should PASS after implementing T042-T052.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import Mock
 
-import pytest
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel, ValidationError as PydanticValidationError
+from pydantic import BaseModel
+from pydantic import ValidationError as PydanticValidationError
 
 from chronovista.api.exception_handlers import (
     api_error_handler,
@@ -37,8 +37,6 @@ from chronovista.exceptions import (
 )
 
 # Mark all tests as async
-pytestmark = pytest.mark.asyncio
-
 
 # =============================================================================
 # Test Fixtures and Utilities

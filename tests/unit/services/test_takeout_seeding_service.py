@@ -7,26 +7,23 @@ dependency resolution, and orchestration.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from chronovista.models.enums import LanguageCode
 from chronovista.models.takeout.takeout_data import TakeoutSubscription
-from chronovista.services.seeding.base_seeder import ProgressCallback, SeedResult
+from chronovista.services.seeding.base_seeder import SeedResult
 from chronovista.services.seeding.orchestrator import SeedingOrchestrator
 from chronovista.services.takeout_seeding_service import TakeoutSeedingService
-from tests.factories.id_factory import TestIds, YouTubeIdFactory
+from tests.factories.id_factory import TestIds
 from tests.factories.takeout_data_factory import create_takeout_data
 from tests.factories.takeout_playlist_factory import create_takeout_playlist
 from tests.factories.takeout_playlist_item_factory import create_takeout_playlist_item
 from tests.factories.takeout_watch_entry_factory import create_takeout_watch_entry
 
 # Ensure async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 class TestTakeoutSeedingService:
     """Test TakeoutSeedingService with modular architecture."""
@@ -48,7 +45,7 @@ class TestTakeoutSeedingService:
                     title_url=f"https://www.youtube.com/watch?v={TestIds.NEVER_GONNA_GIVE_YOU_UP}",
                     channel_name="Rick Astley",
                     channel_id=TestIds.RICK_ASTLEY_CHANNEL,
-                    watched_at=datetime.now(timezone.utc),
+                    watched_at=datetime.now(UTC),
                 ),
                 create_takeout_watch_entry(
                     video_id=TestIds.TEST_VIDEO_1,
@@ -56,7 +53,7 @@ class TestTakeoutSeedingService:
                     title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
                     channel_name="Test Channel",
                     channel_id=TestIds.TEST_CHANNEL_2,
-                    watched_at=datetime.now(timezone.utc),
+                    watched_at=datetime.now(UTC),
                 ),
             ],
             subscriptions=[
@@ -78,7 +75,7 @@ class TestTakeoutSeedingService:
                     videos=[
                         create_takeout_playlist_item(
                             video_id=TestIds.NEVER_GONNA_GIVE_YOU_UP,
-                            creation_timestamp=datetime.now(timezone.utc),
+                            creation_timestamp=datetime.now(UTC),
                         )
                     ],
                     video_count=1,

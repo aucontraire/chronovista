@@ -23,9 +23,6 @@ from chronovista.api.schemas.entity_mentions import (
 )
 from chronovista.models.enums import EntityType
 
-pytestmark = pytest.mark.asyncio
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

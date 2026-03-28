@@ -27,7 +27,7 @@ Feature 045 — Correction Intelligence Pipeline (US5, T033)
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -45,8 +45,6 @@ from chronovista.services.cross_segment_discovery import (
 # CRITICAL: Module-level asyncio marker ensures async tests run with coverage
 # (see CLAUDE.md §pytest-asyncio Coverage Integration Issues).
 # ---------------------------------------------------------------------------
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Helpers / convenience

@@ -7,7 +7,7 @@ serialization, and business logic testing using factory-boy for DRY principles.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -279,7 +279,7 @@ class TestUserLanguagePreferenceFactory:
 
     def test_user_language_preference_timestamps(self):
         """Test UserLanguagePreference with custom timestamps."""
-        created_time = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        created_time = datetime(2023, 1, 1, tzinfo=UTC)
 
         preference = UserLanguagePreferenceFactory.build(created_at=created_time)
 
@@ -294,7 +294,7 @@ class TestUserLanguagePreferenceFactory:
             "priority": 1,
             "auto_download_transcripts": True,
             "learning_goal": "Native Italian speaker",
-            "created_at": datetime(2023, 6, 15, 10, 30, tzinfo=timezone.utc),
+            "created_at": datetime(2023, 6, 15, 10, 30, tzinfo=UTC),
         }
 
         preference = UserLanguagePreference.model_validate(preference_data)

@@ -17,7 +17,7 @@ follows the pattern used in ``test_transcript_correction_repository.py``.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, time, timezone
+from datetime import UTC, datetime, time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -37,8 +37,6 @@ from chronovista.repositories.transcript_correction_repository import (
 
 # Ensures every async test in this module is recognised by pytest-asyncio
 # regardless of how coverage is invoked (see CLAUDE.md §pytest-asyncio section).
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -75,7 +73,7 @@ def _make_correction_db(
         corrected_text=corrected_text,
         correction_note=correction_note,
         corrected_by_user_id=corrected_by_user_id,
-        corrected_at=corrected_at or datetime.now(tz=timezone.utc),
+        corrected_at=corrected_at or datetime.now(tz=UTC),
         version_number=version_number,
     )
 
@@ -257,9 +255,9 @@ class TestGetAllFiltered:
         mock_session: MagicMock,
     ) -> None:
         """The since filter applies an inclusive >= comparison on corrected_at."""
-        since_dt = datetime(2025, 6, 1, 0, 0, 0, tzinfo=timezone.utc)
+        since_dt = datetime(2025, 6, 1, 0, 0, 0, tzinfo=UTC)
         c1 = _make_correction_db(
-            corrected_at=datetime(2025, 7, 1, 12, 0, 0, tzinfo=timezone.utc)
+            corrected_at=datetime(2025, 7, 1, 12, 0, 0, tzinfo=UTC)
         )
         _setup_scalars_return(mock_session, [c1])
 
@@ -282,9 +280,9 @@ class TestGetAllFiltered:
         mock_session: MagicMock,
     ) -> None:
         """The until filter applies an inclusive <= comparison on corrected_at."""
-        until_dt = datetime(2025, 12, 31, 18, 30, 0, tzinfo=timezone.utc)
+        until_dt = datetime(2025, 12, 31, 18, 30, 0, tzinfo=UTC)
         c1 = _make_correction_db(
-            corrected_at=datetime(2025, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+            corrected_at=datetime(2025, 6, 1, 12, 0, 0, tzinfo=UTC)
         )
         _setup_scalars_return(mock_session, [c1])
 
@@ -303,7 +301,7 @@ class TestGetAllFiltered:
         This ensures date-only values (e.g., ``datetime(2025, 12, 31)``)
         include the entire day rather than cutting off at midnight.
         """
-        until_midnight = datetime(2025, 12, 31, 0, 0, 0, tzinfo=timezone.utc)
+        until_midnight = datetime(2025, 12, 31, 0, 0, 0, tzinfo=UTC)
         assert until_midnight.time() == time(0, 0, 0)
 
         _setup_scalars_return(mock_session, [])
@@ -323,7 +321,7 @@ class TestGetAllFiltered:
         mock_session: MagicMock,
     ) -> None:
         """When until has a non-midnight time, it is used as-is (no end-of-day adjustment)."""
-        until_dt = datetime(2025, 12, 31, 14, 30, 0, tzinfo=timezone.utc)
+        until_dt = datetime(2025, 12, 31, 14, 30, 0, tzinfo=UTC)
         assert until_dt.time() != time(0, 0, 0)
 
         _setup_scalars_return(mock_session, [])
@@ -370,7 +368,7 @@ class TestGetAllFiltered:
         c1 = _make_correction_db(
             video_id="vid_combined",
             correction_type=CorrectionType.CONTEXT_CORRECTION.value,
-            corrected_at=datetime(2025, 8, 15, 10, 0, 0, tzinfo=timezone.utc),
+            corrected_at=datetime(2025, 8, 15, 10, 0, 0, tzinfo=UTC),
         )
         _setup_scalars_return(mock_session, [c1])
 
@@ -378,8 +376,8 @@ class TestGetAllFiltered:
             mock_session,
             video_ids=["vid_combined"],
             correction_type=CorrectionType.CONTEXT_CORRECTION,
-            since=datetime(2025, 1, 1, tzinfo=timezone.utc),
-            until=datetime(2025, 12, 31, 23, 59, 59, tzinfo=timezone.utc),
+            since=datetime(2025, 1, 1, tzinfo=UTC),
+            until=datetime(2025, 12, 31, 23, 59, 59, tzinfo=UTC),
         )
 
         assert len(results) == 1
@@ -395,8 +393,8 @@ class TestGetAllFiltered:
 
         await repository.get_all_filtered(
             mock_session,
-            since=datetime(2025, 3, 1, tzinfo=timezone.utc),
-            until=datetime(2025, 3, 31, 23, 59, 59, tzinfo=timezone.utc),
+            since=datetime(2025, 3, 1, tzinfo=UTC),
+            until=datetime(2025, 3, 31, 23, 59, 59, tzinfo=UTC),
         )
 
         # Verify both >= and <= predicates on corrected_at appear in SQL
@@ -423,10 +421,10 @@ class TestGetAllFiltered:
         The SQL must include an ORDER BY corrected_at ASC clause.
         """
         c_early = _make_correction_db(
-            corrected_at=datetime(2025, 1, 1, tzinfo=timezone.utc)
+            corrected_at=datetime(2025, 1, 1, tzinfo=UTC)
         )
         c_late = _make_correction_db(
-            corrected_at=datetime(2025, 12, 31, tzinfo=timezone.utc)
+            corrected_at=datetime(2025, 12, 31, tzinfo=UTC)
         )
         _setup_scalars_return(mock_session, [c_early, c_late])
 

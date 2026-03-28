@@ -4,18 +4,15 @@ Tests for VideoSeeder - creates videos from watch history.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 # Mark all async tests in this module
-pytestmark = pytest.mark.asyncio
-
 from chronovista.models.enums import LanguageCode
-from chronovista.models.takeout.takeout_data import TakeoutData, TakeoutWatchEntry
+from chronovista.models.takeout.takeout_data import TakeoutData
 from chronovista.models.video import VideoCreate
 from chronovista.repositories.video_repository import VideoRepository
 from chronovista.services.seeding.base_seeder import ProgressCallback, SeedResult
@@ -87,7 +84,7 @@ class TestVideoSeederSeeding:
                 title="Never Gonna Give You Up",
                 title_url=f"https://www.youtube.com/watch?v={TestIds.NEVER_GONNA_GIVE_YOU_UP}",
                 channel_name="Rick Astley",
-                watched_at=datetime.now(timezone.utc),
+                watched_at=datetime.now(UTC),
                 video_id=TestIds.NEVER_GONNA_GIVE_YOU_UP,
                 channel_id=TestIds.RICK_ASTLEY_CHANNEL,
             ),
@@ -95,7 +92,7 @@ class TestVideoSeederSeeding:
                 title="Test Video 1",
                 title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
                 channel_name="Test Channel 1",
-                watched_at=datetime.now(timezone.utc),
+                watched_at=datetime.now(UTC),
                 video_id=TestIds.TEST_VIDEO_1,
                 channel_id=TestIds.TEST_CHANNEL_1,
             ),
@@ -103,7 +100,7 @@ class TestVideoSeederSeeding:
                 title="Test Video 2",
                 title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_2}",
                 channel_name="Test Channel 2",
-                watched_at=datetime.now(timezone.utc),
+                watched_at=datetime.now(UTC),
                 video_id=TestIds.TEST_VIDEO_2,
                 channel_id=TestIds.TEST_CHANNEL_2,
             ),
@@ -149,7 +146,7 @@ class TestVideoSeederSeeding:
                 "get_by_video_id",
                 new_callable=AsyncMock,
                 return_value=None,
-            ) as mock_get,
+            ),
             patch.object(
                 seeder.video_repo, "create", new_callable=AsyncMock
             ) as mock_create,
@@ -215,7 +212,7 @@ class TestVideoSeederSeeding:
                     title="Test Video",
                     title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
                     channel_name="Test Channel",
-                    watched_at=datetime.now(timezone.utc),
+                    watched_at=datetime.now(UTC),
                     video_id=TestIds.TEST_VIDEO_1,
                     channel_id=TestIds.TEST_CHANNEL_1,  # Has real channel_id
                 ),
@@ -276,7 +273,7 @@ class TestVideoSeederSeeding:
                     title="Test Video",
                     title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
                     channel_name="Some Channel Name",  # Has name
-                    watched_at=datetime.now(timezone.utc),
+                    watched_at=datetime.now(UTC),
                     video_id=TestIds.TEST_VIDEO_1,
                     channel_id=None,  # No channel_id
                     channel_url=None,  # No URL either - prevents model validator from extracting channel_id
@@ -335,7 +332,7 @@ class TestVideoSeederSeeding:
             return_value=None,
         ):
 
-            result = await seeder.seed(mock_session, sample_takeout_data, progress)
+            await seeder.seed(mock_session, sample_takeout_data, progress)
 
             assert "videos" in progress_calls
 
@@ -366,7 +363,7 @@ class TestVideoSeederSeeding:
             title="Test Video Title",
             title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
             channel_name="Test Channel",
-            watched_at=datetime.now(timezone.utc),
+            watched_at=datetime.now(UTC),
             video_id=TestIds.TEST_VIDEO_1,
             channel_id=TestIds.TEST_CHANNEL_1,
         )
@@ -390,7 +387,7 @@ class TestVideoSeederSeeding:
                 title="Same Video First Watch",
                 title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
                 channel_name="Test Channel",
-                watched_at=datetime.now(timezone.utc),
+                watched_at=datetime.now(UTC),
                 video_id=TestIds.TEST_VIDEO_1,  # Same ID
                 channel_id=TestIds.TEST_CHANNEL_1,
             ),
@@ -398,7 +395,7 @@ class TestVideoSeederSeeding:
                 title="Same Video Second Watch",
                 title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
                 channel_name="Test Channel",
-                watched_at=datetime.now(timezone.utc),
+                watched_at=datetime.now(UTC),
                 video_id=TestIds.TEST_VIDEO_1,  # Same ID again
                 channel_id=TestIds.TEST_CHANNEL_1,
             ),
@@ -406,7 +403,7 @@ class TestVideoSeederSeeding:
                 title="Different Video",
                 title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_2}",
                 channel_name="Test Channel",
-                watched_at=datetime.now(timezone.utc),
+                watched_at=datetime.now(UTC),
                 video_id=TestIds.TEST_VIDEO_2,  # Different ID
                 channel_id=TestIds.TEST_CHANNEL_1,
             ),
@@ -470,7 +467,7 @@ class TestVideoSeederBatchProcessing:
                     title=f"Video {i}",
                     title_url=f"https://www.youtube.com/watch?v={YouTubeIdFactory.create_video_id(f'video_{i}')}",
                     channel_name=f"Channel {i}",
-                    watched_at=datetime.now(timezone.utc),
+                    watched_at=datetime.now(UTC),
                     video_id=YouTubeIdFactory.create_video_id(f"video_{i}"),
                     channel_id=YouTubeIdFactory.create_channel_id(f"channel_{i}"),
                 )
@@ -528,7 +525,7 @@ class TestVideoSeederEdgeCases:
                 title="Video Without ID",
                 title_url="https://www.youtube.com/watch?v=invalid",
                 channel_name="Test Channel",
-                watched_at=datetime.now(timezone.utc),
+                watched_at=datetime.now(UTC),
                 video_id=None,  # Missing video ID
                 channel_id=TestIds.TEST_CHANNEL_1,
             ),
@@ -552,7 +549,7 @@ class TestVideoSeederEdgeCases:
             title="Video Without Channel ID",
             title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
             channel_name="Unknown Channel",
-            watched_at=datetime.now(timezone.utc),
+            watched_at=datetime.now(UTC),
             video_id=TestIds.TEST_VIDEO_1,
             channel_id=None,  # Missing channel ID
         )
@@ -570,7 +567,7 @@ class TestVideoSeederEdgeCases:
             title="",  # Empty title
             title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
             channel_name="Test Channel",
-            watched_at=datetime.now(timezone.utc),
+            watched_at=datetime.now(UTC),
             video_id=TestIds.TEST_VIDEO_1,
             channel_id=TestIds.TEST_CHANNEL_1,
         )
@@ -586,7 +583,7 @@ class TestVideoSeederEdgeCases:
             title="Video with émojis 🎵 and spëcial chars!",
             title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
             channel_name="Test Channel",
-            watched_at=datetime.now(timezone.utc),
+            watched_at=datetime.now(UTC),
             video_id=TestIds.TEST_VIDEO_1,
             channel_id=TestIds.TEST_CHANNEL_1,
         )
@@ -604,7 +601,7 @@ class TestVideoSeederEdgeCases:
             title=long_title,
             title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
             channel_name="Test Channel",
-            watched_at=datetime.now(timezone.utc),
+            watched_at=datetime.now(UTC),
             video_id=TestIds.TEST_VIDEO_1,
             channel_id=TestIds.TEST_CHANNEL_1,
         )
@@ -620,7 +617,7 @@ class TestVideoSeederEdgeCases:
             title="Test Video",
             title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
             channel_name=None,  # Missing channel name
-            watched_at=datetime.now(timezone.utc),
+            watched_at=datetime.now(UTC),
             video_id=TestIds.TEST_VIDEO_1,
             channel_id=TestIds.TEST_CHANNEL_1,
         )
@@ -673,7 +670,7 @@ class TestVideoSeederDefaultValues:
             title="Test Video",
             title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
             channel_name="Test Channel",
-            watched_at=datetime.now(timezone.utc),
+            watched_at=datetime.now(UTC),
             video_id=TestIds.TEST_VIDEO_1,
             channel_id=TestIds.TEST_CHANNEL_1,
         )
@@ -688,7 +685,7 @@ class TestVideoSeederDefaultValues:
             title="Test Video",
             title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",
             channel_name="Test Channel",
-            watched_at=datetime.now(timezone.utc),
+            watched_at=datetime.now(UTC),
             video_id=TestIds.TEST_VIDEO_1,
             channel_id=TestIds.TEST_CHANNEL_1,
         )
@@ -699,7 +696,7 @@ class TestVideoSeederDefaultValues:
 
     def test_upload_date_estimation(self, seeder: VideoSeeder) -> None:
         """Test upload date estimation from watch date."""
-        watch_date = datetime.now(timezone.utc)
+        watch_date = datetime.now(UTC)
         watch_entry = create_takeout_watch_entry(
             title="Test Video",
             title_url=f"https://www.youtube.com/watch?v={TestIds.TEST_VIDEO_1}",

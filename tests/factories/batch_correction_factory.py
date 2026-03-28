@@ -12,7 +12,7 @@ summarizes a batch of corrections sharing the same batch_id.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import factory
@@ -47,7 +47,7 @@ class BatchListItemFactory(factory.Factory[BatchListItem]):
     pattern: Any = Sequence(lambda n: f"original text {n}")
     replacement: Any = Sequence(lambda n: f"corrected text {n}")
     batch_timestamp: Any = LazyFunction(
-        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
     )
 
 
@@ -125,7 +125,7 @@ class BatchListItemTestData:
             "corrected_by_user_id": cls.VALID_USER_IDS[0],
             "pattern": cls.VALID_PATTERNS[0],
             "replacement": cls.VALID_REPLACEMENTS[0],
-            "batch_timestamp": datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+            "batch_timestamp": datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
         }
 
     @classmethod

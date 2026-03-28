@@ -13,15 +13,13 @@ objects are replaced with MagicMock/AsyncMock stand-ins.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 # CRITICAL: Module-level asyncio marker ensures async tests execute (not skip)
 # when running under pytest-cov. See CLAUDE.md § pytest-asyncio Coverage.
-pytestmark = pytest.mark.asyncio
-
 from chronovista.models.enums import DownloadReason
 from chronovista.models.transcript_source import (
     RawTranscriptData,
@@ -35,7 +33,6 @@ from chronovista.services.transcript_service import (
     TranscriptService,
     TranscriptServiceUnavailableError,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -54,7 +51,7 @@ def _make_snippet_mock(text: str = "Hello world", start: float = 0.0, duration: 
 
 
 def _make_fetched_transcript(
-    snippets: Optional[List[MagicMock]] = None,
+    snippets: list[MagicMock] | None = None,
 ) -> MagicMock:
     """Return a mock FetchedTranscript that is iterable over snippet mocks."""
     fetched = MagicMock()
@@ -70,8 +67,8 @@ def _make_transcript_mock(
     language: str = "English",
     is_generated: bool = False,
     is_translatable: bool = True,
-    translation_languages: Optional[List[Dict[str, str]]] = None,
-    fetch_snippets: Optional[List[MagicMock]] = None,
+    translation_languages: list[dict[str, str]] | None = None,
+    fetch_snippets: list[MagicMock] | None = None,
 ) -> MagicMock:
     """Return a mock youtube-transcript-api Transcript object."""
     t = MagicMock()
@@ -84,7 +81,7 @@ def _make_transcript_mock(
     return t
 
 
-def _make_transcript_list(transcripts: List[MagicMock]) -> MagicMock:
+def _make_transcript_list(transcripts: list[MagicMock]) -> MagicMock:
     """Return a mock TranscriptList that iterates over the given transcripts."""
     tl = MagicMock()
     tl.__iter__ = MagicMock(return_value=iter(transcripts))
@@ -353,7 +350,7 @@ class TestGetTranscriptsForLanguages:
         # Mock get_transcript to return a plausible transcript for 'en' and raise for 'fr'
         async def _mock_get_transcript(
             video_id: str,
-            language_codes: Optional[List[str]] = None,
+            language_codes: list[str] | None = None,
             download_reason: DownloadReason = DownloadReason.USER_REQUEST,
         ) -> EnhancedVideoTranscriptBase:
             if language_codes and language_codes[0] == "en":
@@ -422,11 +419,11 @@ class TestGetTranscriptsForLanguages:
         """When _api_available is False, method falls back to per-language get_transcript() calls."""
         service = _service_without_api()
 
-        call_log: List[str] = []
+        call_log: list[str] = []
 
         async def _mock_get_transcript(
             video_id: str,
-            language_codes: Optional[List[str]] = None,
+            language_codes: list[str] | None = None,
             download_reason: DownloadReason = DownloadReason.USER_REQUEST,
         ) -> EnhancedVideoTranscriptBase:
             lang = (language_codes or ["en"])[0]
@@ -454,7 +451,7 @@ class TestGetTranscriptsForLanguages:
 
         async def _mock_get_transcript(
             video_id: str,
-            language_codes: Optional[List[str]] = None,
+            language_codes: list[str] | None = None,
             download_reason: DownloadReason = DownloadReason.USER_REQUEST,
         ) -> EnhancedVideoTranscriptBase:
             raise TranscriptNotFoundError("No transcript")
@@ -577,7 +574,7 @@ class TestGetTranscriptsForLanguages:
 
         async def _mock_get_transcript(
             video_id: str,
-            language_codes: Optional[List[str]] = None,
+            language_codes: list[str] | None = None,
             download_reason: DownloadReason = DownloadReason.USER_REQUEST,
         ) -> EnhancedVideoTranscriptBase:
             raise TranscriptNotFoundError("not available")
@@ -920,7 +917,7 @@ def _minimal_snippet_dict(
     text: str = "Hello",
     start: float = 0.0,
     duration: float = 2.0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     return {"text": text, "start": start, "duration": duration}
 
 
@@ -1342,7 +1339,7 @@ class TestApiListIpBlockEarlyTermination:
 
         async def _mock_get_transcript(
             video_id: str,
-            language_codes: Optional[List[str]] = None,
+            language_codes: list[str] | None = None,
             download_reason: DownloadReason = DownloadReason.USER_REQUEST,
         ) -> EnhancedVideoTranscriptBase:
             nonlocal en_call_count
@@ -1358,7 +1355,7 @@ class TestApiListIpBlockEarlyTermination:
             "chronovista.services.transcript_service.YouTubeTranscriptApi",
             return_value=mock_api_instance,
         ):
-            result = await service.get_transcripts_for_languages(
+            await service.get_transcripts_for_languages(
                 video_id=VIDEO_ID,
                 language_codes=["en", "es", "fr"],
             )
@@ -1377,7 +1374,7 @@ class TestApiListIpBlockEarlyTermination:
 
         async def _mock_get_transcript(
             video_id: str,
-            language_codes: Optional[List[str]] = None,
+            language_codes: list[str] | None = None,
             download_reason: DownloadReason = DownloadReason.USER_REQUEST,
         ) -> EnhancedVideoTranscriptBase:
             raw = _build_minimal_raw_data(video_id, "en")
@@ -1412,7 +1409,7 @@ class TestApiListIpBlockEarlyTermination:
 
         async def _mock_get_transcript(
             video_id: str,
-            language_codes: Optional[List[str]] = None,
+            language_codes: list[str] | None = None,
             download_reason: DownloadReason = DownloadReason.USER_REQUEST,
         ) -> EnhancedVideoTranscriptBase:
             raise Exception("IP is still blocked")
@@ -1445,11 +1442,11 @@ class TestApiListIpBlockEarlyTermination:
             "your ip is blocked by YouTube"
         )
 
-        called_language_codes: List[str] = []
+        called_language_codes: list[str] = []
 
         async def _mock_get_transcript(
             video_id: str,
-            language_codes: Optional[List[str]] = None,
+            language_codes: list[str] | None = None,
             download_reason: DownloadReason = DownloadReason.USER_REQUEST,
         ) -> EnhancedVideoTranscriptBase:
             called_language_codes.extend(language_codes or [])
@@ -1460,12 +1457,11 @@ class TestApiListIpBlockEarlyTermination:
         with patch(
             "chronovista.services.transcript_service.YouTubeTranscriptApi",
             return_value=mock_api_instance,
-        ):
-            with pytest.raises(TranscriptServiceUnavailableError):
-                await service.get_transcripts_for_languages(
-                    video_id=VIDEO_ID,
-                    language_codes=["en", "es", "fr", "de"],
-                )
+        ), pytest.raises(TranscriptServiceUnavailableError):
+            await service.get_transcripts_for_languages(
+                video_id=VIDEO_ID,
+                language_codes=["en", "es", "fr", "de"],
+            )
 
         # Only the English last-resort call should have been attempted
         assert "es" not in called_language_codes
@@ -1483,7 +1479,7 @@ class TestApiListIpBlockEarlyTermination:
 
         async def _mock_get_transcript(
             video_id: str,
-            language_codes: Optional[List[str]] = None,
+            language_codes: list[str] | None = None,
             download_reason: DownloadReason = DownloadReason.USER_REQUEST,
         ) -> EnhancedVideoTranscriptBase:
             raise Exception("still blocked")
@@ -1522,11 +1518,11 @@ class TestApiListNonIpBlockWithConsecutiveIpBlockFallback:
         mock_api_instance = MagicMock()
         mock_api_instance.list.side_effect = RuntimeError("quota exceeded")
 
-        called_langs: List[str] = []
+        called_langs: list[str] = []
 
         async def _mock_get_transcript(
             video_id: str,
-            language_codes: Optional[List[str]] = None,
+            language_codes: list[str] | None = None,
             download_reason: DownloadReason = DownloadReason.USER_REQUEST,
         ) -> EnhancedVideoTranscriptBase:
             lang = (language_codes or ["en"])[0]
@@ -1564,11 +1560,11 @@ class TestApiListNonIpBlockWithConsecutiveIpBlockFallback:
         mock_api_instance = MagicMock()
         mock_api_instance.list.side_effect = RuntimeError("network error")
 
-        call_log: List[str] = []
+        call_log: list[str] = []
 
         async def _mock_get_transcript(
             video_id: str,
-            language_codes: Optional[List[str]] = None,
+            language_codes: list[str] | None = None,
             download_reason: DownloadReason = DownloadReason.USER_REQUEST,
         ) -> EnhancedVideoTranscriptBase:
             lang = (language_codes or ["en"])[0]
@@ -1614,11 +1610,11 @@ class TestApiListNonIpBlockWithConsecutiveIpBlockFallback:
         mock_api_instance = MagicMock()
         mock_api_instance.list.side_effect = RuntimeError("connection reset")
 
-        call_log: List[str] = []
+        call_log: list[str] = []
 
         async def _mock_get_transcript(
             video_id: str,
-            language_codes: Optional[List[str]] = None,
+            language_codes: list[str] | None = None,
             download_reason: DownloadReason = DownloadReason.USER_REQUEST,
         ) -> EnhancedVideoTranscriptBase:
             lang = (language_codes or ["en"])[0]
@@ -1663,11 +1659,11 @@ class TestApiListNonIpBlockWithConsecutiveIpBlockFallback:
         mock_api_instance = MagicMock()
         mock_api_instance.list.side_effect = RuntimeError("network failure")
 
-        call_log: List[str] = []
+        call_log: list[str] = []
 
         async def _mock_get_transcript(
             video_id: str,
-            language_codes: Optional[List[str]] = None,
+            language_codes: list[str] | None = None,
             download_reason: DownloadReason = DownloadReason.USER_REQUEST,
         ) -> EnhancedVideoTranscriptBase:
             lang = (language_codes or ["en"])[0]
@@ -1959,7 +1955,7 @@ class TestIpBlockPartialSuccessDoesNotRaise:
 
         async def _mock_get_transcript(
             video_id: str,
-            language_codes: Optional[List[str]] = None,
+            language_codes: list[str] | None = None,
             download_reason: DownloadReason = DownloadReason.USER_REQUEST,
         ) -> EnhancedVideoTranscriptBase:
             raw = _build_minimal_raw_data(video_id, "en")
@@ -2038,11 +2034,11 @@ class TestIpBlockPartialSuccessDoesNotRaise:
         mock_api_instance = MagicMock()
         mock_api_instance.list.side_effect = RuntimeError("network error")
 
-        call_log: List[str] = []
+        call_log: list[str] = []
 
         async def _mock_get_transcript(
             video_id: str,
-            language_codes: Optional[List[str]] = None,
+            language_codes: list[str] | None = None,
             download_reason: DownloadReason = DownloadReason.USER_REQUEST,
         ) -> EnhancedVideoTranscriptBase:
             lang = (language_codes or ["en"])[0]

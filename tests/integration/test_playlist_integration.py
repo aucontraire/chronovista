@@ -16,33 +16,26 @@ database setup, following the project's established testing patterns.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.config.database import DatabaseManager
-from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import Playlist as PlaylistDB
-from chronovista.models.channel import ChannelCreate
 from chronovista.models.enums import LanguageCode, PrivacyStatus
 from chronovista.models.playlist import PlaylistCreate
-from chronovista.models.takeout.takeout_data import TakeoutData, TakeoutPlaylist
+from chronovista.models.takeout.takeout_data import TakeoutData
 from chronovista.models.youtube_types import (
     create_test_channel_id,
-    create_test_playlist_id,
     is_internal_playlist_id,
     is_youtube_playlist_id,
     validate_playlist_id,
 )
-from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.repositories.playlist_repository import PlaylistRepository
 from chronovista.services.seeding.playlist_seeder import (
-    PlaylistSeeder,
     generate_internal_playlist_id,
 )
 from tests.factories.takeout_playlist_factory import (
@@ -54,11 +47,9 @@ from tests.factories.takeout_playlist_item_factory import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    pass
 
 # CRITICAL: Module-level marker ensures ALL async tests run with coverage
-pytestmark = pytest.mark.asyncio
-
 
 # ============================================================================
 # FIXTURES
@@ -247,16 +238,6 @@ class TestT041CoverageValidation:
         # Verify we can execute a simple query
         result = await mock_session.execute(text("SELECT 1"))
         assert result.scalar() == 1
-
-    async def test_module_level_pytestmark_present(self) -> None:
-        """
-        Verify module has pytestmark = pytest.mark.asyncio.
-
-        This ensures all async tests in the module run with Mode.AUTO,
-        preventing the coverage skipping issue documented in CLAUDE.md.
-        """
-        assert pytestmark is not None
-        assert pytestmark.name == "asyncio"
 
     async def test_integration_test_performance_acceptable(
         self,

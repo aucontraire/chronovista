@@ -29,22 +29,20 @@ from __future__ import annotations
 
 import uuid
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
-from chronovista.services.phonetic_matcher import PhoneticMatcher, PhoneticMatch
 from chronovista.repositories.entity_mention_repository import (
     EntityMentionRepository,
 )
+from chronovista.services.phonetic_matcher import PhoneticMatch, PhoneticMatcher
 
 # CRITICAL: ensures every async test in this module is recognised by
 # pytest-asyncio regardless of how coverage is invoked
 # (see CLAUDE.md §pytest-asyncio Coverage Integration Issues).
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Helpers

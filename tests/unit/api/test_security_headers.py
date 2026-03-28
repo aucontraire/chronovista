@@ -7,8 +7,6 @@ from httpx import ASGITransport, AsyncClient
 
 from chronovista.api.main import app
 
-pytestmark = pytest.mark.asyncio
-
 EXPECTED_HEADERS = {
     "x-content-type-options": "nosniff",
     "x-frame-options": "DENY",

@@ -14,14 +14,9 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from chronovista.models.enums import TopicType
-from chronovista.models.topic_category import TopicCategoryCreate
 from chronovista.repositories.topic_category_repository import TopicCategoryRepository
 from chronovista.services.enrichment.seeders import TopicSeeder, TopicSeedResult
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestTopicSeederConstants:
@@ -67,7 +62,7 @@ class TestTopicSeederConstants:
 
     def test_all_topics_have_freebase_format(self) -> None:
         """Test that all topic IDs use Freebase format (/m/...)."""
-        for topic_id in TopicSeeder.YOUTUBE_TOPICS.keys():
+        for topic_id in TopicSeeder.YOUTUBE_TOPICS:
             assert topic_id.startswith("/m/"), f"Topic ID {topic_id} should use Freebase format"
             assert len(topic_id) > 3, f"Topic ID {topic_id} should have content after /m/"
 
@@ -79,7 +74,7 @@ class TestTopicSeederConstants:
 
     def test_child_topics_have_valid_parent(self) -> None:
         """Test that all child topics reference valid parent IDs."""
-        for topic_id, (name, parent_id, wiki_slug) in TopicSeeder.YOUTUBE_TOPICS.items():
+        for topic_id, (_name, parent_id, _wiki_slug) in TopicSeeder.YOUTUBE_TOPICS.items():
             if parent_id is not None:  # Child topic
                 assert parent_id in TopicSeeder.YOUTUBE_TOPICS, \
                     f"Child topic {topic_id} references non-existent parent {parent_id}"

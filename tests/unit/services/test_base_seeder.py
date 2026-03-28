@@ -4,9 +4,9 @@ Tests for BaseSeeder - abstract base class for all seeders.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional, Set
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -18,8 +18,6 @@ from chronovista.services.seeding.base_seeder import (
     SeedResult,
 )
 from tests.factories.takeout_data_factory import create_takeout_data
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestSeedResult:
@@ -153,7 +151,7 @@ class TestProgressCallback:
 class MockSeeder(BaseSeeder):
     """Mock implementation of BaseSeeder for testing."""
 
-    def __init__(self, data_type: str, dependencies: Optional[Set[str]] = None):
+    def __init__(self, data_type: str, dependencies: set[str] | None = None):
         super().__init__(dependencies)
         self.data_type = data_type
         self.seed_called = False
@@ -164,7 +162,7 @@ class MockSeeder(BaseSeeder):
         self,
         session: Any,
         takeout_data: TakeoutData,
-        progress: Optional[ProgressCallback] = None,
+        progress: ProgressCallback | None = None,
     ) -> SeedResult:
         """Mock seed implementation."""
         self.seed_called = True
@@ -273,7 +271,7 @@ class TestBaseSeeder:
 
         progress = ProgressCallback(progress_callback)
 
-        result = await seeder.seed(session, takeout_data, progress)
+        await seeder.seed(session, takeout_data, progress)
 
         assert seeder.seed_called
         assert seeder.seed_args[2] == progress
@@ -339,7 +337,7 @@ class TestSeederIntegration:
             progress_updates.append(
                 {
                     "data_type": data_type,
-                    "timestamp": datetime.now(timezone.utc),
+                    "timestamp": datetime.now(UTC),
                 }
             )
 
@@ -425,7 +423,7 @@ class TestSeederErrorScenarios:
             self,
             session: Any,
             takeout_data: TakeoutData,
-            progress: Optional[ProgressCallback] = None,
+            progress: ProgressCallback | None = None,
         ) -> SeedResult:
             """Simulate different types of failures."""
             if self.fail_type == "exception":

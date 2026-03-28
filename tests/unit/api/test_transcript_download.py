@@ -20,7 +20,7 @@ Scenarios covered:
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -39,8 +39,6 @@ from chronovista.services.transcript_service import (
 
 # CRITICAL: Ensures all async tests work correctly with coverage tools.
 # Without this, pytest-cov may skip async tests entirely.
-pytestmark = pytest.mark.asyncio
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -61,7 +59,6 @@ def _make_orm_pref(language_code: str = "en") -> MagicMock:
     with ``from_attributes=True``, so every required field must be
     present as an attribute on the mock.
     """
-    from datetime import timezone as tz
 
     mock = MagicMock()
     mock.user_id = "default"
@@ -70,7 +67,7 @@ def _make_orm_pref(language_code: str = "en") -> MagicMock:
     mock.priority = 1
     mock.auto_download_transcripts = True
     mock.learning_goal = None
-    mock.created_at = datetime(2024, 1, 1, 0, 0, 0, tzinfo=tz.utc)
+    mock.created_at = datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
     return mock
 
 
@@ -89,7 +86,7 @@ def _make_db_transcript(
     by _transcript_repo.create_or_update(), so we set them explicitly.
     """
     if downloaded_at is None:
-        downloaded_at = datetime(2024, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+        downloaded_at = datetime(2024, 6, 15, 12, 0, 0, tzinfo=UTC)
 
     mock = MagicMock()
     mock.video_id = video_id

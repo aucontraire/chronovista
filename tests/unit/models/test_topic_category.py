@@ -7,8 +7,8 @@ for all TopicCategory model variants using factory pattern for DRY.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import cast
-from datetime import datetime, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -268,7 +268,7 @@ class TestTopicCategory:
 
     def test_create_valid_topic_category(self):
         """Test creating valid TopicCategory with keyword arguments."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         topic = cast(TopicCategory, TopicCategoryFactory.build(
             topic_id="education",
             category_name="Education",
@@ -291,7 +291,7 @@ class TestTopicCategory:
             category_name = "Science & Technology"
             parent_topic_id = "education"
             topic_type = "youtube"
-            created_at = datetime.now(timezone.utc)
+            created_at = datetime.now(UTC)
 
         mock_db = MockTopicCategoryDB()
         topic = TopicCategory.model_validate(mock_db, from_attributes=True)
@@ -564,7 +564,7 @@ class TestTopicCategoryModelInteractions:
         )
 
         # Simulate creation
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         topic_full = cast(TopicCategory, TopicCategoryFactory.build(
             topic_id=topic_create.topic_id,
             category_name=topic_create.category_name,

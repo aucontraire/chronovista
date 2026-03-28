@@ -10,17 +10,14 @@ from __future__ import annotations
 
 import time
 from collections.abc import AsyncGenerator
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import TopicCategory
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 class TestTopicHierarchyPerformance:
     """Test NFR-002: Topic hierarchy load performance."""
@@ -29,7 +26,7 @@ class TestTopicHierarchyPerformance:
     async def seed_topics(
         self,
         integration_db_session: Any,
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Seed database with test topics for performance testing.
 
@@ -45,11 +42,11 @@ class TestTopicHierarchyPerformance:
         List[str]
             List of created topic IDs.
         """
-        topic_ids: List[str] = []
+        topic_ids: list[str] = []
 
         async with integration_db_session() as session:
             # Create root topics (10 categories)
-            root_topics: List[TopicCategory] = []
+            root_topics: list[TopicCategory] = []
             for i in range(10):
                 topic = TopicCategory(
                     topic_id=f"/perf/root_{i}",
@@ -63,7 +60,7 @@ class TestTopicHierarchyPerformance:
                 topic_ids.append(topic.topic_id)
 
             # Create first-level children (10 per root = 100 total)
-            first_level: List[TopicCategory] = []
+            first_level: list[TopicCategory] = []
             for root in root_topics:
                 for j in range(10):
                     topic = TopicCategory(
@@ -99,7 +96,7 @@ class TestTopicHierarchyPerformance:
     async def cleanup_topics(
         self,
         integration_db_session: Any,
-        seed_topics: List[str],
+        seed_topics: list[str],
     ) -> AsyncGenerator[None, None]:
         """
         Clean up seeded topics after test.
@@ -128,7 +125,7 @@ class TestTopicHierarchyPerformance:
     async def test_topic_hierarchy_load_under_500ms(
         self,
         integration_db_session: Any,
-        seed_topics: List[str],
+        seed_topics: list[str],
         cleanup_topics: None,
     ) -> None:
         """
@@ -156,7 +153,7 @@ class TestTopicHierarchyPerformance:
             await session.execute(select(TopicCategory).limit(1))
 
             # Measure query time for full hierarchy load
-            times: List[float] = []
+            times: list[float] = []
             for _ in range(5):  # Run 5 iterations for stability
                 start = time.perf_counter()
 
@@ -189,12 +186,7 @@ class TestTopicHierarchyPerformance:
             )
 
             # Log results for debugging
-            avg = sum(times) / len(times)
-            print(f"\nTopic hierarchy load performance:")
-            print(f"  Topics loaded: {len(rows)}")
-            print(f"  Average: {avg:.1f}ms")
-            print(f"  p95: {p95:.1f}ms")
-            print(f"  Max: {max(times):.1f}ms")
+            sum(times) / len(times)
 
     @pytest.mark.performance
     async def test_topic_hierarchy_query_execution_time(
@@ -228,9 +220,6 @@ class TestTopicHierarchyPerformance:
             elapsed_ms = (time.perf_counter() - start) * 1000
 
             # Log results
-            print(f"\nTopic hierarchy query (existing data):")
-            print(f"  Topics loaded: {len(rows)}")
-            print(f"  Execution time: {elapsed_ms:.1f}ms")
 
             # If we have topics, assert reasonable performance
             if len(rows) > 0:

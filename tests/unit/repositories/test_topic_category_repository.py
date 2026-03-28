@@ -4,7 +4,7 @@ Tests for TopicCategoryRepository functionality.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,8 +18,6 @@ from chronovista.models.topic_category import (
     TopicCategoryStatistics,
 )
 from chronovista.repositories.topic_category_repository import TopicCategoryRepository
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestTopicCategoryRepository:
@@ -43,7 +41,7 @@ class TestTopicCategoryRepository:
             category_name="Technology",
             parent_topic_id=None,
             topic_type="youtube",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
     @pytest.fixture
@@ -54,7 +52,7 @@ class TestTopicCategoryRepository:
             category_name="Programming",
             parent_topic_id="/m/019_rr",
             topic_type=TopicType.YOUTUBE,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
     @pytest.fixture
@@ -141,21 +139,20 @@ class TestTopicCategoryRepository:
         """Test creating a new topic."""
         with patch.object(
             repository, "get_by_topic_id", new=AsyncMock(return_value=None)
-        ) as mock_get:
-            with patch.object(
-                repository, "create", new=AsyncMock(return_value=sample_topic_db)
-            ) as mock_create:
-                result = await repository.create_or_update(
-                    mock_session, sample_topic_create
-                )
+        ) as mock_get, patch.object(
+            repository, "create", new=AsyncMock(return_value=sample_topic_db)
+        ) as mock_create:
+            result = await repository.create_or_update(
+                mock_session, sample_topic_create
+            )
 
-                assert result == sample_topic_db
-                mock_get.assert_called_once_with(
-                    mock_session, sample_topic_create.topic_id
-                )
-                mock_create.assert_called_once_with(
-                    mock_session, obj_in=sample_topic_create
-                )
+            assert result == sample_topic_db
+            mock_get.assert_called_once_with(
+                mock_session, sample_topic_create.topic_id
+            )
+            mock_create.assert_called_once_with(
+                mock_session, obj_in=sample_topic_create
+            )
 
     @pytest.mark.asyncio
     async def test_create_or_update_existing_topic(
@@ -168,19 +165,18 @@ class TestTopicCategoryRepository:
         """Test updating an existing topic."""
         with patch.object(
             repository, "get_by_topic_id", new=AsyncMock(return_value=sample_topic_db)
-        ) as mock_get:
-            with patch.object(
-                repository, "update", new=AsyncMock(return_value=sample_topic_db)
-            ) as mock_update:
-                result = await repository.create_or_update(
-                    mock_session, sample_topic_create
-                )
+        ) as mock_get, patch.object(
+            repository, "update", new=AsyncMock(return_value=sample_topic_db)
+        ) as mock_update:
+            result = await repository.create_or_update(
+                mock_session, sample_topic_create
+            )
 
-                assert result == sample_topic_db
-                mock_get.assert_called_once_with(
-                    mock_session, sample_topic_create.topic_id
-                )
-                mock_update.assert_called_once()
+            assert result == sample_topic_db
+            mock_get.assert_called_once_with(
+                mock_session, sample_topic_create.topic_id
+            )
+            mock_update.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_get_root_topics(
@@ -330,17 +326,16 @@ class TestTopicCategoryRepository:
         """Test bulk creating new topics."""
         with patch.object(
             repository, "get_by_topic_id", new=AsyncMock(return_value=None)
-        ) as mock_get:
-            with patch.object(
-                repository, "create", new=AsyncMock(return_value=sample_topic_db)
-            ) as mock_create:
-                result = await repository.bulk_create(
-                    mock_session, [sample_topic_create]
-                )
+        ) as mock_get, patch.object(
+            repository, "create", new=AsyncMock(return_value=sample_topic_db)
+        ) as mock_create:
+            result = await repository.bulk_create(
+                mock_session, [sample_topic_create]
+            )
 
-                assert result == [sample_topic_db]
-                mock_get.assert_called_once()
-                mock_create.assert_called_once()
+            assert result == [sample_topic_db]
+            mock_get.assert_called_once()
+            mock_create.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_bulk_create_existing_topics(
@@ -488,8 +483,8 @@ class TestTopicCategoryRepositoryAdditionalMethods:
             parent_topic_ids=["/m/parent"],
             topic_types=[TopicType.YOUTUBE],
             is_root_topic=True,
-            created_after=datetime.now(timezone.utc),
-            created_before=datetime.now(timezone.utc),
+            created_after=datetime.now(UTC),
+            created_before=datetime.now(UTC),
         )
         mock_topics = [MagicMock()]
         mock_result = MagicMock()

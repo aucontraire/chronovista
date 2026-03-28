@@ -4,7 +4,7 @@ Tests for VideoTagRepository functionality.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,8 +18,6 @@ from chronovista.models.video_tag import (
 )
 from chronovista.repositories.video_tag_repository import VideoTagRepository
 from tests.factories.video_tag_factory import VideoTagTestData, create_video_tag_create
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestVideoTagRepository:
@@ -42,7 +40,7 @@ class TestVideoTagRepository:
             video_id="dQw4w9WgXcQ",
             tag="music",
             tag_order=1,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
     @pytest.fixture
@@ -320,8 +318,8 @@ class TestVideoTagRepository:
             tag_pattern="music",
             min_tag_order=1,
             max_tag_order=5,
-            created_after=datetime(2023, 1, 1, tzinfo=timezone.utc),
-            created_before=datetime(2023, 12, 31, tzinfo=timezone.utc),
+            created_after=datetime(2023, 1, 1, tzinfo=UTC),
+            created_before=datetime(2023, 12, 31, tzinfo=UTC),
         )
 
         mock_tags = [MagicMock(), MagicMock()]
@@ -528,7 +526,7 @@ class TestVideoTagRepositoryIntegration:
         with (
             patch.object(
                 repository, "get_by_composite_key", AsyncMock(return_value=None)
-            ) as mock_get,
+            ),
             patch.object(
                 repository, "create", AsyncMock(return_value=mock_tag_db)
             ) as mock_create,

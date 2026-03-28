@@ -4,7 +4,7 @@ Tests for PlaylistSeeder - creates playlists from takeout data.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -129,11 +129,11 @@ class TestPlaylistSeederSeeding:
                     videos=[
                         create_takeout_playlist_item(
                             video_id=TestIds.NEVER_GONNA_GIVE_YOU_UP,
-                            creation_timestamp=datetime.now(timezone.utc),
+                            creation_timestamp=datetime.now(UTC),
                         ),
                         create_takeout_playlist_item(
                             video_id=TestIds.TEST_VIDEO_1,
-                            creation_timestamp=datetime.now(timezone.utc),
+                            creation_timestamp=datetime.now(UTC),
                         ),
                     ],
                     video_count=2,
@@ -144,7 +144,7 @@ class TestPlaylistSeederSeeding:
                     videos=[
                         create_takeout_playlist_item(
                             video_id=TestIds.TEST_VIDEO_2,
-                            creation_timestamp=datetime.now(timezone.utc),
+                            creation_timestamp=datetime.now(UTC),
                         ),
                     ],
                     video_count=1,
@@ -244,7 +244,7 @@ class TestPlaylistSeederSeeding:
         ) as mock_get:
             mock_get.return_value = None
 
-            result = await seeder.seed(mock_session, sample_takeout_data, progress)
+            await seeder.seed(mock_session, sample_takeout_data, progress)
 
             assert "playlists" in progress_calls
 
@@ -279,7 +279,7 @@ class TestPlaylistSeederSeeding:
             videos=[
                 create_takeout_playlist_item(
                     video_id=TestIds.TEST_VIDEO_1,
-                    creation_timestamp=datetime.now(timezone.utc),
+                    creation_timestamp=datetime.now(UTC),
                 ),
             ],
             video_count=1,
@@ -372,7 +372,7 @@ class TestPlaylistSeederBatchProcessing:
                     videos=[
                         create_takeout_playlist_item(
                             video_id=YouTubeIdFactory.create_video_id(f"video_{i}"),
-                            creation_timestamp=datetime.now(timezone.utc),
+                            creation_timestamp=datetime.now(UTC),
                         ),
                     ],
                     video_count=1,
@@ -726,7 +726,7 @@ class TestPlaylistSeederReseedWithCascade:
                     videos=[
                         create_takeout_playlist_item(
                             video_id=TestIds.NEVER_GONNA_GIVE_YOU_UP,
-                            creation_timestamp=datetime.now(timezone.utc),
+                            creation_timestamp=datetime.now(UTC),
                         ),
                     ],
                     video_count=1,
@@ -832,7 +832,7 @@ class TestPlaylistSeederReseedWithCascade:
             ) as mock_get1,
             patch.object(
                 seeder.playlist_repo, "create", new_callable=AsyncMock
-            ) as mock_create1,
+            ),
         ):
             mock_delete1.return_value = 0
             mock_get1.return_value = None
@@ -850,7 +850,7 @@ class TestPlaylistSeederReseedWithCascade:
             ) as mock_get2,
             patch.object(
                 seeder.playlist_repo, "create", new_callable=AsyncMock
-            ) as mock_create2,
+            ),
         ):
             mock_delete2.return_value = 1
             mock_get2.return_value = None
@@ -917,7 +917,7 @@ class TestPlaylistSeederReseedWithCascade:
             ) as mock_get,
             patch.object(
                 seeder.playlist_repo, "create", new_callable=AsyncMock
-            ) as mock_create,
+            ),
         ):
             mock_get.return_value = None
 

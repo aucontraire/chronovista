@@ -7,11 +7,10 @@ with realistic and consistent test data.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, cast
+from datetime import UTC, datetime
+from typing import Any
 
 import factory
-from factory import LazyFunction
 
 from chronovista.models.enums import AvailabilityStatus, LanguageCode
 from chronovista.models.video import (
@@ -46,7 +45,7 @@ class VideoBaseFactory(factory.Factory[VideoBase]):
         lambda: "The official video for 'Never Gonna Give You Up' by Rick Astley. A timeless classic that has become an internet phenomenon."
     )
     upload_date: Any = factory.LazyFunction(
-        lambda: datetime(2009, 10, 25, 8, 15, 0, tzinfo=timezone.utc)
+        lambda: datetime(2009, 10, 25, 8, 15, 0, tzinfo=UTC)
     )
     duration: Any = factory.LazyFunction(lambda: 213)  # 3:33 in seconds
     made_for_kids: Any = factory.LazyFunction(lambda: False)
@@ -89,7 +88,7 @@ class VideoCreateFactory(factory.Factory[VideoCreate]):
         lambda: "Join us for an overview of the latest ML developments from Google, including new tools, frameworks, and research breakthroughs."
     )
     upload_date: Any = factory.LazyFunction(
-        lambda: datetime(2023, 5, 10, 17, 0, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 5, 10, 17, 0, 0, tzinfo=UTC)
     )
     duration: Any = factory.LazyFunction(lambda: 2760)  # 46 minutes
     made_for_kids: Any = factory.LazyFunction(lambda: False)
@@ -158,7 +157,7 @@ class VideoFactory(factory.Factory[Video]):
         lambda: "A compilation of the funniest and most memorable moments from The Late Show with Stephen Colbert in 2023."
     )
     upload_date: Any = factory.LazyFunction(
-        lambda: datetime(2023, 12, 15, 23, 35, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 12, 15, 23, 35, 0, tzinfo=UTC)
     )
     duration: Any = factory.LazyFunction(lambda: 1440)  # 24 minutes
     made_for_kids: Any = factory.LazyFunction(lambda: False)
@@ -175,10 +174,10 @@ class VideoFactory(factory.Factory[Video]):
     comment_count: Any = factory.LazyFunction(lambda: 8500)
     availability_status: Any = factory.LazyFunction(lambda: AvailabilityStatus.AVAILABLE)
     created_at: Any = factory.LazyFunction(
-        lambda: datetime(2023, 12, 15, 23, 35, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 12, 15, 23, 35, 0, tzinfo=UTC)
     )
     updated_at: Any = factory.LazyFunction(
-        lambda: datetime(2023, 12, 16, 10, 20, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 12, 16, 10, 20, 0, tzinfo=UTC)
     )
 
 
@@ -197,10 +196,10 @@ class VideoSearchFiltersFactory(factory.Factory[VideoSearchFilters]):
         lambda: [LanguageCode.ENGLISH, LanguageCode.ENGLISH_US, LanguageCode.SPANISH]
     )
     upload_after: Any = factory.LazyFunction(
-        lambda: datetime(2023, 1, 1, tzinfo=timezone.utc)
+        lambda: datetime(2023, 1, 1, tzinfo=UTC)
     )
     upload_before: Any = factory.LazyFunction(
-        lambda: datetime(2023, 12, 31, tzinfo=timezone.utc)
+        lambda: datetime(2023, 12, 31, tzinfo=UTC)
     )
     min_duration: Any = factory.LazyFunction(lambda: 300)  # 5 minutes
     max_duration: Any = factory.LazyFunction(lambda: 3600)  # 1 hour
@@ -257,7 +256,7 @@ class VideoWithChannelFactory(factory.Factory[VideoWithChannel]):
         lambda: "The most comprehensive review of Apple's latest flagship iPhone with detailed testing and comparisons."
     )
     upload_date: Any = factory.LazyFunction(
-        lambda: datetime(2023, 9, 22, 12, 0, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 9, 22, 12, 0, 0, tzinfo=UTC)
     )
     duration: Any = factory.LazyFunction(lambda: 1260)  # 21 minutes
     made_for_kids: Any = factory.LazyFunction(lambda: False)
@@ -272,10 +271,10 @@ class VideoWithChannelFactory(factory.Factory[VideoWithChannel]):
     comment_count: Any = factory.LazyFunction(lambda: 35000)
     availability_status: Any = factory.LazyFunction(lambda: AvailabilityStatus.AVAILABLE)
     created_at: Any = factory.LazyFunction(
-        lambda: datetime(2023, 9, 22, 12, 0, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 9, 22, 12, 0, 0, tzinfo=UTC)
     )
     updated_at: Any = factory.LazyFunction(
-        lambda: datetime(2023, 9, 22, 15, 30, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 9, 22, 15, 30, 0, tzinfo=UTC)
     )
     channel_title: Any = factory.LazyFunction(lambda: "Marques Brownlee")
     channel_subscriber_count: Any = factory.LazyFunction(lambda: 17800000)
@@ -428,7 +427,7 @@ def create_video_with_channel(**kwargs: Any) -> VideoWithChannel:
     return result
 
 
-def create_batch_videos(count: int = 5) -> List[Video]:
+def create_batch_videos(count: int = 5) -> list[Video]:
     """Create a batch of Video instances for testing."""
     videos = []
     base_video_ids = [

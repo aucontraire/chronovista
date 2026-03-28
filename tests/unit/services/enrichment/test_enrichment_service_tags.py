@@ -15,20 +15,15 @@ Additional tests:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set, Tuple
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from chronovista.models.video_tag import VideoTag, VideoTagCreate
-from chronovista.models.youtube_types import create_test_video_id
+from chronovista.models.video_tag import VideoTagCreate
 from chronovista.services.enrichment.enrichment_service import (
-    BATCH_SIZE,
     EnrichmentService,
 )
-
-pytestmark = pytest.mark.asyncio
 
 # Valid test video ID (must be exactly 11 characters)
 VALID_VIDEO_ID = "dQw4w9WgXcQ"
@@ -120,7 +115,7 @@ class TestEnrichTagsMethod:
     ) -> None:
         """Test that enrich_tags() handles empty tag list correctly."""
         video_id = "videoWithNoTags"
-        tags: List[str] = []
+        tags: list[str] = []
 
         with patch.object(
             service.video_tag_repository, "replace_video_tags", new=AsyncMock(return_value=[])
@@ -140,7 +135,7 @@ class TestEnrichTagsMethod:
         video_id = "videoMissingTags"
 
         # API response without tags field
-        api_data: Dict[str, Any] = {
+        api_data: dict[str, Any] = {
             "id": video_id,
             "snippet": {
                 "title": "Video Title",
@@ -163,7 +158,7 @@ class TestEnrichTagsMethod:
         video_id = "videoWithNoneTags"
 
         # API response with explicit None tags
-        api_data: Dict[str, Any] = {
+        api_data: dict[str, Any] = {
             "id": video_id,
             "snippet": {
                 "title": "Video Title",
@@ -338,7 +333,6 @@ class TestTagReplacement:
     ) -> None:
         """Test that existing tags are deleted before inserting new ones."""
         video_id = "testReplace123"
-        old_tags = ["old1", "old2", "old3"]
         new_tags = ["new1", "new2"]
 
         # Simulate replace_video_tags behavior
@@ -419,7 +413,7 @@ class TestTagReplacement:
     ) -> None:
         """Test that replacing with empty list clears all tags."""
         video_id = "clearAllTest"
-        new_tags: List[str] = []
+        new_tags: list[str] = []
 
         mock_video_tag_repository.replace_video_tags = AsyncMock(return_value=[])
 
@@ -764,7 +758,6 @@ class TestVideosMissingTagsStatus:
     async def test_status_shows_videos_missing_tags_percentage(self) -> None:
         """Test that status shows percentage of videos missing tags."""
         total_videos = 1000
-        videos_with_tags = 750
         videos_without_tags = 250
 
         percentage_missing = (videos_without_tags / total_videos) * 100
@@ -982,7 +975,7 @@ class TestTagOrderHandling:
         # The create objects should have correct orders (using valid video ID)
         creates = [
             VideoTagCreate(video_id=VALID_VIDEO_ID, tag=t, tag_order=o)
-            for t, o in zip(tags, tag_orders)
+            for t, o in zip(tags, tag_orders, strict=False)
         ]
 
         assert creates[0].tag_order == 0
@@ -1050,7 +1043,7 @@ class TestEnrichTagsImplementation:
     ) -> None:
         """Test that enrich_tags returns 0 for empty tag list."""
         video_id = VALID_VIDEO_ID
-        tags: List[str] = []
+        tags: list[str] = []
 
         mock_replace = AsyncMock(return_value=[])
         with patch.object(

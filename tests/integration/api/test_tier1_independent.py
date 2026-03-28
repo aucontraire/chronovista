@@ -34,8 +34,6 @@ from chronovista.models.user_language_preference import UserLanguagePreferenceCr
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 from tests.integration.api.quota_utils import skip_if_quota_exceeded
 
-pytestmark = pytest.mark.asyncio
-
 
 @pytest.mark.integration
 @pytest.mark.api
@@ -75,10 +73,9 @@ class TestChannelFromYouTubeAPI:
                     await session.execute(delete(DBChannel))
 
                     await session.commit()
-                except Exception as e:
+                except Exception:
                     # If cleanup fails, rollback and continue
                     # Tests should be isolated and not depend on existing data
-                    print(f"Cleanup warning: {e}")
                     await session.rollback()
 
                 # Returns a list of YouTubeChannelResponse Pydantic models
@@ -416,7 +413,6 @@ class TestChannelFromYouTubeAPI:
                             raise
 
                         if not api_data_list:
-                            print(f"No data returned for channel {channel_id}")
                             continue
 
                         api_data = api_data_list[0]  # Get first channel from list
@@ -465,9 +461,9 @@ class TestChannelFromYouTubeAPI:
                         )
                         created_channels.append(db_channel)
 
-                    except Exception as e:
+                    except Exception:
                         # Log but don't fail test for individual channel issues
-                        print(f"Failed to create channel {channel_id}: {e}")
+                        pass
 
                 await session.commit()
 
@@ -635,10 +631,10 @@ class TestUserLanguagePreferenceIndependent:
                 )
 
                 # Create in reverse order to test sorting
-                low_pref_db = await user_language_preference_repository.create(
+                await user_language_preference_repository.create(
                     session, obj_in=low_priority
                 )
-                high_pref_db = await user_language_preference_repository.create(
+                await user_language_preference_repository.create(
                     session, obj_in=high_priority
                 )
                 await session.commit()

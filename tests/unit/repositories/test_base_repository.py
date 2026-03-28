@@ -4,6 +4,7 @@ Tests for BaseSQLAlchemyRepository functionality.
 
 from __future__ import annotations
 
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -13,8 +14,6 @@ from chronovista.db.models import Video as VideoDB
 from chronovista.models.video import VideoCreate, VideoUpdate
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 from tests.factories.video_factory import VideoCreateFactory, create_video_update
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestBaseSQLAlchemyRepository:
@@ -27,7 +26,7 @@ class TestBaseSQLAlchemyRepository:
             super().__init__(VideoDB)
 
     @pytest.fixture
-    def repository(self) -> "TestBaseSQLAlchemyRepository.MockRepository":
+    def repository(self) -> TestBaseSQLAlchemyRepository.MockRepository:
         """Create repository instance for testing."""
         return self.MockRepository()
 
@@ -39,14 +38,14 @@ class TestBaseSQLAlchemyRepository:
     @pytest.fixture
     def mock_video_create(self) -> VideoCreate:
         """Create mock VideoCreate object."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         return VideoCreate(
             video_id="dQw4w9WgXcQ",
             channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",
             title="Test Video",
             description="Test description",
-            upload_date=datetime.now(timezone.utc),
+            upload_date=datetime.now(UTC),
             duration=120,
         )
 
@@ -199,14 +198,14 @@ class TestBaseSQLAlchemyRepository:
     @pytest.mark.asyncio
     async def test_create_error_handling(self, repository, mock_session: AsyncMock):
         """Test create method error handling."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         # Use valid Video data but mock session to raise exception during add
         valid_obj = VideoCreateFactory.build(
             video_id="dQw4w9WgXcQ",
             channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",
             title="Test Video",
-            upload_date=datetime.now(timezone.utc),
+            upload_date=datetime.now(UTC),
             duration=120,
         )
 
@@ -257,7 +256,7 @@ class TestBaseRepositoryEdgeCases:
             super().__init__(VideoDB)
 
     @pytest.fixture
-    def repository(self) -> "TestBaseRepositoryEdgeCases.MockRepository":
+    def repository(self) -> TestBaseRepositoryEdgeCases.MockRepository:
         """Create repository instance for testing."""
         return self.MockRepository()
 
@@ -308,13 +307,13 @@ class TestBaseRepositoryEdgeCases:
     @pytest.mark.asyncio
     async def test_session_operations_order(self, repository, mock_session: AsyncMock):
         """Test that session operations are called in correct order."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         mock_video_create = VideoCreate(
             video_id="dQw4w9WgXcQ",
             channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",
             title="Test",
-            upload_date=datetime.now(timezone.utc),
+            upload_date=datetime.now(UTC),
             duration=120,
         )
         mock_video_db = MagicMock()

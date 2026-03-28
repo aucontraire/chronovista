@@ -53,8 +53,6 @@ from chronovista.models.enums import OperationType, PipelineStepStatus, TaskStat
 # CRITICAL: Module-level asyncio marker ensures async tests run properly
 # with coverage tools, avoiding silent test-skipping (see CLAUDE.md).
 # ---------------------------------------------------------------------------
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -2367,7 +2365,6 @@ class TestFactoryEnrichMetadata:
 
 # Stand-in for ``unittest.mock.ANY`` used in ``assert_awaited_once_with``
 from unittest.mock import ANY as unittest_mock_any  # noqa: E402
-
 
 # ===========================================================================
 # Tests: _factory_normalize_tags

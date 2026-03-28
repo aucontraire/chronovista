@@ -5,8 +5,7 @@ Comprehensive test coverage for preference-aware transcript filtering
 that implements the FLUENT/LEARNING/CURIOUS/EXCLUDE hierarchy.
 """
 
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 
 import pytest
 
@@ -68,9 +67,9 @@ class TestPreferenceAwareTranscriptFilterFluentDownloads:
         return PreferenceAwareTranscriptFilter()
 
     @pytest.fixture
-    def fluent_en_es_preferences(self) -> List[UserLanguagePreference]:
+    def fluent_en_es_preferences(self) -> list[UserLanguagePreference]:
         """Create fluent preferences for English and Spanish."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return [
             UserLanguagePreference(
                 user_id="test_user_001",
@@ -123,7 +122,7 @@ class TestPreferenceAwareTranscriptFilterFluentDownloads:
         self, filter_service: PreferenceAwareTranscriptFilter
     ):
         """T091: FLUENT downloads should not have duplicates."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         prefs = [
             UserLanguagePreference(
                 user_id="test_user_001",
@@ -162,9 +161,9 @@ class TestPreferenceAwareTranscriptFilterExcluded:
         return PreferenceAwareTranscriptFilter()
 
     @pytest.fixture
-    def excluded_preferences(self) -> List[UserLanguagePreference]:
+    def excluded_preferences(self) -> list[UserLanguagePreference]:
         """Create excluded preferences for German and Russian."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return [
             UserLanguagePreference(
                 user_id="test_user_001",
@@ -203,7 +202,7 @@ class TestPreferenceAwareTranscriptFilterExcluded:
         self, filter_service: PreferenceAwareTranscriptFilter
     ):
         """T092: EXCLUDE matches language variants."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         prefs = [
             UserLanguagePreference(
                 user_id="test_user_001",
@@ -234,9 +233,9 @@ class TestPreferenceAwareTranscriptFilterCurious:
         return PreferenceAwareTranscriptFilter()
 
     @pytest.fixture
-    def curious_preferences(self) -> List[UserLanguagePreference]:
+    def curious_preferences(self) -> list[UserLanguagePreference]:
         """Create curious preferences for Japanese and Korean."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return [
             UserLanguagePreference(
                 user_id="test_user_001",
@@ -326,9 +325,9 @@ class TestPreferenceAwareTranscriptFilterDownloadSummary:
         return PreferenceAwareTranscriptFilter()
 
     @pytest.fixture
-    def mixed_preferences(self) -> List[UserLanguagePreference]:
+    def mixed_preferences(self) -> list[UserLanguagePreference]:
         """Create mixed preferences covering all types."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return [
             # Fluent: English (priority 1)
             UserLanguagePreference(
@@ -427,9 +426,9 @@ class TestPreferenceAwareTranscriptFilterLearning:
         return PreferenceAwareTranscriptFilter()
 
     @pytest.fixture
-    def learning_with_fluent(self) -> List[UserLanguagePreference]:
+    def learning_with_fluent(self) -> list[UserLanguagePreference]:
         """Create learning preferences with fluent target language."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return [
             # Fluent: English (translation target)
             UserLanguagePreference(
@@ -481,7 +480,7 @@ class TestPreferenceAwareTranscriptFilterLearning:
         self, filter_service: PreferenceAwareTranscriptFilter
     ):
         """LEARNING without any fluent preference has no translation target."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         prefs = [
             UserLanguagePreference(
                 user_id="test_user_001",
@@ -513,7 +512,7 @@ class TestPreferenceAwareTranscriptFilterGetTopFluent:
         self, filter_service: PreferenceAwareTranscriptFilter
     ):
         """Top fluent language respects priority ordering."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         prefs = [
             UserLanguagePreference(
                 user_id="test_user_001",
@@ -558,7 +557,7 @@ class TestPreferenceAwareTranscriptFilterGetDownloadLanguages:
         self, filter_service: PreferenceAwareTranscriptFilter
     ):
         """get_download_languages includes only fluent and learning."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         prefs = [
             UserLanguagePreference(
                 user_id="test_user_001",
@@ -617,7 +616,7 @@ class TestPreferenceAwareTranscriptFilterEdgeCases:
         self, filter_service: PreferenceAwareTranscriptFilter
     ):
         """A language can only be in one preference category per user."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # In real usage, the same language wouldn't be in multiple categories
         # This test verifies the filter handles a single language preference correctly
         prefs = [
@@ -643,7 +642,7 @@ class TestPreferenceAwareTranscriptFilterEdgeCases:
         self, filter_service: PreferenceAwareTranscriptFilter
     ):
         """Languages not in available list are not in the plan."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         prefs = [
             UserLanguagePreference(
                 user_id="test_user_001",
@@ -667,7 +666,7 @@ class TestPreferenceAwareTranscriptFilterEdgeCases:
         self, filter_service: PreferenceAwareTranscriptFilter
     ):
         """Base language preference (e.g., 'en') matches variants (e.g., 'en-US')."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         prefs = [
             UserLanguagePreference(
                 user_id="test_user_001",
@@ -691,7 +690,7 @@ class TestPreferenceAwareTranscriptFilterEdgeCases:
         self, filter_service: PreferenceAwareTranscriptFilter
     ):
         """Variant preference (e.g., 'en-US') matches base and other variants."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         prefs = [
             UserLanguagePreference(
                 user_id="test_user_001",
@@ -727,7 +726,7 @@ class TestPreferenceAwareTranscriptFilterLearningTranslationPairing:
         priority: int = 1,
     ) -> UserLanguagePreference:
         """Helper to create a language preference."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return UserLanguagePreference(
             user_id="test_user_001",
             language_code=lang_code,
@@ -823,7 +822,7 @@ class TestPreferenceAwareTranscriptFilterGetTranslationPair:
         self, lang_code: LanguageCode, priority: int = 1
     ) -> UserLanguagePreference:
         """Helper to create a fluent language preference."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return UserLanguagePreference(
             user_id="test_user_001",
             language_code=lang_code,
@@ -868,7 +867,7 @@ class TestPreferenceAwareTranscriptFilterGetTranslationPair:
         self, filter_service: PreferenceAwareTranscriptFilter
     ):
         """Translation pair has None target when no fluent preferences exist."""
-        fluent_prefs: List[UserLanguagePreference] = []
+        fluent_prefs: list[UserLanguagePreference] = []
         available = ["it", "en", "fr"]
 
         result = filter_service.get_translation_pair("it", available, fluent_prefs)

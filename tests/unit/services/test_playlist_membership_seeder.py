@@ -4,13 +4,12 @@ Tests for PlaylistMembershipSeeder - creates playlist-video relationships.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
 )
@@ -24,8 +23,6 @@ from tests.factories.id_factory import TestIds, YouTubeIdFactory
 from tests.factories.takeout_data_factory import create_takeout_data
 from tests.factories.takeout_playlist_factory import create_takeout_playlist
 from tests.factories.takeout_playlist_item_factory import create_takeout_playlist_item
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestPlaylistMembershipSeederInitialization:
@@ -86,15 +83,15 @@ class TestPlaylistMembershipSeederSeeding:
                     videos=[
                         create_takeout_playlist_item(
                             video_id=TestIds.NEVER_GONNA_GIVE_YOU_UP,
-                            creation_timestamp=datetime.now(timezone.utc),
+                            creation_timestamp=datetime.now(UTC),
                         ),
                         create_takeout_playlist_item(
                             video_id=TestIds.TEST_VIDEO_1,
-                            creation_timestamp=datetime.now(timezone.utc),
+                            creation_timestamp=datetime.now(UTC),
                         ),
                         create_takeout_playlist_item(
                             video_id=TestIds.TEST_VIDEO_2,
-                            creation_timestamp=datetime.now(timezone.utc),
+                            creation_timestamp=datetime.now(UTC),
                         ),
                     ],
                     video_count=3,
@@ -105,7 +102,7 @@ class TestPlaylistMembershipSeederSeeding:
                     videos=[
                         create_takeout_playlist_item(
                             video_id=TestIds.TEST_VIDEO_1,  # Same video in multiple playlists
-                            creation_timestamp=datetime.now(timezone.utc),
+                            creation_timestamp=datetime.now(UTC),
                         ),
                     ],
                     video_count=1,
@@ -150,13 +147,13 @@ class TestPlaylistMembershipSeederSeeding:
         with (
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
-            ) as mock_get_playlist,
+            ),
             patch.object(
                 seeder.video_repo, "get_by_video_id", return_value=mock_video
-            ) as mock_get_video,
+            ),
             patch.object(
                 seeder.membership_repo, "membership_exists", return_value=False
-            ) as mock_exists,
+            ),
             patch.object(seeder.membership_repo, "create") as mock_create,
         ):
 
@@ -181,18 +178,18 @@ class TestPlaylistMembershipSeederSeeding:
         # Mock repositories to return existing entities
         mock_playlist = Mock()
         mock_video = Mock()
-        mock_membership = Mock()
+        Mock()
 
         with (
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
-            ) as mock_get_playlist,
+            ),
             patch.object(
                 seeder.video_repo, "get_by_video_id", return_value=mock_video
-            ) as mock_get_video,
+            ),
             patch.object(
                 seeder.membership_repo, "membership_exists", return_value=True
-            ) as mock_exists,
+            ),
         ):
 
             result = await seeder.seed(mock_session, sample_takeout_data)
@@ -216,13 +213,13 @@ class TestPlaylistMembershipSeederSeeding:
         with (
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
-            ) as mock_get_playlist,
+            ),
             patch.object(
                 seeder.video_repo, "get_by_video_id", return_value=None
-            ) as mock_get_video,
+            ),
             patch.object(
                 seeder.membership_repo, "membership_exists", return_value=False
-            ) as mock_exists,
+            ),
             patch.object(seeder.video_repo, "create") as mock_video_create,
         ):
 
@@ -244,7 +241,7 @@ class TestPlaylistMembershipSeederSeeding:
         # Mock playlist doesn't exist
         with patch.object(
             seeder.playlist_repo, "get_by_playlist_id", return_value=None
-        ) as mock_get_playlist:
+        ):
             result = await seeder.seed(mock_session, sample_takeout_data)
 
             # Should handle missing playlists gracefully (may skip or create errors)
@@ -272,13 +269,13 @@ class TestPlaylistMembershipSeederSeeding:
         with (
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
-            ) as mock_get_playlist,
+            ),
             patch.object(
                 seeder.video_repo, "get_by_video_id", return_value=mock_video
-            ) as mock_get_video,
+            ),
             patch.object(
                 seeder.membership_repo, "membership_exists", return_value=False
-            ) as mock_exists,
+            ),
         ):
 
             result = await seeder.seed(mock_session, sample_takeout_data, progress)
@@ -301,7 +298,7 @@ class TestPlaylistMembershipSeederSeeding:
             seeder.playlist_repo,
             "get_by_playlist_id",
             side_effect=Exception("Database error"),
-        ) as mock_get_playlist:
+        ):
             result = await seeder.seed(mock_session, sample_takeout_data)
 
             assert result.failed > 0
@@ -421,19 +418,19 @@ class TestPlaylistMembershipSeederPositioning:
                         create_takeout_playlist_item(
                             video_id=TestIds.TEST_VIDEO_1,
                             creation_timestamp=datetime(
-                                2024, 1, 1, tzinfo=timezone.utc
+                                2024, 1, 1, tzinfo=UTC
                             ),
                         ),
                         create_takeout_playlist_item(
                             video_id=TestIds.TEST_VIDEO_2,
                             creation_timestamp=datetime(
-                                2024, 1, 2, tzinfo=timezone.utc
+                                2024, 1, 2, tzinfo=UTC
                             ),
                         ),
                         create_takeout_playlist_item(
                             video_id=TestIds.NEVER_GONNA_GIVE_YOU_UP,
                             creation_timestamp=datetime(
-                                2024, 1, 3, tzinfo=timezone.utc
+                                2024, 1, 3, tzinfo=UTC
                             ),
                         ),
                     ],
@@ -449,17 +446,17 @@ class TestPlaylistMembershipSeederPositioning:
         with (
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
-            ) as mock_get_playlist,
+            ),
             patch.object(
                 seeder.video_repo, "get_by_video_id", return_value=mock_video
-            ) as mock_get_video,
+            ),
             patch.object(
                 seeder.membership_repo, "membership_exists", return_value=False
-            ) as mock_exists,
+            ),
             patch.object(seeder.membership_repo, "create") as mock_create,
         ):
 
-            result = await seeder.seed(mock_session, data)
+            await seeder.seed(mock_session, data)
 
             # Verify that positions were assigned correctly
             assert mock_create.call_count == 3
@@ -510,7 +507,7 @@ class TestPlaylistMembershipSeederBatchProcessing:
             playlist_items.append(
                 create_takeout_playlist_item(
                     video_id=YouTubeIdFactory.create_video_id(f"video_{i}"),
-                    creation_timestamp=datetime.now(timezone.utc),
+                    creation_timestamp=datetime.now(UTC),
                 )
             )
 
@@ -535,13 +532,13 @@ class TestPlaylistMembershipSeederBatchProcessing:
         with (
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
-            ) as mock_get_playlist,
+            ),
             patch.object(
                 seeder.video_repo, "get_by_video_id", return_value=mock_video
-            ) as mock_get_video,
+            ),
             patch.object(
                 seeder.membership_repo, "membership_exists", return_value=False
-            ) as mock_exists,
+            ),
         ):
 
             result = await seeder.seed(mock_session, large_data)
@@ -597,7 +594,7 @@ class TestPlaylistMembershipSeederEdgeCases:
 
         with patch.object(
             seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
-        ) as mock_get_playlist:
+        ):
             result = await seeder.seed(mock_session, data)
 
             # Should handle empty playlist gracefully
@@ -620,7 +617,7 @@ class TestPlaylistMembershipSeederEdgeCases:
                     videos=[
                         create_takeout_playlist_item(
                             video_id="",  # Empty video ID (will be stripped to empty)
-                            creation_timestamp=datetime.now(timezone.utc),
+                            creation_timestamp=datetime.now(UTC),
                         ),
                     ],
                     video_count=1,
@@ -632,7 +629,7 @@ class TestPlaylistMembershipSeederEdgeCases:
 
         with patch.object(
             seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
-        ) as mock_get_playlist:
+        ):
             result = await seeder.seed(mock_session, data)
 
             # Should handle empty video ID gracefully (should fail)
@@ -654,15 +651,15 @@ class TestPlaylistMembershipSeederEdgeCases:
                     videos=[
                         create_takeout_playlist_item(
                             video_id=TestIds.TEST_VIDEO_1,
-                            creation_timestamp=datetime.now(timezone.utc),
+                            creation_timestamp=datetime.now(UTC),
                         ),
                         create_takeout_playlist_item(
                             video_id=TestIds.TEST_VIDEO_1,  # Same video again
-                            creation_timestamp=datetime.now(timezone.utc),
+                            creation_timestamp=datetime.now(UTC),
                         ),
                         create_takeout_playlist_item(
                             video_id=TestIds.TEST_VIDEO_2,
-                            creation_timestamp=datetime.now(timezone.utc),
+                            creation_timestamp=datetime.now(UTC),
                         ),
                     ],
                     video_count=3,
@@ -676,15 +673,15 @@ class TestPlaylistMembershipSeederEdgeCases:
         with (
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
-            ) as mock_get_playlist,
+            ),
             patch.object(
                 seeder.video_repo, "get_by_video_id", return_value=mock_video
-            ) as mock_get_video,
+            ),
             patch.object(
                 seeder.membership_repo,
                 "membership_exists",
                 side_effect=[False, True, False],
-            ) as mock_exists,
+            ),
         ):
 
             result = await seeder.seed(mock_session, data)
@@ -773,11 +770,11 @@ class TestPlaylistMembershipSeederIntegration:
                     videos=[
                         create_takeout_playlist_item(
                             video_id=TestIds.TEST_VIDEO_1,  # Exists
-                            creation_timestamp=datetime.now(timezone.utc),
+                            creation_timestamp=datetime.now(UTC),
                         ),
                         create_takeout_playlist_item(
                             video_id="missingVid1",  # Doesn't exist (11 chars to match VideoId validation)
-                            creation_timestamp=datetime.now(timezone.utc),
+                            creation_timestamp=datetime.now(UTC),
                         ),
                     ],
                     video_count=2,
@@ -794,13 +791,13 @@ class TestPlaylistMembershipSeederIntegration:
         with (
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
-            ) as mock_get_playlist,
+            ),
             patch.object(
                 seeder.video_repo, "get_by_video_id", side_effect=mock_get_video
-            ) as mock_get_video_method,
+            ),
             patch.object(
                 seeder.membership_repo, "membership_exists", return_value=False
-            ) as mock_exists,
+            ),
             patch.object(seeder.video_repo, "create") as mock_video_create,
         ):
 

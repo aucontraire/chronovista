@@ -13,8 +13,9 @@ without a real database connection.
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from datetime import UTC
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -24,8 +25,6 @@ from chronovista.api.deps import get_db, require_auth
 from chronovista.api.main import app
 
 # CRITICAL: ensures async tests work correctly with coverage
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Shared fixture: mocked async client
@@ -391,14 +390,14 @@ def _make_video_mock(
     upload_date: Any = None,
 ) -> MagicMock:
     """Build a mock Video ORM object."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     video = MagicMock()
     video.video_id = video_id
     video.title = title
     video.availability_status = availability_status
     video.channel_id = "UCtest"
-    video.upload_date = upload_date or datetime(2024, 1, 1, tzinfo=timezone.utc)
+    video.upload_date = upload_date or datetime(2024, 1, 1, tzinfo=UTC)
     return video
 
 
@@ -821,9 +820,9 @@ class TestSearchSegmentsBatchContextFetching:
         """
         client, mock_session = context_client
 
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        upload = datetime(2024, 6, 1, tzinfo=timezone.utc)
+        upload = datetime(2024, 6, 1, tzinfo=UTC)
         seg1 = _make_segment_mock(seg_id=1, text="first segment", start_time=0.0, end_time=3.0)
         seg2 = _make_segment_mock(seg_id=2, text="second segment", start_time=3.0, end_time=6.0)
         video = _make_video_mock(upload_date=upload)

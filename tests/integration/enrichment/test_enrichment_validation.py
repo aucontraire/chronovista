@@ -16,7 +16,7 @@ all documented success criteria are met.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -49,12 +49,10 @@ from chronovista.services.enrichment.enrichment_service import (
 )
 from chronovista.services.enrichment.seeders import (
     CategorySeeder,
+    CategorySeedResult,
     TopicSeeder,
     TopicSeedResult,
-    CategorySeedResult,
 )
-
-pytestmark = pytest.mark.asyncio
 
 runner = CliRunner()
 
@@ -171,9 +169,9 @@ class TestT100EndToEndWorkflowValidation:
         # call the service with actual operations when dry_run=True
 
         mock_repo = AsyncMock()
-        mock_session = AsyncMock()
+        AsyncMock()
 
-        seeder = TopicSeeder(topic_repository=mock_repo)
+        TopicSeeder(topic_repository=mock_repo)
 
         # In dry-run mode, the CLI shows preview without calling seed
         # This test verifies TopicSeeder dry-run class methods work
@@ -473,7 +471,7 @@ class TestT102SuccessCriteriaSC013TopicSeeding:
 
     def test_child_topics_have_valid_parents(self) -> None:
         """Test that all child topics reference valid parent IDs."""
-        for topic_id, (name, parent_id, _) in TopicSeeder.YOUTUBE_TOPICS.items():
+        for _topic_id, (_name, parent_id, _) in TopicSeeder.YOUTUBE_TOPICS.items():
             if parent_id is not None:
                 # Parent must exist in the topics dict
                 assert parent_id in TopicSeeder.YOUTUBE_TOPICS
@@ -540,7 +538,7 @@ class TestT105FinalIntegrationFlow:
 
     def test_enrichment_report_model_validation(self) -> None:
         """Test that EnrichmentReport model validates correctly."""
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
 
         summary = EnrichmentSummary(
             videos_processed=100,
@@ -593,7 +591,7 @@ class TestT105FinalIntegrationFlow:
 
     def test_enrichment_report_json_serialization(self, tmp_path: Path) -> None:
         """Test that EnrichmentReport serializes to JSON correctly."""
-        timestamp = datetime(2025, 1, 15, 10, 30, 45, tzinfo=timezone.utc)
+        timestamp = datetime(2025, 1, 15, 10, 30, 45, tzinfo=UTC)
 
         summary = EnrichmentSummary(
             videos_processed=50,

@@ -6,7 +6,7 @@ Covers CdxSnapshot, RecoveredVideoData, RecoveryResult, and CdxCacheEntry models
 with validation, computed properties, and edge cases.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from pydantic import ValidationError
@@ -157,7 +157,7 @@ class TestCdxSnapshot:
             length=50000,
         )
 
-        expected_datetime = datetime(2022, 1, 6, 7, 55, 26, tzinfo=timezone.utc)
+        expected_datetime = datetime(2022, 1, 6, 7, 55, 26, tzinfo=UTC)
         assert snapshot.datetime == expected_datetime
 
 
@@ -785,7 +785,7 @@ class TestCdxCacheEntry:
 
     def test_valid_cache_entry(self) -> None:
         """Test creating valid CdxCacheEntry."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         snapshots = [
             CdxSnapshot(
                 timestamp="20220106075526",
@@ -835,14 +835,14 @@ class TestCdxCacheEntry:
         assert "fetched_at" in str(exc_info.value).lower()
 
         # UTC datetime should pass
-        utc_datetime = datetime(2022, 1, 6, 7, 55, 26, tzinfo=timezone.utc)
+        utc_datetime = datetime(2022, 1, 6, 7, 55, 26, tzinfo=UTC)
         cache_entry = CdxCacheEntry(
             video_id="dQw4w9WgXcQ",
             fetched_at=utc_datetime,
             snapshots=snapshots,
             raw_count=1,
         )
-        assert cache_entry.fetched_at.tzinfo == timezone.utc
+        assert cache_entry.fetched_at.tzinfo == UTC
 
     def test_cache_validity_check(self) -> None:
         """Test is_valid method checks cache age against TTL."""
@@ -858,7 +858,7 @@ class TestCdxCacheEntry:
         ]
 
         # Recent cache (1 hour ago) - should be valid with 24hr TTL
-        recent = datetime.now(timezone.utc) - timedelta(hours=1)
+        recent = datetime.now(UTC) - timedelta(hours=1)
         cache_entry_recent = CdxCacheEntry(
             video_id="dQw4w9WgXcQ",
             fetched_at=recent,
@@ -868,7 +868,7 @@ class TestCdxCacheEntry:
         assert cache_entry_recent.is_valid(ttl_hours=24) is True
 
         # Old cache (25 hours ago) - should be expired with 24hr TTL
-        old = datetime.now(timezone.utc) - timedelta(hours=25)
+        old = datetime.now(UTC) - timedelta(hours=25)
         cache_entry_old = CdxCacheEntry(
             video_id="dQw4w9WgXcQ",
             fetched_at=old,
@@ -878,7 +878,7 @@ class TestCdxCacheEntry:
         assert cache_entry_old.is_valid(ttl_hours=24) is False
 
         # Edge case: exactly 24 hours ago
-        exactly_24h = datetime.now(timezone.utc) - timedelta(hours=24, seconds=1)
+        exactly_24h = datetime.now(UTC) - timedelta(hours=24, seconds=1)
         cache_entry_edge = CdxCacheEntry(
             video_id="dQw4w9WgXcQ",
             fetched_at=exactly_24h,
@@ -889,7 +889,7 @@ class TestCdxCacheEntry:
 
     def test_snapshots_list(self) -> None:
         """Test snapshots field accepts list of CdxSnapshot objects."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         snapshots = [
             CdxSnapshot(
                 timestamp="20220106075526",
@@ -922,7 +922,7 @@ class TestCdxCacheEntry:
 
     def test_raw_count_field(self) -> None:
         """Test raw_count field stores CDX entry count before filtering."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         snapshots = [
             CdxSnapshot(
                 timestamp="20220106075526",

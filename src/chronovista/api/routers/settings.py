@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import uuid
@@ -247,21 +246,25 @@ async def get_app_info(
     ApiResponse[AppInfoResponse]
         Application info including versions, database stats, and sync timestamps.
     """
-    # Query all counts concurrently (6 independent queries)
-    (
-        video_count,
-        channel_count,
-        playlist_count,
-        transcript_count,
-        correction_count,
-        canonical_tag_count,
-    ) = await asyncio.gather(
-        session.scalar(select(func.count()).select_from(Video)),
-        session.scalar(select(func.count()).select_from(Channel)),
-        session.scalar(select(func.count()).select_from(Playlist)),
-        session.scalar(select(func.count()).select_from(VideoTranscript)),
-        session.scalar(select(func.count()).select_from(TranscriptCorrection)),
-        session.scalar(select(func.count()).select_from(CanonicalTag)),
+    # Sequential queries — AsyncSession is not safe for concurrent use
+    # via asyncio.gather() (causes IllegalStateChangeError).
+    video_count = await session.scalar(
+        select(func.count()).select_from(Video)
+    )
+    channel_count = await session.scalar(
+        select(func.count()).select_from(Channel)
+    )
+    playlist_count = await session.scalar(
+        select(func.count()).select_from(Playlist)
+    )
+    transcript_count = await session.scalar(
+        select(func.count()).select_from(VideoTranscript)
+    )
+    correction_count = await session.scalar(
+        select(func.count()).select_from(TranscriptCorrection)
+    )
+    canonical_tag_count = await session.scalar(
+        select(func.count()).select_from(CanonicalTag)
     )
 
     database_stats = DatabaseStats(

@@ -28,17 +28,28 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import (
     Channel as ChannelDB,
+)
+from chronovista.db.models import (
     EntityAlias as EntityAliasDB,
+)
+from chronovista.db.models import (
     EntityMention as EntityMentionDB,
+)
+from chronovista.db.models import (
     NamedEntity as NamedEntityDB,
+)
+from chronovista.db.models import (
     TranscriptSegment as TranscriptSegmentDB,
+)
+from chronovista.db.models import (
     Video as VideoDB,
+)
+from chronovista.db.models import (
     VideoTranscript as VideoTranscriptDB,
 )
 from chronovista.models.enums import DetectionMethod
@@ -53,8 +64,6 @@ DEFAULT_CHANNEL_ID = channel_id(seed="scan_test")
 
 # CRITICAL: This line ensures async tests work with coverage tools,
 # avoiding silent test-skipping (see CLAUDE.md).
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Helpers for test data construction
@@ -376,7 +385,7 @@ class TestIdempotentRerun:
         factory = _make_session_factory_from_session(db_session)
         service = EntityMentionScanService(session_factory=factory)
         # First scan
-        result1 = await service.scan()
+        await service.scan()
         count_after_first = len(
             (await db_session.execute(select(EntityMentionDB))).scalars().all()
         )
@@ -754,7 +763,7 @@ class TestIncrementalScan:
         await db_session.commit()
 
         # Incremental scan — only JavaScript (zero mentions) should be processed
-        result2 = await service.scan(new_entities_only=True)
+        await service.scan(new_entities_only=True)
 
         js_rows = (
             await db_session.execute(

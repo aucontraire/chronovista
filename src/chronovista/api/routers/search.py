@@ -209,43 +209,64 @@ async def search_segments(
     result = await session.execute(query)
     rows = result.all()
 
-    # Build response items with context
+    # Batch-fetch adjacent segments for context (eliminates N+1 queries).
+    # Collect the segment IDs from the result set, then use LAG/LEAD window
+    # functions in a single query to get prev/next text for all results.
+    segment_ids = [segment.id for segment, _t, _v, _c in rows]
+    context_map: dict[int, tuple[str | None, str | None]] = {}
+
+    if segment_ids:
+        # Use a CTE with window functions over each (video_id, language_code)
+        # partition to get the previous and next segment text.
+        partition = [SegmentDB.video_id, SegmentDB.language_code]
+        order = SegmentDB.start_time.asc()
+        # corrected_text takes precedence over text (matching _display_text)
+        display_text_col = func.coalesce(SegmentDB.corrected_text, SegmentDB.text)
+
+        context_cte = (
+            select(
+                SegmentDB.id.label("seg_id"),
+                func.lag(display_text_col, 1)
+                .over(partition_by=partition, order_by=order)
+                .label("prev_text"),
+                func.lead(display_text_col, 1)
+                .over(partition_by=partition, order_by=order)
+                .label("next_text"),
+            )
+            .where(
+                # Only compute windows for segments in the same
+                # (video_id, language_code) groups as our results.
+                # This keeps the window computation bounded.
+                and_(
+                    SegmentDB.video_id.in_(
+                        [s.video_id for s, _t, _v, _c in rows]
+                    ),
+                    SegmentDB.language_code.in_(
+                        [s.language_code for s, _t, _v, _c in rows]
+                    ),
+                )
+            )
+            .cte("context_cte")
+        )
+
+        context_query = (
+            select(
+                context_cte.c.seg_id,
+                context_cte.c.prev_text,
+                context_cte.c.next_text,
+            )
+            .where(context_cte.c.seg_id.in_(segment_ids))
+        )
+        context_result = await session.execute(context_query)
+        for seg_id, prev_text, next_text in context_result.all():
+            ctx_before = prev_text[:200] if prev_text and len(prev_text) > 200 else prev_text
+            ctx_after = next_text[:200] if next_text and len(next_text) > 200 else next_text
+            context_map[seg_id] = (ctx_before, ctx_after)
+
+    # Build response items using the pre-fetched context
     items: list[SearchResultSegment] = []
     for segment, _transcript, video, channel in rows:
-        # Get adjacent segments for context
-        context_before: str | None = None
-        context_after: str | None = None
-
-        # Previous segment
-        prev_query = (
-            select(SegmentDB)
-            .where(SegmentDB.video_id == segment.video_id)
-            .where(SegmentDB.language_code == segment.language_code)
-            .where(SegmentDB.start_time < segment.start_time)
-            .order_by(SegmentDB.start_time.desc())
-            .limit(1)
-        )
-        prev_result = await session.execute(prev_query)
-        prev_segment = prev_result.scalar_one_or_none()
-        if prev_segment:
-            prev_text = _display_text(prev_segment)
-            context_before = prev_text[:200] if len(prev_text) > 200 else prev_text
-
-        # Next segment
-        next_query = (
-            select(SegmentDB)
-            .where(SegmentDB.video_id == segment.video_id)
-            .where(SegmentDB.language_code == segment.language_code)
-            .where(SegmentDB.start_time > segment.start_time)
-            .order_by(SegmentDB.start_time.asc())
-            .limit(1)
-        )
-        next_result = await session.execute(next_query)
-        next_segment = next_result.scalar_one_or_none()
-        if next_segment:
-            next_text = _display_text(next_segment)
-            context_after = next_text[:200] if len(next_text) > 200 else next_text
-
+        ctx_before, ctx_after = context_map.get(segment.id, (None, None))
         items.append(
             SearchResultSegment(
                 segment_id=segment.id,
@@ -256,8 +277,8 @@ async def search_segments(
                 text=_display_text(segment),
                 start_time=segment.start_time,
                 end_time=segment.end_time,
-                context_before=context_before,
-                context_after=context_after,
+                context_before=ctx_before,
+                context_after=ctx_after,
                 match_count=count_query_matches(_display_text(segment), [query_text]),
                 video_upload_date=video.upload_date,
                 availability_status=video.availability_status,

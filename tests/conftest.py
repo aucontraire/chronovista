@@ -4,9 +4,9 @@ Pytest configuration and fixtures for chronovista tests.
 
 from __future__ import annotations
 
-import os
 import re
 import sys
+from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -107,7 +107,7 @@ def container_reset():
 
 
 @pytest.fixture(autouse=True)
-def _strip_ansi_from_cli_output() -> None:
+def _strip_ansi_from_cli_output() -> Generator[None, None, None]:
     """Strip ANSI escape codes from Click/Typer CliRunner results in CI.
 
     Typer/Rich emit ANSI sequences when there is no TTY. Rather than
@@ -120,18 +120,18 @@ def _strip_ansi_from_cli_output() -> None:
     _orig_output_prop = Result.__dict__["output"]
 
     def _clean_stdout(self: Result) -> str:
-        raw = _orig_stdout_prop.fget(self)  # type: ignore[union-attr]
+        raw = _orig_stdout_prop.fget(self)
         return _ANSI_RE.sub("", raw) if isinstance(raw, str) else (raw or "")
 
     def _clean_output(self: Result) -> str:
-        raw = _orig_output_prop.fget(self)  # type: ignore[union-attr]
+        raw = _orig_output_prop.fget(self)
         return _ANSI_RE.sub("", raw) if isinstance(raw, str) else (raw or "")
 
-    Result.stdout = property(_clean_stdout)  # type: ignore[assignment]
-    Result.output = property(_clean_output)  # type: ignore[assignment]
+    Result.stdout = property(_clean_stdout)  # type: ignore
+    Result.output = property(_clean_output)  # type: ignore
     yield
-    Result.stdout = _orig_stdout_prop  # type: ignore[assignment]
-    Result.output = _orig_output_prop  # type: ignore[assignment]
+    Result.stdout = _orig_stdout_prop  # type: ignore
+    Result.output = _orig_output_prop  # type: ignore
 
 
 def pytest_configure(config):

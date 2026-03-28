@@ -110,6 +110,38 @@ if not _serve_static:
 # so this will execute first (before log_requests middleware)
 app.add_middleware(RequestIdMiddleware)
 
+
+@app.middleware("http")
+async def add_security_headers(
+    request: Request, call_next: RequestResponseEndpoint
+) -> Response:
+    """Add security headers to every response.
+
+    These headers instruct browsers to enforce security policies that
+    mitigate clickjacking, MIME-type sniffing, and cross-site attacks.
+    """
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=()"
+    )
+    # CSP: allow self-origin resources; inline styles needed for Rich/Tailwind;
+    # YouTube iframe embeds require frame-src
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' https://i.ytimg.com https://yt3.ggpht.com https://i9.ytimg.com data:; "
+        "frame-src https://www.youtube-nocookie.com; "
+        "connect-src 'self'; "
+        "font-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'"
+    )
+    return response
+
 # Register centralized exception handlers for consistent error responses
 register_exception_handlers(app)
 

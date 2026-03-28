@@ -178,6 +178,18 @@ module = [
 ]
 ignore_missing_imports = true
 
+# google-auth has incomplete type stubs — suppress unused-ignore warnings
+# so type: ignore[no-untyped-call] works in both strict and non-strict mode
+[[tool.mypy.overrides]]
+module = "chronovista.auth.oauth_service"
+warn_unused_ignores = false
+
+# conftest monkey-patches Click internals — suppress unused-ignore warnings
+# because strict vs non-strict mypy require different error codes
+[[tool.mypy.overrides]]
+module = "tests.conftest"
+warn_unused_ignores = false
+
 # More relaxed settings for test files
 [[tool.mypy.overrides]]
 module = "tests.*"

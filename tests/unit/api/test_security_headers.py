@@ -1,5 +1,7 @@
 """Tests for HTTP security headers middleware."""
 
+from collections.abc import AsyncGenerator
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -19,7 +21,7 @@ class TestSecurityHeaders:
     """Verify security headers are present on all responses."""
 
     @pytest.fixture
-    async def client(self) -> AsyncClient:
+    async def client(self) -> AsyncGenerator[AsyncClient, None]:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             yield c

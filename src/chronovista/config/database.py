@@ -50,6 +50,8 @@ class DatabaseManager:
                 "future": True,
                 "pool_pre_ping": True,
                 "pool_recycle": 3600,
+                # Prevent runaway queries from holding connections indefinitely
+                "connect_args": {"server_settings": {"statement_timeout": "60000"}},
                 **self._pool_kwargs(),
             }
 

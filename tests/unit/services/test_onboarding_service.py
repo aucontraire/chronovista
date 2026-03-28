@@ -2494,3 +2494,80 @@ class TestFactoryNormalizeTags:
 
         assert 90.0 in calls
         assert 100.0 in calls
+
+
+# ===========================================================================
+# Tests: _get_counts_and_last_loaded gather parallelism
+# ===========================================================================
+
+
+class TestGetCountsAndLastLoadedGather:
+    """Validate that asyncio.gather in _get_counts_and_last_loaded assigns
+    each query result to the correct OnboardingCounts field.
+
+    Uses distinct non-zero values so any field-assignment swap is immediately
+    visible rather than hiding behind equal integers.
+    """
+
+    async def test_each_count_field_receives_correct_gather_result(self) -> None:
+        """Each OnboardingCounts field must carry the value from its own query.
+
+        _get_counts_and_last_loaded issues 9 concurrent queries via
+        asyncio.gather in this order:
+          0 channels, 1 videos, 2 available_videos, 3 enriched_videos,
+          4 playlists, 5 transcripts, 6 categories, 7 canonical_tags,
+          8 max(created_at)  -- returned as scalar_one_or_none()=None.
+        """
+        # Distinct values -- a value in the wrong field will fail the assertion
+        service = _build_service(
+            counts_sequence=[11, 22, 33, 44, 55, 66, 77, 88]
+        )
+        with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
+            status = await service.get_status()
+
+        counts = status.counts
+        assert counts.channels == 11
+        assert counts.videos == 22
+        assert counts.available_videos == 33
+        assert counts.enriched_videos == 44
+        assert counts.playlists == 55
+        assert counts.transcripts == 66
+        assert counts.categories == 77
+        assert counts.canonical_tags == 88
+
+    async def test_gather_handles_all_zero_counts(self) -> None:
+        """All-zero counts still produce a valid OnboardingCounts object."""
+        service = _build_service(counts_sequence=[0] * 8)
+        with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
+            status = await service.get_status()
+
+        counts = status.counts
+        for field in (
+            "channels",
+            "videos",
+            "available_videos",
+            "enriched_videos",
+            "playlists",
+            "transcripts",
+            "categories",
+            "canonical_tags",
+        ):
+            assert getattr(counts, field) == 0, (
+                f"Expected 0 for counts.{field}, "
+                f"got {getattr(counts, field)}"
+            )
+
+    async def test_gather_last_loaded_none_results_in_no_new_data(self) -> None:
+        """When max(created_at) returns NULL, new_data_available must be False.
+
+        The 9th gather result (session.execute for max(Video.created_at)) uses
+        scalar_one_or_none().  The factory mock returns None for
+        scalar_one_or_none, so last_loaded_at is None inside the service.
+        With no videos and no last-loaded timestamp, new_data_available=False.
+        """
+        service = _build_service(counts_sequence=[0] * 8)
+        with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
+            status = await service.get_status()
+
+        # No videos loaded yet and no timestamp -> no new data to flag
+        assert status.new_data_available is False

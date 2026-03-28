@@ -39,6 +39,34 @@ class TestDatabaseManager:
         assert engine2 == mock_engine
         assert mock_create_engine.call_count == 1
 
+    @patch("chronovista.config.database.create_async_engine")
+    def test_engine_kwargs_include_statement_timeout(self, mock_create_engine):
+        """create_async_engine must receive connect_args with statement_timeout.
+
+        The 60-second statement timeout prevents runaway queries from holding
+        connections indefinitely, which is critical under concurrent load.
+        """
+        mock_engine = MagicMock()
+        mock_create_engine.return_value = mock_engine
+
+        manager = DatabaseManager()
+        manager.get_engine()
+
+        mock_create_engine.assert_called_once()
+        _args, kwargs = mock_create_engine.call_args
+        connect_args = kwargs.get("connect_args", {})
+        assert "connect_args" in kwargs, (
+            "create_async_engine must receive connect_args"
+        )
+        server_settings = connect_args.get("server_settings", {})
+        assert "statement_timeout" in server_settings, (
+            "server_settings must include statement_timeout"
+        )
+        assert server_settings["statement_timeout"] == "60000", (
+            f"Expected statement_timeout='60000' (ms), "
+            f"got {server_settings['statement_timeout']!r}"
+        )
+
     @patch("chronovista.config.database.async_sessionmaker")
     def test_get_session_factory(self, mock_sessionmaker):
         """Test session factory creation and reuse."""

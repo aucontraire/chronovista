@@ -23,8 +23,12 @@ from googleapiclient.discovery import build
 from chronovista.config.settings import settings
 from chronovista.exceptions import AuthenticationError
 
-# Allow insecure transport for localhost development
-os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+# Allow insecure transport only for localhost redirect URIs.
+# This flag disables HTTPS enforcement in google-auth-oauthlib so the
+# OAuth callback works over plain HTTP during local development.
+_redirect = settings.oauth_redirect_uri
+if _redirect.startswith("http://localhost") or _redirect.startswith("http://127.0.0.1"):
+    os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
 
 class YouTubeOAuthService:

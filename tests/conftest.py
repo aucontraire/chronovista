@@ -5,15 +5,14 @@ Pytest configuration and fixtures for chronovista tests.
 from __future__ import annotations
 
 import os
+import re
 import sys
-
-# Disable Rich/Typer ANSI color output in CLI tests. Must be set before
-# Rich's Console is imported, as it checks NO_COLOR at construction time.
-os.environ["NO_COLOR"] = "1"
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 sys.path.insert(
@@ -107,8 +106,36 @@ def container_reset():
     container.reset()
 
 
+@pytest.fixture(autouse=True)
+def _strip_ansi_from_cli_output() -> None:
+    """Strip ANSI escape codes from Click/Typer CliRunner results in CI.
+
+    Typer/Rich emit ANSI sequences when there is no TTY. Rather than
+    patching Click internals (which breaks some test patterns), we
+    monkey-patch the ``Result`` class to post-process stdout/output.
+    """
+    from click.testing import Result
+
+    _orig_stdout_prop = Result.__dict__["stdout"]
+    _orig_output_prop = Result.__dict__["output"]
+
+    def _clean_stdout(self: Result) -> str:
+        raw = _orig_stdout_prop.fget(self)  # type: ignore[union-attr]
+        return _ANSI_RE.sub("", raw) if isinstance(raw, str) else (raw or "")
+
+    def _clean_output(self: Result) -> str:
+        raw = _orig_output_prop.fget(self)  # type: ignore[union-attr]
+        return _ANSI_RE.sub("", raw) if isinstance(raw, str) else (raw or "")
+
+    Result.stdout = property(_clean_stdout)  # type: ignore[assignment]
+    Result.output = property(_clean_output)  # type: ignore[assignment]
+    yield
+    Result.stdout = _orig_stdout_prop  # type: ignore[assignment]
+    Result.output = _orig_output_prop  # type: ignore[assignment]
+
+
 def pytest_configure(config):
-    """Configure pytest markers and environment for chronovista tests."""
+    """Configure pytest markers for chronovista tests."""
     config.addinivalue_line(
         "markers",
         "performance: mark test as performance test requiring database and large datasets",

@@ -4,12 +4,12 @@ Tests for Pydantic model validators across all models.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
 
-from chronovista.models.channel import ChannelCreate, ChannelUpdate
+from chronovista.models.channel import ChannelCreate
 from chronovista.models.enums import (
     DownloadReason,
     LanguageCode,
@@ -18,7 +18,7 @@ from chronovista.models.enums import (
 )
 from chronovista.models.user_language_preference import UserLanguagePreferenceCreate
 from chronovista.models.user_video import GoogleTakeoutWatchHistoryItem, UserVideoCreate
-from chronovista.models.video import VideoCreate, VideoUpdate
+from chronovista.models.video import VideoCreate
 from chronovista.models.video_transcript import VideoTranscriptCreate
 
 
@@ -141,7 +141,7 @@ class TestVideoValidators:
                 video_id="",
                 channel_id="UCtest123456789012345678",
                 title="Test",
-                upload_date=datetime.now(timezone.utc),
+                upload_date=datetime.now(UTC),
                 duration=120,
             )
 
@@ -152,7 +152,7 @@ class TestVideoValidators:
                 video_id="   ",
                 channel_id="UCtest123456789012345678",
                 title="Test",
-                upload_date=datetime.now(timezone.utc),
+                upload_date=datetime.now(UTC),
                 duration=120,
             )
 
@@ -165,7 +165,7 @@ class TestVideoValidators:
                 video_id="x" * 21,
                 channel_id="UCtest123456789012345678",
                 title="Test",
-                upload_date=datetime.now(timezone.utc),
+                upload_date=datetime.now(UTC),
                 duration=120,
             )
 
@@ -176,7 +176,7 @@ class TestVideoValidators:
                 video_id="x" * 22,
                 channel_id="UCtest123456789012345678",
                 title="Test",
-                upload_date=datetime.now(timezone.utc),
+                upload_date=datetime.now(UTC),
                 duration=120,
             )
 
@@ -186,7 +186,7 @@ class TestVideoValidators:
             video_id="dQw4w9WgXcQ",
             channel_id="UCtest123456789012345678",
             title="Test",
-            upload_date=datetime.now(timezone.utc),
+            upload_date=datetime.now(UTC),
             duration=120,
         )
         assert video.video_id == "dQw4w9WgXcQ"
@@ -200,7 +200,7 @@ class TestVideoValidators:
                 video_id="dQw4w9WgXcQ",
                 channel_id="",
                 title="Test",
-                upload_date=datetime.now(timezone.utc),
+                upload_date=datetime.now(UTC),
                 duration=120,
             )
 
@@ -213,7 +213,7 @@ class TestVideoValidators:
                 video_id="dQw4w9WgXcQ",
                 channel_id="UCtest1234567890123456787",
                 title="",
-                upload_date=datetime.now(timezone.utc),
+                upload_date=datetime.now(UTC),
                 duration=120,
             )
 
@@ -226,7 +226,7 @@ class TestVideoValidators:
                 video_id="dQw4w9WgXcQ",
                 channel_id="UCtest1234567890123456787",
                 title="Test",
-                upload_date=datetime.now(timezone.utc),
+                upload_date=datetime.now(UTC),
                 duration=-1,
             )
 
@@ -236,7 +236,7 @@ class TestVideoValidators:
             video_id="dQw4w9WgXcQ",
             channel_id="UCtest123456789012345678",
             title="Test",
-            upload_date=datetime.now(timezone.utc),
+            upload_date=datetime.now(UTC),
             duration=212,
         )
         assert video.duration == 212
@@ -253,7 +253,7 @@ class TestUserVideoValidators:
             UserVideoCreate(
                 user_id="",
                 video_id="dQw4w9WgXcQ",
-                watched_at=datetime.now(timezone.utc),
+                watched_at=datetime.now(UTC),
             )
 
     def test_video_id_validation_empty(self):
@@ -262,7 +262,7 @@ class TestUserVideoValidators:
             ValidationError, match="VideoId must be exactly 11 characters long"
         ):
             UserVideoCreate(
-                user_id="test_user", video_id="", watched_at=datetime.now(timezone.utc)
+                user_id="test_user", video_id="", watched_at=datetime.now(UTC)
             )
 
     def test_rewatch_count_validation_negative(self):
@@ -273,7 +273,7 @@ class TestUserVideoValidators:
             UserVideoCreate(
                 user_id="test_user",
                 video_id="dQw4w9WgXcQ",
-                watched_at=datetime.now(timezone.utc),
+                watched_at=datetime.now(UTC),
                 rewatch_count=-1,
             )
 

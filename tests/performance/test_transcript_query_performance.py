@@ -23,19 +23,17 @@ from __future__ import annotations
 
 import random
 import time
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as VideoTranscriptDB
 from chronovista.models.enums import (
     DownloadReason,
-    LanguageCode,
     TrackKind,
     TranscriptType,
 )
@@ -85,7 +83,7 @@ class TestTranscriptQueryPerformance:
     @pytest_asyncio.fixture
     async def performance_videos(
         self, integration_db_session
-    ) -> List[VideoDB]:
+    ) -> list[VideoDB]:
         """
         Create parent video records for transcript performance testing.
 
@@ -105,21 +103,19 @@ class TestTranscriptQueryPerformance:
                     select(VideoDB).where(VideoDB.video_id.like("perf_test_%"))
                 )
                 videos = list(result.scalars().all())
-                print(f"\n[SETUP] Using {len(videos)} existing performance test videos")
                 return videos
 
             # Create new videos
             videos = []
             video_count = 1000  # Create 1000 videos
 
-            print(f"\n[SETUP] Creating {video_count} video records for performance testing...")
 
             for i in range(video_count):
                 video = VideoDB(
                     video_id=f"perf_test_{i:05d}",
                     title=f"Performance Test Video {i}",
                     description=f"Test video {i} for performance testing",
-                    upload_date=datetime.now(timezone.utc) - timedelta(days=random.randint(1, 365)),
+                    upload_date=datetime.now(UTC) - timedelta(days=random.randint(1, 365)),
                     duration=random.randint(60, 3600),
                     made_for_kids=False,
                     view_count=random.randint(100, 1000000),
@@ -130,15 +126,13 @@ class TestTranscriptQueryPerformance:
                 # Commit in batches to avoid memory issues
                 if (i + 1) % 100 == 0:
                     await session.commit()
-                    print(f"[SETUP] Created {i + 1}/{video_count} videos...")
 
             await session.commit()
-            print(f"[SETUP] Completed creating {video_count} videos")
             return videos
 
     @pytest_asyncio.fixture
     async def performance_transcripts(
-        self, integration_db_session, performance_videos: List[VideoDB]
+        self, integration_db_session, performance_videos: list[VideoDB]
     ) -> int:
         """
         T042: Create performance test fixtures - generate 10,000 transcript records.
@@ -172,11 +166,9 @@ class TestTranscriptQueryPerformance:
                     .where(VideoDB.video_id.like("perf_test_%"))
                 )
                 count = len(list(count_result.scalars().all()))
-                print(f"\n[T042] Using {count} existing performance test transcripts")
                 return count
 
             # Create new transcripts
-            print(f"\n[T042] Generating {self.TARGET_RECORD_COUNT} transcript records with varied metadata...")
 
             transcripts_created = 0
             batch_size = 500
@@ -203,7 +195,7 @@ class TestTranscriptQueryPerformance:
                     language = self.LANGUAGES[lang_idx]
 
                     # Generate realistic raw_transcript_data for those with timestamps
-                    raw_data: Dict[str, Any] | None = None
+                    raw_data: dict[str, Any] | None = None
                     if has_timestamps and segment_count:
                         snippets = []
                         current_time = 0.0
@@ -224,7 +216,7 @@ class TestTranscriptQueryPerformance:
                             "is_generated": random.choice([True, False]),
                             "is_translatable": True,
                             "source": source,
-                            "retrieved_at": datetime.now(timezone.utc).isoformat(),
+                            "retrieved_at": datetime.now(UTC).isoformat(),
                         }
 
                     transcript = VideoTranscriptDB(
@@ -238,7 +230,7 @@ class TestTranscriptQueryPerformance:
                         is_auto_synced=random.choice([True, False]),
                         track_kind=TrackKind.STANDARD.value,
                         caption_name=f"Caption {language}",
-                        downloaded_at=datetime.now(timezone.utc) - timedelta(days=random.randint(1, 30)),
+                        downloaded_at=datetime.now(UTC) - timedelta(days=random.randint(1, 30)),
                         raw_transcript_data=raw_data,
                         has_timestamps=has_timestamps,
                         segment_count=segment_count,
@@ -254,7 +246,6 @@ class TestTranscriptQueryPerformance:
                         session.add_all(transcripts_batch)
                         await session.commit()
                         transcripts_batch = []
-                        print(f"[T042] Created {transcripts_created}/{self.TARGET_RECORD_COUNT} transcripts...")
 
                 # Break if we've created enough
                 if transcripts_created >= self.TARGET_RECORD_COUNT:
@@ -265,13 +256,6 @@ class TestTranscriptQueryPerformance:
                 session.add_all(transcripts_batch)
                 await session.commit()
 
-            print(f"[T042] Completed creating {transcripts_created} transcripts")
-            print(f"[T042] Performance test data ready:")
-            print(f"  - Sources: {', '.join(self.SOURCES)}")
-            print(f"  - Languages: {', '.join(self.LANGUAGES)}")
-            print(f"  - ~75% with timestamps, ~25% without")
-            print(f"  - Segment counts: 5-500")
-            print(f"  - Durations: 30-7200 seconds")
 
             return transcripts_created
 
@@ -292,7 +276,6 @@ class TestTranscriptQueryPerformance:
         Validates SC-005: Query by timestamp availability <2s for 10,000 transcripts.
         """
         async with integration_db_session() as session:
-            print(f"\n[T043] Testing has_timestamps query with {performance_transcripts} records...")
 
             start_time = time.perf_counter()
 
@@ -304,7 +287,6 @@ class TestTranscriptQueryPerformance:
 
             elapsed = time.perf_counter() - start_time
 
-            print(f"[SC-005] ✓ has_timestamps=True query: {elapsed:.3f}s, {len(results)} results")
 
             assert elapsed < self.PERFORMANCE_THRESHOLD_SECONDS, (
                 f"Query took {elapsed:.3f}s, exceeds {self.PERFORMANCE_THRESHOLD_SECONDS}s threshold (SC-005)"
@@ -323,7 +305,6 @@ class TestTranscriptQueryPerformance:
         Validates SC-003: Query by segment count <2s for 10,000 transcripts.
         """
         async with integration_db_session() as session:
-            print(f"\n[T044] Testing min_segment_count query with {performance_transcripts} records...")
 
             start_time = time.perf_counter()
 
@@ -335,7 +316,6 @@ class TestTranscriptQueryPerformance:
 
             elapsed = time.perf_counter() - start_time
 
-            print(f"[SC-003] ✓ min_segment_count>=100 query: {elapsed:.3f}s, {len(results)} results")
 
             assert elapsed < self.PERFORMANCE_THRESHOLD_SECONDS, (
                 f"Query took {elapsed:.3f}s, exceeds {self.PERFORMANCE_THRESHOLD_SECONDS}s threshold (SC-003)"
@@ -358,7 +338,6 @@ class TestTranscriptQueryPerformance:
         Validates SC-004: Query by duration <2s for 10,000 transcripts.
         """
         async with integration_db_session() as session:
-            print(f"\n[T045] Testing min_duration query with {performance_transcripts} records...")
 
             start_time = time.perf_counter()
 
@@ -370,7 +349,6 @@ class TestTranscriptQueryPerformance:
 
             elapsed = time.perf_counter() - start_time
 
-            print(f"[SC-004] ✓ min_duration>=1800s query: {elapsed:.3f}s, {len(results)} results")
 
             assert elapsed < self.PERFORMANCE_THRESHOLD_SECONDS, (
                 f"Query took {elapsed:.3f}s, exceeds {self.PERFORMANCE_THRESHOLD_SECONDS}s threshold (SC-004)"
@@ -393,7 +371,6 @@ class TestTranscriptQueryPerformance:
         Validates SC-006: Query by source <2s for 10,000 transcripts.
         """
         async with integration_db_session() as session:
-            print(f"\n[T046] Testing source query with {performance_transcripts} records...")
 
             start_time = time.perf_counter()
 
@@ -405,7 +382,6 @@ class TestTranscriptQueryPerformance:
 
             elapsed = time.perf_counter() - start_time
 
-            print(f"[SC-006] ✓ source='youtube_transcript_api' query: {elapsed:.3f}s, {len(results)} results")
 
             assert elapsed < self.PERFORMANCE_THRESHOLD_SECONDS, (
                 f"Query took {elapsed:.3f}s, exceeds {self.PERFORMANCE_THRESHOLD_SECONDS}s threshold (SC-006)"
@@ -428,7 +404,6 @@ class TestTranscriptQueryPerformance:
         This is important for real-world usage where users may combine filters.
         """
         async with integration_db_session() as session:
-            print(f"\n[T047] Testing combined filters query with {performance_transcripts} records...")
 
             start_time = time.perf_counter()
 
@@ -443,8 +418,6 @@ class TestTranscriptQueryPerformance:
 
             elapsed = time.perf_counter() - start_time
 
-            print(f"[T047] ✓ Combined filters query: {elapsed:.3f}s, {len(results)} results")
-            print(f"  Filters: has_timestamps=True AND min_segment_count>=50 AND min_duration>=300s AND source='youtube_transcript_api'")
 
             assert elapsed < self.PERFORMANCE_THRESHOLD_SECONDS, (
                 f"Combined query took {elapsed:.3f}s, exceeds {self.PERFORMANCE_THRESHOLD_SECONDS}s threshold"
@@ -472,12 +445,6 @@ class TestTranscriptQueryPerformance:
         This serves as documentation and allows tracking performance over time.
         """
         async with integration_db_session() as session:
-            print(f"\n{'='*80}")
-            print(f"PERFORMANCE BASELINE RESULTS - Feature 007")
-            print(f"{'='*80}")
-            print(f"Test Dataset: {performance_transcripts} transcripts")
-            print(f"Performance Threshold: {self.PERFORMANCE_THRESHOLD_SECONDS}s")
-            print(f"{'='*80}\n")
 
             baseline_results = []
 
@@ -538,25 +505,12 @@ class TestTranscriptQueryPerformance:
             baseline_results.append(("Combined (4 filters)", elapsed, len(results), "Combined"))
 
             # Print results table
-            print(f"{'Query Filter':<40} {'Time (s)':<12} {'Results':<10} {'SC':<10} {'Status'}")
-            print(f"{'-'*80}")
 
             all_passed = True
-            for query, elapsed, count, sc in baseline_results:
-                status = "✓ PASS" if elapsed < self.PERFORMANCE_THRESHOLD_SECONDS else "✗ FAIL"
+            for _query, elapsed, _count, _sc in baseline_results:
                 if elapsed >= self.PERFORMANCE_THRESHOLD_SECONDS:
                     all_passed = False
-                print(f"{query:<40} {elapsed:>8.3f}s    {count:>6}     {sc:<10} {status}")
 
-            print(f"\n{'='*80}")
-            print(f"SUMMARY")
-            print(f"{'='*80}")
-            print(f"All queries: {'✓ PASSED' if all_passed else '✗ FAILED'}")
-            print(f"Threshold: {self.PERFORMANCE_THRESHOLD_SECONDS}s")
-            print(f"Average time: {sum(r[1] for r in baseline_results) / len(baseline_results):.3f}s")
-            print(f"Fastest query: {min(r[1] for r in baseline_results):.3f}s ({min(baseline_results, key=lambda r: r[1])[0]})")
-            print(f"Slowest query: {max(r[1] for r in baseline_results):.3f}s ({max(baseline_results, key=lambda r: r[1])[0]})")
-            print(f"{'='*80}\n")
 
             # Assert all passed
             assert all_passed, (
@@ -581,7 +535,6 @@ async def cleanup_performance_data(integration_db_session):
 
     # Cleanup after all tests in module complete
     async with integration_db_session() as session:
-        print("\n[CLEANUP] Removing performance test data...")
 
         # Delete all performance test transcripts
         await session.execute(
@@ -596,4 +549,3 @@ async def cleanup_performance_data(integration_db_session):
         )
 
         await session.commit()
-        print("[CLEANUP] Performance test data removed")

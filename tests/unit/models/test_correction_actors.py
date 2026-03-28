@@ -7,16 +7,12 @@ the ``auto_actor`` helper produces correctly formatted actor strings.
 
 from __future__ import annotations
 
-import pytest
-
 from chronovista.models.correction_actors import (
     ACTOR_CLI_BATCH,
     ACTOR_CLI_INTERACTIVE,
     ACTOR_USER_LOCAL,
     auto_actor,
 )
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestActorConstants:

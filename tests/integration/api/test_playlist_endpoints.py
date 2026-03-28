@@ -8,13 +8,9 @@ Tests cover:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from unittest.mock import patch
 
-import pytest
 from httpx import AsyncClient
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestListPlaylists:

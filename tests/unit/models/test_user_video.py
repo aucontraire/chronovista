@@ -7,7 +7,7 @@ serialization, and business logic testing using factory-boy for DRY principles.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -33,7 +33,6 @@ from tests.factories.user_video_factory import (
     create_batch_user_videos,
     create_google_takeout_item,
     create_user_video,
-    create_user_video_base,
     create_user_video_create,
     create_user_video_search_filters,
     create_user_video_statistics,
@@ -105,7 +104,7 @@ class TestUserVideoBaseFactory:
         data = {
             "user_id": "validate_user",
             "video_id": "3tmd-ClpJxA",
-            "watched_at": datetime(2023, 12, 1, 10, 30, 0, tzinfo=timezone.utc),
+            "watched_at": datetime(2023, 12, 1, 10, 30, 0, tzinfo=UTC),
             "rewatch_count": 2,
             "liked": True,
             "saved_to_playlist": True,
@@ -181,8 +180,8 @@ class TestUserVideoFactory:
 
     def test_user_video_timestamps(self):
         """Test UserVideo with custom timestamps."""
-        created_time = datetime(2023, 1, 1, tzinfo=timezone.utc)
-        updated_time = datetime(2023, 12, 1, tzinfo=timezone.utc)
+        created_time = datetime(2023, 1, 1, tzinfo=UTC)
+        updated_time = datetime(2023, 12, 1, tzinfo=UTC)
 
         user_video = UserVideoFactory.build(
             created_at=created_time, updated_at=updated_time
@@ -560,12 +559,12 @@ class TestAdditionalValidationEdgeCases:
         video_data = {
             "user_id": "orm_user",
             "video_id": "dQw4w9WgXcQ",
-            "watched_at": datetime(2023, 12, 1, 10, 30, 0, tzinfo=timezone.utc),
+            "watched_at": datetime(2023, 12, 1, 10, 30, 0, tzinfo=UTC),
             "rewatch_count": 2,
             "liked": True,
             "saved_to_playlist": True,
-            "created_at": datetime(2023, 12, 1, 10, 35, 0, tzinfo=timezone.utc),
-            "updated_at": datetime(2023, 12, 1, 11, 30, 0, tzinfo=timezone.utc),
+            "created_at": datetime(2023, 12, 1, 10, 35, 0, tzinfo=UTC),
+            "updated_at": datetime(2023, 12, 1, 11, 30, 0, tzinfo=UTC),
         }
 
         user_video = UserVideo.model_validate(video_data)
@@ -600,13 +599,13 @@ class TestAdditionalValidationEdgeCases:
         filters = UserVideoSearchFiltersFactory.build(
             user_ids=["user1", "user2", "user3"],
             video_ids=["dQw4w9WgXcQ", "9bZkp7q19f0"],
-            watched_after=datetime(2023, 1, 1, tzinfo=timezone.utc),
-            watched_before=datetime(2023, 12, 31, tzinfo=timezone.utc),
+            watched_after=datetime(2023, 1, 1, tzinfo=UTC),
+            watched_before=datetime(2023, 12, 31, tzinfo=UTC),
             liked_only=True,
             playlist_saved_only=True,
             min_rewatch_count=2,
-            created_after=datetime(2023, 6, 1, tzinfo=timezone.utc),
-            created_before=datetime(2023, 11, 30, tzinfo=timezone.utc),
+            created_after=datetime(2023, 6, 1, tzinfo=UTC),
+            created_before=datetime(2023, 11, 30, tzinfo=UTC),
         )
 
         assert filters.user_ids is not None
@@ -625,7 +624,7 @@ class TestAdditionalValidationEdgeCases:
             playlist_saved_count=75,
             rewatch_count=100,
             unique_videos=450,
-            most_watched_date=datetime(2023, 11, 15, tzinfo=timezone.utc),
+            most_watched_date=datetime(2023, 11, 15, tzinfo=UTC),
             watch_streak_days=21,
         )
 
@@ -658,7 +657,7 @@ class TestAdditionalValidationEdgeCases:
         original = UserVideoFactory.build(
             user_id="serialize_test",
             video_id="dQw4w9WgXcQ",  # Valid 11-character video ID
-            watched_at=datetime(2023, 12, 1, 15, 30, tzinfo=timezone.utc),
+            watched_at=datetime(2023, 12, 1, 15, 30, tzinfo=UTC),
             rewatch_count=3,
             liked=True,
             saved_to_playlist=True,

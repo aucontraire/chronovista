@@ -5,9 +5,8 @@ Unit tests for the `chronovista takeout recover` CLI command (T025e).
 Tests cover dry-run mode, verbose output, and error handling.
 """
 
-from datetime import datetime, timezone
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -32,13 +31,13 @@ class TestTakeoutRecoverCommand:
             video_id="dQw4w9WgXcQ",
             old_title="[Placeholder] Video dQw4w9WgXcQ",
             new_title="Never Gonna Give You Up",
-            source_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            source_date=datetime(2024, 1, 15, tzinfo=UTC),
         )
         channel_action = ChannelRecoveryAction(
             channel_id="UCtest123",
             channel_name="Test Channel",
             action_type="create",
-            source_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            source_date=datetime(2024, 1, 15, tzinfo=UTC),
         )
 
         result = RecoveryResult(
@@ -47,8 +46,8 @@ class TestTakeoutRecoverCommand:
             channels_created=2,
             channels_updated=3,
             takeouts_scanned=3,
-            oldest_takeout_date=datetime(2023, 1, 1, tzinfo=timezone.utc),
-            newest_takeout_date=datetime(2024, 6, 15, tzinfo=timezone.utc),
+            oldest_takeout_date=datetime(2023, 1, 1, tzinfo=UTC),
+            newest_takeout_date=datetime(2024, 6, 15, tzinfo=UTC),
             video_actions=[video_action],
             channel_actions=[channel_action],
         )

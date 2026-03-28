@@ -14,22 +14,17 @@ Tests cover:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import Channel as ChannelDB
 from chronovista.exceptions import CDXError
 from chronovista.models.enums import AvailabilityStatus
 from chronovista.services.recovery.models import ChannelRecoveryResult
-
-pytestmark = pytest.mark.asyncio
-
 
 # =============================================================================
 # Test Fixtures
@@ -39,7 +34,7 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture
 async def unavailable_channel(
     integration_session_factory,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create a channel with availability_status = 'deleted'.
 
@@ -87,7 +82,7 @@ async def unavailable_channel(
 @pytest.fixture
 async def available_channel(
     integration_session_factory,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create a channel with availability_status = 'available'.
 
@@ -141,7 +136,7 @@ class TestChannelRecoverySuccess:
     async def test_recover_channel_success_with_metadata(
         self,
         async_client: AsyncClient,
-        unavailable_channel: Dict[str, Any],
+        unavailable_channel: dict[str, Any],
     ) -> None:
         """Test successful channel recovery with populated ChannelRecoveryResult."""
         channel_id = unavailable_channel["channel_id"]
@@ -195,7 +190,7 @@ class TestChannelRecoverySuccess:
     async def test_recover_channel_zero_new_fields(
         self,
         async_client: AsyncClient,
-        unavailable_channel: Dict[str, Any],
+        unavailable_channel: dict[str, Any],
     ) -> None:
         """Test successful recovery with empty fields_recovered list."""
         channel_id = unavailable_channel["channel_id"]
@@ -271,7 +266,7 @@ class TestChannelRecoveryErrors:
     async def test_recover_available_channel_409(
         self,
         async_client: AsyncClient,
-        available_channel: Dict[str, Any],
+        available_channel: dict[str, Any],
     ) -> None:
         """Test 409 conflict when channel is available."""
         channel_id = available_channel["channel_id"]
@@ -293,7 +288,7 @@ class TestChannelRecoveryErrors:
     async def test_recover_invalid_year_range_422(
         self,
         async_client: AsyncClient,
-        unavailable_channel: Dict[str, Any],
+        unavailable_channel: dict[str, Any],
     ) -> None:
         """Test 422 validation error when end_year < start_year."""
         channel_id = unavailable_channel["channel_id"]
@@ -317,7 +312,7 @@ class TestChannelRecoveryErrors:
     async def test_recover_year_out_of_range_422(
         self,
         async_client: AsyncClient,
-        unavailable_channel: Dict[str, Any],
+        unavailable_channel: dict[str, Any],
     ) -> None:
         """Test 422 validation error when year is out of range."""
         channel_id = unavailable_channel["channel_id"]
@@ -340,7 +335,7 @@ class TestChannelRecoveryErrors:
     async def test_recover_cdx_error_503(
         self,
         async_client: AsyncClient,
-        unavailable_channel: Dict[str, Any],
+        unavailable_channel: dict[str, Any],
     ) -> None:
         """Test 503 error when CDX API is unavailable."""
         channel_id = unavailable_channel["channel_id"]
@@ -386,7 +381,7 @@ class TestChannelRecoveryQueryParameters:
     async def test_recover_with_start_year(
         self,
         async_client: AsyncClient,
-        unavailable_channel: Dict[str, Any],
+        unavailable_channel: dict[str, Any],
     ) -> None:
         """Test recovery with start_year parameter."""
         channel_id = unavailable_channel["channel_id"]
@@ -424,7 +419,7 @@ class TestChannelRecoveryQueryParameters:
     async def test_recover_with_end_year(
         self,
         async_client: AsyncClient,
-        unavailable_channel: Dict[str, Any],
+        unavailable_channel: dict[str, Any],
     ) -> None:
         """Test recovery with end_year parameter."""
         channel_id = unavailable_channel["channel_id"]
@@ -462,7 +457,7 @@ class TestChannelRecoveryQueryParameters:
     async def test_recover_with_year_range(
         self,
         async_client: AsyncClient,
-        unavailable_channel: Dict[str, Any],
+        unavailable_channel: dict[str, Any],
     ) -> None:
         """Test recovery with both start_year and end_year parameters."""
         channel_id = unavailable_channel["channel_id"]

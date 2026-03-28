@@ -24,8 +24,6 @@ from chronovista.services.enrichment.enrichment_service import (
     LockInfo,
 )
 
-pytestmark = pytest.mark.asyncio
-
 
 class TestLockInfo:
     """Test LockInfo model."""
@@ -85,7 +83,7 @@ class TestEnrichmentLockConstants:
     def test_lock_file_path(self) -> None:
         """Test that LOCK_FILE is in correct location."""
         expected_path = Path.home() / ".chronovista" / "enrichment.lock"
-        assert EnrichmentLock.LOCK_FILE == expected_path
+        assert expected_path == EnrichmentLock.LOCK_FILE
 
 
 class TestEnrichmentLockInitialization:

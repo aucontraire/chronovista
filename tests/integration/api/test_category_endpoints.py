@@ -6,13 +6,11 @@ GET /api/v1/categories/{category_id}/videos endpoints.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
-import pytest
 from httpx import AsyncClient
-from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete
 
 from chronovista.db.models import (
     Channel,
@@ -21,9 +19,6 @@ from chronovista.db.models import (
     VideoTag,
     VideoTopic,
 )
-
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestListCategories:
@@ -100,7 +95,7 @@ class TestListCategories:
                     video_id=f"vid_{i:03d}",
                     channel_id=channel.channel_id,
                     title=f"Video {i}",
-                    upload_date=datetime.now(timezone.utc),
+                    upload_date=datetime.now(UTC),
                     duration=300,
                     category_id="2" if i < 3 else ("1" if i < 5 else "3"),
                 )
@@ -333,7 +328,7 @@ class TestGetCategoryVideos:
                 video_id="vid_test_00",
                 channel_id=channel.channel_id,
                 title="Test Video",
-                upload_date=datetime.now(timezone.utc),
+                upload_date=datetime.now(UTC),
                 duration=300,
                 category_id=category.category_id,
             )
@@ -410,7 +405,7 @@ class TestGetCategoryVideos:
                 video_id="vid_active",
                 channel_id=channel.channel_id,
                 title="Active Video",
-                upload_date=datetime.now(timezone.utc),
+                upload_date=datetime.now(UTC),
                 duration=300,
                 category_id=category.category_id,
                 availability_status="available",
@@ -419,7 +414,7 @@ class TestGetCategoryVideos:
                 video_id="vid_deleted",
                 channel_id=channel.channel_id,
                 title="Deleted Video",
-                upload_date=datetime.now(timezone.utc),
+                upload_date=datetime.now(UTC),
                 duration=300,
                 category_id=category.category_id,
                 availability_status="unavailable",
@@ -488,7 +483,7 @@ class TestGetCategoryVideos:
 
             # Create videos with different upload dates
             from datetime import timedelta
-            base_date = datetime.now(timezone.utc)
+            base_date = datetime.now(UTC)
             videos = [
                 Video(
                     video_id=f"vid_sort_{i}",

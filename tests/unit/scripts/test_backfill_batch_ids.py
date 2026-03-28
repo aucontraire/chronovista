@@ -16,11 +16,9 @@ References
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, call, patch
-
-import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # ---------------------------------------------------------------------------
 # CRITICAL: Module-level asyncio marker ensures async tests run properly
@@ -32,18 +30,15 @@ import pytest
 # all async tests run correctly with pytest-cov.  Sync tests receive the
 # marker too, which produces benign warnings but does NOT affect correctness.
 # ---------------------------------------------------------------------------
-pytestmark = pytest.mark.asyncio
-
 # ---------------------------------------------------------------------------
 # Lazy imports from the script (avoids sys.path manipulation at import time
 # since the script bootstraps its own path).  The script adds ``src/`` on
 # first import, so we do a direct import after ensuring the path is set.
 # ---------------------------------------------------------------------------
-
 from scripts.utilities.backfill_batch_ids import (  # noqa: E402
     DEFAULT_WINDOW_SECONDS,
-    BatchGroup,
     CorrectionRow,
+    _group_key,
     assign_batch_id,
     build_parser,
     fetch_unassigned_corrections,
@@ -51,8 +46,6 @@ from scripts.utilities.backfill_batch_ids import (  # noqa: E402
     identify_batches_by_text,
     identify_batches_by_timestamp,
     run_backfill,
-    _group_key,
-    _display_summary,
 )
 
 # Backward-compatible alias for existing tests
@@ -61,7 +54,6 @@ identify_batches = identify_batches_by_text
 from tests.factories.transcript_correction_factory import (
     TranscriptCorrectionFactory,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -96,7 +88,7 @@ def _make_row(
         Lightweight data container for one correction row.
     """
     if corrected_at is None:
-        corrected_at = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        corrected_at = datetime(2024, 1, 1, 10, 0, 0, tzinfo=UTC)
     return CorrectionRow(
         id=id,
         corrected_by_user_id=corrected_by_user_id,
@@ -119,7 +111,7 @@ def _at(seconds_offset: float) -> datetime:
     datetime
         Base time plus the given offset.
     """
-    base = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+    base = datetime(2024, 1, 1, 10, 0, 0, tzinfo=UTC)
     return base + timedelta(seconds=seconds_offset)
 
 
@@ -485,7 +477,7 @@ class TestFetchUnassignedCorrections:
 
     async def test_multiple_rows_all_mapped(self) -> None:
         """All rows from fetchall must be mapped to CorrectionRow instances."""
-        base_time = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        base_time = datetime(2024, 1, 1, 10, 0, 0, tzinfo=UTC)
         raw_rows = []
         for i in range(5):
             r = MagicMock()
@@ -828,7 +820,6 @@ class TestProgressReporting:
 
         captured: dict[str, Any] = {}
 
-        original_display = _display_summary
 
         def _capture_display(**kwargs: Any) -> None:
             captured.update(kwargs)

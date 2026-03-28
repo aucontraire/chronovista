@@ -21,28 +21,34 @@ from __future__ import annotations
 
 import io
 from datetime import UTC, datetime
-from typing import cast
 
 import pytest
 from rich.console import Console
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from uuid_utils import uuid7
 
 from chronovista.db.models import (
     CanonicalTag as CanonicalTagDB,
+)
+from chronovista.db.models import (
     Channel as ChannelDB,
+)
+from chronovista.db.models import (
     TagAlias as TagAliasDB,
+)
+from chronovista.db.models import (
     TagOperationLog as TagOperationLogDB,
+)
+from chronovista.db.models import (
     Video as VideoDB,
+)
+from chronovista.db.models import (
     VideoTag as VideoTagDB,
 )
 from chronovista.services.tag_backfill import TagBackfillService
 from chronovista.services.tag_normalization import TagNormalizationService
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 # =============================================================================
 # Test Fixtures and Helpers

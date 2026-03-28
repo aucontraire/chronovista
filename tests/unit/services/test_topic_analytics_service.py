@@ -14,8 +14,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 # Mark all async tests in this module
-pytestmark = pytest.mark.asyncio
-
 from chronovista.models.topic_analytics import (
     TopicAnalyticsSummary,
     TopicDiscoveryAnalysis,
@@ -495,15 +493,14 @@ class TestTopicAnalyticsServiceGraphGeneration:
             service,
             "get_popular_topics",
             new=AsyncMock(return_value=mock_popular_topics),
+        ), patch.object(
+            service,
+            "get_topic_relationships",
+            new=AsyncMock(return_value=mock_relationships),
         ):
-            with patch.object(
-                service,
-                "get_topic_relationships",
-                new=AsyncMock(return_value=mock_relationships),
-            ):
-                result = await service.generate_topic_graph_dot(
-                    min_confidence=0.1, max_topics=50
-                )
+            result = await service.generate_topic_graph_dot(
+                min_confidence=0.1, max_topics=50
+            )
 
         assert isinstance(result, str)
         assert "digraph TopicGraph" in result
@@ -540,15 +537,14 @@ class TestTopicAnalyticsServiceGraphGeneration:
             service,
             "get_popular_topics",
             new=AsyncMock(return_value=mock_popular_topics),
+        ), patch.object(
+            service,
+            "get_topic_relationships",
+            new=AsyncMock(return_value=mock_relationships),
         ):
-            with patch.object(
-                service,
-                "get_topic_relationships",
-                new=AsyncMock(return_value=mock_relationships),
-            ):
-                result = await service.generate_topic_graph_json(
-                    min_confidence=0.1, max_topics=50
-                )
+            result = await service.generate_topic_graph_json(
+                min_confidence=0.1, max_topics=50
+            )
 
         assert isinstance(result, dict)
         assert "nodes" in result

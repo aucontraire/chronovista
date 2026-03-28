@@ -7,8 +7,7 @@ for mocking YouTube API responses in tests.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
 
 import pytest
 
@@ -28,18 +27,18 @@ def make_video_response(
     description: str = "",
     channel_id: str = "UCuAXFkgsw1L7xaCfnd5JJOw",
     channel_title: str = "Test Channel",
-    published_at: Optional[datetime] = None,
+    published_at: datetime | None = None,
     duration: str = "PT10M30S",
     view_count: int = 1000,
-    like_count: Optional[int] = 50,
-    comment_count: Optional[int] = 10,
+    like_count: int | None = 50,
+    comment_count: int | None = 10,
     category_id: str = "10",
-    tags: Optional[list[str]] = None,
-    topic_categories: Optional[list[str]] = None,
+    tags: list[str] | None = None,
+    topic_categories: list[str] | None = None,
     made_for_kids: bool = False,
-    self_declared_made_for_kids: Optional[bool] = None,
-    default_language: Optional[str] = None,
-    default_audio_language: Optional[str] = None,
+    self_declared_made_for_kids: bool | None = None,
+    default_language: str | None = None,
+    default_audio_language: str | None = None,
 ) -> YouTubeVideoResponse:
     """
     Create a valid YouTubeVideoResponse instance for testing.
@@ -87,7 +86,7 @@ def make_video_response(
         A valid Pydantic model instance.
     """
     if published_at is None:
-        published_at = datetime.now(timezone.utc)
+        published_at = datetime.now(UTC)
 
     snippet = VideoSnippet(
         publishedAt=published_at,

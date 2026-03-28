@@ -5,7 +5,7 @@ Tests for VideoTopic, VideoTopicCreate, VideoTopicUpdate models
 including validation, field validation, and edge cases.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -144,7 +144,7 @@ class TestVideoTopicSearchFilters:
 
     def test_video_topic_search_filters_with_data(self):
         """Test VideoTopicSearchFilters with filter data."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         filters = VideoTopicSearchFilters(
             video_ids=[TestIds.TEST_VIDEO_1, TestIds.TEST_VIDEO_2],
             topic_ids=[TestIds.MUSIC_TOPIC, TestIds.GAMING_TOPIC],
@@ -206,7 +206,7 @@ class TestVideoTopic:
 
     def test_video_topic_from_dict(self):
         """Test VideoTopic creation from dictionary (as from database)."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         video_topic = VideoTopic(
             video_id=TestIds.TEST_VIDEO_1,
@@ -227,7 +227,7 @@ class TestVideoTopic:
             video_id=TestIds.TEST_VIDEO_1,
             topic_id=TestIds.MUSIC_TOPIC,
             relevance_type="primary",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         # Should validate when assigning new values

@@ -7,10 +7,8 @@ RecoveryCandidate, VideoRecoveryAction, ChannelRecoveryAction, RecoveryResult,
 RecoveryOptions, and helper functions.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-
-import pytest
 
 from chronovista.models.takeout.recovery import (
     CHANNEL_PLACEHOLDER_PREFIX,
@@ -37,7 +35,7 @@ class TestHistoricalTakeout:
         """Test creating a basic HistoricalTakeout."""
         takeout = HistoricalTakeout(
             path=Path("/takeouts/2024-01-15"),
-            export_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            export_date=datetime(2024, 1, 15, tzinfo=UTC),
         )
         assert takeout.path == Path("/takeouts/2024-01-15")
         assert takeout.export_date.year == 2024
@@ -49,7 +47,7 @@ class TestHistoricalTakeout:
         """Test creating a HistoricalTakeout with all data types available."""
         takeout = HistoricalTakeout(
             path=Path("/takeouts/full-export"),
-            export_date=datetime(2023, 6, 1, tzinfo=timezone.utc),
+            export_date=datetime(2023, 6, 1, tzinfo=UTC),
             has_watch_history=True,
             has_playlists=True,
             has_subscriptions=True,
@@ -62,7 +60,7 @@ class TestHistoricalTakeout:
         """Test creating a HistoricalTakeout with only watch history."""
         takeout = HistoricalTakeout(
             path=Path("/takeouts/partial"),
-            export_date=datetime(2022, 12, 25, tzinfo=timezone.utc),
+            export_date=datetime(2022, 12, 25, tzinfo=UTC),
             has_watch_history=True,
             has_playlists=False,
             has_subscriptions=False,
@@ -82,9 +80,9 @@ class TestRecoveredVideoMetadata:
             channel_name="RickAstleyVEVO",
             channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",
             channel_url="https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw",
-            watched_at=datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc),
+            watched_at=datetime(2024, 1, 1, 12, 0, tzinfo=UTC),
             source_takeout=Path("/takeouts/2024-01-15"),
-            source_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            source_date=datetime(2024, 1, 15, tzinfo=UTC),
         )
         assert metadata.video_id == "dQw4w9WgXcQ"
         assert metadata.title == "Never Gonna Give You Up"
@@ -96,7 +94,7 @@ class TestRecoveredVideoMetadata:
             video_id="abc123XYZ_-",
             title="Some Video Title",
             source_takeout=Path("/takeouts/2023-06-01"),
-            source_date=datetime(2023, 6, 1, tzinfo=timezone.utc),
+            source_date=datetime(2023, 6, 1, tzinfo=UTC),
         )
         assert metadata.video_id == "abc123XYZ_-"
         assert metadata.channel_name is None
@@ -114,7 +112,7 @@ class TestRecoveredChannelMetadata:
             channel_name="RickAstleyVEVO",
             channel_url="https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw",
             source_takeout=Path("/takeouts/2024-01-15"),
-            source_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            source_date=datetime(2024, 1, 15, tzinfo=UTC),
             video_count=42,
         )
         assert metadata.channel_id == "UCuAXFkgsw1L7xaCfnd5JJOw"
@@ -127,7 +125,7 @@ class TestRecoveredChannelMetadata:
             channel_id="UCtest123",
             channel_name="Test Channel",
             source_takeout=Path("/takeouts/test"),
-            source_date=datetime.now(timezone.utc),
+            source_date=datetime.now(UTC),
         )
         assert metadata.video_count == 0
 
@@ -167,7 +165,7 @@ class TestVideoRecoveryAction:
             video_id="dQw4w9WgXcQ",
             old_title="[Placeholder] Video dQw4w9WgXcQ",
             new_title="Never Gonna Give You Up",
-            source_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            source_date=datetime(2024, 1, 15, tzinfo=UTC),
             action_type="update_title",
         )
         assert action.action_type == "update_title"
@@ -183,7 +181,7 @@ class TestVideoRecoveryAction:
             old_channel_id="UCplaceholder",
             new_channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",
             channel_name="RickAstleyVEVO",
-            source_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            source_date=datetime(2024, 1, 15, tzinfo=UTC),
             action_type="both",
         )
         assert action.action_type == "both"
@@ -201,7 +199,7 @@ class TestChannelRecoveryAction:
             channel_name="RickAstleyVEVO",
             channel_url="https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw",
             action_type="create",
-            source_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            source_date=datetime(2024, 1, 15, tzinfo=UTC),
         )
         assert action.action_type == "create"
 
@@ -211,7 +209,7 @@ class TestChannelRecoveryAction:
             channel_id="UCtest123",
             channel_name="Updated Channel Name",
             action_type="update_name",
-            source_date=datetime.now(timezone.utc),
+            source_date=datetime.now(UTC),
         )
         assert action.action_type == "update_name"
 
@@ -259,12 +257,12 @@ class TestRecoveryResult:
             video_id="dQw4w9WgXcQ",
             old_title="[Placeholder] Video dQw4w9WgXcQ",
             new_title="Never Gonna Give You Up",
-            source_date=datetime.now(timezone.utc),
+            source_date=datetime.now(UTC),
         )
         channel_action = ChannelRecoveryAction(
             channel_id="UCtest123",
             channel_name="Test Channel",
-            source_date=datetime.now(timezone.utc),
+            source_date=datetime.now(UTC),
         )
         result = RecoveryResult(
             videos_recovered=1,

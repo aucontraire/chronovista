@@ -33,8 +33,6 @@ import pytest
 
 # CRITICAL: Module-level asyncio marker ensures async tests run properly
 # with coverage tools, avoiding silent test-skipping (see CLAUDE.md).
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Helper factories
@@ -88,7 +86,9 @@ def _make_segment_row(
 
 def _build_service(session_factory: Any) -> Any:
     """Import and construct EntityMentionScanService."""
-    from chronovista.services.entity_mention_scan_service import EntityMentionScanService
+    from chronovista.services.entity_mention_scan_service import (
+        EntityMentionScanService,
+    )
 
     return EntityMentionScanService(session_factory=session_factory)
 
@@ -138,8 +138,12 @@ class TestConstructor:
 
     def test_stores_session_factory(self) -> None:
         """Constructor must store the session_factory dependency."""
-        from chronovista.services.entity_mention_scan_service import EntityMentionScanService
-        from chronovista.repositories.entity_mention_repository import EntityMentionRepository
+        from chronovista.repositories.entity_mention_repository import (
+            EntityMentionRepository,
+        )
+        from chronovista.services.entity_mention_scan_service import (
+            EntityMentionScanService,
+        )
 
         factory = MagicMock()
         svc = EntityMentionScanService(session_factory=factory)
@@ -823,9 +827,9 @@ class TestBulkCreateConflictSkip:
 
     async def test_skipped_count_is_batch_minus_inserted(self) -> None:
         """mentions_skipped = len(batch_mentions) - inserted_count."""
-        from chronovista.services.entity_mention_scan_service import _EntityPattern
         from chronovista.models.entity_mention import EntityMentionCreate
         from chronovista.models.enums import DetectionMethod
+        from chronovista.services.entity_mention_scan_service import _EntityPattern
 
         entity_id = _make_uuid()
         fake_pattern = _EntityPattern(
@@ -873,9 +877,9 @@ class TestBulkCreateConflictSkip:
 
     async def test_bulk_create_called_with_mention_list(self) -> None:
         """bulk_create_with_conflict_skip must be called with the mention list."""
-        from chronovista.services.entity_mention_scan_service import _EntityPattern
         from chronovista.models.entity_mention import EntityMentionCreate
         from chronovista.models.enums import DetectionMethod
+        from chronovista.services.entity_mention_scan_service import _EntityPattern
 
         entity_id = _make_uuid()
         fake_pattern = _EntityPattern(
@@ -955,9 +959,9 @@ class TestCounterUpdate:
 
     async def test_update_entity_counters_called_in_live_mode(self) -> None:
         """In live mode with matches, update_entity_counters must be called."""
-        from chronovista.services.entity_mention_scan_service import _EntityPattern
         from chronovista.models.entity_mention import EntityMentionCreate
         from chronovista.models.enums import DetectionMethod
+        from chronovista.services.entity_mention_scan_service import _EntityPattern
 
         entity_id = _make_uuid()
         fake_pattern = _EntityPattern(
@@ -1002,9 +1006,9 @@ class TestCounterUpdate:
 
     async def test_update_entity_counters_not_called_in_dry_run(self) -> None:
         """In dry-run mode, update_entity_counters must NOT be called."""
-        from chronovista.services.entity_mention_scan_service import _EntityPattern
         from chronovista.models.entity_mention import EntityMentionCreate
         from chronovista.models.enums import DetectionMethod
+        from chronovista.services.entity_mention_scan_service import _EntityPattern
 
         entity_id = _make_uuid()
         fake_pattern = _EntityPattern(
@@ -1090,9 +1094,9 @@ class TestCounterUpdate:
         verifies that the service does not pre-filter entity IDs before
         delegating to the repository.
         """
-        from chronovista.services.entity_mention_scan_service import _EntityPattern
         from chronovista.models.entity_mention import EntityMentionCreate
         from chronovista.models.enums import DetectionMethod
+        from chronovista.services.entity_mention_scan_service import _EntityPattern
 
         entity_id_a = _make_uuid()
         entity_id_b = _make_uuid()
@@ -1220,9 +1224,9 @@ class TestDryRunMode:
 
     async def test_dry_run_no_bulk_insert(self) -> None:
         """In dry-run mode, bulk_create_with_conflict_skip must NOT be called."""
-        from chronovista.services.entity_mention_scan_service import _EntityPattern
         from chronovista.models.entity_mention import EntityMentionCreate
         from chronovista.models.enums import DetectionMethod
+        from chronovista.services.entity_mention_scan_service import _EntityPattern
 
         entity_id = _make_uuid()
         fake_pattern = _EntityPattern(
@@ -1303,9 +1307,9 @@ class TestDryRunMode:
 
     async def test_dry_run_populates_preview_data(self) -> None:
         """dry_run_matches must contain preview dicts when matches exist."""
-        from chronovista.services.entity_mention_scan_service import _EntityPattern
         from chronovista.models.entity_mention import EntityMentionCreate
         from chronovista.models.enums import DetectionMethod
+        from chronovista.services.entity_mention_scan_service import _EntityPattern
 
         entity_id = _make_uuid()
         fake_pattern = _EntityPattern(
@@ -1518,9 +1522,9 @@ class TestScanResult:
 
     async def test_scan_result_unique_fields_populated(self) -> None:
         """unique_entities and unique_videos must reflect distinct IDs matched."""
-        from chronovista.services.entity_mention_scan_service import _EntityPattern
         from chronovista.models.entity_mention import EntityMentionCreate
         from chronovista.models.enums import DetectionMethod
+        from chronovista.services.entity_mention_scan_service import _EntityPattern
 
         entity_id_1 = _make_uuid()
         entity_id_2 = _make_uuid()
@@ -2306,7 +2310,7 @@ class TestEntityIdsFilter:
         session.execute = AsyncMock(side_effect=[entity_result, alias_result])
 
         svc = _build_service(MagicMock())
-        patterns = await svc._load_entity_patterns(
+        await svc._load_entity_patterns(
             session,
             entity_type=None,
             new_entities_only=False,

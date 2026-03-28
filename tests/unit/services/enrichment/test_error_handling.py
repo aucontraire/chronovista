@@ -21,29 +21,23 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
-import sys
-from datetime import datetime, timezone
-from http.client import HTTPException
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, call, patch
+from datetime import UTC, datetime
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from googleapiclient.errors import HttpError
 
-from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.api_responses import YouTubeVideoResponse
 from chronovista.models.enrichment_report import (
-    EnrichmentDetail,
     EnrichmentReport,
-    EnrichmentSummary,
 )
+from chronovista.models.enums import AvailabilityStatus
 from chronovista.services.enrichment.enrichment_service import (
     BATCH_SIZE,
     EXIT_CODE_LOCK_FAILED,
     EXIT_CODE_NO_CREDENTIALS,
     EnrichmentService,
-    EnrichmentStatus,
     LockAcquisitionError,
     estimate_quota_cost,
 )
@@ -51,8 +45,6 @@ from chronovista.services.enrichment.enrichment_service import (
 # Mark all async tests in this module - required for coverage to properly run async tests
 # Note: PytestWarnings about non-async functions having asyncio mark are expected
 # with module-level pytestmark; they don't cause test failures.
-pytestmark = pytest.mark.asyncio
-
 
 # =============================================================================
 # Test Constants and Fixtures
@@ -70,21 +62,21 @@ def make_video_response(video_id: str, **kwargs: Any) -> YouTubeVideoResponse:
     This helper ensures tests return proper Pydantic objects instead of dicts.
     The snippet field requires publishedAt and channelId, so we provide defaults.
     """
-    data: Dict[str, Any] = {"id": video_id, **kwargs}
+    data: dict[str, Any] = {"id": video_id, **kwargs}
 
     # If snippet is provided, ensure required fields are present
     if "snippet" in data:
         snippet = data["snippet"]
         if isinstance(snippet, dict):
             if "publishedAt" not in snippet:
-                snippet["publishedAt"] = datetime.now(timezone.utc).isoformat()
+                snippet["publishedAt"] = datetime.now(UTC).isoformat()
             if "channelId" not in snippet:
                 snippet["channelId"] = "UC_test_channel"
 
     return YouTubeVideoResponse.model_validate(data)
 
 
-def make_video_responses(video_dicts: List[Dict[str, Any]]) -> List[YouTubeVideoResponse]:
+def make_video_responses(video_dicts: list[dict[str, Any]]) -> list[YouTubeVideoResponse]:
     """
     Convert a list of video dictionaries to YouTubeVideoResponse objects.
     """
@@ -249,7 +241,7 @@ class TestQuotaExceededHandling:
             mock_get.return_value = mock_videos
 
             # Mock to simulate quota error after first batch
-            api_responses: List[YouTubeVideoResponse] = [
+            api_responses: list[YouTubeVideoResponse] = [
                 make_video_response("vid0", snippet={"title": "Updated Title 0"})
             ]
 
@@ -337,7 +329,7 @@ class TestNetworkRetryExponentialBackoff:
 
         # Simulate retry behavior
         result = None
-        for attempt in range(3):
+        for _attempt in range(3):
             try:
                 result = await mock_youtube_service.fetch_videos_batched([VALID_VIDEO_ID])
                 break
@@ -366,7 +358,7 @@ class TestNetworkRetryExponentialBackoff:
 
         # Simulate retry behavior
         result = None
-        for attempt in range(3):
+        for _attempt in range(3):
             try:
                 result = await mock_youtube_service.fetch_videos_batched([VALID_VIDEO_ID])
                 break
@@ -437,7 +429,7 @@ class TestNetworkRetryExponentialBackoff:
 
         # Simulate retry
         result = None
-        for attempt in range(3):
+        for _attempt in range(3):
             try:
                 result = await mock_youtube_service.fetch_videos_batched([VALID_VIDEO_ID])
                 break
@@ -580,7 +572,6 @@ class TestSIGINTGracefulShutdown:
         self, mock_session: AsyncMock, enrichment_service: EnrichmentService
     ) -> None:
         """Test that graceful shutdown saves progress."""
-        videos_processed = 0
 
         mock_videos = [
             MagicMock(
@@ -1286,7 +1277,6 @@ class TestRecoveryAfterTransientErrors:
         self, mock_session: AsyncMock, enrichment_service: EnrichmentService
     ) -> None:
         """Test that state is preserved after recovery."""
-        processed_videos: list[str] = []
 
         mock_videos = [
             MagicMock(
@@ -1364,7 +1354,6 @@ class TestDryRunErrorHandling:
         mock_video = MagicMock()
         mock_video.video_id = VALID_VIDEO_ID
         mock_video.title = "[Placeholder] Video"
-        original_title = mock_video.title
 
         with patch.object(
             enrichment_service,

@@ -7,8 +7,8 @@ with realistic and consistent test data.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Any, List, cast
+from datetime import UTC, datetime
+from typing import Any
 
 import factory
 
@@ -26,7 +26,7 @@ class TakeoutPlaylistItemFactory(factory.Factory[TakeoutPlaylistItem]):
 
     # Optional fields with realistic defaults
     creation_timestamp: Any = factory.LazyFunction(
-        lambda: datetime(2023, 6, 15, 14, 30, 0, tzinfo=timezone.utc)
+        lambda: datetime(2023, 6, 15, 14, 30, 0, tzinfo=UTC)
     )
     raw_timestamp: Any = factory.LazyFunction(lambda: "2023-06-15T14:30:00+00:00")
 
@@ -53,7 +53,7 @@ class TakeoutPlaylistItemRecentFactory(factory.Factory[TakeoutPlaylistItem]):
 
     video_id: Any = factory.LazyFunction(lambda: "3tmd-ClpJxA")
     creation_timestamp: Any = factory.LazyFunction(
-        lambda: datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        lambda: datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
     )
     raw_timestamp: Any = factory.LazyFunction(lambda: "2024-01-15T10:00:00+00:00")
 
@@ -66,7 +66,7 @@ class TakeoutPlaylistItemOldFactory(factory.Factory[TakeoutPlaylistItem]):
 
     video_id: Any = factory.LazyFunction(lambda: "jNQXAC9IVRw")
     creation_timestamp: Any = factory.LazyFunction(
-        lambda: datetime(2020, 5, 10, 16, 45, 0, tzinfo=timezone.utc)
+        lambda: datetime(2020, 5, 10, 16, 45, 0, tzinfo=UTC)
     )
     raw_timestamp: Any = factory.LazyFunction(lambda: "2020-05-10T16:45:00+00:00")
 
@@ -141,7 +141,7 @@ def create_old_takeout_playlist_item(**kwargs: Any) -> TakeoutPlaylistItem:
     return result
 
 
-def create_batch_takeout_playlist_items(count: int = 5) -> List[TakeoutPlaylistItem]:
+def create_batch_takeout_playlist_items(count: int = 5) -> list[TakeoutPlaylistItem]:
     """Create a batch of TakeoutPlaylistItem instances for testing."""
     items = []
     base_video_ids = [
@@ -156,7 +156,7 @@ def create_batch_takeout_playlist_items(count: int = 5) -> List[TakeoutPlaylistI
         video_id = base_video_ids[i % len(base_video_ids)]
 
         # Create progressive timestamps
-        timestamp = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        timestamp = datetime(2023, 1, 1, tzinfo=UTC)
         timestamp = timestamp.replace(day=1 + (i % 28), hour=10 + (i % 12))
 
         item = TakeoutPlaylistItemFactory.build(

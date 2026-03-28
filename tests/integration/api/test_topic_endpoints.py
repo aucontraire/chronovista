@@ -6,13 +6,11 @@ GET /api/v1/topics/{topic_id}/videos endpoints.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
-import pytest
 from httpx import AsyncClient
-from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete
 
 from chronovista.db.models import (
     Channel,
@@ -21,9 +19,6 @@ from chronovista.db.models import (
     Video,
     VideoTopic,
 )
-
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestListTopics:
@@ -178,14 +173,14 @@ class TestListTopicsWithCounts:
                 video_id="test_vid_001",
                 channel_id=channel.channel_id,
                 title="Test Video 1",
-                upload_date=datetime.now(timezone.utc),
+                upload_date=datetime.now(UTC),
                 duration=300,
             )
             video2 = Video(
                 video_id="test_vid_002",
                 channel_id=channel.channel_id,
                 title="Test Video 2",
-                upload_date=datetime.now(timezone.utc),
+                upload_date=datetime.now(UTC),
                 duration=400,
             )
             session.add_all([video1, video2])
@@ -483,7 +478,7 @@ class TestTopicVideos:
                 video_id="vid_test_00",
                 channel_id=channel.channel_id,
                 title="Test Video",
-                upload_date=datetime.now(timezone.utc),
+                upload_date=datetime.now(UTC),
                 duration=300,
             )
             session.add(video)
@@ -565,7 +560,7 @@ class TestTopicVideos:
                     video_id=f"pag_test_{i:02d}",
                     channel_id=channel.channel_id,
                     title=f"Pagination Test Video {i}",
-                    upload_date=datetime.now(timezone.utc),
+                    upload_date=datetime.now(UTC),
                     duration=300 + i * 10,
                 )
                 videos.append(video)

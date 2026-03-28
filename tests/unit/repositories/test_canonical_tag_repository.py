@@ -12,8 +12,8 @@ Tests the five query methods:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,13 +21,14 @@ from uuid_utils import uuid7
 
 from chronovista.db.models import (
     CanonicalTag as CanonicalTagDB,
+)
+from chronovista.db.models import (
     TagAlias as TagAliasDB,
+)
+from chronovista.db.models import (
     Video as VideoDB,
-    VideoTag,
 )
 from chronovista.repositories.canonical_tag_repository import CanonicalTagRepository
-
-pytestmark = pytest.mark.asyncio
 
 
 def _make_uuid() -> uuid.UUID:
@@ -86,7 +87,7 @@ def _make_video(
     video = VideoDB(
         video_id=video_id,
         title=title,
-        upload_date=upload_date or datetime(2024, 6, 15, tzinfo=timezone.utc),
+        upload_date=upload_date or datetime(2024, 6, 15, tzinfo=UTC),
         duration=300,
         made_for_kids=False,
         self_declared_made_for_kids=False,
@@ -601,12 +602,12 @@ class TestCanonicalTagRepositoryGetVideosByNormalizedForm:
         video_new = _make_video(
             video_id="vid_new",
             title="New Video",
-            upload_date=datetime(2025, 1, 15, tzinfo=timezone.utc),
+            upload_date=datetime(2025, 1, 15, tzinfo=UTC),
         )
         video_old = _make_video(
             video_id="vid_old",
             title="Old Video",
-            upload_date=datetime(2020, 6, 1, tzinfo=timezone.utc),
+            upload_date=datetime(2020, 6, 1, tzinfo=UTC),
         )
 
         count_result = MagicMock()

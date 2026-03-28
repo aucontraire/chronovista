@@ -13,13 +13,10 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from typer.testing import CliRunner
 
 from chronovista.cli.commands.seed import seed_app
 from chronovista.services.enrichment.seeders import CategorySeedResult, TopicSeedResult
-
-pytestmark = pytest.mark.asyncio
 
 runner = CliRunner()
 
@@ -80,7 +77,7 @@ class TestTopicsCommandDryRun:
         mock_seeder_instance = MagicMock()
         mock_seeder_class.return_value = mock_seeder_instance
 
-        result = runner.invoke(seed_app, ["topics", "--dry-run"])
+        runner.invoke(seed_app, ["topics", "--dry-run"])
 
         # Verify seed() was not called
         mock_seeder_instance.seed.assert_not_called()

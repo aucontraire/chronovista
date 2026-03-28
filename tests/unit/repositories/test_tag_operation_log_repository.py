@@ -16,9 +16,9 @@ Mock strategy: every test creates a MagicMock(spec=AsyncSession) whose
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,7 +30,6 @@ from chronovista.repositories.tag_operation_log_repository import (
     TagOperationLogRepository,
 )
 from tests.factories.tag_operation_log_factory import (
-    TagOperationLogFactory,
     create_merge_operation_log,
     create_split_operation_log,
     create_tag_operation_log,
@@ -38,8 +37,6 @@ from tests.factories.tag_operation_log_factory import (
 
 # Ensures every async test in this module is recognised by pytest-asyncio
 # regardless of how coverage is invoked (see CLAUDE.md §pytest-asyncio section).
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -106,7 +103,7 @@ def _make_log_db(
         affected_alias_ids=affected_alias_ids or [],
         reason=reason,
         performed_by=performed_by,
-        performed_at=performed_at or datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+        performed_at=performed_at or datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
         rollback_data=rollback_data or {},
         rolled_back=rolled_back,
         rolled_back_at=rolled_back_at,
@@ -165,7 +162,7 @@ class TestTagOperationLogRepositoryCreate:
         session.add, flush, and refresh in order.
         """
         obj_in = TagOperationLogCreate(operation_type="create")
-        db_log = _make_log_db(operation_type="create")
+        _make_log_db(operation_type="create")
         mock_session.refresh.side_effect = lambda obj: None
 
         # Patch the ORM constructor so we control the returned object.
@@ -187,7 +184,7 @@ class TestTagOperationLogRepositoryCreate:
 
         mock_session.refresh.side_effect = _fake_refresh
 
-        returned = await repository.create(mock_session, obj_in=obj_in)
+        await repository.create(mock_session, obj_in=obj_in)
 
         mock_session.add.assert_called_once()
         mock_session.flush.assert_awaited_once()

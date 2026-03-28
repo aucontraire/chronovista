@@ -14,8 +14,6 @@ All tests mock httpx responses. No live HTTP calls are made.
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -31,8 +29,6 @@ from chronovista.services.recovery.page_parser import (
 )
 
 # CRITICAL: Ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 # ============================================================================
 # HTML Test Fixtures
@@ -1709,9 +1705,8 @@ class TestSeleniumFallback:
                     "_extract_with_selenium",
                     new_callable=AsyncMock,
                 ) as mock_selenium:
-                    import asyncio
 
-                    mock_selenium.side_effect = asyncio.TimeoutError(
+                    mock_selenium.side_effect = TimeoutError(
                         "Selenium timeout"
                     )
 

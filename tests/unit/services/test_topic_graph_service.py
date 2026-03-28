@@ -4,17 +4,11 @@ Tests for TopicGraphService.
 Comprehensive test coverage for topic knowledge graph building and analysis.
 """
 
-from datetime import datetime, timezone
-from typing import Dict, List, Set
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 # Mark all async tests in this module
-pytestmark = pytest.mark.asyncio
-
-from chronovista.db.models import TopicCategory as TopicCategoryDB
-from chronovista.db.models import Video as VideoDB
 from chronovista.models.topic_category import TopicCategorySearchFilters
 from chronovista.models.video_tag import VideoTagStatistics
 from chronovista.services.topic_graph_service import (
@@ -245,7 +239,7 @@ class TestTopicGraph:
         assert "/m/metal" in related_ids  # child
 
         # Check distances
-        for node, distance in related:
+        for _node, distance in related:
             assert distance <= 1
 
     def test_find_related_topics_extended_distance(self, sample_graph):

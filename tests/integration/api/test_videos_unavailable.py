@@ -7,8 +7,8 @@ return 200 with full metadata, and only truly non-existent video IDs return 404.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -18,8 +18,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import Channel, Video, VideoTranscript
 from chronovista.models.enums import AvailabilityStatus
-
-pytestmark = pytest.mark.asyncio
 
 
 @pytest.fixture
@@ -118,7 +116,7 @@ async def create_test_video(
         channel_id=channel_id,
         title=f"Test Video - {availability_status.value}",
         description=f"Test video for availability status: {availability_status.value}",
-        upload_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+        upload_date=datetime(2024, 1, 15, tzinfo=UTC),
         duration=300,
         availability_status=availability_status.value,
         alternative_url=alternative_url,

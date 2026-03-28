@@ -7,8 +7,7 @@ per Feature 008: Transcript Segment Table (Phase 2).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -19,8 +18,6 @@ from chronovista.models.transcript_segment import TranscriptSegmentCreate
 from chronovista.repositories.transcript_segment_repository import (
     TranscriptSegmentRepository,
 )
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestTranscriptSegmentRepository:
@@ -38,9 +35,9 @@ class TestTranscriptSegmentRepository:
         return session
 
     @pytest.fixture
-    def sample_segments(self) -> List[TranscriptSegmentDB]:
+    def sample_segments(self) -> list[TranscriptSegmentDB]:
         """Create sample segments: [0-2.5], [2.5-5.0], [5.0-7.5]."""
-        base_time = datetime.now(timezone.utc)
+        base_time = datetime.now(UTC)
         return [
             TranscriptSegmentDB(
                 id=1,
@@ -84,9 +81,9 @@ class TestTranscriptSegmentRepository:
         ]
 
     @pytest.fixture
-    def sample_segments_with_gap(self) -> List[TranscriptSegmentDB]:
+    def sample_segments_with_gap(self) -> list[TranscriptSegmentDB]:
         """Create sample segments with gap: [0-2.0], [5.0-7.0] (gap 2.0-5.0)."""
-        base_time = datetime.now(timezone.utc)
+        base_time = datetime.now(UTC)
         return [
             TranscriptSegmentDB(
                 id=1,
@@ -120,7 +117,7 @@ class TestTranscriptSegmentRepository:
         self,
         repository: TranscriptSegmentRepository,
         mock_session: AsyncMock,
-        sample_segments: List[TranscriptSegmentDB],
+        sample_segments: list[TranscriptSegmentDB],
     ):
         """Test that get_segment_at_time returns the segment containing the timestamp.
 
@@ -146,7 +143,7 @@ class TestTranscriptSegmentRepository:
         self,
         repository: TranscriptSegmentRepository,
         mock_session: AsyncMock,
-        sample_segments: List[TranscriptSegmentDB],
+        sample_segments: list[TranscriptSegmentDB],
     ):
         """Test half-open interval: timestamp at boundary returns segment starting there (FR-EDGE-01).
 
@@ -174,7 +171,7 @@ class TestTranscriptSegmentRepository:
         self,
         repository: TranscriptSegmentRepository,
         mock_session: AsyncMock,
-        sample_segments_with_gap: List[TranscriptSegmentDB],
+        sample_segments_with_gap: list[TranscriptSegmentDB],
     ):
         """Test that timestamp in gap between segments returns previous segment.
 
@@ -226,7 +223,7 @@ class TestTranscriptSegmentRepository:
         self,
         repository: TranscriptSegmentRepository,
         mock_session: AsyncMock,
-        sample_segments: List[TranscriptSegmentDB],
+        sample_segments: list[TranscriptSegmentDB],
     ):
         """Test that get_segments_in_range returns all overlapping segments.
 
@@ -276,7 +273,7 @@ class TestTranscriptSegmentRepository:
         self,
         repository: TranscriptSegmentRepository,
         mock_session: AsyncMock,
-        sample_segments: List[TranscriptSegmentDB],
+        sample_segments: list[TranscriptSegmentDB],
     ):
         """Test that get_context_window returns segments +/-window_seconds from timestamp.
 
@@ -302,7 +299,7 @@ class TestTranscriptSegmentRepository:
         self,
         repository: TranscriptSegmentRepository,
         mock_session: AsyncMock,
-        sample_segments: List[TranscriptSegmentDB],
+        sample_segments: list[TranscriptSegmentDB],
     ):
         """Test that context window clamps start time at 0."""
         mock_result = MagicMock()
@@ -440,7 +437,7 @@ class TestTranscriptSegmentRepositoryEdgeCases:
             sequence_number=0,
             has_correction=False,
             corrected_text=None,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         mock_result = MagicMock()
@@ -471,7 +468,7 @@ class TestTranscriptSegmentRepositoryEdgeCases:
             sequence_number=0,
             has_correction=False,
             corrected_text=None,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         mock_result = MagicMock()
@@ -515,7 +512,7 @@ class TestTranscriptSegmentRepositoryEdgeCases:
             sequence_number=1,
             has_correction=False,
             corrected_text=None,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         mock_session.execute.side_effect = [mock_result_exact, mock_result_gap]
@@ -545,7 +542,7 @@ class TestTranscriptSegmentRepositoryEdgeCases:
             sequence_number=0,
             has_correction=False,
             corrected_text=None,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         mock_result = MagicMock()

@@ -10,10 +10,10 @@ Covers:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -222,17 +222,17 @@ class TestPlaylistUpdateFromHistoricalData:
     async def test_historical_playlist_overwrite_newer_first(self) -> None:
         """Test that newer historical data overwrites older data."""
         # Older takeout
-        older_playlist_data = {
+        {
             "name": "Old Name",
             "video_count": 10,
-            "source_date": datetime(2022, 1, 1, tzinfo=timezone.utc),
+            "source_date": datetime(2022, 1, 1, tzinfo=UTC),
         }
 
         # Newer takeout
         newer_playlist_data = {
             "name": "Updated Name",
             "video_count": 15,
-            "source_date": datetime(2023, 6, 1, tzinfo=timezone.utc),
+            "source_date": datetime(2023, 6, 1, tzinfo=UTC),
         }
 
         # When processing oldest first, newer should overwrite
@@ -287,7 +287,7 @@ class TestMissingPlaylistFilesHandling:
             playlists_dir.exists.return_value = False
 
             # The service should return empty list for missing directory
-            result: List[TakeoutPlaylist] = []
+            result: list[TakeoutPlaylist] = []
             assert len(result) == 0
 
     async def test_parse_playlists_with_empty_directory(self) -> None:
@@ -298,7 +298,7 @@ class TestMissingPlaylistFilesHandling:
         mock_playlists_dir.glob.return_value = []
 
         # The service should return empty list
-        playlists: List[TakeoutPlaylist] = []
+        playlists: list[TakeoutPlaylist] = []
         assert len(playlists) == 0
 
     async def test_parse_playlists_with_corrupted_csv(self) -> None:
@@ -306,8 +306,8 @@ class TestMissingPlaylistFilesHandling:
         # This tests error handling when CSV parsing fails
         # The service should log a warning and skip the corrupted file
 
-        from unittest.mock import mock_open
         import csv
+        from unittest.mock import mock_open
 
         corrupted_csv_content = "Video ID,Playlist Video Creation Timestamp\n\"unclosed quote"
 
@@ -324,7 +324,6 @@ class TestMissingPlaylistFilesHandling:
     async def test_parse_playlists_with_missing_columns(self) -> None:
         """Test handling of CSV files with missing required columns."""
         # CSV without expected "Video ID" column
-        invalid_csv_content = "Wrong Column,Another Wrong Column\nvalue1,value2"
 
         # The service should handle missing columns gracefully
         # by checking for expected column names
@@ -361,14 +360,14 @@ class TestPlaylistRecoveryIntegration:
     async def test_full_playlist_recovery_workflow(self) -> None:
         """Test the complete playlist recovery workflow from takeout."""
         # Step 1: Discover historical takeouts
-        historical_takeouts: List[Dict[str, Any]] = [
-            {"path": Path("/takeouts/2022-01-01"), "date": datetime(2022, 1, 1, tzinfo=timezone.utc)},
-            {"path": Path("/takeouts/2023-06-15"), "date": datetime(2023, 6, 15, tzinfo=timezone.utc)},
-            {"path": Path("/takeouts/2024-01-01"), "date": datetime(2024, 1, 1, tzinfo=timezone.utc)},
+        historical_takeouts: list[dict[str, Any]] = [
+            {"path": Path("/takeouts/2022-01-01"), "date": datetime(2022, 1, 1, tzinfo=UTC)},
+            {"path": Path("/takeouts/2023-06-15"), "date": datetime(2023, 6, 15, tzinfo=UTC)},
+            {"path": Path("/takeouts/2024-01-01"), "date": datetime(2024, 1, 1, tzinfo=UTC)},
         ]
 
         # Step 2: Parse playlists from each takeout (oldest first)
-        all_playlists: Dict[str, Dict[str, Any]] = {}
+        all_playlists: dict[str, dict[str, Any]] = {}
 
         for takeout in sorted(historical_takeouts, key=lambda x: x["date"] if isinstance(x["date"], datetime) else datetime.min):
             # Simulated parsing
@@ -408,7 +407,7 @@ class TestPlaylistRecoveryIntegration:
         PLAYLIST_PLACEHOLDER_PREFIX = "[Placeholder] Playlist "
 
         # Database has placeholder playlist
-        db_playlist: Dict[str, Any] = {
+        db_playlist: dict[str, Any] = {
             "playlist_id": "PLtest123",
             "title": "[Placeholder] Playlist PLtest123",
             "description": None,

@@ -33,8 +33,6 @@ from chronovista.models.batch_correction_models import (
 from chronovista.models.enums import CorrectionType
 from chronovista.services.cross_segment_discovery import CrossSegmentCandidate
 
-pytestmark = pytest.mark.asyncio
-
 
 class TestFindReplaceCommand:
     """Test suite for the ``corrections find-replace`` CLI command."""
@@ -2296,6 +2294,7 @@ class TestAnalyzeDiffsCommand:
         mock_db.get_session = _mock_session_gen_for_analyze(mock_session)
 
         import uuid
+
         from uuid_utils import uuid7
 
         entity_id = uuid.UUID(bytes=uuid7().bytes)
@@ -2894,7 +2893,7 @@ def _make_cross_segment_candidate(
     confidence: float = 0.75,
     is_partially_corrected: bool = False,
     video_id: str = "dQw4w9WgXcQ",
-) -> "CrossSegmentCandidate":
+) -> CrossSegmentCandidate:
     """Build a ``CrossSegmentCandidate`` Pydantic model for use in CLI tests."""
     from chronovista.services.cross_segment_discovery import CrossSegmentCandidate
 

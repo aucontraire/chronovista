@@ -7,19 +7,15 @@ These tests validate FR-MIG-01 through FR-MIG-19 requirements for data migration
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 
-import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as VideoTranscriptDB
-from chronovista.models.youtube_types import VideoId
-
-pytestmark = pytest.mark.asyncio
 
 
 async def create_test_video(
@@ -30,7 +26,7 @@ async def create_test_video(
     video = VideoDB(
         video_id=video_id,
         title="Test Video",
-        upload_date=datetime.now(timezone.utc),
+        upload_date=datetime.now(UTC),
         duration=300,
     )
     session.add(video)
@@ -165,7 +161,7 @@ class TestSegmentMigration:
         await create_test_video(db_session, video_id)
 
         # Create transcript with valid raw_transcript_data
-        raw_data: Dict[str, Any] = {
+        raw_data: dict[str, Any] = {
             "snippets": [
                 {"text": "Hello world", "start": 0.0, "duration": 2.5},
                 {"text": "This is a test", "start": 2.5, "duration": 3.0},
@@ -289,7 +285,7 @@ class TestSegmentMigration:
         await create_test_video(db_session, video_id)
 
         # Create transcript with raw_transcript_data = {"snippets": []}
-        raw_data: Dict[str, Any] = {"snippets": []}
+        raw_data: dict[str, Any] = {"snippets": []}
 
         transcript = VideoTranscriptDB(
             video_id=video_id,
@@ -337,7 +333,7 @@ class TestSegmentMigration:
         await create_test_video(db_session, video_id)
 
         # Create transcript with one valid and one invalid snippet
-        raw_data: Dict[str, Any] = {
+        raw_data: dict[str, Any] = {
             "snippets": [
                 {"text": "Valid segment", "start": 0.0, "duration": 2.0},
                 {"text": "Missing start"},  # Missing start and duration
@@ -397,7 +393,7 @@ class TestSegmentMigration:
         await create_test_video(db_session, video_id)
 
         # Create transcript
-        raw_data: Dict[str, Any] = {
+        raw_data: dict[str, Any] = {
             "snippets": [
                 {"text": "Segment 1", "start": 0.0, "duration": 2.0},
                 {"text": "Segment 2", "start": 2.0, "duration": 2.0},
@@ -464,7 +460,7 @@ class TestSegmentMigration:
         await create_test_video(db_session, video_id)
 
         # Create transcript with raw_transcript_data containing 5 snippets
-        raw_data: Dict[str, Any] = {
+        raw_data: dict[str, Any] = {
             "snippets": [
                 {"text": f"Segment {i}", "start": float(i * 2), "duration": 2.0}
                 for i in range(5)
@@ -515,7 +511,7 @@ class TestSegmentMigration:
         await create_test_video(db_session, video_id)
 
         # Create transcript with snippets as a dict instead of list
-        raw_data: Dict[str, Any] = {"snippets": {"invalid": "not a list"}}
+        raw_data: dict[str, Any] = {"snippets": {"invalid": "not a list"}}
 
         transcript = VideoTranscriptDB(
             video_id=video_id,
@@ -561,7 +557,7 @@ class TestSegmentMigration:
         await create_test_video(db_session, video_id)
 
         # Create transcript with invalid numeric values
-        raw_data: Dict[str, Any] = {
+        raw_data: dict[str, Any] = {
             "snippets": [
                 {"text": "Valid", "start": 0.0, "duration": 2.0},
                 {"text": "Invalid start", "start": "not a number", "duration": 2.0},

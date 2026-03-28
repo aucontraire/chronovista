@@ -8,8 +8,9 @@ suggestions, and rate limiting.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, AsyncGenerator, List
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
@@ -31,8 +32,6 @@ from tests.factories.id_factory import YouTubeIdFactory
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
-pytestmark = pytest.mark.asyncio
-
 # ---------------------------------------------------------------------------
 # Test IDs generated via factory to avoid collisions and ensure validity
 # ---------------------------------------------------------------------------
@@ -51,7 +50,7 @@ _TAG_PREFIX = "ctag_test_"
 
 @pytest.fixture
 async def test_data_session(
-    integration_session_factory: "async_sessionmaker[AsyncSession]",
+    integration_session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncGenerator[AsyncSession, None]:
     """Provide a session for test data setup and cleanup."""
     async with integration_session_factory() as session:
@@ -88,7 +87,7 @@ async def sample_data(
     Returns a dict with keys: canonical_tags, aliases, videos, video_tags
     so individual tests can reference specific records.
     """
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     # ---- Canonical Tags ----
     ct_music_id = uuid.UUID(bytes=uuid7().bytes)
@@ -175,7 +174,7 @@ async def sample_data(
         video_id=_VIDEO_ID_001,
         channel_id=_CHANNEL_ID,
         title="Music Video One",
-        upload_date=datetime(2024, 6, 15, tzinfo=timezone.utc),
+        upload_date=datetime(2024, 6, 15, tzinfo=UTC),
         duration=300,
         availability_status="available",
     )
@@ -183,7 +182,7 @@ async def sample_data(
         video_id=_VIDEO_ID_002,
         channel_id=_CHANNEL_ID,
         title="Music and New York Video",
-        upload_date=datetime(2024, 7, 20, tzinfo=timezone.utc),
+        upload_date=datetime(2024, 7, 20, tzinfo=UTC),
         duration=420,
         availability_status="available",
     )
@@ -191,7 +190,7 @@ async def sample_data(
         video_id=_VIDEO_ID_003,
         channel_id=_CHANNEL_ID,
         title="Python Tutorial",
-        upload_date=datetime(2024, 5, 10, tzinfo=timezone.utc),
+        upload_date=datetime(2024, 5, 10, tzinfo=UTC),
         duration=600,
         availability_status="available",
     )
@@ -199,7 +198,7 @@ async def sample_data(
         video_id=_VIDEO_ID_004,
         channel_id=_CHANNEL_ID,
         title="Deleted Music Video",
-        upload_date=datetime(2024, 8, 1, tzinfo=timezone.utc),
+        upload_date=datetime(2024, 8, 1, tzinfo=UTC),
         duration=180,
         availability_status="deleted",
     )
@@ -504,7 +503,7 @@ class TestSearchResolvesMergedAliases:
         CanonicalTag
             The flushed ORM instance.
         """
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         tag = CanonicalTag(
             id=uuid.UUID(bytes=uuid7().bytes),
             canonical_form=canonical_form,
@@ -548,7 +547,7 @@ class TestSearchResolvesMergedAliases:
         TagAlias
             The flushed ORM instance.
         """
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         alias = TagAlias(
             id=uuid.UUID(bytes=uuid7().bytes),
             raw_form=raw_form,
@@ -1192,7 +1191,7 @@ class TestFuzzySuggestions:
         alias_count defaults to 1 to satisfy the database check constraint
         ``chk_canonical_tag_alias_count_positive`` (alias_count >= 1).
         """
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         tag = CanonicalTag(
             id=uuid.UUID(bytes=uuid7().bytes),
             canonical_form=canonical_form,

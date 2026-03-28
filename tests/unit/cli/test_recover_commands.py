@@ -8,14 +8,11 @@ dry-run mode, summary reports, and dependency checks.
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from typer.testing import CliRunner
 
 from chronovista.cli.main import app
@@ -48,7 +45,7 @@ def create_mock_video_db(video_id: str, availability_status: AvailabilityStatus 
     mock_video.video_id = video_id
     mock_video.availability_status = availability_status.value
     mock_video.unavailability_first_detected = None
-    mock_video.created_at = datetime.now(timezone.utc)
+    mock_video.created_at = datetime.now(UTC)
     return mock_video
 
 
@@ -737,7 +734,7 @@ class TestErrorHandling:
         mock_recover: MagicMock,
     ) -> None:
         """Test that CDXError returns EXIT_CODE_NETWORK_ERROR."""
-        from chronovista.exceptions import CDXError, EXIT_CODE_NETWORK_ERROR
+        from chronovista.exceptions import EXIT_CODE_NETWORK_ERROR, CDXError
 
         session_gen, session = create_async_mock_session()
         mock_get_session.return_value = session_gen

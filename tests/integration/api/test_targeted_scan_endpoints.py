@@ -19,8 +19,9 @@ Feature 052 — Targeted Entity & Video-Level Mention Scanning
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -29,17 +30,19 @@ from sqlalchemy import delete, select
 
 from chronovista.db.models import (
     Channel as ChannelDB,
+)
+from chronovista.db.models import (
     NamedEntity as NamedEntityDB,
+)
+from chronovista.db.models import (
     Video as VideoDB,
 )
 from chronovista.services.entity_mention_scan_service import ScanResult
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 # CRITICAL: Module-level asyncio marker ensures async tests run with coverage.
-pytestmark = pytest.mark.asyncio
-
 # ---------------------------------------------------------------------------
 # Stable IDs — must not collide with other integration test files.
 # channel_id max 24 chars, video_id max 20 chars.
@@ -97,7 +100,7 @@ def _make_scan_result(
 
 @pytest.fixture
 async def seed_scan_data(
-    integration_session_factory: "async_sessionmaker[AsyncSession]",
+    integration_session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncGenerator[dict[str, Any], None]:
     """Seed a channel, video, and named entity for scan endpoint tests.
 
@@ -139,7 +142,7 @@ async def seed_scan_data(
                 channel_id=_CHANNEL_ID,
                 title="Scan 052 Test Video",
                 description="Integration test video for Feature 052",
-                upload_date=datetime(2024, 6, 1, tzinfo=timezone.utc),
+                upload_date=datetime(2024, 6, 1, tzinfo=UTC),
                 duration=300,
             )
             session.add(video)
@@ -411,7 +414,7 @@ class TestEntityScanEndpoint:
             )
 
         assert response.status_code == 400, response.text
-        body = response.json()
+        response.json()
         # Error detail must mention the status
         detail = response.text.lower()
         assert "active" in detail or "status" in detail

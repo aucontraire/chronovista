@@ -8,7 +8,7 @@ metadata enrichment reporting models.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -101,7 +101,7 @@ class TestEnrichmentSummary:
         ]
 
         for field in fields:
-            kwargs = {f: 0 for f in fields}
+            kwargs = dict.fromkeys(fields, 0)
             kwargs[field] = -1
 
             with pytest.raises(ValidationError) as exc_info:
@@ -362,7 +362,7 @@ class TestEnrichmentReport:
 
     def test_create_valid_enrichment_report(self):
         """Test creating valid EnrichmentReport with all fields."""
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
         summary = EnrichmentSummary(
             videos_processed=10,
             videos_updated=8,
@@ -395,7 +395,7 @@ class TestEnrichmentReport:
 
     def test_create_enrichment_report_minimal(self):
         """Test creating EnrichmentReport with minimal fields."""
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
         summary = EnrichmentSummary(
             videos_processed=0,
             videos_updated=0,
@@ -438,7 +438,7 @@ class TestEnrichmentReport:
 
     def test_priority_required(self):
         """Test priority is required."""
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
         summary = EnrichmentSummary(
             videos_processed=0,
             videos_updated=0,
@@ -456,7 +456,7 @@ class TestEnrichmentReport:
 
     def test_priority_min_length(self):
         """Test priority has minimum length of 1."""
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
         summary = EnrichmentSummary(
             videos_processed=0,
             videos_updated=0,
@@ -474,14 +474,14 @@ class TestEnrichmentReport:
 
     def test_summary_required(self):
         """Test summary is required."""
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
 
         with pytest.raises(ValidationError):
             EnrichmentReport.model_validate({"timestamp": timestamp, "priority": "high"})
 
     def test_details_defaults_to_empty_list(self):
         """Test details defaults to empty list."""
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
         summary = EnrichmentSummary(
             videos_processed=0,
             videos_updated=0,
@@ -505,7 +505,7 @@ class TestEnrichmentReport:
 
     def test_json_serialization(self):
         """Test EnrichmentReport can be serialized to JSON."""
-        timestamp = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        timestamp = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
         summary = EnrichmentSummary(
             videos_processed=5,
             videos_updated=4,
@@ -583,7 +583,7 @@ class TestEnrichmentReport:
 
     def test_iso_8601_timestamp_format(self):
         """Test timestamp uses ISO 8601 format in JSON."""
-        timestamp = datetime(2024, 1, 15, 10, 30, 45, tzinfo=timezone.utc)
+        timestamp = datetime(2024, 1, 15, 10, 30, 45, tzinfo=UTC)
         summary = EnrichmentSummary(
             videos_processed=0,
             videos_updated=0,
@@ -610,7 +610,7 @@ class TestEnrichmentReport:
 
     def test_roundtrip_json_serialization(self):
         """Test that report can be serialized and deserialized without data loss."""
-        timestamp = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        timestamp = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
         summary = EnrichmentSummary(
             videos_processed=10,
             videos_updated=9,
@@ -661,7 +661,7 @@ class TestEnrichmentReport:
 
     def test_model_dump_functionality(self):
         """Test model_dump() method for serialization."""
-        timestamp = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        timestamp = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
         summary = EnrichmentSummary(
             videos_processed=3,
             videos_updated=2,
@@ -694,7 +694,7 @@ class TestEnrichmentReportModelInteractions:
     def test_complete_enrichment_workflow(self):
         """Test complete workflow of creating enrichment report."""
         # Simulate enrichment operation
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
 
         # Create summary
         summary = EnrichmentSummary(
@@ -735,7 +735,7 @@ class TestEnrichmentReportModelInteractions:
 
     def test_error_handling_in_enrichment_report(self):
         """Test enrichment report with error details."""
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
         summary = EnrichmentSummary(
             videos_processed=5,
             videos_updated=3,
@@ -776,7 +776,7 @@ class TestEnrichmentReportModelInteractions:
 
     def test_priority_levels(self):
         """Test different priority levels in enrichment reports."""
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
         summary = EnrichmentSummary(
             videos_processed=0,
             videos_updated=0,
@@ -801,7 +801,7 @@ class TestEnrichmentReportModelInteractions:
 
     def test_empty_enrichment_report(self):
         """Test enrichment report with no processed videos."""
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
         summary = EnrichmentSummary(
             videos_processed=0,
             videos_updated=0,
@@ -826,7 +826,7 @@ class TestEnrichmentReportModelInteractions:
 
     def test_large_enrichment_report(self):
         """Test enrichment report with many details."""
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
         summary = EnrichmentSummary(
             videos_processed=1000,
             videos_updated=900,
@@ -870,7 +870,7 @@ class TestEnrichmentReportJSONSerialization:
 
     def test_model_dump_json_produces_valid_json(self) -> None:
         """Test that model_dump_json() produces valid JSON."""
-        timestamp = datetime(2024, 6, 15, 12, 30, 45, tzinfo=timezone.utc)
+        timestamp = datetime(2024, 6, 15, 12, 30, 45, tzinfo=UTC)
         summary = EnrichmentSummary(
             videos_processed=25,
             videos_updated=20,
@@ -908,7 +908,7 @@ class TestEnrichmentReportJSONSerialization:
     def test_datetime_fields_serialize_as_iso8601(self) -> None:
         """Test that datetime fields serialize as ISO 8601 strings."""
         # Use a specific timestamp with milliseconds
-        timestamp = datetime(2024, 12, 25, 8, 30, 15, 123456, tzinfo=timezone.utc)
+        timestamp = datetime(2024, 12, 25, 8, 30, 15, 123456, tzinfo=UTC)
         summary = EnrichmentSummary(
             videos_processed=0,
             videos_updated=0,
@@ -1004,7 +1004,7 @@ class TestEnrichmentReportJSONSerialization:
 
     def test_report_with_empty_details_list(self) -> None:
         """Test that report with empty details list serializes correctly."""
-        timestamp = datetime(2024, 3, 10, 15, 0, 0, tzinfo=timezone.utc)
+        timestamp = datetime(2024, 3, 10, 15, 0, 0, tzinfo=UTC)
         summary = EnrichmentSummary(
             videos_processed=0,
             videos_updated=0,
@@ -1033,7 +1033,7 @@ class TestEnrichmentReportJSONSerialization:
 
     def test_report_with_multiple_status_types(self) -> None:
         """Test report with multiple details having different statuses."""
-        timestamp = datetime(2024, 7, 20, 10, 15, 30, tzinfo=timezone.utc)
+        timestamp = datetime(2024, 7, 20, 10, 15, 30, tzinfo=UTC)
         summary = EnrichmentSummary(
             videos_processed=5,
             videos_updated=2,

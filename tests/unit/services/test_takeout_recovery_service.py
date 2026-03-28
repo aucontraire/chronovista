@@ -5,17 +5,14 @@ Unit tests for the takeout recovery service that handles gap-fill logic
 for recovering metadata from historical Google Takeout exports.
 """
 
-import json
 import shutil
 import tempfile
-from datetime import datetime, timezone
+from collections.abc import Generator
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, Generator, List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-pytestmark = pytest.mark.asyncio
 
 from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.takeout.recovery import (
@@ -126,7 +123,7 @@ class TestRecoverFromHistoricalTakeouts:
 
         historical_takeout = HistoricalTakeout(
             path=temp_takeout_dir / "YouTube and YouTube Music",
-            export_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            export_date=datetime(2024, 1, 15, tzinfo=UTC),
             has_watch_history=True,
         )
 
@@ -178,7 +175,7 @@ class TestRecoverFromHistoricalTakeouts:
 
         historical_takeout = HistoricalTakeout(
             path=youtube_path,
-            export_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+            export_date=datetime(2024, 1, 15, tzinfo=UTC),
             has_watch_history=True,
         )
 
@@ -189,7 +186,7 @@ class TestRecoverFromHistoricalTakeouts:
                 channel_name="RickAstleyVEVO",
                 channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",
                 source_takeout=youtube_path,
-                source_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+                source_date=datetime(2024, 1, 15, tzinfo=UTC),
             )
         }
 
@@ -198,7 +195,7 @@ class TestRecoverFromHistoricalTakeouts:
                 channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",
                 channel_name="RickAstleyVEVO",
                 source_takeout=youtube_path,
-                source_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+                source_date=datetime(2024, 1, 15, tzinfo=UTC),
             )
         }
 
@@ -260,7 +257,7 @@ class TestRecoverVideos:
                 channel_name="RickAstleyVEVO",
                 channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",
                 source_takeout=Path("/takeouts/2024-01-15"),
-                source_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+                source_date=datetime(2024, 1, 15, tzinfo=UTC),
             )
         }
 
@@ -296,7 +293,7 @@ class TestRecoverVideos:
                 video_id="dQw4w9WgXcQ",
                 title="Never Gonna Give You Up",
                 source_takeout=Path("/takeouts/2024"),
-                source_date=datetime.now(timezone.utc),
+                source_date=datetime.now(UTC),
             )
         }
 
@@ -340,7 +337,7 @@ class TestRecoverVideos:
                 channel_name="RickAstleyVEVO",
                 channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",
                 source_takeout=Path("/takeouts/2024"),
-                source_date=datetime.now(timezone.utc),
+                source_date=datetime.now(UTC),
             )
         }
 
@@ -388,7 +385,7 @@ class TestRecoverVideos:
                 channel_name="RickAstleyVEVO",
                 channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",
                 source_takeout=Path("/takeouts/2024"),
-                source_date=datetime.now(timezone.utc),
+                source_date=datetime.now(UTC),
             )
         }
 
@@ -433,7 +430,7 @@ class TestRecoverVideos:
                 channel_name="RickAstleyVEVO",
                 channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",  # This channel doesn't exist in DB
                 source_takeout=Path("/takeouts/2024"),
-                source_date=datetime.now(timezone.utc),
+                source_date=datetime.now(UTC),
             )
         }
 
@@ -494,7 +491,7 @@ class TestRecoverVideos:
                 video_id="dQw4w9WgXcQ",
                 title="Never Gonna Give You Up",
                 source_takeout=Path("/takeouts/2024"),
-                source_date=datetime.now(timezone.utc),
+                source_date=datetime.now(UTC),
             )
         }
 
@@ -536,7 +533,7 @@ class TestRecoverChannels:
                 channel_id=valid_channel_id,
                 channel_name="Test Channel",
                 source_takeout=Path("/takeouts/2024"),
-                source_date=datetime.now(timezone.utc),
+                source_date=datetime.now(UTC),
             )
         }
 
@@ -570,7 +567,7 @@ class TestRecoverChannels:
                 channel_id=valid_channel_id,
                 channel_name="Real Channel Name",
                 source_takeout=Path("/takeouts/2024"),
-                source_date=datetime.now(timezone.utc),
+                source_date=datetime.now(UTC),
             )
         }
 
@@ -605,7 +602,7 @@ class TestRecoverChannels:
                 channel_id=valid_channel_id,
                 channel_name="Different Name",
                 source_takeout=Path("/takeouts/2024"),
-                source_date=datetime.now(timezone.utc),
+                source_date=datetime.now(UTC),
             )
         }
 
@@ -636,7 +633,7 @@ class TestRecoverChannels:
                 channel_id=valid_channel_id,
                 channel_name="Test Channel",
                 source_takeout=Path("/takeouts/2024"),
-                source_date=datetime.now(timezone.utc),
+                source_date=datetime.now(UTC),
             )
         }
 
@@ -791,7 +788,7 @@ class TestRecoveryNeverSetsDeletedFlag:
                 channel_name="RickAstleyVEVO",
                 channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",
                 source_takeout=Path("/takeouts/2024-01-15"),
-                source_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+                source_date=datetime(2024, 1, 15, tzinfo=UTC),
             )
         }
 
@@ -847,7 +844,7 @@ class TestRecoveryNeverSetsDeletedFlag:
                 channel_name="HistoricalChannel",
                 channel_id="UChistorical123456789012",
                 source_takeout=Path("/takeouts/2023-06-01"),
-                source_date=datetime(2023, 6, 1, tzinfo=timezone.utc),
+                source_date=datetime(2023, 6, 1, tzinfo=UTC),
             )
         }
 
@@ -896,7 +893,7 @@ class TestRecoveryNeverSetsDeletedFlag:
                 channel_id=valid_channel_id,
                 channel_name="New Channel From Takeout",
                 source_takeout=Path("/takeouts/2024"),
-                source_date=datetime.now(timezone.utc),
+                source_date=datetime.now(UTC),
             )
         }
 
@@ -943,7 +940,7 @@ class TestRecoveryNeverSetsDeletedFlag:
                 video_id="testVideo789",
                 title="Recovered Title",
                 source_takeout=Path("/takeouts/2024"),
-                source_date=datetime.now(timezone.utc),
+                source_date=datetime.now(UTC),
             )
         }
 

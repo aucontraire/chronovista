@@ -22,7 +22,6 @@ Migration: 028a_add_tag_normalization_tables (f9b5c8d6e3a1)
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any, cast
 
 import pytest
@@ -37,15 +36,11 @@ from chronovista.db.models import (
     NamedEntity,
     TagAlias,
     TagOperationLog,
-    Video,
-    VideoTag,
 )
 
 # CRITICAL: This line ensures async tests work with coverage
 # Note: This applies to ALL tests in the module, including sync tests
 # For sync tests, we explicitly mark them with @pytest.mark.asyncio(False)
-pytestmark = pytest.mark.asyncio
-
 
 def get_table_names_sync(connection: Any) -> list[str]:
     """

@@ -13,8 +13,9 @@ and form the foundation for video-dependent models in Tier 4.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Awaitable, Dict, List
+from collections.abc import Awaitable
+from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 from sqlalchemy import delete, select
@@ -22,8 +23,6 @@ from sqlalchemy import delete, select
 from chronovista.db.models import Video as DBVideo
 from chronovista.models.video import Video, VideoCreate, VideoStatistics, VideoUpdate
 from chronovista.repositories.base import BaseSQLAlchemyRepository
-
-pytestmark = pytest.mark.asyncio
 
 
 @pytest.mark.integration
@@ -36,7 +35,7 @@ class TestVideoFromYouTubeAPI:
         self,
         authenticated_youtube_service,
         integration_db_session,
-        established_channel: Awaitable[Dict[str, Any] | None],
+        established_channel: Awaitable[dict[str, Any] | None],
         sample_youtube_video_ids,
     ):
         """Test creating videos from real YouTube API data."""
@@ -46,7 +45,7 @@ class TestVideoFromYouTubeAPI:
         if not authenticated_youtube_service or not established_channel_data:
             pytest.skip("Prerequisites not available")
 
-        channel_id = established_channel_data["channel_id"]
+        established_channel_data["channel_id"]
         video_id = sample_youtube_video_ids[0]  # Rick Astley - Never Gonna Give You Up
 
         async with integration_db_session() as session:
@@ -222,8 +221,7 @@ class TestVideoFromYouTubeAPI:
                                 stat_value = int(stats[stat_name])
                                 assert stat_value >= 0
 
-                    except Exception as e:
-                        print(f"Warning: Could not test video {video_id}: {e}")
+                    except Exception:
                         continue
             except Exception:
                 await session.rollback()
@@ -264,26 +262,22 @@ class TestVideoFromYouTubeAPI:
                 # Test available languages structure
                 available_languages = api_data["snippet"].get("availableLanguages")
                 if available_languages:
-                    assert isinstance(available_languages, (dict, list))
+                    assert isinstance(available_languages, dict | list)
 
-            except Exception as e:
-                print(f"Warning: Could not test language detection for {video_id}: {e}")
+            except Exception:
                 continue
 
     async def test_video_update_from_fresh_api_data(
         self,
         authenticated_youtube_service,
         integration_db_session,
-        established_videos: Awaitable[List[Dict[str, Any]] | None],
+        established_videos: Awaitable[list[dict[str, Any]] | None],
     ):
         """Test updating video with fresh data from API."""
         # Await the fixture since it's async
         established_videos_data = await established_videos
 
         if not authenticated_youtube_service or not established_videos_data:
-            print(
-                f"DEBUG: Test prerequisites - auth_service: {bool(authenticated_youtube_service)}, videos_data: {bool(established_videos_data)}, videos_count: {len(established_videos_data) if established_videos_data else 0}"
-            )
             pytest.skip("Prerequisites not available")
 
         test_video = established_videos_data[0]
@@ -388,7 +382,7 @@ class TestVideoSearchAndFiltering:
     async def test_video_search_filters_with_real_data(
         self,
         integration_db_session,
-        established_videos: Awaitable[List[Dict[str, Any]] | None],
+        established_videos: Awaitable[list[dict[str, Any]] | None],
     ):
         """Test video search filters with established video data."""
         # Await the fixture since it's async
@@ -403,13 +397,11 @@ class TestVideoSearchAndFiltering:
         async with integration_db_session() as session:
             try:
                 # Use repository pattern
-                video_repo: BaseSQLAlchemyRepository[
-                    DBVideo, VideoCreate, VideoUpdate
-                ] = BaseSQLAlchemyRepository(DBVideo)
+                BaseSQLAlchemyRepository(DBVideo)
                 # Test channel-based filtering
                 from tests.factories.video_factory import create_video_search_filters
 
-                channel_filter = create_video_search_filters(
+                create_video_search_filters(
                     channel_ids=[channel_id],
                     exclude_deleted=True,
                 )
@@ -453,7 +445,7 @@ class TestVideoSearchAndFiltering:
     async def test_video_date_range_filtering(
         self,
         integration_db_session,
-        established_videos: Awaitable[List[Dict[str, Any]] | None],
+        established_videos: Awaitable[list[dict[str, Any]] | None],
     ):
         """Test video filtering by upload date ranges."""
         # Await the fixture since it's async
@@ -465,11 +457,9 @@ class TestVideoSearchAndFiltering:
         async with integration_db_session() as session:
             try:
                 # Use repository pattern
-                video_repo: BaseSQLAlchemyRepository[
-                    DBVideo, VideoCreate, VideoUpdate
-                ] = BaseSQLAlchemyRepository(DBVideo)
+                BaseSQLAlchemyRepository(DBVideo)
                 # Test recent videos (last year)
-                recent_date = datetime.now(timezone.utc).replace(
+                recent_date = datetime.now(UTC).replace(
                     year=datetime.now().year - 1
                 )
 
@@ -481,7 +471,7 @@ class TestVideoSearchAndFiltering:
                     assert video.upload_date >= recent_date
 
                 # Test older videos (before specific date)
-                cutoff_date = datetime(2020, 1, 1, tzinfo=timezone.utc)
+                cutoff_date = datetime(2020, 1, 1, tzinfo=UTC)
 
                 older_result = await session.execute(
                     select(DBVideo).where(DBVideo.upload_date <= cutoff_date)
@@ -503,7 +493,7 @@ class TestVideoStatisticsAggregation:
     async def test_channel_video_statistics(
         self,
         integration_db_session,
-        established_videos: Awaitable[List[Dict[str, Any]] | None],
+        established_videos: Awaitable[list[dict[str, Any]] | None],
     ):
         """Test aggregating video statistics for a channel."""
         # Await the fixture since it's async
@@ -518,9 +508,7 @@ class TestVideoStatisticsAggregation:
         async with integration_db_session() as session:
             try:
                 # Use repository pattern to get channel videos
-                video_repo: BaseSQLAlchemyRepository[
-                    DBVideo, VideoCreate, VideoUpdate
-                ] = BaseSQLAlchemyRepository(DBVideo)
+                BaseSQLAlchemyRepository(DBVideo)
                 # Get all videos for the channel
                 result = await session.execute(
                     select(DBVideo).where(DBVideo.channel_id == channel_id)
@@ -577,7 +565,7 @@ class TestVideoStatisticsAggregation:
 
     def _extract_top_languages(self, videos: list[Video]) -> list[tuple[str, int]]:
         """Extract top languages from video collection."""
-        language_counts: Dict[str, int] = {}
+        language_counts: dict[str, int] = {}
 
         for video in videos:
             lang = video.default_language or "unknown"
@@ -591,7 +579,7 @@ class TestVideoStatisticsAggregation:
 
     def _calculate_upload_trend(self, videos: list[Video]) -> dict[str, int]:
         """Calculate upload trend by month."""
-        trend: Dict[str, int] = {}
+        trend: dict[str, int] = {}
 
         for video in videos:
             month_key = video.upload_date.strftime("%Y-%m")

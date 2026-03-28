@@ -8,7 +8,7 @@ import json
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 
@@ -220,7 +220,7 @@ class TestTakeoutParserAction:
 class TestTakeoutParserFileProcessing:
     """Test file parsing functionality."""
 
-    def create_test_file(self, data: List[Dict[str, Any]]) -> Path:
+    def create_test_file(self, data: list[dict[str, Any]]) -> Path:
         """Create a temporary JSON file with test data."""
         temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
         json.dump(data, temp_file)
@@ -229,7 +229,7 @@ class TestTakeoutParserFileProcessing:
 
     def test_parse_watch_history_file_valid_data(self):
         """Test parsing a valid watch history file."""
-        test_data: List[Dict[str, Any]] = [
+        test_data: list[dict[str, Any]] = [
             {
                 "header": "YouTube",
                 "title": "Watched Never Gonna Give You Up",
@@ -274,7 +274,7 @@ class TestTakeoutParserFileProcessing:
 
     def test_parse_watch_history_file_empty_data(self):
         """Test parsing an empty file."""
-        test_data: List[Dict[str, Any]] = []
+        test_data: list[dict[str, Any]] = []
         file_path = self.create_test_file(test_data)
 
         try:
@@ -285,7 +285,7 @@ class TestTakeoutParserFileProcessing:
 
     def test_parse_watch_history_file_non_youtube_entries(self):
         """Test parsing file with non-YouTube entries."""
-        test_data: List[Dict[str, Any]] = [
+        test_data: list[dict[str, Any]] = [
             {
                 "header": "Google Search",
                 "title": "Searched for cats",
@@ -310,7 +310,7 @@ class TestTakeoutParserFileProcessing:
 
     def test_parse_watch_history_file_invalid_entries(self):
         """Test parsing file with invalid entries."""
-        test_data: List[Dict[str, Any]] = [
+        test_data: list[dict[str, Any]] = [
             {
                 "header": "YouTube",
                 "title": "",  # Empty title
@@ -347,7 +347,7 @@ class TestTakeoutParserFileProcessing:
 
     def test_parse_watch_history_file_no_subtitles(self):
         """Test parsing entries without subtitle information."""
-        test_data: List[Dict[str, Any]] = [
+        test_data: list[dict[str, Any]] = [
             {
                 "header": "YouTube",
                 "title": "Watched Video Without Channel Info",
@@ -408,7 +408,7 @@ class TestTakeoutParserFileProcessing:
 class TestTakeoutParserCounting:
     """Test entry counting functionality."""
 
-    def create_test_file(self, data: List[Dict[str, Any]]) -> Path:
+    def create_test_file(self, data: list[dict[str, Any]]) -> Path:
         """Create a temporary JSON file with test data."""
         temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
         json.dump(data, temp_file)
@@ -466,7 +466,7 @@ class TestTakeoutParserCounting:
 
     def test_count_entries_empty_file(self):
         """Test counting entries in empty file."""
-        test_data: List[Dict[str, Any]] = []
+        test_data: list[dict[str, Any]] = []
         file_path = self.create_test_file(test_data)
 
         try:
@@ -508,7 +508,7 @@ class TestTakeoutParserCounting:
 class TestTakeoutParserEdgeCases:
     """Test edge cases and error handling."""
 
-    def create_test_file(self, data: List[Dict[str, Any]]) -> Path:
+    def create_test_file(self, data: list[dict[str, Any]]) -> Path:
         """Create a temporary JSON file with test data."""
         temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
         json.dump(data, temp_file)
@@ -607,7 +607,7 @@ class TestTakeoutParserEdgeCases:
 
     def test_parse_watch_history_file_with_malformed_entry(self):
         """Test parsing file with one malformed entry that causes exception."""
-        test_data: List[Dict[str, Any]] = [
+        test_data: list[dict[str, Any]] = [
             {
                 "header": "YouTube",
                 "title": "Watched Good Video",

@@ -18,8 +18,7 @@ Test Coverage:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -97,7 +96,7 @@ def create_preference(
         priority=priority,
         auto_download_transcripts=auto_download,
         learning_goal=learning_goal if learning_goal else None,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 
@@ -454,7 +453,7 @@ class TestSyncTranscriptsLearningPreferences:
 
         # Execute command
         runner = CliRunner()
-        result = runner.invoke(app, ["sync", "transcripts", "--limit", "1"])
+        runner.invoke(app, ["sync", "transcripts", "--limit", "1"])
 
         # Verify only Italian was downloaded
         assert mock_transcript_service.get_transcript.call_count == 1

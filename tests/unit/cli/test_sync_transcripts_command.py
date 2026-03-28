@@ -17,8 +17,6 @@ Test organization:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -57,9 +55,9 @@ def mock_video_db() -> MagicMock:
 
 
 @pytest.fixture
-def mock_video_db_list() -> List[MagicMock]:
+def mock_video_db_list() -> list[MagicMock]:
     """Create a list of mock Video database models."""
-    videos: List[MagicMock] = []
+    videos: list[MagicMock] = []
     for i in range(3):
         video = MagicMock(spec=VideoDB)
         video.video_id = f"test_video_{i}"
@@ -134,7 +132,7 @@ class TestSyncTranscriptsDryRun:
         mock_container: MagicMock,
         mock_check_auth: MagicMock,
         runner: CliRunner,
-        mock_video_db_list: List[MagicMock],
+        mock_video_db_list: list[MagicMock],
     ) -> None:
         """Test that --dry-run shows preview without downloading transcripts."""
         # Setup authentication
@@ -160,7 +158,6 @@ class TestSyncTranscriptsDryRun:
         ]
 
         # Mock repository to return videos without transcripts
-        from chronovista.models.video import VideoSearchFilters
 
         mock_video_repo.search_videos = AsyncMock(return_value=mock_video_db_list)
 
@@ -186,7 +183,7 @@ class TestSyncTranscriptsDryRun:
         mock_container: MagicMock,
         mock_check_auth: MagicMock,
         runner: CliRunner,
-        mock_video_db_list: List[MagicMock],
+        mock_video_db_list: list[MagicMock],
     ) -> None:
         """Test that --dry-run displays table with video information."""
         # Setup authentication
@@ -229,7 +226,7 @@ class TestSyncTranscriptsDryRun:
         mock_container: MagicMock,
         mock_check_auth: MagicMock,
         runner: CliRunner,
-        mock_video_db_list: List[MagicMock],
+        mock_video_db_list: list[MagicMock],
     ) -> None:
         """Test that --dry-run shows whether --force flag is enabled."""
         # Setup authentication
@@ -319,7 +316,7 @@ class TestSyncTranscriptsVideoIdFilter:
         mock_container.transcript_service = mock_transcript_service
 
         # Execute command with specific video ID
-        result = runner.invoke(
+        runner.invoke(
             app, ["sync", "transcripts", "--video-id", "dQw4w9WgXcQ"]
         )
 
@@ -389,7 +386,7 @@ class TestSyncTranscriptsVideoIdFilter:
         mock_container.transcript_service = mock_transcript_service
 
         # Execute command with multiple video IDs
-        result = runner.invoke(
+        runner.invoke(
             app,
             ["sync", "transcripts", "--video-id", "video1", "--video-id", "video2"],
         )
@@ -446,7 +443,7 @@ class TestSyncTranscriptsAuthentication:
         mock_check_auth.return_value = False
 
         # Execute command
-        result = runner.invoke(app, ["sync", "transcripts"])
+        runner.invoke(app, ["sync", "transcripts"])
 
         # Verify authentication check was called
         mock_check_auth.assert_called_once()
@@ -573,7 +570,7 @@ class TestSyncTranscriptsDownload:
         mock_container.transcript_service = mock_transcript_service
 
         # Execute command with Spanish language preference
-        result = runner.invoke(
+        runner.invoke(
             app, ["sync", "transcripts", "--limit", "1", "--language", "es"]
         )
 
@@ -630,7 +627,7 @@ class TestSyncTranscriptsDownload:
         mock_container.transcript_service = mock_transcript_service
 
         # Execute command
-        result = runner.invoke(app, ["sync", "transcripts", "--limit", "1"])
+        runner.invoke(app, ["sync", "transcripts", "--limit", "1"])
 
         # Verify create_or_update was called with raw_transcript_data
         call_args = mock_video_transcript_repo.create_or_update.call_args
@@ -763,7 +760,7 @@ class TestSyncTranscriptsFlags:
         mock_container: MagicMock,
         mock_check_auth: MagicMock,
         runner: CliRunner,
-        mock_video_db_list: List[MagicMock],
+        mock_video_db_list: list[MagicMock],
     ) -> None:
         """Test that --limit flag restricts number of videos processed."""
         # Setup authentication
@@ -787,10 +784,9 @@ class TestSyncTranscriptsFlags:
         mock_video_repo.search_videos = AsyncMock(return_value=many_videos)
 
         # Execute command with limit
-        result = runner.invoke(app, ["sync", "transcripts", "--limit", "5"])
+        runner.invoke(app, ["sync", "transcripts", "--limit", "5"])
 
         # Verify search_videos was called with limit
-        call_args = mock_video_repo.search_videos.call_args
         # The command internally handles limiting
 
     @patch("chronovista.cli.sync_commands.check_authenticated")
@@ -853,7 +849,7 @@ class TestSyncTranscriptsFlags:
         mock_container.transcript_service = mock_transcript_service
 
         # Execute command with force flag
-        result = runner.invoke(app, ["sync", "transcripts", "--limit", "1", "--force"])
+        runner.invoke(app, ["sync", "transcripts", "--limit", "1", "--force"])
 
         # Verify transcript was downloaded even though it exists
         mock_transcript_service.get_transcript.assert_called()

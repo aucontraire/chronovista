@@ -5,7 +5,7 @@ Comprehensive test suite covering all CRUD operations and specialized queries
 for playlist-video relationships.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -16,11 +16,9 @@ from chronovista.models.playlist_membership import PlaylistMembershipCreate
 from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
 )
-from tests.factories.id_factory import TestIds, YouTubeIdFactory
+from tests.factories.id_factory import TestIds
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 class TestPlaylistMembershipRepository:
     """Test the PlaylistMembershipRepository CRUD operations and specialized queries."""
@@ -42,7 +40,7 @@ class TestPlaylistMembershipRepository:
             playlist_id=TestIds.TEST_PLAYLIST_1,
             video_id=TestIds.TEST_VIDEO_1,
             position=0,
-            added_at=datetime.now(timezone.utc),
+            added_at=datetime.now(UTC),
         )
 
     def test_repository_initialization(self, repository):
@@ -73,13 +71,13 @@ class TestPlaylistMembershipRepository:
             playlist_id=TestIds.TEST_PLAYLIST_1,
             video_id=TestIds.TEST_VIDEO_1,
             position=0,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         mock_membership2 = DBPlaylistMembership(
             playlist_id=TestIds.TEST_PLAYLIST_1,
             video_id=TestIds.TEST_VIDEO_2,
             position=1,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         # Mock result
@@ -124,13 +122,13 @@ class TestPlaylistMembershipRepository:
             playlist_id=TestIds.TEST_PLAYLIST_1,
             video_id=TestIds.TEST_VIDEO_1,
             position=0,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         mock_membership2 = DBPlaylistMembership(
             playlist_id=TestIds.TEST_PLAYLIST_2,
             video_id=TestIds.TEST_VIDEO_1,
             position=5,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         # Mock result
@@ -201,7 +199,7 @@ class TestPlaylistMembershipRepository:
             playlist_id=TestIds.TEST_PLAYLIST_1,
             video_id=TestIds.TEST_VIDEO_1,
             position=0,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_membership
@@ -235,7 +233,7 @@ class TestPlaylistMembershipRepository:
             playlist_id=TestIds.TEST_PLAYLIST_1,
             video_id=TestIds.TEST_VIDEO_1,
             position=0,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_membership
@@ -271,7 +269,7 @@ class TestPlaylistMembershipRepository:
             playlist_id=TestIds.TEST_PLAYLIST_1,
             video_id=TestIds.TEST_VIDEO_1,
             position=0,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_membership
@@ -381,7 +379,7 @@ class TestPlaylistMembershipRepository:
             video_id=sample_membership_create.video_id,
             position=sample_membership_create.position,
             added_at=sample_membership_create.added_at,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         # Setup session mocks

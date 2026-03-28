@@ -29,8 +29,6 @@ from chronovista.api.main import app
 from chronovista.services.phonetic_matcher import PhoneticMatch
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Helpers

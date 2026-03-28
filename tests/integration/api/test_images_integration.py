@@ -16,16 +16,14 @@ from httpx import ASGITransport, AsyncClient
 
 from chronovista.api.main import app
 from chronovista.services.image_cache import (
+    _CACHE_CONTROL_HIT,
     ImageCacheConfig,
     ImageCacheService,
-    _CACHE_CONTROL_HIT,
 )
 from tests.factories.channel_factory import ChannelTestData
 from tests.factories.video_factory import VideoTestData
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Fixtures
@@ -35,8 +33,8 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture
 async def async_client() -> AsyncGenerator[AsyncClient, None]:
     """Create async test client for FastAPI testing."""
-    from collections.abc import AsyncGenerator
     from sqlalchemy.ext.asyncio import AsyncSession
+
     from chronovista.api.deps import get_db
 
     # Mock database dependency

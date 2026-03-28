@@ -8,7 +8,8 @@ semantics, and query methods (get_task, list_tasks, get_running_task_for_operati
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Callable, Coroutine
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 import pytest
 
@@ -17,8 +18,6 @@ from chronovista.api.services.task_manager import TaskManager
 from chronovista.models.enums import OperationType, TaskStatus
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 # ---------------------------------------------------------------------------
 # Helper coroutine factories
 # ---------------------------------------------------------------------------
@@ -520,7 +519,6 @@ class TestProgressCallback:
         self, manager: TaskManager
     ) -> None:
         """Progress values above 100 are clamped to 100.0 by update_progress."""
-        received: list[float] = []
 
         async def _coro(progress_cb: Callable[[float], None]) -> dict[str, Any]:
             progress_cb(150.0)
@@ -545,7 +543,6 @@ class TestProgressCallback:
         """An intermediate progress value is visible on the task between steps."""
         gate_mid = asyncio.Event()
         gate_end = asyncio.Event()
-        saw_progress: list[float] = []
 
         async def _coro(progress_cb: Callable[[float], None]) -> dict[str, Any]:
             progress_cb(42.0)
@@ -790,7 +787,7 @@ class TestListTasks:
         self, manager: TaskManager
     ) -> None:
         """list_tasks returns empty list when the filter matches no tasks."""
-        id_ok = await manager.submit(OperationType.LOAD_DATA, make_noop_coro())
+        await manager.submit(OperationType.LOAD_DATA, make_noop_coro())
         await asyncio.sleep(0)
         await asyncio.sleep(0)
 
@@ -919,7 +916,7 @@ class TestGetRunningTaskForOperation:
         as active.
         """
         gate = asyncio.Event()
-        task_id = await manager.submit(
+        await manager.submit(
             OperationType.LOAD_DATA, make_slow_coro(gate)
         )
         # Do NOT yield — the asyncio.Task hasn't started yet

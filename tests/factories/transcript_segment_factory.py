@@ -7,8 +7,8 @@ with sensible defaults and easy customization.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, List
+from datetime import UTC, datetime
+from typing import Any
 
 import factory
 from factory import LazyAttribute, LazyFunction, Sequence
@@ -53,7 +53,7 @@ class TranscriptSegmentFactory(TranscriptSegmentBaseFactory):
     has_correction: Any = LazyFunction(lambda: False)
     corrected_text: Any = LazyFunction(lambda: None)
     created_at: Any = LazyFunction(
-        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
     )
 
 
@@ -121,7 +121,7 @@ def create_batch_transcript_segments(
     video_id: str = "dQw4w9WgXcQ",
     language_code: str = "en",
     count: int = 5,
-) -> List[TranscriptSegment]:
+) -> list[TranscriptSegment]:
     """Create a batch of sequential TranscriptSegment instances.
 
     Parameters
@@ -138,7 +138,7 @@ def create_batch_transcript_segments(
     List[TranscriptSegment]
         List of sequential transcript segments.
     """
-    segments: List[TranscriptSegment] = []
+    segments: list[TranscriptSegment] = []
     base_texts = [
         "Hello and welcome to this video.",
         "Today we'll be discussing important topics.",
@@ -267,7 +267,7 @@ class TranscriptSegmentTestData:
                 "id": 1,
                 "has_correction": False,
                 "corrected_text": None,
-                "created_at": datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+                "created_at": datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
             }
         )
         return data

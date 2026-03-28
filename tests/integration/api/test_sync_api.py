@@ -5,15 +5,11 @@ status monitoring, and request validation for sync operations.
 """
 
 from unittest.mock import patch
-from datetime import datetime, timezone
 
 import pytest
 from httpx import AsyncClient
 
-pytestmark = pytest.mark.asyncio
-
-from chronovista.api.services.sync_manager import sync_manager, SyncManager
-from chronovista.api.schemas.sync import SyncOperationType
+from chronovista.api.services.sync_manager import sync_manager
 
 
 class TestSyncAuthentication:
@@ -314,7 +310,7 @@ class TestConflictHandling:
             # Start first sync
             response1 = await async_client.post("/api/v1/sync/transcripts")
             assert response1.status_code == 202
-            first_operation_id = response1.json()["data"]["operation_id"]
+            response1.json()["data"]["operation_id"]
 
             # Try to start second sync
             response2 = await async_client.post("/api/v1/sync/playlists")

@@ -17,25 +17,19 @@ Additional tests:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from chronovista.models.video import VideoUpdate
 from chronovista.models.video_category import (
-    VideoCategory,
     VideoCategoryCreate,
     VideoCategoryUpdate,
 )
-from chronovista.models.video import VideoUpdate
-from chronovista.models.youtube_types import create_test_video_id
 from chronovista.services.enrichment.enrichment_service import (
-    BATCH_SIZE,
     EnrichmentService,
 )
-
-pytestmark = pytest.mark.asyncio
 
 # Valid test video ID (must be exactly 11 characters)
 VALID_VIDEO_ID = "dQw4w9WgXcQ"
@@ -134,7 +128,6 @@ class TestEnrichCategoriesMethod:
     ) -> None:
         """Test that enrich_categories() extracts category from API data correctly."""
         # Given API data with category ID
-        video_id = VALID_VIDEO_ID
         category_id = CATEGORY_ID_MUSIC
 
         # Mock category repository to return matching category
@@ -162,10 +155,9 @@ class TestEnrichCategoriesMethod:
     ) -> None:
         """Test that enrich_categories() handles empty category ID correctly."""
         video_id = VALID_VIDEO_ID
-        category_id = ""
 
         # API response with empty categoryId
-        api_data: Dict[str, Any] = {
+        api_data: dict[str, Any] = {
             "id": video_id,
             "snippet": {
                 "title": "Video Title",
@@ -187,7 +179,7 @@ class TestEnrichCategoriesMethod:
         video_id = VALID_VIDEO_ID
 
         # API response without categoryId field
-        api_data: Dict[str, Any] = {
+        api_data: dict[str, Any] = {
             "id": video_id,
             "snippet": {
                 "title": "Video Title",
@@ -209,7 +201,7 @@ class TestEnrichCategoriesMethod:
         video_id = VALID_VIDEO_ID
 
         # API response with explicit None categoryId
-        api_data: Dict[str, Any] = {
+        api_data: dict[str, Any] = {
             "id": video_id,
             "snippet": {
                 "title": "Video Title",
@@ -227,7 +219,6 @@ class TestEnrichCategoriesMethod:
         self, service: EnrichmentService, mock_session: AsyncMock
     ) -> None:
         """Test that enrich_categories() returns True when category is successfully assigned."""
-        video_id = VALID_VIDEO_ID
         category_id = CATEGORY_ID_MUSIC
 
         # Mock category repository to return matching category
@@ -250,7 +241,6 @@ class TestEnrichCategoriesMethod:
         self, service: EnrichmentService, mock_session: AsyncMock
     ) -> None:
         """Test that enrich_categories() returns False when category is not found."""
-        video_id = VALID_VIDEO_ID
         category_id = "99999"  # Non-existent category
 
         with patch.object(
@@ -393,7 +383,7 @@ class TestCategoryIdExtraction:
             ("44", "Trailers"),
         ]
 
-        for category_id, category_name in common_categories:
+        for category_id, _category_name in common_categories:
             api_data = {"snippet": {"categoryId": category_id}}
             extracted = api_data["snippet"]["categoryId"]
             assert extracted == category_id
@@ -424,7 +414,6 @@ class TestUnrecognizedCategoryHandling:
         video_id = VALID_VIDEO_ID
 
         # Expected log message format
-        expected_log_content = "Unrecognized category"
 
         # When processing unrecognized category, implementation should log:
         # logger.warning(f"Unrecognized category ID '{category_id}' for video {video_id}")
@@ -442,7 +431,6 @@ class TestUnrecognizedCategoryHandling:
         self, mock_session: AsyncMock, mock_video_category_repository: MagicMock
     ) -> None:
         """Test that video's category_id is left null for unrecognized categories."""
-        video_id = VALID_VIDEO_ID
         unrecognized_category_id = "99999"
 
         # Mock repository returns None (category not found)
@@ -515,7 +503,7 @@ class TestUnrecognizedCategoryHandling:
         education_category.category_id = "27"
         education_category.name = "Education"
 
-        async def get_mock(session: Any, category_id: str) -> Optional[MagicMock]:
+        async def get_mock(session: Any, category_id: str) -> MagicMock | None:
             categories = {
                 "10": music_category,
                 "20": gaming_category,
@@ -534,8 +522,8 @@ class TestUnrecognizedCategoryHandling:
             ("vid5", "27"),  # Education - should work
         ]
 
-        assigned_categories: List[MagicMock] = []
-        for video_id, category_id in batch:
+        assigned_categories: list[MagicMock] = []
+        for _video_id, category_id in batch:
             category = await mock_video_category_repository.get(
                 mock_session, category_id
             )
@@ -760,7 +748,7 @@ class TestCategoryValidation:
             "28": make_category("28", "Science & Technology"),
         }
 
-        async def get_mock(session: Any, category_id: str) -> Optional[MagicMock]:
+        async def get_mock(session: Any, category_id: str) -> MagicMock | None:
             return pre_seeded.get(category_id)
 
         async def exists_mock(session: Any, category_id: str) -> bool:
@@ -915,7 +903,6 @@ class TestCategoryEnrichmentIntegration:
         self, service: EnrichmentService, mock_session: AsyncMock
     ) -> None:
         """Test error handling during category enrichment."""
-        video_id = VALID_VIDEO_ID
         category_id = "10"
 
         with patch.object(
@@ -941,7 +928,7 @@ class TestCategoryEnrichmentIntegration:
 
         # Extract update data (mimics _extract_video_update behavior)
         snippet = api_response.get("snippet", {})
-        update_data: Dict[str, Any] = {}
+        update_data: dict[str, Any] = {}
 
         if snippet.get("title"):
             update_data["title"] = snippet["title"]
@@ -1084,7 +1071,7 @@ class TestCategoryEnrichmentInVideoUpdate:
         }
 
         snippet = api_data.get("snippet", {})
-        update_data: Dict[str, Any] = {}
+        update_data: dict[str, Any] = {}
 
         # Extract category
         if snippet.get("categoryId"):

@@ -6,7 +6,6 @@ Covers T048a-b:
 - T048b: Unit tests for each priority tier (HIGH, MEDIUM, LOW, ALL)
 """
 
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,12 +13,9 @@ import pytest
 from chronovista.models.enums import AvailabilityStatus
 from chronovista.services.enrichment.enrichment_service import (
     EnrichmentService,
-    VIDEO_PLACEHOLDER_PREFIX,
     is_placeholder_channel_name,
     is_placeholder_video_title,
 )
-
-pytestmark = pytest.mark.asyncio
 
 
 @pytest.mark.asyncio

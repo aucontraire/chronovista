@@ -7,8 +7,8 @@ Google Takeout integration, analytics, and specialized queries.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import List, cast
+from datetime import UTC, datetime, timedelta
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -22,8 +22,6 @@ from chronovista.models.user_video import (
     UserVideoStatistics,
 )
 from chronovista.repositories.user_video_repository import UserVideoRepository
-
-pytestmark = pytest.mark.asyncio
 
 
 class TestUserVideoRepository:
@@ -46,12 +44,12 @@ class TestUserVideoRepository:
         return UserVideoDB(
             user_id="test_user",
             video_id="dQw4w9WgXcQ",
-            watched_at=datetime.now(timezone.utc),
+            watched_at=datetime.now(UTC),
             rewatch_count=2,
             liked=True,
             saved_to_playlist=False,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
     @pytest.fixture
@@ -60,16 +58,16 @@ class TestUserVideoRepository:
         return UserVideoCreate(
             user_id="test_user",
             video_id="dQw4w9WgXcQ",
-            watched_at=datetime.now(timezone.utc),
+            watched_at=datetime.now(UTC),
             rewatch_count=0,
             liked=False,
             saved_to_playlist=False,
         )
 
     @pytest.fixture
-    def sample_user_videos_list(self) -> List[UserVideoDB]:
+    def sample_user_videos_list(self) -> list[UserVideoDB]:
         """Create list of sample user videos."""
-        base_time = datetime.now(timezone.utc)
+        base_time = datetime.now(UTC)
         return [
             UserVideoDB(
                 user_id="test_user",
@@ -187,7 +185,7 @@ class TestUserVideoRepository:
         self,
         repository: UserVideoRepository,
         mock_session: AsyncSession,
-        sample_user_videos_list: List[UserVideoDB],
+        sample_user_videos_list: list[UserVideoDB],
     ):
         """Test getting user's watch history."""
         # Mock execute to return scalars
@@ -209,7 +207,7 @@ class TestUserVideoRepository:
         self,
         repository: UserVideoRepository,
         mock_session: AsyncSession,
-        sample_user_videos_list: List[UserVideoDB],
+        sample_user_videos_list: list[UserVideoDB],
     ):
         """Test getting user's liked videos."""
         # Filter list to only liked videos
@@ -233,7 +231,7 @@ class TestUserVideoRepository:
         self,
         repository: UserVideoRepository,
         mock_session: AsyncSession,
-        sample_user_videos_list: List[UserVideoDB],
+        sample_user_videos_list: list[UserVideoDB],
     ):
         """Test getting user's most watched videos."""
         # Sort by rewatch count descending
@@ -259,7 +257,7 @@ class TestUserVideoRepository:
         self,
         repository: UserVideoRepository,
         mock_session: AsyncSession,
-        sample_user_videos_list: List[UserVideoDB],
+        sample_user_videos_list: list[UserVideoDB],
     ):
         """Test searching user videos with no filters."""
         filters = UserVideoSearchFilters()
@@ -280,7 +278,7 @@ class TestUserVideoRepository:
         self,
         repository: UserVideoRepository,
         mock_session: AsyncSession,
-        sample_user_videos_list: List[UserVideoDB],
+        sample_user_videos_list: list[UserVideoDB],
     ):
         """Test searching user videos with filters."""
         filters = UserVideoSearchFilters(
@@ -317,14 +315,14 @@ class TestUserVideoRepository:
             playlist_saved_count=3,
             rewatch_count=2,
             unique_videos=8,
-            most_watched_date=datetime.now(timezone.utc),
+            most_watched_date=datetime.now(UTC),
             watch_streak_days=7,
         )
 
         # Mock the entire method to avoid SQLAlchemy query construction issues
         with patch.object(
             repository, "get_user_statistics", return_value=expected_stats
-        ) as mock_get_stats:
+        ):
             result = await repository.get_user_statistics(mock_session, "test_user")
 
             assert isinstance(result, UserVideoStatistics)
@@ -335,7 +333,7 @@ class TestUserVideoRepository:
             assert result.unique_videos == 8
             assert result.watch_streak_days == 7
             assert result.most_watched_date is not None
-            assert result.most_watched_date.date() == datetime.now(timezone.utc).date()
+            assert result.most_watched_date.date() == datetime.now(UTC).date()
 
     @pytest.mark.asyncio
     async def test_get_user_statistics_no_data(
@@ -356,7 +354,7 @@ class TestUserVideoRepository:
         # Mock the entire method
         with patch.object(
             repository, "get_user_statistics", return_value=expected_stats
-        ) as mock_get_stats:
+        ):
             result = await repository.get_user_statistics(mock_session, "test_user")
 
             assert isinstance(result, UserVideoStatistics)
@@ -512,10 +510,10 @@ class TestUserVideoRepository:
                 repository,
                 "get_by_composite_key",
                 side_effect=[None, sample_user_video_db],
-            ) as mock_get,
+            ),
             patch.object(
                 repository, "create", return_value=sample_user_video_db
-            ) as mock_create,
+            ),
         ):
 
             result = await repository.import_from_takeout_batch(
@@ -561,7 +559,7 @@ class TestUserVideoRepository:
         sample_user_video_create: UserVideoCreate,
     ):
         """Test recording a new watch interaction."""
-        watch_time = datetime.now(timezone.utc)
+        watch_time = datetime.now(UTC)
 
         # Mock get_by_composite_key to return None (new interaction)
         with (
@@ -594,13 +592,13 @@ class TestUserVideoRepository:
         sample_user_video_db: UserVideoDB,
     ):
         """Test recording a watch on existing interaction (rewatch)."""
-        watch_time = datetime.now(timezone.utc)
+        watch_time = datetime.now(UTC)
         original_rewatch_count = sample_user_video_db.rewatch_count
 
         # Mock get_by_composite_key to return existing interaction
         with patch.object(
             repository, "get_by_composite_key", return_value=sample_user_video_db
-        ) as mock_get:
+        ):
             result = await repository.record_watch(
                 mock_session,
                 "test_user",
@@ -634,8 +632,8 @@ class TestUserVideoRepository:
         self, repository: UserVideoRepository, mock_session: AsyncSession
     ):
         """Test getting watch count aggregated by date range."""
-        start_date = datetime(2025, 1, 1, tzinfo=timezone.utc)
-        end_date = datetime(2025, 1, 31, tzinfo=timezone.utc)
+        start_date = datetime(2025, 1, 1, tzinfo=UTC)
+        end_date = datetime(2025, 1, 31, tzinfo=UTC)
 
         # Mock aggregated results
         mock_result = MagicMock()
@@ -810,7 +808,7 @@ class TestUserVideoRepositoryEdgeCases:
         # Mock get_by_composite_key to raise an exception
         with patch.object(
             repository, "get_by_composite_key", side_effect=Exception("Database error")
-        ) as mock_get:
+        ):
             result = await repository.import_from_takeout_batch(
                 mock_session, "test_user", [invalid_item]
             )
@@ -840,8 +838,8 @@ class TestUserVideoRepositoryEdgeCases:
         self, repository: UserVideoRepository, mock_session: AsyncSession
     ):
         """Test getting watch count when no data exists in range."""
-        start_date = datetime(2025, 1, 1, tzinfo=timezone.utc)
-        end_date = datetime(2025, 1, 31, tzinfo=timezone.utc)
+        start_date = datetime(2025, 1, 1, tzinfo=UTC)
+        end_date = datetime(2025, 1, 31, tzinfo=UTC)
 
         mock_result = MagicMock()
         mock_result.__iter__ = lambda self: iter([])
@@ -914,7 +912,7 @@ class TestGoogleTakeoutIntegration:
         assert result.user_id == "test_user"
         assert result.video_id == "dQw4w9WgXcQ"
         assert result.watched_at == datetime(
-            2025, 1, 15, 10, 30, 0, tzinfo=timezone.utc
+            2025, 1, 15, 10, 30, 0, tzinfo=UTC
         )
         assert result.rewatch_count == 0
 
@@ -986,9 +984,9 @@ class TestGoogleTakeoutIntegration:
         existing_video = UserVideoDB(
             user_id="test_user",
             video_id="jNQXAC9IVRw",
-            watched_at=datetime(2025, 1, 14, tzinfo=timezone.utc),
-            created_at=datetime(2025, 1, 14, tzinfo=timezone.utc),
-            updated_at=datetime(2025, 1, 14, tzinfo=timezone.utc),
+            watched_at=datetime(2025, 1, 14, tzinfo=UTC),
+            created_at=datetime(2025, 1, 14, tzinfo=UTC),
+            updated_at=datetime(2025, 1, 14, tzinfo=UTC),
         )
 
         # Mock repository methods with side effects
@@ -1000,8 +998,8 @@ class TestGoogleTakeoutIntegration:
         with (
             patch.object(
                 repository, "get_by_composite_key", side_effect=get_calls
-            ) as mock_get,
-            patch.object(repository, "create", return_value=MagicMock()) as mock_create,
+            ),
+            patch.object(repository, "create", return_value=MagicMock()),
         ):
 
             result = await repository.import_from_takeout_batch(
@@ -1043,8 +1041,8 @@ class TestUserVideoRepositoryRecordLike:
             rewatch_count=0,
             liked=True,
             saved_to_playlist=False,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         with (
@@ -1077,17 +1075,17 @@ class TestUserVideoRepositoryRecordLike:
         existing_interaction = UserVideoDB(
             user_id="test_user",
             video_id="dQw4w9WgXcQ",
-            watched_at=datetime.now(timezone.utc),
+            watched_at=datetime.now(UTC),
             rewatch_count=2,
             liked=False,
             saved_to_playlist=True,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         with patch.object(
             repository, "get_by_composite_key", return_value=existing_interaction
-        ) as mock_get:
+        ):
             result = await repository.record_like(
                 mock_session, "test_user", "dQw4w9WgXcQ", liked=True
             )
@@ -1103,7 +1101,7 @@ class TestUserVideoRepositoryRecordLike:
         self, repository: UserVideoRepository, mock_session: AsyncSession
     ):
         """Test record_like does not modify watched_at or rewatch_count."""
-        original_watched_at = datetime.now(timezone.utc) - timedelta(days=5)
+        original_watched_at = datetime.now(UTC) - timedelta(days=5)
         original_rewatch_count = 3
 
         existing_interaction = UserVideoDB(
@@ -1113,13 +1111,13 @@ class TestUserVideoRepositoryRecordLike:
             rewatch_count=original_rewatch_count,
             liked=False,
             saved_to_playlist=False,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         with patch.object(
             repository, "get_by_composite_key", return_value=existing_interaction
-        ) as mock_get:
+        ):
             result = await repository.record_like(
                 mock_session, "test_user", "dQw4w9WgXcQ", liked=True
             )
@@ -1139,17 +1137,17 @@ class TestUserVideoRepositoryRecordLike:
         existing_interaction = UserVideoDB(
             user_id="test_user",
             video_id="dQw4w9WgXcQ",
-            watched_at=datetime.now(timezone.utc),
+            watched_at=datetime.now(UTC),
             rewatch_count=0,
             liked=True,
             saved_to_playlist=False,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         with patch.object(
             repository, "get_by_composite_key", return_value=existing_interaction
-        ) as mock_get:
+        ):
             result = await repository.record_like(
                 mock_session, "test_user", "dQw4w9WgXcQ", liked=False
             )
@@ -1170,14 +1168,14 @@ class TestUserVideoRepositoryRecordLike:
             rewatch_count=0,
             liked=False,
             saved_to_playlist=False,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         with (
             patch.object(
                 repository, "get_by_composite_key", return_value=None
-            ) as mock_get,
+            ),
             patch.object(
                 repository, "create", return_value=new_interaction
             ) as mock_create,

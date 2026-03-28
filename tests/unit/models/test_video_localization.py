@@ -7,8 +7,8 @@ for all VideoLocalization model variants using factory pattern for DRY.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import cast
-from datetime import datetime, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -242,7 +242,7 @@ class TestVideoLocalization:
 
     def test_create_valid_video_localization(self):
         """Test creating valid VideoLocalization with keyword arguments."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         localization = cast(VideoLocalization, VideoLocalizationFactory.build(
             video_id="dQw4w9WgXcQ",
             language_code=LanguageCode.JAPANESE,
@@ -266,7 +266,7 @@ class TestVideoLocalization:
             language_code = LanguageCode.GERMAN
             localized_title = "Test Video"
             localized_description = "Beschreibung"
-            created_at = datetime.now(timezone.utc)
+            created_at = datetime.now(UTC)
 
         mock_db = MockVideoLocalizationDB()
         localization = VideoLocalization.model_validate(mock_db, from_attributes=True)
@@ -402,7 +402,7 @@ class TestVideoLocalizationModelInteractions:
         )
 
         # Simulate creation
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         localization_full = cast(VideoLocalization, VideoLocalizationFactory.build(
             video_id=localization_create.video_id,
             language_code=localization_create.language_code,

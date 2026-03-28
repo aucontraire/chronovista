@@ -5,25 +5,22 @@ Tests for SeedingOrchestrator - dependency resolution and execution coordination
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional
 from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.exceptions import ValidationError
+from chronovista.models.takeout.takeout_data import TakeoutData
 from chronovista.services.seeding.base_seeder import (
     BaseSeeder,
     ProgressCallback,
     SeedResult,
 )
 from chronovista.services.seeding.orchestrator import SeedingOrchestrator
-from chronovista.models.takeout.takeout_data import TakeoutData
 from tests.factories.takeout_data_factory import create_takeout_data
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 class MockSeeder(BaseSeeder):
     """Mock seeder for testing."""
@@ -43,7 +40,7 @@ class MockSeeder(BaseSeeder):
         self,
         session: AsyncSession,
         takeout_data: TakeoutData,
-        progress: Optional[ProgressCallback] = None,
+        progress: ProgressCallback | None = None,
     ) -> SeedResult:
         self.seed_called = True
         if progress:
@@ -195,7 +192,7 @@ class TestSeedingOrchestrator:
                 self,
                 session: AsyncSession,
                 takeout_data: TakeoutData,
-                progress: Optional[ProgressCallback] = None,
+                progress: ProgressCallback | None = None,
             ) -> SeedResult:
                 execution_log.append(self.data_type)
                 return await super().seed(session, takeout_data, progress)
@@ -231,7 +228,7 @@ class TestSeedingOrchestrator:
         seeder = MockSeeder("test_type")
         orchestrator.register_seeder(seeder)
 
-        results = await orchestrator.seed(
+        await orchestrator.seed(
             mock_session,
             mock_takeout_data,
             {"test_type"},
@@ -333,7 +330,7 @@ class TestSeedingOrchestrator:
         self, orchestrator, mock_session, mock_takeout_data
     ):
         """Test that orchestrator syncs saved_to_playlist flags after seeding."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         # Register seeders for user_videos and playlist_memberships
         user_videos_seeder = MockSeeder("user_videos", dependencies=set())
@@ -354,7 +351,7 @@ class TestSeedingOrchestrator:
             mock_repo_instance.sync_saved_to_playlist_flags = mock_sync
             MockRepo.return_value = mock_repo_instance
 
-            results = await orchestrator.seed(
+            await orchestrator.seed(
                 mock_session,
                 mock_takeout_data,
                 {"user_videos", "playlist_memberships"},
@@ -368,7 +365,7 @@ class TestSeedingOrchestrator:
         self, orchestrator, mock_session, mock_takeout_data
     ):
         """Test that sync is skipped if user_videos or playlist_memberships not seeded."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         # Only register user_videos seeder
         user_videos_seeder = MockSeeder("user_videos", dependencies=set())
@@ -383,7 +380,7 @@ class TestSeedingOrchestrator:
             mock_repo_instance.sync_saved_to_playlist_flags = mock_sync
             MockRepo.return_value = mock_repo_instance
 
-            results = await orchestrator.seed(
+            await orchestrator.seed(
                 mock_session,
                 mock_takeout_data,
                 {"user_videos"},  # Only user_videos, not playlist_memberships

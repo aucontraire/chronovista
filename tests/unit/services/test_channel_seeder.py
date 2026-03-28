@@ -24,8 +24,6 @@ from tests.factories.takeout_watch_entry_factory import (
 )
 
 # CRITICAL: This line ensures async tests work with coverage
-pytestmark = pytest.mark.asyncio
-
 
 class TestChannelSeeder:
     """Test the ChannelSeeder implementation."""
@@ -200,7 +198,7 @@ class TestChannelSeeder:
         progress = ProgressCallback(mock_progress)
         mock_channel_repo.get_by_channel_id.return_value = None
 
-        result = await channel_seeder.seed(
+        await channel_seeder.seed(
             mock_session, takeout_data_with_subscriptions, progress
         )
 

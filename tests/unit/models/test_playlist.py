@@ -7,7 +7,7 @@ for all Playlist model variants using factory pattern for DRY.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -353,8 +353,8 @@ class TestPlaylist:
 
     def test_create_valid_playlist(self):
         """Test creating valid Playlist with keyword arguments."""
-        created_at = datetime.now(timezone.utc)
-        updated_at = datetime.now(timezone.utc)
+        created_at = datetime.now(UTC)
+        updated_at = datetime.now(UTC)
 
         playlist = PlaylistFactory.build(
             playlist_id="PLMYEtPqzjdeev14J_RpAU_RQKyeaROB8T",
@@ -391,8 +391,8 @@ class TestPlaylist:
             privacy_status = "unlisted"
             channel_id = "UCYCvGbr7chpyTgFpgUOVjjw"
             video_count = 30
-            created_at = datetime.now(timezone.utc)
-            updated_at = datetime.now(timezone.utc)
+            created_at = datetime.now(UTC)
+            updated_at = datetime.now(UTC)
 
         mock_db = MockPlaylistDB()
         playlist = Playlist.model_validate(mock_db, from_attributes=True)
@@ -600,7 +600,7 @@ class TestPlaylistModelInteractions:
         )
 
         # Simulate creation
-        created_at = datetime.now(timezone.utc)
+        created_at = datetime.now(UTC)
         updated_at = created_at
 
         playlist_full = PlaylistFactory.build(
@@ -628,7 +628,7 @@ class TestPlaylistModelInteractions:
         update_data = playlist_update.model_dump(exclude_unset=True)
         updated_data.update(update_data)
         updated_data["updated_at"] = datetime.now(
-            timezone.utc
+            UTC
         )  # Simulate timestamp update
 
         playlist_updated = Playlist.model_validate(updated_data)

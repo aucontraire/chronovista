@@ -50,8 +50,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 # ---------------------------------------------------------------------------
 # Module-level marker: ensures all async tests work correctly with coverage.
 # ---------------------------------------------------------------------------
-pytestmark = pytest.mark.asyncio
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------

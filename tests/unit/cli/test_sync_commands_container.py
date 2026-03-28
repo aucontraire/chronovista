@@ -11,8 +11,7 @@ Coverage targets:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -43,7 +42,7 @@ def mock_youtube_channel() -> YouTubeChannelResponse:
         snippet=ChannelSnippet(
             title="Test Channel",
             description="Test channel description",
-            publishedAt=datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            publishedAt=datetime(2020, 1, 1, 0, 0, 0, tzinfo=UTC),
         ),
     )
 
@@ -56,7 +55,7 @@ def mock_youtube_playlist() -> YouTubePlaylistResponse:
         snippet=PlaylistSnippet(
             title="Test Playlist",
             description="Test playlist description",
-            publishedAt=datetime(2021, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            publishedAt=datetime(2021, 1, 1, 0, 0, 0, tzinfo=UTC),
             channelId="UC1234567890123456789012",
         ),
     )
@@ -72,7 +71,7 @@ def mock_youtube_video() -> YouTubeVideoResponse:
             description="Test video description",
             channelId="UC1234567890123456789012",
             channelTitle="Test Channel",
-            publishedAt=datetime(2022, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            publishedAt=datetime(2022, 1, 1, 0, 0, 0, tzinfo=UTC),
         ),
     )
 
@@ -146,13 +145,13 @@ class TestSyncChannelCommand:
                 video_count=None,
                 country=None,
                 default_language=None,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
         )
 
         # Execute command
-        result = runner.invoke(app, ["sync", "channel"])
+        runner.invoke(app, ["sync", "channel"])
 
         # Verify container methods were called
         mock_container.create_channel_repository.assert_called_once()
@@ -194,7 +193,7 @@ class TestSyncChannelCommand:
         mock_topic_category_repo.exists = AsyncMock(return_value=True)
 
         # Execute command with topic filter
-        result = runner.invoke(app, ["sync", "channel", "--topic", "25"])
+        runner.invoke(app, ["sync", "channel", "--topic", "25"])
 
         # Topic repository should be created to validate topic
         mock_container.create_topic_category_repository.assert_called()
@@ -237,7 +236,7 @@ class TestSyncPlaylistsCommand:
         mock_playlist_repo.create_or_update = AsyncMock(return_value=MagicMock())
 
         # Execute command
-        result = runner.invoke(app, ["sync", "playlists"])
+        runner.invoke(app, ["sync", "playlists"])
 
         # Verify container methods were called
         mock_container.create_playlist_repository.assert_called_once()
@@ -260,7 +259,7 @@ class TestSyncPlaylistsCommand:
         )
 
         # Execute command with dry-run
-        result = runner.invoke(app, ["sync", "playlists", "--dry-run"])
+        runner.invoke(app, ["sync", "playlists", "--dry-run"])
 
         # In dry-run mode, repository should NOT be created
         mock_container.create_playlist_repository.assert_not_called()
@@ -308,7 +307,7 @@ class TestSyncPlaylistsCommand:
         mock_playlist_repo.create_or_update = AsyncMock(return_value=MagicMock())
 
         # Execute command with include-items
-        result = runner.invoke(app, ["sync", "playlists", "--include-items"])
+        runner.invoke(app, ["sync", "playlists", "--include-items"])
 
         # Verify additional repositories were created for items
         mock_container.create_playlist_membership_repository.assert_called()
@@ -337,8 +336,8 @@ class TestSyncTopicsCommand:
 
         # Mock YouTube service
         from chronovista.models.api_responses import (
-            YouTubeVideoCategoryResponse,
             CategorySnippet,
+            YouTubeVideoCategoryResponse,
         )
 
         mock_category = YouTubeVideoCategoryResponse(
@@ -363,7 +362,7 @@ class TestSyncTopicsCommand:
         )
 
         # Execute command
-        result = runner.invoke(app, ["sync", "topics"])
+        runner.invoke(app, ["sync", "topics"])
 
         # Verify container methods were called
         mock_container.create_topic_category_repository.assert_called_once()
@@ -426,7 +425,7 @@ class TestSyncLikedCommand:
         mock_user_video_repo.record_like = AsyncMock()
 
         # Execute command
-        result = runner.invoke(app, ["sync", "liked"])
+        runner.invoke(app, ["sync", "liked"])
 
         # Verify container methods were called
         mock_container.create_video_repository.assert_called()
@@ -473,7 +472,7 @@ class TestSyncLikedCommand:
         mock_video_repo.exists = AsyncMock(return_value=True)
 
         # Execute command with dry-run
-        result = runner.invoke(app, ["sync", "liked", "--dry-run"])
+        runner.invoke(app, ["sync", "liked", "--dry-run"])
 
         # In dry-run mode, should not update database
         mock_user_video_repo.update_like_status_batch.assert_not_called()
@@ -503,8 +502,8 @@ class TestSyncAllCommand:
 
         # Mock YouTube service
         from chronovista.models.api_responses import (
-            YouTubeVideoCategoryResponse,
             CategorySnippet,
+            YouTubeVideoCategoryResponse,
         )
 
         mock_category = YouTubeVideoCategoryResponse(
@@ -533,7 +532,7 @@ class TestSyncAllCommand:
         )
 
         # Execute command
-        result = runner.invoke(app, ["sync", "all"])
+        runner.invoke(app, ["sync", "all"])
 
         # Verify topic repository was created
         mock_container.create_topic_category_repository.assert_called()
@@ -588,7 +587,7 @@ class TestProcessWatchHistoryBatch:
                 action="Watched",
                 channel_id="UC1234567890123456789012",
                 channel_name="Test Channel",
-                watched_at=datetime.now(timezone.utc),
+                watched_at=datetime.now(UTC),
             )
         ]
 

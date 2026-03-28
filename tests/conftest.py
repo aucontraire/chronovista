@@ -6,6 +6,10 @@ from __future__ import annotations
 
 import os
 import sys
+
+# Disable Rich/Typer ANSI color output in CLI tests. Must be set before
+# Rich's Console is imported, as it checks NO_COLOR at construction time.
+os.environ["NO_COLOR"] = "1"
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -109,6 +113,3 @@ def pytest_configure(config):
         "markers",
         "performance: mark test as performance test requiring database and large datasets",
     )
-    # Disable Rich/Typer ANSI output in CLI tests — CliRunner.invoke() runs
-    # in-process so it reads os.environ, not the shell's env vars.
-    os.environ.setdefault("NO_COLOR", "1")

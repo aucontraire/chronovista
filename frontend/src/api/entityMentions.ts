@@ -48,11 +48,22 @@ export interface EntityVideoResult {
   /** Number of transcript-derived mentions (excludes manual). */
   mention_count: number;
   mentions: MentionPreview[];
-  /** Detection method categories present, e.g. ["transcript", "manual"]. */
+  /**
+   * Detection method categories present for this video–entity association.
+   *
+   * Known values:
+   * - `"transcript"` — entity was detected in a transcript segment via scan
+   * - `"manual"` — user created a manual association via the UI
+   * - `"tag"` — video is tagged with the entity's canonical tag (Feature 053)
+   *
+   * A single video may have multiple sources (e.g. `["transcript", "tag"]`).
+   * Tag-only videos have `mention_count: 0`, `mentions: []`, and
+   * `first_mention_time: null`.
+   */
   sources: string[];
   /** Whether a manual association exists for this entity on this video. */
   has_manual: boolean;
-  /** Earliest transcript mention timestamp; null for manual-only videos. */
+  /** Earliest transcript mention timestamp; null for manual-only or tag-only videos. */
   first_mention_time: number | null;
   /** Video upload date (ISO 8601) for sort ordering. */
   upload_date: string | null;

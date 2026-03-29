@@ -11,6 +11,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.54.0] - 2026-03-28
+
+### Added
+- **Feature 053: Entity Detail — Tag-Based Video Associations** (Issue #85)
+  - **Canonical Tag Video Association (US1)**: Entity detail page shows videos tagged with the entity's canonical tag alongside transcript mentions; entities created via classify now surface all tagged videos without requiring a transcript scan; the join path `canonical_tags → tag_aliases → video_tags` is queried at request time with no schema migration
+  - **Alias-Matched Tag Video Association (US2)**: Videos tagged with terms matching entity aliases appear on the entity detail page; adding alias "AI" to entity "Artificial Intelligence" immediately surfaces all videos tagged "AI"; uses `TagNormalizationService.normalize()` for case-insensitive matching via exact equality on `tag_aliases.normalized_form`; ASR error aliases excluded from tag matching to prevent false positives
+  - **Source Distinction (US3)**: Teal "TAG" badge (`bg-teal-100 text-teal-700`) distinguishes tag-sourced videos from transcript mentions (indigo) and manual links (green); tag-only videos link to `/videos/{id}` without timestamp params; mixed-source videos show both badges
+  - **Combined Video Count (US4+US5)**: Entity detail header shows deduplicated count across all sources (transcript + canonical tag + alias tag); entity list page continues using stored counts for performance
+  - **Three-source deduplication**: Videos appearing in multiple sources (transcript mention + canonical tag + alias match) appear once with merged `sources: ["transcript", "tag"]`; transcript-mention data preserved when present
+  - **Sort order**: Transcript-mention videos appear before tag-only videos; within each group, sorted by mention count DESC then upload date DESC
+
+### Fixed
+- ASR error aliases ("Andres", "Lopez", "elon") excluded from tag matching to prevent false positives — e.g., "elon" as an ASR alias for Ilhan Omar was matching 15 Elon Musk videos via tags
+
+### Technical
+- Backend version: 0.53.1 → 0.54.0
+- Frontend version: 0.22.0 → 0.23.0
+- 50 new tests (36 backend, 14 frontend)
+- No database migration (FR-011) — all tag associations computed via query-time JOINs
+- New repository methods: `_get_tag_associated_video_ids()`, `_get_alias_matched_tag_video_ids()`, `get_combined_video_count()`
+- `sources` vocabulary extended with `"tag"` value (additive, backward compatible)
+- Closes #85
+
 ## [0.53.1] - 2026-03-28
 
 ### Added

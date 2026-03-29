@@ -1711,7 +1711,7 @@ GET /api/v1/entities/{entity_id}
 
 #### Get Entity Videos
 
-Retrieve a paginated list of videos mentioning a given entity, with up to 5 mention previews per video.
+Retrieve a paginated list of videos associated with a given entity from three sources: transcript mentions, canonical tag associations, and alias-matched tag associations. Results are deduplicated by video and sorted with transcript-mention videos first.
 
 ```
 GET /api/v1/entities/{entity_id}/videos
@@ -1735,12 +1735,37 @@ GET /api/v1/entities/{entity_id}/videos
       "mention_count": 12,
       "mentions": [
         { "segment_id": 456, "start_time": 123.5, "mention_text": "AMLO" }
-      ]
+      ],
+      "sources": ["transcript", "tag"],
+      "has_manual": false,
+      "first_mention_time": 123.5,
+      "upload_date": "2025-06-15T00:00:00Z"
+    },
+    {
+      "video_id": "xyz789",
+      "video_title": "Tagged but no transcript mention",
+      "channel_name": "Another Channel",
+      "mention_count": 0,
+      "mentions": [],
+      "sources": ["tag"],
+      "has_manual": false,
+      "first_mention_time": null,
+      "upload_date": "2024-11-20T00:00:00Z"
     }
   ],
   "pagination": { "total": 87, "limit": 20, "offset": 0, "has_more": true }
 }
 ```
+
+**Video Sources** (Feature 053):
+
+| Source | Meaning | `mention_count` | `mentions` | `first_mention_time` |
+|--------|---------|-----------------|------------|---------------------|
+| `transcript` | Entity name found in transcript text | > 0 | Up to 5 previews | Timestamp (seconds) |
+| `tag` | Video tagged with entity's canonical tag or alias-matched tag | 0 | `[]` | `null` |
+| `manual` | User manually linked entity to video | 0 | `[]` | `null` |
+
+Videos may have multiple sources (e.g., `["transcript", "tag"]`). ASR error aliases are excluded from tag matching to prevent false positives.
 
 ---
 

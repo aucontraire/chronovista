@@ -568,6 +568,15 @@ async def get_entity_detail(
     # Sort by occurrence count descending, then alphabetically for stability
     genuine_aliases.sort(key=lambda a: (-a.occurrence_count, a.alias_name))
 
+    # T030 / FR-007: Compute combined video count from all sources
+    # (transcript mentions + canonical tag + alias-matched tags) instead
+    # of using the stored named_entities.video_count which only reflects
+    # transcript-mention counts.
+    combined_video_count = await _mention_repo.get_combined_video_count(
+        session,
+        entity_id=parsed_entity_id,
+    )
+
     return {
         "data": {
             "entity_id": str(entity.id),
@@ -576,7 +585,7 @@ async def get_entity_detail(
             "description": entity.description,
             "status": entity.status,
             "mention_count": entity.mention_count or 0,
-            "video_count": entity.video_count or 0,
+            "video_count": combined_video_count,
             "aliases": [a.model_dump() for a in genuine_aliases],
             "exclusion_patterns": list(entity.exclusion_patterns or []),
         }

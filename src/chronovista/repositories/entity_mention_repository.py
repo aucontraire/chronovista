@@ -58,6 +58,7 @@ from chronovista.exceptions import APIValidationError, ConflictError, NotFoundEr
 from chronovista.models.entity_mention import EntityMentionCreate
 from chronovista.models.enums import EntityAliasType
 from chronovista.repositories.base import BaseSQLAlchemyRepository
+from chronovista.services.tag_normalization import TagNormalizationService
 
 
 class EntityMentionRepository(
@@ -584,12 +585,26 @@ class EntityMentionRepository(
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        """Get paginated list of videos where an entity is mentioned.
+        """Get paginated list of videos associated with an entity.
 
-        GROUP BY video_id with transcript-only mention_count. JOINs videos for
-        title, channels for channel_name. Each result includes up to 5 mention
-        previews (transcript-derived only), source categories, has_manual flag,
-        first_mention_time, and upload_date. Sorted by upload_date DESC.
+        Returns videos from three sources:
+        1. **Transcript mentions** — entity_mentions rows (existing behaviour)
+        2. **Canonical tag associations** — videos tagged with the entity's
+           linked canonical tag (Feature 053, US1)
+        3. **Alias-matched tag associations** — videos tagged with terms
+           matching entity aliases via normalization (Feature 053, US2)
+
+        Both tag sources (canonical and alias-matched) use the same ``"tag"``
+        source indicator.  Videos appearing in multiple sources are
+        deduplicated by video_id; the transcript-mention data (mention_count,
+        mentions, first_mention_time) is preserved and ``"tag"`` is appended
+        to the ``sources`` list (only once, regardless of how many tag paths
+        matched — T020).
+
+        Sort order: transcript-mention videos first (mention_count DESC,
+        upload_date DESC), then tag-only videos (upload_date DESC).  This
+        uses a composite key ``(has_transcript_mention DESC, mention_count
+        DESC, upload_date DESC)`` per research.md Decision 5.
 
         Parameters
         ----------
@@ -608,7 +623,8 @@ class EntityMentionRepository(
         Returns
         -------
         tuple[list[dict[str, Any]], int]
-            Tuple of (results list, total count of distinct videos).
+            Tuple of (results list, total deduplicated count of distinct
+            videos across transcript mentions and tag associations).
         """
         # Build "visible names" subquery: canonical name + non-ASR-error
         # aliases.  This keeps video/mention counts consistent with the
@@ -649,9 +665,11 @@ class EntityMentionRepository(
             else None
         )
 
-        # Total count of distinct videos
-        count_stmt = (
-            select(func.count(distinct(EntityMentionDB.video_id)))
+        # ------------------------------------------------------------------
+        # Step 1: Fetch transcript-mention video_ids (for total count)
+        # ------------------------------------------------------------------
+        transcript_vid_stmt = (
+            select(distinct(EntityMentionDB.video_id))
             .outerjoin(
                 visible_names,
                 func.lower(EntityMentionDB.mention_text)
@@ -660,133 +678,159 @@ class EntityMentionRepository(
             .where(mention_filter)
         )
         if lang_filter is not None:
-            count_stmt = count_stmt.where(lang_filter)
+            transcript_vid_stmt = transcript_vid_stmt.where(lang_filter)
 
-        total_result = await session.execute(count_stmt)
-        total_count = total_result.scalar() or 0
+        transcript_vid_result = await session.execute(transcript_vid_stmt)
+        transcript_video_ids: set[str] = set(
+            transcript_vid_result.scalars().all()
+        )
+
+        # ------------------------------------------------------------------
+        # Step 2: Fetch tag-associated video_ids (Sources 2 & 3)
+        # ------------------------------------------------------------------
+        # Source 2: canonical tag path
+        canonical_tag_video_ids = await self._get_tag_associated_video_ids(
+            session, entity_id
+        )
+        # Source 3: alias-matched tag path (T019)
+        alias_tag_video_ids = await self._get_alias_matched_tag_video_ids(
+            session, entity_id
+        )
+        # Union both tag sources — same "tag" indicator for both paths
+        tag_video_ids = canonical_tag_video_ids | alias_tag_video_ids
+
+        # Deduplicated total count across all sources (T015, T020)
+        all_video_ids = transcript_video_ids | tag_video_ids
+        total_count = len(all_video_ids)
 
         if total_count == 0:
             return [], 0
 
-        # Main query: group by video_id with transcript-only mention count,
-        # source categories, has_manual, first_mention_time, upload_date.
-        main_stmt = (
-            select(
-                EntityMentionDB.video_id,
-                VideoDB.title.label("video_title"),
-                func.coalesce(
-                    Channel.title, VideoDB.channel_name_hint, "Unknown"
-                ).label("channel_name"),
-                # Transcript-only mention count (excludes manual)
-                func.count()
-                .filter(
-                    EntityMentionDB.detection_method.in_(self._TRANSCRIPT_METHODS)
-                )
-                .label("mention_count"),
-                # Collect distinct detection methods for source mapping
-                func.array_agg(
-                    distinct(EntityMentionDB.detection_method)
-                ).label("detection_methods"),
-                # Has manual flag
-                func.bool_or(
-                    EntityMentionDB.detection_method == "manual"
-                ).label("has_manual"),
-                # First mention time from transcript segments (LEFT JOIN)
-                func.min(TranscriptSegmentDB.start_time).label(
-                    "first_mention_time"
-                ),
-                # Upload date for sorting
-                VideoDB.upload_date,
-            )
-            .outerjoin(
-                visible_names,
-                func.lower(EntityMentionDB.mention_text)
-                == visible_names.c.name_lower,
-            )
-            .join(VideoDB, EntityMentionDB.video_id == VideoDB.video_id)
-            .outerjoin(Channel, VideoDB.channel_id == Channel.channel_id)
-            .outerjoin(
-                TranscriptSegmentDB,
-                EntityMentionDB.segment_id == TranscriptSegmentDB.id,
-            )
-            .where(mention_filter)
-        )
-        if lang_filter is not None:
-            main_stmt = main_stmt.where(lang_filter)
+        # ------------------------------------------------------------------
+        # Step 3: Fetch transcript-mention video details (existing logic)
+        # ------------------------------------------------------------------
+        # We still need the grouped query for transcript-mention videos
+        # to get mention_count, detection_methods, first_mention_time, etc.
+        results_dict: dict[str, dict[str, Any]] = {}
 
-        main_stmt = (
-            main_stmt.group_by(
-                EntityMentionDB.video_id,
-                VideoDB.title,
-                Channel.title,
-                VideoDB.channel_name_hint,
-                VideoDB.upload_date,
-            )
-            .order_by(VideoDB.upload_date.desc())
-            .offset(offset)
-            .limit(limit)
-        )
-
-        main_result = await session.execute(main_stmt)
-        video_rows = main_result.all()
-
-        results: list[dict[str, Any]] = []
-        for row in video_rows:
-            # Map detection methods to source categories
-            sources = sorted(
-                {
-                    self._SOURCE_CATEGORY_MAP.get(dm, dm)
-                    for dm in (row.detection_methods or [])
-                }
-            )
-
-            # Fetch up to 5 transcript-derived mention previews (skip manual)
-            preview_stmt = (
+        if transcript_video_ids:
+            main_stmt = (
                 select(
-                    EntityMentionDB.segment_id,
-                    TranscriptSegmentDB.start_time,
-                    EntityMentionDB.mention_text,
-                )
-                .join(
-                    TranscriptSegmentDB,
-                    EntityMentionDB.segment_id == TranscriptSegmentDB.id,
+                    EntityMentionDB.video_id,
+                    VideoDB.title.label("video_title"),
+                    func.coalesce(
+                        Channel.title, VideoDB.channel_name_hint, "Unknown"
+                    ).label("channel_name"),
+                    # Transcript-only mention count (excludes manual)
+                    func.count()
+                    .filter(
+                        EntityMentionDB.detection_method.in_(
+                            self._TRANSCRIPT_METHODS
+                        )
+                    )
+                    .label("mention_count"),
+                    # Collect distinct detection methods for source mapping
+                    func.array_agg(
+                        distinct(EntityMentionDB.detection_method)
+                    ).label("detection_methods"),
+                    # Has manual flag
+                    func.bool_or(
+                        EntityMentionDB.detection_method == "manual"
+                    ).label("has_manual"),
+                    # First mention time from transcript segments (LEFT JOIN)
+                    func.min(TranscriptSegmentDB.start_time).label(
+                        "first_mention_time"
+                    ),
+                    # Upload date for sorting
+                    VideoDB.upload_date,
                 )
                 .outerjoin(
                     visible_names,
                     func.lower(EntityMentionDB.mention_text)
                     == visible_names.c.name_lower,
                 )
-                .where(
-                    EntityMentionDB.entity_id == entity_id,
-                    EntityMentionDB.video_id == row.video_id,
-                    EntityMentionDB.detection_method != "manual",
-                    or_(
+                .join(VideoDB, EntityMentionDB.video_id == VideoDB.video_id)
+                .outerjoin(Channel, VideoDB.channel_id == Channel.channel_id)
+                .outerjoin(
+                    TranscriptSegmentDB,
+                    EntityMentionDB.segment_id == TranscriptSegmentDB.id,
+                )
+                .where(mention_filter)
+            )
+            if lang_filter is not None:
+                main_stmt = main_stmt.where(lang_filter)
+
+            main_stmt = main_stmt.group_by(
+                EntityMentionDB.video_id,
+                VideoDB.title,
+                Channel.title,
+                VideoDB.channel_name_hint,
+                VideoDB.upload_date,
+            )
+
+            main_result = await session.execute(main_stmt)
+            video_rows = main_result.all()
+
+            for row in video_rows:
+                # Map detection methods to source categories
+                sources = sorted(
+                    {
+                        self._SOURCE_CATEGORY_MAP.get(dm, dm)
+                        for dm in (row.detection_methods or [])
+                    }
+                )
+
+                # T013: If this video is also in tag results, append "tag"
+                if row.video_id in tag_video_ids and "tag" not in sources:
+                    sources.append("tag")
+                    sources.sort()
+
+                # Fetch up to 5 transcript-derived mention previews
+                preview_stmt = (
+                    select(
+                        EntityMentionDB.segment_id,
+                        TranscriptSegmentDB.start_time,
+                        EntityMentionDB.mention_text,
+                    )
+                    .join(
+                        TranscriptSegmentDB,
+                        EntityMentionDB.segment_id == TranscriptSegmentDB.id,
+                    )
+                    .outerjoin(
+                        visible_names,
                         func.lower(EntityMentionDB.mention_text)
                         == visible_names.c.name_lower,
-                        EntityMentionDB.detection_method == "manual",
-                    ),
+                    )
+                    .where(
+                        EntityMentionDB.entity_id == entity_id,
+                        EntityMentionDB.video_id == row.video_id,
+                        EntityMentionDB.detection_method != "manual",
+                        or_(
+                            func.lower(EntityMentionDB.mention_text)
+                            == visible_names.c.name_lower,
+                            EntityMentionDB.detection_method == "manual",
+                        ),
+                    )
                 )
-            )
-            if language_code is not None:
-                preview_stmt = preview_stmt.where(
-                    EntityMentionDB.language_code == language_code
-                )
-            preview_stmt = preview_stmt.order_by(
-                TranscriptSegmentDB.start_time.asc()
-            ).limit(5)
+                if language_code is not None:
+                    preview_stmt = preview_stmt.where(
+                        EntityMentionDB.language_code == language_code
+                    )
+                preview_stmt = preview_stmt.order_by(
+                    TranscriptSegmentDB.start_time.asc()
+                ).limit(5)
 
-            preview_result = await session.execute(preview_stmt)
-            previews = [
-                {
-                    "segment_id": p.segment_id,
-                    "start_time": p.start_time,
-                    "mention_text": p.mention_text,
-                }
-                for p in preview_result.all()
-            ]
+                preview_result = await session.execute(preview_stmt)
+                previews = [
+                    {
+                        "segment_id": p.segment_id,
+                        "start_time": p.start_time,
+                        "mention_text": p.mention_text,
+                    }
+                    for p in preview_result.all()
+                ]
 
-            results.append(
-                {
+                results_dict[row.video_id] = {
                     "video_id": row.video_id,
                     "video_title": row.video_title,
                     "channel_name": row.channel_name,
@@ -805,9 +849,148 @@ class EntityMentionRepository(
                         else None
                     ),
                 }
+
+        # ------------------------------------------------------------------
+        # Step 4: Fetch tag-only video details (T012)
+        # ------------------------------------------------------------------
+        tag_only_ids = tag_video_ids - transcript_video_ids
+        if tag_only_ids:
+            tag_meta_stmt = (
+                select(
+                    VideoDB.video_id,
+                    VideoDB.title.label("video_title"),
+                    func.coalesce(
+                        Channel.title, VideoDB.channel_name_hint, "Unknown"
+                    ).label("channel_name"),
+                    VideoDB.upload_date,
+                )
+                .outerjoin(Channel, VideoDB.channel_id == Channel.channel_id)
+                .where(VideoDB.video_id.in_(tag_only_ids))
+            )
+            tag_meta_result = await session.execute(tag_meta_stmt)
+            tag_meta_rows = tag_meta_result.all()
+
+            for row in tag_meta_rows:
+                results_dict[row.video_id] = {
+                    "video_id": row.video_id,
+                    "video_title": row.video_title,
+                    "channel_name": row.channel_name,
+                    "mention_count": 0,
+                    "mentions": [],
+                    "sources": ["tag"],
+                    "has_manual": False,
+                    "first_mention_time": None,
+                    "upload_date": (
+                        row.upload_date.isoformat()
+                        if row.upload_date is not None
+                        else None
+                    ),
+                }
+
+        # ------------------------------------------------------------------
+        # Step 5: Sort — transcript-mention videos first, then tag-only (T014)
+        # ------------------------------------------------------------------
+        # Composite sort key: (has_transcript_mention DESC, mention_count DESC,
+        # upload_date DESC)  — per research.md Decision 5
+        def _sort_key(item: dict[str, Any]) -> tuple[int, int, str]:
+            has_transcript = 1 if item["mention_count"] > 0 or any(
+                s in ("transcript", "manual") for s in item["sources"]
+            ) else 0
+            return (
+                has_transcript,
+                item["mention_count"],
+                item["upload_date"] or "",
             )
 
-        return results, total_count
+        sorted_results = sorted(
+            results_dict.values(), key=_sort_key, reverse=True
+        )
+
+        # ------------------------------------------------------------------
+        # Step 6: Apply pagination to the merged, sorted results (T015)
+        # ------------------------------------------------------------------
+        paginated = sorted_results[offset : offset + limit]
+
+        return paginated, total_count
+
+    async def get_combined_video_count(
+        self,
+        session: AsyncSession,
+        entity_id: uuid.UUID,
+    ) -> int:
+        """Get the combined deduplicated video count for an entity.
+
+        Computes the total number of unique videos associated with an entity
+        across all three sources (transcript mentions, canonical tag
+        associations, alias-matched tag associations) without fetching
+        full video details.
+
+        This is a lightweight alternative to ``get_entity_video_list()``
+        for use cases that only need the count (e.g., entity detail header
+        video_count field per FR-007 / T030).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        entity_id : uuid.UUID
+            The named entity UUID.
+
+        Returns
+        -------
+        int
+            The deduplicated count of distinct video IDs from all sources.
+        """
+        # Step 1: Fetch transcript-mention video IDs (no language filter —
+        # the header count should reflect all languages).
+        canonical_names = select(
+            func.lower(NamedEntityDB.canonical_name).label("name_lower"),
+        ).where(NamedEntityDB.id == entity_id)
+
+        non_asr_aliases = select(
+            func.lower(EntityAliasDB.alias_name).label("name_lower"),
+        ).where(
+            EntityAliasDB.entity_id == entity_id,
+            EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR,
+        )
+
+        visible_names = union(canonical_names, non_asr_aliases).subquery()
+
+        mention_filter = and_(
+            EntityMentionDB.entity_id == entity_id,
+            or_(
+                func.lower(EntityMentionDB.mention_text)
+                == visible_names.c.name_lower,
+                EntityMentionDB.detection_method == "manual",
+            ),
+        )
+
+        transcript_vid_stmt = (
+            select(distinct(EntityMentionDB.video_id))
+            .outerjoin(
+                visible_names,
+                func.lower(EntityMentionDB.mention_text)
+                == visible_names.c.name_lower,
+            )
+            .where(mention_filter)
+        )
+        transcript_vid_result = await session.execute(transcript_vid_stmt)
+        transcript_video_ids: set[str] = set(
+            transcript_vid_result.scalars().all()
+        )
+
+        # Step 2: Fetch tag-associated video IDs
+        canonical_tag_video_ids = await self._get_tag_associated_video_ids(
+            session, entity_id
+        )
+        alias_tag_video_ids = await self._get_alias_matched_tag_video_ids(
+            session, entity_id
+        )
+        tag_video_ids = canonical_tag_video_ids | alias_tag_video_ids
+
+        # Deduplicated union
+        all_video_ids = transcript_video_ids | tag_video_ids
+        return len(all_video_ids)
 
     async def get_statistics(
         self,
@@ -1295,3 +1478,110 @@ class EntityMentionRepository(
         await session.flush()
 
         await self.update_entity_counters(session, [entity_id])
+
+    async def _get_tag_associated_video_ids(
+        self, session: AsyncSession, entity_id: uuid.UUID
+    ) -> set[str]:
+        """Get video IDs associated with an entity via canonical tag linkage.
+
+        Follows the query path: canonical_tags (entity_id) -> tag_aliases
+        (canonical_tag_id) -> video_tags (tag = raw_form).
+
+        Does NOT filter by canonical_tags.status -- deprecated tags still
+        return their associated videos (Decision 8).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        entity_id : uuid.UUID
+            The named entity UUID.
+
+        Returns
+        -------
+        set[str]
+            Set of video_id strings from the tag association path.
+            Empty set if the entity has no linked canonical tags.
+        """
+        stmt = (
+            select(VideoTagDB.video_id)
+            .select_from(CanonicalTagDB)
+            .join(
+                TagAliasDB,
+                TagAliasDB.canonical_tag_id == CanonicalTagDB.id,
+            )
+            .join(
+                VideoTagDB,
+                VideoTagDB.tag == TagAliasDB.raw_form,
+            )
+            .where(CanonicalTagDB.entity_id == entity_id)
+            .distinct()
+        )
+        result = await session.execute(stmt)
+        return set(result.scalars().all())
+
+    async def _get_alias_matched_tag_video_ids(
+        self, session: AsyncSession, entity_id: uuid.UUID
+    ) -> set[str]:
+        """Get video IDs by matching entity aliases against tag normalized forms.
+
+        For each entity alias, normalizes the alias_name using
+        TagNormalizationService, then matches against tag_aliases.normalized_form
+        to find associated videos via video_tags.
+
+        ASR error aliases (alias_type='asr_error') are excluded because they are
+        transcript-specific patterns (e.g., "Andres", "elon") that produce false
+        positives when matched against YouTube tags.
+
+        Aliases whose normalized form is None are silently skipped (Decision 7).
+        Uses exact equality matching, not ILIKE (Decision 10).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        entity_id : uuid.UUID
+            The named entity UUID.
+
+        Returns
+        -------
+        set[str]
+            Set of video_id strings from the alias-matched tag path.
+            Empty set if the entity has no aliases or no aliases match tags.
+        """
+        # Fetch non-ASR aliases for this entity (ASR error aliases are
+        # transcript-specific patterns that produce false positives against tags)
+        alias_stmt = select(EntityAliasDB.alias_name).where(
+            EntityAliasDB.entity_id == entity_id,
+            EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR,
+        )
+        alias_result = await session.execute(alias_stmt)
+        alias_names: list[str] = list(alias_result.scalars().all())
+
+        if not alias_names:
+            return set()
+
+        # Normalize each alias using the tag normalization pipeline
+        normalizer = TagNormalizationService()
+        normalized_forms: list[str] = []
+        for alias_name in alias_names:
+            normalized = normalizer.normalize(alias_name)
+            if normalized is not None:
+                normalized_forms.append(normalized)
+
+        if not normalized_forms:
+            return set()
+
+        # Query: tag_aliases WHERE normalized_form IN (...) -> video_tags
+        stmt = (
+            select(VideoTagDB.video_id)
+            .select_from(TagAliasDB)
+            .join(
+                VideoTagDB,
+                VideoTagDB.tag == TagAliasDB.raw_form,
+            )
+            .where(TagAliasDB.normalized_form.in_(normalized_forms))
+            .distinct()
+        )
+        result = await session.execute(stmt)
+        return set(result.scalars().all())

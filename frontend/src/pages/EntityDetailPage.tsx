@@ -321,8 +321,14 @@ function EntityVideoCard({
 }: EntityVideoCardProps) {
   const isManualOnly = mention_count === 0 && has_manual;
   const hasTranscript = sources.includes("transcript") && mention_count > 0;
+  const hasTag = sources.includes("tag");
 
-  const to = isManualOnly || first_mention_time == null
+  // T026: tag-only videos (no transcript mention and no manual association)
+  // link to the video page without segment/timestamp params since there is no
+  // transcript timestamp to seek to.
+  const isTagOnly = !sources.includes("transcript") && !has_manual;
+
+  const to = isTagOnly || isManualOnly || first_mention_time == null
     ? `/videos/${video_id}`
     : first_segment_id > 0
       ? `/videos/${video_id}?seg=${first_segment_id}&t=${Math.floor(first_mention_time)}`
@@ -360,6 +366,15 @@ function EntityVideoCard({
                 data-testid="manual-badge"
               >
                 MANUAL
+              </span>
+            )}
+            {/* T025: TAG badge — teal pill shown when video is associated via tag */}
+            {hasTag && (
+              <span
+                className="inline-flex items-center bg-teal-100 text-teal-700 rounded-full px-2 py-0.5 text-xs font-medium"
+                data-testid="tag-badge"
+              >
+                TAG
               </span>
             )}
           </div>

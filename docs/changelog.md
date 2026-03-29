@@ -11,6 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.54.0] - 2026-03-28
+
+### Added
+- **Feature 053: Entity Detail — Tag-Based Video Associations** (Issue #85)
+  - Entity detail page shows videos from three sources: transcript mentions, canonical tag associations, and alias-matched tag associations
+  - Teal "TAG" source badge distinguishes tag-sourced videos from transcript mentions
+  - Combined video count in entity header reflects all sources (deduplicated)
+  - ASR error aliases excluded from tag matching to prevent false positives
+  - No database migration — all associations computed at query time
+
+### Technical
+- Backend: 0.53.1 → 0.54.0, Frontend: 0.22.0 → 0.23.0
+- 50 new tests, closes #85
+
 ## [0.53.1] - 2026-03-28
 
 ### Added

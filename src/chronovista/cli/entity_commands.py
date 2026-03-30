@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console
@@ -43,7 +43,10 @@ from chronovista.models.named_entity import NamedEntityCreate
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
-from chronovista.services.entity_mention_scan_service import EntityMentionScanService
+from chronovista.services.entity_mention_scan_service import (
+    EntityMentionScanService,
+    ScanResult,
+)
 from chronovista.services.tag_normalization import TagNormalizationService
 
 logger = logging.getLogger(__name__)
@@ -828,6 +831,68 @@ def backfill_descriptions(
     asyncio.run(_run())
 
 
+def _merge_scan_results(
+    transcript_result: ScanResult | None,
+    metadata_result: ScanResult | None,
+) -> ScanResult:
+    """Merge two ScanResult objects from transcript and metadata scans.
+
+    Sums all numeric fields and combines dry_run_matches lists.  If only
+    one result is provided, it is returned directly.
+
+    Parameters
+    ----------
+    transcript_result : ScanResult | None
+        Result from the transcript scan, or ``None`` if transcript was not scanned.
+    metadata_result : ScanResult | None
+        Result from the metadata scan, or ``None`` if no metadata sources.
+
+    Returns
+    -------
+    ScanResult
+        Merged aggregate statistics.
+    """
+    if transcript_result is None and metadata_result is None:
+        return ScanResult()
+    if transcript_result is None:
+        return metadata_result  # type: ignore[return-value]
+    if metadata_result is None:
+        return transcript_result
+
+    # Combine dry_run_matches
+    combined_matches: list[dict[str, Any]] | None = None
+    if transcript_result.dry_run_matches is not None or metadata_result.dry_run_matches is not None:
+        combined_matches = []
+        if transcript_result.dry_run_matches:
+            combined_matches.extend(transcript_result.dry_run_matches)
+        if metadata_result.dry_run_matches:
+            combined_matches.extend(metadata_result.dry_run_matches)
+
+    # unique_entities and unique_videos: we take the max since we cannot easily
+    # merge the underlying sets here; in practice the CLI display does not need
+    # exact deduplication across the two result objects.
+    return ScanResult(
+        segments_scanned=transcript_result.segments_scanned + metadata_result.segments_scanned,
+        mentions_found=transcript_result.mentions_found + metadata_result.mentions_found,
+        mentions_skipped=transcript_result.mentions_skipped + metadata_result.mentions_skipped,
+        unique_entities=max(
+            transcript_result.unique_entities, metadata_result.unique_entities
+        ),
+        unique_videos=max(transcript_result.unique_videos, metadata_result.unique_videos),
+        duration_seconds=transcript_result.duration_seconds + metadata_result.duration_seconds,
+        dry_run=transcript_result.dry_run or metadata_result.dry_run,
+        failed_batches=transcript_result.failed_batches + metadata_result.failed_batches,
+        dry_run_matches=combined_matches,
+        skipped_longest_match=(
+            transcript_result.skipped_longest_match + metadata_result.skipped_longest_match
+        ),
+        skipped_exclusion_pattern=(
+            transcript_result.skipped_exclusion_pattern
+            + metadata_result.skipped_exclusion_pattern
+        ),
+    )
+
+
 @entity_app.command("scan")
 def scan_entities(
     entity_type: Annotated[
@@ -873,12 +938,41 @@ def scan_entities(
         str | None,
         typer.Option("--entity-id", help="Scan for a single entity"),
     ] = None,
+    sources: Annotated[
+        str,
+        typer.Option(
+            "--sources",
+            help=(
+                "Comma-separated list of sources to scan. "
+                "Valid values: transcript, title, description. "
+                "Default: transcript."
+            ),
+        ),
+    ] = "transcript",
 ) -> None:
     """Scan transcript segments for named entity mentions."""
 
     # Validate mutual exclusivity: --audit and --full
     if audit and full:
         raise typer.BadParameter("--audit and --full are mutually exclusive")
+
+    # Parse and validate --sources
+    valid_sources = {"transcript", "title", "description"}
+    parsed_sources: list[str] = [s.strip() for s in sources.split(",") if s.strip()]
+    if not parsed_sources:
+        parsed_sources = ["transcript"]
+    invalid_sources = [s for s in parsed_sources if s not in valid_sources]
+    if invalid_sources:
+        valid_list = ", ".join(sorted(valid_sources))
+        console.print(
+            Panel(
+                f"[red]Invalid source(s): {', '.join(invalid_sources)}.\n"
+                f"Valid values: {valid_list}[/red]",
+                title="Invalid --sources",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(code=1)
 
     # Validate entity type if provided
     if entity_type is not None:
@@ -989,6 +1083,11 @@ def scan_entities(
             effective_new_entities_only = False
             effective_entity_ids = [parsed_entity_uuid]
 
+        # Determine which service calls to make based on parsed_sources
+        transcript_sources = ["transcript"] if "transcript" in parsed_sources else []
+        metadata_sources = [s for s in parsed_sources if s != "transcript"]
+        has_metadata_sources = bool(metadata_sources)
+
         if dry_run:
             # Dry-run mode: show preview table
             with Progress(
@@ -998,17 +1097,35 @@ def scan_entities(
             ) as progress:
                 progress.add_task("Scanning (dry run)...", total=None)
 
-                result = await service.scan(
-                    entity_type=effective_entity_type,
-                    video_ids=video_id,
-                    language_code=language,
-                    batch_size=batch_size,
-                    dry_run=True,
-                    full_rescan=full,
-                    new_entities_only=effective_new_entities_only,
-                    limit=limit,
-                    entity_ids=effective_entity_ids,
-                )
+                transcript_result: ScanResult | None = None
+                metadata_result: ScanResult | None = None
+
+                if transcript_sources:
+                    transcript_result = await service.scan(
+                        entity_type=effective_entity_type,
+                        video_ids=video_id,
+                        language_code=language,
+                        batch_size=batch_size,
+                        dry_run=True,
+                        full_rescan=full,
+                        new_entities_only=effective_new_entities_only,
+                        limit=limit,
+                        entity_ids=effective_entity_ids,
+                    )
+
+                if metadata_sources:
+                    metadata_result = await service.scan_metadata(
+                        sources=metadata_sources,
+                        entity_type=effective_entity_type,
+                        video_ids=video_id,
+                        language_code=language,
+                        batch_size=batch_size,
+                        dry_run=True,
+                        full_rescan=full,
+                        entity_ids=effective_entity_ids,
+                    )
+
+            result = _merge_scan_results(transcript_result, metadata_result)
 
             if not result.dry_run_matches:
                 console.print(
@@ -1024,32 +1141,58 @@ def scan_entities(
             preview_table.add_column("video_id", style="dim", width=14)
             preview_table.add_column("segment_id", style="dim", width=12)
             preview_table.add_column("start_time", style="dim", width=10)
+            if has_metadata_sources:
+                preview_table.add_column("source", style="blue", width=12)
             preview_table.add_column("entity_name", style="cyan", width=24)
             preview_table.add_column("entity_type", style="magenta", width=16)
             preview_table.add_column("matched_text", style="green", width=20)
             preview_table.add_column("context", style="white", width=40)
 
             for match in result.dry_run_matches:
-                context_text = match.get("context", "")
+                context_text = match.get("context", "") or ""
                 if len(context_text) > 40:
                     context_text = context_text[:37] + "..."
 
-                preview_table.add_row(
+                match_source: str = match.get("source", "transcript")
+                is_metadata = match_source in ("title", "description")
+
+                # For metadata mentions, segment_id and start_time display as em dash
+                segment_id_str = "\u2014" if is_metadata else str(match.get("segment_id"))
+                start_time_val = match.get("start_time")
+                start_time_str = (
+                    "\u2014"
+                    if is_metadata or start_time_val is None
+                    else f"{start_time_val:.1f}"
+                )
+
+                row_values: list[str] = [
                     match["video_id"],
-                    str(match["segment_id"]),
-                    f"{match['start_time']:.1f}",
+                    segment_id_str,
+                    start_time_str,
+                ]
+                if has_metadata_sources:
+                    row_values.append(match_source)
+                row_values.extend([
                     match["entity_name"],
                     match["entity_type"],
                     match["matched_text"],
                     context_text,
-                )
+                ])
+                preview_table.add_row(*row_values)
 
             console.print(preview_table)
+
+            # Summary line: say "N videos scanned" when metadata sources included
+            if has_metadata_sources:
+                scanned_label = f"{result.segments_scanned:,} videos scanned"
+            else:
+                scanned_label = f"{result.segments_scanned:,} segments scanned"
+
             dry_run_summary = (
                 f"\nDry run complete: [bold]{result.mentions_found:,}[/bold] mentions "
                 f"would be created across [bold]{result.unique_videos:,}[/bold] videos "
                 f"for [bold]{result.unique_entities:,}[/bold] entities "
-                f"({result.segments_scanned:,} segments scanned, "
+                f"({scanned_label}, "
                 f"{result.duration_seconds:.1f}s)"
             )
             if result.skipped_longest_match > 0 or result.skipped_exclusion_pattern > 0:
@@ -1067,30 +1210,60 @@ def scan_entities(
                 TaskProgressColumn(),
                 console=console,
             ) as progress:
-                task = progress.add_task("Scanning segments...", total=None)
+                task = progress.add_task("Scanning...", total=None)
 
                 def _progress_callback(scanned: int, found: int) -> None:
                     progress.update(
                         task,
                         completed=scanned,
-                        description=f"Scanning segments... ({found:,} mentions found)",
+                        description=f"Scanning... ({found:,} mentions found)",
                     )
 
-                result = await service.scan(
-                    entity_type=effective_entity_type,
-                    video_ids=video_id,
-                    language_code=language,
-                    batch_size=batch_size,
-                    dry_run=False,
-                    full_rescan=full,
-                    new_entities_only=effective_new_entities_only,
-                    progress_callback=_progress_callback,
-                    entity_ids=effective_entity_ids,
-                )
+                transcript_result_live: ScanResult | None = None
+                metadata_result_live: ScanResult | None = None
+
+                if transcript_sources:
+                    progress.update(task, description="Scanning segments...")
+                    transcript_result_live = await service.scan(
+                        entity_type=effective_entity_type,
+                        video_ids=video_id,
+                        language_code=language,
+                        batch_size=batch_size,
+                        dry_run=False,
+                        full_rescan=full,
+                        new_entities_only=effective_new_entities_only,
+                        progress_callback=_progress_callback,
+                        entity_ids=effective_entity_ids,
+                    )
+
+                if metadata_sources:
+                    progress.update(
+                        task,
+                        description=f"Scanning {', '.join(metadata_sources)}...",
+                    )
+                    metadata_result_live = await service.scan_metadata(
+                        sources=metadata_sources,
+                        entity_type=effective_entity_type,
+                        video_ids=video_id,
+                        language_code=language,
+                        batch_size=batch_size,
+                        dry_run=False,
+                        full_rescan=full,
+                        entity_ids=effective_entity_ids,
+                        progress_callback=_progress_callback,
+                    )
+
+            result = _merge_scan_results(transcript_result_live, metadata_result_live)
+
+            # Summary label: "Segments scanned" vs "Videos scanned"
+            if has_metadata_sources:
+                scanned_key = "Videos scanned"
+            else:
+                scanned_key = "Segments scanned"
 
             # Summary panel
             summary_lines = [
-                f"[bold]Segments scanned:[/bold] {result.segments_scanned:,}",
+                f"[bold]{scanned_key}:[/bold] {result.segments_scanned:,}",
                 f"[bold]Mentions found:[/bold] {result.mentions_found:,}",
                 f"[bold]Mentions skipped:[/bold] {result.mentions_skipped:,}",
                 f"[bold]Skipped (exclusion patterns):[/bold] {result.skipped_exclusion_pattern:,}",

@@ -11,6 +11,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.55.0] - 2026-03-29
+
+### Added
+- **Feature 054: Multi-Source Entity Mention Detection** (Issue #73, Increment 1)
+  - **Title-Based Entity Detection (US1)**: `entities scan --sources title` scans all video titles for entity name/alias matches; creates `entity_mentions` rows with `mention_source='title'`; applies existing exclusion patterns; 20K+ title mentions found across 15K+ videos in production scan (11s)
+  - **Description-Based Entity Detection (US2)**: `entities scan --sources description` scans video descriptions; creates mentions with `mention_source='description'` and ~150 char context snippet stored in `mention_context` column; NULL descriptions safely skipped; 66K+ description mentions found across 21K+ videos (without boilerplate detection — US6 deferred)
+  - **Source-Aware Scan CLI (US3)**: `--sources` flag accepts comma-separated values (`transcript`, `title`, `description`); defaults to `transcript` for backward compatibility; `tag` rejected with validation error; composes with `--entity-id`, `--video-id`, `--language`, `--dry-run`, `--full`; `--full` deletes only mentions of specified source types
+  - **API `sources` Parameter (US3b)**: `POST /entities/{entity_id}/scan` and `POST /videos/{video_id}/scan-entities` accept optional `sources` query parameter; defaults to `["transcript"]`; invalid values return 422 with RFC 7807 error; frontend scan buttons pass `["transcript", "title", "description"]` for multi-source scanning
+  - **Per-Video Combined Source Badges (US4)**: TITLE badge (amber `bg-amber-100`), DESC badge (slate `bg-slate-200`) alongside existing TRANSCRIPT (indigo), TAG (teal), MANUAL (green); badge order follows quality hierarchy: TITLE → TRANSCRIPT → TAG → DESC → MANUAL; description context snippet displayed as italic text with entity name highlighted via `<mark>`
+  - **Source Filter Dropdown (US5)**: Filter dropdown on entity detail page with options: All sources, Title, Transcript, Tag, Description, Manual; persists in URL query parameter `?source=title`; composes with language filter; empty state shows "No videos found for this source type" with "Try All sources" link
+
+### Changed
+- Alembic migration 054: adds `mention_source` (VARCHAR(20), NOT NULL, default 'transcript') and `mention_context` (TEXT, nullable) columns to `entity_mentions`; adds partial unique indexes for title and description mentions; adds CHECK constraint for valid source values
+- `MentionSource` enum added to `src/chronovista/models/enums.py`
+- `EntityMentionScanService.scan_metadata()` new async method for title/description scanning
+- `EntityMentionRepository.delete_by_scope()` extended with `mention_source` filter for source-scoped `--full` deletion
+- `EntityMentionRepository.get_entity_video_list()` extended with `source_filter` parameter and source mapping for title/description
+- Dry-run output includes `source` column for metadata scans; summary reports "videos scanned" instead of "segments scanned"
+
+### Technical
+- Backend version: 0.54.0 → 0.55.0
+- Frontend version: 0.23.0 → 0.24.0
+- Alembic migration 054
+- ~60 new backend tests, ~33 new frontend tests
+- US6 (description boilerplate detection) deferred to follow-up increment
+- Closes #73 (Increment 1)
+
 ## [0.54.0] - 2026-03-28
 
 ### Added

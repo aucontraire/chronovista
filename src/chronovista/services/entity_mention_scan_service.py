@@ -25,8 +25,9 @@ from chronovista.db.models import EntityAlias as EntityAliasDB
 from chronovista.db.models import EntityMention as EntityMentionDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
+from chronovista.db.models import Video as VideoDB
 from chronovista.models.entity_mention import EntityMentionCreate
-from chronovista.models.enums import DetectionMethod
+from chronovista.models.enums import DetectionMethod, MentionSource
 from chronovista.repositories.entity_mention_repository import (
     EntityMentionRepository,
 )
@@ -410,9 +411,485 @@ class EntityMentionScanService:
                 for row in rows
             ]
 
+    async def scan_metadata(
+        self,
+        sources: list[str],
+        entity_type: str | None = None,
+        video_ids: list[str] | None = None,
+        language_code: str | None = None,
+        batch_size: int = 500,
+        dry_run: bool = False,
+        full_rescan: bool = False,
+        entity_ids: list[uuid.UUID] | None = None,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> ScanResult:
+        """Scan video titles and/or descriptions for entity mentions.
+
+        Unlike :meth:`scan` which iterates over transcript segments, this
+        method iterates over the ``videos`` table and matches entity
+        patterns against the ``title`` and/or ``description`` columns.
+
+        Parameters
+        ----------
+        sources : list[str]
+            Which metadata fields to scan. Valid values: ``"title"``,
+            ``"description"``.
+        entity_type : str | None
+            Restrict scanning to entities of this type.
+        video_ids : list[str] | None
+            Restrict scanning to these videos.
+        language_code : str | None
+            Unused for metadata scanning but accepted for interface
+            consistency with :meth:`scan`.
+        batch_size : int
+            Number of video rows fetched per batch (default 500).
+        dry_run : bool
+            If ``True``, collect preview data without writing.
+        full_rescan : bool
+            If ``True``, delete existing mentions of the specified source
+            types before re-scanning (per FR-010).
+        entity_ids : list[uuid.UUID] | None
+            Restrict scanning to these specific entity IDs.
+        progress_callback : Callable[[int, int], None] | None
+            Called after each batch with ``(items_scanned, mentions_found)``.
+
+        Returns
+        -------
+        ScanResult
+            Aggregate statistics about the scan.
+        """
+        t0 = time.monotonic()
+
+        logger.info(
+            "Metadata scan starting: sources=%s, entity_ids=%s, video_ids=%s, "
+            "dry_run=%s, entity_type=%s, full_rescan=%s",
+            sources,
+            entity_ids,
+            video_ids,
+            dry_run,
+            entity_type,
+            full_rescan,
+        )
+
+        async with self._session_factory() as session:
+            # 1. Load entity patterns
+            patterns = await self._load_entity_patterns(
+                session,
+                entity_type=entity_type,
+                new_entities_only=False,
+                entity_ids=entity_ids,
+            )
+
+            if not patterns:
+                logger.info("No active entities matched the filter criteria")
+                return ScanResult(dry_run=dry_run, duration_seconds=time.monotonic() - t0)
+
+            scoped_entity_ids = [p.entity_id for p in patterns]
+
+            # 2. Handle --full rescan: delete existing mentions per source type
+            if full_rescan and not dry_run:
+                for source in sources:
+                    deleted = await self._mention_repo.delete_by_scope(
+                        session,
+                        entity_ids=scoped_entity_ids,
+                        video_ids=video_ids,
+                        detection_method="rule_match",
+                        mention_source=source,
+                    )
+                    logger.info(
+                        "Full rescan: deleted %d existing %s mentions",
+                        deleted,
+                        source,
+                    )
+                await session.flush()
+
+            # 3. Pre-compile Python regexes
+            compiled_patterns: list[tuple[_EntityPattern, re.Pattern[str]]] = []
+            for pattern in patterns:
+                try:
+                    py_regex = re.compile(
+                        r"\b(" + pattern.pg_pattern + r")\b",
+                        re.IGNORECASE,
+                    )
+                    compiled_patterns.append((pattern, py_regex))
+                except re.error:
+                    logger.warning(
+                        "Failed to compile regex for entity %s (%s), skipping",
+                        pattern.canonical_name,
+                        pattern.entity_id,
+                    )
+
+            pattern_by_entity: dict[uuid.UUID, _EntityPattern] = {
+                p.entity_id: p for p in patterns
+            }
+
+            # 4. Process videos in batches
+            result = ScanResult(dry_run=dry_run)
+            if dry_run:
+                result.dry_run_matches = []
+
+            matched_entity_ids: set[uuid.UUID] = set()
+            matched_video_ids: set[str] = set()
+
+            offset = 0
+            while True:
+                try:
+                    batch_rows = await self._fetch_video_batch(
+                        session,
+                        video_ids=video_ids,
+                        batch_size=batch_size,
+                        offset=offset,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to fetch video batch at offset=%d",
+                        offset,
+                        exc_info=True,
+                    )
+                    result.failed_batches += 1
+                    offset += batch_size
+                    continue
+
+                if not batch_rows:
+                    break
+
+                result.segments_scanned += len(batch_rows)
+
+                try:
+                    batch_mentions, batch_previews = self._scan_metadata_batch(
+                        batch_rows=batch_rows,
+                        compiled_patterns=compiled_patterns,
+                        pattern_by_entity=pattern_by_entity,
+                        sources=sources,
+                        dry_run=dry_run,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to process video batch at offset=%d",
+                        offset,
+                        exc_info=True,
+                    )
+                    result.failed_batches += 1
+                    offset += batch_size
+                    if progress_callback:
+                        progress_callback(result.segments_scanned, result.mentions_found)
+                    continue
+
+                for m in batch_mentions:
+                    matched_entity_ids.add(m.entity_id)
+                    matched_video_ids.add(m.video_id)
+
+                if not dry_run and batch_mentions:
+                    inserted = await self._mention_repo.bulk_create_with_conflict_skip(
+                        session, batch_mentions
+                    )
+                    result.mentions_found += inserted
+                    result.mentions_skipped += len(batch_mentions) - inserted
+                    await session.flush()
+                elif dry_run:
+                    result.mentions_found += len(batch_mentions)
+                    if result.dry_run_matches is not None and batch_previews:
+                        result.dry_run_matches.extend(batch_previews)
+
+                if progress_callback:
+                    progress_callback(result.segments_scanned, result.mentions_found)
+
+                offset += batch_size
+
+            result.unique_entities = len(matched_entity_ids)
+            result.unique_videos = len(matched_video_ids)
+
+            # 5. Update entity and alias counters (live mode only)
+            counter_entity_ids: set[uuid.UUID] = set()
+            if full_rescan:
+                counter_entity_ids = set(scoped_entity_ids)
+            counter_entity_ids |= matched_entity_ids
+
+            if not dry_run and counter_entity_ids:
+                await self._mention_repo.update_entity_counters(
+                    session, list(counter_entity_ids)
+                )
+                await self._mention_repo.update_alias_counters(
+                    session, list(counter_entity_ids)
+                )
+                await session.flush()
+
+            # 6. Commit
+            if not dry_run:
+                await session.commit()
+
+            result.duration_seconds = time.monotonic() - t0
+
+            logger.info(
+                "Metadata scan complete: items_scanned=%d, mentions_found=%d, "
+                "mentions_skipped=%d, unique_entities=%d, unique_videos=%d, "
+                "duration=%.2fs, dry_run=%s, failed_batches=%d",
+                result.segments_scanned,
+                result.mentions_found,
+                result.mentions_skipped,
+                result.unique_entities,
+                result.unique_videos,
+                result.duration_seconds,
+                result.dry_run,
+                result.failed_batches,
+            )
+
+            return result
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    async def _fetch_video_batch(
+        self,
+        session: AsyncSession,
+        video_ids: list[str] | None,
+        batch_size: int,
+        offset: int,
+    ) -> list[Any]:
+        """Fetch a batch of video rows for metadata scanning.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_ids : list[str] | None
+            Optional video ID filter.
+        batch_size : int
+            Maximum videos per batch.
+        offset : int
+            Pagination offset.
+
+        Returns
+        -------
+        list[Any]
+            List of Row objects with video_id, title, description, channel_id.
+        """
+        stmt: Select[tuple[Any, ...]] = select(
+            VideoDB.video_id,
+            VideoDB.title,
+            VideoDB.description,
+            VideoDB.channel_id,
+        )
+
+        if video_ids is not None:
+            stmt = stmt.where(VideoDB.video_id.in_(video_ids))
+
+        stmt = stmt.order_by(VideoDB.video_id.asc())
+        stmt = stmt.limit(batch_size).offset(offset)
+
+        result = await session.execute(stmt)
+        return list(result.all())
+
+    def _scan_metadata_batch(
+        self,
+        batch_rows: list[Any],
+        compiled_patterns: list[tuple[_EntityPattern, re.Pattern[str]]],
+        pattern_by_entity: dict[uuid.UUID, _EntityPattern],
+        sources: list[str],
+        dry_run: bool,
+    ) -> tuple[list[EntityMentionCreate], list[dict[str, Any]]]:
+        """Scan a batch of video rows against entity patterns for title/description.
+
+        Parameters
+        ----------
+        batch_rows : list[Any]
+            Video rows from ``_fetch_video_batch``.
+        compiled_patterns : list[tuple[_EntityPattern, re.Pattern[str]]]
+            Pre-compiled entity patterns.
+        pattern_by_entity : dict[uuid.UUID, _EntityPattern]
+            Lookup from entity_id to pattern (for exclusion patterns).
+        sources : list[str]
+            Which metadata fields to scan (``"title"``, ``"description"``).
+        dry_run : bool
+            Whether this is a dry-run.
+
+        Returns
+        -------
+        tuple[list[EntityMentionCreate], list[dict[str, Any]]]
+            (new_mentions, preview_data)
+        """
+        new_mentions: list[EntityMentionCreate] = []
+        preview_data: list[dict[str, Any]] = []
+
+        for row in batch_rows:
+            if "title" in sources and row.title:
+                title_mentions, title_previews = self._match_text_for_video(
+                    video_id=row.video_id,
+                    text=row.title,
+                    mention_source=MentionSource.TITLE,
+                    compiled_patterns=compiled_patterns,
+                    pattern_by_entity=pattern_by_entity,
+                    dry_run=dry_run,
+                )
+                new_mentions.extend(title_mentions)
+                preview_data.extend(title_previews)
+
+            if "description" in sources and row.description:
+                desc_mentions, desc_previews = self._match_text_for_video(
+                    video_id=row.video_id,
+                    text=row.description,
+                    mention_source=MentionSource.DESCRIPTION,
+                    compiled_patterns=compiled_patterns,
+                    pattern_by_entity=pattern_by_entity,
+                    dry_run=dry_run,
+                )
+                new_mentions.extend(desc_mentions)
+                preview_data.extend(desc_previews)
+
+        return new_mentions, preview_data
+
+    def _match_text_for_video(
+        self,
+        video_id: str,
+        text: str,
+        mention_source: MentionSource,
+        compiled_patterns: list[tuple[_EntityPattern, re.Pattern[str]]],
+        pattern_by_entity: dict[uuid.UUID, _EntityPattern],
+        dry_run: bool,
+    ) -> tuple[list[EntityMentionCreate], list[dict[str, Any]]]:
+        """Match entity patterns against a text field for a single video.
+
+        Applies longest-match-wins and exclusion pattern filtering, then
+        creates mention rows.  For title mentions, only the first match
+        per entity is kept (deduplication by entity_id).
+
+        Parameters
+        ----------
+        video_id : str
+            YouTube video ID.
+        text : str
+            The text to scan (title or description).
+        mention_source : MentionSource
+            Source type for the created mentions.
+        compiled_patterns : list[tuple[_EntityPattern, re.Pattern[str]]]
+            Pre-compiled entity patterns.
+        pattern_by_entity : dict[uuid.UUID, _EntityPattern]
+            Lookup from entity_id to pattern (for exclusion patterns).
+        dry_run : bool
+            Whether this is a dry-run.
+
+        Returns
+        -------
+        tuple[list[EntityMentionCreate], list[dict[str, Any]]]
+            (new_mentions, preview_data)
+        """
+        mentions: list[EntityMentionCreate] = []
+        previews: list[dict[str, Any]] = []
+
+        # Step 1: Collect all matches
+        raw_matches: list[tuple[uuid.UUID, int, int, str, _EntityPattern]] = []
+        for pattern, py_regex in compiled_patterns:
+            for match in py_regex.finditer(text):
+                raw_matches.append(
+                    (pattern.entity_id, match.start(), match.end(), match.group(0), pattern)
+                )
+
+        if not raw_matches:
+            return mentions, previews
+
+        # Step 2: Longest-match-wins disambiguation
+        # Create a minimal row-like object for logging
+        _row = type("_Row", (), {"id": video_id})()
+        surviving_matches, _ = self._apply_longest_match_wins(
+            raw_matches, _row, dry_run
+        )
+
+        # Step 3: Exclusion pattern filtering
+        final_matches, _ = self._apply_exclusion_patterns(
+            surviving_matches, text, pattern_by_entity, _row, dry_run
+        )
+
+        if not final_matches:
+            return mentions, previews
+
+        # Step 4: Deduplicate — for title, one mention per entity per video
+        seen_entities: set[uuid.UUID] = set()
+        for entity_id, m_start, m_end, matched_text, pat in final_matches:
+            if mention_source == MentionSource.TITLE:
+                if entity_id in seen_entities:
+                    continue
+                seen_entities.add(entity_id)
+
+            # Extract context snippet for description mentions
+            context: str | None = None
+            if mention_source == MentionSource.DESCRIPTION:
+                context = self._extract_context_snippet(text, m_start, m_end)
+
+            mention = EntityMentionCreate(
+                entity_id=entity_id,
+                segment_id=None,
+                video_id=video_id,
+                language_code=None,
+                mention_text=matched_text,
+                detection_method=DetectionMethod.RULE_MATCH,
+                confidence=1.0,
+                match_start=m_start,
+                match_end=m_end,
+                mention_source=mention_source,
+                mention_context=context,
+            )
+            mentions.append(mention)
+
+            if dry_run:
+                preview_context = context or (
+                    text[:120] if len(text) > 120 else text
+                )
+                previews.append(
+                    {
+                        "video_id": video_id,
+                        "segment_id": None,
+                        "start_time": None,
+                        "entity_name": pat.canonical_name,
+                        "entity_type": pat.entity_type,
+                        "matched_text": matched_text,
+                        "match_start": m_start,
+                        "match_end": m_end,
+                        "context": preview_context,
+                        "source": mention_source.value,
+                    }
+                )
+
+        return mentions, previews
+
+    @staticmethod
+    def _extract_context_snippet(
+        text: str, match_start: int, match_end: int, window: int = 75
+    ) -> str:
+        """Extract a context snippet around a match position.
+
+        Returns approximately ``window`` characters before and after the
+        match, with ellipsis (``...``) added if the snippet is truncated
+        at either end.
+
+        Parameters
+        ----------
+        text : str
+            The full text containing the match.
+        match_start : int
+            Start position of the match.
+        match_end : int
+            End position of the match.
+        window : int
+            Number of characters of context before and after the match
+            (default 75).
+
+        Returns
+        -------
+        str
+            The context snippet with optional leading/trailing ellipsis.
+        """
+        snippet_start = max(0, match_start - window)
+        snippet_end = min(len(text), match_end + window)
+
+        snippet = text[snippet_start:snippet_end]
+
+        if snippet_start > 0:
+            snippet = "..." + snippet
+        if snippet_end < len(text):
+            snippet = snippet + "..."
+
+        return snippet
 
     async def _load_entity_patterns(
         self,

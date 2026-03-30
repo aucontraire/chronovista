@@ -55,6 +55,8 @@ export interface EntityVideoResult {
    * - `"transcript"` — entity was detected in a transcript segment via scan
    * - `"manual"` — user created a manual association via the UI
    * - `"tag"` — video is tagged with the entity's canonical tag (Feature 053)
+   * - `"title"` — entity was detected in the video title (Feature 054)
+   * - `"description"` — entity was detected in the video description (Feature 054)
    *
    * A single video may have multiple sources (e.g. `["transcript", "tag"]`).
    * Tag-only videos have `mention_count: 0`, `mentions: []`, and
@@ -67,6 +69,13 @@ export interface EntityVideoResult {
   first_mention_time: number | null;
   /** Video upload date (ISO 8601) for sort ordering. */
   upload_date: string | null;
+  /**
+   * Context snippet (~150 chars) surrounding the description match.
+   * Only present when `"description"` is in `sources`; null otherwise.
+   * The entity text within the snippet may be highlighted by the UI.
+   * This field is optional for backward compatibility with pre-Feature-054 API responses.
+   */
+  description_context?: string | null;
 }
 
 /** Pagination metadata */
@@ -165,6 +174,12 @@ export interface FetchEntitiesParams {
 export interface FetchEntityVideosParams {
   /** Optional BCP-47 language code to filter mentions by language */
   language_code?: string;
+  /**
+   * Optional source filter. When provided, only videos whose sources list
+   * includes this value are returned. Valid values: transcript, title,
+   * description, tag, manual.
+   */
+  source?: string;
   /** Max results per page (1-100, default 20) */
   limit?: number;
   /** Offset for pagination (>=0) */
@@ -311,6 +326,9 @@ export async function fetchEntityVideos(
   const qs = new URLSearchParams();
   if (params.language_code) {
     qs.set("language_code", params.language_code);
+  }
+  if (params.source) {
+    qs.set("source", params.source);
   }
   if (params.limit !== undefined) {
     qs.set("limit", String(params.limit));
@@ -662,6 +680,12 @@ export interface ScanRequest {
   dry_run?: boolean;
   /** When true, re-scan segments that already have recorded mentions. */
   full_rescan?: boolean;
+  /**
+   * Scan source types to include. Valid values: "transcript", "title",
+   * "description". Defaults to ["transcript"] when omitted.
+   * "tag" is not a valid scan source (tag associations are query-time only).
+   */
+  sources?: string[];
 }
 
 /** Aggregate statistics returned by a completed entity scan. */

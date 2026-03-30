@@ -11,6 +11,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.55.0] - 2026-03-29
+
+### Added
+- **Feature 054: Multi-Source Entity Mention Detection** (Issue #73, Increment 1)
+  - Title and description scanning for entity names via `entities scan --sources title,description`
+  - API `sources` parameter on both scan endpoints; frontend scan buttons trigger multi-source scanning
+  - TITLE (amber) and DESC (slate) source badges on entity detail page
+  - Source filter dropdown: filter by Title, Transcript, Tag, Description, Manual
+  - Schema migration: `mention_source` and `mention_context` columns on `entity_mentions`
+
+### Technical
+- Backend: 0.54.0 → 0.55.0, Frontend: 0.23.0 → 0.24.0
+- Alembic migration 054, ~93 new tests
+- US6 (boilerplate detection) deferred
+- Closes #73 (Increment 1)
+
 ## [0.54.0] - 2026-03-28
 
 ### Added

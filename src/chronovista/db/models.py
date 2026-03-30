@@ -1149,6 +1149,17 @@ class EntityMention(Base):
         index=True,
     )
 
+    # Source location where the mention was found (transcript, title, description)
+    mention_source: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="transcript",
+        server_default="transcript",
+    )
+
+    # Context snippet (~150 chars) around the match — populated for description mentions only
+    mention_context: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -1178,6 +1189,25 @@ class EntityMention(Base):
             unique=True,
             postgresql_where=text("detection_method = 'manual'"),
         ),
+        # Partial unique index for title mentions: one per entity+video.
+        Index(
+            "uq_entity_mentions_title",
+            "entity_id",
+            "video_id",
+            "mention_source",
+            unique=True,
+            postgresql_where=text("mention_source = 'title'"),
+        ),
+        # Partial unique index for description mentions: one per distinct text match.
+        Index(
+            "uq_entity_mentions_description",
+            "entity_id",
+            "video_id",
+            "mention_source",
+            "mention_text",
+            unique=True,
+            postgresql_where=text("mention_source = 'description'"),
+        ),
         CheckConstraint(
             "detection_method IN ('rule_match', 'spacy_ner', 'llm_extraction', 'manual', 'user_correction')",
             name="chk_entity_mention_detection_method_valid",
@@ -1186,11 +1216,16 @@ class EntityMention(Base):
             "confidence >= 0.0 AND confidence <= 1.0",
             name="chk_entity_mention_confidence_range",
         ),
+        CheckConstraint(
+            "mention_source IN ('transcript', 'title', 'description')",
+            name="chk_entity_mention_source_valid",
+        ),
         Index("ix_entity_mentions_entity_id", "entity_id"),
         Index("ix_entity_mentions_segment_id", "segment_id"),
         Index("ix_entity_mentions_video_id", "video_id"),
         Index("ix_entity_mentions_video_language", "video_id", "language_code"),
         Index("ix_entity_mentions_detection_method", "detection_method"),
+        Index("ix_entity_mentions_mention_source", "mention_source"),
         # Note: correction_id index is created by index=True on the column definition
     )
 

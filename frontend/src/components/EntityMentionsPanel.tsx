@@ -661,7 +661,7 @@ export function EntityMentionsPanel({
                 setScanMessage(null);
                 scanMutation.reset();
                 scanMutation.mutate(
-                  { videoId },
+                  { videoId, options: { sources: ["transcript", "title", "description"] } },
                   {
                     onSuccess: (result) => {
                       const { unique_entities, mentions_found } = result.data;

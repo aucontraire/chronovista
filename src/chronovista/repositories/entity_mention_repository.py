@@ -146,10 +146,12 @@ class EntityMentionRepository(
             return 0
 
         values = [m.model_dump() for m in mentions]
-        # Convert detection_method enum to its string value
+        # Convert enum fields to their string values
         for v in values:
             if hasattr(v["detection_method"], "value"):
                 v["detection_method"] = v["detection_method"].value
+            if hasattr(v.get("mention_source"), "value"):
+                v["mention_source"] = v["mention_source"].value
 
         stmt = (
             insert(EntityMentionDB)
@@ -166,10 +168,14 @@ class EntityMentionRepository(
         video_ids: list[str] | None = None,
         language_code: str | None = None,
         detection_method: str = "rule_match",
+        mention_source: str | None = None,
     ) -> int:
         """Delete mentions matching the given scope filters.
 
         Used by --full rescan to clear existing mentions before re-detection.
+        The optional ``mention_source`` parameter enables FR-010 source-scoped
+        deletion: ``--sources title --full`` deletes only title-sourced mentions
+        without touching transcript or description mentions.
 
         Parameters
         ----------
@@ -183,6 +189,11 @@ class EntityMentionRepository(
             Filter by language code.
         detection_method : str
             Filter by detection method (default: "rule_match").
+        mention_source : str | None
+            When provided, restrict deletion to mentions with this
+            ``mention_source`` value (e.g. ``"title"``, ``"description"``,
+            ``"transcript"``).  When ``None`` (default), no source filter is
+            applied and all sources matching the other criteria are deleted.
 
         Returns
         -------
@@ -199,6 +210,8 @@ class EntityMentionRepository(
             stmt = stmt.where(EntityMentionDB.video_id.in_(video_ids))
         if language_code is not None:
             stmt = stmt.where(EntityMentionDB.language_code == language_code)
+        if mention_source is not None:
+            stmt = stmt.where(EntityMentionDB.mention_source == mention_source)
 
         result = await session.execute(stmt)
         return int(result.rowcount)
@@ -582,6 +595,7 @@ class EntityMentionRepository(
         session: AsyncSession,
         entity_id: uuid.UUID,
         language_code: str | None = None,
+        source_filter: str | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -615,6 +629,11 @@ class EntityMentionRepository(
         language_code : str | None
             Optional language filter. Manual mentions (language_code=NULL) are
             always included regardless of this filter.
+        source_filter : str | None
+            Optional source filter: ``"transcript"``, ``"title"``,
+            ``"description"``, ``"tag"``, or ``"manual"``.  When provided,
+            only videos whose ``sources`` list contains the given value are
+            returned. Affects both the result set and the total count.
         limit : int
             Maximum results per page.
         offset : int
@@ -726,13 +745,18 @@ class EntityMentionRepository(
                     .filter(
                         EntityMentionDB.detection_method.in_(
                             self._TRANSCRIPT_METHODS
-                        )
+                        ),
+                        EntityMentionDB.mention_source == "transcript",
                     )
                     .label("mention_count"),
                     # Collect distinct detection methods for source mapping
                     func.array_agg(
                         distinct(EntityMentionDB.detection_method)
                     ).label("detection_methods"),
+                    # Collect distinct mention sources
+                    func.array_agg(
+                        distinct(EntityMentionDB.mention_source)
+                    ).label("mention_sources"),
                     # Has manual flag
                     func.bool_or(
                         EntityMentionDB.detection_method == "manual"
@@ -773,12 +797,15 @@ class EntityMentionRepository(
 
             for row in video_rows:
                 # Map detection methods to source categories
-                sources = sorted(
-                    {
-                        self._SOURCE_CATEGORY_MAP.get(dm, dm)
-                        for dm in (row.detection_methods or [])
-                    }
-                )
+                sources_set: set[str] = {
+                    self._SOURCE_CATEGORY_MAP.get(dm, dm)
+                    for dm in (row.detection_methods or [])
+                }
+                # Add mention_source values directly (title, description)
+                for ms in (row.mention_sources or []):
+                    if ms in ("title", "description"):
+                        sources_set.add(ms)
+                sources = sorted(sources_set)
 
                 # T013: If this video is also in tag results, append "tag"
                 if row.video_id in tag_video_ids and "tag" not in sources:
@@ -830,6 +857,22 @@ class EntityMentionRepository(
                     for p in preview_result.all()
                 ]
 
+                # Fetch description context if this video has description mentions
+                description_context: str | None = None
+                if "description" in (row.mention_sources or []):
+                    desc_ctx_stmt = (
+                        select(EntityMentionDB.mention_context)
+                        .where(
+                            EntityMentionDB.entity_id == entity_id,
+                            EntityMentionDB.video_id == row.video_id,
+                            EntityMentionDB.mention_source == "description",
+                            EntityMentionDB.mention_context.isnot(None),
+                        )
+                        .limit(1)
+                    )
+                    desc_ctx_result = await session.execute(desc_ctx_stmt)
+                    description_context = desc_ctx_result.scalar_one_or_none()
+
                 results_dict[row.video_id] = {
                     "video_id": row.video_id,
                     "video_title": row.video_title,
@@ -848,6 +891,7 @@ class EntityMentionRepository(
                         if row.upload_date is not None
                         else None
                     ),
+                    "description_context": description_context,
                 }
 
         # ------------------------------------------------------------------
@@ -885,6 +929,7 @@ class EntityMentionRepository(
                         if row.upload_date is not None
                         else None
                     ),
+                    "description_context": None,
                 }
 
         # ------------------------------------------------------------------
@@ -907,11 +952,22 @@ class EntityMentionRepository(
         )
 
         # ------------------------------------------------------------------
+        # Step 5b: Apply source_filter if provided (T064, FR-031)
+        # ------------------------------------------------------------------
+        if source_filter is not None:
+            sorted_results = [
+                item
+                for item in sorted_results
+                if source_filter in item["sources"]
+            ]
+
+        # ------------------------------------------------------------------
         # Step 6: Apply pagination to the merged, sorted results (T015)
         # ------------------------------------------------------------------
+        filtered_total = len(sorted_results)
         paginated = sorted_results[offset : offset + limit]
 
-        return paginated, total_count
+        return paginated, filtered_total if source_filter is not None else total_count
 
     async def get_combined_video_count(
         self,

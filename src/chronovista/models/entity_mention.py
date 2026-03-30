@@ -12,7 +12,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .enums import DetectionMethod
+from .enums import DetectionMethod, MentionSource
 from .youtube_types import VideoId
 
 
@@ -59,6 +59,14 @@ class EntityMentionBase(BaseModel):
         default=None,
         description="UUID of the correction that created or updated this mention",
     )
+    mention_source: MentionSource = Field(
+        default=MentionSource.TRANSCRIPT,
+        description="Source location where the mention was found (transcript, title, description)",
+    )
+    mention_context: str | None = Field(
+        default=None,
+        description="Context snippet (~150 chars) around the match, populated for description mentions",
+    )
 
     @field_validator("confidence")
     @classmethod
@@ -96,11 +104,12 @@ class EntityMentionCreate(EntityMentionBase):
 
     @model_validator(mode="after")
     def validate_manual_fields(self) -> EntityMentionCreate:
-        """Validate field constraints based on detection method.
+        """Validate field constraints based on detection method and mention source.
 
         Manual mentions must have NULL segment_id, match_start, match_end,
-        confidence, and language_code. Automated mentions must have a
-        non-NULL segment_id.
+        confidence, and language_code. Transcript mentions (non-manual) must
+        have a non-NULL segment_id. Title and description mentions have
+        segment_id=NULL (they are not segment-bound).
 
         Returns
         -------
@@ -134,9 +143,13 @@ class EntityMentionCreate(EntityMentionBase):
                     "language_code must be None for manual mentions"
                 )
         else:
-            if self.segment_id is None:
+            # Title and description mentions are not segment-bound
+            if (
+                self.mention_source == MentionSource.TRANSCRIPT
+                and self.segment_id is None
+            ):
                 raise ValueError(
-                    "segment_id is required for non-manual mentions"
+                    "segment_id is required for transcript mentions"
                 )
         return self
 

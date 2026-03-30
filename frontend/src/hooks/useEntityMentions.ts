@@ -157,7 +157,7 @@ export function useEntityVideos(
     isFetchingNextPage,
     fetchNextPage,
   } = useInfiniteQuery({
-    queryKey: ["entity-videos", entityId, params.language_code ?? null, limit],
+    queryKey: ["entity-videos", entityId, params.language_code ?? null, params.source ?? null, limit],
     // FR-004/FR-005: TanStack Query provides signal; cancelled on key change or unmount.
     queryFn: ({ pageParam, signal }) =>
       fetchEntityVideos(entityId, {

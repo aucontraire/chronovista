@@ -338,6 +338,14 @@ class DetectionMethod(str, Enum):
     USER_CORRECTION = "user_correction"
 
 
+class MentionSource(str, Enum):
+    """Source location where an entity mention was found."""
+
+    TRANSCRIPT = "transcript"
+    TITLE = "title"
+    DESCRIPTION = "description"
+
+
 class TaskStatus(str, Enum):
     """Status of a background task."""
 

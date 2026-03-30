@@ -1711,7 +1711,7 @@ GET /api/v1/entities/{entity_id}
 
 #### Get Entity Videos
 
-Retrieve a paginated list of videos associated with a given entity from three sources: transcript mentions, canonical tag associations, and alias-matched tag associations. Results are deduplicated by video and sorted with transcript-mention videos first.
+Retrieve a paginated list of videos associated with a given entity from five sources: transcript mentions, title mentions, description mentions, canonical tag associations, and manual links. Results are deduplicated by video and sorted with transcript-mention videos first.
 
 ```
 GET /api/v1/entities/{entity_id}/videos
@@ -1720,6 +1720,7 @@ GET /api/v1/entities/{entity_id}/videos
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `language_code` | string | BCP-47 language code filter |
+| `source` | string | Filter by source type: `title`, `transcript`, `tag`, `description`, `manual`. Omit for all sources. |
 | `limit` | integer | Results per page, 1–100 (default 20) |
 | `offset` | integer | Pagination offset (default 0) |
 
@@ -1761,21 +1762,27 @@ GET /api/v1/entities/{entity_id}/videos
 
 | Source | Meaning | `mention_count` | `mentions` | `first_mention_time` |
 |--------|---------|-----------------|------------|---------------------|
+| `title` | Entity name found in video title | 0 | `[]` | `null` |
 | `transcript` | Entity name found in transcript text | > 0 | Up to 5 previews | Timestamp (seconds) |
 | `tag` | Video tagged with entity's canonical tag or alias-matched tag | 0 | `[]` | `null` |
+| `description` | Entity name found in video description | 0 | `[]` | `null` |
 | `manual` | User manually linked entity to video | 0 | `[]` | `null` |
 
-Videos may have multiple sources (e.g., `["transcript", "tag"]`). ASR error aliases are excluded from tag matching to prevent false positives.
+Videos may have multiple sources (e.g., `["title", "transcript", "tag"]`). Badge display order follows quality hierarchy: TITLE → TRANSCRIPT → TAG → DESC → MANUAL. Description-sourced videos include a `description_context` field with a ~150 char context snippet. ASR error aliases are excluded from tag matching to prevent false positives.
 
 ---
 
 #### Scan Entity Mentions
 
-Trigger an entity mention scan for a single entity across all transcript segments. The entity must exist and be in `active` status.
+Trigger an entity mention scan for a single entity. Scans transcript segments by default; optionally scans video titles and descriptions when `sources` parameter is provided. The entity must exist and be in `active` status.
 
 ```
 POST /api/v1/entities/{entity_id}/scan
 ```
+
+| Query Parameter | Type | Default | Description |
+|----------------|------|---------|-------------|
+| `sources` | list[string] | `["transcript"]` | Text sources to scan: `transcript`, `title`, `description`. Multiple values accepted (e.g., `?sources=title&sources=description`). Value `tag` is rejected (422). |
 
 **Request body (all fields optional):**
 

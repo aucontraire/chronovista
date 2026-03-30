@@ -67,7 +67,10 @@ from chronovista.repositories.tag_alias_repository import TagAliasRepository
 from chronovista.repositories.tag_operation_log_repository import (
     TagOperationLogRepository,
 )
-from chronovista.services.entity_mention_scan_service import EntityMentionScanService
+from chronovista.services.entity_mention_scan_service import (
+    EntityMentionScanService,
+    ScanResult,
+)
 from chronovista.services.phonetic_matcher import PhoneticMatcher
 from chronovista.services.tag_management import TagManagementService
 from chronovista.services.tag_normalization import TagNormalizationService
@@ -603,6 +606,13 @@ async def get_entity_videos(
     language_code: str | None = Query(
         default=None, description="BCP-47 language code filter"
     ),
+    source: str | None = Query(
+        default=None,
+        description=(
+            "Filter videos by mention source: transcript, title, description, "
+            "tag, or manual. When omitted, all sources are returned."
+        ),
+    ),
     limit: int = Query(
         default=20, ge=1, le=100, description="Items per page"
     ),
@@ -620,6 +630,9 @@ async def get_entity_videos(
         Named entity UUID (string representation).
     language_code : str | None
         Optional BCP-47 language code to filter mentions by language.
+    source : str | None
+        Optional source filter: transcript, title, description, tag, or manual.
+        When omitted all sources are returned.
     limit : int
         Maximum number of results per page (1--100, default 20).
     offset : int
@@ -651,11 +664,21 @@ async def get_entity_videos(
     if not entity_result.scalar_one_or_none():
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
 
+    # Validate source filter value when provided
+    valid_filter_sources = {"transcript", "title", "description", "tag", "manual"}
+    if source is not None and source not in valid_filter_sources:
+        raise APIValidationError(
+            message=f"Invalid source value '{source}'. "
+            f"Must be one of: {', '.join(sorted(valid_filter_sources))}",
+            details={"field": "source", "invalid_value": source},
+        )
+
     # Fetch paginated video list from repository
     results, total = await _mention_repo.get_entity_video_list(
         session,
         entity_id=parsed_entity_id,
         language_code=language_code,
+        source_filter=source,
         limit=limit,
         offset=offset,
     )
@@ -672,6 +695,7 @@ async def get_entity_videos(
             has_manual=r["has_manual"],
             first_mention_time=r["first_mention_time"],
             upload_date=r["upload_date"],
+            description_context=r.get("description_context"),
         )
         for r in results
     ]
@@ -1424,6 +1448,139 @@ def _get_scan_service() -> EntityMentionScanService:
     return _scan_service
 
 
+async def _dispatch_scan(
+    *,
+    service: EntityMentionScanService,
+    sources: list[str],
+    entity_ids: list[uuid.UUID] | None = None,
+    video_ids: list[str] | None = None,
+    entity_type: str | None = None,
+    language_code: str | None = None,
+    dry_run: bool = False,
+    full_rescan: bool = False,
+) -> ScanResult:
+    """Dispatch scan calls based on the requested sources.
+
+    If ``"transcript"`` is in *sources*, calls ``service.scan()``.
+    If ``"title"`` or ``"description"`` is in *sources*, calls
+    ``service.scan_metadata()`` with the metadata sources.
+    When both are requested the two results are merged.
+
+    Parameters
+    ----------
+    service : EntityMentionScanService
+        Scan service singleton.
+    sources : list[str]
+        Validated list of source values.
+    entity_ids : list[uuid.UUID] | None
+        Restrict scanning to these entities.
+    video_ids : list[str] | None
+        Restrict scanning to these videos.
+    entity_type : str | None
+        Restrict scanning to entities of this type.
+    language_code : str | None
+        Restrict scanning to segments in this language.
+    dry_run : bool
+        Preview matches without writing to the database.
+    full_rescan : bool
+        Delete existing mentions in scope before scanning.
+
+    Returns
+    -------
+    ScanResult
+        Merged scan result from all dispatched calls.
+    """
+    results: list[ScanResult] = []
+
+    if "transcript" in sources:
+        transcript_result = await service.scan(
+            entity_ids=entity_ids,
+            video_ids=video_ids,
+            entity_type=entity_type,
+            language_code=language_code,
+            dry_run=dry_run,
+            full_rescan=full_rescan,
+        )
+        results.append(transcript_result)
+
+    metadata_sources = [s for s in sources if s in ("title", "description")]
+    if metadata_sources:
+        metadata_result = await service.scan_metadata(
+            sources=metadata_sources,
+            entity_ids=entity_ids,
+            video_ids=video_ids,
+            entity_type=entity_type,
+            language_code=language_code,
+            dry_run=dry_run,
+            full_rescan=full_rescan,
+        )
+        results.append(metadata_result)
+
+    if not results:
+        # Should not happen with validated sources, but defensive
+        return ScanResult(dry_run=dry_run)
+
+    if len(results) == 1:
+        return results[0]
+
+    return _merge_scan_results(results)
+
+
+def _merge_scan_results(results: list[ScanResult]) -> ScanResult:
+    """Merge multiple :class:`ScanResult` instances into one.
+
+    Numeric fields are summed.  ``dry_run`` is taken from the first result.
+
+    Parameters
+    ----------
+    results : list[ScanResult]
+        Two or more results to merge.
+
+    Returns
+    -------
+    ScanResult
+        Combined result.
+    """
+    merged = ScanResult(dry_run=results[0].dry_run)
+    for r in results:
+        merged.segments_scanned += r.segments_scanned
+        merged.mentions_found += r.mentions_found
+        merged.mentions_skipped += r.mentions_skipped
+        merged.unique_entities += r.unique_entities
+        merged.unique_videos += r.unique_videos
+        merged.duration_seconds += r.duration_seconds
+        merged.failed_batches += r.failed_batches
+        merged.skipped_longest_match += r.skipped_longest_match
+        merged.skipped_exclusion_pattern += r.skipped_exclusion_pattern
+    return merged
+
+
+def _build_scan_response(result: ScanResult) -> ScanResultResponse:
+    """Build a :class:`ScanResultResponse` from a :class:`ScanResult`.
+
+    Parameters
+    ----------
+    result : ScanResult
+        Raw scan result from the service layer.
+
+    Returns
+    -------
+    ScanResultResponse
+        API response envelope.
+    """
+    return ScanResultResponse(
+        data=ScanResultData(
+            segments_scanned=result.segments_scanned,
+            mentions_found=result.mentions_found,
+            mentions_skipped=result.mentions_skipped,
+            unique_entities=result.unique_entities,
+            unique_videos=result.unique_videos,
+            duration_seconds=result.duration_seconds,
+            dry_run=result.dry_run,
+        )
+    )
+
+
 @router.post(
     "/entities/{entity_id}/scan",
     response_model=ScanResultResponse,
@@ -1474,27 +1631,21 @@ async def scan_entity(
 
     _scans_in_progress.add(guard_key)
     try:
-        # 4. Run the scan
+        # 4. Run the scan — dispatch based on sources
         service = _get_scan_service()
-        result = await service.scan(
+        sources = request.sources or ["transcript"]
+        result = await _dispatch_scan(
+            service=service,
+            sources=sources,
             entity_ids=[entity_id],
+            entity_type=request.entity_type,
             language_code=request.language_code,
             dry_run=request.dry_run,
             full_rescan=request.full_rescan,
         )
 
         # 5. Build response
-        return ScanResultResponse(
-            data=ScanResultData(
-                segments_scanned=result.segments_scanned,
-                mentions_found=result.mentions_found,
-                mentions_skipped=result.mentions_skipped,
-                unique_entities=result.unique_entities,
-                unique_videos=result.unique_videos,
-                duration_seconds=result.duration_seconds,
-                dry_run=result.dry_run,
-            )
-        )
+        return _build_scan_response(result)
     finally:
         _scans_in_progress.discard(guard_key)
 
@@ -1557,9 +1708,12 @@ async def scan_video_entities(
 
     _scans_in_progress.add(guard_key)
     try:
-        # 3. Run the scan
+        # 3. Run the scan — dispatch based on sources
         service = _get_scan_service()
-        result = await service.scan(
+        sources = request.sources or ["transcript"]
+        result = await _dispatch_scan(
+            service=service,
+            sources=sources,
             video_ids=[video_id],
             entity_type=request.entity_type,
             language_code=request.language_code,
@@ -1568,16 +1722,6 @@ async def scan_video_entities(
         )
 
         # 4. Build response
-        return ScanResultResponse(
-            data=ScanResultData(
-                segments_scanned=result.segments_scanned,
-                mentions_found=result.mentions_found,
-                mentions_skipped=result.mentions_skipped,
-                unique_entities=result.unique_entities,
-                unique_videos=result.unique_videos,
-                duration_seconds=result.duration_seconds,
-                dry_run=result.dry_run,
-            )
-        )
+        return _build_scan_response(result)
     finally:
         _scans_in_progress.discard(guard_key)

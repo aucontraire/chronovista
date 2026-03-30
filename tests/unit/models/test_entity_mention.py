@@ -512,6 +512,8 @@ class TestEntityMentionBase:
             "match_start",
             "match_end",
             "correction_id",
+            "mention_source",
+            "mention_context",
         }
         assert expected_keys == set(data.keys())
 
@@ -771,6 +773,8 @@ class TestEntityMention:
         orm_like.match_start = None
         orm_like.match_end = None
         orm_like.correction_id = None
+        orm_like.mention_source = "transcript"
+        orm_like.mention_context = None
         orm_like.created_at = now
 
         mention = EntityMention.model_validate(orm_like)
@@ -805,6 +809,8 @@ class TestEntityMention:
         orm_like.match_start = None
         orm_like.match_end = None
         orm_like.correction_id = None
+        orm_like.mention_source = "transcript"
+        orm_like.mention_context = None
         orm_like.created_at = datetime.now(UTC)
 
         mention = EntityMention.model_validate(orm_like)
@@ -826,6 +832,8 @@ class TestEntityMention:
             orm_like.match_start = None
             orm_like.match_end = None
             orm_like.correction_id = None
+            orm_like.mention_source = "transcript"
+            orm_like.mention_context = None
             orm_like.created_at = datetime.now(UTC)
 
             mention = EntityMention.model_validate(orm_like)

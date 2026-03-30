@@ -574,6 +574,140 @@ class TestDeleteByScope:
         sql_str = str(stmt.compile(compile_kwargs={"literal_binds": False}))
         assert "detection_method" in sql_str
 
+    # -----------------------------------------------------------------------
+    # Feature 054 — T012: mention_source filter (FR-010)
+    # -----------------------------------------------------------------------
+
+    async def test_delete_with_mention_source_filter_adds_source_clause(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """delete_by_scope() adds mention_source equality filter when provided.
+
+        When ``mention_source='title'`` is supplied, the generated DELETE
+        statement MUST include a ``mention_source`` predicate so that only
+        title-sourced mentions are deleted (FR-010).  Transcript and
+        description mentions for the same scope are left untouched.
+        """
+        mock_result = MagicMock()
+        mock_result.rowcount = 5
+        mock_session.execute.return_value = mock_result
+
+        count = await repository.delete_by_scope(
+            mock_session,
+            mention_source="title",
+        )
+
+        assert count == 5
+        stmt = mock_session.execute.call_args.args[0]
+        sql_str = str(stmt.compile(compile_kwargs={"literal_binds": False}))
+        assert "mention_source" in sql_str
+
+    async def test_delete_without_mention_source_does_not_filter_by_source(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """delete_by_scope() omits mention_source clause when parameter is None.
+
+        Backward-compatibility guarantee: callers that do not pass
+        ``mention_source`` must receive the same behaviour as before Feature
+        054 (all sources matching the other criteria are deleted).
+        """
+        mock_result = MagicMock()
+        mock_result.rowcount = 8
+        mock_session.execute.return_value = mock_result
+
+        count = await repository.delete_by_scope(mock_session)
+
+        assert count == 8
+        stmt = mock_session.execute.call_args.args[0]
+        sql_str = str(stmt.compile(compile_kwargs={"literal_binds": False}))
+        # The word "mention_source" must NOT appear in a WHERE predicate when
+        # the parameter is omitted.  The detection_method filter may include
+        # an attribute reference, but there must be no mention_source column
+        # reference at all.
+        assert "mention_source" not in sql_str
+
+    async def test_delete_with_mention_source_description(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """delete_by_scope() also works with mention_source='description'."""
+        mock_result = MagicMock()
+        mock_result.rowcount = 3
+        mock_session.execute.return_value = mock_result
+
+        count = await repository.delete_by_scope(
+            mock_session,
+            mention_source="description",
+        )
+
+        assert count == 3
+        stmt = mock_session.execute.call_args.args[0]
+        sql_str = str(stmt.compile(compile_kwargs={"literal_binds": False}))
+        assert "mention_source" in sql_str
+
+    async def test_delete_mention_source_composes_with_entity_ids(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """delete_by_scope() combines mention_source and entity_ids filters correctly.
+
+        When both ``mention_source`` and ``entity_ids`` are provided, the
+        generated statement must include predicates for both columns.  This
+        enables source-scoped full rescan for a specific entity
+        (``entities scan --entity-id <id> --sources title --full``).
+        """
+        entity_ids = [_uuid()]
+        mock_result = MagicMock()
+        mock_result.rowcount = 2
+        mock_session.execute.return_value = mock_result
+
+        count = await repository.delete_by_scope(
+            mock_session,
+            entity_ids=entity_ids,
+            mention_source="title",
+        )
+
+        assert count == 2
+        stmt = mock_session.execute.call_args.args[0]
+        sql_str = str(stmt.compile(compile_kwargs={"literal_binds": False}))
+        assert "mention_source" in sql_str
+        assert "entity_id" in sql_str
+
+    async def test_delete_mention_source_composes_with_video_ids(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """delete_by_scope() combines mention_source and video_ids filters correctly.
+
+        When both ``mention_source`` and ``video_ids`` are provided, the
+        generated statement must include predicates for both columns.  This
+        enables source-scoped full rescan for a specific video
+        (``entities scan --video-id <id> --sources title --full``).
+        """
+        video_ids = ["dQw4w9WgXcQ"]
+        mock_result = MagicMock()
+        mock_result.rowcount = 1
+        mock_session.execute.return_value = mock_result
+
+        count = await repository.delete_by_scope(
+            mock_session,
+            video_ids=video_ids,
+            mention_source="title",
+        )
+
+        assert count == 1
+        stmt = mock_session.execute.call_args.args[0]
+        sql_str = str(stmt.compile(compile_kwargs={"literal_binds": False}))
+        assert "mention_source" in sql_str
+        assert "video_id" in sql_str
+
 
 # ---------------------------------------------------------------------------
 # TestDeleteByCorrectionIds (Feature 043 — T032)
@@ -3659,3 +3793,109 @@ class TestDeleteManualAssociation:
             )
 
         mock_session.delete.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TestEntityMentionRepositorySourceMapping (Feature 054 — T016)
+# ---------------------------------------------------------------------------
+
+
+class TestEntityMentionRepositorySourceMapping:
+    """T016: Verify get_entity_video_list() correctly maps mention_source
+    values to the sources list.
+
+    An entity in both title AND transcript should appear once in the video
+    list with sources: ["title", "transcript"].
+    """
+
+    @pytest.fixture
+    def repository(self) -> EntityMentionRepository:
+        """Provide a fresh repository instance for each test."""
+        return EntityMentionRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> MagicMock:
+        """Provide a mock async session for each test."""
+        return _make_mock_session()
+
+    async def test_t016_entity_in_title_and_transcript_shows_both_sources(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Entity found in both title and transcript appears once with
+        sources: ['title', 'transcript'] in the video list.
+
+        The detection_methods array includes 'rule_match' (mapped to
+        'transcript') and the mention_sources array includes 'title',
+        producing both source types in the final sources list.
+        """
+        entity_id = _uuid()
+        video_id = "dQw4w9WgXcQ"
+
+        # Step 1: transcript video IDs query
+        transcript_vid_result = MagicMock()
+        transcript_vid_result.scalars.return_value.all.return_value = [video_id]
+
+        # Step 2a: canonical tag video IDs (empty)
+        canonical_tag_result = MagicMock()
+        canonical_tag_result.scalar_one_or_none.return_value = None
+
+        # Step 2b: alias tag video IDs (empty)
+        alias_tag_result = MagicMock()
+        alias_tag_result.all.return_value = []
+
+        # Step 3: main query — detection_methods has 'rule_match',
+        # mention_sources has 'transcript' and 'title'
+        from datetime import datetime
+
+        video_row = MagicMock()
+        video_row.video_id = video_id
+        video_row.video_title = "Noam Chomsky Interview"
+        video_row.channel_name = "Channel One"
+        video_row.mention_count = 5
+        video_row.detection_methods = ["rule_match"]
+        video_row.mention_sources = ["transcript", "title"]
+        video_row.has_manual = False
+        video_row.first_mention_time = 12.5
+        video_row.upload_date = datetime(2024, 1, 15, tzinfo=UTC)
+
+        main_result = MagicMock()
+        main_result.all.return_value = [video_row]
+
+        # Preview query (transcript mentions only)
+        preview_row = MagicMock()
+        preview_row.segment_id = 42
+        preview_row.start_time = 12.5
+        preview_row.mention_text = "Noam Chomsky"
+        preview_result = MagicMock()
+        preview_result.all.return_value = [preview_row]
+
+        # Description context query — no description mentions
+        desc_ctx_result = MagicMock()
+        desc_ctx_result.scalar_one_or_none.return_value = None
+
+        mock_session.execute = AsyncMock(
+            side_effect=[
+                transcript_vid_result,  # transcript video IDs
+                canonical_tag_result,   # canonical tag video IDs
+                alias_tag_result,       # alias tag video IDs
+                main_result,            # main grouped query
+                preview_result,         # mention previews
+                desc_ctx_result,        # description context
+            ]
+        )
+
+        results, total = await repository.get_entity_video_list(
+            mock_session, entity_id=entity_id, limit=20, offset=0
+        )
+
+        assert total == 1
+        assert len(results) == 1
+        result = results[0]
+        assert result["video_id"] == video_id
+        assert "transcript" in result["sources"]
+        assert "title" in result["sources"]
+        # Should appear exactly once (deduplicated)
+        assert result["sources"].count("transcript") == 1
+        assert result["sources"].count("title") == 1

@@ -14,8 +14,8 @@
  * - T031: Loading skeleton
  */
 
-import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { ENTITY_TYPE_LABELS, ENTITY_TYPE_COLORS } from "../constants/entityTypes";
 import { useEntityVideos, useDeleteManualAssociation, useScanEntity } from "../hooks/useEntityMentions";
@@ -290,6 +290,16 @@ interface EntityVideoCardProps {
   sources: string[];
   /** Whether a manual association exists for this entity on this video. */
   has_manual: boolean;
+  /**
+   * Context snippet (~150 chars) surrounding the description match.
+   * Only present when "description" is in sources; null otherwise.
+   */
+  description_context: string | null;
+  /**
+   * Canonical name of the entity — used to highlight the entity text within
+   * the description context snippet (FR-034).
+   */
+  entityName: string;
   /** Entity ID from route params — needed for the unlink mutation. */
   entityId: string;
   /** Whether this card's unlink confirmation is currently visible. */
@@ -304,6 +314,26 @@ interface EntityVideoCardProps {
   isDeletePending: boolean;
 }
 
+/**
+ * Highlights all case-insensitive occurrences of `query` within `text` by
+ * wrapping them in `<mark>` elements.  Returns an array of React nodes.
+ */
+function highlightEntityInContext(text: string, query: string): React.ReactNode[] {
+  if (!query.trim()) return [text];
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`(${escaped})`, "gi");
+  const parts = text.split(regex);
+  return parts.map((part, i) =>
+    regex.test(part) ? (
+      <mark key={i} className="bg-yellow-100 font-bold not-italic">
+        {part}
+      </mark>
+    ) : (
+      part
+    )
+  );
+}
+
 function EntityVideoCard({
   video_id,
   video_title,
@@ -313,6 +343,8 @@ function EntityVideoCard({
   first_segment_id,
   sources,
   has_manual,
+  description_context,
+  entityName,
   isUnlinking,
   onUnlinkClick,
   onUnlinkCancel,
@@ -322,6 +354,8 @@ function EntityVideoCard({
   const isManualOnly = mention_count === 0 && has_manual;
   const hasTranscript = sources.includes("transcript") && mention_count > 0;
   const hasTag = sources.includes("tag");
+  const hasTitle = sources.includes("title");
+  const hasDescription = sources.includes("description");
 
   // T026: tag-only videos (no transcript mention and no manual association)
   // link to the video page without segment/timestamp params since there is no
@@ -350,22 +384,24 @@ function EntityVideoCard({
             {video_title}
           </h4>
           <p className="text-sm text-gray-500 mb-2">{channel_name}</p>
-          {/* Source badges */}
-          <div className="flex items-center gap-2 mb-2">
+          {/* Source badges — quality hierarchy: TITLE → TRANSCRIPT → TAG → DESC → MANUAL */}
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            {/* T050: TITLE badge — amber, non-clickable (FR-011) */}
+            {hasTitle && (
+              <span
+                className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-amber-100 text-amber-700"
+                data-testid="title-badge"
+                title="Entity found in video title"
+              >
+                TITLE
+              </span>
+            )}
             {hasTranscript && (
               <span
                 className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-indigo-100 text-indigo-700 border border-indigo-200"
                 data-testid="transcript-badge"
               >
                 TRANSCRIPT &times;{mention_count}
-              </span>
-            )}
-            {has_manual && (
-              <span
-                className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-emerald-100 text-emerald-700 border border-emerald-200"
-                data-testid="manual-badge"
-              >
-                MANUAL
               </span>
             )}
             {/* T025: TAG badge — teal pill shown when video is associated via tag */}
@@ -377,7 +413,39 @@ function EntityVideoCard({
                 TAG
               </span>
             )}
+            {/* T051: DESC badge — slate, non-clickable (FR-012) */}
+            {hasDescription && (
+              <span
+                className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-slate-200 text-slate-700"
+                data-testid="desc-badge"
+                title="Entity found in video description"
+              >
+                DESC
+              </span>
+            )}
+            {has_manual && (
+              <span
+                className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-emerald-100 text-emerald-700 border border-emerald-200"
+                data-testid="manual-badge"
+              >
+                MANUAL
+              </span>
+            )}
           </div>
+          {/* T052: Description context snippet — italic, truncated, entity highlighted */}
+          {hasDescription && description_context && (
+            <p
+              className="text-xs text-slate-500 italic mb-2"
+              data-testid="description-context"
+            >
+              {highlightEntityInContext(
+                description_context.length > 150
+                  ? description_context.slice(0, 150) + "..."
+                  : description_context,
+                entityName
+              )}
+            </p>
+          )}
           <div className="flex items-center gap-4 text-xs text-gray-500">
             {isManualOnly ? (
               <span>Manually linked</span>
@@ -611,9 +679,20 @@ function AddAliasForm({ entityId, onCreated }: AddAliasFormProps) {
  *
  * Route: /entities/:entityId
  */
+/** Valid values for the source filter dropdown. */
+const SOURCE_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "All sources" },
+  { value: "title", label: "Title" },
+  { value: "transcript", label: "Transcript" },
+  { value: "tag", label: "Tag" },
+  { value: "description", label: "Description" },
+  { value: "manual", label: "Manual" },
+];
+
 export function EntityDetailPage() {
   const { entityId } = useParams<{ entityId: string }>();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // T045: Track which video's unlink confirmation is currently visible.
   const [unlinkingVideoId, setUnlinkingVideoId] = useState<string | null>(null);
@@ -651,7 +730,7 @@ export function EntityDetailPage() {
       scanTimerRef.current = null;
     }
     scanMutation.mutate(
-      { entityId },
+      { entityId, options: { sources: ["transcript", "title", "description"] } },
       {
         onSuccess: (data) => {
           const { mentions_found, unique_videos } = data.data;
@@ -714,7 +793,23 @@ export function EntityDetailPage() {
     },
   });
 
-  // Infinite-scroll video list
+  // T065: Source filter — read from URL query parameter ?source=
+  const sourceFilter = searchParams.get("source") ?? "";
+
+  function handleSourceFilterChange(value: string) {
+    const next = new URLSearchParams(searchParams);
+    if (value) {
+      next.set("source", value);
+    } else {
+      next.delete("source");
+    }
+    setSearchParams(next, { replace: true });
+  }
+
+  // Infinite-scroll video list (with optional source filter)
+  const entityVideoParams = sourceFilter
+    ? { source: sourceFilter }
+    : {};
   const {
     videos,
     total,
@@ -722,7 +817,7 @@ export function EntityDetailPage() {
     hasNextPage,
     isFetchingNextPage,
     loadMoreRef,
-  } = useEntityVideos(entityId ?? "");
+  } = useEntityVideos(entityId ?? "", entityVideoParams);
 
   // Browser tab title
   useEffect(() => {
@@ -933,14 +1028,40 @@ export function EntityDetailPage() {
 
       {/* Video list section */}
       <section aria-labelledby="entity-videos-heading">
-        <h2
-          id="entity-videos-heading"
-          className="text-lg font-semibold text-gray-900 mb-4"
-        >
-          Videos
-        </h2>
+        {/* Section header + source filter dropdown */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2
+            id="entity-videos-heading"
+            className="text-lg font-semibold text-gray-900"
+          >
+            Videos
+          </h2>
 
-        {/* Loading skeleton for video list */}
+          {/* T065: Source filter dropdown */}
+          <div className="flex items-center gap-2">
+            <label
+              htmlFor="source-filter"
+              className="text-sm text-gray-600 whitespace-nowrap"
+            >
+              Filter by source:
+            </label>
+            <select
+              id="source-filter"
+              value={sourceFilter}
+              onChange={(e) => handleSourceFilterChange(e.target.value)}
+              className="rounded-md border border-slate-300 px-2 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              aria-label="Filter videos by source"
+            >
+              {SOURCE_FILTER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Loading skeleton for video list — T067: dropdown stays interactive */}
         {videosLoading && (
           <div className="space-y-4 animate-pulse">
             {[1, 2, 3].map((i) => (
@@ -971,6 +1092,8 @@ export function EntityDetailPage() {
                   first_segment_id={firstMention?.segment_id ?? 0}
                   sources={v.sources ?? []}
                   has_manual={v.has_manual ?? false}
+                  description_context={v.description_context ?? null}
+                  entityName={entity.canonical_name}
                   entityId={entityId ?? ""}
                   isUnlinking={unlinkingVideoId === v.video_id}
                   isDeletePending={
@@ -992,10 +1115,25 @@ export function EntityDetailPage() {
           </div>
         )}
 
-        {/* Empty state */}
+        {/* Empty state — T066: source-filtered empty state */}
         {!videosLoading && videos.length === 0 && (
           <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
-            <p className="text-gray-500">No videos found for this entity.</p>
+            {sourceFilter ? (
+              <>
+                <p className="text-gray-500 mb-2">
+                  No videos found for this source type.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleSourceFilterChange("")}
+                  className="text-sm text-indigo-600 hover:text-indigo-800 underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                >
+                  Try All sources
+                </button>
+              </>
+            ) : (
+              <p className="text-gray-500">No videos found for this entity.</p>
+            )}
           </div>
         )}
 

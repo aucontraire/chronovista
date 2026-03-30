@@ -145,6 +145,13 @@ class EntityVideoResult(BaseModel):
     upload_date: str | None = Field(
         None, description="Video upload date (ISO 8601)"
     )
+    description_context: str | None = Field(
+        None,
+        description=(
+            "Context snippet (~150 chars) around the description match; "
+            "only present when 'description' is in sources."
+        ),
+    )
 
 
 class EntityVideoResponse(BaseModel):
@@ -527,6 +534,9 @@ _VALID_ENTITY_TYPES = {
 }
 
 
+_VALID_SCAN_SOURCES = {"transcript", "title", "description"}
+
+
 class ScanRequest(BaseModel):
     """Request body for triggering an entity mention scan.
 
@@ -545,6 +555,10 @@ class ScanRequest(BaseModel):
     full_rescan : bool
         If ``True``, delete existing ``rule_match`` mentions in scope
         before scanning.
+    sources : list[str] | None
+        Text sources to scan.  Valid values: ``transcript``, ``title``,
+        ``description``.  Defaults to ``["transcript"]`` for backward
+        compatibility.
     """
 
     model_config = ConfigDict(strict=True)
@@ -565,6 +579,13 @@ class ScanRequest(BaseModel):
         default=False,
         description="Delete existing rule_match mentions before scanning",
     )
+    sources: list[str] | None = Field(
+        default=None,
+        description=(
+            "Text sources to scan: transcript, title, description. "
+            "Defaults to ['transcript'] when omitted."
+        ),
+    )
 
     @field_validator("entity_type")
     @classmethod
@@ -575,6 +596,30 @@ class ScanRequest(BaseModel):
                 f"entity_type must be one of: "
                 f"{', '.join(sorted(_VALID_ENTITY_TYPES))}"
             )
+        return v
+
+    @field_validator("sources")
+    @classmethod
+    def validate_sources(cls, v: list[str] | None) -> list[str] | None:
+        """Ensure each source value is valid (transcript, title, description).
+
+        Rejects ``tag`` with a helpful message explaining that tag
+        associations are query-time (Feature 053), not scan-persisted.
+        """
+        if v is None:
+            return v
+        for source in v:
+            if source not in _VALID_SCAN_SOURCES:
+                if source == "tag":
+                    raise ValueError(
+                        f"Invalid source value '{source}'. Tag associations "
+                        f"are query-time (not scan-persisted). "
+                        f"Valid values: {', '.join(sorted(_VALID_SCAN_SOURCES))}."
+                    )
+                raise ValueError(
+                    f"Invalid source value '{source}'. "
+                    f"Valid values: {', '.join(sorted(_VALID_SCAN_SOURCES))}."
+                )
         return v
 
 

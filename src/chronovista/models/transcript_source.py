@@ -98,7 +98,7 @@ class TranscriptSnippet(BaseModel):
 
     text: str = Field(..., min_length=1, description="Transcript text content")
     start: float = Field(..., ge=0.0, description="Start time in seconds")
-    duration: float = Field(..., gt=0.0, description="Duration in seconds")
+    duration: float = Field(..., ge=0.0, description="Duration in seconds")
 
     @property
     def end(self) -> float:

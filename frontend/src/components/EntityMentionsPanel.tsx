@@ -72,6 +72,7 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   place: "Places",
   event: "Events",
   work: "Works",
+  technical_term: "Technical Terms",
   concept: "Concepts",
   other: "Other",
 };
@@ -83,6 +84,7 @@ const ENTITY_TYPE_ORDER = [
   "place",
   "event",
   "work",
+  "technical_term",
   "concept",
   "other",
 ];

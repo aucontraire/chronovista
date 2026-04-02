@@ -25,6 +25,7 @@ class OnboardingCounts(BaseModel):
     transcripts: int = 0
     categories: int = 0
     canonical_tags: int = 0
+    unresolved_tags: int = 0
 
 
 class PipelineStep(BaseModel):

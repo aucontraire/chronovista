@@ -11,6 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.56.0] - 2026-04-01
+
+### Added
+- **Feature 055: Incremental Tag Normalization** (Issue #124)
+  - `tags normalize --incremental` processes only unresolved tags (no `tag_aliases` entry)
+  - `--incremental --dry-run` previews changes with Rich Panel summary and table
+  - `enrich run` auto-normalizes new tags after enrichment; `--skip-normalize` to bypass
+  - Onboarding "Normalize Tags" step uses incremental mode with progress reporting
+  - `get_unresolved_tags_with_counts()` repository method for detecting unresolved tags
+  - New aliases created with `creation_method='auto_normalize'`
+
+### Fixed
+- Entity Mentions Panel displays "Technical Terms" instead of raw `technical_term`
+
+### Technical
+- Backend: 0.55.0 → 0.56.0, Frontend: 0.24.0 → 0.25.0
+- No migration, ~60 new tests, closes #124
+
 ## [0.55.0] - 2026-03-29
 
 ### Added

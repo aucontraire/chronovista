@@ -27,8 +27,10 @@ from chronovista.db.models import (
     CanonicalTag,
     Channel,
     Playlist,
+    TagAlias,
     Video,
     VideoCategory,
+    VideoTag,
     VideoTranscript,
 )
 from chronovista.models.enums import OperationType, PipelineStepStatus
@@ -281,6 +283,7 @@ class OnboardingService:
             transcripts = await self._count(session, VideoTranscript)
             categories = await self._count(session, VideoCategory)
             canonical_tags = await self._count(session, CanonicalTag)
+            unresolved_tags = await self._count_unresolved_tags(session)
 
             # Also fetch last-loaded timestamp in the same session
             result = await session.execute(
@@ -298,6 +301,7 @@ class OnboardingService:
             transcripts=transcripts,
             categories=categories,
             canonical_tags=canonical_tags,
+            unresolved_tags=unresolved_tags,
         )
         return counts, last_loaded_at
 
@@ -366,6 +370,30 @@ class OnboardingService:
         )
         return result.scalar_one()
 
+    @staticmethod
+    async def _count_unresolved_tags(session: AsyncSession) -> int:
+        """Count distinct tags in ``video_tags`` with no ``tag_aliases`` entry.
+
+        Uses a LEFT JOIN anti-pattern: joins ``video_tags`` to
+        ``tag_aliases`` on ``vt.tag = ta.raw_form`` and counts rows
+        where the join produces NULL (i.e., no alias exists).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Active database session.
+
+        Returns
+        -------
+        int
+            Number of distinct unresolved tags.
+        """
+        result = await session.execute(
+            select(func.count(func.distinct(VideoTag.tag)))
+            .outerjoin(TagAlias, VideoTag.tag == TagAlias.raw_form)
+            .where(TagAlias.raw_form.is_(None))
+        )
+        return result.scalar_one()
 
     # ------------------------------------------------------------------
     # Filesystem / auth checks
@@ -625,6 +653,13 @@ class OnboardingService:
                 and counts.enriched_videos < counts.available_videos
             ):
                 return PipelineStepStatus.AVAILABLE
+            # Special case: normalize_tags should remain AVAILABLE when
+            # unresolved tags exist, even if canonical_tags > 0.
+            if (
+                step_def.operation_type == OperationType.NORMALIZE_TAGS
+                and counts.unresolved_tags > 0
+            ):
+                return PipelineStepStatus.AVAILABLE
             return PipelineStepStatus.COMPLETED
 
         # Check for blocked conditions
@@ -668,6 +703,8 @@ class OnboardingService:
         elif step_def.operation_type == OperationType.ENRICH_METADATA:
             metrics["videos"] = counts.videos
             metrics["channels"] = counts.channels
+        elif step_def.operation_type == OperationType.NORMALIZE_TAGS:
+            metrics["unresolved_tags"] = counts.unresolved_tags
 
         return metrics
 
@@ -1158,8 +1195,10 @@ class OnboardingService:
                 backfill_svc = TagBackfillService(norm_svc)
 
                 async with session_factory() as session:
-                    await backfill_svc.run_backfill(session)
-                progress_cb(90.0)
+                    await backfill_svc.run_incremental_backfill(
+                        session,
+                        progress_callback=progress_cb,
+                    )
 
                 progress_cb(100.0)
                 return {"status": "completed"}

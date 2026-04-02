@@ -266,6 +266,11 @@ def enrich_videos(
         "--sync-likes",
         help="After enrichment, sync liked status for existing videos from YouTube API (~2 extra quota units)",
     ),
+    skip_normalize: bool = typer.Option(
+        False,
+        "--skip-normalize",
+        help="Skip automatic tag normalization after enrichment (FR-014)",
+    ),
     output: Path | None = typer.Option(
         None,
         "--output",
@@ -485,6 +490,7 @@ def enrich_videos(
                             dry_run=dry_run,
                             check_prerequisites=check_prereqs,
                             refresh_topics=refresh_topics,
+                            skip_normalize=skip_normalize,
                         )
 
                     except PrerequisiteError as e:

@@ -97,7 +97,8 @@ chronovista tags [COMMAND]
 | `search --pattern <pattern>` | Search tags by pattern |
 | `stats` | Comprehensive tag statistics |
 | `by-video --id <video_id>` | Show all tags for a video |
-| `normalize` | Normalize all tags and populate canonical_tags/tag_aliases tables |
+| `normalize` | Normalize tags and populate canonical_tags/tag_aliases tables |
+| `normalize --incremental` | Process only unresolved tags (no full backfill) |
 | `analyze` | Preview tag normalization analysis without modifying the database |
 | `recount` | Recalculate alias_count and video_count on all canonical tags |
 | `merge <sources...> --into <target>` | Merge canonical tags (reassign aliases from source to target) |
@@ -579,20 +580,34 @@ chronovista tags by-video -i "dQw4w9WgXcQ"
 chronovista tags normalize [OPTIONS]
 ```
 
-Processes all distinct tags from `video_tags` through the 9-step Unicode normalization pipeline and populates the `canonical_tags` and `tag_aliases` tables. Idempotent — safe to re-run after partial completion or to pick up new tags.
+Processes tags from `video_tags` through the 9-step Unicode normalization pipeline and populates the `canonical_tags` and `tag_aliases` tables.
+
+Without flags, the full backfill is run (idempotent — existing rows are skipped via ON CONFLICT DO NOTHING).
+
+With `--incremental`, only tags that have no `tag_aliases` entry are processed, making subsequent runs fast regardless of corpus size.
+
+With `--incremental --dry-run`, the command previews what would be written without touching the database.
 
 **Options:**
 
 - `--batch-size <n>` - Number of records per transaction commit (default: 1000)
+- `--incremental` - Process only unresolved tags (no `tag_aliases` entry yet)
+- `--dry-run` - Preview what would be created without writing (only with `--incremental`)
 
 **Examples:**
 
 ```bash
-# Run with default batch size
+# Full backfill (all tags, idempotent)
 chronovista tags normalize
 
-# Run with smaller batches (less memory, more frequent commits)
+# Full backfill with smaller batches
 chronovista tags normalize --batch-size 500
+
+# Incremental: process only new/unresolved tags
+chronovista tags normalize --incremental
+
+# Preview incremental changes without writing
+chronovista tags normalize --incremental --dry-run
 ```
 
 #### Analyze Tags
@@ -1041,6 +1056,7 @@ Enriches video metadata from the YouTube Data API.
 - `--include-playlists` - Also enrich playlist metadata
 - `--report <path>` - Generate JSON report
 - `--log-file <path>` - Log to file
+- `--skip-normalize` - Skip automatic tag normalization after enrichment
 
 **Examples:**
 
@@ -1483,9 +1499,13 @@ chronovista tags by-video --id "-2kc5xfeQEs"  # Video ID starting with -
 chronovista tags analyze
 chronovista tags analyze --format json > analysis.json
 
-# Run the backfill (populates canonical_tags and tag_aliases)
+# Full backfill (populates canonical_tags and tag_aliases)
 chronovista tags normalize
 chronovista tags normalize --batch-size 500
+
+# Incremental: process only new/unresolved tags
+chronovista tags normalize --incremental
+chronovista tags normalize --incremental --dry-run
 
 # Recalculate counts after manual changes
 chronovista tags recount

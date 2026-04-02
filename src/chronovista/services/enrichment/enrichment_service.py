@@ -985,6 +985,7 @@ class EnrichmentService:
         check_prerequisites: bool = True,
         refresh_topics: bool = False,
         progress_cb: Callable[[float], None] | None = None,
+        skip_normalize: bool = False,
     ) -> EnrichmentReport:
         """
         Main enrichment method for batch video processing.
@@ -1019,6 +1020,9 @@ class EnrichmentService:
         progress_cb : Callable[[float], None] | None, optional
             If provided, called after each batch commit with a float in [0.0, 1.0]
             representing the fraction of videos processed so far (default None).
+        skip_normalize : bool, optional
+            If True, skip automatic tag normalization after enrichment
+            (default False). See FR-014.
 
         Returns
         -------
@@ -1423,6 +1427,22 @@ class EnrichmentService:
 
         if progress_cb is not None:
             progress_cb(1.0)
+
+        # FR-011 / FR-011a: Automatic tag normalization after enrichment
+        if not skip_normalize and not dry_run:
+            try:
+                from chronovista.services.tag_backfill import TagBackfillService
+                from chronovista.services.tag_normalization import (
+                    TagNormalizationService,
+                )
+
+                backfill_svc = TagBackfillService(TagNormalizationService())
+                await backfill_svc.run_incremental_backfill(session)
+            except Exception as exc:
+                # FR-013: Log warning on error, do not fail enrichment
+                logger.warning(
+                    "Automatic tag normalization failed: %s", exc
+                )
 
         return create_report()
 

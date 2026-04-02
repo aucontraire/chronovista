@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from chronovista.services.tag_management import TagManagementService
@@ -481,8 +481,34 @@ def normalize_tags(
         "--batch-size",
         help="Number of records per transaction commit",
     ),
+    incremental: bool = typer.Option(
+        False,
+        "--incremental/--no-incremental",
+        help=(
+            "Process only tags that have no tag_aliases entry yet. "
+            "Skips the full 500K-tag corpus when only new tags need resolving."
+        ),
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help=(
+            "Preview what would be created without writing to the database. "
+            "Only applies when --incremental is set."
+        ),
+    ),
 ) -> None:
-    """Normalize all video tags and populate canonical_tags/tag_aliases tables."""
+    """Normalize all video tags and populate canonical_tags/tag_aliases tables.
+
+    Without flags, the full backfill is run (idempotent — existing rows are
+    skipped via ON CONFLICT DO NOTHING).
+
+    With ``--incremental``, only tags that have no ``tag_aliases`` entry are
+    processed, making subsequent runs fast regardless of corpus size.
+
+    With ``--incremental --dry-run``, the command previews what would be
+    written without touching the database.
+    """
 
     async def _run() -> None:
         from chronovista.services.tag_backfill import TagBackfillService
@@ -492,14 +518,153 @@ def normalize_tags(
         backfill_service = TagBackfillService(normalization_service)
 
         async for session in db_manager.get_session(echo=False):
-            await backfill_service.run_backfill(
-                session, batch_size=batch_size, console=console
-            )
+            if incremental:
+                metrics = await backfill_service.run_incremental_backfill(
+                    session,
+                    batch_size=batch_size,
+                    dry_run=dry_run,
+                    console=console,
+                )
+                _render_incremental_output(metrics, dry_run=dry_run)
+            else:
+                await backfill_service.run_backfill(
+                    session, batch_size=batch_size, console=console
+                )
 
     try:
         asyncio.run(_run())
     except SystemExit as e:
         raise typer.Exit(code=e.code if isinstance(e.code, int) else 1) from e
+
+
+def _render_incremental_output(
+    metrics: dict[str, Any],
+    dry_run: bool = False,
+) -> None:
+    """Render the incremental normalization result to the console.
+
+    Parameters
+    ----------
+    metrics : dict
+        Return value from ``run_incremental_backfill()``.  Expected keys:
+        ``tags_processed``, ``aliases_created``, ``canonical_tags_created``,
+        ``canonical_tags_reused``, ``skipped``, ``duration``.
+        In dry-run mode also: ``ct_records``, ``ta_records``, ``skip_list``.
+    dry_run : bool, optional
+        When ``True``, render a preview panel + table instead of a live
+        metrics panel.
+    """
+    tags_processed: int = metrics.get("tags_processed", 0)
+
+    # FR-009: no-op when nothing to process
+    if tags_processed == 0:
+        console.print(
+            Panel(
+                "[green]No unresolved tags found.[/green]\n"
+                "All tags in video_tags already have tag_aliases entries.",
+                title="Incremental Tag Normalization",
+                border_style="green",
+            )
+        )
+        return
+
+    if dry_run:
+        _render_dry_run_output(metrics)
+    else:
+        _render_live_output(metrics)
+
+
+def _render_dry_run_output(metrics: dict[str, Any]) -> None:
+    """Render FR-008a dry-run Rich Panel summary + Rich Table.
+
+    Parameters
+    ----------
+    metrics : dict
+        Metrics dict returned by ``run_incremental_backfill(dry_run=True)``.
+    """
+    tags_processed: int = metrics.get("tags_processed", 0)
+    canonical_tags_created: int = metrics.get("canonical_tags_created", 0)
+    canonical_tags_reused: int = metrics.get("canonical_tags_reused", 0)
+    skipped: int = metrics.get("skipped", 0)
+
+    ct_records: list[dict[str, Any]] = metrics.get("ct_records", [])
+    ta_records: list[dict[str, Any]] = metrics.get("ta_records", [])
+
+    # Build a set of normalized forms that would create NEW canonical tags
+    new_normalized_forms: set[str] = {
+        r["normalized_form"] for r in ct_records
+    }
+
+    # Summary panel (FR-008a §1)
+    summary_lines = [
+        f"[bold]Total unresolved tags:[/bold]  {tags_processed:,}",
+        f"[bold]New canonical tags:[/bold]     {canonical_tags_created:,}",
+        f"[bold]Reused canonical tags:[/bold]  {canonical_tags_reused:,}",
+        f"[bold]Skipped (no normal.):[/bold]   {skipped:,}",
+    ]
+    console.print(
+        Panel(
+            "\n".join(summary_lines),
+            title="[yellow]Dry Run — Incremental Tag Normalization[/yellow]",
+            border_style="yellow",
+        )
+    )
+
+    if not ta_records:
+        return
+
+    # Preview table (FR-008a §2): Raw Form | Normalized Form | Action
+    preview_table = Table(title="Tags to be processed (no writes performed)")
+    preview_table.add_column("Raw Form", style="cyan")
+    preview_table.add_column("Normalized Form", style="magenta")
+    preview_table.add_column("Action", style="bold")
+
+    for record in ta_records:
+        raw_form: str = record.get("raw_form", "")
+        normalized_form: str = record.get("normalized_form", "")
+        if normalized_form in new_normalized_forms:
+            action = "New"
+        else:
+            action = f"Reuse → {normalized_form}"
+        preview_table.add_row(raw_form, normalized_form, action)
+
+    console.print(preview_table)
+    console.print("[dim]No data was written to the database.[/dim]")
+
+
+def _render_live_output(metrics: dict[str, Any]) -> None:
+    """Render FR-007 metrics panel after a live incremental run.
+
+    Parameters
+    ----------
+    metrics : dict
+        Metrics dict returned by ``run_incremental_backfill()``.
+    """
+    tags_processed: int = metrics.get("tags_processed", 0)
+    aliases_created: int = metrics.get("aliases_created", 0)
+    canonical_tags_created: int = metrics.get("canonical_tags_created", 0)
+    canonical_tags_reused: int = metrics.get("canonical_tags_reused", 0)
+    skipped: int = metrics.get("skipped", 0)
+    duration: float = metrics.get("duration", 0.0)
+
+    minutes, seconds = divmod(int(duration), 60)
+    elapsed_str = f"{minutes}m {seconds:02d}s" if minutes > 0 else f"{seconds}s"
+
+    summary_lines = [
+        f"[bold]Tags processed:[/bold]          {tags_processed:>7,}",
+        f"[bold]Aliases created:[/bold]         {aliases_created:>7,}",
+        f"[bold]Canonical tags created:[/bold]  {canonical_tags_created:>7,}",
+        f"[bold]Canonical tags reused:[/bold]   {canonical_tags_reused:>7,}",
+        f"[bold]Tags skipped:[/bold]            {skipped:>7,}",
+        f"[bold]Duration:[/bold]                {elapsed_str:>7}",
+    ]
+    console.print(
+        Panel(
+            "\n".join(summary_lines),
+            title="[green]Incremental Tag Normalization Complete[/green]",
+            border_style="green",
+        )
+    )
 
 
 @tag_app.command("analyze")

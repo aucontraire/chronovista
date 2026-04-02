@@ -11,6 +11,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.56.0] - 2026-04-01
+
+### Added
+- **Feature 055: Incremental Tag Normalization** (Issue #124)
+  - **Incremental CLI Mode (US1)**: `chronovista tags normalize --incremental` processes only tags in `video_tags` that have no corresponding `tag_aliases` entry, skipping the full 500K+ tag corpus; resolves new tags in seconds instead of minutes
+  - **Dry-Run Preview (US1)**: `--incremental --dry-run` displays a Rich Panel summary (total unresolved, new canonical, reused canonical, skipped) and Rich Table (Raw Form, Normalized Form, Action) without writing to the database
+  - **Automatic Normalization After Enrichment (US2)**: `enrich run` automatically normalizes new tags after enrichment completes; runs silently unless errors occur; errors logged at WARNING level without failing enrichment
+  - **Skip Normalize Flag (US2)**: `enrich run --skip-normalize` bypasses automatic post-enrichment normalization
+  - **Onboarding Pipeline Integration (US3)**: `_factory_normalize_tags()` uses `run_incremental_backfill()` instead of `run_backfill()`; "Normalize Tags" step shows AVAILABLE when unresolved tags exist even if canonical tags are present; progress reported via onboarding UI
+  - **Unresolved Tag Detection**: `VideoTagRepository.get_unresolved_tags_with_counts()` uses LEFT JOIN anti-pattern to find tags with no `tag_aliases` entry
+  - New aliases use `creation_method='auto_normalize'` for traceability (distinct from `'backfill'` and `'manual'`)
+  - Both `video_count` and `alias_count` updated on affected canonical tags after incremental inserts
+
+### Fixed
+- Entity Mentions Panel on video detail page now displays "Technical Terms" section header instead of raw `technical_term` snake_case string
+
+### Changed
+- Backward compatible: `chronovista tags normalize` (without `--incremental`) continues to run the full backfill as before
+
+### Technical
+- Backend version: 0.55.0 → 0.56.0
+- Frontend version: 0.24.0 → 0.25.0
+- No database migration — reuses existing `canonical_tags`, `tag_aliases`, `video_tags` tables
+- ~60 new backend tests across 3 test files
+- 421 unresolved tags resolved in production validation
+- Closes #124
+
 ## [0.55.0] - 2026-03-29
 
 ### Added

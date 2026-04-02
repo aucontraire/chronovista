@@ -733,3 +733,70 @@ class TestGetDistinctTagsWithCounts:
         # Should return all tags with their counts, alphabetically ordered
         assert result == [("alpha", 50), ("beta", 50), ("gamma", 50)]
         mock_session.execute.assert_called_once()
+
+
+class TestGetUnresolvedTagsWithCounts:
+    """Test get_unresolved_tags_with_counts method (T006)."""
+
+    @pytest.fixture
+    def repository(self) -> VideoTagRepository:
+        """Create repository instance for testing."""
+        return VideoTagRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> MagicMock:
+        """Create mock async session."""
+        return MagicMock(spec=AsyncSession)
+
+    @pytest.mark.asyncio
+    async def test_returns_only_unresolved_tags(
+        self, repository: VideoTagRepository, mock_session: MagicMock
+    ) -> None:
+        """Test method returns only tags without tag_aliases entries."""
+        mock_result = MagicMock()
+        mock_result.all.return_value = [
+            ("new_tag_1", 3),
+            ("new_tag_2", 7),
+        ]
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        result = await repository.get_unresolved_tags_with_counts(mock_session)
+
+        assert result == [("new_tag_1", 3), ("new_tag_2", 7)]
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_list_when_all_resolved(
+        self, repository: VideoTagRepository, mock_session: MagicMock
+    ) -> None:
+        """Test method returns empty list when all tags have aliases."""
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        result = await repository.get_unresolved_tags_with_counts(mock_session)
+
+        assert result == []
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_includes_occurrence_counts(
+        self, repository: VideoTagRepository, mock_session: MagicMock
+    ) -> None:
+        """Test method includes correct occurrence counts for each tag."""
+        mock_result = MagicMock()
+        mock_result.all.return_value = [
+            ("ai tools", 15),
+            ("machine learning", 42),
+            ("python tutorial", 1),
+        ]
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        result = await repository.get_unresolved_tags_with_counts(mock_session)
+
+        assert len(result) == 3
+        # Verify counts are tuples of (tag, count)
+        tags_dict = dict(result)
+        assert tags_dict["ai tools"] == 15
+        assert tags_dict["machine learning"] == 42
+        assert tags_dict["python tutorial"] == 1

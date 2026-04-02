@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import and_, delete, desc, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chronovista.db.models import TagAlias as TagAliasDB
 from chronovista.db.models import VideoTag as VideoTagDB
 from chronovista.models.video_tag import (
     VideoTagCreate,
@@ -369,6 +370,42 @@ class VideoTagRepository(
                 func.count(VideoTagDB.tag).label("occurrence_count"),
             )
             .where(VideoTagDB.tag.is_not(None))
+            .group_by(VideoTagDB.tag)
+            .order_by(VideoTagDB.tag)
+        )
+        return [(row[0], row[1]) for row in result.all()]
+
+    async def get_unresolved_tags_with_counts(
+        self, session: AsyncSession
+    ) -> list[tuple[str, int]]:
+        """
+        Retrieve tags that have no corresponding entry in ``tag_aliases``.
+
+        Uses a LEFT JOIN anti-pattern: joins ``video_tags`` to ``tag_aliases``
+        on ``vt.tag = ta.raw_form`` and filters for rows where the join
+        produces NULL (i.e., no alias exists for that tag).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+
+        Returns
+        -------
+        list[tuple[str, int]]
+            List of (tag, occurrence_count) tuples ordered by tag,
+            where occurrence_count is the number of distinct video_ids
+            with that tag.
+        """
+        result = await session.execute(
+            select(
+                VideoTagDB.tag,
+                func.count(func.distinct(VideoTagDB.video_id)).label(
+                    "occurrence_count"
+                ),
+            )
+            .outerjoin(TagAliasDB, VideoTagDB.tag == TagAliasDB.raw_form)
+            .where(TagAliasDB.raw_form.is_(None))
             .group_by(VideoTagDB.tag)
             .order_by(VideoTagDB.tag)
         )

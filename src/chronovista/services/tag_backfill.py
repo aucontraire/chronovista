@@ -19,6 +19,7 @@ import logging
 import time
 import uuid
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -489,6 +490,156 @@ class TagBackfillService:
             for raw_form, count in skip_list:
                 skip_table.add_row(repr(raw_form), str(count))
             _console.print(skip_table)
+
+    # ------------------------------------------------------------------
+    # Incremental backfill (Feature 055)
+    # ------------------------------------------------------------------
+
+    async def run_incremental_backfill(
+        self,
+        session: AsyncSession,
+        batch_size: int = 1000,
+        dry_run: bool = False,
+        console: Console | None = None,
+        progress_callback: Callable[[float], None] | None = None,
+    ) -> dict[str, Any]:
+        """Run incremental tag normalization for unresolved tags only.
+
+        Processes only tags in ``video_tags`` that have no corresponding
+        entry in ``tag_aliases``.  For each unresolved tag the existing
+        normalization pipeline is reused: normalize, group, select
+        canonical form, and batch-insert into ``canonical_tags`` and
+        ``tag_aliases``.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            An active SQLAlchemy async session.
+        batch_size : int, optional
+            Number of records per INSERT batch (default ``1000``).
+        dry_run : bool, optional
+            If ``True``, collect results without writing to the database.
+        console : Console | None, optional
+            Rich console for output.  A default console is created if
+            ``None``.
+        progress_callback : Callable[[float], None] | None, optional
+            Optional callback invoked with progress percentage (0.0 to
+            100.0) during processing.
+
+        Returns
+        -------
+        dict[str, Any]
+            Metrics dict with keys: ``tags_processed``,
+            ``aliases_created``, ``canonical_tags_created``,
+            ``canonical_tags_reused``, ``skipped``, ``duration``.
+        """
+        if batch_size < 1:
+            raise SystemExit(2)
+
+        start_time = time.time()
+
+        if progress_callback is not None:
+            progress_callback(0.0)
+
+        # Step 1: Get unresolved tags
+        repo = VideoTagRepository()
+        unresolved = await repo.get_unresolved_tags_with_counts(session)
+
+        if not unresolved:
+            logger.info("No unresolved tags found")
+            elapsed = time.time() - start_time
+            if progress_callback is not None:
+                progress_callback(100.0)
+            return {
+                "tags_processed": 0,
+                "aliases_created": 0,
+                "canonical_tags_created": 0,
+                "canonical_tags_reused": 0,
+                "skipped": 0,
+                "duration": elapsed,
+            }
+
+        # Step 2: Build dict for _normalize_and_group
+        distinct_tags: dict[str, int] = dict(unresolved)
+
+        # Step 3: Normalize and group using existing pipeline
+        execution_timestamp = datetime.now(UTC)
+        ct_records, ta_records, skip_list = await self._normalize_and_group(
+            session, distinct_tags, execution_timestamp
+        )
+
+        # Step 4: Override creation_method to 'auto_normalize' (FR-004a)
+        for record in ta_records:
+            record["creation_method"] = "auto_normalize"
+
+        if dry_run:
+            elapsed = time.time() - start_time
+            if progress_callback is not None:
+                progress_callback(100.0)
+            return {
+                "tags_processed": len(distinct_tags),
+                "aliases_created": len(ta_records),
+                "canonical_tags_created": len(ct_records),
+                "canonical_tags_reused": len(ta_records) - len(ct_records) - len(skip_list),
+                "skipped": len(skip_list),
+                "duration": elapsed,
+                "dry_run": True,
+                "ct_records": ct_records,
+                "ta_records": ta_records,
+                "skip_list": skip_list,
+            }
+
+        # Step 5: Batch insert canonical tags and aliases
+        ct_inserted, ct_skipped = await self._batch_insert_canonical_tags(
+            session, ct_records, batch_size
+        )
+
+        if progress_callback is not None:
+            total_work = len(ct_records) + len(ta_records)
+            if total_work > 0:
+                progress_callback(len(ct_records) / total_work * 100.0)
+
+        ta_inserted, ta_skipped = await self._batch_insert_tag_aliases(
+            session, ta_records, batch_size
+        )
+
+        if progress_callback is not None:
+            progress_callback(90.0)
+
+        # Step 6: Update video_count for affected canonical tags (FR-006)
+        await self._update_video_counts(session)
+
+        # Step 7: Update alias_count for affected canonical tags (FR-006a)
+        # Uses the same correlated subquery pattern as run_recount()
+        alias_count_subq = (
+            select(
+                TagAliasDB.canonical_tag_id,
+                func.count().label("cnt"),
+            )
+            .group_by(TagAliasDB.canonical_tag_id)
+            .subquery()
+        )
+        alias_update_stmt = (
+            update(CanonicalTagDB)
+            .where(CanonicalTagDB.id == alias_count_subq.c.canonical_tag_id)
+            .values(alias_count=alias_count_subq.c.cnt)
+        )
+        await session.execute(alias_update_stmt)
+        await session.commit()
+
+        elapsed = time.time() - start_time
+
+        if progress_callback is not None:
+            progress_callback(100.0)
+
+        return {
+            "tags_processed": len(distinct_tags),
+            "aliases_created": ta_inserted,
+            "canonical_tags_created": ct_inserted,
+            "canonical_tags_reused": ct_skipped,
+            "skipped": len(skip_list),
+            "duration": elapsed,
+        }
 
     # ------------------------------------------------------------------
     # T012: Collision detection

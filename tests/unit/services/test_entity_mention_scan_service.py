@@ -2424,3 +2424,159 @@ class TestEntityIdsFilter:
         assert "entity_ids" in log_messages.lower(), (
             f"Expected 'entity_ids' in scan start log; log output: {log_messages[:400]}"
         )
+
+
+# ---------------------------------------------------------------------------
+# TestAliasRegexOrdering
+# ---------------------------------------------------------------------------
+
+
+class TestAliasRegexOrdering:
+    """Verify aliases are sorted longest-first in regex alternation.
+
+    Bug fix: Python regex alternation uses first-match-wins. If a shorter
+    alias appears before a longer one in the pattern (e.g., "Jairo Calixto"
+    before "Jairo Calixto Albarrán"), the regex matches the shorter alias
+    and never tries the longer one, causing incorrect mention attribution.
+    """
+
+    async def test_longer_alias_appears_before_shorter_in_pattern(self) -> None:
+        """Pattern alternation must list longer aliases first."""
+        from chronovista.services.entity_mention_scan_service import _EntityPattern
+
+        entity_id = _make_uuid()
+        entity_row = _make_entity_row(
+            entity_id=entity_id, canonical_name="Jairo Calixto"
+        )
+        short_alias = _make_alias_row(entity_id=entity_id, alias_name="Jairo Calixto")
+        long_alias = _make_alias_row(
+            entity_id=entity_id, alias_name="Jairo Calixto Albarrán"
+        )
+
+        session = AsyncMock()
+        session.execute = AsyncMock(
+            side_effect=[
+                _scalars_execute([entity_row]),
+                _raw_execute([short_alias, long_alias]),
+            ]
+        )
+        factory = _make_session_factory(session)
+        svc = _build_service(factory)
+
+        patterns: list[_EntityPattern] = await svc._load_entity_patterns(
+            session, entity_type=None, new_entities_only=False
+        )
+
+        assert len(patterns) == 1
+        pg = patterns[0].pg_pattern
+        parts = pg.split("|")
+        # The escaped longer alias must appear before the shorter one
+        long_escaped = re.escape("Jairo Calixto Albarrán")
+        short_escaped = re.escape("Jairo Calixto")
+        long_idx = next(i for i, p in enumerate(parts) if p == long_escaped)
+        short_idx = next(i for i, p in enumerate(parts) if p == short_escaped)
+        assert long_idx < short_idx, (
+            f"Longer alias must appear before shorter in alternation: {parts}"
+        )
+
+    async def test_longer_alias_matched_over_shorter_in_text(self) -> None:
+        """When text contains the longer form, regex must match it fully."""
+        from chronovista.services.entity_mention_scan_service import _EntityPattern
+
+        entity_id = _make_uuid()
+        fake_pattern = _EntityPattern(
+            entity_id=entity_id,
+            canonical_name="Jairo Calixto",
+            entity_type="person",
+            pg_pattern="|".join(
+                sorted(
+                    [
+                        re.escape("Jairo Calixto Albarrán"),
+                        re.escape("Jairo Calixto"),
+                    ],
+                    key=len,
+                    reverse=True,
+                )
+            ),
+            alias_names=["Jairo Calixto Albarrán", "Jairo Calixto"],
+        )
+
+        segment = _make_segment_row(
+            effective_text="Gracias don Jairo Calixto Albarrán, gracias a todos"
+        )
+
+        session = AsyncMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+
+        factory = _make_session_factory(session)
+        svc = _build_service(factory)
+        svc._mention_repo.delete_by_scope = AsyncMock(return_value=0)
+        svc._mention_repo.bulk_create_with_conflict_skip = AsyncMock(return_value=0)
+        svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
+
+        with (
+            patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
+            patch.object(
+                svc, "_fetch_segment_batch", side_effect=[[segment], []]
+            ),
+        ):
+            # Use full_rescan=True to skip dedup check (no session.execute needed)
+            result = await svc.scan(dry_run=True, full_rescan=True)
+
+        # The dry-run preview should contain the longer alias match
+        assert result.dry_run_matches is not None
+        assert len(result.dry_run_matches) == 1
+        assert result.dry_run_matches[0]["matched_text"] == "Jairo Calixto Albarrán"
+
+
+# ---------------------------------------------------------------------------
+# TestFullRescanSourceScoping
+# ---------------------------------------------------------------------------
+
+
+class TestFullRescanSourceScoping:
+    """Verify that --full transcript scan only deletes transcript mentions.
+
+    Bug fix: The transcript scan's --full mode previously called
+    delete_by_scope without a mention_source filter, which deleted
+    title and description mentions. It should only delete
+    mention_source='transcript' mentions.
+    """
+
+    async def test_full_rescan_passes_transcript_source_to_delete(self) -> None:
+        """Full rescan must scope delete to mention_source='transcript'."""
+        from chronovista.services.entity_mention_scan_service import _EntityPattern
+
+        entity_id = _make_uuid()
+        fake_pattern = _EntityPattern(
+            entity_id=entity_id,
+            canonical_name="SpaceX",
+            entity_type="organization",
+            pg_pattern=re.escape("SpaceX"),
+            alias_names=["SpaceX"],
+        )
+
+        session = AsyncMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+
+        factory = _make_session_factory(session)
+        svc = _build_service(factory)
+        svc._mention_repo.delete_by_scope = AsyncMock(return_value=5)
+        svc._mention_repo.bulk_create_with_conflict_skip = AsyncMock(return_value=0)
+        svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
+        with (
+            patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
+            patch.object(svc, "_fetch_segment_batch", return_value=[]),
+        ):
+            await svc.scan(full_rescan=True, dry_run=False)
+
+        svc._mention_repo.delete_by_scope.assert_called_once()
+        call_kwargs = svc._mention_repo.delete_by_scope.call_args.kwargs
+        assert call_kwargs.get("mention_source") == "transcript", (
+            "Full rescan must scope deletion to mention_source='transcript' "
+            "to avoid wiping title/description mentions"
+        )

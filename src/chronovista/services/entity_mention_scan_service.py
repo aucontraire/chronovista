@@ -189,6 +189,8 @@ class EntityMentionScanService:
             scoped_entity_ids = [p.entity_id for p in patterns]
 
             # 2. Handle --full rescan: delete existing mentions in scope
+            #    Only delete transcript-sourced mentions — title/description
+            #    mentions are managed by scan_metadata() separately.
             if full_rescan and not dry_run:
                 deleted = await self._mention_repo.delete_by_scope(
                     session,
@@ -196,9 +198,10 @@ class EntityMentionScanService:
                     video_ids=video_ids,
                     language_code=language_code,
                     detection_method="rule_match",
+                    mention_source="transcript",
                 )
                 logger.info(
-                    "Full rescan: deleted %d existing rule_match mentions", deleted
+                    "Full rescan: deleted %d existing transcript mentions", deleted
                 )
                 await session.flush()
 
@@ -991,7 +994,9 @@ class EntityMentionScanService:
                     )
 
             # Build PostgreSQL regex pattern: \m(alias1|alias2|...)\M
-            escaped_names = [re.escape(n) for n in names]
+            escaped_names = sorted(
+                [re.escape(n) for n in names], key=len, reverse=True
+            )
             pg_pattern = "|".join(escaped_names)
 
             patterns.append(

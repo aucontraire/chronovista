@@ -577,3 +577,95 @@ class TestSkipNormalizeFlag:
         result = runner.invoke(enrich_app, ["run", "--help"])
         assert result.exit_code == 0
         assert "normalization" in result.output.lower()
+
+
+# ===========================================================================
+# T-LinkEntity — ``tags classify --link-entity`` CLI validation
+# ===========================================================================
+
+
+class TestClassifyLinkEntityCli:
+    """
+    CLI-level tests for the ``--link-entity`` option added to
+    ``tags classify`` (Feature 127).
+
+    These tests exercise the argument-parsing and early-exit validation
+    logic inside ``classify_tag`` without touching the database.
+
+    Covers:
+    - T-LE01: ``--link-entity`` appears in ``tags classify --help``.
+    - T-LE02: ``--description`` and ``--link-entity`` together → exit 2,
+      "mutually exclusive" message.
+    - T-LE03: Missing ``--type`` when ``--link-entity`` is also absent → exit 2
+      (unchanged behaviour).
+    - T-LE04: Missing ``--type`` when ``--link-entity`` IS present → does NOT
+      exit early with "Missing --type" (type is inferred from entity).
+    """
+
+    def test_link_entity_appears_in_classify_help(
+        self,
+        runner: CliRunner,
+    ) -> None:
+        """T-LE01: ``--link-entity`` is documented in ``tags classify --help``."""
+        result = runner.invoke(tag_app, ["classify", "--help"])
+        assert result.exit_code == 0
+        assert "--link-entity" in result.output
+
+    def test_description_and_link_entity_are_mutually_exclusive(
+        self,
+        runner: CliRunner,
+    ) -> None:
+        """T-LE02: Providing both ``--description`` and ``--link-entity`` exits with code 2.
+
+        The CLI must print an error panel containing "mutually exclusive"
+        before any database operation takes place.
+        """
+        result = runner.invoke(
+            tag_app,
+            [
+                "classify",
+                "destiny",
+                "--type", "person",
+                "--description", "A streamer",
+                "--link-entity", "Steven Bonnell",
+            ],
+        )
+        assert result.exit_code == 2
+        assert "mutually exclusive" in result.output.lower()
+
+    def test_missing_type_without_link_entity_exits_code_2(
+        self,
+        runner: CliRunner,
+    ) -> None:
+        """T-LE03: Omitting ``--type`` without ``--link-entity`` still exits with code 2.
+
+        This validates that the existing "Missing --type" guard was not
+        accidentally removed by the --link-entity refactor.
+        """
+        result = runner.invoke(
+            tag_app,
+            ["classify", "destiny"],
+        )
+        assert result.exit_code == 2
+        assert "type" in result.output.lower()
+
+    @patch("chronovista.cli.tag_commands.asyncio.run")
+    def test_missing_type_with_link_entity_does_not_exit_early(
+        self,
+        mock_asyncio_run: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        """T-LE04: Omitting ``--type`` when ``--link-entity`` is given must NOT
+        trigger the early "Missing --type" exit.
+
+        The command should proceed past the guard (asyncio.run is reached)
+        because the type will be inferred from the entity at runtime.
+        """
+        result = runner.invoke(
+            tag_app,
+            ["classify", "destiny", "--link-entity", "Steven Bonnell"],
+        )
+        # asyncio.run being called means we passed all early-exit guards
+        mock_asyncio_run.assert_called_once()
+        # Must NOT print the "Missing --type" panel
+        assert "missing --type" not in result.output.lower()

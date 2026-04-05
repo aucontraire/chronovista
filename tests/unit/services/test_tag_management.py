@@ -3852,3 +3852,188 @@ class TestClassifyDescriptionAndAutoCase:
             "auto_case must have no effect for tag-only types such as TOPIC"
         )
         mock_named_entity_repo.create.assert_not_called()
+
+
+# ===========================================================================
+# TestClassifyLinkEntity
+# ===========================================================================
+
+
+class TestClassifyLinkEntity:
+    """
+    Tests for the ``link_entity_id`` parameter added to
+    ``TagManagementService.classify``.
+
+    Covers:
+    - Happy path: active entity found by ID → tag linked, no new entity created.
+    - Entity not found by ID → ``ValueError`` raised.
+    - Entity found but status is not "active" → ``ValueError`` raised.
+    """
+
+    async def test_classify_link_entity_links_existing_entity(
+        self,
+        service: TagManagementService,
+        mock_canonical_tag_repo: AsyncMock,
+        mock_named_entity_repo: AsyncMock,
+        mock_entity_alias_repo: AsyncMock,
+        mock_operation_log_repo: AsyncMock,
+        mock_session: AsyncMock,
+    ) -> None:
+        """
+        When ``link_entity_id`` is provided and the entity is active, the tag
+        must be linked to that entity without creating a new NamedEntity.
+
+        Expected behaviour:
+        - ``named_entity_repo.get`` is called with the given UUID.
+        - ``named_entity_repo.create`` is NOT called.
+        - ``tag.entity_id`` is set to the target entity's id.
+        - ``tag.entity_type`` is set to the entity type value.
+        - ``ClassifyResult.entity_created`` is ``False``.
+        """
+        from chronovista.models.enums import EntityType
+        from chronovista.services.tag_management import ClassifyResult
+
+        tag = _make_canonical_tag(
+            normalized_form="destiny",
+            canonical_form="Destiny",
+            status="active",
+        )
+        tag.entity_type = None
+        tag.entity_id = None
+        mock_canonical_tag_repo.get_by_normalized_form.return_value = tag
+
+        # The existing entity (e.g. "Steven Bonnell") that the tag should link to
+        target_entity = _make_named_entity(
+            normalized_form="steven bonnell",
+            entity_type="person",
+            discovery_method="user_created",
+        )
+        target_entity.status = "active"
+        target_entity.canonical_name = "Steven Bonnell"
+
+        entity_uuid = target_entity.id
+        mock_named_entity_repo.get.return_value = target_entity
+
+        ea = _make_entity_alias(entity_id=entity_uuid)
+        mock_entity_alias_repo.create.return_value = ea
+
+        op_id = uuid.uuid4()
+        log_entry = _make_operation_log(operation_type="create")
+        log_entry.id = op_id
+        mock_operation_log_repo.create.return_value = log_entry
+
+        # Only the self-alias existence check fires (no existing-entity SELECT
+        # because we skip straight to link_entity_id branch)
+        mock_session.execute = AsyncMock(
+            side_effect=[
+                MagicMock(**{"scalar_one_or_none.return_value": None}),  # self-alias check
+            ]
+        )
+        mock_session.add = MagicMock()
+
+        result = await service.classify(
+            mock_session,
+            normalized_form="destiny",
+            entity_type=EntityType.PERSON,
+            link_entity_id=entity_uuid,
+        )
+
+        assert isinstance(result, ClassifyResult)
+        assert result.entity_created is False
+        assert result.entity_type == "person"
+        assert tag.entity_id == entity_uuid
+        assert tag.entity_type == "person"
+        mock_named_entity_repo.create.assert_not_called()
+        mock_named_entity_repo.get.assert_called_once_with(mock_session, entity_uuid)
+
+    async def test_classify_link_entity_not_found_raises(
+        self,
+        service: TagManagementService,
+        mock_canonical_tag_repo: AsyncMock,
+        mock_named_entity_repo: AsyncMock,
+        mock_operation_log_repo: AsyncMock,
+        mock_session: AsyncMock,
+    ) -> None:
+        """
+        When ``link_entity_id`` is provided but the entity does not exist,
+        ``classify`` must raise ``ValueError`` with a message containing the UUID.
+
+        Expected behaviour:
+        - ``named_entity_repo.get`` returns ``None``.
+        - ``ValueError`` is raised immediately (no entity created, no log written).
+        """
+        from chronovista.models.enums import EntityType
+
+        tag = _make_canonical_tag(
+            normalized_form="destiny",
+            canonical_form="Destiny",
+            status="active",
+        )
+        tag.entity_type = None
+        tag.entity_id = None
+        mock_canonical_tag_repo.get_by_normalized_form.return_value = tag
+
+        missing_uuid = uuid.uuid4()
+        mock_named_entity_repo.get.return_value = None
+        mock_session.add = MagicMock()
+
+        with pytest.raises(ValueError, match=str(missing_uuid)):
+            await service.classify(
+                mock_session,
+                normalized_form="destiny",
+                entity_type=EntityType.PERSON,
+                link_entity_id=missing_uuid,
+            )
+
+        mock_named_entity_repo.create.assert_not_called()
+        mock_operation_log_repo.create.assert_not_called()
+
+    async def test_classify_link_entity_inactive_raises(
+        self,
+        service: TagManagementService,
+        mock_canonical_tag_repo: AsyncMock,
+        mock_named_entity_repo: AsyncMock,
+        mock_operation_log_repo: AsyncMock,
+        mock_session: AsyncMock,
+    ) -> None:
+        """
+        When ``link_entity_id`` resolves to a non-active entity (e.g. merged),
+        ``classify`` must raise ``ValueError`` mentioning the entity name and status.
+
+        Expected behaviour:
+        - ``named_entity_repo.get`` returns an entity with status ``"merged"``.
+        - ``ValueError`` is raised with a message containing ``"merged"`` and the
+          entity's canonical name.
+        """
+        from chronovista.models.enums import EntityType
+
+        tag = _make_canonical_tag(
+            normalized_form="destiny",
+            canonical_form="Destiny",
+            status="active",
+        )
+        tag.entity_type = None
+        tag.entity_id = None
+        mock_canonical_tag_repo.get_by_normalized_form.return_value = tag
+
+        inactive_entity = _make_named_entity(
+            normalized_form="old entity",
+            entity_type="person",
+            discovery_method="user_created",
+        )
+        inactive_entity.status = "merged"
+        inactive_entity.canonical_name = "Old Entity"
+
+        mock_named_entity_repo.get.return_value = inactive_entity
+        mock_session.add = MagicMock()
+
+        with pytest.raises(ValueError, match="not active"):
+            await service.classify(
+                mock_session,
+                normalized_form="destiny",
+                entity_type=EntityType.PERSON,
+                link_entity_id=inactive_entity.id,
+            )
+
+        mock_named_entity_repo.create.assert_not_called()
+        mock_operation_log_repo.create.assert_not_called()

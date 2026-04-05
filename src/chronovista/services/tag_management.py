@@ -833,6 +833,7 @@ class TagManagementService:
         reason: str | None = None,
         description: str | None = None,
         auto_case: bool = True,
+        link_entity_id: uuid.UUID | None = None,
     ) -> ClassifyResult:
         """
         Classify a canonical tag with an entity type.
@@ -936,39 +937,57 @@ class TagManagementService:
                 tag.canonical_form = tag.canonical_form.title()
                 session.add(tag)
 
-            # 4. Check if a named_entity already exists with same name and type
-            existing_entity_result = await session.execute(
-                select(NamedEntityDB).where(
-                    NamedEntityDB.canonical_name_normalized
-                    == tag.normalized_form,
-                    NamedEntityDB.entity_type == entity_type.value,
+            # 3c. --link-entity: link to a specific existing entity by ID
+            if link_entity_id is not None:
+                target_entity = await self._named_entity_repo.get(
+                    session, link_entity_id
                 )
-            )
-            existing_entity = existing_entity_result.scalar_one_or_none()
-
-            if existing_entity is not None:
-                # Link to existing entity
+                if target_entity is None:
+                    raise ValueError(
+                        f"Entity '{link_entity_id}' not found."
+                    )
+                if target_entity.status != "active":
+                    raise ValueError(
+                        f"Entity '{target_entity.canonical_name}' is not active "
+                        f"(status: {target_entity.status})."
+                    )
                 tag.entity_type = entity_type.value
-                tag.entity_id = existing_entity.id
-                linked_existing_entity_id = existing_entity.id
+                tag.entity_id = target_entity.id
+                linked_existing_entity_id = target_entity.id
             else:
-                # Create new NamedEntity
-                entity_description = description or reason
-                entity_create = NamedEntityCreate(
-                    canonical_name=tag.canonical_form,
-                    canonical_name_normalized=tag.normalized_form,
-                    entity_type=entity_type,
-                    description=entity_description,
-                    discovery_method=DiscoveryMethod.USER_CREATED,
-                    confidence=1.0,
+                # 4. Check if a named_entity already exists with same name/type
+                existing_entity_result = await session.execute(
+                    select(NamedEntityDB).where(
+                        NamedEntityDB.canonical_name_normalized
+                        == tag.normalized_form,
+                        NamedEntityDB.entity_type == entity_type.value,
+                    )
                 )
-                new_entity = await self._named_entity_repo.create(
-                    session, obj_in=entity_create
-                )
-                tag.entity_type = entity_type.value
-                tag.entity_id = new_entity.id
-                created_entity_id = new_entity.id
-                entity_created = True
+                existing_entity = existing_entity_result.scalar_one_or_none()
+
+                if existing_entity is not None:
+                    # Link to existing entity by name match
+                    tag.entity_type = entity_type.value
+                    tag.entity_id = existing_entity.id
+                    linked_existing_entity_id = existing_entity.id
+                else:
+                    # Create new NamedEntity
+                    entity_description = description or reason
+                    entity_create = NamedEntityCreate(
+                        canonical_name=tag.canonical_form,
+                        canonical_name_normalized=tag.normalized_form,
+                        entity_type=entity_type,
+                        description=entity_description,
+                        discovery_method=DiscoveryMethod.USER_CREATED,
+                        confidence=1.0,
+                    )
+                    new_entity = await self._named_entity_repo.create(
+                        session, obj_in=entity_create
+                    )
+                    tag.entity_type = entity_type.value
+                    tag.entity_id = new_entity.id
+                    created_entity_id = new_entity.id
+                    entity_created = True
 
             # Create self-alias (canonical form as name_variant).
             # Tag aliases are NOT copied — they represent YouTube tag

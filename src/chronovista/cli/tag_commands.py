@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -1277,6 +1278,12 @@ def classify_tag(
         is_flag=True,
         help="Skip auto-title-casing of the canonical form.",
     ),
+    link_entity: str | None = typer.Option(
+        None,
+        "--link-entity",
+        help="Link to an existing entity by name or UUID instead of creating a new one. "
+        "When used, --type is optional (inferred from the entity).",
+    ),
 ) -> None:
     """Classify a canonical tag with an entity type, or list top unclassified tags."""
 
@@ -1303,21 +1310,39 @@ def classify_tag(
         )
         raise typer.Exit(code=2)
 
-    if normalized_form is not None and entity_type is None:
+    if normalized_form is not None and entity_type is None and link_entity is None:
         console.print(
             Panel(
                 "[red]--type is required when classifying a tag. "
                 "Valid values: person, organization, place, event, work, "
-                "technical_term, concept, other, topic, descriptor.[/red]",
+                "technical_term, concept, other, topic, descriptor. "
+                "Or use --link-entity to infer the type from an existing entity.[/red]",
                 title="Missing --type",
                 border_style="red",
             )
         )
         raise typer.Exit(code=2)
 
+    if link_entity is not None and description is not None:
+        console.print(
+            Panel(
+                "[red]--description and --link-entity are mutually exclusive. "
+                "--description applies to new entity creation.[/red]",
+                title="Invalid Usage",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(code=2)
+
     async def _run() -> None:
+        from sqlalchemy import select
+
+        from chronovista.db.models import NamedEntity as NamedEntityDB
         from chronovista.models.enums import EntityType
         from chronovista.services.tag_management import ClassifyResult
+        from chronovista.services.tag_normalization import (
+            TagNormalizationService,
+        )
 
         service = _create_tag_management_service()
 
@@ -1367,16 +1392,71 @@ def classify_tag(
                 console.print(classify_table)
             else:
                 assert normalized_form is not None  # type narrowing
-                assert entity_type is not None  # type narrowing
+
+                # Resolve --link-entity to a UUID and infer type
+                resolved_entity_id: uuid.UUID | None = None
+                effective_entity_type = entity_type
+                if link_entity is not None:
+                    # Try UUID first
+                    try:
+                        resolved_entity_id = uuid.UUID(link_entity)
+                    except ValueError:
+                        # Look up by canonical name (normalized)
+                        normalizer = TagNormalizationService()
+                        search_norm = normalizer.normalize(link_entity)
+                        if search_norm:
+                            entity_result = await session.execute(
+                                select(NamedEntityDB).where(
+                                    NamedEntityDB.canonical_name_normalized
+                                    == search_norm,
+                                    NamedEntityDB.status == "active",
+                                )
+                            )
+                            found_entity = entity_result.scalar_one_or_none()
+                            if found_entity is not None:
+                                resolved_entity_id = found_entity.id
+
+                    if resolved_entity_id is None:
+                        console.print(
+                            Panel(
+                                f"[red]Entity '{link_entity}' not found. "
+                                "Provide a valid entity name or UUID.[/red]",
+                                title="Entity Not Found",
+                                border_style="red",
+                            )
+                        )
+                        raise typer.Exit(code=1)
+
+                    # Infer entity_type from the resolved entity if not given
+                    if effective_entity_type is None:
+                        entity_row = await session.execute(
+                            select(NamedEntityDB).where(
+                                NamedEntityDB.id == resolved_entity_id
+                            )
+                        )
+                        found = entity_row.scalar_one_or_none()
+                        if found is not None:
+                            effective_entity_type = found.entity_type
+
+                if effective_entity_type is None:
+                    console.print(
+                        Panel(
+                            "[red]Could not determine entity type. "
+                            "Provide --type explicitly.[/red]",
+                            title="Missing --type",
+                            border_style="red",
+                        )
+                    )
+                    raise typer.Exit(code=2)
 
                 # Parse entity type string to enum
                 try:
-                    parsed_type = EntityType(entity_type)
+                    parsed_type = EntityType(effective_entity_type)
                 except ValueError:
                     valid_types = ", ".join(t.value for t in EntityType)
                     console.print(
                         Panel(
-                            f"[red]Invalid entity type '{entity_type}'. "
+                            f"[red]Invalid entity type '{effective_entity_type}'. "
                             f"Valid values: {valid_types}[/red]",
                             title="Invalid --type",
                             border_style="red",
@@ -1393,6 +1473,7 @@ def classify_tag(
                         reason=reason,
                         description=description,
                         auto_case=not no_auto_case,
+                        link_entity_id=resolved_entity_id,
                     )
                     await session.commit()
 

@@ -619,6 +619,7 @@ function VirtualizedSegmentList({
         return (
           <div
             key={virtualItem.key}
+            data-index={virtualItem.index}
             // NFR-003: ref callback so the virtualizer re-measures on edit mode toggle
             ref={(el) => {
               if (el) virtualizer.measureElement(el);

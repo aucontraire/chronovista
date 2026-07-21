@@ -11,6 +11,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+## [0.57.0] - 2026-07-20
+
+### Added
+- **Feature 056: Tag Merge UI with Contains-Match Search**
+  - **Frontend tag merge (US2)**: New `/tags/merge` page reached via a "Tags" collapsible sidebar nav group. Search for and select source tags, designate a target, preview the exact impact, and execute a merge without leaving the browser — surfacing the existing `TagManagementService` CLI capability in the web UI
+  - **Contains-match search (US1)**: `GET /api/v1/canonical-tags` gains a `match_mode` parameter (`prefix` default, `contains`) so searching "Hannah Fry" finds "Professor Hannah Fry". Contains results are relevance-tiered (exact → prefix → mid-string); the video filter keeps its prefix/limit-10 behavior unchanged
+  - **Merge preview (US2)**: Read-only `POST /api/v1/canonical-tags/merge/preview` computes exact post-merge counts via `COUNT(DISTINCT video_id)` over the source+target union — videos tagged with more than one selected tag are counted once (no client-side summing that would overstate impact)
+  - **Configurable result limit (US3)**: Merge search surfaces up to 50 results while the video filter stays at 10
+  - **Session-scoped undo (US4)**: The post-merge banner offers undo via `POST /api/v1/canonical-tags/operations/{id}/undo`; a copyable operation ID enables `chronovista tags undo <id>` later
+  - Three new REST endpoints delegate to the existing `TagManagementService`; new `get_tag_management_service()` DI provider
+
+### Changed
+- `useCanonicalTags` frontend hook accepts optional `matchMode`/`limit`, defaulting to `prefix`/10 so the existing video filter request is byte-for-byte unchanged
+
+### Technical
+- Backend version: 0.56.0 → 0.57.0
+- Frontend version: 0.25.0 → 0.26.0
+- **Migration 056**: adds the `pg_trgm` extension + 3 GIN trigram indexes (`canonical_tags.canonical_form`, `canonical_tags.normalized_form`, `tag_aliases.raw_form`)
+- Contains search uses a `UNION` of trigram-indexed id lookups (~5ms) instead of an OR-based scan (~130ms on production-scale data of ~150K canonical tags / ~170K aliases)
+- Cross-feature data-contract integration test (merge → re-query every downstream consumer) and SQL-SET-columns mock per the Cross-Feature Data Contract Verification principle
+- Backend 92–95% coverage on changed modules; 108 new frontend tests
+
 ## [0.56.0] - 2026-04-01
 
 ### Added

@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+### Fixed
+- **Recover from stale lazy-loaded chunks after a redeploy.** Route pages are code-split with `React.lazy`; when the app is rebuilt, chunk filenames get new content hashes and old chunks 404, so a browser tab still on the previous build fails with "Failed to fetch dynamically imported module". The app now handles Vite's `vite:preloadError` by reloading once (guarded against loops), and the server serves `index.html` with `Cache-Control: no-cache` so the reload fetches HTML referencing the current hashes.
+
 ## [0.57.0] - 2026-07-20
 
 ### Added

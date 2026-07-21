@@ -16,9 +16,13 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router-dom";
 
+import { installPreloadErrorReload } from "./lib/preloadErrorReload";
 import { queryClient } from "./lib/queryClient";
 import { router } from "./router";
 import "./index.css";
+
+// Recover from stale lazy-loaded chunks after a redeploy (see module docs).
+installPreloadErrorReload();
 
 const rootElement = document.getElementById("root");
 

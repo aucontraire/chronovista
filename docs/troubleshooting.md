@@ -321,4 +321,5 @@ make dev-db-down
 - [YouTube API Setup](getting-started/youtube-api-setup.md) - Google Cloud configuration
 - [Installation](getting-started/installation.md) - Setup guide
 - [Database Development](development/database.md) - Database workflow
-- [CLI Overview - Recover Commands](user-guide/cli-overview.md#recover-commands) - Recovery command reference
+- [CLI reference](reference/cli.md) - Full command reference (including recovery commands)
+- [CLI Workflows](user-guide/cli-overview.md) - Common command-line recipes

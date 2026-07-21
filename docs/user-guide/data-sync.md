@@ -403,7 +403,7 @@ chronovista recover video --all --start-year 2018 --end-year 2020
 
 Channel metadata is automatically recovered during video recovery when a channel ID is found in the archived page. Recovery is also available via the REST API and the frontend's "Recover from Web Archive" button.
 
-See the [CLI Overview](cli-overview.md#recover-commands) for full recovery command reference.
+See the [CLI reference](../reference/cli.md) for the full recovery command reference.
 
 ## See Also
 

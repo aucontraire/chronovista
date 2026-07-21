@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Backend version: 0.56.0 → 0.57.0
 - Frontend version: 0.25.0 → 0.26.0
 - **Migration 056**: adds the `pg_trgm` extension + 3 GIN trigram indexes (`canonical_tags.canonical_form`, `canonical_tags.normalized_form`, `tag_aliases.raw_form`)
-- Contains search uses a `UNION` of trigram-indexed id lookups (~5ms) instead of an OR-based scan (~130ms on production-scale data of ~150K canonical tags / ~170K aliases)
+- Contains search uses a `UNION` of trigram-indexed id lookups (~5ms) instead of an OR-based scan (~130ms on a production-scale tag corpus)
 - Cross-feature data-contract integration test (merge → re-query every downstream consumer) and SQL-SET-columns mock per the Cross-Feature Data Contract Verification principle
 - Backend 92–95% coverage on changed modules; 108 new frontend tests
 
@@ -665,7 +665,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Feature 031: Tag Management CLI (ADR-003 Phase 4)**
-  - 7 new CLI commands for manual curation of 124,686 canonical tags with full undo capability
+  - 7 new CLI commands for manual curation of canonical tags with full undo capability
   - `tags merge <sources...> --into <target>` — merge spelling variants with multi-source support (single atomic operation)
   - `tags split <normalized_form> --aliases "raw1,raw2,..."` — split incorrectly merged aliases into a new canonical tag
   - `tags rename <normalized_form> --to "New Form"` — change display form without affecting normalized form
@@ -699,7 +699,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Feature 030: Canonical Tag API (ADR-003 Phase 3)**
-  - `GET /api/v1/canonical-tags` — browse all 124,686 canonical tags with prefix search, sorted by video_count DESC
+  - `GET /api/v1/canonical-tags` — browse canonical tags with prefix search, sorted by video_count DESC
   - `GET /api/v1/canonical-tags/{normalized_form}` — tag detail with top raw-form aliases and occurrence counts
   - `GET /api/v1/canonical-tags/{normalized_form}/videos` — paginated videos spanning all raw tag variations via 3-table JOIN
   - `GET /api/v1/videos?canonical_tag=...` — filter videos by canonical tag with AND semantics across multiple values
@@ -717,7 +717,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 96 new tests (21 unit + 25 integration router + 8 integration filter + 4 regression + 7 fuzzy/rate-limit + 24 tag endpoint)
 - All test IDs generated via `YouTubeIdFactory` (factory-based, no hand-crafted IDs)
 - NFR-005 logging compliance: WARNING for unrecognized filters, INFO for query timing, DEBUG for fuzzy pool details
-- Quickstart validation passed all 12 checks against live data (124,686 canonical tags)
+- Quickstart validation passed all 12 checks against live data
 - Performance: list endpoint 0.174s (NFR-001: <2s), videos-by-tag 0.091s (NFR-002: <3s)
 - No new dependencies, no migrations
 
@@ -725,7 +725,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Feature 029: Tag Normalization Backfill Pipeline (ADR-003 Phase 2)**
-  - `TagBackfillService` bulk normalization pipeline processing 141,163 tags into 124,686 canonical groups
+  - `TagBackfillService` bulk normalization pipeline processing raw tags into canonical groups
   - `chronovista tags normalize` CLI command with `--batch-size` option and Rich progress bar
   - `chronovista tags analyze` CLI command with `--format` (table/json) for pre-backfill preview and collision review
   - `chronovista tags recount` CLI command with `--dry-run` for recalculating `alias_count` and `video_count`
@@ -1260,7 +1260,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - REST API endpoints for categories: list, detail, videos-by-category (`/api/v1/categories`)
   - REST API endpoints for tags: list, detail, videos-by-tag (`/api/v1/tags`)
   - Categories sorted by video_count descending (32 YouTube predefined categories)
-  - Tags sorted by video_count descending (139,763 unique tags)
+  - Tags sorted by video_count descending
   - Full pagination support with limit (1-100), offset parameters
   - Proper 404 handling for invalid category IDs and nonexistent tags
   - URL-encoded special characters in tags supported (e.g., spaces, hashtags)

@@ -32,17 +32,11 @@ class BaseRepository(
     This abstract base class provides a consistent interface for all repositories
     following the Repository pattern.
 
-    Type Parameters
-    ---------------
-    ModelType : DeclarativeBase
-        The SQLAlchemy model type for this repository.
-    CreateSchemaType : Any
-        The Pydantic schema type for creating entities.
-    UpdateSchemaType : Any
-        The Pydantic schema type for updating entities.
-    IdType : Any
-        The primary key type (e.g., VideoId, ChannelId, Tuple[str, str]).
-        Defaults to Any for backward compatibility.
+    The generic type parameters are ``ModelType`` (the SQLAlchemy model type),
+    ``CreateSchemaType`` and ``UpdateSchemaType`` (the Pydantic create/update
+    schema types), and ``IdType`` (the primary key type — e.g. ``VideoId``,
+    ``ChannelId``, or ``Tuple[str, str]`` — defaulting to ``Any`` for backward
+    compatibility).
     """
 
     @abstractmethod
@@ -90,17 +84,11 @@ class BaseSQLAlchemyRepository(
     Provides common SQLAlchemy-based implementations of CRUD operations
     that can be inherited by specific repository implementations.
 
-    Type Parameters
-    ---------------
-    ModelType : DeclarativeBase
-        The SQLAlchemy model type for this repository.
-    CreateSchemaType : Any
-        The Pydantic schema type for creating entities.
-    UpdateSchemaType : Any
-        The Pydantic schema type for updating entities.
-    IdType : Any
-        The primary key type (e.g., VideoId, ChannelId, Tuple[str, str]).
-        Defaults to Any for backward compatibility.
+    The generic type parameters are ``ModelType`` (the SQLAlchemy model type),
+    ``CreateSchemaType`` and ``UpdateSchemaType`` (the Pydantic create/update
+    schema types), and ``IdType`` (the primary key type — e.g. ``VideoId``,
+    ``ChannelId``, or ``Tuple[str, str]`` — defaulting to ``Any`` for backward
+    compatibility).
     """
 
     def __init__(self, model: type[ModelType]):

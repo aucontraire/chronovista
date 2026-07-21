@@ -1,6 +1,8 @@
-# CLI Overview
+# CLI Workflows
 
-Complete reference for chronovista command-line interface.
+Common command-line workflows for chronovista, with the most-used command
+groups and end-to-end recipes. For the complete, auto-generated list of every
+command and option, see the [CLI reference](../reference/cli.md).
 
 ## Command Structure
 
@@ -149,10 +151,11 @@ chronovista takeout [COMMAND]
 | Command | Description |
 |---------|-------------|
 | `seed <path>` | Seed database from Takeout |
-| `peek <path>` | Preview Takeout data |
-| `analyze <path>` | Analyze Takeout data |
+| `peek <type> --path <path>` | Preview Takeout data |
+| `analyze --path <path>` | Analyze Takeout data |
+| `relationships <type> --path <path>` | Analyze playlist/channel relationships |
 | `inspect <path>` | Deep inspection |
-| `integrate <path>` | Integrate with API data |
+| `recover` | Recover deleted-video metadata from Takeout |
 
 ### Language Commands
 
@@ -162,21 +165,11 @@ chronovista languages [COMMAND]
 
 | Command | Description |
 |---------|-------------|
-| `set` | Set language preferences |
-| `show` | View preferences |
-| `config` | Configure auto-download |
-
-### Export Commands
-
-```bash
-chronovista export [COMMAND]
-```
-
-| Command | Description |
-|---------|-------------|
-| `videos` | Export video data |
-| `channels` | Export channel data |
-| `watch-history` | Export watch history |
+| `list` | List current language preferences |
+| `set` | Set language preferences (interactive) |
+| `add` | Add a language at a preference tier |
+| `remove` | Remove a language preference |
+| `reset` | Reset all language preferences |
 
 ### Recover Commands
 
@@ -1189,37 +1182,6 @@ Analyze patterns in Takeout data.
 - `--topic <id>` - Filter by topic
 - `--export [csv|json]` - Export results
 
-### Export
-
-#### Export Videos
-
-```bash
-chronovista export videos [OPTIONS]
-```
-
-Export video data.
-
-**Options:**
-
-- `--format [csv|json]` - Output format
-- `--channel <id>` - Filter by channel
-- `--with-transcripts` - Include transcript data
-- `--language-filter <code>` - Filter by language
-
-#### Export Watch History
-
-```bash
-chronovista export watch-history [OPTIONS]
-```
-
-Export viewing history.
-
-**Options:**
-
-- `--language-breakdown` - Group by language
-- `--date-range <start,end>` - Date range filter
-- `--channel <id>` - Filter by channel
-
 ### Transcript Corrections
 
 #### Find and Replace
@@ -1428,13 +1390,13 @@ chronovista topics chart --metric combined
 
 ```bash
 # Preview Takeout data
-chronovista takeout peek /path/to/takeout --summary
+chronovista takeout peek playlists --path /path/to/takeout
 
 # Seed database
 chronovista takeout seed /path/to/takeout --progress
 
 # Analyze patterns
-chronovista takeout analyze /path/to/takeout --type viewing-patterns
+chronovista takeout analyze --path /path/to/takeout
 ```
 
 ### Topic Deep Dive

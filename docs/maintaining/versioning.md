@@ -30,7 +30,7 @@ For pre-release versions:
 
 ## Current Status
 
-chronovista is currently at version **0.8.0** (pre-1.0), which means:
+chronovista is pre-1.0 (see the version badge / GitHub releases for the current version), which means:
 
 - API may change between minor versions
 - Suitable for personal use and testing
@@ -42,10 +42,10 @@ chronovista is currently at version **0.8.0** (pre-1.0), which means:
 # Show current version
 poetry version
 
-# Bump patch (0.8.0 -> 0.8.1)
+# Bump patch (e.g. 0.57.0 -> 0.57.1)
 poetry version patch
 
-# Bump minor (0.8.0 -> 0.9.0)
+# Bump minor (e.g. 0.57.0 -> 0.58.0)
 poetry version minor
 
 # Bump major (0.9.0 -> 1.0.0)

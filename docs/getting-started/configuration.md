@@ -21,9 +21,8 @@ chronovista uses environment variables for configuration. Create a `.env` file i
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `LOG_LEVEL` | Logging verbosity | `INFO` |
-| `YOUTUBE_REDIRECT_URI` | OAuth callback URL | `http://localhost:8080/auth/callback` |
+| `OAUTH_REDIRECT_URI` | OAuth callback URL | `http://localhost:8080/auth/callback` |
 | `API_RATE_LIMIT` | Requests per minute | `100` |
-| `TRANSCRIPT_DOWNLOAD_DELAY` | Delay between transcript downloads (seconds) | `5` |
 
 ## Database Configuration
 

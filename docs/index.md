@@ -166,12 +166,12 @@ chronovista is a CLI application that enables users to access, store, and explor
 
     ```bash
     # Recover a video via the API
-    curl -X POST "http://localhost:8765/api/v1/recovery/videos/dQw4w9WgXcQ" \
+    curl -X POST "http://localhost:8765/api/v1/videos/dQw4w9WgXcQ/recover" \
       -H "Content-Type: application/json" \
       -d '{"start_year": 2018, "end_year": 2020}'
 
     # Recover a channel via the API
-    curl -X POST "http://localhost:8765/api/v1/recovery/channels/UCxxxxxx"
+    curl -X POST "http://localhost:8765/api/v1/channels/UCxxxxxx/recover"
 
     # Repeated requests within 5 minutes return cached results
     ```

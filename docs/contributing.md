@@ -53,7 +53,7 @@ make test-cov
 
 ### 5. Submit Pull Request
 
-- Create PR against `main` branch
+- Create PR against `master` branch
 - Fill out PR template
 - Link related issues
 

@@ -804,4 +804,4 @@ for video_id in video_ids:
 
 - [Data Synchronization](data-sync.md) - Sync operations
 - [Configuration](../getting-started/configuration.md) - Rate limit settings
-- [API Reference](../api/services/transcript.md) - Transcript service API
+- [Transcripts API](../reference/api/transcripts.md) - Transcript REST endpoints

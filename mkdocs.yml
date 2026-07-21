@@ -49,6 +49,14 @@ theme:
 
 plugins:
   - search
+  - gen-files:
+      scripts:
+        - scripts/gen_cli_ref.py
+        - scripts/gen_api_ref.py
+        - scripts/gen_ref_pages.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - section-index
   - mkdocstrings:
       handlers:
         python:
@@ -128,21 +136,7 @@ nav:
       - Frontend Architecture: architecture/frontend-architecture.md
   - API Reference:
       - Overview: api/index.md
-      - Models:
-          - Channel: api/models/channel.md
-          - Video: api/models/video.md
-          - Transcript: api/models/transcript.md
-          - Topic: api/models/topic.md
-      - Repositories:
-          - Base Repository: api/repositories/base.md
-          - Channel Repository: api/repositories/channel.md
-          - Video Repository: api/repositories/video.md
-      - Services:
-          - YouTube Service: api/services/youtube.md
-          - Takeout Service: api/services/takeout.md
-          - Transcript Service: api/services/transcript.md
-      - CLI:
-          - Commands: api/cli/commands.md
+  - Reference: reference/
   - Development:
       - Overview: development/index.md
       - Setup: development/setup.md

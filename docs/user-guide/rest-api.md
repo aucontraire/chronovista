@@ -1879,7 +1879,9 @@ Videos may have multiple sources (e.g., `["title", "transcript", "tag"]`). Badge
 
 #### Scan Entity Mentions
 
-Trigger an entity mention scan for a single entity. Scans transcript segments by default; optionally scans video titles and descriptions when `sources` parameter is provided. The entity must exist and be in `active` status.
+Start an entity mention scan for a single entity. Scans transcript segments by default; optionally scans video titles and descriptions when `sources` parameter is provided. The entity must exist and be in `active` status.
+
+The scan runs **asynchronously** — on a large corpus it can take minutes. This endpoint validates the request, starts the scan as a background job, and returns `202` with a `job_id`. Poll [`GET /api/v1/scan-jobs/{job_id}`](#get-scan-job-status) for progress and the final result.
 
 ```
 POST /api/v1/entities/{entity_id}/scan
@@ -1905,24 +1907,26 @@ POST /api/v1/entities/{entity_id}/scan
 | `dry_run` | boolean | false | Preview mode — no writes, no counter updates |
 | `full_rescan` | boolean | false | Delete existing `rule_match` mentions for this entity before scanning |
 
-**Response (200):**
+**Response (202):**
 
 ```json
 {
   "data": {
-    "segments_scanned": 12450,
-    "mentions_found": 42,
-    "mentions_skipped": 3,
-    "unique_entities": 1,
-    "unique_videos": 12,
-    "duration_seconds": 8.2,
-    "dry_run": false
+    "job_id": "018f9c2a-1b3d-7e4f-a0b1-2c3d4e5f6a7b",
+    "kind": "entity",
+    "target_id": "5f2e...",
+    "status": "running",
+    "result": null,
+    "error": null,
+    "started_at": "2026-07-20T21:39:10Z",
+    "finished_at": null
   }
 }
 ```
 
 | Status | Description |
 |--------|-------------|
+| 202 | Scan accepted and started; poll `GET /scan-jobs/{job_id}` for the result |
 | 400 | Entity is not in an active state (status: merged/deprecated) |
 | 404 | Entity not found |
 | 409 | A scan is already in progress for this entity |
@@ -1931,7 +1935,7 @@ POST /api/v1/entities/{entity_id}/scan
 
 #### Scan Video for Entity Mentions
 
-Trigger an entity mention scan for a single video, checking all active entity patterns against that video's transcript segments.
+Start an entity mention scan for a single video, checking all active entity patterns against that video's transcript segments. Like the entity scan, this runs **asynchronously** and returns `202` with a `job_id`; poll [`GET /api/v1/scan-jobs/{job_id}`](#get-scan-job-status) for the result.
 
 ```
 POST /api/v1/videos/{video_id}/scan-entities
@@ -1955,28 +1959,64 @@ POST /api/v1/videos/{video_id}/scan-entities
 | `dry_run` | boolean | false | Preview mode — no writes, no counter updates |
 | `full_rescan` | boolean | false | Delete existing `rule_match` mentions in scope before scanning |
 
-**Response (200):**
+**Response (202):**
 
 ```json
 {
   "data": {
-    "segments_scanned": 156,
-    "mentions_found": 23,
-    "mentions_skipped": 0,
-    "unique_entities": 8,
-    "unique_videos": 1,
-    "duration_seconds": 1.4,
-    "dry_run": false
+    "job_id": "018f9c2a-1b3d-7e4f-a0b1-2c3d4e5f6a7b",
+    "kind": "video",
+    "target_id": "dQw4w9WgXcQ",
+    "status": "running",
+    "result": null,
+    "error": null,
+    "started_at": "2026-07-20T21:39:10Z",
+    "finished_at": null
   }
 }
 ```
 
-A video with no transcripts returns 200 with all counts at zero.
+| Status | Description |
+|--------|-------------|
+| 202 | Scan accepted and started; poll `GET /scan-jobs/{job_id}` for the result |
+| 404 | Video not found |
+| 409 | A scan is already in progress for this video |
+
+---
+
+#### Get Scan Job Status
+
+Poll the status and result of an asynchronous scan job started by the entity or video scan endpoints.
+
+```
+GET /api/v1/scan-jobs/{job_id}
+```
+
+**Response (200) — while running:**
+
+```json
+{
+  "data": {
+    "job_id": "018f9c2a-1b3d-7e4f-a0b1-2c3d4e5f6a7b",
+    "kind": "entity",
+    "target_id": "5f2e...",
+    "status": "running",
+    "result": null,
+    "error": null,
+    "started_at": "2026-07-20T21:39:10Z",
+    "finished_at": null
+  }
+}
+```
+
+**Response (200) — succeeded:** `status` is `"succeeded"` and `result` holds the scan metrics (`segments_scanned`, `mentions_found`, `mentions_skipped`, `unique_entities`, `unique_videos`, `duration_seconds`, `dry_run`). On failure, `status` is `"failed"` and `error` holds the message.
 
 | Status | Description |
 |--------|-------------|
-| 404 | Video not found |
-| 409 | A scan is already in progress for this video |
+| 404 | Unknown job id. Jobs are in-memory and ephemeral — an id is not found after a server restart. |
+
+!!! note "Ephemeral jobs"
+    Scan jobs are tracked in memory and do not survive a server restart. Poll shortly after launching; a lost job simply means re-running the scan.
 
 ---
 

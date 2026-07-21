@@ -3,12 +3,19 @@
 Covers:
   - POST /api/v1/entities/{entity_id}/scan
   - POST /api/v1/videos/{video_id}/scan-entities
+  - GET  /api/v1/scan-jobs/{job_id}
+
+The scan endpoints are asynchronous (fire-and-poll): the POST endpoints
+validate the request, launch the scan as an ``asyncio`` background task, and
+return ``202`` with a running :class:`ScanJobData`. Tests must poll
+``GET /scan-jobs/{job_id}`` until the job reaches a terminal state
+(``succeeded`` or ``failed``) to observe the scan outcome.
 
 All tests use an integration database seeded with minimal rows (channel,
 video, and named entity). The scan service itself is mocked via
 ``unittest.mock.patch`` so tests do not perform real transcript scanning —
 they validate the request-routing, entity/video validation, concurrency
-guard, and response structure only.
+guard, async job lifecycle, and response structure only.
 
 Auth: ``require_auth`` is bypassed via ``youtube_oauth`` mock following the
 same pattern used in ``test_entity_mentions_api.py``.
@@ -18,6 +25,7 @@ Feature 052 — Targeted Entity & Video-Level Mention Scanning
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
@@ -64,6 +72,62 @@ def _entity_scan_url(entity_id: str | uuid.UUID) -> str:
 def _video_scan_url(video_id: str) -> str:
     """Return the video entity-scan endpoint URL."""
     return f"/api/v1/videos/{video_id}/scan-entities"
+
+
+def _scan_job_url(job_id: str) -> str:
+    """Return the scan-job status endpoint URL."""
+    return f"/api/v1/scan-jobs/{job_id}"
+
+
+# ---------------------------------------------------------------------------
+# Polling helper
+# ---------------------------------------------------------------------------
+
+
+async def _poll_scan_job(
+    async_client: AsyncClient,
+    job_id: str,
+    *,
+    max_attempts: int = 50,
+    interval: float = 0.02,
+) -> dict[str, Any]:
+    """Poll ``GET /scan-jobs/{job_id}`` until the job reaches a terminal state.
+
+    The background scan task runs on the same event loop as the test, so
+    awaiting ``asyncio.sleep`` between polls yields control and lets it
+    progress. Must be called while any service-level mocks are still active
+    (i.e. inside the same ``with patch(...)`` block used to launch the scan)
+    so the background task observes the mocked service.
+
+    Parameters
+    ----------
+    async_client : AsyncClient
+        Test HTTP client.
+    job_id : str
+        The scan job id returned by the launch (202) response.
+    max_attempts : int
+        Maximum number of polls before giving up.
+    interval : float
+        Seconds to sleep between polls.
+
+    Returns
+    -------
+    dict[str, Any]
+        The final ``data`` payload once ``status`` is no longer ``"running"``.
+    """
+    data: dict[str, Any] | None = None
+    for _ in range(max_attempts):
+        await asyncio.sleep(interval)
+        response = await async_client.get(_scan_job_url(job_id))
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+        if data["status"] != "running":
+            return data
+    assert data is not None
+    raise AssertionError(
+        f"Scan job {job_id} did not reach a terminal state after "
+        f"{max_attempts} polls (last status: {data['status']})"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -218,17 +282,19 @@ class TestEntityScanEndpoint:
     """Tests for POST /api/v1/entities/{entity_id}/scan."""
 
     # ------------------------------------------------------------------
-    # 200 success
+    # 202 launch
     # ------------------------------------------------------------------
 
-    async def test_entity_scan_returns_200_with_valid_active_entity(
+    async def test_entity_scan_returns_202_with_running_job(
         self,
         async_client: AsyncClient,
         seed_scan_data: dict[str, Any],
     ) -> None:
-        """200 response with ScanResultResponse envelope for a valid active entity.
+        """202 response with a running ScanJobData envelope for a valid entity.
 
-        The scan service is mocked so no real scanning occurs.
+        The scan service is mocked so no real scanning occurs. The job is
+        drained via polling before the mock is torn down to avoid leaking
+        a background task that would later hit the real (unmocked) service.
         """
         entity_id_str = seed_scan_data["entity_id_str"]
         mock_result = _make_scan_result(mentions_found=3, unique_entities=1)
@@ -246,24 +312,63 @@ class TestEntityScanEndpoint:
 
             response = await async_client.post(_entity_scan_url(entity_id_str))
 
-        assert response.status_code == 200, response.text
-        body = response.json()
+            assert response.status_code == 202, response.text
+            body = response.json()
+            assert "data" in body
+            job = body["data"]
+            assert job["kind"] == "entity"
+            assert job["target_id"] == entity_id_str
+            assert job["status"] == "running"
+            assert job["result"] is None
+            assert job["error"] is None
+            assert job["job_id"]
+            assert job["started_at"]
+            assert job["finished_at"] is None
 
-        # Verify response envelope structure
-        assert "data" in body
-        data = body["data"]
-        assert data["segments_scanned"] == mock_result.segments_scanned
-        assert data["mentions_found"] == mock_result.mentions_found
-        assert data["unique_entities"] == mock_result.unique_entities
-        assert data["unique_videos"] == mock_result.unique_videos
-        assert data["dry_run"] is False
+            # Drain the background task while the mock is still active.
+            await _poll_scan_job(async_client, job["job_id"])
 
-    async def test_entity_scan_200_with_empty_body(
+    async def test_entity_scan_poll_to_succeeded_with_counts(
         self,
         async_client: AsyncClient,
         seed_scan_data: dict[str, Any],
     ) -> None:
-        """POST with empty JSON body ``{}`` must use defaults and succeed."""
+        """Polling the job to completion surfaces the mocked scan counts."""
+        entity_id_str = seed_scan_data["entity_id_str"]
+        mock_result = _make_scan_result(mentions_found=3, unique_entities=1)
+
+        with (
+            patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
+            patch(
+                "chronovista.api.routers.entity_mentions._get_scan_service"
+            ) as mock_get_service,
+        ):
+            mock_oauth.is_authenticated.return_value = True
+            mock_service = MagicMock()
+            mock_service.scan = AsyncMock(return_value=mock_result)
+            mock_get_service.return_value = mock_service
+
+            response = await async_client.post(_entity_scan_url(entity_id_str))
+            assert response.status_code == 202, response.text
+            job_id = response.json()["data"]["job_id"]
+
+            data = await _poll_scan_job(async_client, job_id)
+
+        assert data["status"] == "succeeded"
+        result = data["result"]
+        assert result is not None
+        assert result["segments_scanned"] == mock_result.segments_scanned
+        assert result["mentions_found"] == mock_result.mentions_found
+        assert result["unique_entities"] == mock_result.unique_entities
+        assert result["unique_videos"] == mock_result.unique_videos
+        assert result["dry_run"] is False
+
+    async def test_entity_scan_202_with_empty_body(
+        self,
+        async_client: AsyncClient,
+        seed_scan_data: dict[str, Any],
+    ) -> None:
+        """POST with empty JSON body ``{}`` must use defaults and launch."""
         entity_id_str = seed_scan_data["entity_id_str"]
         mock_result = _make_scan_result()
 
@@ -281,8 +386,12 @@ class TestEntityScanEndpoint:
             response = await async_client.post(
                 _entity_scan_url(entity_id_str), json={}
             )
+            assert response.status_code == 202, response.text
+            job_id = response.json()["data"]["job_id"]
 
-        assert response.status_code == 200, response.text
+            data = await _poll_scan_job(async_client, job_id)
+
+        assert data["status"] == "succeeded"
 
     async def test_entity_scan_calls_service_with_entity_id(
         self,
@@ -305,14 +414,15 @@ class TestEntityScanEndpoint:
             mock_service.scan = AsyncMock(return_value=mock_result)
             mock_get_service.return_value = mock_service
 
-            await async_client.post(_entity_scan_url(entity_id_str))
+            response = await async_client.post(_entity_scan_url(entity_id_str))
+            job_id = response.json()["data"]["job_id"]
 
+            data = await _poll_scan_job(async_client, job_id)
+
+        assert data["status"] == "succeeded"
         call_kwargs = mock_service.scan.call_args
         assert call_kwargs is not None
-        # entity_ids must include the entity UUID
-        entity_ids_arg = call_kwargs.kwargs.get(
-            "entity_ids", call_kwargs.args[0] if call_kwargs.args else None
-        )
+        entity_ids_arg = call_kwargs.kwargs.get("entity_ids")
         assert entity_ids_arg == [entity_uuid]
 
     async def test_entity_scan_passes_language_code_from_body(
@@ -335,11 +445,15 @@ class TestEntityScanEndpoint:
             mock_service.scan = AsyncMock(return_value=mock_result)
             mock_get_service.return_value = mock_service
 
-            await async_client.post(
+            response = await async_client.post(
                 _entity_scan_url(entity_id_str),
                 json={"language_code": "en"},
             )
+            job_id = response.json()["data"]["job_id"]
 
+            data = await _poll_scan_job(async_client, job_id)
+
+        assert data["status"] == "succeeded"
         call_kwargs = mock_service.scan.call_args
         assert call_kwargs is not None
         lang = call_kwargs.kwargs.get("language_code")
@@ -365,11 +479,16 @@ class TestEntityScanEndpoint:
             mock_service.scan = AsyncMock(return_value=mock_result)
             mock_get_service.return_value = mock_service
 
-            await async_client.post(
+            response = await async_client.post(
                 _entity_scan_url(entity_id_str),
                 json={"dry_run": True},
             )
+            job_id = response.json()["data"]["job_id"]
 
+            data = await _poll_scan_job(async_client, job_id)
+
+        assert data["status"] == "succeeded"
+        assert data["result"]["dry_run"] is True
         call_kwargs = mock_service.scan.call_args
         assert call_kwargs is not None
         dry_run_arg = call_kwargs.kwargs.get("dry_run")
@@ -384,7 +503,11 @@ class TestEntityScanEndpoint:
         async_client: AsyncClient,
         seed_scan_data: dict[str, Any],
     ) -> None:
-        """404 when the entity_id UUID does not exist in the database."""
+        """404 when the entity_id UUID does not exist in the database.
+
+        Validation happens before the scan is launched, so this is an
+        immediate response — no job is created.
+        """
         non_existent_uuid = uuid.uuid4()
 
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
@@ -404,7 +527,11 @@ class TestEntityScanEndpoint:
         async_client: AsyncClient,
         seed_scan_data: dict[str, Any],
     ) -> None:
-        """400 when the entity exists but has status 'merged' (not active)."""
+        """400 when the entity exists but has status 'merged' (not active).
+
+        Validation happens before the scan is launched, so this is an
+        immediate response — no job is created.
+        """
         inactive_id_str = seed_scan_data["inactive_entity_id_str"]
 
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
@@ -428,7 +555,11 @@ class TestEntityScanEndpoint:
         async_client: AsyncClient,
         seed_scan_data: dict[str, Any],
     ) -> None:
-        """409 when the concurrency guard already holds the key for this entity."""
+        """409 when the concurrency guard already holds the key for this entity.
+
+        The guard check happens before the scan is launched, so this is an
+        immediate response — no job is created.
+        """
         import chronovista.api.routers.entity_mentions as em_router
 
         entity_uuid = seed_scan_data["entity_id"]
@@ -453,7 +584,7 @@ class TestEntityScanEndpoint:
         async_client: AsyncClient,
         seed_scan_data: dict[str, Any],
     ) -> None:
-        """The concurrency guard must be removed after a successful scan."""
+        """The concurrency guard must be removed after the job succeeds."""
         import chronovista.api.routers.entity_mentions as em_router
 
         entity_uuid = seed_scan_data["entity_id"]
@@ -473,23 +604,22 @@ class TestEntityScanEndpoint:
             mock_service.scan = AsyncMock(return_value=mock_result)
             mock_get_service.return_value = mock_service
 
-            await async_client.post(_entity_scan_url(entity_id_str))
+            response = await async_client.post(_entity_scan_url(entity_id_str))
+            job_id = response.json()["data"]["job_id"]
+            data = await _poll_scan_job(async_client, job_id)
 
-        # Guard must be released
+        assert data["status"] == "succeeded"
         assert guard_key not in em_router._scans_in_progress, (
             f"Guard key {guard_key!r} still present after scan completion"
         )
 
-    async def test_entity_scan_guard_released_after_service_exception(
+    async def test_entity_scan_job_failed_when_service_raises(
         self,
         async_client: AsyncClient,
         seed_scan_data: dict[str, Any],
     ) -> None:
-        """The concurrency guard must be released even when scan() raises.
-
-        FastAPI's exception handler will convert the RuntimeError to a 500
-        response. The important thing is that the guard key is not left in
-        ``_scans_in_progress`` regardless of the response status.
+        """The job transitions to 'failed' with an error message when
+        scan() raises, and the concurrency guard is released regardless.
         """
         import chronovista.api.routers.entity_mentions as em_router
 
@@ -511,12 +641,16 @@ class TestEntityScanEndpoint:
             mock_service.scan = AsyncMock(side_effect=RuntimeError("scan failed"))
             mock_get_service.return_value = mock_service
 
-            # The 500 response is expected; we only care that the guard is cleaned up
-            try:
-                await async_client.post(_entity_scan_url(entity_id_str))
-            except Exception:
-                pass  # 500 responses may propagate in test mode
+            response = await async_client.post(_entity_scan_url(entity_id_str))
+            assert response.status_code == 202, response.text
+            job_id = response.json()["data"]["job_id"]
 
+            data = await _poll_scan_job(async_client, job_id)
+
+        assert data["status"] == "failed"
+        assert data["result"] is None
+        assert data["error"] is not None
+        assert "scan failed" in data["error"]
         assert guard_key not in em_router._scans_in_progress, (
             f"Guard key {guard_key!r} still present after scan failure"
         )
@@ -531,15 +665,15 @@ class TestVideoScanEndpoint:
     """Tests for POST /api/v1/videos/{video_id}/scan-entities."""
 
     # ------------------------------------------------------------------
-    # 200 success
+    # 202 launch / poll to succeeded
     # ------------------------------------------------------------------
 
-    async def test_video_scan_returns_200_with_valid_video(
+    async def test_video_scan_returns_202_with_running_job(
         self,
         async_client: AsyncClient,
         seed_scan_data: dict[str, Any],
     ) -> None:
-        """200 response with ScanResultResponse envelope for a valid video."""
+        """202 response with a running ScanJobData envelope for a valid video."""
         video_id = seed_scan_data["video_id"]
         mock_result = _make_scan_result(
             segments_scanned=5,
@@ -561,20 +695,28 @@ class TestVideoScanEndpoint:
 
             response = await async_client.post(_video_scan_url(video_id))
 
-        assert response.status_code == 200, response.text
-        body = response.json()
+            assert response.status_code == 202, response.text
+            body = response.json()
+            assert "data" in body
+            job = body["data"]
+            assert job["kind"] == "video"
+            assert job["target_id"] == video_id
+            assert job["status"] == "running"
+            assert job["result"] is None
+            assert job["error"] is None
 
-        assert "data" in body
-        data = body["data"]
-        assert data["segments_scanned"] == 5
-        assert data["mentions_found"] == 1
+            data = await _poll_scan_job(async_client, job["job_id"])
 
-    async def test_video_scan_200_with_zero_counts(
+        assert data["status"] == "succeeded"
+        assert data["result"]["segments_scanned"] == 5
+        assert data["result"]["mentions_found"] == 1
+
+    async def test_video_scan_poll_to_succeeded_with_zero_counts(
         self,
         async_client: AsyncClient,
         seed_scan_data: dict[str, Any],
     ) -> None:
-        """200 response with all-zero counts when video has no matching segments."""
+        """Job succeeds with all-zero counts when video has no matching segments."""
         video_id = seed_scan_data["video_id"]
         mock_result = _make_scan_result(
             segments_scanned=0,
@@ -596,11 +738,14 @@ class TestVideoScanEndpoint:
             mock_get_service.return_value = mock_service
 
             response = await async_client.post(_video_scan_url(video_id))
+            assert response.status_code == 202, response.text
+            job_id = response.json()["data"]["job_id"]
 
-        assert response.status_code == 200, response.text
-        data = response.json()["data"]
-        assert data["mentions_found"] == 0
-        assert data["unique_entities"] == 0
+            data = await _poll_scan_job(async_client, job_id)
+
+        assert data["status"] == "succeeded"
+        assert data["result"]["mentions_found"] == 0
+        assert data["result"]["unique_entities"] == 0
 
     async def test_video_scan_calls_service_with_video_id(
         self,
@@ -622,8 +767,12 @@ class TestVideoScanEndpoint:
             mock_service.scan = AsyncMock(return_value=mock_result)
             mock_get_service.return_value = mock_service
 
-            await async_client.post(_video_scan_url(video_id))
+            response = await async_client.post(_video_scan_url(video_id))
+            job_id = response.json()["data"]["job_id"]
 
+            data = await _poll_scan_job(async_client, job_id)
+
+        assert data["status"] == "succeeded"
         call_kwargs = mock_service.scan.call_args
         assert call_kwargs is not None
         video_ids_arg = call_kwargs.kwargs.get("video_ids")
@@ -649,22 +798,26 @@ class TestVideoScanEndpoint:
             mock_service.scan = AsyncMock(return_value=mock_result)
             mock_get_service.return_value = mock_service
 
-            await async_client.post(
+            response = await async_client.post(
                 _video_scan_url(video_id),
                 json={"entity_type": "person"},
             )
+            job_id = response.json()["data"]["job_id"]
 
+            data = await _poll_scan_job(async_client, job_id)
+
+        assert data["status"] == "succeeded"
         call_kwargs = mock_service.scan.call_args
         assert call_kwargs is not None
         entity_type_arg = call_kwargs.kwargs.get("entity_type")
         assert entity_type_arg == "person"
 
-    async def test_video_scan_200_with_empty_body(
+    async def test_video_scan_202_with_empty_body(
         self,
         async_client: AsyncClient,
         seed_scan_data: dict[str, Any],
     ) -> None:
-        """POST with empty body ``{}`` must use defaults and succeed."""
+        """POST with empty body ``{}`` must use defaults and launch."""
         video_id = seed_scan_data["video_id"]
         mock_result = _make_scan_result()
 
@@ -682,8 +835,12 @@ class TestVideoScanEndpoint:
             response = await async_client.post(
                 _video_scan_url(video_id), json={}
             )
+            assert response.status_code == 202, response.text
+            job_id = response.json()["data"]["job_id"]
 
-        assert response.status_code == 200, response.text
+            data = await _poll_scan_job(async_client, job_id)
+
+        assert data["status"] == "succeeded"
 
     # ------------------------------------------------------------------
     # 404 video not found
@@ -694,7 +851,11 @@ class TestVideoScanEndpoint:
         async_client: AsyncClient,
         seed_scan_data: dict[str, Any],
     ) -> None:
-        """404 when the video_id does not exist in the database."""
+        """404 when the video_id does not exist in the database.
+
+        Validation happens before the scan is launched, so this is an
+        immediate response — no job is created.
+        """
         non_existent_video_id = "nosuchvideo052"
 
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
@@ -714,7 +875,11 @@ class TestVideoScanEndpoint:
         async_client: AsyncClient,
         seed_scan_data: dict[str, Any],
     ) -> None:
-        """409 when the concurrency guard already holds the key for this video."""
+        """409 when the concurrency guard already holds the key for this video.
+
+        The guard check happens before the scan is launched, so this is an
+        immediate response — no job is created.
+        """
         import chronovista.api.routers.entity_mentions as em_router
 
         video_id = seed_scan_data["video_id"]
@@ -735,7 +900,7 @@ class TestVideoScanEndpoint:
         async_client: AsyncClient,
         seed_scan_data: dict[str, Any],
     ) -> None:
-        """The concurrency guard must be removed after a successful video scan."""
+        """The concurrency guard must be removed after the job succeeds."""
         import chronovista.api.routers.entity_mentions as em_router
 
         video_id = seed_scan_data["video_id"]
@@ -753,22 +918,22 @@ class TestVideoScanEndpoint:
             mock_service.scan = AsyncMock(return_value=mock_result)
             mock_get_service.return_value = mock_service
 
-            await async_client.post(_video_scan_url(video_id))
+            response = await async_client.post(_video_scan_url(video_id))
+            job_id = response.json()["data"]["job_id"]
+            data = await _poll_scan_job(async_client, job_id)
 
+        assert data["status"] == "succeeded"
         assert guard_key not in em_router._scans_in_progress, (
             f"Guard key {guard_key!r} still present after scan completion"
         )
 
-    async def test_video_scan_guard_released_after_service_exception(
+    async def test_video_scan_job_failed_when_service_raises(
         self,
         async_client: AsyncClient,
         seed_scan_data: dict[str, Any],
     ) -> None:
-        """The concurrency guard must be released even when scan() raises.
-
-        FastAPI converts the RuntimeError to a 500 response.  The guard
-        key must be absent from ``_scans_in_progress`` after the request
-        completes, regardless of the response status code.
+        """The job transitions to 'failed' with an error message when
+        scan() raises, and the concurrency guard is released regardless.
         """
         import chronovista.api.routers.entity_mentions as em_router
 
@@ -791,11 +956,16 @@ class TestVideoScanEndpoint:
             )
             mock_get_service.return_value = mock_service
 
-            try:
-                await async_client.post(_video_scan_url(video_id))
-            except Exception:
-                pass  # 500 responses may propagate in test mode
+            response = await async_client.post(_video_scan_url(video_id))
+            assert response.status_code == 202, response.text
+            job_id = response.json()["data"]["job_id"]
 
+            data = await _poll_scan_job(async_client, job_id)
+
+        assert data["status"] == "failed"
+        assert data["result"] is None
+        assert data["error"] is not None
+        assert "scan exploded" in data["error"]
         assert guard_key not in em_router._scans_in_progress, (
             f"Guard key {guard_key!r} still present after scan failure"
         )
@@ -804,12 +974,12 @@ class TestVideoScanEndpoint:
     # Response shape validation
     # ------------------------------------------------------------------
 
-    async def test_video_scan_response_has_all_required_fields(
+    async def test_video_scan_poll_result_has_all_required_fields(
         self,
         async_client: AsyncClient,
         seed_scan_data: dict[str, Any],
     ) -> None:
-        """The response body must contain all ScanResultData fields."""
+        """The polled job's ``result`` must contain all ScanResultData fields."""
         video_id = seed_scan_data["video_id"]
         mock_result = _make_scan_result(
             segments_scanned=20,
@@ -832,9 +1002,14 @@ class TestVideoScanEndpoint:
             mock_get_service.return_value = mock_service
 
             response = await async_client.post(_video_scan_url(video_id))
+            assert response.status_code == 202, response.text
+            job_id = response.json()["data"]["job_id"]
 
-        assert response.status_code == 200, response.text
-        data = response.json()["data"]
+            data = await _poll_scan_job(async_client, job_id)
+
+        assert data["status"] == "succeeded"
+        result = data["result"]
+        assert result is not None
 
         required_fields = {
             "segments_scanned",
@@ -846,4 +1021,30 @@ class TestVideoScanEndpoint:
             "dry_run",
         }
         for field in required_fields:
-            assert field in data, f"Missing required field '{field}' in response data"
+            assert field in result, f"Missing required field '{field}' in result"
+
+
+# ---------------------------------------------------------------------------
+# TestScanJobStatusEndpoint
+# ---------------------------------------------------------------------------
+
+
+class TestScanJobStatusEndpoint:
+    """Tests for GET /api/v1/scan-jobs/{job_id}."""
+
+    async def test_get_scan_job_404_when_unknown_id(
+        self,
+        async_client: AsyncClient,
+    ) -> None:
+        """404 when the job_id does not correspond to any tracked job.
+
+        Scan jobs are in-memory and ephemeral, so an unrecognized id
+        (including a syntactically valid but never-issued UUID) must 404.
+        """
+        unknown_job_id = str(uuid.uuid4())
+
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(_scan_job_url(unknown_job_id))
+
+        assert response.status_code == 404, response.text

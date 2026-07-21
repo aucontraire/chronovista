@@ -1,7 +1,9 @@
 """
-Unit tests for ScanRequest, ScanResultData, and ScanResultResponse schemas.
+Unit tests for ScanRequest, ScanResultData, ScanResultResponse, ScanJobData,
+and ScanJobResponse schemas.
 
-Covers Feature 052 — Targeted Entity & Video-Level Mention Scanning.
+Covers Feature 052 — Targeted Entity & Video-Level Mention Scanning, and the
+async job-polling schemas added for the sync-to-async scan conversion.
 
 Tests:
 - ScanRequest defaults (all None/False)
@@ -9,14 +11,21 @@ Tests:
 - ScanRequest rejects invalid entity_type strings
 - ScanResultData field construction and all required fields
 - ScanResultResponse wraps ScanResultData inside ``data`` key
+- ScanJobData construction for running/succeeded/failed states
+- ScanJobData rejects invalid kind/status literal values
+- ScanJobResponse wraps ScanJobData inside ``data`` key
 """
 
 from __future__ import annotations
+
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
 
 from chronovista.api.schemas.entity_mentions import (
+    ScanJobData,
+    ScanJobResponse,
     ScanRequest,
     ScanResultData,
     ScanResultResponse,
@@ -41,6 +50,22 @@ def _make_scan_result_data(**overrides: object) -> ScanResultData:
     }
     defaults.update(overrides)
     return ScanResultData(**defaults)  # type: ignore[arg-type]
+
+
+def _make_running_job(**overrides: object) -> ScanJobData:
+    """Build a valid running ScanJobData with sensible defaults."""
+    defaults: dict[str, object] = {
+        "job_id": "11111111-1111-1111-1111-111111111111",
+        "kind": "entity",
+        "target_id": "22222222-2222-2222-2222-222222222222",
+        "status": "running",
+        "result": None,
+        "error": None,
+        "started_at": datetime(2026, 1, 1, tzinfo=UTC),
+        "finished_at": None,
+    }
+    defaults.update(overrides)
+    return ScanJobData(**defaults)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -326,3 +351,142 @@ class TestScanResultResponse:
         parsed = ScanResultResponse.model_validate_json(json_str)
         assert parsed.data.segments_scanned == 50
         assert parsed.data.dry_run is True
+
+
+# ---------------------------------------------------------------------------
+# TestScanJobData
+# ---------------------------------------------------------------------------
+
+
+class TestScanJobData:
+    """ScanJobData construction across running/succeeded/failed states."""
+
+    def test_running_job_has_null_result_and_error(self) -> None:
+        """A freshly-launched job has status='running', result=None, error=None."""
+        job = _make_running_job()
+        assert job.status == "running"
+        assert job.result is None
+        assert job.error is None
+        assert job.finished_at is None
+
+    def test_entity_kind_stored(self) -> None:
+        """kind='entity' must be accepted and stored."""
+        job = _make_running_job(kind="entity")
+        assert job.kind == "entity"
+
+    def test_video_kind_stored(self) -> None:
+        """kind='video' must be accepted and stored."""
+        job = _make_running_job(kind="video")
+        assert job.kind == "video"
+
+    def test_invalid_kind_raises_validation_error(self) -> None:
+        """An unrecognized kind value must raise ValidationError."""
+        with pytest.raises(ValidationError):
+            _make_running_job(kind="channel")
+
+    def test_invalid_status_raises_validation_error(self) -> None:
+        """An unrecognized status value must raise ValidationError."""
+        with pytest.raises(ValidationError):
+            _make_running_job(status="pending")
+
+    def test_succeeded_job_carries_result(self) -> None:
+        """A succeeded job carries a populated ScanResultData and no error."""
+        result = _make_scan_result_data(mentions_found=7)
+        job = _make_running_job(
+            status="succeeded",
+            result=result,
+            finished_at=datetime(2026, 1, 1, 0, 0, 5, tzinfo=UTC),
+        )
+        assert job.status == "succeeded"
+        assert job.result is not None
+        assert job.result.mentions_found == 7
+        assert job.error is None
+        assert job.finished_at is not None
+
+    def test_failed_job_carries_error_and_null_result(self) -> None:
+        """A failed job carries an error message and result=None."""
+        job = _make_running_job(
+            status="failed",
+            error="scan service unavailable",
+            finished_at=datetime(2026, 1, 1, 0, 0, 5, tzinfo=UTC),
+        )
+        assert job.status == "failed"
+        assert job.result is None
+        assert job.error == "scan service unavailable"
+
+    def test_missing_job_id_raises_validation_error(self) -> None:
+        """Omitting required job_id must raise ValidationError."""
+        with pytest.raises(ValidationError):
+            ScanJobData(  # type: ignore[call-arg]
+                kind="entity",
+                target_id="x",
+                status="running",
+                result=None,
+                error=None,
+                started_at=datetime(2026, 1, 1, tzinfo=UTC),
+                finished_at=None,
+            )
+
+    def test_missing_started_at_raises_validation_error(self) -> None:
+        """Omitting required started_at must raise ValidationError."""
+        with pytest.raises(ValidationError):
+            ScanJobData(  # type: ignore[call-arg]
+                job_id="11111111-1111-1111-1111-111111111111",
+                kind="entity",
+                target_id="x",
+                status="running",
+                result=None,
+                error=None,
+                finished_at=None,
+            )
+
+
+# ---------------------------------------------------------------------------
+# TestScanJobResponse
+# ---------------------------------------------------------------------------
+
+
+class TestScanJobResponse:
+    """ScanJobResponse wraps ScanJobData under the ``data`` key."""
+
+    def test_data_field_contains_scan_job_data(self) -> None:
+        """ScanJobResponse.data must be a ScanJobData instance."""
+        job = _make_running_job()
+        resp = ScanJobResponse(data=job)
+        assert isinstance(resp.data, ScanJobData)
+
+    def test_data_values_accessible(self) -> None:
+        """Values in ScanJobData must be accessible via ScanJobResponse.data."""
+        job = _make_running_job(kind="video", target_id="abc123")
+        resp = ScanJobResponse(data=job)
+        assert resp.data.kind == "video"
+        assert resp.data.target_id == "abc123"
+
+    def test_missing_data_field_raises_validation_error(self) -> None:
+        """Omitting the required data field must raise ValidationError."""
+        with pytest.raises(ValidationError):
+            ScanJobResponse()  # type: ignore[call-arg]
+
+    def test_model_json_round_trip_running(self) -> None:
+        """ScanJobResponse for a running job must survive JSON round-trip."""
+        job = _make_running_job()
+        resp = ScanJobResponse(data=job)
+        json_str = resp.model_dump_json()
+        parsed = ScanJobResponse.model_validate_json(json_str)
+        assert parsed.data.status == "running"
+        assert parsed.data.result is None
+
+    def test_model_json_round_trip_succeeded(self) -> None:
+        """ScanJobResponse for a succeeded job must survive JSON round-trip."""
+        result = _make_scan_result_data(segments_scanned=42)
+        job = _make_running_job(
+            status="succeeded",
+            result=result,
+            finished_at=datetime(2026, 1, 1, 0, 0, 5, tzinfo=UTC),
+        )
+        resp = ScanJobResponse(data=job)
+        json_str = resp.model_dump_json()
+        parsed = ScanJobResponse.model_validate_json(json_str)
+        assert parsed.data.status == "succeeded"
+        assert parsed.data.result is not None
+        assert parsed.data.result.segments_scanned == 42

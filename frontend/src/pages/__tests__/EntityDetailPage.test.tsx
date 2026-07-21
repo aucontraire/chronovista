@@ -900,5 +900,98 @@ describe("EntityDetailPage", () => {
 
       expect(screen.getByRole("alert")).toHaveTextContent(/entity not found/i);
     });
+
+    it("shows a distinct 'already running' message on a 409 launch conflict", () => {
+      const mockMutate = vi.fn().mockImplementation((_vars, callbacks) => {
+        callbacks?.onError?.({ status: 409, message: "A scan is already in progress for this entity" });
+      });
+
+      vi.mocked(useScanEntity).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+        isError: false,
+        error: null,
+        data: undefined,
+        reset: vi.fn(),
+        mutateAsync: vi.fn(),
+        isSuccess: false,
+        isIdle: true,
+        status: "idle",
+        variables: undefined,
+        context: undefined,
+        failureCount: 0,
+        failureReason: null,
+        isPaused: false,
+        submittedAt: 0,
+      } as ReturnType<typeof useScanEntity>);
+
+      renderPage();
+
+      fireEvent.click(screen.getByRole("button", { name: /scan for mentions/i }));
+
+      expect(screen.getByRole("alert")).toHaveTextContent(/already running/i);
+    });
+
+    it("shows the job's real failure reason (not a generic message) when the async scan job fails", () => {
+      // A job that fails asynchronously (after launch succeeded) surfaces via
+      // onError with no HTTP status — just the backend's real error string.
+      const mockMutate = vi.fn().mockImplementation((_vars, callbacks) => {
+        callbacks?.onError?.({ message: "Database connection lost during scan" });
+      });
+
+      vi.mocked(useScanEntity).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+        isError: false,
+        error: null,
+        data: undefined,
+        reset: vi.fn(),
+        mutateAsync: vi.fn(),
+        isSuccess: false,
+        isIdle: true,
+        status: "idle",
+        variables: undefined,
+        context: undefined,
+        failureCount: 0,
+        failureReason: null,
+        isPaused: false,
+        submittedAt: 0,
+      } as ReturnType<typeof useScanEntity>);
+
+      renderPage();
+
+      fireEvent.click(screen.getByRole("button", { name: /scan for mentions/i }));
+
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Database connection lost during scan"
+      );
+    });
+
+    it("shows a 'Scanning… (this can take a few minutes)' status message while the job is running", () => {
+      vi.mocked(useScanEntity).mockReturnValue({
+        mutate: vi.fn(),
+        isPending: true,
+        isError: false,
+        error: null,
+        data: undefined,
+        reset: vi.fn(),
+        mutateAsync: vi.fn(),
+        isSuccess: false,
+        isIdle: false,
+        status: "pending",
+        variables: { entityId: "entity-uuid-001" },
+        context: undefined,
+        failureCount: 0,
+        failureReason: null,
+        isPaused: false,
+        submittedAt: Date.now(),
+      } as ReturnType<typeof useScanEntity>);
+
+      renderPage();
+
+      expect(
+        screen.getByText(/scanning.*this can take a few minutes/i)
+      ).toBeInTheDocument();
+    });
   });
 });

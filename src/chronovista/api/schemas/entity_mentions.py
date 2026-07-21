@@ -6,6 +6,7 @@ video entity summaries and entity-to-videos lookups.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -684,3 +685,65 @@ class ScanResultResponse(BaseModel):
     model_config = ConfigDict(strict=True)
 
     data: ScanResultData
+
+
+class ScanJobData(BaseModel):
+    """State of an asynchronous entity-mention scan job.
+
+    Scan jobs are tracked in an in-memory registry (ephemeral — a job does
+    not survive a server restart). This model is returned both when a scan is
+    launched (``202``) and when its status is polled.
+
+    Attributes
+    ----------
+    job_id : str
+        Unique identifier for the scan job.
+    kind : str
+        ``"entity"`` or ``"video"`` — what the scan targets.
+    target_id : str
+        The entity UUID or video ID being scanned.
+    status : str
+        ``"running"``, ``"succeeded"``, or ``"failed"``.
+    result : ScanResultData | None
+        Scan metrics, populated once the job has succeeded.
+    error : str | None
+        Error message if the job failed.
+    started_at : datetime
+        When the scan started.
+    finished_at : datetime | None
+        When the scan reached a terminal state, if it has.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    job_id: str = Field(..., description="Scan job identifier")
+    kind: Literal["entity", "video"] = Field(
+        ..., description="Whether the scan targets an entity or a video"
+    )
+    target_id: str = Field(
+        ..., description="Entity UUID or video ID being scanned"
+    )
+    status: Literal["running", "succeeded", "failed"] = Field(
+        ..., description="Current job status"
+    )
+    result: ScanResultData | None = Field(
+        None, description="Scan metrics once the job has succeeded"
+    )
+    error: str | None = Field(
+        None, description="Error message if the job failed"
+    )
+    started_at: datetime = Field(..., description="When the scan started")
+    finished_at: datetime | None = Field(
+        None, description="When the scan reached a terminal state"
+    )
+
+
+class ScanJobResponse(BaseModel):
+    """Response envelope for scan-job launch (202) and status endpoints.
+
+    Wraps ``ScanJobData`` inside a ``data`` key for consistent API formatting.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    data: ScanJobData

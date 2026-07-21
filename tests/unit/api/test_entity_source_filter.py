@@ -23,9 +23,11 @@ References
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -57,6 +59,52 @@ def _uuid() -> uuid.UUID:
 def _empty_scan_result(*, dry_run: bool = False) -> ScanResult:
     """Return a zeroed-out :class:`ScanResult` for mock returns."""
     return ScanResult(dry_run=dry_run)
+
+
+async def _poll_scan_job(
+    client: AsyncClient,
+    job_id: str,
+    *,
+    max_attempts: int = 50,
+    interval: float = 0.02,
+) -> dict[str, Any]:
+    """Poll ``GET /scan-jobs/{job_id}`` until the job reaches a terminal state.
+
+    The scan endpoints now launch the scan as an ``asyncio`` background task
+    and return ``202`` immediately. Awaiting ``asyncio.sleep`` between polls
+    yields control to the event loop so the background task can progress.
+    Must be called while the ``_get_scan_service`` patch is still active so
+    the background task observes the mocked service.
+
+    Parameters
+    ----------
+    client : AsyncClient
+        Test HTTP client (with ``require_auth``/``get_db`` overridden).
+    job_id : str
+        The scan job id returned by the launch (202) response.
+    max_attempts : int
+        Maximum number of polls before giving up.
+    interval : float
+        Seconds to sleep between polls.
+
+    Returns
+    -------
+    dict[str, Any]
+        The final ``data`` payload once ``status`` is no longer ``"running"``.
+    """
+    data: dict[str, Any] | None = None
+    for _ in range(max_attempts):
+        await asyncio.sleep(interval)
+        response = await client.get(f"/api/v1/scan-jobs/{job_id}")
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+        if data["status"] != "running":
+            return data
+    assert data is not None
+    raise AssertionError(
+        f"Scan job {job_id} did not reach a terminal state after "
+        f"{max_attempts} polls (last status: {data['status']})"
+    )
 
 
 async def _build_client(
@@ -175,8 +223,11 @@ class TestScanEntitySourcesParameter:
                     f"/api/v1/entities/{entity_id}/scan",
                     json={"sources": ["title"]},
                 )
+                assert response.status_code == 202
+                job_id = response.json()["data"]["job_id"]
+                job_data = await _poll_scan_job(client, job_id)
 
-        assert response.status_code == 200
+        assert job_data["status"] == "succeeded"
         mock_service.scan.assert_not_called()
         mock_service.scan_metadata.assert_called_once()
         call_kwargs = mock_service.scan_metadata.call_args.kwargs
@@ -211,8 +262,11 @@ class TestScanEntitySourcesParameter:
                     f"/api/v1/entities/{entity_id}/scan",
                     json={},
                 )
+                assert response.status_code == 202
+                job_id = response.json()["data"]["job_id"]
+                job_data = await _poll_scan_job(client, job_id)
 
-        assert response.status_code == 200
+        assert job_data["status"] == "succeeded"
         mock_service.scan.assert_called_once()
         mock_service.scan_metadata.assert_not_called()
 
@@ -277,8 +331,11 @@ class TestScanVideoEntitiesSourcesParameter:
                     f"/api/v1/videos/{video_id}/scan-entities",
                     json={"sources": ["title", "description"]},
                 )
+                assert response.status_code == 202
+                job_id = response.json()["data"]["job_id"]
+                job_data = await _poll_scan_job(client, job_id)
 
-        assert response.status_code == 200
+        assert job_data["status"] == "succeeded"
         mock_service.scan.assert_not_called()
         mock_service.scan_metadata.assert_called_once()
         call_kwargs = mock_service.scan_metadata.call_args.kwargs
@@ -328,20 +385,22 @@ class TestScanVideoEntitiesSourcesParameter:
                         "sources": ["transcript", "title", "description"],
                     },
                 )
+                assert response.status_code == 202
+                job_id = response.json()["data"]["job_id"]
+                job_data = await _poll_scan_job(client, job_id)
 
-        assert response.status_code == 200
+        assert job_data["status"] == "succeeded"
         mock_service.scan.assert_called_once()
         mock_service.scan_metadata.assert_called_once()
 
-        body = response.json()
-        data = body["data"]
+        result = job_data["result"]
         # Merged numeric fields
-        assert data["segments_scanned"] == 150
-        assert data["mentions_found"] == 8
-        assert data["mentions_skipped"] == 3
-        assert data["unique_entities"] == 5
-        assert data["unique_videos"] == 2
-        assert data["duration_seconds"] == pytest.approx(2.0)
+        assert result["segments_scanned"] == 150
+        assert result["mentions_found"] == 8
+        assert result["mentions_skipped"] == 3
+        assert result["unique_entities"] == 5
+        assert result["unique_videos"] == 2
+        assert result["duration_seconds"] == pytest.approx(2.0)
 
     async def test_sources_tag_on_video_endpoint_returns_422(self) -> None:
         """Invalid source 'tag' on video scan endpoint returns 422."""

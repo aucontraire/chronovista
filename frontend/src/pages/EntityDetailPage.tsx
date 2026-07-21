@@ -747,11 +747,17 @@ export function EntityDetailPage() {
         },
         onError: (err) => {
           const status = (err as { status?: number } | null)?.status;
-          let msg = "Scan failed. Please try again.";
+          let msg: string;
           if (status === 404) {
             msg = "Entity not found. Please refresh the page.";
+          } else if (status === 409) {
+            msg = "A scan is already running for this entity.";
           } else if (status === 503 || status === 500) {
             msg = "Scan service unavailable. Please try again later.";
+          } else {
+            // The scan launched but failed while running — surface the
+            // backend's actual failure reason instead of a generic message.
+            msg = err.message || "Scan failed. Please try again.";
           }
           setScanMessage(msg);
           setScanMessageType("error");
@@ -963,6 +969,16 @@ export function EntityDetailPage() {
               "Scan for Mentions"
             )}
           </button>
+
+          {scanMutation.isPending && (
+            <p
+              role="status"
+              aria-live="polite"
+              className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-3 py-1.5"
+            >
+              Scanning… (this can take a few minutes)
+            </p>
+          )}
 
           {scanMessage !== null && scanMessageType === "success" && (
             <p

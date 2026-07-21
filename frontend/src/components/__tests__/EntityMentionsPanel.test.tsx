@@ -560,5 +560,64 @@ describe("EntityMentionsPanel", () => {
 
       vi.useRealTimers();
     });
+
+    it("shows a distinct 'already running' message on a 409 launch conflict", () => {
+      const mockMutate = vi.fn().mockImplementation((_vars, callbacks) => {
+        callbacks?.onError?.({ status: 409, message: "A scan is already in progress for this video" });
+      });
+
+      (useScanVideoEntities as Mock).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+        isError: false,
+        error: null,
+        data: null,
+        reset: vi.fn(),
+      });
+
+      renderPanel({ entities: [], hasTranscript: true });
+
+      fireEvent.click(screen.getByRole("button", { name: /scan for entity mentions/i }));
+
+      expect(screen.getByRole("alert")).toHaveTextContent(/already running/i);
+    });
+
+    it("shows the job's real failure reason when the async scan job fails", () => {
+      const mockMutate = vi.fn().mockImplementation((_vars, callbacks) => {
+        callbacks?.onError?.({ message: "Transcript fetch timed out" });
+      });
+
+      (useScanVideoEntities as Mock).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+        isError: false,
+        error: null,
+        data: null,
+        reset: vi.fn(),
+      });
+
+      renderPanel({ entities: [], hasTranscript: true });
+
+      fireEvent.click(screen.getByRole("button", { name: /scan for entity mentions/i }));
+
+      expect(screen.getByRole("alert")).toHaveTextContent("Transcript fetch timed out");
+    });
+
+    it("shows a 'Scanning… (this can take a few minutes)' status message while the job is running", () => {
+      (useScanVideoEntities as Mock).mockReturnValue({
+        mutate: vi.fn(),
+        isPending: true,
+        isError: false,
+        error: null,
+        data: null,
+        reset: vi.fn(),
+      });
+
+      renderPanel({ entities: [], hasTranscript: true });
+
+      expect(
+        screen.getByText(/scanning.*this can take a few minutes/i)
+      ).toBeInTheDocument();
+    });
   });
 });

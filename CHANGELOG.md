@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
 
+### Fixed
+- **Entity mention scans no longer report a false "Scan failed."** The entity and video scan endpoints (`POST /entities/{id}/scan`, `POST /videos/{id}/scan-entities`) now run asynchronously — they return `202` with a `job_id`, and the frontend polls `GET /api/v1/scan-jobs/{job_id}` for progress and result. Previously the scan blocked for minutes and tripped the client timeout (reporting failure) even though the backend completed and committed the mentions.
+
 ## [0.57.0] - 2026-07-20
 
 ### Added

@@ -7,7 +7,7 @@
  */
 
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   fetchVideoEntities,
@@ -20,6 +20,7 @@ import {
   createEntity,
   scanEntity,
   scanVideoEntities,
+  getScanJob,
 } from "../api/entityMentions";
 import type {
   VideoEntitySummary,
@@ -36,6 +37,7 @@ import type {
   CreateEntityResponse,
   ScanRequest,
   ScanResultResponse,
+  ScanJob,
 } from "../api/entityMentions";
 import type { ApiError } from "../types/video";
 
@@ -658,6 +660,168 @@ export function useCheckDuplicate(name: string, entityType: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Scan job polling (shared launch→poll flow for entity/video scans)
+// ---------------------------------------------------------------------------
+//
+// Entity-mention scans are launched as an async background job on the
+// backend (202) rather than blocking the request for the scan's full
+// duration, which can exceed the client timeout on large corpora. The flow
+// is:
+//   1. `mutate()` POSTs to launch the scan and receives a job_id.
+//   2. A polling query fetches GET /scan-jobs/{job_id} every 2s while the
+//      job's status is "running".
+//   3. Once the job reaches a terminal status, the relevant caches are
+//      invalidated (once per job) and the caller's onSuccess/onError
+//      callback fires with a shape matching the old synchronous response.
+
+/** Poll interval, in milliseconds, while a scan job is running. */
+const SCAN_POLL_INTERVAL_MS = 2000;
+
+/** Query key for a scan job's polled status. */
+function scanJobKey(jobId: string | null) {
+  return ["scan-job", jobId] as const;
+}
+
+/**
+ * Polls GET /scan-jobs/{jobId} every `SCAN_POLL_INTERVAL_MS` while the job's
+ * status is "running". Disabled when `jobId` is null.
+ */
+function useScanJobPoll(jobId: string | null) {
+  return useQuery<ScanJob, ApiError>({
+    queryKey: scanJobKey(jobId),
+    // FR-004/FR-005: TanStack Query provides signal; cancelled on key change or unmount.
+    queryFn: ({ signal }) => getScanJob(jobId as string, signal),
+    enabled: jobId !== null,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "running" ? SCAN_POLL_INTERVAL_MS : false;
+    },
+    staleTime: SCAN_POLL_INTERVAL_MS,
+    gcTime: 5 * 60 * 1000,
+    retry: false,
+  });
+}
+
+/** Callbacks invoked once a launched scan job reaches a terminal status. */
+export interface ScanFlowCallbacks {
+  /** Fired when the job succeeds; `data` mirrors the pre-async ScanResultResponse shape. */
+  onSuccess?: (data: ScanResultResponse) => void;
+  /** Fired when the job fails, or when the launch request itself fails (e.g. 404/409). */
+  onError?: (error: ApiError) => void;
+}
+
+/** Public shape returned by useScanEntity / useScanVideoEntities. */
+export interface UseScanFlowResult<TVariables> {
+  /** Launches the scan; `callbacks` fire once the job reaches a terminal status. */
+  mutate: (variables: TVariables, callbacks?: ScanFlowCallbacks) => void;
+  /** True from the moment `mutate` is called until the job reaches a terminal status. */
+  isPending: boolean;
+  isSuccess: boolean;
+  isError: boolean;
+  /** The launch error, or a synthesized ApiError from a failed job's `error` string. */
+  error: ApiError | null;
+  /** The terminal scan result, once the job has succeeded. */
+  data: ScanResultResponse | undefined;
+  /** Resets the flow back to idle (e.g. before retrying). */
+  reset: () => void;
+}
+
+/**
+ * Internal factory shared by useScanEntity and useScanVideoEntities.
+ *
+ * Wraps a launch mutation and a job-status polling query behind a
+ * mutation-like interface so call sites barely change from the previous
+ * synchronous mutation: `mutate(variables, { onSuccess, onError })`,
+ * `isPending`, `data`, `error`.
+ *
+ * @param launch - Fetcher that POSTs the scan request and returns the job_id
+ * @param getInvalidationKeys - Given the job's target_id, returns the query
+ *   keys to invalidate once the job succeeds
+ */
+function useScanJobFlow<TVariables>(
+  launch: (variables: TVariables) => Promise<ScanJob>,
+  getInvalidationKeys: (targetId: string) => readonly (readonly unknown[])[]
+): UseScanFlowResult<TVariables> {
+  const queryClient = useQueryClient();
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const callbacksRef = useRef<ScanFlowCallbacks | null>(null);
+  // Guards against firing the terminal callback/invalidation more than once
+  // for the same job (the poll query can re-render with the same terminal
+  // status multiple times).
+  const settledJobIdRef = useRef<string | null>(null);
+
+  const launchMutation = useMutation<ScanJob, ApiError, TVariables>({
+    mutationFn: launch,
+    onSuccess: (job) => {
+      settledJobIdRef.current = null;
+      setActiveJobId(job.job_id);
+    },
+    onError: (err) => {
+      const callbacks = callbacksRef.current;
+      callbacksRef.current = null;
+      callbacks?.onError?.(err);
+    },
+  });
+
+  const { data: job } = useScanJobPoll(activeJobId);
+
+  useEffect(() => {
+    if (!job || job.status === "running") return;
+    if (activeJobId === null || settledJobIdRef.current === activeJobId) return;
+    settledJobIdRef.current = activeJobId;
+
+    const callbacks = callbacksRef.current;
+    callbacksRef.current = null;
+
+    if (job.status === "succeeded") {
+      for (const queryKey of getInvalidationKeys(job.target_id)) {
+        void queryClient.invalidateQueries({ queryKey: queryKey as unknown[] });
+      }
+      if (job.result) {
+        callbacks?.onSuccess?.({ data: job.result });
+      }
+    } else {
+      callbacks?.onError?.({
+        type: "server",
+        message: job.error ?? "Scan failed.",
+      });
+    }
+  }, [job, activeJobId, queryClient, getInvalidationKeys]);
+
+  const mutate = useCallback(
+    (variables: TVariables, callbacks?: ScanFlowCallbacks) => {
+      callbacksRef.current = callbacks ?? null;
+      settledJobIdRef.current = null;
+      setActiveJobId(null);
+      launchMutation.mutate(variables);
+    },
+    [launchMutation]
+  );
+
+  const reset = useCallback(() => {
+    setActiveJobId(null);
+    settledJobIdRef.current = null;
+    callbacksRef.current = null;
+    launchMutation.reset();
+  }, [launchMutation]);
+
+  const isPending =
+    launchMutation.isPending ||
+    (activeJobId !== null && (job === undefined || job.status === "running"));
+  const isSuccess = job?.status === "succeeded";
+  const isError = launchMutation.isError || job?.status === "failed";
+  const error: ApiError | null =
+    launchMutation.error ??
+    (job?.status === "failed"
+      ? { type: "server", message: job.error ?? "Scan failed." }
+      : null);
+  const data: ScanResultResponse | undefined =
+    job?.status === "succeeded" && job.result ? { data: job.result } : undefined;
+
+  return { mutate, isPending, isSuccess, isError, error, data, reset };
+}
+
+// ---------------------------------------------------------------------------
 // useScanEntity
 // ---------------------------------------------------------------------------
 
@@ -670,43 +834,50 @@ export interface ScanEntityVariables {
 }
 
 /**
- * Mutation hook that triggers a transcript scan for a single named entity
- * across all videos.
+ * Launch→poll hook that triggers an async transcript scan for a single named
+ * entity across all videos, then polls the job to completion.
+ *
+ * The scan runs as a background job on the backend (202 response). This
+ * hook polls `GET /scan-jobs/{job_id}` every 2s while the job is running and
+ * resolves via the `onSuccess`/`onError` callbacks once it reaches a
+ * terminal status — mirroring the ergonomics of a single long-running
+ * mutation without holding the HTTP connection open.
  *
  * On success, invalidates caches for:
  * - `entity-detail` (so the entity header reflects updated mention counts)
  * - `entity-videos` (so the entity-to-videos list refreshes)
  *
- * Error handling is left to the caller — use `mutation.isError` and
- * `mutation.error` to display inline error messages.
+ * A 409 launch error ("scan already in progress") and a failed job both
+ * surface via `onError` — inspect `error.status` (409 for "already running")
+ * vs. `error.message` (the job's real failure reason) to distinguish them.
  *
- * @returns UseMutationResult with `mutate({ entityId, options? })`
+ * @returns `{ mutate({ entityId, options? }, { onSuccess, onError }), isPending, data, error, ... }`
  *
  * @example
  * ```tsx
- * const mutation = useScanEntity();
- * mutation.mutate({ entityId: "ent-uuid", options: { dry_run: true } });
- * if (mutation.data) {
- *   console.log(mutation.data.data.mentions_found);
- * }
+ * const scan = useScanEntity();
+ * scan.mutate(
+ *   { entityId: "ent-uuid" },
+ *   {
+ *     onSuccess: (data) => console.log(data.data.mentions_found),
+ *     onError: (err) => console.error(err.message),
+ *   }
+ * );
  * ```
  */
-export function useScanEntity() {
-  const queryClient = useQueryClient();
-
-  return useMutation<ScanResultResponse, ApiError, ScanEntityVariables>({
-    mutationFn: ({ entityId, options }: ScanEntityVariables) =>
-      scanEntity(entityId, options),
-
-    onSuccess: (_data, variables) => {
-      void queryClient.invalidateQueries({
-        queryKey: ["entity-detail", variables.entityId],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["entity-videos", variables.entityId],
-      });
-    },
-  });
+export function useScanEntity(): UseScanFlowResult<ScanEntityVariables> {
+  const launch = useCallback(
+    ({ entityId, options }: ScanEntityVariables) => scanEntity(entityId, options),
+    []
+  );
+  const getInvalidationKeys = useCallback(
+    (targetId: string) => [
+      ["entity-detail", targetId],
+      ["entity-videos", targetId],
+    ],
+    []
+  );
+  return useScanJobFlow(launch, getInvalidationKeys);
 }
 
 // ---------------------------------------------------------------------------
@@ -722,34 +893,31 @@ export interface ScanVideoEntitiesVariables {
 }
 
 /**
- * Mutation hook that triggers an entity scan across all known entities for
- * a single video's transcripts.
+ * Launch→poll hook that triggers an async entity scan across all known
+ * entities for a single video's transcripts, then polls the job to
+ * completion.
  *
- * On success, invalidates the cache for:
+ * See `useScanEntity` for the shared launch→poll behaviour. On success,
+ * invalidates the cache for:
  * - `video-entities` (so the EntityMentionsPanel refreshes with new detections)
  *
- * Error handling is left to the caller — use `mutation.isError` and
- * `mutation.error` to display inline error messages.
- *
- * @returns UseMutationResult with `mutate({ videoId, options? })`
+ * @returns `{ mutate({ videoId, options? }, { onSuccess, onError }), isPending, data, error, ... }`
  *
  * @example
  * ```tsx
- * const mutation = useScanVideoEntities();
- * mutation.mutate({ videoId: "dQw4w9WgXcQ" });
+ * const scan = useScanVideoEntities();
+ * scan.mutate({ videoId: "dQw4w9WgXcQ" }, { onSuccess: (data) => { ... } });
  * ```
  */
-export function useScanVideoEntities() {
-  const queryClient = useQueryClient();
-
-  return useMutation<ScanResultResponse, ApiError, ScanVideoEntitiesVariables>({
-    mutationFn: ({ videoId, options }: ScanVideoEntitiesVariables) =>
+export function useScanVideoEntities(): UseScanFlowResult<ScanVideoEntitiesVariables> {
+  const launch = useCallback(
+    ({ videoId, options }: ScanVideoEntitiesVariables) =>
       scanVideoEntities(videoId, options),
-
-    onSuccess: (_data, variables) => {
-      void queryClient.invalidateQueries({
-        queryKey: ["video-entities", variables.videoId],
-      });
-    },
-  });
+    []
+  );
+  const getInvalidationKeys = useCallback(
+    (targetId: string) => [["video-entities", targetId]],
+    []
+  );
+  return useScanJobFlow(launch, getInvalidationKeys);
 }

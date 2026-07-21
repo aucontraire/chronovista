@@ -677,10 +677,12 @@ export function EntityMentionsPanel({
                       }
                     },
                     onError: (err) => {
-                      setScanMessage({
-                        text: (err as { message?: string }).message ?? "Scan failed. Please try again.",
-                        kind: "error",
-                      });
+                      const status = (err as { status?: number } | null)?.status;
+                      const text =
+                        status === 409
+                          ? "A scan is already running for this video."
+                          : err.message || "Scan failed. Please try again.";
+                      setScanMessage({ text, kind: "error" });
                     },
                   }
                 );
@@ -702,6 +704,18 @@ export function EntityMentionsPanel({
               )}
             </button>
           </span>
+
+          {/* In-progress announcement — separate from the button so screen
+              readers not focused on the button still hear it via aria-live. */}
+          {scanMutation.isPending && (
+            <p
+              role="status"
+              aria-live="polite"
+              className="text-sm font-medium text-gray-500"
+            >
+              Scanning… (this can take a few minutes)
+            </p>
+          )}
 
           {/* Inline result message */}
           {scanMessage !== null && (

@@ -7,10 +7,13 @@ from entity to videos.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import time
 import uuid
 from collections import defaultdict
-from typing import Any
+from datetime import UTC, datetime
+from typing import Any, Literal
 
 from fastapi import APIRouter, Body, Depends, Path, Query, Request, Response
 from fastapi.responses import JSONResponse
@@ -33,9 +36,10 @@ from chronovista.api.schemas.entity_mentions import (
     ManualAssociationResponse,
     MentionPreview,
     PhoneticMatchResponse,
+    ScanJobData,
+    ScanJobResponse,
     ScanRequest,
     ScanResultData,
-    ScanResultResponse,
     VideoEntitiesResponse,
     VideoEntitySummary,
 )
@@ -90,8 +94,21 @@ _tag_mgmt_service = TagManagementService(
     operation_log_repo=TagOperationLogRepository(),
 )
 
+logger = logging.getLogger(__name__)
+
 # In-flight scan guard: tracks entity/video scans currently running
 _scans_in_progress: set[str] = set()
+
+# Registry of asynchronous scan jobs, keyed by job id. Ephemeral and in-memory:
+# jobs do not survive a server restart (acceptable for a single-user tool — a
+# lost scan is simply re-run). If durability is ever needed, back this with a
+# jobs table.
+_scan_jobs: dict[str, ScanJobData] = {}
+# Strong references to running background scan tasks so the event loop does not
+# garbage-collect them mid-run.
+_scan_tasks: set[asyncio.Task[None]] = set()
+# Cap on retained jobs to bound memory; oldest terminal jobs are pruned first.
+_MAX_SCAN_JOBS = 100
 
 # Rate limiting configuration for duplicate check (50 req/min per client)
 RATE_LIMIT_DUPLICATE_CHECK = 50
@@ -1555,61 +1572,158 @@ def _merge_scan_results(results: list[ScanResult]) -> ScanResult:
     return merged
 
 
-def _build_scan_response(result: ScanResult) -> ScanResultResponse:
-    """Build a :class:`ScanResultResponse` from a :class:`ScanResult`.
+def _scan_result_to_data(result: ScanResult) -> ScanResultData:
+    """Convert a service-layer :class:`ScanResult` into API ``ScanResultData``."""
+    return ScanResultData(
+        segments_scanned=result.segments_scanned,
+        mentions_found=result.mentions_found,
+        mentions_skipped=result.mentions_skipped,
+        unique_entities=result.unique_entities,
+        unique_videos=result.unique_videos,
+        duration_seconds=result.duration_seconds,
+        dry_run=result.dry_run,
+    )
 
-    Parameters
-    ----------
-    result : ScanResult
-        Raw scan result from the service layer.
 
-    Returns
-    -------
-    ScanResultResponse
-        API response envelope.
+def _prune_scan_jobs() -> None:
+    """Bound the job registry by dropping the oldest terminal (finished) jobs.
+
+    Running jobs are never pruned. Relies on ``dict`` insertion order so the
+    oldest-registered finished jobs are removed first.
     """
-    return ScanResultResponse(
-        data=ScanResultData(
-            segments_scanned=result.segments_scanned,
-            mentions_found=result.mentions_found,
-            mentions_skipped=result.mentions_skipped,
-            unique_entities=result.unique_entities,
-            unique_videos=result.unique_videos,
-            duration_seconds=result.duration_seconds,
-            dry_run=result.dry_run,
+    if len(_scan_jobs) <= _MAX_SCAN_JOBS:
+        return
+    for job_id in list(_scan_jobs.keys()):
+        if len(_scan_jobs) <= _MAX_SCAN_JOBS:
+            break
+        if _scan_jobs[job_id].status != "running":
+            del _scan_jobs[job_id]
+
+
+async def _run_scan_job(
+    job_id: str,
+    guard_key: str,
+    *,
+    sources: list[str],
+    entity_ids: list[uuid.UUID] | None = None,
+    video_ids: list[str] | None = None,
+    entity_type: str | None = None,
+    language_code: str | None = None,
+    dry_run: bool = False,
+    full_rescan: bool = False,
+) -> None:
+    """Run a scan in the background and record the outcome on its job.
+
+    Never raises: any failure is captured on the job's ``status``/``error`` so
+    the polling client can observe it. Clears the in-flight guard when done.
+    """
+    job = _scan_jobs[job_id]
+    try:
+        service = _get_scan_service()
+        result = await _dispatch_scan(
+            service=service,
+            sources=sources,
+            entity_ids=entity_ids,
+            video_ids=video_ids,
+            entity_type=entity_type,
+            language_code=language_code,
+            dry_run=dry_run,
+            full_rescan=full_rescan,
+        )
+        job.result = _scan_result_to_data(result)
+        job.status = "succeeded"
+    except Exception as exc:  # noqa: BLE001 - surface any failure via the job
+        logger.exception("Scan job %s failed", job_id)
+        job.status = "failed"
+        job.error = str(exc)
+    finally:
+        job.finished_at = datetime.now(UTC)
+        _scans_in_progress.discard(guard_key)
+
+
+def _launch_scan_job(
+    *,
+    kind: Literal["entity", "video"],
+    target_id: str,
+    guard_key: str,
+    sources: list[str],
+    entity_ids: list[uuid.UUID] | None = None,
+    video_ids: list[str] | None = None,
+    entity_type: str | None = None,
+    language_code: str | None = None,
+    dry_run: bool = False,
+    full_rescan: bool = False,
+) -> ScanJobData:
+    """Register a scan job and start it as a background task.
+
+    The caller must have validated inputs and added ``guard_key`` to
+    ``_scans_in_progress``; the background task clears the guard on completion.
+    Returns the freshly-created job for the ``202`` response body.
+    """
+    job_id = str(uuid.uuid4())
+    job = ScanJobData(
+        job_id=job_id,
+        kind=kind,
+        target_id=target_id,
+        status="running",
+        result=None,
+        error=None,
+        started_at=datetime.now(UTC),
+        finished_at=None,
+    )
+    _scan_jobs[job_id] = job
+    _prune_scan_jobs()
+
+    task = asyncio.create_task(
+        _run_scan_job(
+            job_id,
+            guard_key,
+            sources=sources,
+            entity_ids=entity_ids,
+            video_ids=video_ids,
+            entity_type=entity_type,
+            language_code=language_code,
+            dry_run=dry_run,
+            full_rescan=full_rescan,
         )
     )
+    _scan_tasks.add(task)
+    task.add_done_callback(_scan_tasks.discard)
+    return job
 
 
 @router.post(
     "/entities/{entity_id}/scan",
-    response_model=ScanResultResponse,
-    status_code=200,
-    summary="Scan transcript segments for mentions of a specific entity",
+    response_model=ScanJobResponse,
+    status_code=202,
+    summary="Start an entity mention scan for a specific entity",
 )
 async def scan_entity(
     entity_id: uuid.UUID = Path(..., description="Named entity UUID"),
     request: ScanRequest = Body(default_factory=ScanRequest),
     session: AsyncSession = Depends(get_db),
-) -> ScanResultResponse:
-    """Trigger an entity mention scan for a single entity.
+) -> ScanJobResponse:
+    """Launch an asynchronous entity mention scan for a single entity.
 
-    Scans transcript segments for mentions of the specified entity using
-    PostgreSQL regex matching with word-boundary support.
+    Scanning transcript segments (and optionally titles/descriptions) can take
+    minutes on a large corpus, so this endpoint validates the request, starts
+    the scan as a background job, and returns ``202`` with a job id. Poll
+    ``GET /scan-jobs/{job_id}`` for progress and the final result.
 
     Parameters
     ----------
     entity_id : uuid.UUID
         UUID of the named entity to scan.
     request : ScanRequest
-        Optional scan configuration (language_code, dry_run, full_rescan).
+        Optional scan configuration (sources, language_code, dry_run,
+        full_rescan).
     session : AsyncSession
-        Injected database session.
+        Injected database session (used only for validation).
 
     Returns
     -------
-    ScanResultResponse
-        Scan result metrics wrapped in a ``data`` envelope.
+    ScanJobResponse
+        The created scan job (status ``"running"``) wrapped in ``data``.
     """
     # 1. Validate entity exists
     entity = await session.get(NamedEntityDB, entity_id)
@@ -1629,25 +1743,25 @@ async def scan_entity(
             message="A scan is already in progress for this entity"
         )
 
+    # 4. Launch the scan in the background and return the job (202).
     _scans_in_progress.add(guard_key)
     try:
-        # 4. Run the scan — dispatch based on sources
-        service = _get_scan_service()
-        sources = request.sources or ["transcript"]
-        result = await _dispatch_scan(
-            service=service,
-            sources=sources,
+        job = _launch_scan_job(
+            kind="entity",
+            target_id=str(entity_id),
+            guard_key=guard_key,
+            sources=request.sources or ["transcript"],
             entity_ids=[entity_id],
             entity_type=request.entity_type,
             language_code=request.language_code,
             dry_run=request.dry_run,
             full_rescan=request.full_rescan,
         )
-
-        # 5. Build response
-        return _build_scan_response(result)
-    finally:
+    except Exception:
+        # If we failed to even start the task, don't leak the guard.
         _scans_in_progress.discard(guard_key)
+        raise
+    return ScanJobResponse(data=job)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1657,35 +1771,35 @@ async def scan_entity(
 
 @router.post(
     "/videos/{video_id}/scan-entities",
-    response_model=ScanResultResponse,
-    status_code=200,
-    summary="Scan a single video for entity mentions",
+    response_model=ScanJobResponse,
+    status_code=202,
+    summary="Start an entity mention scan for a single video",
 )
 async def scan_video_entities(
     video_id: str = Path(..., description="YouTube video ID"),
     request: ScanRequest = Body(default_factory=ScanRequest),
     session: AsyncSession = Depends(get_db),
-) -> ScanResultResponse:
-    """Trigger an entity mention scan for a single video.
+) -> ScanJobResponse:
+    """Launch an asynchronous entity mention scan for a single video.
 
     Validates that the video exists, checks a concurrency guard to prevent
-    duplicate scans, then delegates to ``EntityMentionScanService.scan()``
-    with the given video ID.
+    duplicate scans, starts the scan as a background job, and returns ``202``
+    with a job id. Poll ``GET /scan-jobs/{job_id}`` for progress and result.
 
     Parameters
     ----------
     video_id : str
         YouTube video ID (string path parameter).
     request : ScanRequest
-        Optional scan parameters (entity_type, language_code, dry_run,
-        full_rescan).  All fields default to ``None`` / ``False``.
+        Optional scan parameters (sources, entity_type, language_code,
+        dry_run, full_rescan).
     session : AsyncSession
-        Database session (injected).
+        Database session (used only for validation).
 
     Returns
     -------
-    ScanResultResponse
-        Scan result metrics wrapped in a ``data`` envelope.
+    ScanJobResponse
+        The created scan job (status ``"running"``) wrapped in ``data``.
 
     Raises
     ------
@@ -1706,22 +1820,42 @@ async def scan_video_entities(
             message="A scan is already in progress for this video",
         )
 
+    # 3. Launch the scan in the background and return the job (202).
     _scans_in_progress.add(guard_key)
     try:
-        # 3. Run the scan — dispatch based on sources
-        service = _get_scan_service()
-        sources = request.sources or ["transcript"]
-        result = await _dispatch_scan(
-            service=service,
-            sources=sources,
+        job = _launch_scan_job(
+            kind="video",
+            target_id=video_id,
+            guard_key=guard_key,
+            sources=request.sources or ["transcript"],
             video_ids=[video_id],
             entity_type=request.entity_type,
             language_code=request.language_code,
             dry_run=request.dry_run,
             full_rescan=request.full_rescan,
         )
-
-        # 4. Build response
-        return _build_scan_response(result)
-    finally:
+    except Exception:
         _scans_in_progress.discard(guard_key)
+        raise
+    return ScanJobResponse(data=job)
+
+
+@router.get(
+    "/scan-jobs/{job_id}",
+    response_model=ScanJobResponse,
+    summary="Get the status and result of an entity scan job",
+)
+async def get_scan_job(
+    job_id: str = Path(..., description="Scan job identifier"),
+) -> ScanJobResponse:
+    """Return the current state of an asynchronous scan job.
+
+    While running, ``status`` is ``"running"`` and ``result`` is null. On
+    completion it becomes ``"succeeded"`` (with ``result`` metrics) or
+    ``"failed"`` (with ``error``). Jobs are in-memory and ephemeral, so an
+    unknown id (including after a server restart) returns ``404``.
+    """
+    job = _scan_jobs.get(job_id)
+    if job is None:
+        raise NotFoundError(resource_type="Scan job", identifier=job_id)
+    return ScanJobResponse(data=job)

@@ -1,19 +1,26 @@
 /**
- * Tests for useScanEntity and useScanVideoEntities mutation hooks
- * in hooks/useEntityMentions.ts (Feature 052).
+ * Tests for useScanEntity and useScanVideoEntities launch→poll hooks
+ * in hooks/useEntityMentions.ts (async entity-mention scan flow).
+ *
+ * The scan endpoints now launch a background job (202) instead of blocking
+ * for the scan's full duration. These hooks POST to launch the job, then
+ * poll GET /scan-jobs/{job_id} every 2s while it's running, and resolve via
+ * onSuccess/onError callbacks once the job reaches a terminal status.
  *
  * Coverage:
- * - useScanEntity: calls scanEntity() API with correct entityId and options
- * - useScanEntity: transitions through isPending → isSuccess states
- * - useScanEntity: transitions through isPending → isError states
- * - useScanEntity: invalidates ["entity-detail", entityId] on success
- * - useScanEntity: invalidates ["entity-videos", entityId] on success
- * - useScanEntity: does NOT invalidate on failure
- * - useScanVideoEntities: calls scanVideoEntities() API with correct videoId and options
- * - useScanVideoEntities: transitions through isPending → isSuccess states
- * - useScanVideoEntities: transitions through isPending → isError states
- * - useScanVideoEntities: invalidates ["video-entities", videoId] on success
- * - useScanVideoEntities: does NOT invalidate on failure
+ * - useScanEntity: launches via scanEntity() with correct entityId/options
+ * - useScanEntity: launch→poll→succeeded — isPending true until terminal,
+ *   then isSuccess, data.data exposes the result, onSuccess callback fires
+ * - useScanEntity: launch→poll→failed — onError fires with the job's real
+ *   error message (not a generic message)
+ * - useScanEntity: 409 on launch (already in progress) — onError fires
+ *   immediately with status 409, no polling occurs
+ * - useScanEntity: polls getScanJob every 2s while running, stops once terminal
+ * - useScanEntity: invalidates ["entity-detail", entityId] and
+ *   ["entity-videos", entityId] only on success, never on failure
+ * - useScanVideoEntities: launches via scanVideoEntities() with correct videoId/options
+ * - useScanVideoEntities: launch→poll→succeeded / failed / 409 (mirrors useScanEntity)
+ * - useScanVideoEntities: invalidates only ["video-entities", videoId] on success
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -21,9 +28,9 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 
-import { scanEntity, scanVideoEntities } from "../../api/entityMentions";
+import { scanEntity, scanVideoEntities, getScanJob } from "../../api/entityMentions";
 import { useScanEntity, useScanVideoEntities } from "../useEntityMentions";
-import type { ScanResultResponse } from "../../api/entityMentions";
+import type { ScanJob } from "../../api/entityMentions";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -32,6 +39,7 @@ import type { ScanResultResponse } from "../../api/entityMentions";
 vi.mock("../../api/entityMentions", () => ({
   scanEntity: vi.fn(),
   scanVideoEntities: vi.fn(),
+  getScanJob: vi.fn(),
   // Stub all other exports that useEntityMentions imports transitively.
   fetchVideoEntities: vi.fn(),
   fetchEntityVideos: vi.fn(),
@@ -51,6 +59,7 @@ vi.mock("../../api/entityMentions", () => ({
 
 const mockedScanEntity = vi.mocked(scanEntity);
 const mockedScanVideoEntities = vi.mocked(scanVideoEntities);
+const mockedGetScanJob = vi.mocked(getScanJob);
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -77,29 +86,57 @@ function createWrapper(queryClient: QueryClient) {
 
 const ENTITY_ID = "entity-uuid-abc123";
 const VIDEO_ID = "dQw4w9WgXcQ";
+const JOB_ID = "scan-job-xyz";
 
-function makeScanResultResponse(
-  overrides: Partial<ScanResultResponse["data"]> = {}
-): ScanResultResponse {
+function makeJob(overrides: Partial<ScanJob> = {}): ScanJob {
   return {
-    data: {
+    job_id: JOB_ID,
+    kind: "entity",
+    target_id: ENTITY_ID,
+    status: "running",
+    result: null,
+    error: null,
+    started_at: "2026-07-19T12:00:00Z",
+    finished_at: null,
+    ...overrides,
+  };
+}
+
+function makeSucceededJob(
+  resultOverrides: Partial<NonNullable<ScanJob["result"]>> = {},
+  jobOverrides: Partial<ScanJob> = {}
+): ScanJob {
+  return makeJob({
+    status: "succeeded",
+    finished_at: "2026-07-19T12:03:00Z",
+    result: {
       segments_scanned: 100,
       mentions_found: 5,
       mentions_skipped: 0,
       unique_entities: 2,
       unique_videos: 1,
-      duration_seconds: 0.3,
+      duration_seconds: 120.3,
       dry_run: false,
-      ...overrides,
+      ...resultOverrides,
     },
-  };
+    ...jobOverrides,
+  });
+}
+
+function makeFailedJob(error: string, jobOverrides: Partial<ScanJob> = {}): ScanJob {
+  return makeJob({
+    status: "failed",
+    finished_at: "2026-07-19T12:01:00Z",
+    error,
+    ...jobOverrides,
+  });
 }
 
 // ===========================================================================
 // useScanEntity
 // ===========================================================================
 
-describe("useScanEntity — mutation execution", () => {
+describe("useScanEntity — launch and terminal states", () => {
   let queryClient: QueryClient;
 
   beforeEach(() => {
@@ -107,25 +144,20 @@ describe("useScanEntity — mutation execution", () => {
     vi.clearAllMocks();
   });
 
-  it("calls scanEntity with the provided entityId when mutate is invoked", async () => {
-    mockedScanEntity.mockResolvedValueOnce(makeScanResultResponse());
-
+  it("starts in idle state with no data", () => {
     const { result } = renderHook(() => useScanEntity(), {
       wrapper: createWrapper(queryClient),
     });
 
-    await act(async () => {
-      result.current.mutate({ entityId: ENTITY_ID });
-    });
-
-    await waitFor(() => result.current.isSuccess);
-
-    expect(mockedScanEntity).toHaveBeenCalledOnce();
-    expect(mockedScanEntity).toHaveBeenCalledWith(ENTITY_ID, undefined);
+    expect(result.current.isPending).toBe(false);
+    expect(result.current.isSuccess).toBe(false);
+    expect(result.current.isError).toBe(false);
+    expect(result.current.data).toBeUndefined();
   });
 
-  it("calls scanEntity with options when options are provided", async () => {
-    mockedScanEntity.mockResolvedValueOnce(makeScanResultResponse({ dry_run: true }));
+  it("calls scanEntity with the provided entityId and options to launch the scan", async () => {
+    mockedScanEntity.mockResolvedValueOnce(makeJob());
+    mockedGetScanJob.mockResolvedValueOnce(makeSucceededJob());
 
     const { result } = renderHook(() => useScanEntity(), {
       wrapper: createWrapper(queryClient),
@@ -134,21 +166,48 @@ describe("useScanEntity — mutation execution", () => {
     await act(async () => {
       result.current.mutate({
         entityId: ENTITY_ID,
-        options: { dry_run: true, language_code: "en" },
+        options: { sources: ["transcript", "title"] },
       });
     });
 
-    await waitFor(() => result.current.isSuccess);
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(mockedScanEntity).toHaveBeenCalledWith(ENTITY_ID, {
-      dry_run: true,
-      language_code: "en",
+      sources: ["transcript", "title"],
     });
   });
 
-  it("transitions to isSuccess and exposes response data", async () => {
-    const response = makeScanResultResponse({ mentions_found: 10, unique_videos: 3 });
-    mockedScanEntity.mockResolvedValueOnce(response);
+  it("isPending is true immediately after launch and while the job is running", async () => {
+    let resolveJob!: (job: ScanJob) => void;
+    mockedScanEntity.mockResolvedValueOnce(makeJob());
+    mockedGetScanJob.mockReturnValueOnce(
+      new Promise<ScanJob>((resolve) => {
+        resolveJob = resolve;
+      })
+    );
+
+    const { result } = renderHook(() => useScanEntity(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    act(() => {
+      result.current.mutate({ entityId: ENTITY_ID });
+    });
+
+    await waitFor(() => expect(result.current.isPending).toBe(true));
+
+    // Resolve the poll so the test doesn't leave a dangling promise.
+    await act(async () => {
+      resolveJob(makeSucceededJob());
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  });
+
+  it("transitions to isSuccess with data.data exposing the result once the job succeeds", async () => {
+    mockedScanEntity.mockResolvedValueOnce(makeJob());
+    mockedGetScanJob.mockResolvedValueOnce(
+      makeSucceededJob({ mentions_found: 12, unique_videos: 4 })
+    );
 
     const { result } = renderHook(() => useScanEntity(), {
       wrapper: createWrapper(queryClient),
@@ -158,15 +217,90 @@ describe("useScanEntity — mutation execution", () => {
       result.current.mutate({ entityId: ENTITY_ID });
     });
 
-    await waitFor(() => result.current.isSuccess);
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(result.current.isSuccess).toBe(true);
+    expect(result.current.isPending).toBe(false);
     expect(result.current.isError).toBe(false);
-    expect(result.current.data?.data.mentions_found).toBe(10);
-    expect(result.current.data?.data.unique_videos).toBe(3);
+    expect(result.current.data?.data.mentions_found).toBe(12);
+    expect(result.current.data?.data.unique_videos).toBe(4);
   });
 
-  it("transitions to isError when scanEntity throws", async () => {
+  it("fires the onSuccess callback with the terminal result once the job succeeds", async () => {
+    mockedScanEntity.mockResolvedValueOnce(makeJob());
+    mockedGetScanJob.mockResolvedValueOnce(
+      makeSucceededJob({ mentions_found: 7, unique_videos: 3 })
+    );
+    const onSuccess = vi.fn();
+    const onError = vi.fn();
+
+    const { result } = renderHook(() => useScanEntity(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await act(async () => {
+      result.current.mutate({ entityId: ENTITY_ID }, { onSuccess, onError });
+    });
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce());
+
+    expect(onSuccess).toHaveBeenCalledWith({
+      data: expect.objectContaining({ mentions_found: 7, unique_videos: 3 }),
+    });
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("fires onError with the job's real failure reason when the job fails", async () => {
+    mockedScanEntity.mockResolvedValueOnce(makeJob());
+    mockedGetScanJob.mockResolvedValueOnce(
+      makeFailedJob("Database connection lost during scan")
+    );
+    const onSuccess = vi.fn();
+    const onError = vi.fn();
+
+    const { result } = renderHook(() => useScanEntity(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await act(async () => {
+      result.current.mutate({ entityId: ENTITY_ID }, { onSuccess, onError });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Database connection lost during scan" })
+    );
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(result.current.error?.message).toBe("Database connection lost during scan");
+  });
+
+  it("fires onError immediately with status 409 when a scan is already in progress", async () => {
+    mockedScanEntity.mockRejectedValueOnce({
+      type: "server",
+      message: "A scan is already in progress for this entity",
+      status: 409,
+    });
+    const onError = vi.fn();
+
+    const { result } = renderHook(() => useScanEntity(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await act(async () => {
+      result.current.mutate({ entityId: ENTITY_ID }, { onError });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 409 })
+    );
+    // No polling should occur — the scan never launched a job.
+    expect(mockedGetScanJob).not.toHaveBeenCalled();
+  });
+
+  it("does not poll further once a 404 launch error occurs", async () => {
     mockedScanEntity.mockRejectedValueOnce({
       type: "server",
       message: "Entity not found",
@@ -181,26 +315,15 @@ describe("useScanEntity — mutation execution", () => {
       result.current.mutate({ entityId: ENTITY_ID });
     });
 
-    await waitFor(() => result.current.isError);
+    await waitFor(() => expect(result.current.isError).toBe(true));
 
-    expect(result.current.isError).toBe(true);
-    expect(result.current.isSuccess).toBe(false);
+    expect(result.current.error?.status).toBe(404);
+    expect(mockedGetScanJob).not.toHaveBeenCalled();
   });
 
-  it("starts in idle state with no data", () => {
-    const { result } = renderHook(() => useScanEntity(), {
-      wrapper: createWrapper(queryClient),
-    });
-
-    expect(result.current.isPending).toBe(false);
-    expect(result.current.isSuccess).toBe(false);
-    expect(result.current.isError).toBe(false);
-    expect(result.current.data).toBeUndefined();
-  });
-
-  it("exposes zero-result scan data when mentions_found is 0", async () => {
-    const response = makeScanResultResponse({ mentions_found: 0, unique_videos: 0 });
-    mockedScanEntity.mockResolvedValueOnce(response);
+  it("reset() clears the flow back to idle state", async () => {
+    mockedScanEntity.mockResolvedValueOnce(makeJob());
+    mockedGetScanJob.mockResolvedValueOnce(makeSucceededJob());
 
     const { result } = renderHook(() => useScanEntity(), {
       wrapper: createWrapper(queryClient),
@@ -210,14 +333,19 @@ describe("useScanEntity — mutation execution", () => {
       result.current.mutate({ entityId: ENTITY_ID });
     });
 
-    await waitFor(() => result.current.isSuccess);
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(result.current.data?.data.mentions_found).toBe(0);
-    expect(result.current.data?.data.unique_videos).toBe(0);
+    act(() => {
+      result.current.reset();
+    });
+
+    expect(result.current.isSuccess).toBe(false);
+    expect(result.current.isPending).toBe(false);
+    expect(result.current.data).toBeUndefined();
   });
 });
 
-describe("useScanEntity — onSuccess cache invalidation", () => {
+describe("useScanEntity — polling behaviour", () => {
   let queryClient: QueryClient;
 
   beforeEach(() => {
@@ -225,10 +353,15 @@ describe("useScanEntity — onSuccess cache invalidation", () => {
     vi.clearAllMocks();
   });
 
-  it("invalidates ['entity-detail', entityId] after a successful scan", async () => {
-    mockedScanEntity.mockResolvedValueOnce(makeScanResultResponse());
-
-    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+  it("polls getScanJob again while the job is still running, and stops once terminal", async () => {
+    // Verifies the launch→poll→poll→terminal sequence without asserting on
+    // exact interval timing (TanStack's refetchInterval scheduling is
+    // exercised generically for this same pattern in useOnboarding.test.ts).
+    mockedScanEntity.mockResolvedValueOnce(makeJob());
+    mockedGetScanJob
+      .mockResolvedValueOnce(makeJob({ status: "running" }))
+      .mockResolvedValueOnce(makeJob({ status: "running" }))
+      .mockResolvedValueOnce(makeSucceededJob());
 
     const { result } = renderHook(() => useScanEntity(), {
       wrapper: createWrapper(queryClient),
@@ -238,15 +371,38 @@ describe("useScanEntity — onSuccess cache invalidation", () => {
       result.current.mutate({ entityId: ENTITY_ID });
     });
 
-    await waitFor(() => result.current.isSuccess);
+    // Still running after the first poll resolves.
+    await waitFor(() => expect(mockedGetScanJob).toHaveBeenCalledTimes(1));
+    expect(result.current.isPending).toBe(true);
+    expect(result.current.isSuccess).toBe(false);
 
-    expect(invalidateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: ["entity-detail", ENTITY_ID] })
-    );
+    // Manually trigger the next poll (bypassing the real 2s interval) by
+    // invalidating the scan-job query — mirrors what refetchInterval does.
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ["scan-job"], exact: false });
+    });
+    await waitFor(() => expect(mockedGetScanJob).toHaveBeenCalledTimes(2));
+    expect(result.current.isPending).toBe(true);
+
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ["scan-job"], exact: false });
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockedGetScanJob).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("useScanEntity — cache invalidation", () => {
+  let queryClient: QueryClient;
+
+  beforeEach(() => {
+    queryClient = createQueryClient();
+    vi.clearAllMocks();
   });
 
-  it("invalidates ['entity-videos', entityId] after a successful scan", async () => {
-    mockedScanEntity.mockResolvedValueOnce(makeScanResultResponse());
+  it("invalidates ['entity-detail', entityId] and ['entity-videos', entityId] once the job succeeds", async () => {
+    mockedScanEntity.mockResolvedValueOnce(makeJob());
+    mockedGetScanJob.mockResolvedValueOnce(makeSucceededJob());
 
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
 
@@ -258,66 +414,39 @@ describe("useScanEntity — onSuccess cache invalidation", () => {
       result.current.mutate({ entityId: ENTITY_ID });
     });
 
-    await waitFor(() => result.current.isSuccess);
-
-    expect(invalidateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: ["entity-videos", ENTITY_ID] })
-    );
-  });
-
-  it("invalidates both entity-detail and entity-videos on a single success", async () => {
-    mockedScanEntity.mockResolvedValueOnce(makeScanResultResponse());
-
-    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
-
-    const { result } = renderHook(() => useScanEntity(), {
-      wrapper: createWrapper(queryClient),
-    });
-
-    await act(async () => {
-      result.current.mutate({ entityId: ENTITY_ID });
-    });
-
-    await waitFor(() => result.current.isSuccess);
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     const invalidatedKeys = invalidateSpy.mock.calls.map(
       (call) => (call[0] as { queryKey: unknown[] }).queryKey
     );
-
     expect(invalidatedKeys).toContainEqual(["entity-detail", ENTITY_ID]);
     expect(invalidatedKeys).toContainEqual(["entity-videos", ENTITY_ID]);
   });
 
-  it("uses the correct entityId in cache keys — not a different entity's ID", async () => {
-    mockedScanEntity.mockResolvedValueOnce(makeScanResultResponse());
+  it("does NOT invalidate any caches when the job fails", async () => {
+    mockedScanEntity.mockResolvedValueOnce(makeJob());
+    mockedGetScanJob.mockResolvedValueOnce(makeFailedJob("boom"));
 
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
-
-    const SPECIFIC_ENTITY_ID = "specific-entity-xyz";
 
     const { result } = renderHook(() => useScanEntity(), {
       wrapper: createWrapper(queryClient),
     });
 
     await act(async () => {
-      result.current.mutate({ entityId: SPECIFIC_ENTITY_ID });
+      result.current.mutate({ entityId: ENTITY_ID });
     });
 
-    await waitFor(() => result.current.isSuccess);
+    await waitFor(() => expect(result.current.isError).toBe(true));
 
-    expect(invalidateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: ["entity-detail", SPECIFIC_ENTITY_ID] })
-    );
-    expect(invalidateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: ["entity-videos", SPECIFIC_ENTITY_ID] })
-    );
+    expect(invalidateSpy).not.toHaveBeenCalled();
   });
 
-  it("does NOT invalidate caches when the scan mutation fails", async () => {
+  it("does NOT invalidate any caches on a 409 launch failure", async () => {
     mockedScanEntity.mockRejectedValueOnce({
       type: "server",
-      message: "Internal server error",
-      status: 500,
+      message: "already running",
+      status: 409,
     });
 
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
@@ -330,7 +459,7 @@ describe("useScanEntity — onSuccess cache invalidation", () => {
       result.current.mutate({ entityId: ENTITY_ID });
     });
 
-    await waitFor(() => result.current.isError);
+    await waitFor(() => expect(result.current.isError).toBe(true));
 
     expect(invalidateSpy).not.toHaveBeenCalled();
   });
@@ -340,95 +469,12 @@ describe("useScanEntity — onSuccess cache invalidation", () => {
 // useScanVideoEntities
 // ===========================================================================
 
-describe("useScanVideoEntities — mutation execution", () => {
+describe("useScanVideoEntities — launch and terminal states", () => {
   let queryClient: QueryClient;
 
   beforeEach(() => {
     queryClient = createQueryClient();
     vi.clearAllMocks();
-  });
-
-  it("calls scanVideoEntities with the provided videoId when mutate is invoked", async () => {
-    mockedScanVideoEntities.mockResolvedValueOnce(makeScanResultResponse());
-
-    const { result } = renderHook(() => useScanVideoEntities(), {
-      wrapper: createWrapper(queryClient),
-    });
-
-    await act(async () => {
-      result.current.mutate({ videoId: VIDEO_ID });
-    });
-
-    await waitFor(() => result.current.isSuccess);
-
-    expect(mockedScanVideoEntities).toHaveBeenCalledOnce();
-    expect(mockedScanVideoEntities).toHaveBeenCalledWith(VIDEO_ID, undefined);
-  });
-
-  it("calls scanVideoEntities with options when options are provided", async () => {
-    mockedScanVideoEntities.mockResolvedValueOnce(makeScanResultResponse());
-
-    const { result } = renderHook(() => useScanVideoEntities(), {
-      wrapper: createWrapper(queryClient),
-    });
-
-    await act(async () => {
-      result.current.mutate({
-        videoId: VIDEO_ID,
-        options: { entity_type: "person", language_code: "fr" },
-      });
-    });
-
-    await waitFor(() => result.current.isSuccess);
-
-    expect(mockedScanVideoEntities).toHaveBeenCalledWith(VIDEO_ID, {
-      entity_type: "person",
-      language_code: "fr",
-    });
-  });
-
-  it("transitions to isSuccess and exposes response data", async () => {
-    const response = makeScanResultResponse({
-      unique_entities: 5,
-      mentions_found: 18,
-    });
-    mockedScanVideoEntities.mockResolvedValueOnce(response);
-
-    const { result } = renderHook(() => useScanVideoEntities(), {
-      wrapper: createWrapper(queryClient),
-    });
-
-    await act(async () => {
-      result.current.mutate({ videoId: VIDEO_ID });
-    });
-
-    await waitFor(() => result.current.isSuccess);
-
-    expect(result.current.isSuccess).toBe(true);
-    expect(result.current.isError).toBe(false);
-    expect(result.current.data?.data.unique_entities).toBe(5);
-    expect(result.current.data?.data.mentions_found).toBe(18);
-  });
-
-  it("transitions to isError when scanVideoEntities throws", async () => {
-    mockedScanVideoEntities.mockRejectedValueOnce({
-      type: "server",
-      message: "Video not found",
-      status: 404,
-    });
-
-    const { result } = renderHook(() => useScanVideoEntities(), {
-      wrapper: createWrapper(queryClient),
-    });
-
-    await act(async () => {
-      result.current.mutate({ videoId: VIDEO_ID });
-    });
-
-    await waitFor(() => result.current.isError);
-
-    expect(result.current.isError).toBe(true);
-    expect(result.current.isSuccess).toBe(false);
   });
 
   it("starts in idle state with no data", () => {
@@ -442,12 +488,42 @@ describe("useScanVideoEntities — mutation execution", () => {
     expect(result.current.data).toBeUndefined();
   });
 
-  it("exposes zero-result scan data when no entities were found in the video", async () => {
-    const response = makeScanResultResponse({
-      mentions_found: 0,
-      unique_entities: 0,
+  it("calls scanVideoEntities with the provided videoId and options to launch the scan", async () => {
+    mockedScanVideoEntities.mockResolvedValueOnce(
+      makeJob({ kind: "video", target_id: VIDEO_ID })
+    );
+    mockedGetScanJob.mockResolvedValueOnce(
+      makeSucceededJob({}, { kind: "video", target_id: VIDEO_ID })
+    );
+
+    const { result } = renderHook(() => useScanVideoEntities(), {
+      wrapper: createWrapper(queryClient),
     });
-    mockedScanVideoEntities.mockResolvedValueOnce(response);
+
+    await act(async () => {
+      result.current.mutate({
+        videoId: VIDEO_ID,
+        options: { entity_type: "person" },
+      });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockedScanVideoEntities).toHaveBeenCalledWith(VIDEO_ID, {
+      entity_type: "person",
+    });
+  });
+
+  it("transitions to isSuccess and exposes the result once the job succeeds", async () => {
+    mockedScanVideoEntities.mockResolvedValueOnce(
+      makeJob({ kind: "video", target_id: VIDEO_ID })
+    );
+    mockedGetScanJob.mockResolvedValueOnce(
+      makeSucceededJob(
+        { unique_entities: 5, mentions_found: 18 },
+        { kind: "video", target_id: VIDEO_ID }
+      )
+    );
 
     const { result } = renderHook(() => useScanVideoEntities(), {
       wrapper: createWrapper(queryClient),
@@ -457,14 +533,63 @@ describe("useScanVideoEntities — mutation execution", () => {
       result.current.mutate({ videoId: VIDEO_ID });
     });
 
-    await waitFor(() => result.current.isSuccess);
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(result.current.data?.data.mentions_found).toBe(0);
-    expect(result.current.data?.data.unique_entities).toBe(0);
+    expect(result.current.data?.data.unique_entities).toBe(5);
+    expect(result.current.data?.data.mentions_found).toBe(18);
+  });
+
+  it("fires onError with the job's real failure reason when the job fails", async () => {
+    mockedScanVideoEntities.mockResolvedValueOnce(
+      makeJob({ kind: "video", target_id: VIDEO_ID })
+    );
+    mockedGetScanJob.mockResolvedValueOnce(
+      makeFailedJob("Transcript fetch timed out", {
+        kind: "video",
+        target_id: VIDEO_ID,
+      })
+    );
+    const onError = vi.fn();
+
+    const { result } = renderHook(() => useScanVideoEntities(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await act(async () => {
+      result.current.mutate({ videoId: VIDEO_ID }, { onError });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Transcript fetch timed out" })
+    );
+  });
+
+  it("fires onError immediately with status 409 when a scan is already in progress", async () => {
+    mockedScanVideoEntities.mockRejectedValueOnce({
+      type: "server",
+      message: "A scan is already in progress for this video",
+      status: 409,
+    });
+    const onError = vi.fn();
+
+    const { result } = renderHook(() => useScanVideoEntities(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await act(async () => {
+      result.current.mutate({ videoId: VIDEO_ID }, { onError });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ status: 409 }));
+    expect(mockedGetScanJob).not.toHaveBeenCalled();
   });
 });
 
-describe("useScanVideoEntities — onSuccess cache invalidation", () => {
+describe("useScanVideoEntities — cache invalidation", () => {
   let queryClient: QueryClient;
 
   beforeEach(() => {
@@ -472,54 +597,13 @@ describe("useScanVideoEntities — onSuccess cache invalidation", () => {
     vi.clearAllMocks();
   });
 
-  it("invalidates ['video-entities', videoId] after a successful scan", async () => {
-    mockedScanVideoEntities.mockResolvedValueOnce(makeScanResultResponse());
-
-    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
-
-    const { result } = renderHook(() => useScanVideoEntities(), {
-      wrapper: createWrapper(queryClient),
-    });
-
-    await act(async () => {
-      result.current.mutate({ videoId: VIDEO_ID });
-    });
-
-    await waitFor(() => result.current.isSuccess);
-
-    expect(invalidateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: ["video-entities", VIDEO_ID] })
+  it("invalidates only ['video-entities', videoId] on success", async () => {
+    mockedScanVideoEntities.mockResolvedValueOnce(
+      makeJob({ kind: "video", target_id: VIDEO_ID })
     );
-  });
-
-  it("uses the correct videoId in the cache key", async () => {
-    mockedScanVideoEntities.mockResolvedValueOnce(makeScanResultResponse());
-
-    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
-
-    const SPECIFIC_VIDEO_ID = "specific-video-abc";
-
-    const { result } = renderHook(() => useScanVideoEntities(), {
-      wrapper: createWrapper(queryClient),
-    });
-
-    await act(async () => {
-      result.current.mutate({ videoId: SPECIFIC_VIDEO_ID });
-    });
-
-    await waitFor(() => result.current.isSuccess);
-
-    expect(invalidateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: ["video-entities", SPECIFIC_VIDEO_ID] })
+    mockedGetScanJob.mockResolvedValueOnce(
+      makeSucceededJob({}, { kind: "video", target_id: VIDEO_ID })
     );
-  });
-
-  it("does NOT invalidate caches when the scan mutation fails", async () => {
-    mockedScanVideoEntities.mockRejectedValueOnce({
-      type: "server",
-      message: "Internal server error",
-      status: 500,
-    });
 
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
 
@@ -531,31 +615,36 @@ describe("useScanVideoEntities — onSuccess cache invalidation", () => {
       result.current.mutate({ videoId: VIDEO_ID });
     });
 
-    await waitFor(() => result.current.isError);
-
-    expect(invalidateSpy).not.toHaveBeenCalled();
-  });
-
-  it("does NOT invalidate entity-detail or entity-videos (those belong to useScanEntity)", async () => {
-    mockedScanVideoEntities.mockResolvedValueOnce(makeScanResultResponse());
-
-    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
-
-    const { result } = renderHook(() => useScanVideoEntities(), {
-      wrapper: createWrapper(queryClient),
-    });
-
-    await act(async () => {
-      result.current.mutate({ videoId: VIDEO_ID });
-    });
-
-    await waitFor(() => result.current.isSuccess);
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     const invalidatedKeys = invalidateSpy.mock.calls.map(
-      (call) => (call[0] as { queryKey: unknown[] }).queryKey[0]
+      (call) => (call[0] as { queryKey: unknown[] }).queryKey
+    );
+    expect(invalidatedKeys).toContainEqual(["video-entities", VIDEO_ID]);
+    expect(invalidatedKeys).not.toContainEqual(["entity-detail", VIDEO_ID]);
+    expect(invalidatedKeys).not.toContainEqual(["entity-videos", VIDEO_ID]);
+  });
+
+  it("does NOT invalidate any caches when the job fails", async () => {
+    mockedScanVideoEntities.mockResolvedValueOnce(
+      makeJob({ kind: "video", target_id: VIDEO_ID })
+    );
+    mockedGetScanJob.mockResolvedValueOnce(
+      makeFailedJob("boom", { kind: "video", target_id: VIDEO_ID })
     );
 
-    expect(invalidatedKeys).not.toContain("entity-detail");
-    expect(invalidatedKeys).not.toContain("entity-videos");
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+    const { result } = renderHook(() => useScanVideoEntities(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await act(async () => {
+      result.current.mutate({ videoId: VIDEO_ID });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(invalidateSpy).not.toHaveBeenCalled();
   });
 });

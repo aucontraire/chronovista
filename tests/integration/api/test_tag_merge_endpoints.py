@@ -3,10 +3,16 @@
 Exercises the merge preview (exact distinct counts), merge execution, the
 cross-feature data contract (downstream consumers reflect the merge), undo,
 and auth, using the ``sample_data`` fixture from the canonical-tags router
-tests. The fixture seeds Music with videos {vid1, vid2} and New York with
-{vid2}, so merging New York into Music yields a DISTINCT video count of 2 —
-the overlap case that a naive per-tag sum (2 + 1 = 3) would get wrong.
+tests. The fixture seeds Music with videos {vid1, vid2, vid4} and New York
+with {vid2}, so merging New York into Music yields a DISTINCT video count of
+3 — the overlap case (vid2 is shared) that a naive per-tag sum (3 + 1 = 4)
+would get wrong.
 """
+
+# The seeding fixtures are defined in the sibling canonical-tags router test
+# module and imported below for reuse; ruff flags each use as a parameter as a
+# redefinition (F811), which is a false positive for this pytest pattern.
+# ruff: noqa: F811
 
 from __future__ import annotations
 

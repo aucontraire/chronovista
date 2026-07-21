@@ -4157,10 +4157,14 @@ class TestMergePreview:
         ]
         # _count_over_tag_ids called twice (union, then sources):
         # each call = count(alias), count(distinct video)
-        union_alias = MagicMock(); union_alias.scalar_one.return_value = 8
-        union_video = MagicMock(); union_video.scalar_one.return_value = 30
-        src_alias = MagicMock(); src_alias.scalar_one.return_value = 3
-        src_video = MagicMock(); src_video.scalar_one.return_value = 12
+        union_alias = MagicMock()
+        union_alias.scalar_one.return_value = 8
+        union_video = MagicMock()
+        union_video.scalar_one.return_value = 30
+        src_alias = MagicMock()
+        src_alias.scalar_one.return_value = 3
+        src_video = MagicMock()
+        src_video.scalar_one.return_value = 12
         mock_session.execute.side_effect = [
             union_alias,
             union_video,

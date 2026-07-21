@@ -828,7 +828,7 @@ Canonical tags group raw tag variations (case, accents, hashtags) into unified c
 
 #### List Canonical Tags
 
-Get paginated list of canonical tags with optional prefix search and fuzzy suggestions.
+Get paginated list of canonical tags with optional prefix or contains search and fuzzy suggestions.
 
 ```
 GET /api/v1/canonical-tags
@@ -838,9 +838,13 @@ GET /api/v1/canonical-tags
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `q` | string | Prefix search query (1-500 characters) | - |
+| `q` | string | Search query (1-500 characters) | - |
+| `match_mode` | string | `prefix` (matches `q%`) or `contains` (matches `%q%`). Contains requires `q` to be at least 2 characters and orders results by relevance tier (exact, then prefix, then mid-string). | `prefix` |
 | `limit` | integer | Items per page (1-100) | 20 |
 | `offset` | integer | Pagination offset | 0 |
+
+!!! note "Match mode"
+    `prefix` (the default) preserves the video filter's behavior — searching "Hannah Fry" finds only tags that start with it. `contains` finds a substring anywhere, so "Hannah Fry" also matches "Professor Hannah Fry". The web tag-merge UI uses `contains`.
 
 ##### Response
 
@@ -940,6 +944,107 @@ Returns the same format as the videos list endpoint, filtered to videos matching
 
 !!! note "Query Timeout"
     This endpoint has a 10-second query timeout. If exceeded, a 504 Gateway Timeout response is returned.
+
+#### Preview Merge
+
+Compute the exact impact of merging one or more source canonical tags into a target, without mutating any data. Backs the confirmation step of the web tag-merge UI.
+
+```
+POST /api/v1/canonical-tags/merge/preview
+```
+
+##### Request Body
+
+```json
+{
+  "source_normalized_forms": ["professor hannah fry"],
+  "target_normalized_form": "hannah fry"
+}
+```
+
+##### Response
+
+```json
+{
+  "data": {
+    "source_tags": ["Professor Hannah Fry"],
+    "target_tag": "Hannah Fry",
+    "resulting_alias_count": 14,
+    "resulting_video_count": 31,
+    "source_alias_count": 3,
+    "source_video_count": 12
+  }
+}
+```
+
+!!! note "Exact counts"
+    `resulting_video_count` is a distinct count over the union of the source and target tags, so a video associated with more than one selected tag is counted once. Summing per-tag counts client-side would overstate the impact.
+
+#### Merge Canonical Tags
+
+Merge one or more source canonical tags into a target. Reassigns the sources' aliases and video associations to the target and marks the sources as merged. Delegates to the same service as the `chronovista tags merge` CLI command.
+
+```
+POST /api/v1/canonical-tags/merge
+```
+
+##### Request Body
+
+```json
+{
+  "source_normalized_forms": ["professor hannah fry"],
+  "target_normalized_form": "hannah fry",
+  "reason": "Consolidate name variants"
+}
+```
+
+`reason` is optional (max 1000 characters).
+
+##### Response
+
+```json
+{
+  "data": {
+    "source_tags": ["professor hannah fry"],
+    "target_tag": "hannah fry",
+    "aliases_moved": 3,
+    "new_alias_count": 14,
+    "new_video_count": 31,
+    "operation_id": "018f9c2a-1b3d-7e4f-a0b1-2c3d4e5f6a7b",
+    "entity_hint": null
+  }
+}
+```
+
+The `operation_id` can be used to undo the merge. Errors: 400 (a tag is both source and target), 404 (a tag does not exist or is not active), 409 (concurrent-merge conflict).
+
+#### Undo Operation
+
+Reverse a previously logged tag operation (such as a merge) by its operation ID.
+
+```
+POST /api/v1/canonical-tags/operations/{operation_id}/undo
+```
+
+##### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `operation_id` | string (UUID) | The operation to undo |
+
+##### Response
+
+```json
+{
+  "data": {
+    "operation_type": "merge",
+    "operation_id": "018f9c2a-1b3d-7e4f-a0b1-2c3d4e5f6a7b",
+    "details": "Restored 1 source tag; 3 aliases returned"
+  }
+}
+```
+
+Errors: 404 (operation not found), 409 (operation already undone).
 
 ---
 

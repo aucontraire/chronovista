@@ -500,7 +500,7 @@ chronovista corrections export --format csv --output corrections.csv
 chronovista corrections stats
 ```
 
-For full command options, see the [CLI Overview](cli-overview.md#corrections-commands).
+For full command options, see the [CLI reference](../reference/cli.md).
 
 ### Limitations and Edge Cases
 

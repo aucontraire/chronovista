@@ -52,7 +52,7 @@ make install-docs
 - [Transcripts](user-guide/transcripts.md) - Multi-language transcript management
 - [REST API](user-guide/rest-api.md) - FastAPI endpoints and usage examples
 
-Recovery commands (video and channel metadata recovery from the Wayback Machine) are documented in the [CLI Overview](user-guide/cli-overview.md#recover-commands) under the Recover Commands section.
+Recovery commands (video and channel metadata recovery from the Wayback Machine) are documented in the [CLI reference](reference/cli.md).
 
 ### Architecture
 

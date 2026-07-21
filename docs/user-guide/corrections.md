@@ -198,7 +198,7 @@ If a pattern matches entirely within a single segment, that match takes priority
 Running `--cross-segment` without any filter (`--video-id`, `--language`, `--channel`) loads all segments into memory. For large libraries (>5,000 segments), you'll see a warning:
 
 ```
-Warning: --cross-segment with no scope filter will load ~125,000 segments into memory.
+Warning: --cross-segment with no scope filter will load ~50,000 segments into memory.
 For large libraries this may be slow. Use --video-id, --language, or --channel to
 narrow the scope, or pass --yes to proceed.
 Continue? [y/N]

@@ -235,20 +235,22 @@ Automatic formatting on commit:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/psf/black
-    rev: 23.9.1
+    rev: 25.1.0
     hooks:
       - id: black
-
-  - repo: https://github.com/pycqa/isort
-    rev: 5.12.0
-    hooks:
-      - id: isort
+        files: ^(src/chronovista/|tests/)
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.0.292
+    rev: v0.12.3
     hooks:
-      - id: ruff
+      - id: ruff-check
+        args: [--fix]
+        files: ^(src/chronovista/|tests/)
 ```
+
+Import sorting is handled by Ruff's `I` rule — there is no separate `isort`
+hook. Black is also enforced in CI (`black --check`), so a commit that skips
+the hook is still caught on the PR.
 
 Install:
 ```bash

@@ -4037,3 +4037,144 @@ class TestClassifyLinkEntity:
 
         mock_named_entity_repo.create.assert_not_called()
         mock_operation_log_repo.create.assert_not_called()
+
+
+# ===========================================================================
+# Feature 056: merge SQL-column verification + merge_preview
+# ===========================================================================
+
+
+class TestMergeAliasUpdateColumns:
+    """Constitution: mock tests for mutations MUST verify SQL SET columns.
+
+    The merge alias-repointing UPDATE must set BOTH ``canonical_tag_id`` and
+    ``normalized_form`` so the raw_form -> normalized_form -> canonical lookup
+    path stays consistent (the 030-032 tag-merge bug class).
+    """
+
+    async def test_merge_alias_update_sets_both_columns(
+        self,
+        service: TagManagementService,
+        mock_canonical_tag_repo: AsyncMock,
+        mock_operation_log_repo: AsyncMock,
+        mock_session: AsyncMock,
+    ) -> None:
+        target = _make_canonical_tag(
+            normalized_form="hannah fry", canonical_form="Hannah Fry"
+        )
+        target.entity_type = None
+        source = _make_canonical_tag(
+            normalized_form="professor hannah fry",
+            canonical_form="Professor Hannah Fry",
+        )
+        source.entity_type = None
+        # _validate_active_tag(target) then _validate_active_tag(source)
+        mock_canonical_tag_repo.get_by_normalized_form.side_effect = [
+            target,
+            source,
+        ]
+
+        alias = MagicMock()
+        alias.id = uuid.uuid4()
+        select_aliases = MagicMock()
+        select_aliases.scalars.return_value.all.return_value = [alias]
+        count_alias = MagicMock()
+        count_alias.scalar_one.return_value = 5
+        count_video = MagicMock()
+        count_video.scalar_one.return_value = 9
+        # execute order: select source aliases, UPDATE tag_aliases,
+        # _recalculate_counts (count alias, count video, UPDATE canonical_tags)
+        mock_session.execute.side_effect = [
+            select_aliases,
+            MagicMock(),  # alias UPDATE
+            count_alias,
+            count_video,
+            MagicMock(),  # canonical_tags UPDATE
+        ]
+        log_entry = MagicMock()
+        log_entry.id = uuid.uuid4()
+        mock_operation_log_repo.create.return_value = log_entry
+
+        await service.merge(
+            mock_session, ["professor hannah fry"], "hannah fry"
+        )
+
+        # Find the UPDATE targeting tag_aliases and inspect its SET clause.
+        alias_update_sql = None
+        for call_obj in mock_session.execute.call_args_list:
+            stmt = call_obj.args[0]
+            sql = str(stmt.compile(compile_kwargs={"literal_binds": False}))
+            if "UPDATE tag_aliases" in sql:
+                alias_update_sql = sql
+                break
+
+        assert alias_update_sql is not None, "no UPDATE tag_aliases statement issued"
+        assert "canonical_tag_id" in alias_update_sql, (
+            f"SET clause missing canonical_tag_id: {alias_update_sql}"
+        )
+        assert "normalized_form" in alias_update_sql, (
+            f"SET clause missing normalized_form: {alias_update_sql}"
+        )
+
+
+class TestMergePreview:
+    """Feature 056: read-only merge preview (FR-008a)."""
+
+    async def test_preview_empty_sources_raises(
+        self,
+        service: TagManagementService,
+        mock_session: AsyncMock,
+    ) -> None:
+        with pytest.raises(ValueError, match="At least one source"):
+            await service.merge_preview(mock_session, [], "hannah fry")
+
+    async def test_preview_self_merge_raises(
+        self,
+        service: TagManagementService,
+        mock_canonical_tag_repo: AsyncMock,
+        mock_session: AsyncMock,
+    ) -> None:
+        target = _make_canonical_tag(normalized_form="music")
+        mock_canonical_tag_repo.get_by_normalized_form.return_value = target
+        with pytest.raises(ValueError, match="into itself"):
+            await service.merge_preview(mock_session, ["music"], "music")
+
+    async def test_preview_returns_union_counts(
+        self,
+        service: TagManagementService,
+        mock_canonical_tag_repo: AsyncMock,
+        mock_session: AsyncMock,
+    ) -> None:
+        target = _make_canonical_tag(
+            normalized_form="music", canonical_form="Music"
+        )
+        source = _make_canonical_tag(
+            normalized_form="rock music", canonical_form="Rock Music"
+        )
+        mock_canonical_tag_repo.get_by_normalized_form.side_effect = [
+            target,
+            source,
+        ]
+        # _count_over_tag_ids called twice (union, then sources):
+        # each call = count(alias), count(distinct video)
+        union_alias = MagicMock(); union_alias.scalar_one.return_value = 8
+        union_video = MagicMock(); union_video.scalar_one.return_value = 30
+        src_alias = MagicMock(); src_alias.scalar_one.return_value = 3
+        src_video = MagicMock(); src_video.scalar_one.return_value = 12
+        mock_session.execute.side_effect = [
+            union_alias,
+            union_video,
+            src_alias,
+            src_video,
+        ]
+
+        result = await service.merge_preview(
+            mock_session, ["rock music"], "music"
+        )
+
+        assert result.resulting_alias_count == 8
+        assert result.resulting_video_count == 30
+        assert result.source_alias_count == 3
+        assert result.source_video_count == 12
+        assert result.target_tag == "Music"
+        assert result.source_tags == ["Rock Music"]

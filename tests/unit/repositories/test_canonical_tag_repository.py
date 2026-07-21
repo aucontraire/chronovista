@@ -278,6 +278,62 @@ class TestCanonicalTagRepositorySearch:
             f"got: {sql_string}"
         )
 
+    async def test_search_contains_mode_uses_substring_pattern_and_tier(
+        self,
+        repository: CanonicalTagRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Feature 056: contains mode uses %q% across all three targets + tier CASE.
+
+        The items query must (a) match with a leading-and-trailing wildcard
+        (`%q%`) on canonical_form, normalized_form, and the alias EXISTS
+        subquery, and (b) order by a relevance-tier CASE expression.
+        """
+        count_result = MagicMock()
+        count_result.scalar_one.return_value = 0
+        items_scalars = MagicMock()
+        items_scalars.all.return_value = []
+        items_result = MagicMock()
+        items_result.scalars.return_value = items_scalars
+        mock_session.execute.side_effect = [count_result, items_result]
+
+        await repository.search(mock_session, q="music", match_mode="contains")
+
+        items_stmt = mock_session.execute.call_args_list[1].args[0]
+        sql = str(items_stmt.compile(compile_kwargs={"literal_binds": True}))
+
+        # WHERE uses the substring pattern on all three targets. (A bare `music%`
+        # also legitimately appears inside the ORDER BY tier CASE — the prefix
+        # tier — so we assert the substring pattern's presence, not prefix absence.)
+        assert sql.count("'%music%'") >= 3, (
+            f"expected %music% on canonical_form, normalized_form, and alias; got: {sql}"
+        )
+        assert "tag_aliases" in sql, "contains search must include alias EXISTS subquery"
+        assert "CASE" in sql.upper(), "contains mode must include relevance tier CASE"
+
+    async def test_search_prefix_mode_uses_prefix_pattern_no_tier(
+        self,
+        repository: CanonicalTagRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Feature 056: prefix mode (default) uses q% and no tier CASE (unchanged)."""
+        count_result = MagicMock()
+        count_result.scalar_one.return_value = 0
+        items_scalars = MagicMock()
+        items_scalars.all.return_value = []
+        items_result = MagicMock()
+        items_result.scalars.return_value = items_scalars
+        mock_session.execute.side_effect = [count_result, items_result]
+
+        await repository.search(mock_session, q="music", match_mode="prefix")
+
+        items_stmt = mock_session.execute.call_args_list[1].args[0]
+        sql = str(items_stmt.compile(compile_kwargs={"literal_binds": True}))
+
+        assert "'music%'" in sql, f"expected prefix pattern music%; got: {sql}"
+        assert "'%music%'" not in sql, "prefix mode must not use substring pattern"
+        assert "CASE" not in sql.upper(), "prefix mode must not add a tier CASE"
+
     async def test_search_empty_results(
         self,
         repository: CanonicalTagRepository,

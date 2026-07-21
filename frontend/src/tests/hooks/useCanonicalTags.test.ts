@@ -942,7 +942,151 @@ describe("useCanonicalTags", () => {
   });
 
   // -------------------------------------------------------------------------
-  // 9. Initial / default state
+  // 9. matchMode / limit options (Feature 056)
+  // -------------------------------------------------------------------------
+  describe("matchMode / limit options (Feature 056)", () => {
+    it("defaults to prefix mode and limit 10 when no options are passed (FR-004)", async () => {
+      const fetchSpy = vi.fn().mockResolvedValue(makeFetchResponse(mockListResponse));
+      vi.stubGlobal("fetch", fetchSpy);
+
+      const { result } = renderHook(() => useCanonicalTags("python"), {
+        wrapper: createWrapper(queryClient),
+      });
+
+      await waitFor(() => {
+        expect(result.current.tags).toHaveLength(2);
+      });
+
+      const calledUrl: string = fetchSpy.mock.calls[0]?.[0] as string;
+      expect(calledUrl).toContain("q=python");
+      expect(calledUrl).toContain("limit=10");
+      // The default request must NOT include match_mode — byte-identical to
+      // the pre-Feature-056 request shape.
+      expect(calledUrl).not.toContain("match_mode");
+    });
+
+    it("caches the default call under the original 2-tuple query key", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(makeFetchResponse(mockListResponse))
+      );
+
+      const { result } = renderHook(() => useCanonicalTags("py"), {
+        wrapper: createWrapper(queryClient),
+      });
+
+      await waitFor(() => {
+        expect(result.current.tags).toHaveLength(2);
+      });
+
+      const queryState = queryClient.getQueryState(["canonical-tags", "py"]);
+      expect(queryState).toBeDefined();
+      expect(queryState?.status).toBe("success");
+    });
+
+    it("passes matchMode: contains and limit: 50 through to the request", async () => {
+      const fetchSpy = vi.fn().mockResolvedValue(makeFetchResponse(mockListResponse));
+      vi.stubGlobal("fetch", fetchSpy);
+
+      const { result } = renderHook(
+        () => useCanonicalTags("fry", { matchMode: "contains", limit: 50 }),
+        { wrapper: createWrapper(queryClient) }
+      );
+
+      await waitFor(() => {
+        expect(result.current.tags).toHaveLength(2);
+      });
+
+      const calledUrl: string = fetchSpy.mock.calls[0]?.[0] as string;
+      expect(calledUrl).toContain("q=fry");
+      expect(calledUrl).toContain("match_mode=contains");
+      expect(calledUrl).toContain("limit=50");
+    });
+
+    it("does not issue a request for contains-mode queries under 2 characters", () => {
+      const fetchSpy = vi.fn();
+      vi.stubGlobal("fetch", fetchSpy);
+
+      const { result } = renderHook(
+        () => useCanonicalTags("f", { matchMode: "contains", limit: 50 }),
+        { wrapper: createWrapper(queryClient) }
+      );
+
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.tags).toEqual([]);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("issues a contains-mode request once the query reaches 2 characters", async () => {
+      const fetchSpy = vi.fn().mockResolvedValue(makeFetchResponse(mockListResponse));
+      vi.stubGlobal("fetch", fetchSpy);
+
+      let search = "f";
+      const { result, rerender } = renderHook(
+        () => useCanonicalTags(search, { matchMode: "contains", limit: 50 }),
+        { wrapper: createWrapper(queryClient) }
+      );
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      search = "fr";
+      rerender();
+
+      await waitFor(() => {
+        expect(result.current.tags).toHaveLength(2);
+      });
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("prefix mode (explicitly passed) still fires on a single character", async () => {
+      const fetchSpy = vi.fn().mockResolvedValue(makeFetchResponse(mockListResponse));
+      vi.stubGlobal("fetch", fetchSpy);
+
+      const { result } = renderHook(
+        () => useCanonicalTags("m", { matchMode: "prefix" }),
+        { wrapper: createWrapper(queryClient) }
+      );
+
+      await waitFor(() => {
+        expect(result.current.tags).toHaveLength(2);
+      });
+
+      const calledUrl: string = fetchSpy.mock.calls[0]?.[0] as string;
+      expect(calledUrl).toContain("q=m");
+      expect(calledUrl).not.toContain("match_mode");
+    });
+
+    it("uses a separate cache entry (different query key) for contains-mode vs. the default", async () => {
+      const fetchSpy = vi.fn().mockResolvedValue(makeFetchResponse(mockListResponse));
+      vi.stubGlobal("fetch", fetchSpy);
+
+      // Default (prefix, limit 10)
+      renderHook(() => useCanonicalTags("fry"), {
+        wrapper: createWrapper(queryClient),
+      });
+
+      // Merge context (contains, limit 50)
+      renderHook(
+        () => useCanonicalTags("fry", { matchMode: "contains", limit: 50 }),
+        { wrapper: createWrapper(queryClient) }
+      );
+
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
+      });
+
+      expect(
+        queryClient.getQueryState(["canonical-tags", "fry"])
+      ).toBeDefined();
+      expect(
+        queryClient.getQueryState(["canonical-tags", "fry", "contains", 50])
+      ).toBeDefined();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 10. Initial / default state
   // -------------------------------------------------------------------------
   describe("initial state", () => {
     it("returns all expected fields from the hook", () => {

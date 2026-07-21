@@ -127,10 +127,44 @@ describe("Sidebar — Transcripts group", () => {
   });
 });
 
-describe("Sidebar — total top-level nav item count", () => {
-  it("top-level list contains 9 entries (Videos, Transcripts group, Channels, Playlists, Entities, Search, separator, Setup, Settings)", () => {
+describe("Sidebar — Tags group", () => {
+  it("renders the Tags disclosure button", () => {
     renderSidebar();
-    // The outer <ul role="list"> has 9 children (6 flat routes + 1 group + 1 separator + 2 config routes)
+    expect(screen.getByRole("button", { name: /^tags$/i })).toBeInTheDocument();
+  });
+
+  it("Tags group is expanded by default", () => {
+    renderSidebar();
+    const button = screen.getByRole("button", { name: /^tags$/i });
+    expect(button).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("renders Merge Tags child link when the Tags group is expanded", () => {
+    renderSidebar();
+    expect(
+      screen.getByRole("link", { name: /merge tags/i })
+    ).toBeInTheDocument();
+  });
+
+  it("Merge Tags link points to /tags/merge", () => {
+    renderSidebar();
+    const link = screen.getByRole("link", { name: /merge tags/i });
+    expect(link).toHaveAttribute("href", "/tags/merge");
+  });
+
+  it("Tags group header is keyboard-reachable via Tab", () => {
+    renderSidebar();
+    const button = screen.getByRole("button", { name: /^tags$/i });
+    // Disclosure buttons are natively focusable/keyboard-operable elements.
+    button.focus();
+    expect(button).toHaveFocus();
+  });
+});
+
+describe("Sidebar — total top-level nav item count", () => {
+  it("top-level list contains 10 entries (Videos, Transcripts group, Channels, Playlists, Entities, Tags group, Search, separator, Setup, Settings)", () => {
+    renderSidebar();
+    // The outer <ul role="list"> has 10 children (6 flat routes + 2 groups + 1 separator + 2 config routes)
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
     // The direct child ul has role="list" — query it within the nav
     const outerList = nav.querySelector("ul[role='list']");
@@ -138,6 +172,6 @@ describe("Sidebar — total top-level nav item count", () => {
     const directLiChildren = outerList
       ? Array.from(outerList.children).filter((el) => el.tagName === "LI")
       : [];
-    expect(directLiChildren).toHaveLength(9);
+    expect(directLiChildren).toHaveLength(10);
   });
 });

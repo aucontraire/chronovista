@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Recover from stale lazy-loaded chunks after a redeploy.** Route pages are code-split with `React.lazy`; when the app is rebuilt, chunk filenames get new content hashes and old chunks 404, so a browser tab still on the previous build fails with "Failed to fetch dynamically imported module". The app now handles Vite's `vite:preloadError` by reloading once (guarded against loops), and the server serves `index.html` with `Cache-Control: no-cache` so the reload fetches HTML referencing the current hashes.
+- **Entity mention scans no longer report a false "Scan failed."** The entity and video scan endpoints (`POST /entities/{id}/scan`, `POST /videos/{id}/scan-entities`) now run asynchronously — they return `202` with a `job_id`, and the frontend polls `GET /api/v1/scan-jobs/{job_id}` for progress and result. Previously the scan blocked for minutes and tripped the client timeout (reporting failure) even though the backend completed and committed the mentions.
 
 ## [0.57.0] - 2026-07-20
 

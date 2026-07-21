@@ -6,7 +6,7 @@
  * - GET /api/v1/entities/{entity_id}/videos — entity-to-videos lookup
  */
 
-import { apiFetch, SCAN_TIMEOUT } from "./config";
+import { apiFetch } from "./config";
 import type { PhoneticMatch } from "../types/corrections";
 
 // ---------------------------------------------------------------------------
@@ -705,44 +705,123 @@ export interface ScanResultResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Scan job types (for the async fire-and-poll scan flow)
+//
+// Scan endpoints now launch a background job (202) instead of blocking for
+// the scan's full duration (which can exceed the client request timeout on
+// large corpora). Callers poll GET /scan-jobs/{job_id} until the job reaches
+// a terminal status.
+// ---------------------------------------------------------------------------
+
+/** What a scan job targets. */
+export type ScanJobKind = "entity" | "video";
+
+/** Lifecycle status of an asynchronous scan job. */
+export type ScanJobStatus = "running" | "succeeded" | "failed";
+
+/**
+ * State of an asynchronous entity-mention scan job, as returned both when a
+ * scan is launched (202) and when polled via GET /scan-jobs/{job_id}.
+ *
+ * Jobs are tracked in an in-memory registry on the backend — ephemeral, does
+ * not survive a server restart.
+ */
+export interface ScanJob {
+  job_id: string;
+  kind: ScanJobKind;
+  /** Entity UUID or video ID being scanned. */
+  target_id: string;
+  status: ScanJobStatus;
+  /** Scan metrics, populated once the job has succeeded. */
+  result: ScanResultData | null;
+  /** Error message if the job failed. */
+  error: string | null;
+  started_at: string;
+  /** When the job reached a terminal state, if it has. */
+  finished_at: string | null;
+}
+
+/** Response envelope for scan-job launch (202) and status endpoints. */
+export interface ScanJobResponse {
+  data: ScanJob;
+}
+
+// ---------------------------------------------------------------------------
 // Entity scan fetchers
 // ---------------------------------------------------------------------------
 
 /**
- * Triggers a transcript scan for a single named entity across all videos.
+ * Launches an asynchronous transcript scan for a single named entity across
+ * all videos.
+ *
+ * The backend runs the scan as a background job and returns immediately
+ * (202) with the job's initial "running" state. Poll `getScanJob(job_id)`
+ * for progress and the final result.
  *
  * @param entityId - UUID of the named entity to scan for
  * @param options - Optional scan parameters (language filter, dry_run, full_rescan)
- * @returns ScanResultResponse with aggregate mention statistics
- * @throws ApiError with status 404 if the entity is not found
+ * @returns The newly created ScanJob (status "running")
+ * @throws ApiError with status 404 if the entity is not found, 409 if a scan
+ *   is already in progress for this entity
  */
 export async function scanEntity(
   entityId: string,
   options?: ScanRequest
-): Promise<ScanResultResponse> {
-  return apiFetch<ScanResultResponse>(`/entities/${entityId}/scan`, {
+): Promise<ScanJob> {
+  const res = await apiFetch<ScanJobResponse>(`/entities/${entityId}/scan`, {
     method: "POST",
     body: JSON.stringify(options ?? {}),
-    timeout: SCAN_TIMEOUT,
   });
+  return res.data;
 }
 
 /**
- * Triggers an entity scan across all known entities for a single video's
- * transcripts.
+ * Launches an asynchronous entity scan across all known entities for a
+ * single video's transcripts.
+ *
+ * The backend runs the scan as a background job and returns immediately
+ * (202) with the job's initial "running" state. Poll `getScanJob(job_id)`
+ * for progress and the final result.
  *
  * @param videoId - YouTube video ID whose transcripts should be scanned
  * @param options - Optional scan parameters (language filter, dry_run, full_rescan)
- * @returns ScanResultResponse with aggregate mention statistics
- * @throws ApiError with status 404 if the video is not found
+ * @returns The newly created ScanJob (status "running")
+ * @throws ApiError with status 404 if the video is not found, 409 if a scan
+ *   is already in progress for this video
  */
 export async function scanVideoEntities(
   videoId: string,
   options?: ScanRequest
-): Promise<ScanResultResponse> {
-  return apiFetch<ScanResultResponse>(`/videos/${videoId}/scan-entities`, {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-    timeout: SCAN_TIMEOUT,
+): Promise<ScanJob> {
+  const res = await apiFetch<ScanJobResponse>(
+    `/videos/${videoId}/scan-entities`,
+    {
+      method: "POST",
+      body: JSON.stringify(options ?? {}),
+    }
+  );
+  return res.data;
+}
+
+/**
+ * Fetches the current state of an asynchronous scan job.
+ *
+ * While the job is running, `status` is "running" and `result` is null. On
+ * completion it becomes "succeeded" (with `result` metrics) or "failed"
+ * (with `error`).
+ *
+ * @param jobId - Scan job identifier returned by scanEntity/scanVideoEntities
+ * @param signal - Optional AbortSignal for cancellation (FR-005)
+ * @returns The current ScanJob state
+ * @throws ApiError with status 404 if the job is unknown (including after a
+ *   server restart, since jobs are in-memory only)
+ */
+export async function getScanJob(
+  jobId: string,
+  signal?: AbortSignal
+): Promise<ScanJob> {
+  const res = await apiFetch<ScanJobResponse>(`/scan-jobs/${jobId}`, {
+    ...(signal !== undefined ? { externalSignal: signal } : {}),
   });
+  return res.data;
 }

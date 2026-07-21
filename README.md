@@ -1,7 +1,7 @@
 <h1 align="center">chronovista</h1>
 
 <p align="center">
-  <strong>A CLI + web dashboard for your YouTube history. Sync watch history, search transcripts by timestamp, recover deleted videos, and explore 147,000+ canonical tags — all stored privately in local PostgreSQL.</strong>
+  <strong>A CLI + web dashboard for your YouTube history. Sync watch history, search transcripts by timestamp, recover deleted videos, and canonicalize messy tags — all stored privately in local PostgreSQL.</strong>
 </p>
 
 <p align="center">
@@ -34,11 +34,11 @@
 - **11,400+ tests** (7,761 backend + 3,641 frontend) across 229 backend source files with **mypy strict mode, zero errors**
 - **57 releases** under a versioned constitutional engineering framework — strict typing (zero `Any`), minimal-diff discipline, and the Rule of Three enforced as project law
 - **Async-first architecture** with full `async/await` through 79 FastAPI endpoints (asyncpg, httpx) and 94 CLI commands
-- **Tag normalization** reducing 621,000+ raw tags to 147,000+ canonical forms via a 9-step Unicode pipeline with fuzzy search and 168,000+ alias mappings
-- **Named entity detection** across transcripts, titles, and descriptions — 259 entities, 139,000+ mentions, with longest-match-wins disambiguation and exclusion patterns
+- **Tag canonicalization** — a 9-step Unicode pipeline (case, accent, and hashtag folding) collapses raw tag variants into canonical forms while preserving semantic distinctions (Mexico ≠ Mexican), with fuzzy trigram search, alias tracking, and reversible curation (merge / split / classify / deprecate)
+- **Named entity detection** — finds known people, places, and organizations across transcripts, titles, descriptions, and tags, with alias matching, longest-match-wins disambiguation, and exclusion patterns
 - **Wayback Machine recovery** via CDX API for metadata of deleted YouTube videos — three-tier overwrite policy, retry with backoff, era-anchored search
-- **Transcript correction system** — append-only audit trail with inline edit/revert/history, batch find-replace, ASR error pattern detection (3,800+ corrections applied)
-- **1.46 million transcript segments** across 50+ languages with quality hierarchy (manual CC > professional > auto-synced > ASR)
+- **Transcript correction system** — append-only audit trail with inline edit/revert/history, batch find-replace, and ASR error-pattern detection
+- **Multi-language transcripts** — segments stored with a quality hierarchy (manual CC > professional > auto-synced > ASR) and per-language download preferences
 - **Full-stack TypeScript strict** — React 19 + TypeScript 5.7 strict + TanStack Query v5 + Tailwind CSS 4
 - **Repository pattern** with composite key support, isolating all DB access from business logic across 24 tables and 34 Alembic migrations
 - **CI/CD** via GitHub Actions — 4-job pipeline (unit tests, mypy strict + ruff + black, frontend tests + TS check, integration tests with PostgreSQL)
@@ -54,12 +54,12 @@ Every feature exists because I hit a real limitation while doing that research. 
 | Category | Capabilities |
 |----------|-------------|
 | **Local-First Privacy** | All data in local PostgreSQL — no cloud sync, complete data ownership |
-| **Multi-Language Transcripts** | 50+ languages with personal preferences (fluent, learning, curious, exclude) |
+| **Multi-Language Transcripts** | Per-language download preferences (fluent, learning, curious, exclude) across every transcript language |
 | **Transcript Search** | Timestamp-based queries with context windows — find what was said at any moment |
 | **Transcript Corrections** | Inline edit/revert with append-only audit trail, batch find-replace, ASR error detection |
-| **Tag Intelligence** | 147K canonical tags from 621K raw variations, fuzzy search, 7 curation CLI commands |
+| **Tag Canonicalization** | Collapse raw tag variants into canonical forms; fuzzy search, alias tracking, and reversible curation (merge / split / classify / deprecate) |
 | **Named Entity Detection** | Multi-source entity mentions (transcript + title + description + tag), alias matching, exclusion patterns |
-| **Channel Analytics** | Subscription tracking, keyword extraction, topic analysis across 9,600+ channels |
+| **Channel Analytics** | Per-channel subscription tracking, keyword extraction, and topic analysis |
 | **Google Takeout** | Import complete YouTube history including deleted/private videos |
 | **Deleted Video Recovery** | Recover metadata for unavailable videos via the Wayback Machine CDX API |
 | **REST API + Web UI** | FastAPI server (79 endpoints) with React dashboard for browsing, filtering, and entity exploration |

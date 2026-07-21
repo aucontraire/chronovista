@@ -110,34 +110,45 @@ markdown_extensions:
       permalink: true
       toc_depth: 3
 
+# Navigation is organized along the Diátaxis framework
+# (https://diataxis.fr): Tutorials (learning), How-to guides (tasks),
+# Reference (facts — largely generated from source), and Explanation
+# (understanding). Contributing and Maintaining are kept as their own
+# top-level groups.
 nav:
   - Home: index.md
-  - Getting Started:
-      - Prerequisites: getting-started/prerequisites.md
-      - YouTube API Setup: getting-started/youtube-api-setup.md
-      - Installation: getting-started/installation.md
-      - Quick Start: getting-started/quickstart.md
+  - Tutorials:
+      - Getting Started:
+          - Prerequisites: getting-started/prerequisites.md
+          - YouTube API Setup: getting-started/youtube-api-setup.md
+          - Installation: getting-started/installation.md
+          - Quick Start: getting-started/quickstart.md
+  - How-to guides:
+      - Authenticate: user-guide/authentication.md
+      - Populate your data: user-guide/data-population.md
+      - Sync your data: user-guide/data-sync.md
+      - Import from Google Takeout: user-guide/google-takeout.md
+      - Work with transcripts: user-guide/transcripts.md
+      - Correct transcripts: user-guide/corrections.md
+      - Analyze topics: user-guide/topic-analytics.md
+      - CLI workflows: user-guide/cli-overview.md
+      - Run the REST API: user-guide/rest-api.md
+      - Deploy with Docker: guides/migrating-to-docker.md
+      - Troubleshooting: troubleshooting.md
+  - Reference:
+      - CLI, REST API & Code: reference/
+      - REST API guide: api/index.md
+      - Error responses (RFC 7807): api/error-responses.md
+      - RFC 7807 migration: api/rfc7807-migration.md
       - Configuration: getting-started/configuration.md
-  - User Guide:
-      - CLI Overview: user-guide/cli-overview.md
-      - Authentication: user-guide/authentication.md
-      - Data Population: user-guide/data-population.md
-      - Data Synchronization: user-guide/data-sync.md
-      - Google Takeout: user-guide/google-takeout.md
-      - Topic Analytics: user-guide/topic-analytics.md
-      - Transcripts: user-guide/transcripts.md
-      - Exporting Data: user-guide/exporting.md
-      - REST API: user-guide/rest-api.md
-  - Architecture:
-      - Overview: architecture/overview.md
-      - System Design: architecture/system-design.md
-      - Data Model: architecture/data-model.md
-      - API Integration: architecture/api-integration.md
-      - Frontend Architecture: architecture/frontend-architecture.md
-  - API Reference:
-      - Overview: api/index.md
-  - Reference: reference/
-  - Development:
+      - Glossary: glossary.md
+  - Explanation:
+      - Architecture overview: architecture/overview.md
+      - System design: architecture/system-design.md
+      - Data model: architecture/data-model.md
+      - API integration: architecture/api-integration.md
+      - Frontend architecture: architecture/frontend-architecture.md
+  - Contributing:
       - Overview: development/index.md
       - Setup: development/setup.md
       - Testing: development/testing.md
@@ -147,13 +158,11 @@ nav:
       - Type Checking: development/type-checking.md
       - Code Style: development/code-style.md
       - Documentation: development/documentation.md
+      - Contributing Guide: contributing.md
   - Maintaining:
       - Overview: maintaining/index.md
       - Release Process: maintaining/release-process.md
       - Versioning: maintaining/versioning.md
-  - Troubleshooting: troubleshooting.md
-  - Glossary: glossary.md
-  - Contributing: contributing.md
   - Changelog: changelog.md
 
 extra:

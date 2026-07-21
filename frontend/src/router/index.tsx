@@ -84,6 +84,11 @@ const SettingsPage = lazy(() =>
     default: m.SettingsPage,
   })),
 );
+const MergeTagsPage = lazy(() =>
+  import("../pages/MergeTagsPage").then((m) => ({
+    default: m.MergeTagsPage,
+  })),
+);
 
 /**
  * Loading fallback shown while a lazy-loaded page chunk is being fetched.
@@ -192,6 +197,10 @@ export const router = createBrowserRouter([
       {
         path: "corrections/diff-analysis",
         element: lazySuspense(<DiffAnalysisPage />),
+      },
+      {
+        path: "tags/merge",
+        element: lazySuspense(<MergeTagsPage />),
       },
       {
         path: "onboarding",

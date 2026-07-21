@@ -6,8 +6,18 @@ import type {
   CanonicalTagListItem,
   CanonicalTagListResponse,
   CanonicalTagSuggestion,
+  MatchMode,
 } from "../types/canonical-tags";
 import { useDebounce } from "./useDebounce";
+
+/** Default match mode — preserves the video filter's existing behavior (FR-004). */
+const DEFAULT_MATCH_MODE: MatchMode = "prefix";
+
+/** Default result limit — preserves the video filter's existing behavior (FR-004). */
+const DEFAULT_LIMIT = 10;
+
+/** Minimum query length enforced for contains-mode search (FR-003). */
+const CONTAINS_MIN_QUERY_LENGTH = 2;
 
 interface RateLimitError extends Error {
   status: 429;
@@ -25,9 +35,16 @@ function isRateLimitError(error: unknown): error is RateLimitError {
 
 async function fetchCanonicalTags(
   search: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  matchMode: MatchMode,
+  limit: number
 ): Promise<CanonicalTagListResponse> {
-  const params = new URLSearchParams({ q: search, limit: "10" });
+  const params = new URLSearchParams({ q: search, limit: String(limit) });
+  // Only send match_mode when it differs from the backend default ("prefix")
+  // so the video filter's request stays byte-for-byte identical (FR-004).
+  if (matchMode !== DEFAULT_MATCH_MODE) {
+    params.set("match_mode", matchMode);
+  }
   const response = await fetch(
     `${API_BASE_URL}/canonical-tags?${params.toString()}`,
     { signal }
@@ -50,7 +67,25 @@ async function fetchCanonicalTags(
   return response.json() as Promise<CanonicalTagListResponse>;
 }
 
-export function useCanonicalTags(search: string): {
+/** Optional parameters for {@link useCanonicalTags}. */
+export interface UseCanonicalTagsOptions {
+  /**
+   * Search match mode. Defaults to `"prefix"`, preserving the video filter's
+   * existing behavior (FR-004). Pass `"contains"` for merge-context variant
+   * discovery (FR-005).
+   */
+  matchMode?: MatchMode;
+  /**
+   * Maximum results to request. Defaults to `10`, preserving the video
+   * filter's existing behavior (FR-004). The merge UI passes `50` (FR-005).
+   */
+  limit?: number;
+}
+
+export function useCanonicalTags(
+  search: string,
+  options: UseCanonicalTagsOptions = {}
+): {
   tags: CanonicalTagListItem[];
   suggestions: CanonicalTagSuggestion[];
   isLoading: boolean;
@@ -59,15 +94,35 @@ export function useCanonicalTags(search: string): {
   isRateLimited: boolean;
   rateLimitRetryAfter: number;
 } {
+  const matchMode = options.matchMode ?? DEFAULT_MATCH_MODE;
+  const limit = options.limit ?? DEFAULT_LIMIT;
+
   const debouncedSearch = useDebounce(search, 300);
 
   const [isRateLimited, setIsRateLimited] = useState(false);
   const [rateLimitRetryAfter, setRateLimitRetryAfter] = useState(0);
 
+  // FR-003: contains-mode search requires a minimum query length of 2 to
+  // avoid excessively broad result sets. Prefix mode keeps its original
+  // "any non-empty string" threshold (FR-004 — byte-identical to before).
+  const meetsMinLength =
+    matchMode === "contains"
+      ? debouncedSearch.length >= CONTAINS_MIN_QUERY_LENGTH
+      : debouncedSearch.length > 0;
+
+  // Only extend the query key beyond the original 2-tuple when non-default
+  // options are used, so the video filter's cache entries (and any code that
+  // reads the ["canonical-tags", search] key directly) stay unaffected.
+  const queryKey =
+    matchMode === DEFAULT_MATCH_MODE && limit === DEFAULT_LIMIT
+      ? (["canonical-tags", debouncedSearch] as const)
+      : (["canonical-tags", debouncedSearch, matchMode, limit] as const);
+
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["canonical-tags", debouncedSearch],
-    queryFn: ({ signal }) => fetchCanonicalTags(debouncedSearch, signal),
-    enabled: debouncedSearch.length > 0,
+    queryKey,
+    queryFn: ({ signal }) =>
+      fetchCanonicalTags(debouncedSearch, signal, matchMode, limit),
+    enabled: meetsMinLength,
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
     retry: (failureCount, err) => {

@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import desc, distinct, exists, func, or_, select
+from sqlalchemy import case, desc, distinct, exists, func, or_, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import Select
@@ -59,21 +59,30 @@ class CanonicalTagRepository(
         *,
         q: str | None = None,
         status: str = "active",
+        match_mode: str = "prefix",
         skip: int = 0,
         limit: int = 20,
     ) -> tuple[list[CanonicalTagDB], int]:
         """
-        Search canonical tags with optional prefix matching and pagination.
+        Search canonical tags with optional prefix or contains matching.
 
         Parameters
         ----------
         session : AsyncSession
             Database session.
         q : str | None, optional
-            Prefix search query applied to canonical_form and normalized_form
-            via ILIKE (case-insensitive). When None, no text filter is applied.
+            Search query applied to canonical_form, normalized_form, and alias
+            raw_form via ILIKE (case-insensitive). When None, no text filter is
+            applied.
         status : str, optional
             Tag lifecycle status filter (default ``"active"``).
+        match_mode : str, optional
+            ``"prefix"`` (default) matches from the start of the value
+            (``q%``); ``"contains"`` matches a substring at any position
+            (``%q%``). Prefix mode preserves the historical behavior of this
+            method exactly. Contains mode additionally orders results by a
+            relevance tier (exact, then prefix, then mid-string) so that the
+            most likely intended tag surfaces first (Feature 056).
         skip : int, optional
             Number of rows to skip for pagination (default 0).
         limit : int, optional
@@ -82,31 +91,57 @@ class CanonicalTagRepository(
         Returns
         -------
         tuple[list[CanonicalTagDB], int]
-            A tuple of ``(items, total_count)`` where *items* is the paginated
-            result list ordered by ``video_count DESC`` and *total_count* is
-            the total number of matching rows (ignoring pagination).
+            A tuple of ``(items, total_count)``. In prefix mode items are
+            ordered by ``video_count DESC``. In contains mode items are ordered
+            by relevance tier, then ``video_count DESC`` within each tier.
+            Tiering only affects ordering — every matching row is returned.
         """
         base_query = select(CanonicalTagDB).where(
             CanonicalTagDB.status == status
         )
 
+        contains = match_mode == "contains"
+
         if q is not None:
-            pattern = f"{q}%"
-            # Match canonical tags whose alias raw_form starts with the query.
-            # EXISTS avoids row duplication when a tag has multiple matching aliases.
-            alias_match = exists(
-                select(TagAliasDB.id).where(
-                    TagAliasDB.canonical_tag_id == CanonicalTagDB.id,
-                    TagAliasDB.raw_form.ilike(pattern),
+            pattern = f"%{q}%" if contains else f"{q}%"
+            if contains:
+                # Contains mode: match via a UNION of three id lookups, one per
+                # searched column. Each branch can use its own pg_trgm GIN
+                # index, and the outer query then selects by primary key. An OR
+                # across the three ILIKEs cannot use the trigram indexes and
+                # degrades to a sequential scan (~130ms on the production data
+                # set); this UNION form stays ~5ms (Feature 056, SC-007). It
+                # matches exactly the same rows as the OR.
+                matching_ids = union(
+                    select(CanonicalTagDB.id).where(
+                        CanonicalTagDB.canonical_form.ilike(pattern)
+                    ),
+                    select(CanonicalTagDB.id).where(
+                        CanonicalTagDB.normalized_form.ilike(pattern)
+                    ),
+                    select(TagAliasDB.canonical_tag_id).where(
+                        TagAliasDB.raw_form.ilike(pattern)
+                    ),
+                ).subquery()
+                base_query = base_query.where(
+                    CanonicalTagDB.id.in_(select(matching_ids.c.id))
                 )
-            )
-            base_query = base_query.where(
-                or_(
-                    CanonicalTagDB.canonical_form.ilike(pattern),
-                    CanonicalTagDB.normalized_form.ilike(pattern),
-                    alias_match,
+            else:
+                # Prefix mode (default): unchanged. A correlated EXISTS is cheap
+                # for the small, prefix-anchored result sets of the video filter.
+                alias_match = exists(
+                    select(TagAliasDB.id).where(
+                        TagAliasDB.canonical_tag_id == CanonicalTagDB.id,
+                        TagAliasDB.raw_form.ilike(pattern),
+                    )
                 )
-            )
+                base_query = base_query.where(
+                    or_(
+                        CanonicalTagDB.canonical_form.ilike(pattern),
+                        CanonicalTagDB.normalized_form.ilike(pattern),
+                        alias_match,
+                    )
+                )
 
         # Total count (without pagination)
         count_subquery = base_query.subquery()
@@ -114,13 +149,27 @@ class CanonicalTagRepository(
         total_result = await session.execute(count_query)
         total_count: int = total_result.scalar_one()
 
-        # Paginated items ordered by video_count descending
-        items_query = (
-            base_query
-            .order_by(desc(CanonicalTagDB.video_count))
-            .offset(skip)
-            .limit(limit)
-        )
+        # Ordering. Prefix mode keeps video_count DESC unchanged. Contains mode
+        # prepends a relevance tier: 0 = exact, 1 = prefix, 2 = mid-string.
+        # The tier is ordering-only and never filters the result set.
+        if contains and q is not None:
+            tier = case(
+                (func.lower(CanonicalTagDB.canonical_form) == q.lower(), 0),
+                (CanonicalTagDB.canonical_form.ilike(f"{q}%"), 1),
+                else_=2,
+            )
+            items_query = (
+                base_query.order_by(tier, desc(CanonicalTagDB.video_count))
+                .offset(skip)
+                .limit(limit)
+            )
+        else:
+            items_query = (
+                base_query.order_by(desc(CanonicalTagDB.video_count))
+                .offset(skip)
+                .limit(limit)
+            )
+
         items_result = await session.execute(items_query)
         items: list[CanonicalTagDB] = list(items_result.scalars().all())
 

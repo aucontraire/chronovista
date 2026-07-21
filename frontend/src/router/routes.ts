@@ -14,6 +14,7 @@ import {
   SearchIcon,
   SetupIcon,
   SettingsIcon,
+  TagsIcon,
   TranscriptsIcon,
   VideoIcon,
 } from "../components/icons";
@@ -129,6 +130,23 @@ export const navRoutes: NavEntry[] = [
     label: "Entities",
     tooltip: "Browse named entities",
     icon: EntityIcon,
+  },
+  {
+    kind: "group",
+    label: "Tags",
+    tooltip: "Tags",
+    icon: TagsIcon,
+    defaultExpanded: true,
+    storageKey: "chronovista.sidebar.tagsExpanded",
+    children: [
+      {
+        kind: "route",
+        path: "/tags/merge",
+        label: "Merge Tags",
+        tooltip: "Merge duplicate or variant tags",
+        icon: TagsIcon,
+      },
+    ],
   },
   {
     kind: "route",

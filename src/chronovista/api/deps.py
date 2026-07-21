@@ -1,9 +1,13 @@
 """FastAPI dependencies for API endpoints."""
 
 from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from chronovista.services.tag_management import TagManagementService
 
 from chronovista.auth import youtube_oauth
 from chronovista.config.database import db_manager
@@ -51,6 +55,43 @@ async def require_auth() -> None:
                 "message": "Not authenticated. Run: chronovista auth login",
             },
         )
+
+
+def get_tag_management_service() -> "TagManagementService":
+    """
+    Dependency for the tag management service (merge/undo/preview).
+
+    Constructs a ``TagManagementService`` from the five repositories it
+    depends on, mirroring the inline construction used by the CLI. The
+    repositories are stateless, so a fresh instance per request is cheap.
+
+    Returns
+    -------
+    TagManagementService
+        A service instance wired with all required repositories.
+    """
+    from chronovista.repositories.canonical_tag_repository import (
+        CanonicalTagRepository,
+    )
+    from chronovista.repositories.entity_alias_repository import (
+        EntityAliasRepository,
+    )
+    from chronovista.repositories.named_entity_repository import (
+        NamedEntityRepository,
+    )
+    from chronovista.repositories.tag_alias_repository import TagAliasRepository
+    from chronovista.repositories.tag_operation_log_repository import (
+        TagOperationLogRepository,
+    )
+    from chronovista.services.tag_management import TagManagementService
+
+    return TagManagementService(
+        canonical_tag_repo=CanonicalTagRepository(),
+        tag_alias_repo=TagAliasRepository(),
+        named_entity_repo=NamedEntityRepository(),
+        entity_alias_repo=EntityAliasRepository(),
+        operation_log_repo=TagOperationLogRepository(),
+    )
 
 
 def get_recovery_deps() -> tuple[CDXClient, PageParser, RateLimiter]:

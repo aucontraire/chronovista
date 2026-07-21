@@ -483,9 +483,7 @@ class TestVideoRecoveryIdempotency:
                 "chronovista.services.recovery.orchestrator.recover_video",
                 new_callable=AsyncMock,
             ) as mock_recover:
-                response = await async_client.post(
-                    f"/api/v1/videos/{video_id}/recover"
-                )
+                response = await async_client.post(f"/api/v1/videos/{video_id}/recover")
 
                 assert response.status_code == 200
                 data = response.json()
@@ -534,9 +532,7 @@ class TestVideoRecoveryIdempotency:
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ) as mock_recover:
-                response = await async_client.post(
-                    f"/api/v1/videos/{video_id}/recover"
-                )
+                response = await async_client.post(f"/api/v1/videos/{video_id}/recover")
 
                 assert response.status_code == 200
                 data = response.json()
@@ -578,9 +574,7 @@ class TestVideoRecoveryIdempotency:
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ) as mock_recover:
-                response = await async_client.post(
-                    f"/api/v1/videos/{video_id}/recover"
-                )
+                response = await async_client.post(f"/api/v1/videos/{video_id}/recover")
 
                 assert response.status_code == 200
                 data = response.json()
@@ -623,9 +617,7 @@ class TestVideoRecoveryIdempotency:
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ) as mock_recover:
-                response = await async_client.post(
-                    f"/api/v1/videos/{video_id}/recover"
-                )
+                response = await async_client.post(f"/api/v1/videos/{video_id}/recover")
 
                 assert response.status_code == 200
 

@@ -31,18 +31,12 @@ class TagAliasRepository(
         """Initialize repository with TagAlias model."""
         super().__init__(TagAliasDB)
 
-    async def get(
-        self, session: AsyncSession, id: uuid.UUID
-    ) -> TagAliasDB | None:
+    async def get(self, session: AsyncSession, id: uuid.UUID) -> TagAliasDB | None:
         """Get tag alias by UUID primary key."""
-        result = await session.execute(
-            select(TagAliasDB).where(TagAliasDB.id == id)
-        )
+        result = await session.execute(select(TagAliasDB).where(TagAliasDB.id == id))
         return result.scalar_one_or_none()
 
     async def exists(self, session: AsyncSession, id: uuid.UUID) -> bool:
         """Check if tag alias exists by UUID primary key."""
-        result = await session.execute(
-            select(TagAliasDB.id).where(TagAliasDB.id == id)
-        )
+        result = await session.execute(select(TagAliasDB.id).where(TagAliasDB.id == id))
         return result.first() is not None

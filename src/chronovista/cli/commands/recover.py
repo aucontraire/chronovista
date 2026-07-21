@@ -113,15 +113,11 @@ def recover_video_command(
     """
     # T050: Validate arguments
     if video_id and all_videos:
-        console.print(
-            "[red]Error: --video-id and --all are mutually exclusive[/red]"
-        )
+        console.print("[red]Error: --video-id and --all are mutually exclusive[/red]")
         raise typer.Exit(code=2)
 
     if not video_id and not all_videos:
-        console.print(
-            "[yellow]Error: Must specify either --video-id or --all[/yellow]"
-        )
+        console.print("[yellow]Error: Must specify either --video-id or --all[/yellow]")
         console.print("Use 'chronovista recover video --help' for usage information.")
         raise typer.Exit(code=2)
 
@@ -150,7 +146,11 @@ def recover_video_command(
 
     # Run async recovery
     try:
-        asyncio.run(_recover_async(video_id, all_videos, limit, dry_run, delay, start_year, end_year))
+        asyncio.run(
+            _recover_async(
+                video_id, all_videos, limit, dry_run, delay, start_year, end_year
+            )
+        )
     except KeyboardInterrupt:
         console.print("\n[yellow]Recovery interrupted by user[/yellow]")
         raise typer.Exit(code=130) from None
@@ -396,9 +396,7 @@ async def _recover_batch(
                     await asyncio.sleep(delay)
 
             except CDXError as e:
-                console.print(
-                    f"[red]CDX error for {video.video_id}: {e.message}[/red]"
-                )
+                console.print(f"[red]CDX error for {video.video_id}: {e.message}[/red]")
                 # T053: Continue past failures
                 results.append(
                     RecoveryResult(
@@ -410,9 +408,7 @@ async def _recover_batch(
                 )
                 continue
             except Exception as e:
-                console.print(
-                    f"[red]Unexpected error for {video.video_id}: {e}[/red]"
-                )
+                console.print(f"[red]Unexpected error for {video.video_id}: {e}[/red]")
                 results.append(
                     RecoveryResult(
                         video_id=video.video_id,
@@ -456,9 +452,11 @@ def _display_single_result(result: RecoveryResult, dry_run: bool) -> None:
         table.add_row("Snapshot Used", result.snapshot_used or "N/A")
         table.add_row(
             "Fields Recovered",
-            f"{len(result.fields_recovered)} ({', '.join(result.fields_recovered)})"
-            if result.fields_recovered
-            else "0",
+            (
+                f"{len(result.fields_recovered)} ({', '.join(result.fields_recovered)})"
+                if result.fields_recovered
+                else "0"
+            ),
         )
         if result.fields_skipped:
             table.add_row(
@@ -478,7 +476,9 @@ def _display_single_result(result: RecoveryResult, dry_run: bool) -> None:
         channel_info = f"recovered {len(result.channel_fields_recovered)} fields ({', '.join(result.channel_fields_recovered)})"
         table.add_row("Channel Recovery", f"[green]{channel_info}[/green]")
     elif result.channel_failure_reason:
-        table.add_row("Channel Recovery", f"[red]failed - {result.channel_failure_reason}[/red]")
+        table.add_row(
+            "Channel Recovery", f"[red]failed - {result.channel_failure_reason}[/red]"
+        )
 
     table.add_row("Duration", f"{result.duration_seconds:.2f}s")
 
@@ -489,7 +489,7 @@ def _display_single_result(result: RecoveryResult, dry_run: bool) -> None:
             candidates_str = ", ".join(result.channel_recovery_candidates)
             table.add_row(
                 "Channel Recovery Candidates",
-                f"[yellow]{len(result.channel_recovery_candidates)} channels ({candidates_str})[/yellow]"
+                f"[yellow]{len(result.channel_recovery_candidates)} channels ({candidates_str})[/yellow]",
             )
 
     console.print(table)
@@ -515,7 +515,9 @@ def _display_batch_summary(results: list[RecoveryResult], dry_run: bool) -> None
     )
 
     # T027: Calculate channel recovery statistics
-    channels_attempted = sum(1 for r in results if r.channel_recovered or r.channel_failure_reason)
+    channels_attempted = sum(
+        1 for r in results if r.channel_recovered or r.channel_failure_reason
+    )
     channels_recovered = sum(1 for r in results if r.channel_recovered)
 
     # T027: Collect all unique channel fields recovered
@@ -566,9 +568,7 @@ def _display_batch_summary(results: list[RecoveryResult], dry_run: bool) -> None
         status = "✓ Success" if result.success else "✗ Failed"
         status_style = "[green]" if result.success else "[red]"
 
-        fields_count = (
-            str(len(result.fields_recovered)) if result.success else "-"
-        )
+        fields_count = str(len(result.fields_recovered)) if result.success else "-"
 
         snapshot = result.snapshot_used if result.success else "-"
 

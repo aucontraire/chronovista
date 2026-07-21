@@ -53,6 +53,7 @@ _LANGUAGE_CODE = "en"
 # URL helpers
 # ---------------------------------------------------------------------------
 
+
 def _corrections_url(video_id: str, segment_id: int | str) -> str:
     """Return the corrections submit/list URL for a given video and segment."""
     return f"/api/v1/videos/{video_id}/transcript/segments/{segment_id}/corrections"
@@ -60,7 +61,9 @@ def _corrections_url(video_id: str, segment_id: int | str) -> str:
 
 def _revert_url(video_id: str, segment_id: int | str) -> str:
     """Return the revert URL for a given video and segment."""
-    return f"/api/v1/videos/{video_id}/transcript/segments/{segment_id}/corrections/revert"
+    return (
+        f"/api/v1/videos/{video_id}/transcript/segments/{segment_id}/corrections/revert"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -95,9 +98,7 @@ async def seed_test_data(
 
         # ---- Video ----
         existing_video = (
-            await session.execute(
-                select(VideoDB).where(VideoDB.video_id == _VIDEO_ID)
-            )
+            await session.execute(select(VideoDB).where(VideoDB.video_id == _VIDEO_ID))
         ).scalar_one_or_none()
         if not existing_video:
             video = VideoDB(
@@ -170,16 +171,12 @@ async def seed_test_data(
             )
         )
         await session.execute(
-            delete(TranscriptSegmentDB).where(
-                TranscriptSegmentDB.video_id == _VIDEO_ID
-            )
+            delete(TranscriptSegmentDB).where(TranscriptSegmentDB.video_id == _VIDEO_ID)
         )
         await session.execute(
             delete(VideoTranscriptDB).where(VideoTranscriptDB.video_id == _VIDEO_ID)
         )
-        await session.execute(
-            delete(VideoDB).where(VideoDB.video_id == _VIDEO_ID)
-        )
+        await session.execute(delete(VideoDB).where(VideoDB.video_id == _VIDEO_ID))
         await session.execute(
             delete(ChannelDB).where(ChannelDB.channel_id == _CHANNEL_ID)
         )
@@ -304,9 +301,9 @@ class TestSubmitCorrection:
 
         assert response.status_code == 201, response.text
         correction = response.json()["data"]["correction"]
-        assert correction["corrected_by_user_id"] == "user:local", (
-            f"Expected 'user:local' default, got: {correction['corrected_by_user_id']}"
-        )
+        assert (
+            correction["corrected_by_user_id"] == "user:local"
+        ), f"Expected 'user:local' default, got: {correction['corrected_by_user_id']}"
 
     async def test_submit_correction_explicit_null_corrected_by_user_id_defaults(
         self,
@@ -336,9 +333,9 @@ class TestSubmitCorrection:
 
         assert response.status_code == 201, response.text
         correction = response.json()["data"]["correction"]
-        assert correction["corrected_by_user_id"] == "user:local", (
-            f"Expected 'user:local' for explicit null, got: {correction['corrected_by_user_id']}"
-        )
+        assert (
+            correction["corrected_by_user_id"] == "user:local"
+        ), f"Expected 'user:local' for explicit null, got: {correction['corrected_by_user_id']}"
 
     async def test_submit_correction_404_nonexistent_video(
         self,
@@ -608,7 +605,10 @@ class TestRevertCorrection:
             resp_b = await async_client.post(
                 _corrections_url(video_id, segment_id),
                 params={"language_code": language_code},
-                json={"corrected_text": text_b, "correction_type": "context_correction"},
+                json={
+                    "corrected_text": text_b,
+                    "correction_type": "context_correction",
+                },
             )
             assert resp_b.status_code == 201, resp_b.text
 
@@ -766,9 +766,9 @@ class TestCorrectionHistory:
 
         # Verify newest-first ordering by version_number
         version_numbers = [r["version_number"] for r in records]
-        assert version_numbers == sorted(version_numbers, reverse=True), (
-            f"Expected descending version_numbers, got: {version_numbers}"
-        )
+        assert version_numbers == sorted(
+            version_numbers, reverse=True
+        ), f"Expected descending version_numbers, got: {version_numbers}"
 
         # Verify pagination metadata
         pagination = body["pagination"]
@@ -1046,13 +1046,9 @@ async def seed_enrichment_data(
             )
         )
         await session.execute(
-            delete(VideoTranscriptDB).where(
-                VideoTranscriptDB.video_id == _ENR_VIDEO_ID
-            )
+            delete(VideoTranscriptDB).where(VideoTranscriptDB.video_id == _ENR_VIDEO_ID)
         )
-        await session.execute(
-            delete(VideoDB).where(VideoDB.video_id == _ENR_VIDEO_ID)
-        )
+        await session.execute(delete(VideoDB).where(VideoDB.video_id == _ENR_VIDEO_ID))
         # The channel row is intentionally left in place — it is shared with
         # the seed_test_data fixture scope and will be cleaned up by that
         # fixture's own teardown if both fixtures run in the same session.
@@ -1125,15 +1121,15 @@ class TestSegmentEnrichment:
         )
         corrected_seg = corrected_items[0]
 
-        assert corrected_seg["has_correction"] is True, (
-            "Corrected segment must have has_correction=True"
-        )
-        assert corrected_seg["corrected_at"] is not None, (
-            "Corrected segment must have a non-null corrected_at timestamp"
-        )
-        assert corrected_seg["correction_count"] >= 1, (
-            "Corrected segment must have correction_count >= 1"
-        )
+        assert (
+            corrected_seg["has_correction"] is True
+        ), "Corrected segment must have has_correction=True"
+        assert (
+            corrected_seg["corrected_at"] is not None
+        ), "Corrected segment must have a non-null corrected_at timestamp"
+        assert (
+            corrected_seg["correction_count"] >= 1
+        ), "Corrected segment must have correction_count >= 1"
 
     async def test_segment_without_correction_shows_defaults(
         self,
@@ -1161,20 +1157,20 @@ class TestSegmentEnrichment:
         assert segments_resp.status_code == 200, segments_resp.text
         body = segments_resp.json()
         segments = body["data"]
-        assert len(segments) >= 2, (
-            f"Expected at least 2 seeded segments, got {len(segments)}"
-        )
+        assert (
+            len(segments) >= 2
+        ), f"Expected at least 2 seeded segments, got {len(segments)}"
 
         for seg in segments:
-            assert seg["has_correction"] is False, (
-                f"Segment id={seg['id']} has_correction must be False before any correction"
-            )
-            assert seg["corrected_at"] is None, (
-                f"Segment id={seg['id']} corrected_at must be null before any correction"
-            )
-            assert seg["correction_count"] == 0, (
-                f"Segment id={seg['id']} correction_count must be 0 before any correction"
-            )
+            assert (
+                seg["has_correction"] is False
+            ), f"Segment id={seg['id']} has_correction must be False before any correction"
+            assert (
+                seg["corrected_at"] is None
+            ), f"Segment id={seg['id']} corrected_at must be null before any correction"
+            assert (
+                seg["correction_count"] == 0
+            ), f"Segment id={seg['id']} correction_count must be 0 before any correction"
 
     async def test_correction_count_includes_revert_records(
         self,
@@ -1237,6 +1233,6 @@ class TestSegmentEnrichment:
             f"Expected correction_count >= 2 (submit + revert), "
             f"got {target_seg['correction_count']}"
         )
-        assert target_seg["has_correction"] is False, (
-            "After revert-to-original, has_correction must be False"
-        )
+        assert (
+            target_seg["has_correction"] is False
+        ), "After revert-to-original, has_correction must be False"

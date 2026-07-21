@@ -32,9 +32,7 @@ class PlaylistRepository(
     def __init__(self) -> None:
         super().__init__(PlaylistDB)
 
-    async def get(
-        self, session: AsyncSession, playlist_id: str
-    ) -> PlaylistDB | None:
+    async def get(self, session: AsyncSession, playlist_id: str) -> PlaylistDB | None:
         """Get playlist by playlist ID."""
         result = await session.execute(
             select(PlaylistDB).where(PlaylistDB.playlist_id == playlist_id)
@@ -576,9 +574,7 @@ class PlaylistRepository(
             - unlinked_playlists: Playlists with internal IDs (int_)
         """
         # Get total count
-        total_result = await session.execute(
-            select(func.count(PlaylistDB.playlist_id))
-        )
+        total_result = await session.execute(select(func.count(PlaylistDB.playlist_id)))
         total_playlists = total_result.scalar() or 0
 
         # Get linked count (YouTube IDs)

@@ -67,31 +67,23 @@ async def seed_playlist_data(
         )
         await session.execute(
             delete(UserVideo).where(
-                UserVideo.video_id.in_(
-                    [f"vid_test_{i:04d}" for i in range(1, 6)]
-                )
+                UserVideo.video_id.in_([f"vid_test_{i:04d}" for i in range(1, 6)])
             )
         )
         await session.execute(
             delete(VideoTranscript).where(
-                VideoTranscript.video_id.in_(
-                    [f"vid_test_{i:04d}" for i in range(1, 6)]
-                )
+                VideoTranscript.video_id.in_([f"vid_test_{i:04d}" for i in range(1, 6)])
             )
         )
         await session.execute(
             delete(VideoDB).where(
-                VideoDB.video_id.in_(
-                    [f"vid_test_{i:04d}" for i in range(1, 6)]
-                )
+                VideoDB.video_id.in_([f"vid_test_{i:04d}" for i in range(1, 6)])
             )
         )
         await session.execute(
             delete(PlaylistDB).where(PlaylistDB.playlist_id == PLAYLIST_ID)
         )
-        await session.execute(
-            delete(Channel).where(Channel.channel_id == CHANNEL_ID)
-        )
+        await session.execute(delete(Channel).where(Channel.channel_id == CHANNEL_ID))
         await session.commit()
 
         # Create channel
@@ -241,31 +233,23 @@ async def seed_playlist_data(
         )
         await session.execute(
             delete(UserVideo).where(
-                UserVideo.video_id.in_(
-                    [f"vid_test_{i:04d}" for i in range(1, 6)]
-                )
+                UserVideo.video_id.in_([f"vid_test_{i:04d}" for i in range(1, 6)])
             )
         )
         await session.execute(
             delete(VideoTranscript).where(
-                VideoTranscript.video_id.in_(
-                    [f"vid_test_{i:04d}" for i in range(1, 6)]
-                )
+                VideoTranscript.video_id.in_([f"vid_test_{i:04d}" for i in range(1, 6)])
             )
         )
         await session.execute(
             delete(VideoDB).where(
-                VideoDB.video_id.in_(
-                    [f"vid_test_{i:04d}" for i in range(1, 6)]
-                )
+                VideoDB.video_id.in_([f"vid_test_{i:04d}" for i in range(1, 6)])
             )
         )
         await session.execute(
             delete(PlaylistDB).where(PlaylistDB.playlist_id == PLAYLIST_ID)
         )
-        await session.execute(
-            delete(Channel).where(Channel.channel_id == CHANNEL_ID)
-        )
+        await session.execute(delete(Channel).where(Channel.channel_id == CHANNEL_ID))
         await session.commit()
 
 
@@ -283,9 +267,7 @@ class TestPlaylistVideoSortOrdering:
         """Test default sort returns videos ordered by position ascending."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                f"/api/v1/playlists/{PLAYLIST_ID}/videos"
-            )
+            response = await async_client.get(f"/api/v1/playlists/{PLAYLIST_ID}/videos")
             assert response.status_code == 200
             data = response.json()
             positions = [v["position"] for v in data["data"]]
@@ -462,9 +444,7 @@ class TestPlaylistVideoFilterAccuracy:
         """Test that without filters, all 5 videos are returned."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                f"/api/v1/playlists/{PLAYLIST_ID}/videos"
-            )
+            response = await async_client.get(f"/api/v1/playlists/{PLAYLIST_ID}/videos")
             assert response.status_code == 200
             data = response.json()
             assert data["pagination"]["total"] == 5
@@ -522,9 +502,7 @@ class TestPlaylistVideoPaginationWithSort:
             mock_oauth.is_authenticated.return_value = True
 
             # Without filter
-            resp_all = await async_client.get(
-                f"/api/v1/playlists/{PLAYLIST_ID}/videos"
-            )
+            resp_all = await async_client.get(f"/api/v1/playlists/{PLAYLIST_ID}/videos")
             total_all = resp_all.json()["pagination"]["total"]
 
             # With transcript filter

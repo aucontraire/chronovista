@@ -189,14 +189,15 @@ class TestVideoCategoryRepository:
             VideoCategoryCreate(category_id="20", name="Gaming", assignable=True),
         ]
 
-        with patch.object(
-            repository, "get", new=AsyncMock(return_value=None)
-        ) as mock_get, patch.object(
-            repository, "create", new=AsyncMock(return_value=sample_category_db)
-        ) as mock_create:
-            result = await repository.bulk_create(
-                mock_session, categories_to_create
-            )
+        with (
+            patch.object(
+                repository, "get", new=AsyncMock(return_value=None)
+            ) as mock_get,
+            patch.object(
+                repository, "create", new=AsyncMock(return_value=sample_category_db)
+            ) as mock_create,
+        ):
+            result = await repository.bulk_create(mock_session, categories_to_create)
 
             assert len(result) == 2
             assert mock_get.call_count == 2
@@ -238,14 +239,15 @@ class TestVideoCategoryRepository:
         # Mock get to return existing for first, None for others
         mock_get_side_effect = [sample_category_db, None, None]
 
-        with patch.object(
-            repository, "get", new=AsyncMock(side_effect=mock_get_side_effect)
-        ) as mock_get, patch.object(
-            repository, "create", new=AsyncMock(return_value=sample_category_db)
-        ) as mock_create:
-            result = await repository.bulk_create(
-                mock_session, categories_to_create
-            )
+        with (
+            patch.object(
+                repository, "get", new=AsyncMock(side_effect=mock_get_side_effect)
+            ) as mock_get,
+            patch.object(
+                repository, "create", new=AsyncMock(return_value=sample_category_db)
+            ) as mock_create,
+        ):
+            result = await repository.bulk_create(mock_session, categories_to_create)
 
             assert len(result) == 3
             assert mock_get.call_count == 3
@@ -283,11 +285,14 @@ class TestVideoCategoryRepository:
         sample_category_db: VideoCategoryDB,
     ):
         """Test creating a new category via create_or_update."""
-        with patch.object(
-            repository, "get", new=AsyncMock(return_value=None)
-        ) as mock_get, patch.object(
-            repository, "create", new=AsyncMock(return_value=sample_category_db)
-        ) as mock_create:
+        with (
+            patch.object(
+                repository, "get", new=AsyncMock(return_value=None)
+            ) as mock_get,
+            patch.object(
+                repository, "create", new=AsyncMock(return_value=sample_category_db)
+            ) as mock_create,
+        ):
             result = await repository.create_or_update(
                 mock_session, sample_category_create
             )
@@ -308,11 +313,14 @@ class TestVideoCategoryRepository:
         sample_category_db: VideoCategoryDB,
     ):
         """Test updating an existing category via create_or_update."""
-        with patch.object(
-            repository, "get", new=AsyncMock(return_value=sample_category_db)
-        ) as mock_get, patch.object(
-            repository, "update", new=AsyncMock(return_value=sample_category_db)
-        ) as mock_update:
+        with (
+            patch.object(
+                repository, "get", new=AsyncMock(return_value=sample_category_db)
+            ) as mock_get,
+            patch.object(
+                repository, "update", new=AsyncMock(return_value=sample_category_db)
+            ) as mock_update,
+        ):
             result = await repository.create_or_update(
                 mock_session, sample_category_create
             )
@@ -510,10 +518,11 @@ class TestVideoCategoryRepositoryAdditionalMethods:
 
         mock_categories_db = [MagicMock() for _ in categories]
 
-        with patch.object(
-            repository, "get", new=AsyncMock(return_value=None)
-        ), patch.object(
-            repository, "create", new=AsyncMock(side_effect=mock_categories_db)
+        with (
+            patch.object(repository, "get", new=AsyncMock(return_value=None)),
+            patch.object(
+                repository, "create", new=AsyncMock(side_effect=mock_categories_db)
+            ),
         ):
             result = await repository.bulk_create(mock_session, categories)
 
@@ -536,11 +545,14 @@ class TestVideoCategoryRepositoryAdditionalMethods:
         existing_category.name = "Old Music Name"
         existing_category.assignable = True
 
-        with patch.object(
-            repository, "get", new=AsyncMock(return_value=existing_category)
-        ), patch.object(
-            repository, "update", new=AsyncMock(return_value=existing_category)
-        ) as mock_update:
+        with (
+            patch.object(
+                repository, "get", new=AsyncMock(return_value=existing_category)
+            ),
+            patch.object(
+                repository, "update", new=AsyncMock(return_value=existing_category)
+            ) as mock_update,
+        ):
             await repository.create_or_update(mock_session, category_create)
 
             # Verify update was called with correct data
@@ -579,11 +591,19 @@ class TestVideoCategoryRepositoryAdditionalMethods:
         mock_category = MagicMock()
 
         # Test create -> get -> update -> delete sequence
-        with patch.object(repository, "create", new=AsyncMock(return_value=mock_category)):
-            with patch.object(repository, "get", new=AsyncMock(return_value=mock_category)):
-                with patch.object(repository, "update", new=AsyncMock(return_value=mock_category)):
+        with patch.object(
+            repository, "create", new=AsyncMock(return_value=mock_category)
+        ):
+            with patch.object(
+                repository, "get", new=AsyncMock(return_value=mock_category)
+            ):
+                with patch.object(
+                    repository, "update", new=AsyncMock(return_value=mock_category)
+                ):
                     # Create
-                    created = await repository.create(mock_session, obj_in=category_create)
+                    created = await repository.create(
+                        mock_session, obj_in=category_create
+                    )
                     assert created == mock_category
 
                     # Get

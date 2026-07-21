@@ -259,17 +259,13 @@ async def cleanup_test_data(
     await test_data_session.execute(
         delete(VideoTag).where(VideoTag.video_id.in_(video_ids))
     )
-    await test_data_session.execute(
-        delete(Video).where(Video.video_id.in_(video_ids))
-    )
+    await test_data_session.execute(delete(Video).where(Video.video_id.in_(video_ids)))
     await test_data_session.execute(
         delete(TagAlias).where(TagAlias.raw_form.like(f"{_TAG_PREFIX}%"))
     )
     await test_data_session.execute(
         delete(CanonicalTag).where(
-            CanonicalTag.normalized_form.in_(
-                ["music", "new york", "python", "musica"]
-            )
+            CanonicalTag.normalized_form.in_(["music", "new york", "python", "musica"])
         )
     )
     await test_data_session.execute(
@@ -424,9 +420,7 @@ class TestListCanonicalTags:
         """Pagination has_more is True when more items exist beyond current page."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                "/api/v1/canonical-tags?limit=1&offset=0"
-            )
+            response = await async_client.get("/api/v1/canonical-tags?limit=1&offset=0")
 
         assert response.status_code == 200
         body = response.json()
@@ -677,9 +671,7 @@ class TestSearchResolvesMergedAliases:
         finally:
             # Clean up in FK-safe order: TagAlias → CanonicalTag
             await test_data_session.execute(
-                delete(TagAlias).where(
-                    TagAlias.raw_form.like(f"{_MERGE_TAG_PREFIX}%")
-                )
+                delete(TagAlias).where(TagAlias.raw_form.like(f"{_MERGE_TAG_PREFIX}%"))
             )
             await test_data_session.execute(
                 delete(CanonicalTag).where(
@@ -717,13 +709,11 @@ class TestSearchResolvesMergedAliases:
 
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                f"/api/v1/canonical-tags?q={q}"
-            )
+            response = await async_client.get(f"/api/v1/canonical-tags?q={q}")
 
-        assert response.status_code == 200, (
-            f"Expected 200 but got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 200
+        ), f"Expected 200 but got {response.status_code}: {response.text}"
         body = response.json()
 
         # The target tag must appear in results — its alias raw_form matches q
@@ -771,13 +761,11 @@ class TestSearchResolvesMergedAliases:
 
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                f"/api/v1/canonical-tags?q={q}"
-            )
+            response = await async_client.get(f"/api/v1/canonical-tags?q={q}")
 
-        assert response.status_code == 200, (
-            f"Expected 200 but got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 200
+        ), f"Expected 200 but got {response.status_code}: {response.text}"
         body = response.json()
 
         target_norm = merge_scenario["target_normalized_form"]
@@ -807,13 +795,11 @@ class TestSearchResolvesMergedAliases:
 
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                f"/api/v1/canonical-tags?q={q}"
-            )
+            response = await async_client.get(f"/api/v1/canonical-tags?q={q}")
 
-        assert response.status_code == 200, (
-            f"Expected 200 but got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 200
+        ), f"Expected 200 but got {response.status_code}: {response.text}"
         body = response.json()
 
         target_norm = merge_scenario["target_normalized_form"]
@@ -853,13 +839,11 @@ class TestSearchResolvesMergedAliases:
 
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                f"/api/v1/canonical-tags?q={q}"
-            )
+            response = await async_client.get(f"/api/v1/canonical-tags?q={q}")
 
-        assert response.status_code == 200, (
-            f"Expected 200 but got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 200
+        ), f"Expected 200 but got {response.status_code}: {response.text}"
         body = response.json()
 
         source_norm = merge_scenario["source_normalized_form"]
@@ -1007,9 +991,7 @@ class TestCanonicalTagVideos:
         """Videos endpoint returns videos linked to canonical tag with correct structure."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                "/api/v1/canonical-tags/music/videos"
-            )
+            response = await async_client.get("/api/v1/canonical-tags/music/videos")
 
         assert response.status_code == 200
         body = response.json()
@@ -1129,9 +1111,7 @@ class TestCanonicalTagVideos:
         """Videos are returned ordered by upload_date descending."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                "/api/v1/canonical-tags/music/videos"
-            )
+            response = await async_client.get("/api/v1/canonical-tags/music/videos")
 
         assert response.status_code == 200
         body = response.json()
@@ -1267,18 +1247,18 @@ class TestFuzzySuggestions:
 
             # Every suggestion must expose canonical_form and normalized_form
             for suggestion in suggestions:
-                assert "canonical_form" in suggestion, (
-                    "Suggestion missing 'canonical_form' field"
-                )
-                assert "normalized_form" in suggestion, (
-                    "Suggestion missing 'normalized_form' field"
-                )
+                assert (
+                    "canonical_form" in suggestion
+                ), "Suggestion missing 'canonical_form' field"
+                assert (
+                    "normalized_form" in suggestion
+                ), "Suggestion missing 'normalized_form' field"
 
             # The inserted tag should appear as a suggestion
             suggestion_canonical_forms = [s["canonical_form"] for s in suggestions]
-            assert canonical_form in suggestion_canonical_forms, (
-                f"Expected '{canonical_form}' in suggestions; got: {suggestion_canonical_forms}"
-            )
+            assert (
+                canonical_form in suggestion_canonical_forms
+            ), f"Expected '{canonical_form}' in suggestions; got: {suggestion_canonical_forms}"
 
             # The matching suggestion should carry the correct normalized_form
             matching = next(
@@ -1314,8 +1294,7 @@ class TestFuzzySuggestions:
         # suggestions must be absent or empty — fuzzy is gated on len(q) >= 2
         suggestions = body.get("suggestions")
         assert not suggestions, (
-            "Expected no fuzzy suggestions for a 1-char query; "
-            f"got: {suggestions}"
+            "Expected no fuzzy suggestions for a 1-char query; " f"got: {suggestions}"
         )
 
     async def test_prefix_match_returns_data_not_suggestions(
@@ -1337,9 +1316,7 @@ class TestFuzzySuggestions:
         body = response.json()
 
         # data must be non-empty (prefix match found)
-        assert len(body["data"]) > 0, (
-            "Expected data to be non-empty for a known prefix"
-        )
+        assert len(body["data"]) > 0, "Expected data to be non-empty for a known prefix"
 
         # suggestions must be absent or null — fuzzy only fires on zero data
         suggestions = body.get("suggestions")
@@ -1413,9 +1390,9 @@ class TestRateLimiting:
                     "/api/v1/canonical-tags?q=py",
                     headers={"X-Forwarded-For": "10.0.0.1"},
                 )
-                assert response.status_code == 200, (
-                    f"Request {i + 1} expected 200 but got {response.status_code}"
-                )
+                assert (
+                    response.status_code == 200
+                ), f"Request {i + 1} expected 200 but got {response.status_code}"
 
     async def test_exceeding_rate_limit_returns_429(
         self,
@@ -1452,27 +1429,27 @@ class TestRateLimiting:
                 headers={"X-Forwarded-For": client_ip},
             )
 
-        assert response.status_code == 429, (
-            f"Expected 429 when rate limit exceeded; got {response.status_code}"
-        )
+        assert (
+            response.status_code == 429
+        ), f"Expected 429 when rate limit exceeded; got {response.status_code}"
 
         # Response body must include retry_after
         body = response.json()
-        assert "retry_after" in body, (
-            "Expected 'retry_after' field in 429 response body"
-        )
-        assert body["retry_after"] >= 1, (
-            f"retry_after should be >= 1 second; got {body['retry_after']}"
-        )
+        assert (
+            "retry_after" in body
+        ), "Expected 'retry_after' field in 429 response body"
+        assert (
+            body["retry_after"] >= 1
+        ), f"retry_after should be >= 1 second; got {body['retry_after']}"
 
         # Retry-After header must be present
-        assert "retry-after" in response.headers, (
-            "Expected 'Retry-After' response header on 429"
-        )
+        assert (
+            "retry-after" in response.headers
+        ), "Expected 'Retry-After' response header on 429"
         retry_header_value = int(response.headers["retry-after"])
-        assert retry_header_value >= 1, (
-            f"Retry-After header should be >= 1; got {retry_header_value}"
-        )
+        assert (
+            retry_header_value >= 1
+        ), f"Retry-After header should be >= 1; got {retry_header_value}"
 
     async def test_different_client_ips_have_independent_counters(
         self,
@@ -1498,8 +1475,7 @@ class TestRateLimiting:
 
         # Exhaust the bucket for exhausted_ip
         _request_counts[exhausted_ip] = [
-            now - (RATE_LIMIT_WINDOW_SECONDS - 10)
-            for _ in range(RATE_LIMIT_REQUESTS)
+            now - (RATE_LIMIT_WINDOW_SECONDS - 10) for _ in range(RATE_LIMIT_REQUESTS)
         ]
 
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
@@ -1510,9 +1486,9 @@ class TestRateLimiting:
                 "/api/v1/canonical-tags?q=py",
                 headers={"X-Forwarded-For": exhausted_ip},
             )
-            assert exhausted_response.status_code == 429, (
-                f"Expected 429 for exhausted_ip; got {exhausted_response.status_code}"
-            )
+            assert (
+                exhausted_response.status_code == 429
+            ), f"Expected 429 for exhausted_ip; got {exhausted_response.status_code}"
 
             # Fresh IP must still be allowed through
             fresh_response = await async_client.get(

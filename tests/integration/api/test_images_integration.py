@@ -86,7 +86,9 @@ class TestVideoImageIntegration:
 
         # Verify cache is cold (no file exists)
         prefix = video_id[:2]
-        cache_path = image_cache_config.videos_dir / prefix / f"{video_id}_{quality}.jpg"
+        cache_path = (
+            image_cache_config.videos_dir / prefix / f"{video_id}_{quality}.jpg"
+        )
         assert not cache_path.exists()
 
         # Mock successful fetch

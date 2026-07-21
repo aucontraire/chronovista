@@ -289,7 +289,9 @@ class TestPlaylistSeederSeeding:
 
         assert isinstance(playlist_create, PlaylistCreate)
         assert playlist_create.title == "Test Playlist"
-        assert playlist_create.channel_id is None  # Takeout imports have None channel_id
+        assert (
+            playlist_create.channel_id is None
+        )  # Takeout imports have None channel_id
         assert playlist_create.description is not None
         assert "imported from Google Takeout" in playlist_create.description
         # Updated to use int_ prefix (36 chars: int_ + 32 hex)
@@ -488,14 +490,14 @@ class TestPlaylistSeederNullChannelId:
 
         with (
             patch.object(
-                seeder.playlist_repo, "delete_by_null_channel_id", new_callable=AsyncMock
+                seeder.playlist_repo,
+                "delete_by_null_channel_id",
+                new_callable=AsyncMock,
             ) as mock_delete,
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", new_callable=AsyncMock
             ) as mock_get,
-            patch.object(
-                seeder.playlist_repo, "create", new_callable=AsyncMock
-            ),
+            patch.object(seeder.playlist_repo, "create", new_callable=AsyncMock),
         ):
             mock_delete.return_value = 5
             mock_get.return_value = None
@@ -508,9 +510,7 @@ class TestPlaylistSeederNullChannelId:
             # Verify playlist was created
             assert result.created == 1
 
-    def test_transform_sets_channel_id_to_none(
-        self, seeder: PlaylistSeeder
-    ) -> None:
+    def test_transform_sets_channel_id_to_none(self, seeder: PlaylistSeeder) -> None:
         """Test that _transform_playlist_to_create sets channel_id to None."""
         playlist = create_takeout_playlist(
             name="Test Playlist",
@@ -744,14 +744,14 @@ class TestPlaylistSeederReseedWithCascade:
         # Mock clear operation, get_by_playlist_id, and create
         with (
             patch.object(
-                seeder.playlist_repo, "delete_by_null_channel_id", new_callable=AsyncMock
+                seeder.playlist_repo,
+                "delete_by_null_channel_id",
+                new_callable=AsyncMock,
             ) as mock_delete,
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", new_callable=AsyncMock
             ) as mock_get,
-            patch.object(
-                seeder.playlist_repo, "create", new=mock_create
-            ),
+            patch.object(seeder.playlist_repo, "create", new=mock_create),
         ):
             mock_delete.return_value = 3
             mock_get.return_value = None
@@ -769,7 +769,9 @@ class TestPlaylistSeederReseedWithCascade:
             new_playlist = created_playlists[0]
             assert new_playlist.playlist_id.startswith("int_")
             assert len(new_playlist.playlist_id) == 36
-            assert new_playlist.channel_id is None  # Takeout imports have NULL channel_id
+            assert (
+                new_playlist.channel_id is None
+            )  # Takeout imports have NULL channel_id
 
     @pytest.mark.asyncio
     async def test_seed_operates_within_transaction(
@@ -793,7 +795,9 @@ class TestPlaylistSeederReseedWithCascade:
         # Mock clear to fail
         with (
             patch.object(
-                seeder.playlist_repo, "delete_by_null_channel_id", new_callable=AsyncMock
+                seeder.playlist_repo,
+                "delete_by_null_channel_id",
+                new_callable=AsyncMock,
             ) as mock_delete,
             pytest.raises(Exception, match="Database error"),
         ):
@@ -825,14 +829,14 @@ class TestPlaylistSeederReseedWithCascade:
         # First run - creates playlist
         with (
             patch.object(
-                seeder.playlist_repo, "delete_by_null_channel_id", new_callable=AsyncMock
+                seeder.playlist_repo,
+                "delete_by_null_channel_id",
+                new_callable=AsyncMock,
             ) as mock_delete1,
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", new_callable=AsyncMock
             ) as mock_get1,
-            patch.object(
-                seeder.playlist_repo, "create", new_callable=AsyncMock
-            ),
+            patch.object(seeder.playlist_repo, "create", new_callable=AsyncMock),
         ):
             mock_delete1.return_value = 0
             mock_get1.return_value = None
@@ -843,14 +847,14 @@ class TestPlaylistSeederReseedWithCascade:
         # Second run - should work without errors
         with (
             patch.object(
-                seeder.playlist_repo, "delete_by_null_channel_id", new_callable=AsyncMock
+                seeder.playlist_repo,
+                "delete_by_null_channel_id",
+                new_callable=AsyncMock,
             ) as mock_delete2,
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", new_callable=AsyncMock
             ) as mock_get2,
-            patch.object(
-                seeder.playlist_repo, "create", new_callable=AsyncMock
-            ),
+            patch.object(seeder.playlist_repo, "create", new_callable=AsyncMock),
         ):
             mock_delete2.return_value = 1
             mock_get2.return_value = None
@@ -910,14 +914,14 @@ class TestPlaylistSeederReseedWithCascade:
         # Mock operations
         with (
             patch.object(
-                seeder.playlist_repo, "delete_by_null_channel_id", new_callable=AsyncMock
+                seeder.playlist_repo,
+                "delete_by_null_channel_id",
+                new_callable=AsyncMock,
             ) as mock_delete,
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", new_callable=AsyncMock
             ) as mock_get,
-            patch.object(
-                seeder.playlist_repo, "create", new_callable=AsyncMock
-            ),
+            patch.object(seeder.playlist_repo, "create", new_callable=AsyncMock),
         ):
             mock_get.return_value = None
 

@@ -184,7 +184,9 @@ class EntityMentionScanService:
 
             if not patterns:
                 logger.info("No active entities matched the filter criteria")
-                return ScanResult(dry_run=dry_run, duration_seconds=time.monotonic() - t0)
+                return ScanResult(
+                    dry_run=dry_run, duration_seconds=time.monotonic() - t0
+                )
 
             scoped_entity_ids = [p.entity_id for p in patterns]
 
@@ -225,7 +227,9 @@ class EntityMentionScanService:
                     )
                 except Exception:
                     logger.warning(
-                        "Failed to fetch segment batch at offset=%d", offset, exc_info=True
+                        "Failed to fetch segment batch at offset=%d",
+                        offset,
+                        exc_info=True,
                     )
                     result.failed_batches += 1
                     offset += batch_size
@@ -251,7 +255,9 @@ class EntityMentionScanService:
                         dry_run=dry_run,
                         limit=limit,
                         current_preview_count=(
-                            len(result.dry_run_matches) if result.dry_run_matches is not None else 0
+                            len(result.dry_run_matches)
+                            if result.dry_run_matches is not None
+                            else 0
                         ),
                     )
                 except Exception:
@@ -263,7 +269,9 @@ class EntityMentionScanService:
                     result.failed_batches += 1
                     offset += batch_size
                     if progress_callback:
-                        progress_callback(result.segments_scanned, result.mentions_found)
+                        progress_callback(
+                            result.segments_scanned, result.mentions_found
+                        )
                     continue
 
                 # Accumulate results
@@ -485,7 +493,9 @@ class EntityMentionScanService:
 
             if not patterns:
                 logger.info("No active entities matched the filter criteria")
-                return ScanResult(dry_run=dry_run, duration_seconds=time.monotonic() - t0)
+                return ScanResult(
+                    dry_run=dry_run, duration_seconds=time.monotonic() - t0
+                )
 
             scoped_entity_ids = [p.entity_id for p in patterns]
 
@@ -575,7 +585,9 @@ class EntityMentionScanService:
                     result.failed_batches += 1
                     offset += batch_size
                     if progress_callback:
-                        progress_callback(result.segments_scanned, result.mentions_found)
+                        progress_callback(
+                            result.segments_scanned, result.mentions_found
+                        )
                     continue
 
                 for m in batch_mentions:
@@ -785,7 +797,13 @@ class EntityMentionScanService:
         for pattern, py_regex in compiled_patterns:
             for match in py_regex.finditer(text):
                 raw_matches.append(
-                    (pattern.entity_id, match.start(), match.end(), match.group(0), pattern)
+                    (
+                        pattern.entity_id,
+                        match.start(),
+                        match.end(),
+                        match.group(0),
+                        pattern,
+                    )
                 )
 
         if not raw_matches:
@@ -835,9 +853,7 @@ class EntityMentionScanService:
             mentions.append(mention)
 
             if dry_run:
-                preview_context = context or (
-                    text[:120] if len(text) > 120 else text
-                )
+                preview_context = context or (text[:120] if len(text) > 120 else text)
                 previews.append(
                     {
                         "video_id": video_id,
@@ -931,21 +947,15 @@ class EntityMentionScanService:
                 NamedEntityDB.id.in_(zero_mention_ids)
             )
             if entity_ids is not None:
-                entity_stmt = entity_stmt.where(
-                    NamedEntityDB.id.in_(entity_ids)
-                )
+                entity_stmt = entity_stmt.where(NamedEntityDB.id.in_(entity_ids))
         else:
-            entity_stmt = select(NamedEntityDB).where(
-                NamedEntityDB.status == "active"
-            )
+            entity_stmt = select(NamedEntityDB).where(NamedEntityDB.status == "active")
             if entity_type is not None:
                 entity_stmt = entity_stmt.where(
                     NamedEntityDB.entity_type == entity_type
                 )
             if entity_ids is not None:
-                entity_stmt = entity_stmt.where(
-                    NamedEntityDB.id.in_(entity_ids)
-                )
+                entity_stmt = entity_stmt.where(NamedEntityDB.id.in_(entity_ids))
 
         entity_result = await session.execute(entity_stmt)
         entities = list(entity_result.scalars().all())
@@ -994,9 +1004,7 @@ class EntityMentionScanService:
                     )
 
             # Build PostgreSQL regex pattern: \m(alias1|alias2|...)\M
-            escaped_names = sorted(
-                [re.escape(n) for n in names], key=len, reverse=True
-            )
+            escaped_names = sorted([re.escape(n) for n in names], key=len, reverse=True)
             pg_pattern = "|".join(escaped_names)
 
             patterns.append(
@@ -1229,7 +1237,10 @@ class EntityMentionScanService:
                 new_mentions.append(mention)
 
                 if dry_run:
-                    if limit is None or (current_preview_count + len(preview_data)) < limit:
+                    if (
+                        limit is None
+                        or (current_preview_count + len(preview_data)) < limit
+                    ):
                         context = (
                             effective_text[:120]
                             if len(effective_text) > 120
@@ -1260,7 +1271,13 @@ class EntityMentionScanService:
                     m_end,
                 )
 
-        return new_mentions, skipped, preview_data, longest_match_skips, exclusion_pattern_skips
+        return (
+            new_mentions,
+            skipped,
+            preview_data,
+            longest_match_skips,
+            exclusion_pattern_skips,
+        )
 
     # ------------------------------------------------------------------
     # Disambiguation & filtering helpers
@@ -1311,14 +1328,14 @@ class EntityMentionScanService:
                 skip_count += 1
                 if dry_run:
                     logger.info(
-                        "[DRY RUN] Segment %d: \"%s\" → SKIPPED "
+                        '[DRY RUN] Segment %d: "%s" → SKIPPED '
                         "(longest-match-wins: overlapping longer match preferred)",
                         row.id,
                         matched_text,
                     )
                 else:
                     logger.debug(
-                        "Segment %d: \"%s\" skipped (longest-match-wins)",
+                        'Segment %d: "%s" skipped (longest-match-wins)',
                         row.id,
                         matched_text,
                     )
@@ -1389,8 +1406,8 @@ class EntityMentionScanService:
                         skip_count += 1
                         if dry_run:
                             logger.info(
-                                "[DRY RUN] Segment %d: \"%s\" at %d-%d → SKIPPED "
-                                "(exclusion pattern: \"%s\")",
+                                '[DRY RUN] Segment %d: "%s" at %d-%d → SKIPPED '
+                                '(exclusion pattern: "%s")',
                                 row.id,
                                 matched_text,
                                 m_start,
@@ -1399,8 +1416,8 @@ class EntityMentionScanService:
                             )
                         else:
                             logger.debug(
-                                "Segment %d: \"%s\" at %d-%d suppressed by "
-                                "exclusion pattern \"%s\"",
+                                'Segment %d: "%s" at %d-%d suppressed by '
+                                'exclusion pattern "%s"',
                                 row.id,
                                 matched_text,
                                 m_start,

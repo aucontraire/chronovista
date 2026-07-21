@@ -34,22 +34,22 @@ from chronovista.services.recovery.page_parser import (
 # HTML Test Fixtures
 # ============================================================================
 
-VALID_PAGE_WITH_JSON = '''
+VALID_PAGE_WITH_JSON = """
 <html><head>
 <meta property="og:title" content="Meta Title Fallback">
 <meta property="og:description" content="Meta description fallback">
 </head><body>
 <script>var ytInitialPlayerResponse = {"videoDetails":{"title":"JSON Title","shortDescription":"JSON description from videoDetails","author":"Test Channel","channelId":"UCuAXFkgsw1L7xaCfnd5JJOw","viewCount":"1000000","keywords":["music","test","viral"]},"microformat":{"playerMicroformatRenderer":{"publishDate":"2021-06-15","category":"Music"}}};</script>
 </body></html>
-'''
+"""
 
-VALID_PAGE_WITH_JSON_NO_VAR = '''
+VALID_PAGE_WITH_JSON_NO_VAR = """
 <html><head></head><body>
 <script>ytInitialPlayerResponse = {"videoDetails":{"title":"JSON Title No Var","shortDescription":"Description without var keyword","author":"Channel Name","channelId":"UCabc123def456ghi789jkl000","viewCount":"5000","keywords":["keyword1","keyword2"]},"microformat":{"playerMicroformatRenderer":{"publishDate":"2020-03-20","category":"Education"}}};</script>
 </body></html>
-'''
+"""
 
-VALID_PAGE_META_ONLY = '''
+VALID_PAGE_META_ONLY = """
 <html><head>
 <meta property="og:title" content="Meta Video Title">
 <meta property="og:description" content="Meta description from Open Graph tags">
@@ -62,80 +62,80 @@ VALID_PAGE_META_ONLY = '''
 <meta itemprop="genre" content="Entertainment">
 <link itemprop="url" href="https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw">
 </head><body></body></html>
-'''
+"""
 
-REMOVAL_NOTICE_TITLE_ONLY_YOUTUBE = '''
+REMOVAL_NOTICE_TITLE_ONLY_YOUTUBE = """
 <html><head><title>YouTube</title></head><body></body></html>
-'''
+"""
 
-REMOVAL_NOTICE_TITLE_DASH_YOUTUBE = '''
+REMOVAL_NOTICE_TITLE_DASH_YOUTUBE = """
 <html><head><title> - YouTube</title></head><body></body></html>
-'''
+"""
 
-REMOVAL_NOTICE_PLAYABILITY_ERROR = '''
+REMOVAL_NOTICE_PLAYABILITY_ERROR = """
 <html><head></head><body>
 <script>var ytInitialPlayerResponse = {"playabilityStatus":{"status":"ERROR","reason":"Video unavailable"}};</script>
 </body></html>
-'''
+"""
 
-REMOVAL_NOTICE_PLAYABILITY_UNPLAYABLE = '''
+REMOVAL_NOTICE_PLAYABILITY_UNPLAYABLE = """
 <html><head></head><body>
 <script>ytInitialPlayerResponse = {"playabilityStatus":{"status":"UNPLAYABLE"}};</script>
 </body></html>
-'''
+"""
 
-REMOVAL_NOTICE_PLAYABILITY_LOGIN_REQUIRED = '''
+REMOVAL_NOTICE_PLAYABILITY_LOGIN_REQUIRED = """
 <html><head></head><body>
 <script>var ytInitialPlayerResponse = {"playabilityStatus":{"status":"LOGIN_REQUIRED"}};</script>
 </body></html>
-'''
+"""
 
-REMOVAL_NOTICE_TEXT_VIDEO_UNAVAILABLE = '''
+REMOVAL_NOTICE_TEXT_VIDEO_UNAVAILABLE = """
 <html><head><title>Test Video - YouTube</title></head><body>
 <div>Video unavailable</div>
 </body></html>
-'''
+"""
 
-REMOVAL_NOTICE_TEXT_REMOVED_BY_UPLOADER = '''
+REMOVAL_NOTICE_TEXT_REMOVED_BY_UPLOADER = """
 <html><head><title>Test Video - YouTube</title></head><body>
 <div>This video has been removed by the uploader</div>
 </body></html>
-'''
+"""
 
-REMOVAL_NOTICE_TEXT_PRIVATE = '''
+REMOVAL_NOTICE_TEXT_PRIVATE = """
 <html><head><title>Test Video - YouTube</title></head><body>
 <div>This video is private</div>
 </body></html>
-'''
+"""
 
-REMOVAL_NOTICE_TEXT_COPYRIGHT = '''
+REMOVAL_NOTICE_TEXT_COPYRIGHT = """
 <html><head><title>Test Video - YouTube</title></head><body>
 <div>This video is no longer available due to a copyright claim by XYZ Corporation</div>
 </body></html>
-'''
+"""
 
-REMOVAL_NOTICE_TEXT_TOS_VIOLATION = '''
+REMOVAL_NOTICE_TEXT_TOS_VIOLATION = """
 <html><head><title>Test Video - YouTube</title></head><body>
 <div>This video has been removed for violating YouTube's Terms of Service</div>
 </body></html>
-'''
+"""
 
-REMOVAL_NOTICE_TEXT_ACCOUNT_TERMINATED = '''
+REMOVAL_NOTICE_TEXT_ACCOUNT_TERMINATED = """
 <html><head><title>Test Video - YouTube</title></head><body>
 <div>This video is no longer available because the YouTube account associated with this video has been terminated</div>
 </body></html>
-'''
+"""
 
-REMOVAL_NOTICE_WITH_POSITIVE_SIGNAL_OVERRIDE = '''
+REMOVAL_NOTICE_WITH_POSITIVE_SIGNAL_OVERRIDE = """
 <html><head>
 <title>YouTube</title>
 <meta property="og:video:url" content="https://www.youtube.com/watch?v=dQw4w9WgXcQ">
 </head><body>
 <div>Video unavailable</div>
 </body></html>
-'''
+"""
 
-VALID_PAGE_META_WITH_EOW_DESCRIPTION = '''
+VALID_PAGE_META_WITH_EOW_DESCRIPTION = """
 <html><head>
 <meta property="og:title" content="Old Format Video Title">
 <meta property="og:description" content="FULL RECIPE: https://example.com/pasta Learn how to make the perfect homemade pasta from scratch using just three simple ingredients. This step-by-step tutori...">
@@ -149,9 +149,9 @@ VALID_PAGE_META_WITH_EOW_DESCRIPTION = '''
 <p id="eow-description" class="">FULL RECIPE: <a href="/web/20190604182457/https://www.youtube.com/redirect?q=https%3A%2F%2Fexample.com%2Fpasta">https://example.com/pasta</a><br><br>Learn how to make the perfect homemade pasta from scratch using just three simple ingredients. This step-by-step tutorial covers everything from mixing the dough to cutting your own fettuccine.<br>We also show you how to make a classic marinara sauce to pair with your fresh pasta.<br><br>TIMESTAMPS <a href="/web/20190604182457/https://www.youtube.com/watch?v=IFAcqaNzNSc">https://www.youtube.com/watch?v=IFAcq...</a> <br><br>Check out <a href="/web/20190604182457/http://example.com">http://example.com</a><br><br>Subscribe to our channel! <a href="http://www.youtube.com/subscription_center?add_user=CookingWithSarah">http://www.youtube.com/subscription_c...</a><br><br>Follow us on Twitter <a href="/web/20190604182457/http://twitter.com/CookWithSarah">http://twitter.com/CookWithSarah</a><br>Follow us on Instagram <a href="/web/20190604182457/http://instagram.com/cookingwithsarah">http://instagram.com/cookingwithsarah</a><br><br>Cooking With Sarah is a home cooking channel dedicated to simple, delicious recipes anyone can make. We were the first cooking channel to reach 500 million YouTube views.</p>
 </div>
 </body></html>
-'''
+"""
 
-VALID_PAGE_META_WITH_EMPTY_EOW = '''
+VALID_PAGE_META_WITH_EMPTY_EOW = """
 <html><head>
 <meta property="og:title" content="Empty EOW Video">
 <meta property="og:description" content="This is the og:description fallback text">
@@ -160,9 +160,9 @@ VALID_PAGE_META_WITH_EMPTY_EOW = '''
 <p id="eow-description" class="">   </p>
 </div>
 </body></html>
-'''
+"""
 
-VALID_PAGE_META_WITH_EOW_NO_OG_DESC = '''
+VALID_PAGE_META_WITH_EOW_NO_OG_DESC = """
 <html><head>
 <meta property="og:title" content="No OG Desc Video">
 </head><body>
@@ -170,9 +170,9 @@ VALID_PAGE_META_WITH_EOW_NO_OG_DESC = '''
 <p id="eow-description" class="">This is the full description only available in the HTML element.</p>
 </div>
 </body></html>
-'''
+"""
 
-PAGE_JSON_WITH_EOW_AND_OLD_LIKE_BUTTON = '''
+PAGE_JSON_WITH_EOW_AND_OLD_LIKE_BUTTON = """
 <html><head>
 <meta property="og:title" content="Truncated OG Title">
 <meta property="og:description" content="FULL GUIDE: https://example.com/bookshelf Learn how to build a simple bookshelf using basic hand tools and reclaimed wood from a local salvage yard. Step-by-s...">
@@ -185,9 +185,9 @@ PAGE_JSON_WITH_EOW_AND_OLD_LIKE_BUTTON = '''
 <button class="yt-uix-button like-button-renderer-like-button like-button-renderer-like-button-unclicked" type="button" aria-label="Ich mag das Video (wie 2.510 andere auch)"><span class="yt-uix-button-content">2.510</span></button>
 </span>
 </body></html>
-'''
+"""
 
-PAGE_JSON_WITH_MODERN_LIKE_BUTTON = '''
+PAGE_JSON_WITH_MODERN_LIKE_BUTTON = """
 <html><head></head><body>
 <script>var ytInitialPlayerResponse = {"videoDetails":{"title":"Modern Transitional Page","channelId":"UCuAXFkgsw1L7xaCfnd5JJOw","author":"Test Channel","viewCount":"100000","keywords":["test"]},"microformat":{"playerMicroformatRenderer":{"publishDate":"2020-08-10","category":"Entertainment"}}};</script>
 <div id="watch-description-text" class="">
@@ -195,16 +195,16 @@ PAGE_JSON_WITH_MODERN_LIKE_BUTTON = '''
 </div>
 <yt-formatted-string id="text" aria-label="1,230 likes">1.2K</yt-formatted-string>
 </body></html>
-'''
+"""
 
-PAGE_JSON_WITH_ENGLISH_LIKE_ARIA = '''
+PAGE_JSON_WITH_ENGLISH_LIKE_ARIA = """
 <html><head></head><body>
 <script>var ytInitialPlayerResponse = {"videoDetails":{"title":"English Like Page","channelId":"UCuAXFkgsw1L7xaCfnd5JJOw","author":"Channel","viewCount":"5000"},"microformat":{"playerMicroformatRenderer":{}}};</script>
 <button aria-label="like this video along with 3,456 other people" class="like-button"><span>3.4K</span></button>
 </body></html>
-'''
+"""
 
-PAGE_JSON_WITH_GERMAN_LIKE_DISLIKE = '''
+PAGE_JSON_WITH_GERMAN_LIKE_DISLIKE = """
 <html><head></head><body>
 <script>var ytInitialPlayerResponse = {"videoDetails":{"title":"German Locale Page","channelId":"UCuAXFkgsw1L7xaCfnd5JJOw","author":"Test Channel","viewCount":"80000"},"microformat":{"playerMicroformatRenderer":{"publishDate":"2020-02-11","category":"Entertainment"}}};</script>
 <div id="watch-description-text" class="">
@@ -225,42 +225,42 @@ PAGE_JSON_WITH_GERMAN_LIKE_DISLIKE = '''
     </span>
 </span>
 </body></html>
-'''
+"""
 
-PAGE_JSON_WITH_LIKE_BUTTON_NO_CONTENT_SPAN = '''
+PAGE_JSON_WITH_LIKE_BUTTON_NO_CONTENT_SPAN = """
 <html><head></head><body>
 <script>var ytInitialPlayerResponse = {"videoDetails":{"title":"No Content Span Page","channelId":"UCuAXFkgsw1L7xaCfnd5JJOw","author":"Test Channel","viewCount":"30000"},"microformat":{"playerMicroformatRenderer":{}}};</script>
 <button class="yt-uix-button like-button-renderer-like-button like-button-renderer-like-button-unclicked" type="button" aria-label="Ich mag das Video (wie 1.234 andere auch)" title="Mag ich">Mag ich</button>
 </body></html>
-'''
+"""
 
-PAGE_JSON_COMPLETE_NO_SUPPLEMENT_NEEDED = '''
+PAGE_JSON_COMPLETE_NO_SUPPLEMENT_NEEDED = """
 <html><head></head><body>
 <script>var ytInitialPlayerResponse = {"videoDetails":{"title":"Complete JSON Page","shortDescription":"Full description from JSON","channelId":"UCuAXFkgsw1L7xaCfnd5JJOw","author":"Channel","viewCount":"5000","keywords":["test"]},"microformat":{"playerMicroformatRenderer":{"publishDate":"2021-01-01","category":"Education"}}};</script>
 <script>var ytInitialData = {"contents":{"twoColumnWatchNextResults":{"results":{"results":{"contents":[{"videoPrimaryInfoRenderer":{"videoActions":{"menuRenderer":{"topLevelButtons":[{"toggleButtonRenderer":{"defaultText":{"accessibility":{"accessibilityData":{"label":"9,999 likes"}}}}}]}}}}]}}}}};</script>
 </body></html>
-'''
+"""
 
-PAGE_JSON_WITH_TRUNCATED_DESC_AND_EOW = '''
+PAGE_JSON_WITH_TRUNCATED_DESC_AND_EOW = """
 <html><head></head><body>
 <script>var ytInitialPlayerResponse = {"videoDetails":{"title":"Truncated Desc Page","shortDescription":"Learn how to build a simple bookshelf using basic hand tools and reclaimed wood from a local salvage yard. Step-by-step guide for beg...","channelId":"UCuAXFkgsw1L7xaCfnd5JJOw","author":"Test Channel","viewCount":"75000","keywords":["woodworking"]},"microformat":{"playerMicroformatRenderer":{"publishDate":"2019-12-04","category":"Howto & Style"}}};</script>
 <div id="watch-description-text" class="">
 <p id="eow-description" class="">Learn how to build a simple bookshelf using basic hand tools and reclaimed wood from a local salvage yard. Step-by-step guide for beginners and experienced woodworkers alike.<br><br>PLANS @ <a href="http://example.com/bookshelf-plans">http://example.com/bookshelf-plans</a><br>FOLLOW Sarah @ <a href="http://twitter.com/SarahBuilds">http://twitter.com/SarahBuilds</a></p>
 </div>
 </body></html>
-'''
+"""
 
-EMPTY_PAGE = '''
+EMPTY_PAGE = """
 <html><head></head><body></body></html>
-'''
+"""
 
-PAGE_WITH_MALFORMED_JSON = '''
+PAGE_WITH_MALFORMED_JSON = """
 <html><head></head><body>
 <script>var ytInitialPlayerResponse = {invalid json here, missing quotes};</script>
 </body></html>
-'''
+"""
 
-PAGE_WITH_BOTH_JSON_AND_META = '''
+PAGE_WITH_BOTH_JSON_AND_META = """
 <html><head>
 <meta property="og:title" content="Meta Title Should Be Ignored">
 <meta property="og:description" content="Meta description should be ignored">
@@ -270,7 +270,7 @@ PAGE_WITH_BOTH_JSON_AND_META = '''
 </head><body>
 <script>var ytInitialPlayerResponse = {"videoDetails":{"title":"JSON Title Takes Priority","shortDescription":"JSON description takes priority","author":"JSON Channel","channelId":"UCjsonpriorityid123456789","viewCount":"2000000","keywords":["json-keyword"]},"microformat":{"playerMicroformatRenderer":{"publishDate":"2022-12-31","category":"Science & Technology"}}};</script>
 </body></html>
-'''
+"""
 
 
 # ============================================================================
@@ -297,9 +297,7 @@ class TestJSONExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_WITH_JSON
@@ -317,9 +315,7 @@ class TestJSONExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_WITH_JSON
@@ -337,9 +333,7 @@ class TestJSONExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_WITH_JSON
@@ -358,9 +352,7 @@ class TestJSONExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_WITH_JSON
@@ -378,9 +370,7 @@ class TestJSONExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_WITH_JSON
@@ -398,9 +388,7 @@ class TestJSONExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_WITH_JSON
@@ -421,9 +409,7 @@ class TestJSONExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_WITH_JSON
@@ -442,9 +428,7 @@ class TestJSONExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_WITH_JSON
@@ -462,9 +446,7 @@ class TestJSONExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_WITH_JSON_NO_VAR
@@ -482,9 +464,7 @@ class TestJSONExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_META_ONLY
@@ -503,9 +483,7 @@ class TestJSONExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = PAGE_WITH_MALFORMED_JSON
@@ -542,9 +520,7 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_META_ONLY
@@ -562,9 +538,7 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_META_ONLY
@@ -582,9 +556,7 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_META_ONLY
@@ -594,8 +566,7 @@ class TestMetaTagExtraction:
 
         assert result is not None
         assert (
-            result.thumbnail_url
-            == "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"
+            result.thumbnail_url == "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"
         )
 
     async def test_extract_multiple_og_video_tags(
@@ -605,9 +576,7 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_META_ONLY
@@ -625,9 +594,7 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_META_ONLY
@@ -648,9 +615,7 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_META_ONLY
@@ -668,9 +633,7 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_META_ONLY
@@ -689,9 +652,7 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_META_ONLY
@@ -709,16 +670,14 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        html = '''
+        html = """
 <html><head>
 <meta itemprop="channelId" content="UCpwvZwUam-URkxB7g4USKpg">
 <meta property="og:title" content="Test Video">
 </head><body></body></html>
-'''
+"""
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = html
@@ -736,17 +695,15 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        html = '''
+        html = """
 <html><head>
 <meta itemprop="channelId" content="UCpwvZwUam-URkxB7g4USKpg">
 <link itemprop="url" href="https://youtube.com/channel/UCDifferentChannelId1234">
 <meta property="og:title" content="Test Video">
 </head><body></body></html>
-'''
+"""
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = html
@@ -765,17 +722,15 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        html = '''
+        html = """
 <html><head>
 <meta property="og:title" content="Test Video">
 </head><body>
 <button class="yt-uix-subscription-button" data-channel-external-id="UC8-Th83bH_thdKZDJCrn88g">Subscribe</button>
 </body></html>
-'''
+"""
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = html
@@ -793,7 +748,7 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        html = '''
+        html = """
 <html><head>
 <meta property="og:title" content="Test Video">
 </head><body>
@@ -801,11 +756,9 @@ class TestMetaTagExtraction:
   <a href="/web/20190509183907/https://www.youtube.com/channel/UC8-Th83bH_thdKZDJCrn88g">The Tonight Show</a>
 </div>
 </body></html>
-'''
+"""
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = html
@@ -823,18 +776,16 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        html = '''
+        html = """
 <html><head>
 <meta itemprop="channelId" content="UCpwvZwUam-URkxB7g4USKpg">
 <meta property="og:title" content="Test Video">
 </head><body>
 <button data-channel-external-id="UC8-Th83bH_thdKZDJCrn88g">Subscribe</button>
 </body></html>
-'''
+"""
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = html
@@ -852,17 +803,15 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        html = '''
+        html = """
 <html><head>
 <meta property="og:title" content="Test Video">
 </head><body>
 <button data-channel-external-id="not-a-valid-channel-id">Subscribe</button>
 </body></html>
-'''
+"""
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = html
@@ -880,16 +829,14 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        html = '''
+        html = """
 <html><head>
 <link itemprop="url" href="http://www.youtube.com/user/RussiaToday">
 <meta property="og:title" content="Test Video">
 </head><body></body></html>
-'''
+"""
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = html
@@ -907,16 +854,14 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        html = '''
+        html = """
 <html><head>
 <link itemprop="url" href="https://www.youtube.com/c/SomeChannel">
 <meta property="og:title" content="Test Video">
 </head><body></body></html>
-'''
+"""
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = html
@@ -934,9 +879,7 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_META_WITH_EOW_DESCRIPTION
@@ -961,9 +904,7 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_META_WITH_EOW_DESCRIPTION
@@ -985,9 +926,7 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_META_WITH_EOW_DESCRIPTION
@@ -1011,9 +950,7 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_META_WITH_EMPTY_EOW
@@ -1031,9 +968,7 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_META_WITH_EOW_NO_OG_DESC
@@ -1042,7 +977,10 @@ class TestMetaTagExtraction:
             result = await parser.extract_metadata(snapshot)
 
         assert result is not None
-        assert result.description == "This is the full description only available in the HTML element."
+        assert (
+            result.description
+            == "This is the full description only available in the HTML element."
+        )
 
     async def test_eow_preserves_other_meta_fields(
         self, cdx_snapshot_factory: Any, rate_limiter_mock: RateLimiter
@@ -1051,9 +989,7 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_META_WITH_EOW_DESCRIPTION
@@ -1078,9 +1014,7 @@ class TestMetaTagExtraction:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = EMPTY_PAGE
@@ -1122,17 +1056,13 @@ class TestRemovalNoticeDetection:
 
     def test_playability_status_error(self) -> None:
         """Test that JSON playabilityStatus.status = 'ERROR' is detected as removal."""
-        is_removed, reason = is_removal_notice(
-            REMOVAL_NOTICE_PLAYABILITY_ERROR
-        )
+        is_removed, reason = is_removal_notice(REMOVAL_NOTICE_PLAYABILITY_ERROR)
         assert is_removed is True
         assert reason == "playability_status_error"
 
     def test_playability_status_unplayable(self) -> None:
         """Test that JSON playabilityStatus.status = 'UNPLAYABLE' is detected."""
-        is_removed, reason = is_removal_notice(
-            REMOVAL_NOTICE_PLAYABILITY_UNPLAYABLE
-        )
+        is_removed, reason = is_removal_notice(REMOVAL_NOTICE_PLAYABILITY_UNPLAYABLE)
         assert is_removed is True
         assert reason == "playability_status_unplayable"
 
@@ -1146,17 +1076,13 @@ class TestRemovalNoticeDetection:
 
     def test_text_video_unavailable(self) -> None:
         """Test that 'Video unavailable' text is detected as removal."""
-        is_removed, reason = is_removal_notice(
-            REMOVAL_NOTICE_TEXT_VIDEO_UNAVAILABLE
-        )
+        is_removed, reason = is_removal_notice(REMOVAL_NOTICE_TEXT_VIDEO_UNAVAILABLE)
         assert is_removed is True
         assert reason == "text_video_unavailable"
 
     def test_text_removed_by_uploader(self) -> None:
         """Test that 'removed by the uploader' text is detected."""
-        is_removed, reason = is_removal_notice(
-            REMOVAL_NOTICE_TEXT_REMOVED_BY_UPLOADER
-        )
+        is_removed, reason = is_removal_notice(REMOVAL_NOTICE_TEXT_REMOVED_BY_UPLOADER)
         assert is_removed is True
         assert reason == "text_removed_by_uploader"
 
@@ -1174,17 +1100,13 @@ class TestRemovalNoticeDetection:
 
     def test_text_tos_violation(self) -> None:
         """Test that ToS violation text is detected."""
-        is_removed, reason = is_removal_notice(
-            REMOVAL_NOTICE_TEXT_TOS_VIOLATION
-        )
+        is_removed, reason = is_removal_notice(REMOVAL_NOTICE_TEXT_TOS_VIOLATION)
         assert is_removed is True
         assert reason == "text_tos_violation"
 
     def test_text_account_terminated(self) -> None:
         """Test that account terminated text is detected."""
-        is_removed, reason = is_removal_notice(
-            REMOVAL_NOTICE_TEXT_ACCOUNT_TERMINATED
-        )
+        is_removed, reason = is_removal_notice(REMOVAL_NOTICE_TEXT_ACCOUNT_TERMINATED)
         assert is_removed is True
         assert reason == "text_account_terminated"
 
@@ -1267,9 +1189,7 @@ class TestTwoEraStrategy:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = PAGE_WITH_BOTH_JSON_AND_META
@@ -1291,9 +1211,7 @@ class TestTwoEraStrategy:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = VALID_PAGE_META_ONLY
@@ -1313,9 +1231,7 @@ class TestTwoEraStrategy:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = PAGE_WITH_BOTH_JSON_AND_META
@@ -1335,9 +1251,7 @@ class TestTwoEraStrategy:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = EMPTY_PAGE
@@ -1377,9 +1291,7 @@ class TestHTMLSupplement:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = PAGE_JSON_WITH_EOW_AND_OLD_LIKE_BUTTON
@@ -1392,7 +1304,9 @@ class TestHTMLSupplement:
         assert result.title == "JSON Title From Transitional Page"
         # Description should come from #eow-description (JSON had none)
         assert result.description is not None
-        assert "Sarah demonstrates how to build a simple bookshelf" in result.description
+        assert (
+            "Sarah demonstrates how to build a simple bookshelf" in result.description
+        )
         assert "http://example.com/bookshelf-plans" in result.description
         assert not result.description.endswith("...")
 
@@ -1403,9 +1317,7 @@ class TestHTMLSupplement:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = PAGE_JSON_WITH_EOW_AND_OLD_LIKE_BUTTON
@@ -1424,9 +1336,7 @@ class TestHTMLSupplement:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = PAGE_JSON_WITH_MODERN_LIKE_BUTTON
@@ -1444,9 +1354,7 @@ class TestHTMLSupplement:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = PAGE_JSON_WITH_ENGLISH_LIKE_ARIA
@@ -1464,9 +1372,7 @@ class TestHTMLSupplement:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = PAGE_JSON_COMPLETE_NO_SUPPLEMENT_NEEDED
@@ -1486,9 +1392,7 @@ class TestHTMLSupplement:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = PAGE_JSON_WITH_EOW_AND_OLD_LIKE_BUTTON
@@ -1514,9 +1418,7 @@ class TestHTMLSupplement:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = PAGE_JSON_WITH_TRUNCATED_DESC_AND_EOW
@@ -1540,9 +1442,7 @@ class TestHTMLSupplement:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = PAGE_JSON_WITH_GERMAN_LIKE_DISLIKE
@@ -1562,9 +1462,7 @@ class TestHTMLSupplement:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = PAGE_JSON_WITH_GERMAN_LIKE_DISLIKE
@@ -1584,9 +1482,7 @@ class TestHTMLSupplement:
         snapshot = CdxSnapshot(**cdx_snapshot_factory())
         parser = PageParser(rate_limiter=rate_limiter_mock)
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = PAGE_JSON_WITH_LIKE_BUTTON_NO_CONTENT_SPAN
@@ -1706,9 +1602,7 @@ class TestSeleniumFallback:
                     new_callable=AsyncMock,
                 ) as mock_selenium:
 
-                    mock_selenium.side_effect = TimeoutError(
-                        "Selenium timeout"
-                    )
+                    mock_selenium.side_effect = TimeoutError("Selenium timeout")
 
                     result = await parser.extract_metadata(snapshot)
 
@@ -1735,47 +1629,47 @@ def rate_limiter_mock() -> RateLimiter:
 # HTML Test Fixtures for Channel Metadata Extraction
 # ============================================================================
 
-CHANNEL_PAGE_WITH_JSON = '''
+CHANNEL_PAGE_WITH_JSON = """
 <html><head></head><body>
 <script>var ytInitialData = {"metadata":{"channelMetadataRenderer":{"title":"Tech Channel","description":"A channel about technology and gadgets","externalId":"UCuAXFkgsw1L7xaCfnd5JJOw","country":"US","defaultLanguage":"en","avatar":{"thumbnails":[{"url":"https://yt3.googleusercontent.com/channel/avatar.jpg"}]}}},"header":{"c4TabbedHeaderRenderer":{"subscriberCountText":{"simpleText":"1.2M subscribers"},"videosCountText":{"runs":[{"text":"1,234"}]}}}};</script>
 </body></html>
-'''
+"""
 
-CHANNEL_PAGE_META_ONLY = '''
+CHANNEL_PAGE_META_ONLY = """
 <html><head>
 <meta property="og:title" content="Classic Channel">
 <meta property="og:description" content="A classic YouTube channel">
 <meta property="og:image" content="https://yt3.googleusercontent.com/channel/classic.jpg">
 </head><body></body></html>
-'''
+"""
 
-CHANNEL_PAGE_ID_MISMATCH = '''
+CHANNEL_PAGE_ID_MISMATCH = """
 <html><head></head><body>
 <script>var ytInitialData = {"metadata":{"channelMetadataRenderer":{"title":"Wrong Channel","externalId":"UCDifferentChannelId123456","country":"GB"}}};</script>
 </body></html>
-'''
+"""
 
-CHANNEL_PAGE_NO_DATA = '''
+CHANNEL_PAGE_NO_DATA = """
 <html><head></head><body></body></html>
-'''
+"""
 
-CHANNEL_PAGE_SUBSCRIBER_VARIANTS = '''
+CHANNEL_PAGE_SUBSCRIBER_VARIANTS = """
 <html><head></head><body>
 <script>var ytInitialData = {"metadata":{"channelMetadataRenderer":{"title":"Test Channel","externalId":"UCuAXFkgsw1L7xaCfnd5JJOw"}},"header":{"c4TabbedHeaderRenderer":{"subscriberCountText":{"simpleText":"500K subscribers"},"videosCountText":{"runs":[{"text":"500"}]}}}};</script>
 </body></html>
-'''
+"""
 
-CHANNEL_PAGE_NO_SUBSCRIBERS = '''
+CHANNEL_PAGE_NO_SUBSCRIBERS = """
 <html><head></head><body>
 <script>var ytInitialData = {"metadata":{"channelMetadataRenderer":{"title":"New Channel","externalId":"UCuAXFkgsw1L7xaCfnd5JJOw"}},"header":{"c4TabbedHeaderRenderer":{"subscriberCountText":{"simpleText":"No subscribers"},"videosCountText":{"runs":[{"text":"5"}]}}}};</script>
 </body></html>
-'''
+"""
 
-CHANNEL_PAGE_PLAIN_NUMBERS = '''
+CHANNEL_PAGE_PLAIN_NUMBERS = """
 <html><head></head><body>
 <script>var ytInitialData = {"metadata":{"channelMetadataRenderer":{"title":"Small Channel","externalId":"UCuAXFkgsw1L7xaCfnd5JJOw"}},"header":{"c4TabbedHeaderRenderer":{"subscriberCountText":{"simpleText":"1,234 subscribers"},"videosCountText":{"runs":[{"text":"1,234"}]}}}};</script>
 </body></html>
-'''
+"""
 
 
 # ============================================================================
@@ -1807,9 +1701,7 @@ class TestExtractChannelMetadata:
         parser = PageParser(rate_limiter=rate_limiter_mock)
         channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = CHANNEL_PAGE_WITH_JSON
@@ -1841,9 +1733,7 @@ class TestExtractChannelMetadata:
         parser = PageParser(rate_limiter=rate_limiter_mock)
         channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = CHANNEL_PAGE_META_ONLY
@@ -1871,9 +1761,7 @@ class TestExtractChannelMetadata:
         parser = PageParser(rate_limiter=rate_limiter_mock)
         channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = CHANNEL_PAGE_WITH_JSON
@@ -1893,9 +1781,7 @@ class TestExtractChannelMetadata:
         # Expected channel_id doesn't match the one in the page
         channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = CHANNEL_PAGE_ID_MISMATCH
@@ -1914,9 +1800,7 @@ class TestExtractChannelMetadata:
         parser = PageParser(rate_limiter=rate_limiter_mock)
         channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = CHANNEL_PAGE_NO_DATA
@@ -1934,9 +1818,7 @@ class TestExtractChannelMetadata:
         parser = PageParser(rate_limiter=rate_limiter_mock)
         channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_get.side_effect = httpx.ConnectTimeout("Connection timeout")
 
             result = await parser.extract_channel_metadata(snapshot, channel_id)
@@ -2073,9 +1955,7 @@ class TestChannelMetadataIntegration:
         parser = PageParser(rate_limiter=rate_limiter_mock)
         channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = CHANNEL_PAGE_SUBSCRIBER_VARIANTS
@@ -2095,9 +1975,7 @@ class TestChannelMetadataIntegration:
         parser = PageParser(rate_limiter=rate_limiter_mock)
         channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = CHANNEL_PAGE_NO_SUBSCRIBERS
@@ -2117,9 +1995,7 @@ class TestChannelMetadataIntegration:
         parser = PageParser(rate_limiter=rate_limiter_mock)
         channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
 
-        with patch.object(
-            httpx.AsyncClient, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.text = CHANNEL_PAGE_PLAIN_NUMBERS

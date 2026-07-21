@@ -64,7 +64,9 @@ class VideoBaseFactory(factory.Factory[VideoBase]):
     like_count: Any = factory.LazyFunction(lambda: 1200000)
     view_count: Any = factory.LazyFunction(lambda: 1400000000)
     comment_count: Any = factory.LazyFunction(lambda: 2800000)
-    availability_status: Any = factory.LazyFunction(lambda: AvailabilityStatus.AVAILABLE)
+    availability_status: Any = factory.LazyFunction(
+        lambda: AvailabilityStatus.AVAILABLE
+    )
 
 
 class VideoCreateFactory(factory.Factory[VideoCreate]):
@@ -103,7 +105,9 @@ class VideoCreateFactory(factory.Factory[VideoCreate]):
     like_count: Any = factory.LazyFunction(lambda: 85000)
     view_count: Any = factory.LazyFunction(lambda: 2500000)
     comment_count: Any = factory.LazyFunction(lambda: 12000)
-    availability_status: Any = factory.LazyFunction(lambda: AvailabilityStatus.AVAILABLE)
+    availability_status: Any = factory.LazyFunction(
+        lambda: AvailabilityStatus.AVAILABLE
+    )
 
 
 class VideoUpdateFactory(factory.Factory[VideoUpdate]):
@@ -133,7 +137,9 @@ class VideoUpdateFactory(factory.Factory[VideoUpdate]):
     like_count: Any = factory.LazyFunction(lambda: 45000)
     view_count: Any = factory.LazyFunction(lambda: 750000)
     comment_count: Any = factory.LazyFunction(lambda: 3200)
-    availability_status: Any = factory.LazyFunction(lambda: AvailabilityStatus.AVAILABLE)
+    availability_status: Any = factory.LazyFunction(
+        lambda: AvailabilityStatus.AVAILABLE
+    )
 
 
 class VideoFactory(factory.Factory[Video]):
@@ -172,7 +178,9 @@ class VideoFactory(factory.Factory[Video]):
     like_count: Any = factory.LazyFunction(lambda: 125000)
     view_count: Any = factory.LazyFunction(lambda: 3200000)
     comment_count: Any = factory.LazyFunction(lambda: 8500)
-    availability_status: Any = factory.LazyFunction(lambda: AvailabilityStatus.AVAILABLE)
+    availability_status: Any = factory.LazyFunction(
+        lambda: AvailabilityStatus.AVAILABLE
+    )
     created_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 12, 15, 23, 35, 0, tzinfo=UTC)
     )
@@ -195,9 +203,7 @@ class VideoSearchFiltersFactory(factory.Factory[VideoSearchFilters]):
     language_codes: Any = factory.LazyFunction(
         lambda: [LanguageCode.ENGLISH, LanguageCode.ENGLISH_US, LanguageCode.SPANISH]
     )
-    upload_after: Any = factory.LazyFunction(
-        lambda: datetime(2023, 1, 1, tzinfo=UTC)
-    )
+    upload_after: Any = factory.LazyFunction(lambda: datetime(2023, 1, 1, tzinfo=UTC))
     upload_before: Any = factory.LazyFunction(
         lambda: datetime(2023, 12, 31, tzinfo=UTC)
     )
@@ -251,7 +257,9 @@ class VideoWithChannelFactory(factory.Factory[VideoWithChannel]):
     video_id: Any = factory.LazyFunction(lambda: "jNQXAC9IVRw")
     channel_id: Any = factory.LazyFunction(lambda: "UCBJycsmduvYEL83R_U4JriQ")
     channel_name_hint: Any = factory.LazyFunction(lambda: None)
-    title: Any = factory.LazyFunction(lambda: "Marques Brownlee - iPhone 15 Pro Max Review!")
+    title: Any = factory.LazyFunction(
+        lambda: "Marques Brownlee - iPhone 15 Pro Max Review!"
+    )
     description: Any = factory.LazyFunction(
         lambda: "The most comprehensive review of Apple's latest flagship iPhone with detailed testing and comparisons."
     )
@@ -269,7 +277,9 @@ class VideoWithChannelFactory(factory.Factory[VideoWithChannel]):
     like_count: Any = factory.LazyFunction(lambda: 450000)
     view_count: Any = factory.LazyFunction(lambda: 12000000)
     comment_count: Any = factory.LazyFunction(lambda: 35000)
-    availability_status: Any = factory.LazyFunction(lambda: AvailabilityStatus.AVAILABLE)
+    availability_status: Any = factory.LazyFunction(
+        lambda: AvailabilityStatus.AVAILABLE
+    )
     created_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 9, 22, 12, 0, 0, tzinfo=UTC)
     )

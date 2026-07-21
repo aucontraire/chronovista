@@ -87,12 +87,8 @@ class MentionPreview(BaseModel):
     model_config = ConfigDict(strict=True)
 
     segment_id: int = Field(..., description="Transcript segment ID")
-    start_time: float = Field(
-        ..., description="Start time of the segment in seconds"
-    )
-    mention_text: str = Field(
-        ..., description="The alias/name text that matched"
-    )
+    start_time: float = Field(..., description="Start time of the segment in seconds")
+    mention_text: str = Field(..., description="The alias/name text that matched")
 
 
 class EntityVideoResult(BaseModel):
@@ -136,16 +132,12 @@ class EntityVideoResult(BaseModel):
         ...,
         description="Detection method categories (transcript, manual, user_correction)",
     )
-    has_manual: bool = Field(
-        ..., description="Whether a manual association exists"
-    )
+    has_manual: bool = Field(..., description="Whether a manual association exists")
     first_mention_time: float | None = Field(
         None,
         description="Earliest transcript mention timestamp; null for manual-only",
     )
-    upload_date: str | None = Field(
-        None, description="Video upload date (ISO 8601)"
-    )
+    upload_date: str | None = Field(None, description="Video upload date (ISO 8601)")
     description_context: str | None = Field(
         None,
         description=(
@@ -302,9 +294,7 @@ class EntitySearchResult(BaseModel):
     entity_type: str = Field(..., description="Entity type")
     description: str | None = Field(None, description="Entity description")
     status: str = Field(..., description="Entity status (active/deprecated)")
-    matched_alias: str | None = Field(
-        None, description="Alias that matched, if any"
-    )
+    matched_alias: str | None = Field(None, description="Alias that matched, if any")
     is_linked: bool | None = Field(
         None,
         description="Whether linked to the video (only when video_id provided)",
@@ -415,9 +405,7 @@ class DuplicateCheckResponse(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    is_duplicate: bool = Field(
-        ..., description="Whether a duplicate entity was found"
-    )
+    is_duplicate: bool = Field(..., description="Whether a duplicate entity was found")
     existing_entity: ExistingEntityInfo | None = Field(
         default=None, description="Details of the existing entity, if found"
     )
@@ -443,9 +431,7 @@ class CreateEntityRequest(BaseModel):
     name: str = Field(
         ..., min_length=1, max_length=500, description="Entity display name"
     )
-    entity_type: str = Field(
-        ..., min_length=1, description="Entity type"
-    )
+    entity_type: str = Field(..., min_length=1, description="Entity type")
     description: str | None = Field(
         default=None,
         max_length=5000,
@@ -496,9 +482,7 @@ class ClassifyTagRequest(BaseModel):
         max_length=500,
         description="Normalized form of the canonical tag",
     )
-    entity_type: str = Field(
-        ..., min_length=1, description="Entity type"
-    )
+    entity_type: str = Field(..., min_length=1, description="Entity type")
     description: str | None = Field(
         default=None,
         max_length=5000,
@@ -647,9 +631,7 @@ class ScanResultData(BaseModel):
 
     model_config = ConfigDict(strict=True)
 
-    segments_scanned: int = Field(
-        ..., description="Total transcript segments examined"
-    )
+    segments_scanned: int = Field(..., description="Total transcript segments examined")
     mentions_found: int = Field(
         ..., description="New entity mention rows inserted (or previewed)"
     )
@@ -665,9 +647,7 @@ class ScanResultData(BaseModel):
     duration_seconds: float = Field(
         ..., description="Wall-clock time spent on the scan"
     )
-    dry_run: bool = Field(
-        ..., description="Whether this was a dry-run (no writes)"
-    )
+    dry_run: bool = Field(..., description="Whether this was a dry-run (no writes)")
 
 
 class ScanResultResponse(BaseModel):
@@ -720,18 +700,14 @@ class ScanJobData(BaseModel):
     kind: Literal["entity", "video"] = Field(
         ..., description="Whether the scan targets an entity or a video"
     )
-    target_id: str = Field(
-        ..., description="Entity UUID or video ID being scanned"
-    )
+    target_id: str = Field(..., description="Entity UUID or video ID being scanned")
     status: Literal["running", "succeeded", "failed"] = Field(
         ..., description="Current job status"
     )
     result: ScanResultData | None = Field(
         None, description="Scan metrics once the job has succeeded"
     )
-    error: str | None = Field(
-        None, description="Error message if the job failed"
-    )
+    error: str | None = Field(None, description="Error message if the job failed")
     started_at: datetime = Field(..., description="When the scan started")
     finished_at: datetime | None = Field(
         None, description="When the scan reached a terminal state"

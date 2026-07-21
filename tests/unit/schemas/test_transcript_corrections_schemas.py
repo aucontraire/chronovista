@@ -536,4 +536,7 @@ class TestCorrectionRevertResponse:
 
     def test_revert_response_model_fields_match_submit_response(self) -> None:
         """Both names expose the same model_fields dict."""
-        assert CorrectionRevertResponse.model_fields == CorrectionSubmitResponse.model_fields
+        assert (
+            CorrectionRevertResponse.model_fields
+            == CorrectionSubmitResponse.model_fields
+        )

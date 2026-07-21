@@ -169,14 +169,17 @@ class TestScanMetadataTitle:
         ) as mock_bulk:
             mock_bulk.return_value = 1
 
-            with patch.object(
-                service._mention_repo,
-                "update_entity_counters",
-                new_callable=AsyncMock,
-            ), patch.object(
-                service._mention_repo,
-                "update_alias_counters",
-                new_callable=AsyncMock,
+            with (
+                patch.object(
+                    service._mention_repo,
+                    "update_entity_counters",
+                    new_callable=AsyncMock,
+                ),
+                patch.object(
+                    service._mention_repo,
+                    "update_alias_counters",
+                    new_callable=AsyncMock,
+                ),
             ):
                 result = await service.scan_metadata(
                     sources=["title"],
@@ -220,18 +223,22 @@ class TestScanMetadataTitle:
 
         service = EntityMentionScanService(factory)
 
-        with patch.object(
-            service._mention_repo,
-            "bulk_create_with_conflict_skip",
-            new_callable=AsyncMock,
-        ) as mock_bulk, patch.object(
-            service._mention_repo,
-            "update_entity_counters",
-            new_callable=AsyncMock,
-        ), patch.object(
-            service._mention_repo,
-            "update_alias_counters",
-            new_callable=AsyncMock,
+        with (
+            patch.object(
+                service._mention_repo,
+                "bulk_create_with_conflict_skip",
+                new_callable=AsyncMock,
+            ) as mock_bulk,
+            patch.object(
+                service._mention_repo,
+                "update_entity_counters",
+                new_callable=AsyncMock,
+            ),
+            patch.object(
+                service._mention_repo,
+                "update_alias_counters",
+                new_callable=AsyncMock,
+            ),
         ):
             result = await service.scan_metadata(
                 sources=["title"],
@@ -259,18 +266,22 @@ class TestScanMetadataTitle:
 
         service = EntityMentionScanService(factory)
 
-        with patch.object(
-            service._mention_repo,
-            "bulk_create_with_conflict_skip",
-            new_callable=AsyncMock,
-        ) as mock_bulk, patch.object(
-            service._mention_repo,
-            "update_entity_counters",
-            new_callable=AsyncMock,
-        ), patch.object(
-            service._mention_repo,
-            "update_alias_counters",
-            new_callable=AsyncMock,
+        with (
+            patch.object(
+                service._mention_repo,
+                "bulk_create_with_conflict_skip",
+                new_callable=AsyncMock,
+            ) as mock_bulk,
+            patch.object(
+                service._mention_repo,
+                "update_entity_counters",
+                new_callable=AsyncMock,
+            ),
+            patch.object(
+                service._mention_repo,
+                "update_alias_counters",
+                new_callable=AsyncMock,
+            ),
         ):
             result = await service.scan_metadata(
                 sources=["title"],
@@ -332,23 +343,28 @@ class TestScanMetadataTitle:
 
         service = EntityMentionScanService(factory)
 
-        with patch.object(
-            service._mention_repo,
-            "delete_by_scope",
-            new_callable=AsyncMock,
-        ) as mock_delete, patch.object(
-            service._mention_repo,
-            "bulk_create_with_conflict_skip",
-            new_callable=AsyncMock,
-            return_value=1,
-        ), patch.object(
-            service._mention_repo,
-            "update_entity_counters",
-            new_callable=AsyncMock,
-        ), patch.object(
-            service._mention_repo,
-            "update_alias_counters",
-            new_callable=AsyncMock,
+        with (
+            patch.object(
+                service._mention_repo,
+                "delete_by_scope",
+                new_callable=AsyncMock,
+            ) as mock_delete,
+            patch.object(
+                service._mention_repo,
+                "bulk_create_with_conflict_skip",
+                new_callable=AsyncMock,
+                return_value=1,
+            ),
+            patch.object(
+                service._mention_repo,
+                "update_entity_counters",
+                new_callable=AsyncMock,
+            ),
+            patch.object(
+                service._mention_repo,
+                "update_alias_counters",
+                new_callable=AsyncMock,
+            ),
         ):
             await service.scan_metadata(
                 sources=["title"],
@@ -382,18 +398,22 @@ class TestScanMetadataTitle:
 
         service = EntityMentionScanService(factory)
 
-        with patch.object(
-            service._mention_repo,
-            "bulk_create_with_conflict_skip",
-            new_callable=AsyncMock,
-        ) as mock_bulk, patch.object(
-            service._mention_repo,
-            "update_entity_counters",
-            new_callable=AsyncMock,
-        ), patch.object(
-            service._mention_repo,
-            "update_alias_counters",
-            new_callable=AsyncMock,
+        with (
+            patch.object(
+                service._mention_repo,
+                "bulk_create_with_conflict_skip",
+                new_callable=AsyncMock,
+            ) as mock_bulk,
+            patch.object(
+                service._mention_repo,
+                "update_entity_counters",
+                new_callable=AsyncMock,
+            ),
+            patch.object(
+                service._mention_repo,
+                "update_alias_counters",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_bulk.return_value = 1
             result = await service.scan_metadata(
@@ -426,18 +446,22 @@ class TestScanMetadataTitle:
 
         service = EntityMentionScanService(factory)
 
-        with patch.object(
-            service._mention_repo,
-            "bulk_create_with_conflict_skip",
-            new_callable=AsyncMock,
-        ) as mock_bulk, patch.object(
-            service._mention_repo,
-            "update_entity_counters",
-            new_callable=AsyncMock,
-        ), patch.object(
-            service._mention_repo,
-            "update_alias_counters",
-            new_callable=AsyncMock,
+        with (
+            patch.object(
+                service._mention_repo,
+                "bulk_create_with_conflict_skip",
+                new_callable=AsyncMock,
+            ) as mock_bulk,
+            patch.object(
+                service._mention_repo,
+                "update_entity_counters",
+                new_callable=AsyncMock,
+            ),
+            patch.object(
+                service._mention_repo,
+                "update_alias_counters",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_bulk.return_value = 2
             result = await service.scan_metadata(
@@ -470,18 +494,22 @@ class TestScanMetadataTitle:
 
         service = EntityMentionScanService(factory)
 
-        with patch.object(
-            service._mention_repo,
-            "bulk_create_with_conflict_skip",
-            new_callable=AsyncMock,
-        ) as mock_bulk, patch.object(
-            service._mention_repo,
-            "update_entity_counters",
-            new_callable=AsyncMock,
-        ), patch.object(
-            service._mention_repo,
-            "update_alias_counters",
-            new_callable=AsyncMock,
+        with (
+            patch.object(
+                service._mention_repo,
+                "bulk_create_with_conflict_skip",
+                new_callable=AsyncMock,
+            ) as mock_bulk,
+            patch.object(
+                service._mention_repo,
+                "update_entity_counters",
+                new_callable=AsyncMock,
+            ),
+            patch.object(
+                service._mention_repo,
+                "update_alias_counters",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_bulk.return_value = 1
             await service.scan_metadata(
@@ -508,19 +536,23 @@ class TestScanMetadataTitle:
         service = EntityMentionScanService(factory)
         callback = MagicMock()
 
-        with patch.object(
-            service._mention_repo,
-            "bulk_create_with_conflict_skip",
-            new_callable=AsyncMock,
-            return_value=1,
-        ), patch.object(
-            service._mention_repo,
-            "update_entity_counters",
-            new_callable=AsyncMock,
-        ), patch.object(
-            service._mention_repo,
-            "update_alias_counters",
-            new_callable=AsyncMock,
+        with (
+            patch.object(
+                service._mention_repo,
+                "bulk_create_with_conflict_skip",
+                new_callable=AsyncMock,
+                return_value=1,
+            ),
+            patch.object(
+                service._mention_repo,
+                "update_entity_counters",
+                new_callable=AsyncMock,
+            ),
+            patch.object(
+                service._mention_repo,
+                "update_alias_counters",
+                new_callable=AsyncMock,
+            ),
         ):
             await service.scan_metadata(
                 sources=["title"],
@@ -566,18 +598,22 @@ class TestScanMetadataDescription:
 
         service = EntityMentionScanService(factory)
 
-        with patch.object(
-            service._mention_repo,
-            "bulk_create_with_conflict_skip",
-            new_callable=AsyncMock,
-        ) as mock_bulk, patch.object(
-            service._mention_repo,
-            "update_entity_counters",
-            new_callable=AsyncMock,
-        ), patch.object(
-            service._mention_repo,
-            "update_alias_counters",
-            new_callable=AsyncMock,
+        with (
+            patch.object(
+                service._mention_repo,
+                "bulk_create_with_conflict_skip",
+                new_callable=AsyncMock,
+            ) as mock_bulk,
+            patch.object(
+                service._mention_repo,
+                "update_entity_counters",
+                new_callable=AsyncMock,
+            ),
+            patch.object(
+                service._mention_repo,
+                "update_alias_counters",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_bulk.return_value = 1
             result = await service.scan_metadata(
@@ -611,18 +647,22 @@ class TestScanMetadataDescription:
 
         service = EntityMentionScanService(factory)
 
-        with patch.object(
-            service._mention_repo,
-            "bulk_create_with_conflict_skip",
-            new_callable=AsyncMock,
-        ) as mock_bulk, patch.object(
-            service._mention_repo,
-            "update_entity_counters",
-            new_callable=AsyncMock,
-        ), patch.object(
-            service._mention_repo,
-            "update_alias_counters",
-            new_callable=AsyncMock,
+        with (
+            patch.object(
+                service._mention_repo,
+                "bulk_create_with_conflict_skip",
+                new_callable=AsyncMock,
+            ) as mock_bulk,
+            patch.object(
+                service._mention_repo,
+                "update_entity_counters",
+                new_callable=AsyncMock,
+            ),
+            patch.object(
+                service._mention_repo,
+                "update_alias_counters",
+                new_callable=AsyncMock,
+            ),
         ):
             result = await service.scan_metadata(
                 sources=["description"],
@@ -714,18 +754,22 @@ class TestScanMetadataDescription:
 
         service = EntityMentionScanService(factory)
 
-        with patch.object(
-            service._mention_repo,
-            "bulk_create_with_conflict_skip",
-            new_callable=AsyncMock,
-        ) as mock_bulk, patch.object(
-            service._mention_repo,
-            "update_entity_counters",
-            new_callable=AsyncMock,
-        ), patch.object(
-            service._mention_repo,
-            "update_alias_counters",
-            new_callable=AsyncMock,
+        with (
+            patch.object(
+                service._mention_repo,
+                "bulk_create_with_conflict_skip",
+                new_callable=AsyncMock,
+            ) as mock_bulk,
+            patch.object(
+                service._mention_repo,
+                "update_entity_counters",
+                new_callable=AsyncMock,
+            ),
+            patch.object(
+                service._mention_repo,
+                "update_alias_counters",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_bulk.return_value = 1
             result = await service.scan_metadata(
@@ -765,18 +809,22 @@ class TestScanMetadataDescription:
 
         service = EntityMentionScanService(factory)
 
-        with patch.object(
-            service._mention_repo,
-            "bulk_create_with_conflict_skip",
-            new_callable=AsyncMock,
-        ) as mock_bulk, patch.object(
-            service._mention_repo,
-            "update_entity_counters",
-            new_callable=AsyncMock,
-        ), patch.object(
-            service._mention_repo,
-            "update_alias_counters",
-            new_callable=AsyncMock,
+        with (
+            patch.object(
+                service._mention_repo,
+                "bulk_create_with_conflict_skip",
+                new_callable=AsyncMock,
+            ) as mock_bulk,
+            patch.object(
+                service._mention_repo,
+                "update_entity_counters",
+                new_callable=AsyncMock,
+            ),
+            patch.object(
+                service._mention_repo,
+                "update_alias_counters",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_bulk.return_value = 2
             result = await service.scan_metadata(
@@ -813,18 +861,22 @@ class TestScanMetadataDescription:
 
         service = EntityMentionScanService(factory)
 
-        with patch.object(
-            service._mention_repo,
-            "bulk_create_with_conflict_skip",
-            new_callable=AsyncMock,
-        ) as mock_bulk, patch.object(
-            service._mention_repo,
-            "update_entity_counters",
-            new_callable=AsyncMock,
-        ), patch.object(
-            service._mention_repo,
-            "update_alias_counters",
-            new_callable=AsyncMock,
+        with (
+            patch.object(
+                service._mention_repo,
+                "bulk_create_with_conflict_skip",
+                new_callable=AsyncMock,
+            ) as mock_bulk,
+            patch.object(
+                service._mention_repo,
+                "update_entity_counters",
+                new_callable=AsyncMock,
+            ),
+            patch.object(
+                service._mention_repo,
+                "update_alias_counters",
+                new_callable=AsyncMock,
+            ),
         ):
             result = await service.scan_metadata(
                 sources=["description"],
@@ -861,18 +913,22 @@ class TestScanMetadataCombined:
 
         service = EntityMentionScanService(factory)
 
-        with patch.object(
-            service._mention_repo,
-            "bulk_create_with_conflict_skip",
-            new_callable=AsyncMock,
-        ) as mock_bulk, patch.object(
-            service._mention_repo,
-            "update_entity_counters",
-            new_callable=AsyncMock,
-        ), patch.object(
-            service._mention_repo,
-            "update_alias_counters",
-            new_callable=AsyncMock,
+        with (
+            patch.object(
+                service._mention_repo,
+                "bulk_create_with_conflict_skip",
+                new_callable=AsyncMock,
+            ) as mock_bulk,
+            patch.object(
+                service._mention_repo,
+                "update_entity_counters",
+                new_callable=AsyncMock,
+            ),
+            patch.object(
+                service._mention_repo,
+                "update_alias_counters",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_bulk.return_value = 2
             result = await service.scan_metadata(

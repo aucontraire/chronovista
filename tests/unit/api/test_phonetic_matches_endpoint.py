@@ -185,9 +185,7 @@ class TestGetPhoneticMatches:
         client: AsyncClient,
     ) -> None:
         """threshold=-0.1 returns 422."""
-        response = await client.get(
-            self._url(), params={"threshold": -0.1}
-        )
+        response = await client.get(self._url(), params={"threshold": -0.1})
         assert response.status_code == 422
 
     async def test_threshold_above_maximum(
@@ -195,9 +193,7 @@ class TestGetPhoneticMatches:
         client: AsyncClient,
     ) -> None:
         """threshold=1.5 returns 422."""
-        response = await client.get(
-            self._url(), params={"threshold": 1.5}
-        )
+        response = await client.get(self._url(), params={"threshold": 1.5})
         assert response.status_code == 422
 
     @patch(

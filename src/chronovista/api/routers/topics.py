@@ -93,11 +93,7 @@ async def list_topics(
     total = total_result.scalar() or 0
 
     # Apply ordering (video_count DESC per spec) and pagination
-    query = (
-        query.order_by(video_count_subq.desc())
-        .offset(offset)
-        .limit(limit)
-    )
+    query = query.order_by(video_count_subq.desc()).offset(offset).limit(limit)
 
     # Execute query
     result = await session.execute(query)
@@ -126,7 +122,9 @@ async def list_topics(
     return TopicListResponse(data=items, pagination=pagination)
 
 
-@router.get("/topics/hierarchy", response_model=TopicHierarchyResponse, responses=LIST_ERRORS)
+@router.get(
+    "/topics/hierarchy", response_model=TopicHierarchyResponse, responses=LIST_ERRORS
+)
 async def get_topic_hierarchy(
     session: AsyncSession = Depends(get_db),
     min_video_count: int = Query(
@@ -250,7 +248,11 @@ async def get_topic_hierarchy(
 
 # IMPORTANT: This endpoint MUST be defined before the detail endpoint below
 # because /topics/{topic_id:path} would otherwise greedily match this URL pattern.
-@router.get("/topics/{topic_id}/videos", response_model=VideoListResponse, responses=GET_ITEM_ERRORS)
+@router.get(
+    "/topics/{topic_id}/videos",
+    response_model=VideoListResponse,
+    responses=GET_ITEM_ERRORS,
+)
 async def get_topic_videos(
     topic_id: str = Path(
         ...,
@@ -329,7 +331,9 @@ async def get_topic_videos(
     )
     # Apply availability filter unless include_unavailable is True
     if not include_unavailable:
-        count_query = count_query.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
+        count_query = count_query.where(
+            Video.availability_status == AvailabilityStatus.AVAILABLE
+        )
     total_result = await session.execute(count_query)
     total = total_result.scalar() or 0
 
@@ -347,9 +351,7 @@ async def get_topic_videos(
         transcripts = list(video.transcripts) if video.transcripts else []
         transcript_count = len(transcripts)
         languages = list({t.language_code for t in transcripts})
-        has_manual = any(
-            t.is_cc or t.transcript_type == "MANUAL" for t in transcripts
-        )
+        has_manual = any(t.is_cc or t.transcript_type == "MANUAL" for t in transcripts)
 
         from chronovista.api.schemas.videos import TranscriptSummary
 
@@ -412,7 +414,9 @@ async def get_topic_videos(
                     "examples": {
                         "topic_detail": {
                             "summary": "Topic detail response",
-                            "value": {"data": {"topic_id": "/m/098wr", "name": "Society"}},
+                            "value": {
+                                "data": {"topic_id": "/m/098wr", "name": "Society"}
+                            },
                         },
                         "topic_videos": {
                             "summary": "Topic videos response (when path ends with /videos)",

@@ -655,7 +655,6 @@ class TestUserVideoFromAPI:
                 assert total_likes >= 0
                 assert total_bookmarks >= 0
 
-
                 # Clean up all test data - proper cleanup from lessons learned
                 await session.execute(
                     delete(DBUserVideo).where(DBUserVideo.user_id == test_user_id)

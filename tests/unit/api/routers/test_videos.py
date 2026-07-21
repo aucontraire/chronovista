@@ -127,9 +127,7 @@ class TestVideoSortFieldEnum:
 class TestDefaultSort:
     """Tests for default sort behavior (upload_date desc)."""
 
-    async def test_default_sort_returns_200(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_default_sort_returns_200(self, async_client: AsyncClient) -> None:
         """Default request (no sort params) should return 200."""
         response = await async_client.get("/api/v1/videos")
         assert response.status_code == 200
@@ -152,67 +150,49 @@ class TestDefaultSort:
 class TestSortFieldParams:
     """Tests for sort_by and sort_order query parameters."""
 
-    async def test_sort_by_upload_date_asc(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_sort_by_upload_date_asc(self, async_client: AsyncClient) -> None:
         """sort_by=upload_date&sort_order=asc should return 200."""
         response = await async_client.get(
             "/api/v1/videos?sort_by=upload_date&sort_order=asc"
         )
         assert response.status_code == 200
 
-    async def test_sort_by_upload_date_desc(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_sort_by_upload_date_desc(self, async_client: AsyncClient) -> None:
         """sort_by=upload_date&sort_order=desc should return 200."""
         response = await async_client.get(
             "/api/v1/videos?sort_by=upload_date&sort_order=desc"
         )
         assert response.status_code == 200
 
-    async def test_sort_by_title_asc(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_sort_by_title_asc(self, async_client: AsyncClient) -> None:
         """sort_by=title&sort_order=asc should return 200."""
-        response = await async_client.get(
-            "/api/v1/videos?sort_by=title&sort_order=asc"
-        )
+        response = await async_client.get("/api/v1/videos?sort_by=title&sort_order=asc")
         assert response.status_code == 200
 
-    async def test_sort_by_title_desc(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_sort_by_title_desc(self, async_client: AsyncClient) -> None:
         """sort_by=title&sort_order=desc should return 200."""
         response = await async_client.get(
             "/api/v1/videos?sort_by=title&sort_order=desc"
         )
         assert response.status_code == 200
 
-    async def test_invalid_sort_by_returns_422(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_invalid_sort_by_returns_422(self, async_client: AsyncClient) -> None:
         """Invalid sort_by value should return 422 validation error."""
-        response = await async_client.get(
-            "/api/v1/videos?sort_by=invalid_field"
-        )
+        response = await async_client.get("/api/v1/videos?sort_by=invalid_field")
         assert response.status_code == 422
 
     async def test_invalid_sort_order_returns_422(
         self, async_client: AsyncClient
     ) -> None:
         """Invalid sort_order value should return 422 validation error."""
-        response = await async_client.get(
-            "/api/v1/videos?sort_order=invalid"
-        )
+        response = await async_client.get("/api/v1/videos?sort_order=invalid")
         assert response.status_code == 422
 
     async def test_sort_by_date_added_returns_422(
         self, async_client: AsyncClient
     ) -> None:
         """sort_by=date_added is NOT a valid field (maps to upload_date on frontend only)."""
-        response = await async_client.get(
-            "/api/v1/videos?sort_by=date_added"
-        )
+        response = await async_client.get("/api/v1/videos?sort_by=date_added")
         assert response.status_code == 422
 
 
@@ -224,9 +204,7 @@ class TestSortFieldParams:
 class TestLikedOnlyFilter:
     """Tests for liked_only query parameter."""
 
-    async def test_liked_only_true_returns_200(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_liked_only_true_returns_200(self, async_client: AsyncClient) -> None:
         """liked_only=true should return 200."""
         response = await async_client.get("/api/v1/videos?liked_only=true")
         assert response.status_code == 200
@@ -254,9 +232,7 @@ class TestLikedOnlyFilter:
 class TestCombinedFilters:
     """Tests for combining sort/liked with existing filter parameters."""
 
-    async def test_liked_with_has_transcript(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_liked_with_has_transcript(self, async_client: AsyncClient) -> None:
         """liked_only + has_transcript should both be accepted."""
         response = await async_client.get(
             "/api/v1/videos?liked_only=true&has_transcript=true"
@@ -272,27 +248,19 @@ class TestCombinedFilters:
         )
         assert response.status_code == 200
 
-    async def test_liked_with_tag_filter(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_liked_with_tag_filter(self, async_client: AsyncClient) -> None:
         """liked_only + tag filter should both be accepted."""
-        response = await async_client.get(
-            "/api/v1/videos?liked_only=true&tag=music"
-        )
+        response = await async_client.get("/api/v1/videos?liked_only=true&tag=music")
         assert response.status_code == 200
 
-    async def test_sort_with_existing_filters(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_sort_with_existing_filters(self, async_client: AsyncClient) -> None:
         """sort_by + sort_order with existing classification filters."""
         response = await async_client.get(
             "/api/v1/videos?sort_by=title&sort_order=asc&tag=music&category=10"
         )
         assert response.status_code == 200
 
-    async def test_all_filters_combined(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_all_filters_combined(self, async_client: AsyncClient) -> None:
         """All filter types combined should return 200."""
         response = await async_client.get(
             "/api/v1/videos"
@@ -304,18 +272,14 @@ class TestCombinedFilters:
         )
         assert response.status_code == 200
 
-    async def test_sort_with_pagination(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_sort_with_pagination(self, async_client: AsyncClient) -> None:
         """Sort params should work with pagination params."""
         response = await async_client.get(
             "/api/v1/videos?sort_by=title&sort_order=desc&limit=10&offset=5"
         )
         assert response.status_code == 200
 
-    async def test_liked_with_channel_filter(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_liked_with_channel_filter(self, async_client: AsyncClient) -> None:
         """liked_only + channel_id should both be accepted."""
         response = await async_client.get(
             "/api/v1/videos?liked_only=true&channel_id=UCtest_channel_123456789"

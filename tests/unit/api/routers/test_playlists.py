@@ -188,9 +188,7 @@ class TestPlaylistVideoSort:
         """Test invalid sort_by value returns 422 validation error."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                f"{ENDPOINT}?sort_by=invalid_field"
-            )
+            response = await async_client.get(f"{ENDPOINT}?sort_by=invalid_field")
             assert response.status_code == 422
 
     async def test_invalid_sort_order_returns_422(
@@ -199,9 +197,7 @@ class TestPlaylistVideoSort:
         """Test invalid sort_order value returns 422 validation error."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                f"{ENDPOINT}?sort_order=invalid"
-            )
+            response = await async_client.get(f"{ENDPOINT}?sort_order=invalid")
             assert response.status_code == 422
 
 
@@ -213,15 +209,11 @@ class TestPlaylistVideoSort:
 class TestPlaylistVideoFilters:
     """Tests for GET /api/v1/playlists/{playlist_id}/videos filter parameters."""
 
-    async def test_liked_only_filter_accepted(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_liked_only_filter_accepted(self, async_client: AsyncClient) -> None:
         """Test liked_only=true filter is accepted and returns 200."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                f"{ENDPOINT}?liked_only=true"
-            )
+            response = await async_client.get(f"{ENDPOINT}?liked_only=true")
             assert response.status_code == 200
 
     async def test_has_transcript_filter_accepted(
@@ -230,9 +222,7 @@ class TestPlaylistVideoFilters:
         """Test has_transcript=true filter is accepted and returns 200."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                f"{ENDPOINT}?has_transcript=true"
-            )
+            response = await async_client.get(f"{ENDPOINT}?has_transcript=true")
             assert response.status_code == 200
 
     async def test_unavailable_only_filter_accepted(
@@ -241,14 +231,10 @@ class TestPlaylistVideoFilters:
         """Test unavailable_only=true filter is accepted and returns 200."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                f"{ENDPOINT}?unavailable_only=true"
-            )
+            response = await async_client.get(f"{ENDPOINT}?unavailable_only=true")
             assert response.status_code == 200
 
-    async def test_combined_filters_accepted(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_combined_filters_accepted(self, async_client: AsyncClient) -> None:
         """Test multiple filters combined are accepted (AND logic)."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
@@ -257,9 +243,7 @@ class TestPlaylistVideoFilters:
             )
             assert response.status_code == 200
 
-    async def test_filters_with_sort_accepted(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_filters_with_sort_accepted(self, async_client: AsyncClient) -> None:
         """Test filters combined with sort parameters are accepted."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
@@ -269,18 +253,14 @@ class TestPlaylistVideoFilters:
             )
             assert response.status_code == 200
 
-    async def test_filters_default_to_false(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_filters_default_to_false(self, async_client: AsyncClient) -> None:
         """Test that filters default to false (no filtering applied)."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
             response = await async_client.get(ENDPOINT)
             assert response.status_code == 200
 
-    async def test_empty_result_with_filters(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_empty_result_with_filters(self, async_client: AsyncClient) -> None:
         """Test that filters can result in empty data list with total=0."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True

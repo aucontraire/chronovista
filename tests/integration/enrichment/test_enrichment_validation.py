@@ -803,8 +803,7 @@ class TestErrorMessagesUserFriendly:
         assert "Invalid priority" in result.output
         # Should suggest valid options
         assert any(
-            opt in result.output.lower()
-            for opt in ["high", "medium", "low", "all"]
+            opt in result.output.lower() for opt in ["high", "medium", "low", "all"]
         )
 
     def test_invalid_priority_suggests_valid_options(self) -> None:

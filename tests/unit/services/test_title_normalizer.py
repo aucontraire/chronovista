@@ -323,7 +323,9 @@ class TestEdgeCases:
 
     def test_real_world_example_conan_obrien(self) -> None:
         """Real-world example: Conan O'Brien playlist from investigation."""
-        result = compare_titles("Conan O_Brien_s Best Moments", "Conan O'Brien's Best Moments")
+        result = compare_titles(
+            "Conan O_Brien_s Best Moments", "Conan O'Brien's Best Moments"
+        )
         assert result.is_match is True
         assert result.matching_strategy == "normalized"
         assert result.confidence >= 0.90

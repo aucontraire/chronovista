@@ -195,12 +195,8 @@ def _create_batch_correction_service() -> BatchCorrectionService:
 
 @correction_app.command("find-replace")
 def find_replace(
-    pattern: str = typer.Option(
-        ..., "--pattern", help="Text pattern to find"
-    ),
-    replacement: str = typer.Option(
-        ..., "--replacement", help="Replacement text"
-    ),
+    pattern: str = typer.Option(..., "--pattern", help="Text pattern to find"),
+    replacement: str = typer.Option(..., "--replacement", help="Replacement text"),
     regex: bool = typer.Option(
         False, "--regex", help="Treat pattern as a regular expression"
     ),
@@ -210,9 +206,7 @@ def find_replace(
     language: str | None = typer.Option(
         None, "--language", help="Filter by language code"
     ),
-    channel: str | None = typer.Option(
-        None, "--channel", help="Filter by channel ID"
-    ),
+    channel: str | None = typer.Option(None, "--channel", help="Filter by channel ID"),
     video_id: list[str] | None = typer.Option(
         None, "--video-id", help="Filter by video ID (repeatable)"
     ),
@@ -222,18 +216,10 @@ def find_replace(
     correction_note: str | None = typer.Option(
         None, "--correction-note", help="Note for audit records"
     ),
-    batch_size: int = typer.Option(
-        100, "--batch-size", help="Transaction batch size"
-    ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", help="Preview without writing"
-    ),
-    yes: bool = typer.Option(
-        False, "--yes", "-y", help="Skip confirmation prompt"
-    ),
-    limit: int = typer.Option(
-        50, "--limit", help="Max preview rows in dry-run mode"
-    ),
+    batch_size: int = typer.Option(100, "--batch-size", help="Transaction batch size"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+    limit: int = typer.Option(50, "--limit", help="Max preview rows in dry-run mode"),
     cross_segment: bool = typer.Option(
         False, "--cross-segment", help="Enable matching across adjacent segment pairs"
     ),
@@ -293,9 +279,7 @@ def find_replace(
                 assert isinstance(previews, list)
 
                 if not previews:
-                    console.print(
-                        "[yellow]No segments matched the pattern.[/yellow]"
-                    )
+                    console.print("[yellow]No segments matched the pattern.[/yellow]")
                     raise typer.Exit(code=0)
 
                 # Build Rich preview table
@@ -326,7 +310,9 @@ def find_replace(
                     pair_indices: set[int] = set()
                     for idx in range(len(previews) - 1):
                         curr_vid, curr_seg, _, curr_text, curr_proposed = previews[idx]
-                        next_vid, next_seg, _, next_text, next_proposed = previews[idx + 1]
+                        next_vid, next_seg, _, next_text, next_proposed = previews[
+                            idx + 1
+                        ]
                         if curr_vid == next_vid and next_seg == curr_seg + 1:
                             pair_indices.add(idx)
                             pair_indices.add(idx + 1)
@@ -337,14 +323,24 @@ def find_replace(
                         vid, seg_id, start, current, proposed = row
                         if idx in pair_indices:
                             # Determine if first or second in pair
-                            is_first = idx not in {j + 1 for j in pair_indices if j < idx and j in pair_indices}
-                            pair_marker = "\u2576\u2500\u2510" if is_first else "\u2576\u2500\u2518"
+                            is_first = idx not in {
+                                j + 1
+                                for j in pair_indices
+                                if j < idx and j in pair_indices
+                            }
+                            pair_marker = (
+                                "\u2576\u2500\u2510"
+                                if is_first
+                                else "\u2576\u2500\u2518"
+                            )
                             # Tail truncation for first; head truncation for second
                             if is_first:
                                 current_display = _truncate_end(current, max_len=80)
                             else:
                                 current_display = (
-                                    "..." + current[-(80 - 3):] if len(current) > 80 else current
+                                    "..." + current[-(80 - 3) :]
+                                    if len(current) > 80
+                                    else current
                                 )
                             proposed_display = _truncate_end(proposed, max_len=80)
                         else:
@@ -428,9 +424,7 @@ def find_replace(
             total_matches = len(previews_for_count)
 
             if total_matches == 0:
-                console.print(
-                    "[yellow]No segments matched the pattern.[/yellow]"
-                )
+                console.print("[yellow]No segments matched the pattern.[/yellow]")
                 raise typer.Exit(code=0)
 
             unique_videos = len({r[0] for r in previews_for_count})
@@ -439,8 +433,14 @@ def find_replace(
             cross_pair_count = 0
             if cross_segment:
                 for idx in range(len(previews_for_count) - 1):
-                    curr_vid, curr_seg = previews_for_count[idx][0], previews_for_count[idx][1]
-                    next_vid, next_seg = previews_for_count[idx + 1][0], previews_for_count[idx + 1][1]
+                    curr_vid, curr_seg = (
+                        previews_for_count[idx][0],
+                        previews_for_count[idx][1],
+                    )
+                    next_vid, next_seg = (
+                        previews_for_count[idx + 1][0],
+                        previews_for_count[idx + 1][1],
+                    )
                     if curr_vid == next_vid and next_seg == curr_seg + 1:
                         cross_pair_count += 1
 
@@ -458,9 +458,7 @@ def find_replace(
             if cross_segment:
                 filters.append("cross-segment=enabled")
             if filters:
-                console.print(
-                    f"[bold]Filters:[/bold]      {', '.join(filters)}"
-                )
+                console.print(f"[bold]Filters:[/bold]      {', '.join(filters)}")
             console.print()
 
             if not yes:
@@ -488,9 +486,7 @@ def find_replace(
                 TaskProgressColumn(),
                 console=console,
             ) as progress:
-                task = progress.add_task(
-                    "Applying corrections...", total=total_matches
-                )
+                task = progress.add_task("Applying corrections...", total=total_matches)
 
                 def _advance(n: int, _task: TaskID = task) -> None:
                     progress.advance(_task, advance=n)
@@ -523,27 +519,15 @@ def find_replace(
             summary_table.add_column("Metric", style="cyan")
             summary_table.add_column("Count", style="green")
 
-            summary_table.add_row(
-                "Segments scanned", f"{result.total_scanned:,}"
-            )
-            summary_table.add_row(
-                "Matches found", f"{result.total_matched:,}"
-            )
-            summary_table.add_row(
-                "Corrections applied", f"{result.total_applied:,}"
-            )
-            summary_table.add_row(
-                "Skipped (no-op)", f"{result.total_skipped:,}"
-            )
+            summary_table.add_row("Segments scanned", f"{result.total_scanned:,}")
+            summary_table.add_row("Matches found", f"{result.total_matched:,}")
+            summary_table.add_row("Corrections applied", f"{result.total_applied:,}")
+            summary_table.add_row("Skipped (no-op)", f"{result.total_skipped:,}")
             summary_table.add_row("Failed", f"{result.total_failed:,}")
-            summary_table.add_row(
-                "Unique videos", f"{result.unique_videos:,}"
-            )
+            summary_table.add_row("Unique videos", f"{result.unique_videos:,}")
 
             if result.failed_batches > 0:
-                summary_table.add_row(
-                    "Failed batches", f"{result.failed_batches:,}"
-                )
+                summary_table.add_row("Failed batches", f"{result.failed_batches:,}")
 
             console.print(summary_table)
 
@@ -600,9 +584,7 @@ def rebuild_text(
     language: str | None = typer.Option(
         None, "--language", help="Filter by language code"
     ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", help="Preview without writing"
-    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing"),
 ) -> None:
     """Rebuild full transcript text from corrected segments."""
     service = _create_batch_correction_service()
@@ -661,9 +643,7 @@ def rebuild_text(
             total = len(previews_for_count)
 
             if total == 0:
-                console.print(
-                    "[yellow]No transcripts with corrections found.[/yellow]"
-                )
+                console.print("[yellow]No transcripts with corrections found.[/yellow]")
                 raise typer.Exit(code=0)
 
             with Progress(
@@ -673,9 +653,7 @@ def rebuild_text(
                 TaskProgressColumn(),
                 console=console,
             ) as progress:
-                task = progress.add_task(
-                    "Rebuilding transcripts...", total=total
-                )
+                task = progress.add_task("Rebuilding transcripts...", total=total)
 
                 def _advance(n: int, _task: TaskID = task) -> None:
                     progress.advance(_task, advance=n)
@@ -706,9 +684,7 @@ def rebuild_text(
 
 @correction_app.command("export")
 def export_corrections(
-    format: str = typer.Option(
-        ..., "--format", help="Output format: csv or json"
-    ),
+    format: str = typer.Option(..., "--format", help="Output format: csv or json"),
     output: str | None = typer.Option(
         None, "--output", help="Output file path (stdout if omitted)"
     ),
@@ -731,9 +707,7 @@ def export_corrections(
     """Export correction audit records as CSV or JSON."""
     # Validate format
     if format not in ("csv", "json"):
-        console.print(
-            f"[red]Invalid format '{format}'. Must be 'csv' or 'json'.[/red]"
-        )
+        console.print(f"[red]Invalid format '{format}'. Must be 'csv' or 'json'.[/red]")
         raise typer.Exit(code=1)
 
     # Parse correction_type if provided
@@ -763,9 +737,7 @@ def export_corrections(
 
     # Validate since < until
     if since_dt is not None and until_dt is not None and since_dt >= until_dt:
-        console.print(
-            "[red]--since must be earlier than --until.[/red]"
-        )
+        console.print("[red]--since must be earlier than --until.[/red]")
         raise typer.Exit(code=1)
 
     service = _create_batch_correction_service()
@@ -813,9 +785,7 @@ def stats(
     language: str | None = typer.Option(
         None, "--language", help="Filter by language code"
     ),
-    top: int = typer.Option(
-        10, "--top", help="Number of top videos to display"
-    ),
+    top: int = typer.Option(10, "--top", help="Number of top videos to display"),
 ) -> None:
     """Display aggregate correction statistics."""
     service = _create_batch_correction_service()
@@ -854,9 +824,7 @@ def stats(
                 type_table.add_column("Count", style="green")
 
                 for entry in result.by_type:
-                    type_table.add_row(
-                        entry.correction_type, f"{entry.count:,}"
-                    )
+                    type_table.add_row(entry.correction_type, f"{entry.count:,}")
 
                 console.print(type_table)
 
@@ -893,9 +861,7 @@ def patterns(
     min_occurrences: int = typer.Option(
         2, "--min-occurrences", help="Minimum occurrences to include"
     ),
-    limit: int = typer.Option(
-        25, "--limit", help="Maximum patterns to return"
-    ),
+    limit: int = typer.Option(25, "--limit", help="Maximum patterns to return"),
     show_completed: bool = typer.Option(
         False, "--show-completed", help="Include patterns with zero remaining matches"
     ),
@@ -913,9 +879,7 @@ def patterns(
             )
 
             if not result:
-                console.print(
-                    "[yellow]No recurring correction patterns found[/yellow]"
-                )
+                console.print("[yellow]No recurring correction patterns found[/yellow]")
                 raise typer.Exit(code=0)
 
             pattern_table = Table(
@@ -978,20 +942,19 @@ def batch_revert(
         None, "--language", help="Filter by language code (pattern mode only)"
     ),
     regex: bool = typer.Option(
-        False, "--regex", help="Treat --pattern as a regular expression (pattern mode only)"
+        False,
+        "--regex",
+        help="Treat --pattern as a regular expression (pattern mode only)",
     ),
     case_insensitive: bool = typer.Option(
-        False, "--case-insensitive", "-i", help="Case-insensitive matching (pattern mode only)"
+        False,
+        "--case-insensitive",
+        "-i",
+        help="Case-insensitive matching (pattern mode only)",
     ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", help="Preview without writing"
-    ),
-    yes: bool = typer.Option(
-        False, "--yes", "-y", help="Skip confirmation prompt"
-    ),
-    batch_size: int = typer.Option(
-        100, "--batch-size", help="Transaction batch size"
-    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+    batch_size: int = typer.Option(100, "--batch-size", help="Transaction batch size"),
 ) -> None:
     """Revert corrections by pattern or by batch ID.
 
@@ -1024,9 +987,7 @@ def batch_revert(
         raise typer.Exit(code=1)
 
     if pattern is None and batch_id_str is None:
-        console.print(
-            "[red]Error:[/red] One of --pattern or --batch-id is required."
-        )
+        console.print("[red]Error:[/red] One of --pattern or --batch-id is required.")
         raise typer.Exit(code=1)
 
     # ---- Resolve batch_id when provided ----
@@ -1221,27 +1182,15 @@ def batch_revert(
             summary_table.add_column("Metric", style="cyan")
             summary_table.add_column("Count", style="green")
 
-            summary_table.add_row(
-                "Segments scanned", f"{result.total_scanned:,}"
-            )
-            summary_table.add_row(
-                "Matches found", f"{result.total_matched:,}"
-            )
-            summary_table.add_row(
-                "Reverted", f"{result.total_applied:,}"
-            )
-            summary_table.add_row(
-                "Skipped", f"{result.total_skipped:,}"
-            )
+            summary_table.add_row("Segments scanned", f"{result.total_scanned:,}")
+            summary_table.add_row("Matches found", f"{result.total_matched:,}")
+            summary_table.add_row("Reverted", f"{result.total_applied:,}")
+            summary_table.add_row("Skipped", f"{result.total_skipped:,}")
             summary_table.add_row("Failed", f"{result.total_failed:,}")
-            summary_table.add_row(
-                "Unique videos", f"{result.unique_videos:,}"
-            )
+            summary_table.add_row("Unique videos", f"{result.unique_videos:,}")
 
             if result.failed_batches > 0:
-                summary_table.add_row(
-                    "Failed batches", f"{result.failed_batches:,}"
-                )
+                summary_table.add_row("Failed batches", f"{result.failed_batches:,}")
 
             console.print(summary_table)
 
@@ -1255,9 +1204,7 @@ def batch_revert(
 
 @correction_app.command("analyze-diffs")
 def analyze_diffs(
-    limit: int = typer.Option(
-        50, "--limit", help="Maximum rows to display"
-    ),
+    limit: int = typer.Option(50, "--limit", help="Maximum rows to display"),
     min_frequency: int = typer.Option(
         1, "--min-frequency", help="Minimum frequency to include"
     ),
@@ -1291,9 +1238,7 @@ def analyze_diffs(
             ]
 
             if not active_corrections:
-                console.print(
-                    "[yellow]No corrections found to analyze[/yellow]"
-                )
+                console.print("[yellow]No corrections found to analyze[/yellow]")
                 raise typer.Exit(code=0)
 
             # Aggregate: (error_token, canonical_form) -> frequency
@@ -1311,9 +1256,7 @@ def analyze_diffs(
                     pair_freq[(error_token, canonical_token)] += 1
 
                     # Try to resolve entity for the canonical token
-                    match = await resolve_entity_id_from_text(
-                        session, canonical_token
-                    )
+                    match = await resolve_entity_id_from_text(session, canonical_token)
                     if match is not None:
                         _, entity_name = match
                         token_entities[error_token].add(entity_name)
@@ -1325,15 +1268,11 @@ def analyze_diffs(
                 raise typer.Exit(code=0)
 
             # Sort by frequency descending
-            sorted_pairs = sorted(
-                pair_freq.items(), key=lambda x: x[1], reverse=True
-            )
+            sorted_pairs = sorted(pair_freq.items(), key=lambda x: x[1], reverse=True)
 
             # Apply min_frequency filter
             sorted_pairs = [
-                (pair, freq)
-                for pair, freq in sorted_pairs
-                if freq >= min_frequency
+                (pair, freq) for pair, freq in sorted_pairs if freq >= min_frequency
             ]
 
             if not sorted_pairs:
@@ -1353,9 +1292,7 @@ def analyze_diffs(
             diff_table.add_column("Error Token", style="red", width=25)
             diff_table.add_column("Canonical Form", style="green", width=25)
             diff_table.add_column("Frequency", style="dim", width=10)
-            diff_table.add_column(
-                "Associated Entities", style="cyan", width=40
-            )
+            diff_table.add_column("Associated Entities", style="cyan", width=40)
 
             for (error_token, canonical_token), freq in display_pairs:
                 entities = token_entities.get(error_token, set())
@@ -1440,9 +1377,7 @@ def detect_boundaries(
             entities = list(result.scalars().all())
 
             if not entities:
-                console.print(
-                    "[yellow]No entities found matching the filter.[/yellow]"
-                )
+                console.print("[yellow]No entities found matching the filter.[/yellow]")
                 raise typer.Exit(code=0)
 
             console.print(
@@ -1566,9 +1501,7 @@ def suggest_cross_segment(
             )
 
             if not candidates:
-                console.print(
-                    "[yellow]No cross-segment candidates found.[/yellow]"
-                )
+                console.print("[yellow]No cross-segment candidates found.[/yellow]")
                 if min_corrections > 2:
                     console.print(
                         f"[dim]Tip: Try lowering --min-corrections "
@@ -1614,9 +1547,7 @@ def suggest_cross_segment(
                 )
 
             # Summary panel
-            partial_count = sum(
-                1 for c in candidates if c.is_partially_corrected
-            )
+            partial_count = sum(1 for c in candidates if c.is_partially_corrected)
             unique_videos = len({c.video_id for c in candidates})
             summary_lines = [
                 f"Total candidates: [bold]{len(candidates):,}[/bold]",

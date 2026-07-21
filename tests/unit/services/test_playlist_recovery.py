@@ -136,8 +136,15 @@ class TestPlaceholderPlaylistDetection:
             return title.startswith(PLAYLIST_PLACEHOLDER_PREFIX)
 
         # Placeholder titles
-        assert is_placeholder_playlist_title("[Placeholder] Playlist PLtest123abc") is True
-        assert is_placeholder_playlist_title("[Placeholder] Playlist PLuAXFkgsw1L7xaCfnd5JJOw") is True
+        assert (
+            is_placeholder_playlist_title("[Placeholder] Playlist PLtest123abc") is True
+        )
+        assert (
+            is_placeholder_playlist_title(
+                "[Placeholder] Playlist PLuAXFkgsw1L7xaCfnd5JJOw"
+            )
+            is True
+        )
 
         # Non-placeholder titles
         assert is_placeholder_playlist_title("My Favorites") is False
@@ -156,7 +163,7 @@ class TestPlaceholderPlaylistDetection:
 
         # Extract ID from placeholder title
         if placeholder_title.startswith(PLAYLIST_PLACEHOLDER_PREFIX):
-            extracted_id = placeholder_title[len(PLAYLIST_PLACEHOLDER_PREFIX):]
+            extracted_id = placeholder_title[len(PLAYLIST_PLACEHOLDER_PREFIX) :]
             assert extracted_id == expected_id
 
     def test_detect_placeholder_vs_real_playlist_names(self) -> None:
@@ -190,9 +197,21 @@ class TestPlaylistUpdateFromHistoricalData:
             name="My Favorites",
             file_path=Path("/tmp/historical-takeout/playlists/my-favorites-videos.csv"),
             videos=[
-                TakeoutPlaylistItem(video_id="video1", creation_timestamp=None, raw_timestamp="2023-06-15T10:00:00+00:00"),
-                TakeoutPlaylistItem(video_id="video2", creation_timestamp=None, raw_timestamp="2023-06-16T11:00:00+00:00"),
-                TakeoutPlaylistItem(video_id="video3", creation_timestamp=None, raw_timestamp="2023-06-17T12:00:00+00:00"),
+                TakeoutPlaylistItem(
+                    video_id="video1",
+                    creation_timestamp=None,
+                    raw_timestamp="2023-06-15T10:00:00+00:00",
+                ),
+                TakeoutPlaylistItem(
+                    video_id="video2",
+                    creation_timestamp=None,
+                    raw_timestamp="2023-06-16T11:00:00+00:00",
+                ),
+                TakeoutPlaylistItem(
+                    video_id="video3",
+                    creation_timestamp=None,
+                    raw_timestamp="2023-06-17T12:00:00+00:00",
+                ),
             ],
             video_count=0,
         )
@@ -202,8 +221,16 @@ class TestPlaylistUpdateFromHistoricalData:
             name="My Favorites",
             file_path=Path("/tmp/current-takeout/playlists/my-favorites-videos.csv"),
             videos=[
-                TakeoutPlaylistItem(video_id="video1", creation_timestamp=None, raw_timestamp="2023-06-15T10:00:00+00:00"),
-                TakeoutPlaylistItem(video_id="video4", creation_timestamp=None, raw_timestamp="2024-01-01T09:00:00+00:00"),
+                TakeoutPlaylistItem(
+                    video_id="video1",
+                    creation_timestamp=None,
+                    raw_timestamp="2023-06-15T10:00:00+00:00",
+                ),
+                TakeoutPlaylistItem(
+                    video_id="video4",
+                    creation_timestamp=None,
+                    raw_timestamp="2024-01-01T09:00:00+00:00",
+                ),
             ],
             video_count=0,
         )
@@ -309,7 +336,9 @@ class TestMissingPlaylistFilesHandling:
         import csv
         from unittest.mock import mock_open
 
-        corrupted_csv_content = "Video ID,Playlist Video Creation Timestamp\n\"unclosed quote"
+        corrupted_csv_content = (
+            'Video ID,Playlist Video Creation Timestamp\n"unclosed quote'
+        )
 
         with patch("builtins.open", mock_open(read_data=corrupted_csv_content)):
             # Attempting to parse corrupted CSV should be handled gracefully
@@ -361,15 +390,29 @@ class TestPlaylistRecoveryIntegration:
         """Test the complete playlist recovery workflow from takeout."""
         # Step 1: Discover historical takeouts
         historical_takeouts: list[dict[str, Any]] = [
-            {"path": Path("/takeouts/2022-01-01"), "date": datetime(2022, 1, 1, tzinfo=UTC)},
-            {"path": Path("/takeouts/2023-06-15"), "date": datetime(2023, 6, 15, tzinfo=UTC)},
-            {"path": Path("/takeouts/2024-01-01"), "date": datetime(2024, 1, 1, tzinfo=UTC)},
+            {
+                "path": Path("/takeouts/2022-01-01"),
+                "date": datetime(2022, 1, 1, tzinfo=UTC),
+            },
+            {
+                "path": Path("/takeouts/2023-06-15"),
+                "date": datetime(2023, 6, 15, tzinfo=UTC),
+            },
+            {
+                "path": Path("/takeouts/2024-01-01"),
+                "date": datetime(2024, 1, 1, tzinfo=UTC),
+            },
         ]
 
         # Step 2: Parse playlists from each takeout (oldest first)
         all_playlists: dict[str, dict[str, Any]] = {}
 
-        for takeout in sorted(historical_takeouts, key=lambda x: x["date"] if isinstance(x["date"], datetime) else datetime.min):
+        for takeout in sorted(
+            historical_takeouts,
+            key=lambda x: (
+                x["date"] if isinstance(x["date"], datetime) else datetime.min
+            ),
+        ):
             # Simulated parsing
             takeout_date = takeout["date"]
             assert isinstance(takeout_date, datetime), "Expected datetime object"
@@ -397,7 +440,9 @@ class TestPlaylistRecoveryIntegration:
         playlist3_videos = ["video1", "video4", "video5"]
 
         # Aggregate all unique videos
-        all_videos = set(playlist1_videos) | set(playlist2_videos) | set(playlist3_videos)
+        all_videos = (
+            set(playlist1_videos) | set(playlist2_videos) | set(playlist3_videos)
+        )
 
         assert len(all_videos) == 5
         assert all_videos == {"video1", "video2", "video3", "video4", "video5"}
@@ -417,10 +462,20 @@ class TestPlaylistRecoveryIntegration:
         # Historical takeout has actual metadata
         recovered_playlist = TakeoutPlaylist(
             name="My Awesome Music Collection",
-            file_path=Path("/tmp/takeout/playlists/my-awesome-music-collection-videos.csv"),
+            file_path=Path(
+                "/tmp/takeout/playlists/my-awesome-music-collection-videos.csv"
+            ),
             videos=[
-                TakeoutPlaylistItem(video_id="song1", creation_timestamp=None, raw_timestamp="2023-01-01T00:00:00+00:00"),
-                TakeoutPlaylistItem(video_id="song2", creation_timestamp=None, raw_timestamp="2023-01-02T00:00:00+00:00"),
+                TakeoutPlaylistItem(
+                    video_id="song1",
+                    creation_timestamp=None,
+                    raw_timestamp="2023-01-01T00:00:00+00:00",
+                ),
+                TakeoutPlaylistItem(
+                    video_id="song2",
+                    creation_timestamp=None,
+                    raw_timestamp="2023-01-02T00:00:00+00:00",
+                ),
             ],
             video_count=0,
         )

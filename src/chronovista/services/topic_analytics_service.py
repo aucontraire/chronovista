@@ -1511,9 +1511,7 @@ class TopicAnalyticsService:
                     if row.recent_videos > 0
                     else Decimal("0")
                 )
-                confidence = min(
-                    Decimal("1.0"), like_rate + (growth_rate / 200)
-                )
+                confidence = min(Decimal("1.0"), like_rate + (growth_rate / 200))
 
                 insight = TopicInsight(
                     topic_id=row.topic_id,

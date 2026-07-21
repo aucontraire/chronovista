@@ -43,7 +43,9 @@ from chronovista.exceptions import (
 # =============================================================================
 
 
-def create_mock_request(path: str = "/api/v1/test", request_id: str = "test-request-id-123") -> Mock:
+def create_mock_request(
+    path: str = "/api/v1/test", request_id: str = "test-request-id-123"
+) -> Mock:
     """Create a mock Request object with standard attributes.
 
     Parameters
@@ -91,12 +93,14 @@ def assert_rfc7807_structure(response_data: dict[str, Any]) -> None:
     assert "request_id" in response_data, "Missing 'request_id' field"
 
     # Type URI should follow pattern
-    assert response_data["type"].startswith("https://api.chronovista.com/errors/"), \
-        f"Invalid type URI: {response_data['type']}"
+    assert response_data["type"].startswith(
+        "https://api.chronovista.com/errors/"
+    ), f"Invalid type URI: {response_data['type']}"
 
     # Status should be valid HTTP error code
-    assert 400 <= response_data["status"] <= 599, \
-        f"Invalid status code: {response_data['status']}"
+    assert (
+        400 <= response_data["status"] <= 599
+    ), f"Invalid status code: {response_data['status']}"
 
 
 # =============================================================================
@@ -120,6 +124,7 @@ class TestNotFoundErrorRFC7807:
         assert response.status_code == 404
         data = response.body.decode()
         import json
+
         response_data = json.loads(data)
 
         # Verify RFC 7807 structure
@@ -145,6 +150,7 @@ class TestNotFoundErrorRFC7807:
 
         response = await api_error_handler(request, exc)
         import json
+
         response_data = json.loads(response.body.decode())
 
         assert "Channel" in response_data["detail"]
@@ -172,6 +178,7 @@ class TestBadRequestErrorRFC7807:
 
         assert response.status_code == 400
         import json
+
         response_data = json.loads(response.body.decode())
 
         # Verify RFC 7807 structure
@@ -195,9 +202,13 @@ class TestBadRequestErrorRFC7807:
 
         response = await api_error_handler(request, exc)
         import json
+
         response_data = json.loads(response.body.decode())
 
-        assert response_data["type"] == "https://api.chronovista.com/errors/MUTUALLY_EXCLUSIVE"
+        assert (
+            response_data["type"]
+            == "https://api.chronovista.com/errors/MUTUALLY_EXCLUSIVE"
+        )
         assert response_data["title"] == "Mutually Exclusive Parameters"
         assert response_data["code"] == "MUTUALLY_EXCLUSIVE"
 
@@ -230,13 +241,17 @@ class TestValidationErrorRFC7807:
 
             assert response.status_code == 422
             import json
+
             response_data = json.loads(response.body.decode())
 
             # Verify RFC 7807 structure
             assert_rfc7807_structure(response_data)
 
             # Verify specific fields
-            assert response_data["type"] == "https://api.chronovista.com/errors/VALIDATION_ERROR"
+            assert (
+                response_data["type"]
+                == "https://api.chronovista.com/errors/VALIDATION_ERROR"
+            )
             assert response_data["title"] == "Validation Error"
             assert response_data["status"] == 422
             assert response_data["code"] == "VALIDATION_ERROR"
@@ -266,6 +281,7 @@ class TestValidationErrorRFC7807:
             response = await validation_error_handler(request, validation_error)
 
             import json
+
             response_data = json.loads(response.body.decode())
 
             # Find the email error
@@ -290,13 +306,17 @@ class TestAuthenticationErrorRFC7807:
 
         assert response.status_code == 401
         import json
+
         response_data = json.loads(response.body.decode())
 
         # Verify RFC 7807 structure
         assert_rfc7807_structure(response_data)
 
         # Verify specific fields
-        assert response_data["type"] == "https://api.chronovista.com/errors/NOT_AUTHENTICATED"
+        assert (
+            response_data["type"]
+            == "https://api.chronovista.com/errors/NOT_AUTHENTICATED"
+        )
         assert response_data["title"] == "Authentication Required"
         assert response_data["status"] == 401
         assert response_data["detail"] == "Invalid or expired token"
@@ -336,13 +356,16 @@ class TestAuthorizationErrorRFC7807:
 
         assert response.status_code == 403
         import json
+
         response_data = json.loads(response.body.decode())
 
         # Verify RFC 7807 structure
         assert_rfc7807_structure(response_data)
 
         # Verify specific fields
-        assert response_data["type"] == "https://api.chronovista.com/errors/NOT_AUTHORIZED"
+        assert (
+            response_data["type"] == "https://api.chronovista.com/errors/NOT_AUTHORIZED"
+        )
         assert response_data["title"] == "Access Denied"
         assert response_data["status"] == 403
         assert response_data["detail"] == "Insufficient permissions for this operation"
@@ -369,6 +392,7 @@ class TestConflictErrorRFC7807:
 
         assert response.status_code == 409
         import json
+
         response_data = json.loads(response.body.decode())
 
         # Verify RFC 7807 structure
@@ -402,13 +426,16 @@ class TestRateLimitErrorRFC7807:
 
         assert response.status_code == 429
         import json
+
         response_data = json.loads(response.body.decode())
 
         # Verify RFC 7807 structure
         assert_rfc7807_structure(response_data)
 
         # Verify specific fields
-        assert response_data["type"] == "https://api.chronovista.com/errors/RATE_LIMITED"
+        assert (
+            response_data["type"] == "https://api.chronovista.com/errors/RATE_LIMITED"
+        )
         assert response_data["title"] == "Rate Limit Exceeded"
         assert response_data["status"] == 429
         assert response_data["code"] == "RATE_LIMITED"
@@ -453,13 +480,16 @@ class TestRepositoryErrorRFC7807:
 
         assert response.status_code == 500
         import json
+
         response_data = json.loads(response.body.decode())
 
         # Verify RFC 7807 structure
         assert_rfc7807_structure(response_data)
 
         # Verify specific fields
-        assert response_data["type"] == "https://api.chronovista.com/errors/DATABASE_ERROR"
+        assert (
+            response_data["type"] == "https://api.chronovista.com/errors/DATABASE_ERROR"
+        )
         assert response_data["title"] == "Database Error"
         assert response_data["status"] == 500
         assert response_data["code"] == "DATABASE_ERROR"
@@ -476,6 +506,7 @@ class TestRepositoryErrorRFC7807:
 
         response = await repository_error_handler(request, exc)
         import json
+
         response_data = json.loads(response.body.decode())
 
         # Detail should be generic, not expose internal error
@@ -504,13 +535,17 @@ class TestExternalServiceErrorRFC7807:
 
         assert response.status_code == 502
         import json
+
         response_data = json.loads(response.body.decode())
 
         # Verify RFC 7807 structure
         assert_rfc7807_structure(response_data)
 
         # Verify specific fields
-        assert response_data["type"] == "https://api.chronovista.com/errors/EXTERNAL_SERVICE_ERROR"
+        assert (
+            response_data["type"]
+            == "https://api.chronovista.com/errors/EXTERNAL_SERVICE_ERROR"
+        )
         assert response_data["title"] == "External Service Error"
         assert response_data["status"] == 502
         assert response_data["code"] == "EXTERNAL_SERVICE_ERROR"
@@ -525,6 +560,7 @@ class TestExternalServiceErrorRFC7807:
 
         response = await api_error_handler(request, exc)
         import json
+
         response_data = json.loads(response.body.decode())
 
         # Detail should be generic
@@ -550,13 +586,16 @@ class TestUnhandledExceptionRFC7807:
 
         assert response.status_code == 500
         import json
+
         response_data = json.loads(response.body.decode())
 
         # Verify RFC 7807 structure
         assert_rfc7807_structure(response_data)
 
         # Verify specific fields
-        assert response_data["type"] == "https://api.chronovista.com/errors/INTERNAL_ERROR"
+        assert (
+            response_data["type"] == "https://api.chronovista.com/errors/INTERNAL_ERROR"
+        )
         assert response_data["title"] == "Internal Server Error"
         assert response_data["status"] == 500
         assert response_data["code"] == "INTERNAL_ERROR"
@@ -568,6 +607,7 @@ class TestUnhandledExceptionRFC7807:
 
         response = await generic_error_handler(request, exc)
         import json
+
         response_data = json.loads(response.body.decode())
 
         # Detail should be generic, not expose internal error
@@ -594,16 +634,19 @@ class TestValidationErrorFieldOrder:
 
         try:
             # Trigger multiple validation errors
-            TestModel.model_validate({
-                "first_field": "",  # Will fail min_length if we add validators
-                "second_field": "not-a-number",
-                "third_field": "",
-            })
+            TestModel.model_validate(
+                {
+                    "first_field": "",  # Will fail min_length if we add validators
+                    "second_field": "not-a-number",
+                    "third_field": "",
+                }
+            )
         except PydanticValidationError as pydantic_error:
             validation_error = RequestValidationError(errors=pydantic_error.errors())
             response = await validation_error_handler(request, validation_error)
 
             import json
+
             response_data = json.loads(response.body.decode())
 
             # Errors should be in order
@@ -627,6 +670,7 @@ class TestValidationErrorFieldOrder:
             response = await validation_error_handler(request, validation_error)
 
             import json
+
             response_data = json.loads(response.body.decode())
 
             # Verify errors is an array that can contain multiple entries
@@ -652,6 +696,7 @@ class TestDetailMessageTruncation:
         response = await api_error_handler(request, exc)
 
         import json
+
         response_data = json.loads(response.body.decode())
 
         detail = response_data["detail"]
@@ -689,6 +734,7 @@ class TestErrorSerializationFailure:
 
         response = await api_error_handler(request, exc)
         import json
+
         response_data = json.loads(response.body.decode())
 
         # Should still be valid RFC 7807
@@ -717,6 +763,7 @@ class TestChainedExceptions:
             response = await api_error_handler(request, exc)
 
             import json
+
             response_data = json.loads(response.body.decode())
 
             # Should use NotFoundError (outermost), not ValueError (inner)
@@ -749,11 +796,13 @@ class TestRFC7807TypeURI:
         for exc, expected_code in test_cases:
             response = await api_error_handler(request, exc)
             import json
+
             response_data = json.loads(response.body.decode())
 
             expected_uri = f"https://api.chronovista.com/errors/{expected_code}"
-            assert response_data["type"] == expected_uri, \
-                f"Expected {expected_uri}, got {response_data['type']}"
+            assert (
+                response_data["type"] == expected_uri
+            ), f"Expected {expected_uri}, got {response_data['type']}"
 
 
 # =============================================================================
@@ -779,10 +828,12 @@ class TestRFC7807InstanceField:
 
             response = await api_error_handler(request, exc)
             import json
+
             response_data = json.loads(response.body.decode())
 
-            assert response_data["instance"] == path, \
-                f"Expected instance={path}, got {response_data['instance']}"
+            assert (
+                response_data["instance"] == path
+            ), f"Expected instance={path}, got {response_data['instance']}"
 
     async def test_instance_field_preserves_query_parameters(self) -> None:
         """Test RFC 7807 instance field preserves query parameters."""
@@ -791,6 +842,7 @@ class TestRFC7807InstanceField:
 
         response = await api_error_handler(request, exc)
         import json
+
         response_data = json.loads(response.body.decode())
 
         assert "limit=100" in response_data["instance"]

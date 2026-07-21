@@ -162,9 +162,7 @@ class TaskManager:
         """
         return self._tasks.get(task_id)
 
-    def list_tasks(
-        self, status: TaskStatus | None = None
-    ) -> list[BackgroundTask]:
+    def list_tasks(self, status: TaskStatus | None = None) -> list[BackgroundTask]:
         """List all tasks, optionally filtered by status.
 
         Results are sorted by ``started_at`` in descending order

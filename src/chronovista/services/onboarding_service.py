@@ -38,9 +38,7 @@ from chronovista.models.enums import OperationType, PipelineStepStatus
 logger = logging.getLogger(__name__)
 
 # Type alias for the coroutine factory accepted by TaskManager.submit
-CoroFactory = Callable[
-    [Callable[[float], None]], Coroutine[Any, Any, dict[str, Any]]
-]
+CoroFactory = Callable[[Callable[[float], None]], Coroutine[Any, Any, dict[str, Any]]]
 
 
 class _StepDefinition:
@@ -286,9 +284,7 @@ class OnboardingService:
             unresolved_tags = await self._count_unresolved_tags(session)
 
             # Also fetch last-loaded timestamp in the same session
-            result = await session.execute(
-                select(func.max(Video.created_at))
-            )
+            result = await session.execute(select(func.max(Video.created_at)))
             latest = result.scalar_one_or_none()
             last_loaded_at = latest.timestamp() if latest is not None else None
 
@@ -354,9 +350,7 @@ class OnboardingService:
             Number of enriched video rows.
         """
         result = await session.execute(
-            select(func.count())
-            .select_from(Video)
-            .where(Video.view_count.is_not(None))
+            select(func.count()).select_from(Video).where(Video.view_count.is_not(None))
         )
         return result.scalar_one()
 
@@ -434,9 +428,7 @@ class OnboardingService:
         try:
             return any(export_path.iterdir())
         except PermissionError:
-            logger.warning(
-                "Cannot read data export directory: %s", export_path
-            )
+            logger.warning("Cannot read data export directory: %s", export_path)
             return False
 
     @staticmethod
@@ -466,9 +458,7 @@ class OnboardingService:
                 return None
             return max(entry.stat().st_mtime for entry in entries)
         except (PermissionError, OSError):
-            logger.warning(
-                "Cannot stat data export directory entries: %s", export_path
-            )
+            logger.warning("Cannot stat data export directory entries: %s", export_path)
             return None
 
     @staticmethod
@@ -856,9 +846,7 @@ class OnboardingService:
 
                 if not takeout_dirs:
                     # Fallback: single undated directory
-                    takeout_dirs = [
-                        takeout_path / "YouTube and YouTube Music"
-                    ]
+                    takeout_dirs = [takeout_path / "YouTube and YouTube Music"]
 
                 logger.info(
                     "Found %d takeout directories to process",
@@ -926,9 +914,7 @@ class OnboardingService:
                             exc,
                         )
 
-                    progress_cb(
-                        5.0 + (idx + 1) / total_dirs * 50.0
-                    )
+                    progress_cb(5.0 + (idx + 1) / total_dirs * 50.0)
 
                 progress_cb(60.0)
 
@@ -955,9 +941,7 @@ class OnboardingService:
                             recovery_result.channels_created,
                         )
                     except Exception as exc:
-                        logger.warning(
-                            "Takeout recovery failed (non-fatal): %s", exc
-                        )
+                        logger.warning("Takeout recovery failed (non-fatal): %s", exc)
                         recovery_result_data = {"recovery_error": str(exc)}
                 progress_cb(90.0)
 
@@ -1043,12 +1027,12 @@ class OnboardingService:
                             real_user_id = my_channel.id
                             from sqlalchemy import text
 
-
                             # Migrate takeout_user → real channel ID,
                             # skipping rows that already exist under
                             # the real ID (avoids PK conflict).
                             result = await session.execute(
-                                text("""
+                                text(
+                                    """
                                     UPDATE user_videos
                                     SET user_id = :real_id
                                     WHERE user_id = 'takeout_user'
@@ -1056,7 +1040,8 @@ class OnboardingService:
                                         SELECT video_id FROM user_videos
                                         WHERE user_id = :real_id
                                     )
-                                """),
+                                """
+                                ),
                                 {"real_id": real_user_id},
                             )
                             cursor = cast(CursorResult[Any], result)
@@ -1070,9 +1055,7 @@ class OnboardingService:
                                     real_user_id,
                                 )
                     except Exception as exc:
-                        logger.warning(
-                            "User ID migration failed (non-fatal): %s", exc
-                        )
+                        logger.warning("User ID migration failed (non-fatal): %s", exc)
                 progress_cb(55.0)
 
                 # Step 3: Sync liked videos (--sync-likes)
@@ -1091,9 +1074,7 @@ class OnboardingService:
                                 "Likes sync: channel=%s, fetching liked videos...",
                                 real_user_id,
                             )
-                            liked_videos = (
-                                await youtube_service.get_liked_videos()
-                            )
+                            liked_videos = await youtube_service.get_liked_videos()
                             logger.info(
                                 "Likes sync: got %d liked videos from API",
                                 len(liked_videos) if liked_videos else 0,
@@ -1112,11 +1093,13 @@ class OnboardingService:
                                     len(liked_videos),
                                 )
                                 if existing_ids:
-                                    likes_synced = await user_video_repo.update_like_status_batch(
-                                        session,
-                                        real_user_id,
-                                        existing_ids,
-                                        liked=True,
+                                    likes_synced = (
+                                        await user_video_repo.update_like_status_batch(
+                                            session,
+                                            real_user_id,
+                                            existing_ids,
+                                            liked=True,
+                                        )
                                     )
                                     await session.commit()
                                     logger.info(
@@ -1129,7 +1112,8 @@ class OnboardingService:
                             )
                     except Exception as exc:
                         logger.error(
-                            "Likes sync failed (non-fatal): %s", exc,
+                            "Likes sync failed (non-fatal): %s",
+                            exc,
                             exc_info=True,
                         )
                 progress_cb(70.0)
@@ -1138,14 +1122,12 @@ class OnboardingService:
                 channels_enriched = 0
                 async with session_factory() as session:
                     try:
-                        channel_result = (
-                            await enrichment_service.enrich_channels(session)
+                        channel_result = await enrichment_service.enrich_channels(
+                            session
                         )
                         channels_enriched = channel_result.channels_enriched
                     except Exception as exc:
-                        logger.warning(
-                            "Channel enrichment failed (non-fatal): %s", exc
-                        )
+                        logger.warning("Channel enrichment failed (non-fatal): %s", exc)
                 progress_cb(95.0)
 
                 progress_cb(100.0)

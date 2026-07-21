@@ -251,9 +251,7 @@ class TestChannelRecoveryErrors:
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
 
-            response = await async_client.post(
-                f"/api/v1/channels/{channel_id}/recover"
-            )
+            response = await async_client.post(f"/api/v1/channels/{channel_id}/recover")
 
             assert response.status_code == 404
             data = response.json()
@@ -274,9 +272,7 @@ class TestChannelRecoveryErrors:
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
 
-            response = await async_client.post(
-                f"/api/v1/channels/{channel_id}/recover"
-            )
+            response = await async_client.post(f"/api/v1/channels/{channel_id}/recover")
 
             assert response.status_code == 409
             data = response.json()

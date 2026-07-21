@@ -843,7 +843,9 @@ class TestEntityMention:
         """EntityMentionFactory.build_batch() produces unique id values."""
         mentions = EntityMentionFactory.build_batch(5)
         ids = [m.id for m in mentions]
-        assert len(ids) == len(set(ids)), "Each factory-built mention must have a unique id"
+        assert len(ids) == len(
+            set(ids)
+        ), "Each factory-built mention must have a unique id"
 
     def test_factory_batch_produces_unique_entity_ids(self) -> None:
         """EntityMentionFactory.build_batch() produces unique entity_id values by default."""
@@ -916,10 +918,12 @@ class TestEntityMentionHypothesis:
         mention = _make_entity_mention_base(confidence=confidence)
         assert mention.confidence is not None and 0.0 <= mention.confidence <= 1.0
 
-    @given(confidence=st.one_of(
-        st.floats(max_value=-0.001, allow_nan=False),
-        st.floats(min_value=1.001, allow_nan=False, allow_infinity=False),
-    ))
+    @given(
+        confidence=st.one_of(
+            st.floats(max_value=-0.001, allow_nan=False),
+            st.floats(min_value=1.001, allow_nan=False, allow_infinity=False),
+        )
+    )
     def test_out_of_range_confidence_always_raises_validation_error(
         self, confidence: float
     ) -> None:

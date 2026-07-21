@@ -127,8 +127,10 @@ class TakeoutRecoveryService:
             takeout_service.takeout_path = first_takeout_parent
             takeout_service.youtube_path = historical_takeouts[0].path
 
-        video_metadata, channel_metadata = await takeout_service.build_recovery_metadata_map(
-            historical_takeouts, process_oldest_first=options.process_oldest_first
+        video_metadata, channel_metadata = (
+            await takeout_service.build_recovery_metadata_map(
+                historical_takeouts, process_oldest_first=options.process_oldest_first
+            )
         )
 
         logger.info(
@@ -136,15 +138,11 @@ class TakeoutRecoveryService:
         )
 
         # Find placeholder videos in database that can be recovered
-        await self._recover_videos(
-            session, video_metadata, result, options
-        )
+        await self._recover_videos(session, video_metadata, result, options)
 
         # Create/update channels from historical data
         if options.update_channels:
-            await self._recover_channels(
-                session, channel_metadata, result, options
-            )
+            await self._recover_channels(session, channel_metadata, result, options)
 
         result.mark_complete()
 
@@ -221,10 +219,7 @@ class TakeoutRecoveryService:
 
                 # Determine what needs to be updated
                 needs_title_update = is_placeholder_title and recovered.title
-                needs_channel_update = (
-                    has_null_channel
-                    and recovered.channel_id
-                )
+                needs_channel_update = has_null_channel and recovered.channel_id
 
                 if not needs_title_update and not needs_channel_update:
                     # Nothing to recover for this video
@@ -244,7 +239,11 @@ class TakeoutRecoveryService:
                     old_title=video.title,
                     new_title=recovered.title if needs_title_update else video.title,
                     old_channel_id=video.channel_id,
-                    new_channel_id=recovered.channel_id if needs_channel_update else video.channel_id,
+                    new_channel_id=(
+                        recovered.channel_id
+                        if needs_channel_update
+                        else video.channel_id
+                    ),
                     channel_name=recovered.channel_name,
                     source_date=recovered.source_date,
                     action_type=action_type,
@@ -333,7 +332,9 @@ class TakeoutRecoveryService:
         options : RecoveryOptions
             Recovery options
         """
-        logger.info(f"Processing {len(channel_metadata)} channels from historical data...")
+        logger.info(
+            f"Processing {len(channel_metadata)} channels from historical data..."
+        )
 
         for channel_id, recovered in channel_metadata.items():
             # Check if channel exists

@@ -20,6 +20,7 @@ def _uuid7() -> uuid.UUID:
     """Generate a UUIDv7 as a standard uuid.UUID for Pydantic compatibility."""
     return uuid.UUID(bytes=uuid7().bytes)
 
+
 from chronovista.models.entity_alias import (
     EntityAlias,
     EntityAliasBase,

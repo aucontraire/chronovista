@@ -522,9 +522,7 @@ class TestPartialSuccessResponse:
             assert "filter_test1" in video_ids
             # Should have warning about invalid tag
             if "warnings" in data:
-                assert any(
-                    "invalid_tag_xyz" in w["message"] for w in data["warnings"]
-                )
+                assert any("invalid_tag_xyz" in w["message"] for w in data["warnings"])
 
     async def test_response_without_warnings_when_all_valid(
         self,
@@ -651,9 +649,7 @@ class TestCanonicalTagFilter:
                     CanonicalTag.normalized_form.in_(["python", "gaming"])
                 )
             )
-            await session.execute(
-                delete(Video).where(Video.video_id.in_(video_ids))
-            )
+            await session.execute(delete(Video).where(Video.video_id.in_(video_ids)))
             await session.execute(
                 delete(Channel).where(Channel.channel_id == _CT_CHANNEL_ID)
             )
@@ -802,9 +798,7 @@ class TestCanonicalTagFilter:
                     CanonicalTag.normalized_form.in_(["python", "gaming"])
                 )
             )
-            await session.execute(
-                delete(Video).where(Video.video_id.in_(video_ids))
-            )
+            await session.execute(delete(Video).where(Video.video_id.in_(video_ids)))
             await session.execute(
                 delete(Channel).where(Channel.channel_id == _CT_CHANNEL_ID)
             )
@@ -824,9 +818,7 @@ class TestCanonicalTagFilter:
         try:
             with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
                 mock_oauth.is_authenticated.return_value = True
-                response = await async_client.get(
-                    "/api/v1/videos?canonical_tag=python"
-                )
+                response = await async_client.get("/api/v1/videos?canonical_tag=python")
                 assert response.status_code == 200
                 data = response.json()
                 video_ids = {v["video_id"] for v in data["data"]}
@@ -952,7 +944,9 @@ class TestCanonicalTagFilter:
                 data = response.json()
                 video_ids = {v["video_id"] for v in data["data"]}
                 assert _CT_VID_4 in video_ids
-                assert len(video_ids & {_CT_VID_1, _CT_VID_2, _CT_VID_3, _CT_VID_5}) == 0
+                assert (
+                    len(video_ids & {_CT_VID_1, _CT_VID_2, _CT_VID_3, _CT_VID_5}) == 0
+                )
         finally:
             await self._cleanup_data(integration_session_factory)
 
@@ -963,9 +957,7 @@ class TestCanonicalTagFilter:
         """More than 10 canonical_tag values should return 400 (FR-034)."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            params = "&".join(
-                [f"canonical_tag=tag{i}" for i in range(11)]
-            )
+            params = "&".join([f"canonical_tag=tag{i}" for i in range(11)])
             response = await async_client.get(f"/api/v1/videos?{params}")
             assert response.status_code == 400
 
@@ -977,13 +969,9 @@ class TestCanonicalTagFilter:
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
             # 6 canonical_tags + 5 tags + 5 topics = 16 > 15
-            ct_params = "&".join(
-                [f"canonical_tag=ct{i}" for i in range(6)]
-            )
+            ct_params = "&".join([f"canonical_tag=ct{i}" for i in range(6)])
             tag_params = "&".join([f"tag=tag{i}" for i in range(5)])
-            topic_params = "&".join(
-                [f"topic_id=/m/topic{i}" for i in range(5)]
-            )
+            topic_params = "&".join([f"topic_id=/m/topic{i}" for i in range(5)])
             response = await async_client.get(
                 f"/api/v1/videos?{ct_params}&{tag_params}&{topic_params}"
             )

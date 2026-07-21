@@ -27,6 +27,7 @@ import pytest
 
 # Mark all tests in this module as async by default
 
+
 @pytest.fixture(autouse=True)
 def _clean_test_cache():
     """Clean /tmp/test_cache before each test to prevent cache cross-contamination."""
@@ -131,9 +132,7 @@ def make_recovered_video_data(**overrides: Any) -> dict[str, Any]:
     return {**defaults, **overrides}
 
 
-def make_recovery_result(
-    success: bool = True, **overrides: Any
-) -> dict[str, Any]:
+def make_recovery_result(success: bool = True, **overrides: Any) -> dict[str, Any]:
     """
     Create a RecoveryResult dictionary with realistic defaults.
 

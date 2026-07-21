@@ -21,7 +21,8 @@ class VideoBase(BaseModel):
 
     video_id: VideoId = Field(..., description="YouTube video ID (validated)")
     channel_id: ChannelId | None = Field(
-        default=None, description="Channel ID (foreign key, validated). NULL for orphaned videos."
+        default=None,
+        description="Channel ID (foreign key, validated). NULL for orphaned videos.",
     )
     channel_name_hint: str | None = Field(
         default=None,

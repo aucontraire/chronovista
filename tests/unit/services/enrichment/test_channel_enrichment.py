@@ -26,6 +26,7 @@ from chronovista.services.enrichment.enrichment_service import (
 
 # CRITICAL: This line ensures async tests work with coverage
 
+
 def make_channel_response(
     channel_id: str,
     title: str = "Test Channel",
@@ -428,9 +429,7 @@ class TestEnrichChannels:
     ) -> None:
         """Test that channels are processed in batches of 50 (T024)."""
         # Create 75 mock channels to test batching
-        mock_channels = [
-            MagicMock(channel_id=f"UC{i:022d}") for i in range(75)
-        ]
+        mock_channels = [MagicMock(channel_id=f"UC{i:022d}") for i in range(75)]
         mock_channel_repo.get_channels_needing_enrichment.return_value = mock_channels
         mock_channel_repo.get.return_value = MagicMock()
 
@@ -454,9 +453,7 @@ class TestEnrichChannels:
     ) -> None:
         """Test per-batch database commits per FR-025 (T031)."""
         # Create 75 mock channels for 2 batches
-        mock_channels = [
-            MagicMock(channel_id=f"UC{i:022d}") for i in range(75)
-        ]
+        mock_channels = [MagicMock(channel_id=f"UC{i:022d}") for i in range(75)]
         mock_channel_repo.get_channels_needing_enrichment.return_value = mock_channels
         mock_channel_repo.get.return_value = MagicMock()
         mock_youtube_service.get_channel_details.return_value = [

@@ -22,14 +22,20 @@ class TestTranscriptSummaryHasCorrections:
     def test_schema_accepts_true(self) -> None:
         """TranscriptSummary accepts has_corrections=True."""
         summary = TranscriptSummary(
-            count=1, languages=["en"], has_manual=True, has_corrections=True,
+            count=1,
+            languages=["en"],
+            has_manual=True,
+            has_corrections=True,
         )
         assert summary.has_corrections is True
 
     def test_schema_accepts_explicit_false(self) -> None:
         """TranscriptSummary accepts explicit has_corrections=False."""
         summary = TranscriptSummary(
-            count=2, languages=["en", "es"], has_manual=False, has_corrections=False,
+            count=2,
+            languages=["en", "es"],
+            has_manual=False,
+            has_corrections=False,
         )
         assert summary.has_corrections is False
 

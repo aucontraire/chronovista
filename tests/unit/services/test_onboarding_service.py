@@ -395,9 +395,7 @@ class TestAfterDataLoad:
         # channels=5, videos=100, available_videos=100, enriched_videos=0,
         # playlists=3, transcripts=0, categories=0, canonical_tags=147000,
         # unresolved_tags=421
-        service = _build_service(
-            counts_sequence=[5, 100, 100, 0, 3, 0, 0, 147000, 421]
-        )
+        service = _build_service(counts_sequence=[5, 100, 100, 0, 3, 0, 0, 147000, 421])
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -521,7 +519,9 @@ class TestAuthGating:
         # Sequence: channels=5, videos=100, available_videos=100, enriched_videos=0,
         # playlists=3, transcripts=0, categories=0, canonical_tags=0
         service_authed = _build_service(counts_sequence=[5, 100, 100, 0, 3, 0, 0, 0, 0])
-        service_unauthed = _build_service(counts_sequence=[5, 100, 100, 0, 3, 0, 0, 0, 0])
+        service_unauthed = _build_service(
+            counts_sequence=[5, 100, 100, 0, 3, 0, 0, 0, 0]
+        )
 
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=True):
             status_authed = await service_authed.get_status()
@@ -821,10 +821,18 @@ class TestCountsFromDatabase:
             status = await service.get_status()
 
         counts = status.counts
-        for field_name in ("channels", "videos", "playlists", "transcripts", "categories", "canonical_tags", "unresolved_tags"):
-            assert isinstance(getattr(counts, field_name), int), (
-                f"Expected int for counts.{field_name}"
-            )
+        for field_name in (
+            "channels",
+            "videos",
+            "playlists",
+            "transcripts",
+            "categories",
+            "canonical_tags",
+            "unresolved_tags",
+        ):
+            assert isinstance(
+                getattr(counts, field_name), int
+            ), f"Expected int for counts.{field_name}"
 
 
 # ===========================================================================
@@ -979,8 +987,14 @@ class TestStepStatusEdgeCases:
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
-        assert _get_step(status.steps, OperationType.SEED_REFERENCE).status == PipelineStepStatus.RUNNING
-        assert _get_step(status.steps, OperationType.LOAD_DATA).status == PipelineStepStatus.RUNNING
+        assert (
+            _get_step(status.steps, OperationType.SEED_REFERENCE).status
+            == PipelineStepStatus.RUNNING
+        )
+        assert (
+            _get_step(status.steps, OperationType.LOAD_DATA).status
+            == PipelineStepStatus.RUNNING
+        )
 
     async def test_step_requires_auth_flag_matches_definition(self) -> None:
         """Only enrich_metadata should have requires_auth=True."""
@@ -992,9 +1006,9 @@ class TestStepStatusEdgeCases:
             if step.operation_type == OperationType.ENRICH_METADATA:
                 assert step.requires_auth is True
             else:
-                assert step.requires_auth is False, (
-                    f"{step.operation_type.value} should not require auth"
-                )
+                assert (
+                    step.requires_auth is False
+                ), f"{step.operation_type.value} should not require auth"
 
     async def test_step_dependencies_match_definition(self) -> None:
         """Dependency lists must match the static pipeline definition."""
@@ -1010,9 +1024,9 @@ class TestStepStatusEdgeCases:
         }
 
         for step in status.steps:
-            assert step.dependencies == expected_deps[step.operation_type], (
-                f"{step.operation_type.value} dependencies mismatch"
-            )
+            assert (
+                step.dependencies == expected_deps[step.operation_type]
+            ), f"{step.operation_type.value} dependencies mismatch"
 
     async def test_enrich_metadata_blocked_auth_takes_priority_over_missing_data(
         self,
@@ -1296,9 +1310,9 @@ class TestReturningUser:
             OperationType.NORMALIZE_TAGS,
         ):
             step = _get_step(status.steps, op)
-            assert step.status == PipelineStepStatus.COMPLETED, (
-                f"Expected COMPLETED for {op.value}, got {step.status.value}"
-            )
+            assert (
+                step.status == PipelineStepStatus.COMPLETED
+            ), f"Expected COMPLETED for {op.value}, got {step.status.value}"
 
     async def test_enrich_metadata_stays_completed_with_new_data(self) -> None:
         """enrich_metadata uses count_key='enriched_videos' — even though load_data
@@ -1430,9 +1444,7 @@ class TestFactorySeedReference:
         mock_container.create_topic_seeder.return_value = mock_topic_seeder
         mock_container.create_category_seeder.return_value = mock_category_seeder
 
-        with patch(
-            "chronovista.container.container", mock_container
-        ):
+        with patch("chronovista.container.container", mock_container):
             coro = factory(cb)
             assert inspect.isawaitable(coro)
             await coro
@@ -1455,9 +1467,7 @@ class TestFactorySeedReference:
         mock_container.create_topic_seeder.return_value = mock_topic_seeder
         mock_container.create_category_seeder.return_value = mock_category_seeder
 
-        with patch(
-            "chronovista.container.container", mock_container
-        ):
+        with patch("chronovista.container.container", mock_container):
             result = await factory(cb)
 
         expected_keys = {
@@ -1488,9 +1498,7 @@ class TestFactorySeedReference:
         mock_container.create_topic_seeder.return_value = mock_topic_seeder
         mock_container.create_category_seeder.return_value = mock_category_seeder
 
-        with patch(
-            "chronovista.container.container", mock_container
-        ):
+        with patch("chronovista.container.container", mock_container):
             result = await factory(cb)
 
         assert result["topics_created"] == 7
@@ -1518,9 +1526,7 @@ class TestFactorySeedReference:
         mock_container.create_topic_seeder.return_value = mock_topic_seeder
         mock_container.create_category_seeder.return_value = mock_category_seeder
 
-        with patch(
-            "chronovista.container.container", mock_container
-        ):
+        with patch("chronovista.container.container", mock_container):
             await factory(cb)
 
         assert calls[0] == 0.0
@@ -1543,9 +1549,7 @@ class TestFactorySeedReference:
         mock_container.create_topic_seeder.return_value = mock_topic_seeder
         mock_container.create_category_seeder.return_value = mock_category_seeder
 
-        with patch(
-            "chronovista.container.container", mock_container
-        ):
+        with patch("chronovista.container.container", mock_container):
             await factory(cb)
 
         assert 40.0 in calls
@@ -1568,9 +1572,7 @@ class TestFactorySeedReference:
         mock_container.create_topic_seeder.return_value = mock_topic_seeder
         mock_container.create_category_seeder.return_value = mock_category_seeder
 
-        with patch(
-            "chronovista.container.container", mock_container
-        ):
+        with patch("chronovista.container.container", mock_container):
             await factory(cb)
 
         assert 90.0 in calls
@@ -1594,9 +1596,7 @@ class TestFactorySeedReference:
         mock_container.create_topic_seeder.return_value = mock_topic_seeder
         mock_container.create_category_seeder.return_value = mock_category_seeder
 
-        with patch(
-            "chronovista.container.container", mock_container
-        ):
+        with patch("chronovista.container.container", mock_container):
             await factory(cb)
 
         assert calls == sorted(calls), "Progress values must be non-decreasing"
@@ -1621,9 +1621,7 @@ class TestFactorySeedReference:
         mock_container.create_topic_seeder.return_value = mock_topic_seeder
         mock_container.create_category_seeder.return_value = mock_category_seeder
 
-        with patch(
-            "chronovista.container.container", mock_container
-        ):
+        with patch("chronovista.container.container", mock_container):
             await factory(cb)
 
         mock_topic_seeder.seed.assert_awaited_once()
@@ -1646,9 +1644,7 @@ class TestFactorySeedReference:
         mock_container.create_topic_seeder.return_value = mock_topic_seeder
         mock_container.create_category_seeder.return_value = mock_category_seeder
 
-        with patch(
-            "chronovista.container.container", mock_container
-        ):
+        with patch("chronovista.container.container", mock_container):
             await factory(cb)
 
         mock_category_seeder.seed.assert_awaited_once()
@@ -1858,9 +1854,7 @@ class TestFactoryLoadData:
 
     async def test_recovery_failure_is_non_fatal(self) -> None:
         """Recovery exceptions are caught and result contains 'recovery_error' key."""
-        result, _ = await self._run(
-            recovery_raises=RuntimeError("Recovery exploded")
-        )
+        result, _ = await self._run(recovery_raises=RuntimeError("Recovery exploded"))
         # Factory must return (not raise) even when recovery fails
         assert "recovery_error" in result
         assert "Recovery exploded" in result["recovery_error"]
@@ -2094,9 +2088,7 @@ class TestFactoryEnrichMetadata:
         report.summary = summary
         return report
 
-    def _make_channel_enrichment_result(
-        self, channels_enriched: int = 5
-    ) -> MagicMock:
+    def _make_channel_enrichment_result(self, channels_enriched: int = 5) -> MagicMock:
         result = MagicMock()
         result.channels_enriched = channels_enriched
         return result
@@ -2131,25 +2123,19 @@ class TestFactoryEnrichMetadata:
                 side_effect=enrich_playlists_raises
             )
         else:
-            mock_enrichment_svc.enrich_playlists = AsyncMock(
-                return_value=(5, 3, 1)
-            )
+            mock_enrichment_svc.enrich_playlists = AsyncMock(return_value=(5, 3, 1))
 
         if enrich_channels_raises:
             mock_enrichment_svc.enrich_channels = AsyncMock(
                 side_effect=enrich_channels_raises
             )
         else:
-            mock_enrichment_svc.enrich_channels = AsyncMock(
-                return_value=channel_result
-            )
+            mock_enrichment_svc.enrich_channels = AsyncMock(return_value=channel_result)
 
         # YouTube service mock for likes
         mock_youtube_svc = AsyncMock()
         if likes_sync_raises:
-            mock_youtube_svc.get_my_channel = AsyncMock(
-                side_effect=likes_sync_raises
-            )
+            mock_youtube_svc.get_my_channel = AsyncMock(side_effect=likes_sync_raises)
         else:
             mock_youtube_svc.get_my_channel = AsyncMock(return_value=my_channel)
             mock_youtube_svc.get_liked_videos = AsyncMock(
@@ -2173,9 +2159,7 @@ class TestFactoryEnrichMetadata:
         calls, cb = _capture_progress()
 
         with (
-            patch(
-                "chronovista.container.container", mock_container
-            ),
+            patch("chronovista.container.container", mock_container),
             patch(
                 "chronovista.repositories.video_repository.VideoRepository",
                 return_value=mock_video_repo,
@@ -2261,9 +2245,7 @@ class TestFactoryEnrichMetadata:
         _, cb = _capture_progress()
 
         with (
-            patch(
-                "chronovista.container.container", mock_container
-            ),
+            patch("chronovista.container.container", mock_container),
             patch("chronovista.repositories.video_repository.VideoRepository"),
             patch("chronovista.repositories.user_video_repository.UserVideoRepository"),
         ):
@@ -2357,9 +2339,7 @@ class TestFactoryEnrichMetadata:
         """likes_synced is 0 when get_liked_videos returns an empty list."""
         my_channel = MagicMock()
         my_channel.id = "UCfake"
-        result, _ = await self._run_factory(
-            my_channel=my_channel, liked_videos=[]
-        )
+        result, _ = await self._run_factory(my_channel=my_channel, liked_videos=[])
         assert result["likes_synced"] == 0
 
     async def test_create_enrichment_service_called_with_include_playlists_true(
@@ -2387,9 +2367,7 @@ class TestFactoryEnrichMetadata:
         _, cb = _capture_progress()
 
         with (
-            patch(
-                "chronovista.container.container", mock_container
-            ),
+            patch("chronovista.container.container", mock_container),
             patch("chronovista.repositories.video_repository.VideoRepository"),
             patch("chronovista.repositories.user_video_repository.UserVideoRepository"),
         ):
@@ -2546,9 +2524,7 @@ class TestFactoryNormalizeTags:
         ):
             await factory(cb)
 
-        call_kwargs = (
-            mock_backfill_svc.run_incremental_backfill.call_args
-        )
+        call_kwargs = mock_backfill_svc.run_incremental_backfill.call_args
         assert call_kwargs.kwargs["progress_callback"] is cb
 
     async def test_progress_called_at_zero(self) -> None:
@@ -2628,9 +2604,7 @@ class TestGetCountsAndLastLoadedGather:
           scalar_one_or_none()=None.
         """
         # Distinct values -- a value in the wrong field will fail the assertion
-        service = _build_service(
-            counts_sequence=[11, 22, 33, 44, 55, 66, 77, 88, 99]
-        )
+        service = _build_service(counts_sequence=[11, 22, 33, 44, 55, 66, 77, 88, 99])
         with patch(_SETTINGS_TOKEN_IS_FILE, return_value=False):
             status = await service.get_status()
 
@@ -2663,8 +2637,7 @@ class TestGetCountsAndLastLoadedGather:
             "canonical_tags",
         ):
             assert getattr(counts, field) == 0, (
-                f"Expected 0 for counts.{field}, "
-                f"got {getattr(counts, field)}"
+                f"Expected 0 for counts.{field}, " f"got {getattr(counts, field)}"
             )
 
     async def test_gather_last_loaded_none_results_in_no_new_data(self) -> None:

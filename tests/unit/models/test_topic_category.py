@@ -269,12 +269,15 @@ class TestTopicCategory:
     def test_create_valid_topic_category(self):
         """Test creating valid TopicCategory with keyword arguments."""
         now = datetime.now(UTC)
-        topic = cast(TopicCategory, TopicCategoryFactory.build(
-            topic_id="education",
-            category_name="Education",
-            topic_type=TopicType.YOUTUBE,
-            created_at=now,
-        ))
+        topic = cast(
+            TopicCategory,
+            TopicCategoryFactory.build(
+                topic_id="education",
+                category_name="Education",
+                topic_type=TopicType.YOUTUBE,
+                created_at=now,
+            ),
+        )
 
         assert topic.topic_id == "education"
         assert topic.category_name == "Education"
@@ -565,13 +568,16 @@ class TestTopicCategoryModelInteractions:
 
         # Simulate creation
         now = datetime.now(UTC)
-        topic_full = cast(TopicCategory, TopicCategoryFactory.build(
-            topic_id=topic_create.topic_id,
-            category_name=topic_create.category_name,
-            parent_topic_id=topic_create.parent_topic_id,
-            topic_type=topic_create.topic_type,
-            created_at=now,
-        ))
+        topic_full = cast(
+            TopicCategory,
+            TopicCategoryFactory.build(
+                topic_id=topic_create.topic_id,
+                category_name=topic_create.category_name,
+                parent_topic_id=topic_create.parent_topic_id,
+                topic_type=topic_create.topic_type,
+                created_at=now,
+            ),
+        )
 
         # Update
         topic_update = TopicCategoryUpdate(
@@ -777,17 +783,22 @@ class TestTopicCategoryModelInteractions:
         # Create a deep hierarchy to test depth constraints
         root = cast(TopicCategory, TopicCategoryFactory.build(topic_id="entertainment"))
 
-        level1 = cast(TopicCategory, TopicCategoryFactory.build(
-            topic_id="gaming", parent_topic_id="entertainment"
-        ))
+        level1 = cast(
+            TopicCategory,
+            TopicCategoryFactory.build(
+                topic_id="gaming", parent_topic_id="entertainment"
+            ),
+        )
 
-        level2 = cast(TopicCategory, TopicCategoryFactory.build(
-            topic_id="esports", parent_topic_id="gaming"
-        ))
+        level2 = cast(
+            TopicCategory,
+            TopicCategoryFactory.build(topic_id="esports", parent_topic_id="gaming"),
+        )
 
-        level3 = cast(TopicCategory, TopicCategoryFactory.build(
-            topic_id="fps_games", parent_topic_id="esports"
-        ))
+        level3 = cast(
+            TopicCategory,
+            TopicCategoryFactory.build(topic_id="fps_games", parent_topic_id="esports"),
+        )
 
         # Validate parent-child relationships
         assert root.parent_topic_id is None

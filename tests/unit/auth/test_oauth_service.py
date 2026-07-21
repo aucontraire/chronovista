@@ -119,7 +119,9 @@ class TestYouTubeOAuthService:
             "state": ["test_state"],
         }
 
-        with pytest.raises(AuthenticationError, match="Authorization denied: access_denied"):
+        with pytest.raises(
+            AuthenticationError, match="Authorization denied: access_denied"
+        ):
             oauth_service.authorize_from_callback(
                 "http://localhost:8080?error=access_denied&state=test_state",
                 "test_state",
@@ -561,9 +563,9 @@ class TestOauthlibInsecureTransportConditional:
             initial_env["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
         # For an https URI the dict must remain empty (guard did not fire)
-        assert "OAUTHLIB_INSECURE_TRANSPORT" not in initial_env, (
-            "Guard must not set OAUTHLIB_INSECURE_TRANSPORT for https URIs"
-        )
+        assert (
+            "OAUTHLIB_INSECURE_TRANSPORT" not in initial_env
+        ), "Guard must not set OAUTHLIB_INSECURE_TRANSPORT for https URIs"
 
 
 class TestYouTubeOAuthServiceInteractive:

@@ -79,7 +79,10 @@ class SeedingOrchestrator:
 
         # Post-seeding: sync saved_to_playlist flags
         # This must run AFTER both user_videos and playlist_memberships are seeded
-        if "user_videos" in types_to_process and "playlist_memberships" in types_to_process:
+        if (
+            "user_videos" in types_to_process
+            and "playlist_memberships" in types_to_process
+        ):
             logger.info("🔄 Syncing saved_to_playlist flags...")
             user_video_repo = UserVideoRepository()
             synced_count = await user_video_repo.sync_saved_to_playlist_flags(session)

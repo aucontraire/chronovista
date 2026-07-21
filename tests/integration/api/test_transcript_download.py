@@ -174,9 +174,7 @@ async def seed_video_without_transcript(
 
         # ---- Video (no transcript) ----
         existing_video = (
-            await session.execute(
-                select(VideoDB).where(VideoDB.video_id == _VIDEO_ID)
-            )
+            await session.execute(select(VideoDB).where(VideoDB.video_id == _VIDEO_ID))
         ).scalar_one_or_none()
         if not existing_video:
             video = VideoDB(
@@ -196,18 +194,12 @@ async def seed_video_without_transcript(
     # ---- Cleanup (FK reverse order: segments → transcripts → videos → channel) ----
     async with integration_session_factory() as session:
         await session.execute(
-            delete(TranscriptSegmentDB).where(
-                TranscriptSegmentDB.video_id == _VIDEO_ID
-            )
+            delete(TranscriptSegmentDB).where(TranscriptSegmentDB.video_id == _VIDEO_ID)
         )
         await session.execute(
-            delete(VideoTranscriptDB).where(
-                VideoTranscriptDB.video_id == _VIDEO_ID
-            )
+            delete(VideoTranscriptDB).where(VideoTranscriptDB.video_id == _VIDEO_ID)
         )
-        await session.execute(
-            delete(VideoDB).where(VideoDB.video_id == _VIDEO_ID)
-        )
+        await session.execute(delete(VideoDB).where(VideoDB.video_id == _VIDEO_ID))
         await session.execute(
             delete(ChannelDB).where(ChannelDB.channel_id == _CHANNEL_ID)
         )
@@ -380,6 +372,7 @@ class TestDownloadInputValidation:
         ):
             _mock_auth(mock_oauth)
             from chronovista.services.transcript_service import TranscriptNotFoundError
+
             mock_svc.get_transcript = AsyncMock(
                 side_effect=TranscriptNotFoundError("no transcript")
             )
@@ -454,9 +447,7 @@ class TestDownloadHappyPath:
         # Verify the transcript record is actually in the database
         async with integration_session_factory() as session:
             result = await session.execute(
-                select(VideoTranscriptDB).where(
-                    VideoTranscriptDB.video_id == video_id
-                )
+                select(VideoTranscriptDB).where(VideoTranscriptDB.video_id == video_id)
             )
             saved_transcript = result.scalar_one_or_none()
 
@@ -563,9 +554,9 @@ class TestDownloadHappyPath:
             response = await async_client.post(_download_url(video_id, language="es"))
 
         assert response.status_code == 200, response.text
-        assert captured_kwargs.get("language_codes") == ["es"], (
-            f"Expected language_codes=['es'] but got {captured_kwargs.get('language_codes')!r}"
-        )
+        assert captured_kwargs.get("language_codes") == [
+            "es"
+        ], f"Expected language_codes=['es'] but got {captured_kwargs.get('language_codes')!r}"
 
     async def test_download_without_language_param_uses_none(
         self,
@@ -685,9 +676,9 @@ class TestDownloadConflict:
 
         assert response.status_code == 409
         data = response.json()
-        assert data.get("code") == "CONFLICT", (
-            f"Expected RFC 7807 code='CONFLICT', got {data.get('code')!r}"
-        )
+        assert (
+            data.get("code") == "CONFLICT"
+        ), f"Expected RFC 7807 code='CONFLICT', got {data.get('code')!r}"
 
     async def test_409_detail_mentions_video_id(
         self,
@@ -938,9 +929,7 @@ class TestDownloadDatabaseState:
 
         async with integration_session_factory() as session:
             result = await session.execute(
-                select(VideoTranscriptDB).where(
-                    VideoTranscriptDB.video_id == video_id
-                )
+                select(VideoTranscriptDB).where(VideoTranscriptDB.video_id == video_id)
             )
             db_transcript = result.scalar_one_or_none()
 
@@ -1016,9 +1005,9 @@ class TestDownloadDatabaseState:
             segments = result.scalars().all()
 
         sequence_numbers = [seg.sequence_number for seg in segments]
-        assert sequence_numbers == sorted(sequence_numbers), (
-            "Segment sequence_numbers are not in ascending order"
-        )
+        assert sequence_numbers == sorted(
+            sequence_numbers
+        ), "Segment sequence_numbers are not in ascending order"
 
     async def test_saved_segments_associated_with_correct_video(
         self,
@@ -1050,9 +1039,9 @@ class TestDownloadDatabaseState:
             )
             segments = result.scalars().all()
 
-        assert all(seg.video_id == video_id for seg in segments), (
-            "One or more segments have an incorrect video_id FK"
-        )
+        assert all(
+            seg.video_id == video_id for seg in segments
+        ), "One or more segments have an incorrect video_id FK"
 
     async def test_no_orphan_data_after_failed_service_call(
         self,
@@ -1086,9 +1075,7 @@ class TestDownloadDatabaseState:
         # Database must still be empty for this video
         async with integration_session_factory() as session:
             transcript_result = await session.execute(
-                select(VideoTranscriptDB).where(
-                    VideoTranscriptDB.video_id == video_id
-                )
+                select(VideoTranscriptDB).where(VideoTranscriptDB.video_id == video_id)
             )
             saved_transcript = transcript_result.scalar_one_or_none()
 
@@ -1099,9 +1086,9 @@ class TestDownloadDatabaseState:
             )
             saved_segments = segment_result.scalars().all()
 
-        assert saved_transcript is None, (
-            "A VideoTranscript row was persisted even though the service raised an error"
-        )
-        assert len(saved_segments) == 0, (
-            f"Expected 0 segments after service failure but found {len(saved_segments)}"
-        )
+        assert (
+            saved_transcript is None
+        ), "A VideoTranscript row was persisted even though the service raised an error"
+        assert (
+            len(saved_segments) == 0
+        ), f"Expected 0 segments after service failure but found {len(saved_segments)}"

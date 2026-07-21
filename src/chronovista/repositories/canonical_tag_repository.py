@@ -37,9 +37,7 @@ class CanonicalTagRepository(
         """Initialize repository with CanonicalTag model."""
         super().__init__(CanonicalTagDB)
 
-    async def get(
-        self, session: AsyncSession, id: uuid.UUID
-    ) -> CanonicalTagDB | None:
+    async def get(self, session: AsyncSession, id: uuid.UUID) -> CanonicalTagDB | None:
         """Get canonical tag by UUID primary key."""
         result = await session.execute(
             select(CanonicalTagDB).where(CanonicalTagDB.id == id)
@@ -96,9 +94,7 @@ class CanonicalTagRepository(
             by relevance tier, then ``video_count DESC`` within each tier.
             Tiering only affects ordering — every matching row is returned.
         """
-        base_query = select(CanonicalTagDB).where(
-            CanonicalTagDB.status == status
-        )
+        base_query = select(CanonicalTagDB).where(CanonicalTagDB.status == status)
 
         contains = match_mode == "contains"
 
@@ -289,9 +285,7 @@ class CanonicalTagRepository(
             )
         )
         if not include_unavailable:
-            count_query = count_query.where(
-                VideoDB.availability_status == "available"
-            )
+            count_query = count_query.where(VideoDB.availability_status == "available")
 
         total_result = await session.execute(count_query)
         total_count: int = total_result.scalar_one()
@@ -315,9 +309,7 @@ class CanonicalTagRepository(
             .limit(limit)
         )
         if not include_unavailable:
-            items_query = items_query.where(
-                VideoDB.availability_status == "available"
-            )
+            items_query = items_query.where(VideoDB.availability_status == "available")
 
         items_result = await session.execute(items_query)
         items: list[VideoDB] = list(items_result.scalars().all())

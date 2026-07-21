@@ -236,7 +236,9 @@ class TestCanonicalTagModels:
         assert update.alias_count is None
         assert update.video_count is None
 
-    @pytest.mark.parametrize("invalid_form", CanonicalTagTestData.INVALID_CANONICAL_FORMS)
+    @pytest.mark.parametrize(
+        "invalid_form", CanonicalTagTestData.INVALID_CANONICAL_FORMS
+    )
     def test_canonical_form_validation_invalid(self, invalid_form: str) -> None:
         """Test canonical_form validation with invalid inputs."""
         with pytest.raises(ValidationError):
@@ -516,7 +518,9 @@ class TestNamedEntityModels:
         assert data["status"] == "active"
         assert data["confidence"] == 0.95
 
-    @pytest.mark.parametrize("invalid_name", NamedEntityTestData.INVALID_CANONICAL_NAMES)
+    @pytest.mark.parametrize(
+        "invalid_name", NamedEntityTestData.INVALID_CANONICAL_NAMES
+    )
     def test_canonical_name_validation_invalid(self, invalid_name: str) -> None:
         """Test canonical_name validation with invalid inputs."""
         with pytest.raises(ValidationError):

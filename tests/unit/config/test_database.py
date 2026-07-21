@@ -53,13 +53,11 @@ class TestDatabaseManager:
         mock_create_engine.assert_called_once()
         _args, kwargs = mock_create_engine.call_args
         connect_args = kwargs.get("connect_args", {})
-        assert "connect_args" in kwargs, (
-            "create_async_engine must receive connect_args"
-        )
+        assert "connect_args" in kwargs, "create_async_engine must receive connect_args"
         server_settings = connect_args.get("server_settings", {})
-        assert "statement_timeout" in server_settings, (
-            "server_settings must include statement_timeout"
-        )
+        assert (
+            "statement_timeout" in server_settings
+        ), "server_settings must include statement_timeout"
         assert server_settings["statement_timeout"] == "60000", (
             f"Expected statement_timeout='60000' (ms), "
             f"got {server_settings['statement_timeout']!r}"

@@ -111,9 +111,7 @@ def _make_client_with_remaining(remaining: int) -> AsyncGenerator[AsyncClient, N
 
         try:
             transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="http://test"
-            ) as ac:
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
                 yield ac
         finally:
             app.dependency_overrides.clear()
@@ -207,9 +205,7 @@ class TestGetDiffAnalysis:
         mock_service.get_patterns = AsyncMock(return_value=[pattern])
         mock_find_entity.return_value = (entity_id, "Sheinbaum")
 
-        response = await client.get(
-            self.BASE_URL, params={"entity_name": "Shein"}
-        )
+        response = await client.get(self.BASE_URL, params={"entity_name": "Shein"})
 
         assert response.status_code == 200
         data = response.json()["data"]
@@ -234,9 +230,7 @@ class TestGetDiffAnalysis:
         mock_service.get_patterns = AsyncMock(return_value=[pattern])
         mock_find_entity.return_value = (uuid.uuid4(), "Sheinbaum")
 
-        response = await client.get(
-            self.BASE_URL, params={"entity_name": "Trump"}
-        )
+        response = await client.get(self.BASE_URL, params={"entity_name": "Trump"})
 
         assert response.status_code == 200
         assert response.json()["data"] == []
@@ -260,9 +254,7 @@ class TestGetDiffAnalysis:
         mock_service.get_patterns = AsyncMock(return_value=[pattern])
         mock_find_entity.return_value = (None, None)
 
-        response = await client.get(
-            self.BASE_URL, params={"entity_name": "Shein"}
-        )
+        response = await client.get(self.BASE_URL, params={"entity_name": "Shein"})
 
         assert response.status_code == 200
         assert response.json()["data"] == []
@@ -347,9 +339,7 @@ class TestGetDiffAnalysis:
 
         # Create client with remaining=0
         async for ac in _make_client_with_remaining(0):
-            response = await ac.get(
-                self.BASE_URL, params={"show_completed": "false"}
-            )
+            response = await ac.get(self.BASE_URL, params={"show_completed": "false"})
 
         assert response.status_code == 200
         assert response.json()["data"] == []
@@ -374,9 +364,7 @@ class TestGetDiffAnalysis:
 
         # Create client with remaining=0
         async for ac in _make_client_with_remaining(0):
-            response = await ac.get(
-                self.BASE_URL, params={"show_completed": "true"}
-            )
+            response = await ac.get(self.BASE_URL, params={"show_completed": "true"})
 
         assert response.status_code == 200
         data = response.json()["data"]
@@ -388,9 +376,7 @@ class TestGetDiffAnalysis:
         client: AsyncClient,
     ) -> None:
         """min_occurrences=0 returns 422."""
-        response = await client.get(
-            self.BASE_URL, params={"min_occurrences": 0}
-        )
+        response = await client.get(self.BASE_URL, params={"min_occurrences": 0})
         assert response.status_code == 422
 
     async def test_limit_validation(
@@ -398,7 +384,5 @@ class TestGetDiffAnalysis:
         client: AsyncClient,
     ) -> None:
         """limit=501 returns 422."""
-        response = await client.get(
-            self.BASE_URL, params={"limit": 501}
-        )
+        response = await client.get(self.BASE_URL, params={"limit": 501})
         assert response.status_code == 422

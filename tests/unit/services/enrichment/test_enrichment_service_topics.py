@@ -138,10 +138,17 @@ class TestEnrichTopicsMethod:
             for t in [music_topic, rock_topic, pop_topic]
         ]
 
-        with patch.object(
-            service.topic_category_repository, "find_by_name", new=AsyncMock(side_effect=[[music_topic], [rock_topic], [pop_topic]])
-        ), patch.object(
-            service.video_topic_repository, "replace_video_topics", new=AsyncMock(return_value=mock_topics_db)
+        with (
+            patch.object(
+                service.topic_category_repository,
+                "find_by_name",
+                new=AsyncMock(side_effect=[[music_topic], [rock_topic], [pop_topic]]),
+            ),
+            patch.object(
+                service.video_topic_repository,
+                "replace_video_topics",
+                new=AsyncMock(return_value=mock_topics_db),
+            ),
         ):
             # Expected: 3 topics extracted
             expected_count = 3
@@ -155,7 +162,9 @@ class TestEnrichTopicsMethod:
         # When topic_urls is empty, should return 0 without calling repository
         # (similar to enrich_tags behavior)
         with patch.object(
-            service.video_topic_repository, "replace_video_topics", new=AsyncMock(return_value=[])
+            service.video_topic_repository,
+            "replace_video_topics",
+            new=AsyncMock(return_value=[]),
         ):
             # Expected behavior: return 0, don't create placeholder topics
             expected_count = 0
@@ -178,9 +187,7 @@ class TestEnrichTopicsMethod:
         }
 
         # Extract topics safely (mimics expected service behavior)
-        topic_urls = (
-            api_data.get("topicDetails", {}).get("topicCategories", [])
-        )
+        topic_urls = api_data.get("topicDetails", {}).get("topicCategories", [])
 
         # Then topics should be an empty list
         assert topic_urls == []
@@ -201,9 +208,7 @@ class TestEnrichTopicsMethod:
         }
 
         # Extract topics safely
-        topic_urls = (
-            api_data.get("topicDetails", {}).get("topicCategories") or []
-        )
+        topic_urls = api_data.get("topicDetails", {}).get("topicCategories") or []
 
         # Then topics should be an empty list
         assert topic_urls == []
@@ -215,12 +220,12 @@ class TestEnrichTopicsMethod:
         video_id = VALID_VIDEO_ID
         topic_ids = [VALID_TOPIC_ID_MUSIC, VALID_TOPIC_ID_ROCK, VALID_TOPIC_ID_POP]
 
-        mock_topics_db = [
-            MagicMock(video_id=video_id, topic_id=t) for t in topic_ids
-        ]
+        mock_topics_db = [MagicMock(video_id=video_id, topic_id=t) for t in topic_ids]
 
         with patch.object(
-            service.video_topic_repository, "replace_video_topics", new=AsyncMock(return_value=mock_topics_db)
+            service.video_topic_repository,
+            "replace_video_topics",
+            new=AsyncMock(return_value=mock_topics_db),
         ):
             result = await service.video_topic_repository.replace_video_topics(
                 mock_session, video_id, topic_ids
@@ -420,7 +425,9 @@ class TestFiveStepTopicMatchingAlgorithm:
         )
 
         # When searching for exact match "Music"
-        result = await mock_topic_category_repository.find_by_name(mock_session, "Music")
+        result = await mock_topic_category_repository.find_by_name(
+            mock_session, "Music"
+        )
 
         # Then it should find the exact match
         assert len(result) == 1
@@ -587,7 +594,9 @@ class TestUnrecognizedTopicHandling:
         # Verify the expected logging pattern
         with caplog.at_level(logging.WARNING):
             # Simulate the warning that should be logged
-            logging.warning(f"Unrecognized topic '{topic_name}' from URL: {unrecognized_url}")
+            logging.warning(
+                f"Unrecognized topic '{topic_name}' from URL: {unrecognized_url}"
+            )
 
         assert "Unrecognized topic" in caplog.text
         assert topic_name in caplog.text
@@ -963,7 +972,9 @@ class TestTopicStatisticsInEnrichmentSummary:
         total_topic_associations = 285
 
         avg_topics_per_video = (
-            total_topic_associations / videos_with_topics if videos_with_topics > 0 else 0
+            total_topic_associations / videos_with_topics
+            if videos_with_topics > 0
+            else 0
         )
 
         assert abs(avg_topics_per_video - 3.0) < 0.1  # ~3 topics per video
@@ -1078,9 +1089,7 @@ class TestMultipleTopicsPerVideo:
             VALID_TOPIC_ID_ENTERTAINMENT,
         ]
 
-        mock_topics_db = [
-            MagicMock(video_id=video_id, topic_id=t) for t in topic_ids
-        ]
+        mock_topics_db = [MagicMock(video_id=video_id, topic_id=t) for t in topic_ids]
         mock_video_topic_repository.replace_video_topics = AsyncMock(
             return_value=mock_topics_db
         )
@@ -1121,9 +1130,7 @@ class TestMultipleTopicsPerVideo:
         video_id = VALID_VIDEO_ID
         topic_ids = [VALID_TOPIC_ID_MUSIC, VALID_TOPIC_ID_ROCK, VALID_TOPIC_ID_POP]
 
-        mock_topics_db = [
-            MagicMock(video_id=video_id, topic_id=t) for t in topic_ids
-        ]
+        mock_topics_db = [MagicMock(video_id=video_id, topic_id=t) for t in topic_ids]
         mock_video_topic_repository.get_topics_by_video_id = AsyncMock(
             return_value=mock_topics_db
         )
@@ -1277,9 +1284,7 @@ class TestTopicEnrichmentIntegration:
         }
 
         # Extract topic URLs from response
-        topic_urls = (
-            api_response.get("topicDetails", {}).get("topicCategories", [])
-        )
+        topic_urls = api_response.get("topicDetails", {}).get("topicCategories", [])
         video_id = api_response["id"]
 
         # Verify extraction
@@ -1335,7 +1340,9 @@ class TestTopicEnrichmentIntegration:
         topic_ids = [VALID_TOPIC_ID_MUSIC, VALID_TOPIC_ID_ROCK]
 
         with patch.object(
-            service.video_topic_repository, "replace_video_topics", new=AsyncMock(side_effect=Exception("Database error"))
+            service.video_topic_repository,
+            "replace_video_topics",
+            new=AsyncMock(side_effect=Exception("Database error")),
         ):
             with pytest.raises(Exception) as exc_info:
                 await service.video_topic_repository.replace_video_topics(

@@ -403,7 +403,11 @@ class TranscriptService(TranscriptServiceInterface):
                 source_metadata={
                     "caption_id": caption_id,
                     "track_kind": snippet.track_kind if snippet else None,
-                    "last_updated": snippet.last_updated.isoformat() if snippet and snippet.last_updated else None,
+                    "last_updated": (
+                        snippet.last_updated.isoformat()
+                        if snippet and snippet.last_updated
+                        else None
+                    ),
                     "download_format": "srt",
                 },
             )
@@ -520,7 +524,11 @@ class TranscriptService(TranscriptServiceInterface):
         result = resolve_language_code(language_code_str)
 
         # Log warning if we fell back to English from a non-English code
-        if result == LanguageCode.ENGLISH and language_code_str and not language_code_str.lower().startswith("en"):
+        if (
+            result == LanguageCode.ENGLISH
+            and language_code_str
+            and not language_code_str.lower().startswith("en")
+        ):
             logger.warning(
                 f"Could not resolve language code '{language_code_str}' to LanguageCode enum, "
                 f"falling back to ENGLISH. Consider adding this language code to the enum."
@@ -618,7 +626,9 @@ class TranscriptService(TranscriptServiceInterface):
                 if isinstance(item["duration"], int | float | str)
                 else 0.0
             )
-            snippets.append(TranscriptSnippet(text=text, start=start, duration=duration))
+            snippets.append(
+                TranscriptSnippet(text=text, start=start, duration=duration)
+            )
 
         lang_code = self._resolve_language_code(used_language_code)
 
@@ -927,8 +937,10 @@ class TranscriptService(TranscriptServiceInterface):
                         is_translatable=getattr(native_t, "is_translatable", True),
                         transcript_data=transcript_data,
                     )
-                    results[lang_code] = EnhancedVideoTranscriptBase.from_raw_transcript_data(
-                        raw_data, download_reason=download_reason
+                    results[lang_code] = (
+                        EnhancedVideoTranscriptBase.from_raw_transcript_data(
+                            raw_data, download_reason=download_reason
+                        )
                     )
                     logger.info(
                         "Downloaded native '%s' transcript for video %s",
@@ -954,13 +966,17 @@ class TranscriptService(TranscriptServiceInterface):
                         used_language_code=lang_code,
                         language_name=getattr(translated_t, "language", lang_code),
                         is_generated=getattr(
-                            translated_t, "is_generated", translation_source.is_generated
+                            translated_t,
+                            "is_generated",
+                            translation_source.is_generated,
                         ),
                         is_translatable=False,  # translated transcripts cannot be re-translated
                         transcript_data=transcript_data,
                     )
-                    results[lang_code] = EnhancedVideoTranscriptBase.from_raw_transcript_data(
-                        raw_data, download_reason=download_reason
+                    results[lang_code] = (
+                        EnhancedVideoTranscriptBase.from_raw_transcript_data(
+                            raw_data, download_reason=download_reason
+                        )
                     )
                     logger.info(
                         "Downloaded translated '%s' transcript for video %s",
@@ -995,7 +1011,13 @@ class TranscriptService(TranscriptServiceInterface):
                     error_msg = str(exc).lower()
                     if any(
                         kw in error_msg
-                        for kw in ["transcript", "disabled", "not found", "unavailable", "no translation"]
+                        for kw in [
+                            "transcript",
+                            "disabled",
+                            "not found",
+                            "unavailable",
+                            "no translation",
+                        ]
                     ):
                         logger.info(
                             "No transcript available in '%s' for video %s: %s — skipped",

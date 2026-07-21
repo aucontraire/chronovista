@@ -273,7 +273,9 @@ class TestSyncTranscriptsFluentPreferences:
         assert mock_transcript_service.get_transcript.call_count == 2
 
         # Verify output indicates using preferences
-        assert "preference" in result.stdout.lower() or "fluent" in result.stdout.lower()
+        assert (
+            "preference" in result.stdout.lower() or "fluent" in result.stdout.lower()
+        )
 
 
 # ============================================================================

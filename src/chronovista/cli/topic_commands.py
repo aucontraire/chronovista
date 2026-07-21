@@ -89,12 +89,16 @@ async def resolve_topic_identifier(
 
     if len(matches) > 1:
         # Disambiguation needed
-        console.print(
-            f"\n[yellow]Multiple topics match '{identifier}':[/yellow]\n"
-        )
+        console.print(f"\n[yellow]Multiple topics match '{identifier}':[/yellow]\n")
         for i, match in enumerate(matches, 1):
-            parent_info = f" (parent: {match.parent_topic_id})" if match.parent_topic_id else " (root)"
-            console.print(f"  {i}. [cyan]{match.category_name}[/cyan] - ID: {match.topic_id}{parent_info}")
+            parent_info = (
+                f" (parent: {match.parent_topic_id})"
+                if match.parent_topic_id
+                else " (root)"
+            )
+            console.print(
+                f"  {i}. [cyan]{match.category_name}[/cyan] - ID: {match.topic_id}{parent_info}"
+            )
 
         console.print()
         choice = Prompt.ask(
@@ -120,8 +124,14 @@ async def resolve_topic_identifier(
         # Limit to first 10 for readability
         display_matches = partial_matches[:10]
         for i, match in enumerate(display_matches, 1):
-            parent_info = f" (parent: {match.parent_topic_id})" if match.parent_topic_id else " (root)"
-            console.print(f"  {i}. [cyan]{match.category_name}[/cyan] - ID: {match.topic_id}{parent_info}")
+            parent_info = (
+                f" (parent: {match.parent_topic_id})"
+                if match.parent_topic_id
+                else " (root)"
+            )
+            console.print(
+                f"  {i}. [cyan]{match.category_name}[/cyan] - ID: {match.topic_id}{parent_info}"
+            )
 
         if len(partial_matches) > 10:
             console.print(f"  ... and {len(partial_matches) - 10} more")
@@ -216,7 +226,9 @@ def show_topic(
         try:
             topic_repo = TopicCategoryRepository()
             async for session in db_manager.get_session(echo=False):
-                resolved_topic = await resolve_topic_identifier(session, topic_repo, topic)
+                resolved_topic = await resolve_topic_identifier(
+                    session, topic_repo, topic
+                )
 
                 if not resolved_topic:
                     console.print(
@@ -272,7 +284,9 @@ def channels_by_topic(
 
             async for session in db_manager.get_session(echo=False):
                 # Resolve topic by ID or name
-                resolved_topic = await resolve_topic_identifier(session, topic_repo, topic)
+                resolved_topic = await resolve_topic_identifier(
+                    session, topic_repo, topic
+                )
                 if not resolved_topic:
                     console.print(
                         Panel(
@@ -354,7 +368,9 @@ def videos_by_topic(
 
             async for session in db_manager.get_session(echo=False):
                 # Resolve topic by ID or name
-                resolved_topic = await resolve_topic_identifier(session, topic_repo, topic)
+                resolved_topic = await resolve_topic_identifier(
+                    session, topic_repo, topic
+                )
                 if not resolved_topic:
                     console.print(
                         Panel(
@@ -600,7 +616,9 @@ def related_topics(
 
             # Resolve topic by ID or name
             async for session in db_manager.get_session(echo=False):
-                resolved_topic = await resolve_topic_identifier(session, topic_repo, topic)
+                resolved_topic = await resolve_topic_identifier(
+                    session, topic_repo, topic
+                )
                 if not resolved_topic:
                     console.print(
                         Panel(
@@ -722,8 +740,12 @@ def related_topics(
 
 @topic_app.command("overlap")
 def topic_overlap(
-    topic1: str = typer.Argument(..., help="First topic ID or name (e.g., '10' or 'Music')"),
-    topic2: str = typer.Argument(..., help="Second topic ID or name (e.g., '20' or 'Gaming')"),
+    topic1: str = typer.Argument(
+        ..., help="First topic ID or name (e.g., '10' or 'Music')"
+    ),
+    topic2: str = typer.Argument(
+        ..., help="Second topic ID or name (e.g., '20' or 'Gaming')"
+    ),
 ) -> None:
     """Show content overlap between two topics."""
 
@@ -734,7 +756,9 @@ def topic_overlap(
 
             # Resolve topics by ID or name
             async for session in db_manager.get_session(echo=False):
-                resolved_topic1 = await resolve_topic_identifier(session, topic_repo, topic1)
+                resolved_topic1 = await resolve_topic_identifier(
+                    session, topic_repo, topic1
+                )
                 if not resolved_topic1:
                     console.print(
                         Panel(
@@ -745,7 +769,9 @@ def topic_overlap(
                     )
                     return
 
-                resolved_topic2 = await resolve_topic_identifier(session, topic_repo, topic2)
+                resolved_topic2 = await resolve_topic_identifier(
+                    session, topic_repo, topic2
+                )
                 if not resolved_topic2:
                     console.print(
                         Panel(
@@ -914,7 +940,9 @@ def similar_topics(
 
             # Resolve topic by ID or name
             async for session in db_manager.get_session(echo=False):
-                resolved_topic = await resolve_topic_identifier(session, topic_repo, _topic)
+                resolved_topic = await resolve_topic_identifier(
+                    session, topic_repo, _topic
+                )
                 if not resolved_topic:
                     console.print(
                         Panel(
@@ -1795,7 +1823,9 @@ async def show_full_hierarchy(
 
             # Parent label with stats
             video_count = topic_video_counts.get(parent.topic_id, 0)
-            parent_label = f"[bold]{parent.category_name}[/bold] [dim]({parent.topic_id})[/dim]"
+            parent_label = (
+                f"[bold]{parent.category_name}[/bold] [dim]({parent.topic_id})[/dim]"
+            )
             if show_stats and video_count > 0:
                 parent_label += f" [green]📺 {video_count:,}[/green]"
 
@@ -1843,7 +1873,8 @@ async def show_full_hierarchy(
 @topic_app.command("tree")
 def topic_tree(
     topic_id: str | None = typer.Argument(
-        None, help="Root topic ID to show relationships for (omit to show full hierarchy)"
+        None,
+        help="Root topic ID to show relationships for (omit to show full hierarchy)",
     ),
     max_depth: int = typer.Option(
         3, "--max-depth", "-d", help="Maximum depth of relationship tree"
@@ -3531,9 +3562,7 @@ def topic_engagement_analysis(
 
 @topic_app.command("channel-engagement")
 def channel_engagement_analysis(
-    topic: str = typer.Argument(
-        ..., help="Topic ID or name (e.g., '10' or 'Music')"
-    ),
+    topic: str = typer.Argument(..., help="Topic ID or name (e.g., '10' or 'Music')"),
     limit: int = typer.Option(
         10, "--limit", "-l", help="Maximum number of channels to show"
     ),
@@ -3547,7 +3576,9 @@ def channel_engagement_analysis(
 
             # Resolve topic by ID or name first
             async for session in db_manager.get_session(echo=False):
-                resolved_topic = await resolve_topic_identifier(session, topic_repo, topic)
+                resolved_topic = await resolve_topic_identifier(
+                    session, topic_repo, topic
+                )
                 if not resolved_topic:
                     console.print(
                         Panel(

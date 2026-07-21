@@ -21,6 +21,7 @@ from tests.factories import (
 
 # Mark all tests as async for this module
 
+
 class TestChannelTopicRepository:
     """Test ChannelTopicRepository functionality."""
 

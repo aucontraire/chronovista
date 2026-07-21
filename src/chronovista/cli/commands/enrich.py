@@ -370,7 +370,9 @@ def enrich_videos(
             raise typer.Exit(EXIT_CODE_NO_CREDENTIALS)
 
         # Create enrichment service using container
-        service = container.create_enrichment_service(include_playlists=include_playlists)
+        service = container.create_enrichment_service(
+            include_playlists=include_playlists
+        )
 
         async for session in db_manager.get_session(echo=False):
             # Acquire lock
@@ -433,7 +435,9 @@ def enrich_videos(
                     "Include Playlists", "Yes" if include_playlists else "No"
                 )
                 config_table.add_row("Auto-Seed", "Yes" if auto_seed else "No")
-                config_table.add_row("Refresh Topics", "Yes" if refresh_topics else "No")
+                config_table.add_row(
+                    "Refresh Topics", "Yes" if refresh_topics else "No"
+                )
                 config_table.add_row("Sync Likes", "Yes" if sync_likes else "No")
                 config_table.add_row("Verbose", "Yes" if verbose else "No")
                 config_table.add_row("Dry Run", "Yes" if dry_run else "No")
@@ -548,8 +552,11 @@ def enrich_videos(
                         from chronovista.repositories.playlist_repository import (
                             PlaylistRepository as PR,
                         )
+
                         temp_repo = PR()
-                        unlinked_playlists = await temp_repo.get_unlinked_playlists(session, limit=500)
+                        unlinked_playlists = await temp_repo.get_unlinked_playlists(
+                            session, limit=500
+                        )
                         unlinked_count = len(unlinked_playlists)
 
                         if unlinked_count > 0:
@@ -638,13 +645,11 @@ def enrich_videos(
 
                                     # Batch update liked status for existing videos
                                     if existing_video_ids:
-                                        likes_synced = (
-                                            await user_video_repo.update_like_status_batch(
-                                                session,
-                                                user_id,
-                                                existing_video_ids,
-                                                liked=True,
-                                            )
+                                        likes_synced = await user_video_repo.update_like_status_batch(
+                                            session,
+                                            user_id,
+                                            existing_video_ids,
+                                            liked=True,
                                         )
                                         await session.commit()
 
@@ -997,7 +1002,9 @@ def _render_channel_status(
     console.print(panel)
 
 
-def _render_channel_enrichment_result(result: ChannelEnrichmentResult, dry_run: bool) -> None:
+def _render_channel_enrichment_result(
+    result: ChannelEnrichmentResult, dry_run: bool
+) -> None:
     """
     Render channel enrichment result as a Rich panel.
 
@@ -1051,7 +1058,9 @@ def _render_channel_enrichment_result(result: ChannelEnrichmentResult, dry_run: 
     elif result.was_interrupted or result.network_instability_warning:
         border_style = "yellow"
     else:
-        border_style = "red" if result.channels_failed > result.channels_enriched else "yellow"
+        border_style = (
+            "red" if result.channels_failed > result.channels_enriched else "yellow"
+        )
 
     console.print(
         Panel(

@@ -178,12 +178,12 @@ class TestSourcesTitleCallsScanMetadata:
         )
 
         # scan_metadata() must be called once with sources=["title"]
-        assert len(captured_metadata_calls) == 1, (
-            f"Expected 1 scan_metadata() call; got {len(captured_metadata_calls)}"
-        )
-        assert captured_metadata_calls[0].get("sources") == ["title"], (
-            f"Expected sources=['title']; got: {captured_metadata_calls[0].get('sources')}"
-        )
+        assert (
+            len(captured_metadata_calls) == 1
+        ), f"Expected 1 scan_metadata() call; got {len(captured_metadata_calls)}"
+        assert captured_metadata_calls[0].get("sources") == [
+            "title"
+        ], f"Expected sources=['title']; got: {captured_metadata_calls[0].get('sources')}"
 
     @patch("chronovista.cli.entity_commands.EntityMentionScanService")
     @patch("chronovista.cli.entity_commands.db_manager")
@@ -275,14 +275,14 @@ class TestSourcesAllCallsBothServices:
         assert result.exit_code == 0, f"Unexpected exit; output: {result.stdout}"
 
         # scan() called once for transcript
-        assert len(captured_scan_calls) == 1, (
-            f"Expected 1 scan() call; got {len(captured_scan_calls)}"
-        )
+        assert (
+            len(captured_scan_calls) == 1
+        ), f"Expected 1 scan() call; got {len(captured_scan_calls)}"
 
         # scan_metadata() called once with both title and description
-        assert len(captured_metadata_calls) == 1, (
-            f"Expected 1 scan_metadata() call; got {len(captured_metadata_calls)}"
-        )
+        assert (
+            len(captured_metadata_calls) == 1
+        ), f"Expected 1 scan_metadata() call; got {len(captured_metadata_calls)}"
         metadata_sources = captured_metadata_calls[0].get("sources", [])
         assert "title" in metadata_sources and "description" in metadata_sources, (
             f"Expected both 'title' and 'description' in metadata sources; "
@@ -379,9 +379,9 @@ class TestDefaultSourcesTranscriptOnly:
             result = runner.invoke(entity_app, ["scan"])
 
         assert result.exit_code == 0, f"Unexpected exit; output: {result.stdout}"
-        assert len(captured_scan_calls) == 1, (
-            f"Expected 1 scan() call; got {len(captured_scan_calls)}"
-        )
+        assert (
+            len(captured_scan_calls) == 1
+        ), f"Expected 1 scan() call; got {len(captured_scan_calls)}"
         assert len(captured_metadata_calls) == 0, (
             f"scan_metadata() should NOT be called with default sources; "
             f"got {len(captured_metadata_calls)} call(s)"
@@ -456,9 +456,7 @@ class TestSourcesInvalidValueRejected:
 
     def test_sources_tag_does_not_call_asyncio_run(self, runner: CliRunner) -> None:
         """Validation failure must exit before ``asyncio.run`` is called."""
-        with patch(
-            "chronovista.cli.entity_commands.asyncio.run"
-        ) as mock_asyncio_run:
+        with patch("chronovista.cli.entity_commands.asyncio.run") as mock_asyncio_run:
             runner.invoke(entity_app, ["scan", "--sources", "tag"])
 
         mock_asyncio_run.assert_not_called()
@@ -476,9 +474,9 @@ class TestSourcesInvalidValueRejected:
         valid_shown = (
             "transcript" in output or "title" in output or "description" in output
         )
-        assert valid_shown, (
-            f"Expected valid source values in error output; got: {output[:400]}"
-        )
+        assert (
+            valid_shown
+        ), f"Expected valid source values in error output; got: {output[:400]}"
 
     def test_sources_tag_among_valid_sources_exits_1(self, runner: CliRunner) -> None:
         """``--sources transcript,tag`` must still reject 'tag' and exit with code 1."""
@@ -544,9 +542,9 @@ class TestDryRunTitleOutputFormat:
         # The source VALUE "title" must appear in the output.  Rich truncates
         # column *headers* on narrow terminals (CliRunner width = 80), so we
         # check for the data value rather than the header text.
-        assert "title" in output.lower(), (
-            f"Expected 'title' source value in dry-run output; got: {output[:600]}"
-        )
+        assert (
+            "title" in output.lower()
+        ), f"Expected 'title' source value in dry-run output; got: {output[:600]}"
 
     @patch("chronovista.cli.entity_commands.EntityMentionScanService")
     @patch("chronovista.cli.entity_commands.db_manager")
@@ -643,9 +641,9 @@ class TestDryRunTitleOutputFormat:
 
         output = result.stdout or ""
         assert result.exit_code == 0
-        assert "title" in output.lower(), (
-            f"Expected 'title' value in source column; got: {output[:600]}"
-        )
+        assert (
+            "title" in output.lower()
+        ), f"Expected 'title' value in source column; got: {output[:600]}"
 
     @patch("chronovista.cli.entity_commands.EntityMentionScanService")
     @patch("chronovista.cli.entity_commands.db_manager")
@@ -690,9 +688,9 @@ class TestDryRunTitleOutputFormat:
 
         output = result.stdout or ""
         assert result.exit_code == 0
-        assert "videos scanned" in output.lower(), (
-            f"Expected 'videos scanned' in dry-run summary; got: {output[:600]}"
-        )
+        assert (
+            "videos scanned" in output.lower()
+        ), f"Expected 'videos scanned' in dry-run summary; got: {output[:600]}"
 
     @patch("chronovista.cli.entity_commands.EntityMentionScanService")
     @patch("chronovista.cli.entity_commands.db_manager")
@@ -736,10 +734,10 @@ class TestDryRunTitleOutputFormat:
         output = result.stdout or ""
         assert result.exit_code == 0
         # Summary must say "segments scanned", not "videos scanned"
-        assert "segments scanned" in output.lower(), (
-            f"Expected 'segments scanned' for transcript-only dry-run; got: {output[:600]}"
-        )
+        assert (
+            "segments scanned" in output.lower()
+        ), f"Expected 'segments scanned' for transcript-only dry-run; got: {output[:600]}"
         # Real start_time must be shown for transcript rows (visible at COLUMNS=200)
-        assert "12.5" in output, (
-            f"Expected real start_time '12.5' for transcript row; got: {output[:600]}"
-        )
+        assert (
+            "12.5" in output
+        ), f"Expected real start_time '12.5' for transcript row; got: {output[:600]}"

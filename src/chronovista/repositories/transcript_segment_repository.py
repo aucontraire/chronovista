@@ -53,9 +53,7 @@ def translate_python_regex_to_posix(pattern: str) -> str:
     try:
         re.compile(pattern)
     except re.error as exc:
-        raise ValueError(
-            f"Invalid regex pattern '{pattern}': {exc}"
-        ) from exc
+        raise ValueError(f"Invalid regex pattern '{pattern}': {exc}") from exc
 
     result: list[str] = []
     i = 0
@@ -142,9 +140,7 @@ class TranscriptSegmentRepository(
         """Initialize repository with TranscriptSegment model."""
         super().__init__(TranscriptSegmentDB)
 
-    async def get(
-        self, session: AsyncSession, id: int
-    ) -> TranscriptSegmentDB | None:
+    async def get(self, session: AsyncSession, id: int) -> TranscriptSegmentDB | None:
         """
         Get segment by primary key (id).
 
@@ -567,9 +563,7 @@ class TranscriptSegmentRepository(
             try:
                 re.compile(pattern)
             except re.error as exc:
-                raise ValueError(
-                    f"Invalid regex pattern '{pattern}': {exc}"
-                ) from exc
+                raise ValueError(f"Invalid regex pattern '{pattern}': {exc}") from exc
 
         # Translate Python word-boundary syntax to PostgreSQL POSIX equivalent
         sql_pattern = translate_python_regex_to_posix(pattern) if regex else pattern
@@ -761,9 +755,8 @@ class TranscriptSegmentRepository(
                 .where(and_(*scope_conditions, VideoDB.channel_id == channel))
             )
         else:
-            stmt = (
-                select(distinct(TranscriptSegmentDB.video_id))
-                .where(and_(*scope_conditions))
+            stmt = select(distinct(TranscriptSegmentDB.video_id)).where(
+                and_(*scope_conditions)
             )
 
         result = await session.execute(stmt)

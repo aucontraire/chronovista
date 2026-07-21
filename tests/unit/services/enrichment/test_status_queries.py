@@ -96,7 +96,12 @@ class TestEnrichmentStatusCounts:
 
         # Setup mock to return specific placeholder count
         placeholder_count = 250
-        counts = [100, placeholder_count, 400, 20]  # high, medium (placeholder), low, deleted
+        counts = [
+            100,
+            placeholder_count,
+            400,
+            20,
+        ]  # high, medium (placeholder), low, deleted
         count_iter = iter(counts)
 
         def get_next_count() -> MagicMock:
@@ -212,7 +217,12 @@ class TestEnrichmentStatusCounts:
 
         # All videos are placeholder (high = medium = low = all)
         all_placeholder_count = 500
-        counts = [all_placeholder_count, all_placeholder_count, all_placeholder_count, 0]
+        counts = [
+            all_placeholder_count,
+            all_placeholder_count,
+            all_placeholder_count,
+            0,
+        ]
         count_iter = iter(counts)
 
         def get_next_count() -> MagicMock:
@@ -336,20 +346,20 @@ class TestQuotaEstimationPerTier:
         """Test that quota estimates use correct formula: ceiling division by 50."""
         # Test various counts to verify ceiling division
         test_cases = [
-            (0, 0),      # 0 videos = 0 quota
-            (1, 1),      # 1 video = 1 quota (1 API call)
-            (50, 1),     # 50 videos = 1 quota (exactly one batch)
-            (51, 2),     # 51 videos = 2 quota (need second batch)
-            (100, 2),    # 100 videos = 2 quota
-            (101, 3),    # 101 videos = 3 quota
-            (49, 1),     # 49 videos = 1 quota
+            (0, 0),  # 0 videos = 0 quota
+            (1, 1),  # 1 video = 1 quota (1 API call)
+            (50, 1),  # 50 videos = 1 quota (exactly one batch)
+            (51, 2),  # 51 videos = 2 quota (need second batch)
+            (100, 2),  # 100 videos = 2 quota
+            (101, 3),  # 101 videos = 3 quota
+            (49, 1),  # 49 videos = 1 quota
         ]
 
         for video_count, expected_quota in test_cases:
             result = estimate_quota_cost(video_count)
-            assert result == expected_quota, (
-                f"estimate_quota_cost({video_count}) = {result}, expected {expected_quota}"
-            )
+            assert (
+                result == expected_quota
+            ), f"estimate_quota_cost({video_count}) = {result}, expected {expected_quota}"
 
     def test_estimate_quota_cost_with_custom_batch_size(self) -> None:
         """Test quota estimation with custom batch size."""
@@ -409,14 +419,21 @@ class TestQuotaEstimationWithService:
 
         # Setup counts for each tier
         tier_counts = {
-            "high": 150,      # quota = 3
-            "medium": 500,    # quota = 10
-            "low": 2500,      # quota = 50
-            "deleted": 100,   # included in all
+            "high": 150,  # quota = 3
+            "medium": 500,  # quota = 10
+            "low": 2500,  # quota = 50
+            "deleted": 100,  # included in all
         }
-        tier_counts["all"] = tier_counts["low"] + tier_counts["deleted"]  # 2600 -> quota = 52
+        tier_counts["all"] = (
+            tier_counts["low"] + tier_counts["deleted"]
+        )  # 2600 -> quota = 52
 
-        counts = [tier_counts["high"], tier_counts["medium"], tier_counts["low"], tier_counts["deleted"]]
+        counts = [
+            tier_counts["high"],
+            tier_counts["medium"],
+            tier_counts["low"],
+            tier_counts["deleted"],
+        ]
         count_iter = iter(counts)
 
         def get_next_count() -> MagicMock:
@@ -480,7 +497,9 @@ class TestStatusQueryPerformance:
         await service.get_priority_tier_counts(mock_session)
 
         # Verify multiple queries were executed (one per tier)
-        assert len(executed_queries) >= 4  # At least 4 queries (high, medium, low, deleted)
+        assert (
+            len(executed_queries) >= 4
+        )  # At least 4 queries (high, medium, low, deleted)
 
         # The actual query structure uses func.count() which translates to COUNT
         # This test verifies the method completes and returns scalar results
@@ -621,9 +640,7 @@ class TestStatusQueryEdgeCases:
             youtube_service=mock_youtube_service,
         )
 
-    async def test_handles_null_scalar_result(
-        self, service: EnrichmentService
-    ) -> None:
+    async def test_handles_null_scalar_result(self, service: EnrichmentService) -> None:
         """Test that null scalar results are handled (default to 0)."""
         mock_session = AsyncMock()
 
@@ -665,9 +682,7 @@ class TestStatusQueryEdgeCases:
         assert result["medium"] <= result["low"]
         assert result["low"] <= result["all"]
 
-    async def test_large_video_count_handling(
-        self, service: EnrichmentService
-    ) -> None:
+    async def test_large_video_count_handling(self, service: EnrichmentService) -> None:
         """Test handling of large video counts (40,000+)."""
         mock_session = AsyncMock()
 

@@ -489,14 +489,17 @@ class TestTopicAnalyticsServiceGraphGeneration:
             analysis_date=datetime.now().isoformat(),
         )
 
-        with patch.object(
-            service,
-            "get_popular_topics",
-            new=AsyncMock(return_value=mock_popular_topics),
-        ), patch.object(
-            service,
-            "get_topic_relationships",
-            new=AsyncMock(return_value=mock_relationships),
+        with (
+            patch.object(
+                service,
+                "get_popular_topics",
+                new=AsyncMock(return_value=mock_popular_topics),
+            ),
+            patch.object(
+                service,
+                "get_topic_relationships",
+                new=AsyncMock(return_value=mock_relationships),
+            ),
         ):
             result = await service.generate_topic_graph_dot(
                 min_confidence=0.1, max_topics=50
@@ -533,14 +536,17 @@ class TestTopicAnalyticsServiceGraphGeneration:
             analysis_date=datetime.now().isoformat(),
         )
 
-        with patch.object(
-            service,
-            "get_popular_topics",
-            new=AsyncMock(return_value=mock_popular_topics),
-        ), patch.object(
-            service,
-            "get_topic_relationships",
-            new=AsyncMock(return_value=mock_relationships),
+        with (
+            patch.object(
+                service,
+                "get_popular_topics",
+                new=AsyncMock(return_value=mock_popular_topics),
+            ),
+            patch.object(
+                service,
+                "get_topic_relationships",
+                new=AsyncMock(return_value=mock_relationships),
+            ),
         ):
             result = await service.generate_topic_graph_json(
                 min_confidence=0.1, max_topics=50

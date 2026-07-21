@@ -27,7 +27,9 @@ class HistoricalTakeout(BaseModel):
     has_watch_history: bool = Field(
         default=False, description="Whether watch-history.json exists"
     )
-    has_playlists: bool = Field(default=False, description="Whether playlists directory exists")
+    has_playlists: bool = Field(
+        default=False, description="Whether playlists directory exists"
+    )
     has_subscriptions: bool = Field(
         default=False, description="Whether subscriptions.csv exists"
     )
@@ -43,14 +45,18 @@ class RecoveredVideoMetadata(BaseModel):
 
     video_id: str = Field(..., description="YouTube video ID")
     title: str = Field(..., description="Video title from historical takeout")
-    channel_name: str | None = Field(default=None, description="Channel name from takeout")
-    channel_id: str | None = Field(default=None, description="Channel ID if available")
-    channel_url: str | None = Field(default=None, description="Channel URL from takeout")
-    watched_at: datetime | None = Field(default=None, description="When the video was watched")
-    source_takeout: Path = Field(..., description="Path to source takeout directory")
-    source_date: datetime = Field(
-        ..., description="Export date of source takeout"
+    channel_name: str | None = Field(
+        default=None, description="Channel name from takeout"
     )
+    channel_id: str | None = Field(default=None, description="Channel ID if available")
+    channel_url: str | None = Field(
+        default=None, description="Channel URL from takeout"
+    )
+    watched_at: datetime | None = Field(
+        default=None, description="When the video was watched"
+    )
+    source_takeout: Path = Field(..., description="Path to source takeout directory")
+    source_date: datetime = Field(..., description="Export date of source takeout")
 
 
 class RecoveredChannelMetadata(BaseModel):
@@ -63,11 +69,11 @@ class RecoveredChannelMetadata(BaseModel):
 
     channel_id: str = Field(..., description="YouTube channel ID")
     channel_name: str = Field(..., description="Channel name from takeout")
-    channel_url: str | None = Field(default=None, description="Channel URL from takeout")
-    source_takeout: Path = Field(..., description="Path to source takeout directory")
-    source_date: datetime = Field(
-        ..., description="Export date of source takeout"
+    channel_url: str | None = Field(
+        default=None, description="Channel URL from takeout"
     )
+    source_takeout: Path = Field(..., description="Path to source takeout directory")
+    source_date: datetime = Field(..., description="Export date of source takeout")
     video_count: int = Field(
         default=0, description="Number of videos from this channel in takeout"
     )
@@ -88,7 +94,9 @@ class RecoveryCandidate(BaseModel):
     is_placeholder: bool = Field(
         default=False, description="Whether current title is a placeholder"
     )
-    channel_id: str | None = Field(default=None, description="Current channel ID if known")
+    channel_id: str | None = Field(
+        default=None, description="Current channel ID if known"
+    )
     channel_is_placeholder: bool = Field(
         default=False, description="Whether channel is a placeholder"
     )
@@ -108,11 +116,10 @@ class VideoRecoveryAction(BaseModel):
     old_channel_id: str | None = Field(default=None, description="Current channel ID")
     new_channel_id: str | None = Field(default=None, description="Recovered channel ID")
     channel_name: str | None = Field(default=None, description="Recovered channel name")
-    source_date: datetime = Field(
-        ..., description="Date of source takeout"
-    )
+    source_date: datetime = Field(..., description="Date of source takeout")
     action_type: str = Field(
-        default="update_title", description="Type of action: update_title, update_channel, both"
+        default="update_title",
+        description="Type of action: update_title, update_channel, both",
     )
 
 
@@ -126,13 +133,13 @@ class ChannelRecoveryAction(BaseModel):
 
     channel_id: str = Field(..., description="YouTube channel ID")
     channel_name: str = Field(..., description="Channel name from takeout")
-    channel_url: str | None = Field(default=None, description="Channel URL from takeout")
+    channel_url: str | None = Field(
+        default=None, description="Channel URL from takeout"
+    )
     action_type: str = Field(
         default="create", description="Type of action: create, update_name"
     )
-    source_date: datetime = Field(
-        ..., description="Date of source takeout"
-    )
+    source_date: datetime = Field(..., description="Date of source takeout")
 
 
 class RecoveryResult(BaseModel):
@@ -144,7 +151,9 @@ class RecoveryResult(BaseModel):
     """
 
     # Summary statistics
-    videos_recovered: int = Field(default=0, description="Number of videos with recovered metadata")
+    videos_recovered: int = Field(
+        default=0, description="Number of videos with recovered metadata"
+    )
     videos_still_missing: int = Field(
         default=0, description="Number of videos still without metadata"
     )

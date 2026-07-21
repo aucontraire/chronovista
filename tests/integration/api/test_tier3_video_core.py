@@ -409,7 +409,8 @@ class TestVideoSearchAndFiltering:
                 # For now, use a simple query since search_videos method may not exist
                 result = await session.execute(
                     select(DBVideo).where(
-                        DBVideo.channel_id == channel_id, DBVideo.availability_status == "available"
+                        DBVideo.channel_id == channel_id,
+                        DBVideo.availability_status == "available",
                     )
                 )
                 filtered_videos = result.scalars().all()
@@ -459,9 +460,7 @@ class TestVideoSearchAndFiltering:
                 # Use repository pattern
                 BaseSQLAlchemyRepository(DBVideo)
                 # Test recent videos (last year)
-                recent_date = datetime.now(UTC).replace(
-                    year=datetime.now().year - 1
-                )
+                recent_date = datetime.now(UTC).replace(year=datetime.now().year - 1)
 
                 recent_result = await session.execute(
                     select(DBVideo).where(DBVideo.upload_date >= recent_date)
@@ -542,7 +541,9 @@ class TestVideoStatisticsAggregation:
                         total_likes / total_videos if total_videos > 0 else 0
                     ),
                     deleted_video_count=sum(
-                        1 for video in channel_videos if video.availability_status != "available"
+                        1
+                        for video in channel_videos
+                        if video.availability_status != "available"
                     ),
                     kids_friendly_count=sum(
                         1 for video in channel_videos if video.made_for_kids

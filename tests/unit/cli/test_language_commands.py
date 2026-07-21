@@ -395,9 +395,7 @@ class TestGetPreferences:
         self, mock_db_preferences: list[MagicMock]
     ) -> None:
         """Test _get_preferences returns list of preferences."""
-        with patch(
-            "chronovista.cli.language_commands.db_manager"
-        ) as mock_db_manager:
+        with patch("chronovista.cli.language_commands.db_manager") as mock_db_manager:
             # Setup async context manager
             mock_session = AsyncMock()
             mock_db_manager.get_session.return_value.__aiter__ = AsyncMock(
@@ -419,9 +417,7 @@ class TestGetPreferences:
 
     async def test_get_preferences_empty_user(self) -> None:
         """Test _get_preferences returns empty list for user with no prefs."""
-        with patch(
-            "chronovista.cli.language_commands.db_manager"
-        ) as mock_db_manager:
+        with patch("chronovista.cli.language_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
             mock_db_manager.get_session.return_value.__aiter__ = AsyncMock(
                 return_value=iter([mock_session])
@@ -587,7 +583,9 @@ class TestLanguageSetCommand:
             # User accepts defaults
             mock_prompt.return_value = ""
 
-            with patch("chronovista.cli.language_commands._save_preferences") as mock_save:
+            with patch(
+                "chronovista.cli.language_commands._save_preferences"
+            ) as mock_save:
                 mock_save.return_value = None
 
                 result = runner.invoke(app, ["languages", "set"])
@@ -607,7 +605,9 @@ class TestLanguageSetCommand:
             # User presses Enter to accept defaults
             mock_prompt.return_value = ""
 
-            with patch("chronovista.cli.language_commands._save_preferences") as mock_save:
+            with patch(
+                "chronovista.cli.language_commands._save_preferences"
+            ) as mock_save:
                 mock_save.return_value = None
 
                 result = runner.invoke(app, ["languages", "set"])
@@ -634,7 +634,9 @@ class TestLanguageSetCommand:
                 "zh",  # Exclude
             ]
 
-            with patch("chronovista.cli.language_commands._save_preferences") as mock_save:
+            with patch(
+                "chronovista.cli.language_commands._save_preferences"
+            ) as mock_save:
                 mock_save.return_value = None
 
                 result = runner.invoke(app, ["languages", "set"])
@@ -652,7 +654,9 @@ class TestLanguageSetCommand:
         mock_locale.return_value = ("de_DE", "UTF-8")
 
         with patch("chronovista.cli.language_commands.typer.prompt") as mock_prompt:
-            with patch("chronovista.cli.language_commands._save_preferences") as mock_save:
+            with patch(
+                "chronovista.cli.language_commands._save_preferences"
+            ) as mock_save:
                 mock_save.return_value = None
 
                 result = runner.invoke(app, ["languages", "set", "--from-locale"])
@@ -664,9 +668,7 @@ class TestLanguageSetCommand:
                 assert mock_save.called
 
     @patch("chronovista.cli.language_commands.locale.getdefaultlocale")
-    def test_set_full_sequence(
-        self, mock_locale: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_set_full_sequence(self, mock_locale: MagicMock, runner: CliRunner) -> None:
         """T028: Full interactive sequence for all types."""
         mock_locale.return_value = ("en_US", "UTF-8")
 
@@ -682,7 +684,9 @@ class TestLanguageSetCommand:
                 "zh",  # Exclude
             ]
 
-            with patch("chronovista.cli.language_commands._save_preferences") as mock_save:
+            with patch(
+                "chronovista.cli.language_commands._save_preferences"
+            ) as mock_save:
                 mock_save.return_value = None
 
                 result = runner.invoke(app, ["languages", "set"])
@@ -707,7 +711,9 @@ class TestLanguageSetCommand:
                 "",  # Exclude (empty)
             ]
 
-            with patch("chronovista.cli.language_commands._save_preferences") as mock_save:
+            with patch(
+                "chronovista.cli.language_commands._save_preferences"
+            ) as mock_save:
                 mock_save.return_value = None
 
                 result = runner.invoke(app, ["languages", "set"])
@@ -715,7 +721,9 @@ class TestLanguageSetCommand:
                 # Verify goal prompt appeared
                 assert result.exit_code == 0
                 # Check that prompts included goal
-                assert any("goal" in str(call).lower() for call in mock_prompt.call_args_list)
+                assert any(
+                    "goal" in str(call).lower() for call in mock_prompt.call_args_list
+                )
 
     @patch("chronovista.cli.language_commands.locale.getdefaultlocale")
     def test_set_ctrl_c_exits_130(
@@ -728,7 +736,9 @@ class TestLanguageSetCommand:
             # Simulate Ctrl+C
             mock_prompt.side_effect = KeyboardInterrupt()
 
-            with patch("chronovista.cli.language_commands._save_preferences") as mock_save:
+            with patch(
+                "chronovista.cli.language_commands._save_preferences"
+            ) as mock_save:
                 mock_save.return_value = None
 
                 result = runner.invoke(app, ["languages", "set"])
@@ -737,7 +747,10 @@ class TestLanguageSetCommand:
                 assert result.exit_code == 130
                 # Verify no save occurred
                 assert not mock_save.called
-                assert "cancelled" in result.stdout.lower() or "cancel" in result.stdout.lower()
+                assert (
+                    "cancelled" in result.stdout.lower()
+                    or "cancel" in result.stdout.lower()
+                )
 
 
 class TestLanguageAddCommand:
@@ -776,6 +789,7 @@ class TestLanguageAddCommand:
                 # Rich formats numeric values with ANSI colour codes; strip them
                 # before asserting on the priority number.
                 import re as _re
+
                 ansi_stripped = _re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
                 assert "Priority: 3" in ansi_stripped
                 # Verify _add_language_preference was called
@@ -809,13 +823,16 @@ class TestLanguageAddCommand:
                 # Rich formats numeric values with ANSI colour codes; strip them
                 # before asserting on the priority number.
                 import re as _re
+
                 ansi_stripped = _re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
                 assert "Priority: 1" in ansi_stripped
                 # Verify _add_language_preference was called with priority parameter
                 assert mock_add.called
                 # Verify priority was passed to the function
                 call_args = mock_add.call_args
-                assert call_args[0][3] == 1  # priority argument is the 4th positional arg
+                assert (
+                    call_args[0][3] == 1
+                )  # priority argument is the 4th positional arg
 
     def test_add_command_with_goal_stores_learning_goal(
         self, runner: CliRunner
@@ -855,7 +872,9 @@ class TestLanguageAddCommand:
                 assert mock_add.called
                 # Verify learning_goal was passed to the function
                 call_args = mock_add.call_args
-                assert call_args[0][4] == "B2 by December"  # learning_goal is the 5th positional arg
+                assert (
+                    call_args[0][4] == "B2 by December"
+                )  # learning_goal is the 5th positional arg
 
     def test_add_command_existing_language_shows_error_with_guidance(
         self, runner: CliRunner
@@ -899,9 +918,7 @@ class TestLanguageAddCommand:
             mock_get.return_value = []
 
             # Try to add invalid language code
-            result = runner.invoke(
-                app, ["languages", "add", "xyz", "--type", "fluent"]
-            )
+            result = runner.invoke(app, ["languages", "add", "xyz", "--type", "fluent"])
 
             assert result.exit_code == 1
             assert "Error" in result.stdout
@@ -951,7 +968,9 @@ class TestLanguageRemoveCommand:
                 mock_repo.get_preferences_by_type = AsyncMock(return_value=[])
                 mock_repo_class.return_value = mock_repo
 
-                with patch("chronovista.cli.language_commands.typer.confirm") as mock_confirm:
+                with patch(
+                    "chronovista.cli.language_commands.typer.confirm"
+                ) as mock_confirm:
                     mock_confirm.return_value = True
 
                     result = runner.invoke(app, ["languages", "remove", "it"])
@@ -988,7 +1007,9 @@ class TestLanguageRemoveCommand:
                 mock_repo.get_preferences_by_type = AsyncMock(return_value=[])
                 mock_repo_class.return_value = mock_repo
 
-                with patch("chronovista.cli.language_commands.typer.confirm") as mock_confirm:
+                with patch(
+                    "chronovista.cli.language_commands.typer.confirm"
+                ) as mock_confirm:
                     result = runner.invoke(app, ["languages", "remove", "it", "--yes"])
 
                     # Confirm should NOT be called with --yes
@@ -1025,7 +1046,9 @@ class TestLanguageRemoveCommand:
                 "chronovista.cli.language_commands.UserLanguagePreferenceRepository"
             ) as mock_repo_class:
                 mock_repo = MagicMock()
-                mock_repo.get_by_composite_key = AsyncMock(return_value=mock_pref_to_remove)
+                mock_repo.get_by_composite_key = AsyncMock(
+                    return_value=mock_pref_to_remove
+                )
                 mock_repo.delete_user_preference = AsyncMock(return_value=True)
                 # After deletion, remaining preferences have gaps
                 mock_repo.get_preferences_by_type = AsyncMock(
@@ -1040,8 +1063,11 @@ class TestLanguageRemoveCommand:
                 # Verify update_priority was called to compact priorities
                 assert mock_repo.update_priority.called
 
-    def test_remove_non_existent_language_shows_message(self, runner: CliRunner) -> None:
+    def test_remove_non_existent_language_shows_message(
+        self, runner: CliRunner
+    ) -> None:
         """T061: Test remove non-existent language shows message."""
+
         async def mock_get_session():
             mock_session = AsyncMock()
             mock_session.commit = AsyncMock()
@@ -1063,7 +1089,9 @@ class TestLanguageRemoveCommand:
                 assert result.exit_code == 0
                 assert "not found" in result.stdout
 
-    def test_remove_cancelled_by_user_returns_exit_code_1(self, runner: CliRunner) -> None:
+    def test_remove_cancelled_by_user_returns_exit_code_1(
+        self, runner: CliRunner
+    ) -> None:
         """T062: Test remove cancelled by user returns exit code 1."""
         # Setup: Mock existing preference
         mock_pref = MagicMock()
@@ -1087,7 +1115,9 @@ class TestLanguageRemoveCommand:
                 mock_repo.get_by_composite_key = AsyncMock(return_value=mock_pref)
                 mock_repo_class.return_value = mock_repo
 
-                with patch("chronovista.cli.language_commands.typer.confirm") as mock_confirm:
+                with patch(
+                    "chronovista.cli.language_commands.typer.confirm"
+                ) as mock_confirm:
                     # User declines confirmation
                     mock_confirm.return_value = False
 
@@ -1191,9 +1221,14 @@ class TestLanguageResetCommand:
                 mock_repo.delete_all_user_preferences = AsyncMock(return_value=7)
                 mock_repo_class.return_value = mock_repo
 
-                with patch("chronovista.cli.language_commands.typer.confirm") as mock_confirm:
+                with patch(
+                    "chronovista.cli.language_commands.typer.confirm"
+                ) as mock_confirm:
                     # User confirms deletion but declines reconfiguration
-                    mock_confirm.side_effect = [True, False]  # First for reset confirm, second for reconfig
+                    mock_confirm.side_effect = [
+                        True,
+                        False,
+                    ]  # First for reset confirm, second for reconfig
 
                     result = runner.invoke(app, ["languages", "reset"])
 
@@ -1202,7 +1237,9 @@ class TestLanguageResetCommand:
                     assert mock_confirm.call_count == 2
                     # Verify first call mentions the count
                     first_call_text = str(mock_confirm.call_args_list[0])
-                    assert "7" in first_call_text  # Count should be in confirmation prompt
+                    assert (
+                        "7" in first_call_text
+                    )  # Count should be in confirmation prompt
                     # Should call delete_all
                     mock_repo.delete_all_user_preferences.assert_called_once()
                     # Should show success message
@@ -1257,7 +1294,9 @@ class TestLanguageResetCommand:
                 mock_repo.delete_all_user_preferences = AsyncMock(return_value=3)
                 mock_repo_class.return_value = mock_repo
 
-                with patch("chronovista.cli.language_commands.typer.confirm") as mock_confirm:
+                with patch(
+                    "chronovista.cli.language_commands.typer.confirm"
+                ) as mock_confirm:
                     # User declines reconfiguration offer
                     mock_confirm.return_value = False
 
@@ -1267,7 +1306,10 @@ class TestLanguageResetCommand:
                     assert mock_confirm.call_count == 1
                     # Verify it's asking about reconfiguration
                     call_text = str(mock_confirm.call_args)
-                    assert "reconfigure" in call_text.lower() or "configure" in call_text.lower()
+                    assert (
+                        "reconfigure" in call_text.lower()
+                        or "configure" in call_text.lower()
+                    )
 
                     assert result.exit_code == 0
                     assert "cleared" in result.stdout.lower()
@@ -1302,7 +1344,9 @@ class TestLanguageResetCommand:
                 mock_repo.delete_all_user_preferences = AsyncMock(return_value=1)
                 mock_repo_class.return_value = mock_repo
 
-                with patch("chronovista.cli.language_commands.typer.confirm") as mock_confirm:
+                with patch(
+                    "chronovista.cli.language_commands.typer.confirm"
+                ) as mock_confirm:
                     # User confirms deletion, then declines reconfiguration
                     mock_confirm.side_effect = [True, False]
 
@@ -1313,7 +1357,10 @@ class TestLanguageResetCommand:
                     assert mock_confirm.call_count == 2
                     # Check that second call asks about reconfiguration
                     second_call_text = str(mock_confirm.call_args_list[1])
-                    assert "reconfigure" in second_call_text.lower() or "configure" in second_call_text.lower()
+                    assert (
+                        "reconfigure" in second_call_text.lower()
+                        or "configure" in second_call_text.lower()
+                    )
 
     def test_reset_no_setup_skips_reconfiguration(self, runner: CliRunner) -> None:
         """T070 [P] [US7]: Test reset --no-setup skips reconfiguration offer."""
@@ -1345,10 +1392,14 @@ class TestLanguageResetCommand:
                 mock_repo.delete_all_user_preferences = AsyncMock(return_value=1)
                 mock_repo_class.return_value = mock_repo
 
-                with patch("chronovista.cli.language_commands.typer.confirm") as mock_confirm:
+                with patch(
+                    "chronovista.cli.language_commands.typer.confirm"
+                ) as mock_confirm:
                     mock_confirm.return_value = True
 
-                    result = runner.invoke(app, ["languages", "reset", "--yes", "--no-setup"])
+                    result = runner.invoke(
+                        app, ["languages", "reset", "--yes", "--no-setup"]
+                    )
 
                     assert result.exit_code == 0
                     # Should only confirm once (or zero with --yes)
@@ -1384,17 +1435,23 @@ class TestLanguageResetCommand:
                 mock_repo.get_user_preferences = AsyncMock(return_value=existing_prefs)
                 mock_repo_class.return_value = mock_repo
 
-                with patch("chronovista.cli.language_commands.typer.confirm") as mock_confirm:
+                with patch(
+                    "chronovista.cli.language_commands.typer.confirm"
+                ) as mock_confirm:
                     # User declines confirmation
                     mock_confirm.return_value = False
 
                     result = runner.invoke(app, ["languages", "reset"])
 
                     assert result.exit_code == 1
-                    assert "cancelled" in result.stdout.lower() or "canceled" in result.stdout.lower()
+                    assert (
+                        "cancelled" in result.stdout.lower()
+                        or "canceled" in result.stdout.lower()
+                    )
 
     def test_reset_no_preferences_shows_message(self, runner: CliRunner) -> None:
         """Test reset with no preferences shows message and exits 0."""
+
         async def mock_get_session():
             mock_session = AsyncMock()
             mock_session.commit = AsyncMock()
@@ -1413,7 +1470,10 @@ class TestLanguageResetCommand:
                 result = runner.invoke(app, ["languages", "reset"])
 
                 assert result.exit_code == 0
-                assert "No language preferences" in result.stdout or "no preferences" in result.stdout.lower()
+                assert (
+                    "No language preferences" in result.stdout
+                    or "no preferences" in result.stdout.lower()
+                )
 
 
 # -------------------------------------------------------------------------
@@ -1489,7 +1549,9 @@ class TestLanguageSetCommandFlags:
         with patch("chronovista.cli.language_commands._get_preferences") as mock_get:
             mock_get.return_value = existing_prefs
 
-            with patch("chronovista.cli.language_commands._save_preferences") as mock_save:
+            with patch(
+                "chronovista.cli.language_commands._save_preferences"
+            ) as mock_save:
                 mock_save.return_value = None
 
                 result = runner.invoke(
@@ -1520,7 +1582,10 @@ class TestLanguageSetCommandFlags:
         )
 
         assert result.exit_code == 2  # Conflict exit code
-        assert "conflict" in result.stdout.lower() or "cannot be in multiple types" in result.stdout.lower()
+        assert (
+            "conflict" in result.stdout.lower()
+            or "cannot be in multiple types" in result.stdout.lower()
+        )
         assert "en" in result.stdout
 
     def test_set_with_invalid_language_code_shows_suggestions(
@@ -1587,7 +1652,9 @@ class TestUpgradePromptForSyncCommands:
         with patch("chronovista.cli.language_commands._get_preferences") as mock_get:
             mock_get.return_value = []  # No preferences configured
 
-            with patch("chronovista.cli.language_commands._show_upgrade_prompt") as mock_prompt:
+            with patch(
+                "chronovista.cli.language_commands._show_upgrade_prompt"
+            ) as mock_prompt:
                 mock_prompt.return_value = False  # User declines
 
                 result = await check_and_prompt_language_preferences(DEFAULT_USER_ID)
@@ -1623,7 +1690,9 @@ class TestUpgradePromptForSyncCommands:
         with patch("chronovista.cli.language_commands._get_preferences") as mock_get:
             mock_get.return_value = mock_prefs
 
-            with patch("chronovista.cli.language_commands._show_upgrade_prompt") as mock_prompt:
+            with patch(
+                "chronovista.cli.language_commands._show_upgrade_prompt"
+            ) as mock_prompt:
                 result = await check_and_prompt_language_preferences(DEFAULT_USER_ID)
 
                 # Verify prompt was NOT shown
@@ -1645,7 +1714,9 @@ class TestUpgradePromptForSyncCommands:
         with patch("chronovista.cli.language_commands._get_preferences") as mock_get:
             mock_get.return_value = []  # No preferences
 
-            with patch("chronovista.cli.language_commands._show_upgrade_prompt") as mock_prompt:
+            with patch(
+                "chronovista.cli.language_commands._show_upgrade_prompt"
+            ) as mock_prompt:
                 mock_prompt.return_value = False  # User declines
 
                 # First call - should show prompt
@@ -1688,7 +1759,9 @@ class TestUpgradePromptForSyncCommands:
                 ],  # Preferences exist after setup
             ]
 
-            with patch("chronovista.cli.language_commands._show_upgrade_prompt") as mock_prompt:
+            with patch(
+                "chronovista.cli.language_commands._show_upgrade_prompt"
+            ) as mock_prompt:
                 mock_prompt.return_value = True  # User accepts
 
                 with patch(
@@ -1696,7 +1769,9 @@ class TestUpgradePromptForSyncCommands:
                 ) as mock_setup:
                     mock_setup.return_value = None
 
-                    result = await check_and_prompt_language_preferences(DEFAULT_USER_ID)
+                    result = await check_and_prompt_language_preferences(
+                        DEFAULT_USER_ID
+                    )
 
                     # Verify setup was called
                     assert mock_setup.called
@@ -1717,13 +1792,17 @@ class TestUpgradePromptForSyncCommands:
         with patch("chronovista.cli.language_commands._get_preferences") as mock_get:
             mock_get.return_value = []  # No preferences
 
-            with patch("chronovista.cli.language_commands._show_upgrade_prompt") as mock_prompt:
+            with patch(
+                "chronovista.cli.language_commands._show_upgrade_prompt"
+            ) as mock_prompt:
                 mock_prompt.return_value = False  # User declines
 
                 with patch(
                     "chronovista.cli.language_commands._handle_interactive_setup"
                 ) as mock_setup:
-                    result = await check_and_prompt_language_preferences(DEFAULT_USER_ID)
+                    result = await check_and_prompt_language_preferences(
+                        DEFAULT_USER_ID
+                    )
 
                     # Verify setup was NOT called
                     assert not mock_setup.called
@@ -1750,6 +1829,7 @@ class TestTTYDetection:
         mock_isatty.return_value = True
         # Need to reimport to get the mocked version
         from chronovista.cli.language_commands import _is_tty
+
         result = _is_tty()
         assert result is True
 
@@ -1758,6 +1838,7 @@ class TestTTYDetection:
         """T086: Test _is_tty returns False when stdout is not terminal."""
         mock_isatty.return_value = False
         from chronovista.cli.language_commands import _is_tty
+
         result = _is_tty()
         assert result is False
 
@@ -1776,10 +1857,13 @@ class TestTerminalWidth:
         assert 40 <= result <= 200
 
     @patch("chronovista.cli.language_commands.shutil.get_terminal_size")
-    def test_get_terminal_width_respects_actual_size(self, mock_size: MagicMock) -> None:
+    def test_get_terminal_width_respects_actual_size(
+        self, mock_size: MagicMock
+    ) -> None:
         """T087: Test _get_terminal_width uses actual terminal size."""
         mock_size.return_value = MagicMock(columns=120)
         from chronovista.cli.language_commands import _get_terminal_width
+
         result = _get_terminal_width()
         assert result == 120
 
@@ -1788,6 +1872,7 @@ class TestTerminalWidth:
         """T087: Test _get_terminal_width clamps minimum to 40."""
         mock_size.return_value = MagicMock(columns=20)
         from chronovista.cli.language_commands import _get_terminal_width
+
         result = _get_terminal_width()
         assert result == 40
 
@@ -1796,6 +1881,7 @@ class TestTerminalWidth:
         """T087: Test _get_terminal_width clamps maximum to 200."""
         mock_size.return_value = MagicMock(columns=500)
         from chronovista.cli.language_commands import _get_terminal_width
+
         result = _get_terminal_width()
         assert result == 200
 
@@ -1804,6 +1890,7 @@ class TestTerminalWidth:
         """T087: Test _get_terminal_width fallback to 80 on error."""
         mock_size.side_effect = Exception("Terminal size error")
         from chronovista.cli.language_commands import _get_terminal_width
+
         result = _get_terminal_width()
         assert result == 80
 
@@ -1870,7 +1957,9 @@ class TestNonTTYOutput:
         """T086: Test list output works in non-TTY mode."""
         with patch("chronovista.cli.language_commands._is_tty") as mock_tty:
             mock_tty.return_value = False
-            with patch("chronovista.cli.language_commands._get_preferences") as mock_get:
+            with patch(
+                "chronovista.cli.language_commands._get_preferences"
+            ) as mock_get:
                 mock_get.return_value = mock_preferences
                 result = runner.invoke(app, ["languages", "list"])
                 assert result.exit_code == 0

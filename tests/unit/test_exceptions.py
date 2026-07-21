@@ -385,9 +385,9 @@ class TestExceptionHierarchy:
             RepositoryError,
         ]
         for exc_class in exception_classes:
-            assert issubclass(exc_class, ChronovistaError), (
-                f"{exc_class.__name__} does not inherit from ChronovistaError"
-            )
+            assert issubclass(
+                exc_class, ChronovistaError
+            ), f"{exc_class.__name__} does not inherit from ChronovistaError"
 
     def test_exception_message_propagation(self) -> None:
         """Test message propagation through inheritance chain."""

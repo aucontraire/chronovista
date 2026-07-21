@@ -235,12 +235,16 @@ class TranscriptCorrectionRepository(
             the current page.
         """
         # Count query first
-        count_stmt = select(func.count()).where(
-            and_(
-                TranscriptCorrectionDB.video_id == video_id,
-                TranscriptCorrectionDB.language_code == language_code,
+        count_stmt = (
+            select(func.count())
+            .where(
+                and_(
+                    TranscriptCorrectionDB.video_id == video_id,
+                    TranscriptCorrectionDB.language_code == language_code,
+                )
             )
-        ).select_from(TranscriptCorrectionDB)
+            .select_from(TranscriptCorrectionDB)
+        )
         count_result = await session.execute(count_stmt)
         total = count_result.scalar_one()
 
@@ -285,12 +289,16 @@ class TranscriptCorrectionRepository(
         int
             Total number of corrections for the (video_id, language_code) pair.
         """
-        stmt = select(func.count()).where(
-            and_(
-                TranscriptCorrectionDB.video_id == video_id,
-                TranscriptCorrectionDB.language_code == language_code,
+        stmt = (
+            select(func.count())
+            .where(
+                and_(
+                    TranscriptCorrectionDB.video_id == video_id,
+                    TranscriptCorrectionDB.language_code == language_code,
+                )
             )
-        ).select_from(TranscriptCorrectionDB)
+            .select_from(TranscriptCorrectionDB)
+        )
         result = await session.execute(stmt)
         return result.scalar_one()
 
@@ -405,9 +413,7 @@ class TranscriptCorrectionRepository(
         # Shared language filter condition
         lang_conditions: list[Any] = []
         if language is not None:
-            lang_conditions.append(
-                TranscriptCorrectionDB.language_code == language
-            )
+            lang_conditions.append(TranscriptCorrectionDB.language_code == language)
 
         # ---- Query 1: conditional aggregation for scalar totals ----
         is_not_revert = TranscriptCorrectionDB.correction_type != revert_value
@@ -535,9 +541,9 @@ class TranscriptCorrectionRepository(
             select(
                 TranscriptCorrectionDB.original_text,
                 TranscriptCorrectionDB.corrected_text,
-                func.count(
-                    distinct(TranscriptCorrectionDB.segment_id)
-                ).label("occurrences"),
+                func.count(distinct(TranscriptCorrectionDB.segment_id)).label(
+                    "occurrences"
+                ),
             )
             .where(TranscriptCorrectionDB.correction_type != revert_value)
             .group_by(
@@ -568,9 +574,7 @@ class TranscriptCorrectionRepository(
             remaining_stmt = (
                 select(func.count())
                 .select_from(TranscriptSegmentDB)
-                .where(
-                    effective_text.contains(row.original_text)
-                )
+                .where(effective_text.contains(row.original_text))
             )
             remaining_result = await session.execute(remaining_stmt)
             remaining = remaining_result.scalar_one()
@@ -668,9 +672,7 @@ class TranscriptCorrectionRepository(
                 ),
                 func.min(TranscriptCorrectionDB.original_text).label("pattern"),
                 func.min(TranscriptCorrectionDB.corrected_text).label("replacement"),
-                func.min(TranscriptCorrectionDB.corrected_at).label(
-                    "batch_timestamp"
-                ),
+                func.min(TranscriptCorrectionDB.corrected_at).label("batch_timestamp"),
             )
             .where(and_(*conditions))
             .group_by(TranscriptCorrectionDB.batch_id)

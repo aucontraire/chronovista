@@ -77,7 +77,10 @@ def build_transcript_summary(
     """
     if not transcripts:
         return TranscriptSummary(
-            count=0, languages=[], has_manual=False, has_corrections=has_corrections,
+            count=0,
+            languages=[],
+            has_manual=False,
+            has_corrections=has_corrections,
         )
 
     languages = list({t.language_code for t in transcripts})
@@ -201,7 +204,11 @@ async def list_playlists(
         order_clause = sort_column.desc()
 
     # Apply ordering and pagination (secondary sort by playlist_id for determinism)
-    query = query.order_by(order_clause, PlaylistDB.playlist_id.asc()).offset(offset).limit(limit)
+    query = (
+        query.order_by(order_clause, PlaylistDB.playlist_id.asc())
+        .offset(offset)
+        .limit(limit)
+    )
 
     # Execute query
     result = await session.execute(query)
@@ -221,7 +228,11 @@ async def list_playlists(
     return PlaylistListResponse(data=items, pagination=pagination)
 
 
-@router.get("/playlists/{playlist_id}", response_model=PlaylistDetailResponse, responses=GET_ITEM_ERRORS)
+@router.get(
+    "/playlists/{playlist_id}",
+    response_model=PlaylistDetailResponse,
+    responses=GET_ITEM_ERRORS,
+)
 async def get_playlist(
     playlist_id: str = Path(
         ...,
@@ -450,9 +461,7 @@ async def get_playlist_videos(
         order_clause = sort_column.desc()
 
     query = (
-        query.order_by(order_clause, VideoDB.video_id.asc())
-        .offset(offset)
-        .limit(limit)
+        query.order_by(order_clause, VideoDB.video_id.asc()).offset(offset).limit(limit)
     )
 
     # Execute query
@@ -472,9 +481,7 @@ async def get_playlist_videos(
             .distinct()
         )
         corrections_result = await session.execute(corrections_query)
-        videos_with_corrections = {
-            row[0] for row in corrections_result.fetchall()
-        }
+        videos_with_corrections = {row[0] for row in corrections_result.fetchall()}
 
     # Transform to response items
     items: list[PlaylistVideoListItem] = []

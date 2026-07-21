@@ -48,7 +48,9 @@ class TestVideoTranscriptBaseFactory:
 
         assert isinstance(transcript, VideoTranscriptBase)
         assert transcript.video_id == "dQw4w9WgXcQ"
-        assert transcript.language_code == "en-US"  # Properly cased LanguageCode enum value
+        assert (
+            transcript.language_code == "en-US"
+        )  # Properly cased LanguageCode enum value
         assert "Never gonna give you up" in transcript.transcript_text
         assert transcript.transcript_type == TranscriptType.AUTO
         assert transcript.download_reason == DownloadReason.USER_REQUEST
@@ -72,7 +74,9 @@ class TestVideoTranscriptBaseFactory:
         )
 
         assert custom_transcript.video_id == "dQw4w9WgXcQ"
-        assert custom_transcript.language_code == "es-MX"  # Properly cased LanguageCode enum value
+        assert (
+            custom_transcript.language_code == "es-MX"
+        )  # Properly cased LanguageCode enum value
         assert (
             custom_transcript.transcript_text
             == "Hola mundo, este es un texto personalizado."
@@ -208,7 +212,9 @@ class TestVideoTranscriptBaseFactory:
 
         assert isinstance(data, dict)
         assert data["video_id"] == "dQw4w9WgXcQ"
-        assert data["language_code"] == "en-US"  # Properly cased LanguageCode enum value
+        assert (
+            data["language_code"] == "en-US"
+        )  # Properly cased LanguageCode enum value
         assert data["transcript_type"] == "auto"  # Enum value
         assert data["download_reason"] == "user_request"  # Enum value
 
@@ -229,7 +235,9 @@ class TestVideoTranscriptBaseFactory:
 
         transcript = VideoTranscriptBase.model_validate(data)
         assert transcript.video_id == "dQw4w9WgXcQ"
-        assert transcript.language_code == "fr-CA"  # Properly cased LanguageCode enum value
+        assert (
+            transcript.language_code == "fr-CA"
+        )  # Properly cased LanguageCode enum value
         assert transcript.transcript_type == TranscriptType.MANUAL
         assert transcript.confidence_score == 0.88
 
@@ -242,7 +250,9 @@ class TestVideoTranscriptBaseFactory:
         )
 
         assert transcript.video_id == "dQw4w9WgXcQ"
-        assert transcript.language_code == "de-AT"  # Properly cased LanguageCode enum value
+        assert (
+            transcript.language_code == "de-AT"
+        )  # Properly cased LanguageCode enum value
         assert transcript.transcript_text == "Guten Tag! Das ist ein Test."
 
 

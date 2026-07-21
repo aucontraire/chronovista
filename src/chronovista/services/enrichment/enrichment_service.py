@@ -408,9 +408,7 @@ class ChannelEnrichmentResult(BaseModel):
     """
 
     # Processing counts
-    channels_processed: int = Field(
-        default=0, description="Total channels processed"
-    )
+    channels_processed: int = Field(default=0, description="Total channels processed")
     channels_enriched: int = Field(
         default=0, description="Channels successfully enriched with API data"
     )
@@ -425,9 +423,7 @@ class ChannelEnrichmentResult(BaseModel):
     batches_processed: int = Field(
         default=0, description="Number of API batches processed"
     )
-    quota_used: int = Field(
-        default=0, description="Estimated quota units consumed"
-    )
+    quota_used: int = Field(default=0, description="Estimated quota units consumed")
 
     # Timing
     started_at: datetime | None = Field(
@@ -624,11 +620,15 @@ class EnrichmentLock:
             if session is not None:
                 try:
                     await self._release_pg_lock(session)
-                    logger.info(f"Released PostgreSQL advisory lock (ID: {self.LOCK_ID})")
+                    logger.info(
+                        f"Released PostgreSQL advisory lock (ID: {self.LOCK_ID})"
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to release PostgreSQL advisory lock: {e}")
             else:
-                logger.warning("Cannot release PostgreSQL advisory lock without session")
+                logger.warning(
+                    "Cannot release PostgreSQL advisory lock without session"
+                )
             # Always mark as released, even if we couldn't actually release it
             self._has_pg_lock = False
 
@@ -1046,7 +1046,9 @@ class EnrichmentService:
         videos_updated = 0
         videos_deleted = 0
         channels_created = 0
-        channels_auto_resolved = 0  # T045-T049: Track orphan videos linked to real channels
+        channels_auto_resolved = (
+            0  # T045-T049: Track orphan videos linked to real channels
+        )
         tags_created = 0  # T074: Track tags created during enrichment
         topics_created = 0  # T083: Track topic associations created during enrichment
         categories_assigned = 0  # T089: Track category assignments during enrichment
@@ -1172,9 +1174,7 @@ class EnrichmentService:
             raise
 
         # Create a map of video_id -> API data for quick lookup
-        api_data_map: dict[str, YouTubeVideoResponse] = {
-            v.id: v for v in api_videos
-        }
+        api_data_map: dict[str, YouTubeVideoResponse] = {v.id: v for v in api_videos}
 
         # Process each video using cached IDs (not ORM objects which may have stale connections)
         for video_id in video_ids:
@@ -1238,7 +1238,9 @@ class EnrichmentService:
                 old_channel_id = cached["channel_id"]
                 # Convert Pydantic model to dict for _extract_video_update
                 # Use mode='json' to serialize datetime objects to ISO strings
-                api_data_dict = api_data.model_dump(by_alias=True, exclude_none=False, mode='json')
+                api_data_dict = api_data.model_dump(
+                    by_alias=True, exclude_none=False, mode="json"
+                )
                 update_data = self._extract_video_update_from_dict(api_data_dict)
 
                 # Fetch fresh video object from database for update
@@ -1322,7 +1324,9 @@ class EnrichmentService:
                     # T069: Extract tags from snippet.tags (already a list of strings)
                     # T073: Tags are preserved exactly as returned (Unicode/special chars)
                     api_tags = api_data.snippet.tags or []
-                    video_tags_count = await self.enrich_tags(session, video_id, api_tags)
+                    video_tags_count = await self.enrich_tags(
+                        session, video_id, api_tags
+                    )
                     tags_created += video_tags_count
 
                     # T085-T088: Enrich category from snippet.categoryId
@@ -1381,7 +1385,9 @@ class EnrichmentService:
                 # context lost), break out of the loop and return partial results.
                 try:
                     await session.rollback()
-                    logger.info(f"Rolled back after error on video {video_id}, continuing")
+                    logger.info(
+                        f"Rolled back after error on video {video_id}, continuing"
+                    )
                 except Exception as rollback_error:
                     logger.error(
                         f"Rollback failed ({rollback_error}), stopping enrichment. "
@@ -1440,9 +1446,7 @@ class EnrichmentService:
                 await backfill_svc.run_incremental_backfill(session)
             except Exception as exc:
                 # FR-013: Log warning on error, do not fail enrichment
-                logger.warning(
-                    "Automatic tag normalization failed: %s", exc
-                )
+                logger.warning("Automatic tag normalization failed: %s", exc)
 
         return create_report()
 
@@ -1495,7 +1499,9 @@ class EnrichmentService:
             # ALL priority includes unavailable videos (unless refresh_topics mode)
             pass
         elif not include_deleted:
-            query = query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)  # noqa: E712
+            query = query.where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )  # noqa: E712
 
         # Build priority filter based on cumulative semantics
         # Skip priority filter when refresh_topics=True (process ALL videos)
@@ -1696,7 +1702,9 @@ class EnrichmentService:
         high_query = (
             select(func.count(VideoDB.video_id))
             .outerjoin(ChannelDB, VideoDB.channel_id == ChannelDB.channel_id)
-            .where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)  # noqa: E712
+            .where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )  # noqa: E712
             .where(high_filter)
         )
         high_result = await session.execute(high_query)
@@ -1705,7 +1713,9 @@ class EnrichmentService:
         # Count MEDIUM priority (all placeholder titles, includes HIGH)
         medium_query = (
             select(func.count(VideoDB.video_id))
-            .where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)  # noqa: E712
+            .where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )  # noqa: E712
             .where(medium_filter)
         )
         medium_result = await session.execute(medium_query)
@@ -1714,7 +1724,9 @@ class EnrichmentService:
         # Count LOW priority (MEDIUM + partial data)
         low_query = (
             select(func.count(VideoDB.video_id))
-            .where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)  # noqa: E712
+            .where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )  # noqa: E712
             .where(or_(medium_filter, low_filter))
         )
         low_result = await session.execute(low_query)
@@ -1824,7 +1836,9 @@ class EnrichmentService:
             logger.warning(f"Video {video_id} not found for unavailability marking")
             return False
 
-    def _extract_video_update_from_dict(self, api_data: dict[str, Any]) -> dict[str, Any]:
+    def _extract_video_update_from_dict(
+        self, api_data: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Extract video update data from YouTube API response (dict format).
 
@@ -1998,7 +2012,9 @@ class EnrichmentService:
         # Non-placeholder title, available, has duration > 0, has view_count
         fully_enriched_condition = (
             ~placeholder_video_condition
-            & (VideoDB.availability_status == AvailabilityStatus.AVAILABLE)  # noqa: E712
+            & (
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )  # noqa: E712
             & (VideoDB.duration > 0)
             & (VideoDB.view_count.isnot(None))
         )
@@ -2007,7 +2023,9 @@ class EnrichmentService:
         video_counts_query = select(
             func.count(VideoDB.video_id).label("total"),
             func.count(case((placeholder_video_condition, 1))).label("placeholder"),
-            func.count(case((VideoDB.availability_status != AvailabilityStatus.AVAILABLE, 1))).label(
+            func.count(
+                case((VideoDB.availability_status != AvailabilityStatus.AVAILABLE, 1))
+            ).label(
                 "deleted"
             ),  # noqa: E712
             func.count(case((fully_enriched_condition, 1))).label("enriched"),
@@ -2031,7 +2049,9 @@ class EnrichmentService:
                 VideoDB.video_id == videos_with_tags_subquery.c.video_id,
             )
             .where(
-                (VideoDB.availability_status == AvailabilityStatus.AVAILABLE)  # noqa: E712
+                (
+                    VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+                )  # noqa: E712
                 & (videos_with_tags_subquery.c.video_id.is_(None))
             )
         )
@@ -2050,7 +2070,9 @@ class EnrichmentService:
                 VideoDB.video_id == videos_with_topics_subquery.c.video_id,
             )
             .where(
-                (VideoDB.availability_status == AvailabilityStatus.AVAILABLE)  # noqa: E712
+                (
+                    VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+                )  # noqa: E712
                 & (videos_with_topics_subquery.c.video_id.is_(None))
             )
         )
@@ -2291,7 +2313,9 @@ class EnrichmentService:
         row = result.first()
         if row:
             topic_id: str = row[0]
-            logger.debug(f"Stage 1: Matched topic URL '{url}' by wikipedia_url to '{topic_id}'")
+            logger.debug(
+                f"Stage 1: Matched topic URL '{url}' by wikipedia_url to '{topic_id}'"
+            )
             return topic_id
 
         # ==================================================================
@@ -2308,7 +2332,9 @@ class EnrichmentService:
         row = result.first()
         if row:
             topic_id = row[0]
-            logger.debug(f"Stage 2: Matched topic URL '{url}' by normalized_name to '{topic_id}'")
+            logger.debug(
+                f"Stage 2: Matched topic URL '{url}' by normalized_name to '{topic_id}'"
+            )
             return topic_id
 
         # ==================================================================
@@ -2409,12 +2435,12 @@ class EnrichmentService:
 
         # Check if this dynamic topic already exists (race condition protection)
         existing = await session.execute(
-            select(TopicCategoryDB.topic_id).where(
-                TopicCategoryDB.topic_id == topic_id
-            )
+            select(TopicCategoryDB.topic_id).where(TopicCategoryDB.topic_id == topic_id)
         )
         if existing.first():
-            logger.debug(f"Stage 4: Found existing dynamic topic '{topic_id}' for URL '{url}'")
+            logger.debug(
+                f"Stage 4: Found existing dynamic topic '{topic_id}' for URL '{url}'"
+            )
             return topic_id
 
         try:
@@ -2435,9 +2461,7 @@ class EnrichmentService:
             session.add(dynamic_topic)
             await session.flush()
 
-            logger.info(
-                f"Stage 4: Created dynamic topic '{topic_id}' for URL '{url}'"
-            )
+            logger.info(f"Stage 4: Created dynamic topic '{topic_id}' for URL '{url}'")
             return topic_id
 
         except Exception as e:
@@ -2630,7 +2654,10 @@ class EnrichmentService:
                         logger.warning(f"Unknown privacy status: {privacy}")
 
                 # Update video count
-                if api_data.content_details and api_data.content_details.item_count is not None:
+                if (
+                    api_data.content_details
+                    and api_data.content_details.item_count is not None
+                ):
                     item_count = api_data.content_details.item_count
                     playlist.video_count = int(item_count)
 
@@ -2738,8 +2765,10 @@ class EnrichmentService:
         # This is done implicitly when we make the first API call
 
         # Get channels needing enrichment from repository (T021)
-        channels_to_enrich = await self.channel_repository.get_channels_needing_enrichment(
-            session, limit=limit
+        channels_to_enrich = (
+            await self.channel_repository.get_channels_needing_enrichment(
+                session, limit=limit
+            )
         )
 
         if not channels_to_enrich:
@@ -2783,7 +2812,9 @@ class EnrichmentService:
                     await session.rollback()
                 result.was_interrupted = True
                 result.completed_at = datetime.now(UTC)
-                result.duration_seconds = (result.completed_at - started_at).total_seconds()
+                result.duration_seconds = (
+                    result.completed_at - started_at
+                ).total_seconds()
                 raise
 
             try:
@@ -2935,7 +2966,9 @@ class EnrichmentService:
                     logger.error(f"Error committing on quota exceeded: {e}")
                     await session.rollback()
                 result.completed_at = datetime.now(UTC)
-                result.duration_seconds = (result.completed_at - started_at).total_seconds()
+                result.duration_seconds = (
+                    result.completed_at - started_at
+                ).total_seconds()
                 raise
 
             except (YouTubeAPIError, NetworkError) as e:
@@ -2970,7 +3003,9 @@ class EnrichmentService:
                 logger.error(f"Authentication error during channel enrichment: {e}")
                 # Try to refresh token and retry is handled by YouTubeService
                 result.completed_at = datetime.now(UTC)
-                result.duration_seconds = (result.completed_at - started_at).total_seconds()
+                result.duration_seconds = (
+                    result.completed_at - started_at
+                ).total_seconds()
                 raise
 
         # Final completion
@@ -3018,7 +3053,9 @@ class EnrichmentService:
 
             # Default language
             if api_data.snippet.default_language:
-                update_data["default_language"] = api_data.snippet.default_language.lower()
+                update_data["default_language"] = (
+                    api_data.snippet.default_language.lower()
+                )
 
             # Country
             if api_data.snippet.country:
@@ -3060,8 +3097,8 @@ class EnrichmentService:
         Dict[str, Any]
             Status dictionary with counts and percentages.
         """
-        needs_enrichment = await self.channel_repository.count_channels_needing_enrichment(
-            session
+        needs_enrichment = (
+            await self.channel_repository.count_channels_needing_enrichment(session)
         )
         enriched = await self.channel_repository.get_enriched_channels_count(session)
         total = needs_enrichment + enriched

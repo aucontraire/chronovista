@@ -767,7 +767,9 @@ class TestPreferenceAwareTranscriptFilterLearningTranslationPairing:
         assert ("it", "en") in plan.learning_pairs
 
     def test_graceful_handling_missing_translation(
-        self, filter_service: PreferenceAwareTranscriptFilter, caplog: pytest.LogCaptureFixture
+        self,
+        filter_service: PreferenceAwareTranscriptFilter,
+        caplog: pytest.LogCaptureFixture,
     ):
         """T103: Graceful handling when translation unavailable (INFO log per FR-016)."""
         import logging
@@ -846,7 +848,9 @@ class TestPreferenceAwareTranscriptFilterGetTranslationPair:
         assert result == ("it", "en")
 
     def test_get_translation_pair_without_available_translation(
-        self, filter_service: PreferenceAwareTranscriptFilter, caplog: pytest.LogCaptureFixture
+        self,
+        filter_service: PreferenceAwareTranscriptFilter,
+        caplog: pytest.LogCaptureFixture,
     ):
         """Translation pair has None target when translation unavailable."""
         import logging

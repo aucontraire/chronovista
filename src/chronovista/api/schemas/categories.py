@@ -30,7 +30,9 @@ class CategoryListItem(BaseModel):
 
     category_id: str = Field(..., description="YouTube category ID")
     name: str = Field(..., description="Category name")
-    assignable: bool = Field(..., description="Whether creators can select this category")
+    assignable: bool = Field(
+        ..., description="Whether creators can select this category"
+    )
     video_count: int = Field(0, description="Number of videos in this category")
 
 

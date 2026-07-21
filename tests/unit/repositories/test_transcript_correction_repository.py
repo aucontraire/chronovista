@@ -484,8 +484,7 @@ class TestTranscriptCorrectionRepositoryQueries:
         count_stmt = mock_session.execute.call_args_list[0].args[0]
         sql_string = str(count_stmt.compile(compile_kwargs={"literal_binds": False}))
         assert "language_code" in sql_string, (
-            "Expected language_code filter in get_by_video SQL; "
-            f"got: {sql_string}"
+            "Expected language_code filter in get_by_video SQL; " f"got: {sql_string}"
         )
 
     # ------------------------------------------------------------------
@@ -820,9 +819,9 @@ class TestTranscriptCorrectionRepositoryBatchId:
 
         stmt = mock_session.execute.call_args.args[0]
         sql_string = str(stmt.compile(compile_kwargs={"literal_binds": False}))
-        assert "batch_id" in sql_string, (
-            f"Expected 'batch_id' in WHERE clause SQL; got: {sql_string}"
-        )
+        assert (
+            "batch_id" in sql_string
+        ), f"Expected 'batch_id' in WHERE clause SQL; got: {sql_string}"
 
     async def test_get_by_batch_id_result_uses_factory_built_corrections(
         self,
@@ -950,12 +949,8 @@ class TestTranscriptCorrectionRepositoryBatchId:
 
         stmt = mock_session.execute.call_args.args[0]
         sql_string = str(stmt.compile(compile_kwargs={"literal_binds": True}))
-        assert "10" in sql_string, (
-            f"Expected OFFSET 10 in SQL; got: {sql_string}"
-        )
-        assert "5" in sql_string, (
-            f"Expected LIMIT 5 in SQL; got: {sql_string}"
-        )
+        assert "10" in sql_string, f"Expected OFFSET 10 in SQL; got: {sql_string}"
+        assert "5" in sql_string, f"Expected LIMIT 5 in SQL; got: {sql_string}"
 
     async def test_get_batch_list_filters_by_corrected_by_user_id(
         self,
@@ -972,15 +967,13 @@ class TestTranscriptCorrectionRepositoryBatchId:
         mock_result.all.return_value = []
         mock_session.execute.return_value = mock_result
 
-        await repository.get_batch_list(
-            mock_session, corrected_by_user_id="user:batch"
-        )
+        await repository.get_batch_list(mock_session, corrected_by_user_id="user:batch")
 
         stmt = mock_session.execute.call_args.args[0]
         sql_string = str(stmt.compile(compile_kwargs={"literal_binds": False}))
-        assert "corrected_by_user_id" in sql_string, (
-            f"Expected corrected_by_user_id filter in SQL; got: {sql_string}"
-        )
+        assert (
+            "corrected_by_user_id" in sql_string
+        ), f"Expected corrected_by_user_id filter in SQL; got: {sql_string}"
 
     async def test_get_batch_list_no_user_filter_returns_all_batches(
         self,
@@ -1044,9 +1037,9 @@ class TestTranscriptCorrectionRepositoryBatchId:
         stmt = mock_session.execute.call_args.args[0]
         sql_string = str(stmt.compile(compile_kwargs={"literal_binds": False}))
         # The IS NOT NULL predicate must appear
-        assert "IS NOT NULL" in sql_string.upper(), (
-            f"Expected 'IS NOT NULL' predicate in SQL; got: {sql_string}"
-        )
+        assert (
+            "IS NOT NULL" in sql_string.upper()
+        ), f"Expected 'IS NOT NULL' predicate in SQL; got: {sql_string}"
 
     async def test_get_batch_list_groups_by_batch_id_in_sql(
         self,
@@ -1066,9 +1059,9 @@ class TestTranscriptCorrectionRepositoryBatchId:
 
         stmt = mock_session.execute.call_args.args[0]
         sql_string = str(stmt.compile(compile_kwargs={"literal_binds": False}))
-        assert "GROUP BY" in sql_string.upper() or "group by" in sql_string, (
-            f"Expected GROUP BY clause in SQL; got: {sql_string}"
-        )
+        assert (
+            "GROUP BY" in sql_string.upper() or "group by" in sql_string
+        ), f"Expected GROUP BY clause in SQL; got: {sql_string}"
 
     async def test_get_batch_list_batch_list_item_factory_builds_valid_items(
         self,

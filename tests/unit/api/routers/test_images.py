@@ -83,9 +83,7 @@ class TestChannelImageEndpoint:
             "chronovista.api.routers.images._image_cache_service.get_channel_image",
             return_value=mock_response,
         ):
-            response = await async_client.get(
-                f"/api/v1/images/channels/{channel_id}"
-            )
+            response = await async_client.get(f"/api/v1/images/channels/{channel_id}")
 
         assert response.status_code == 200
         assert response.headers["Content-Type"] == "image/jpeg"
@@ -115,9 +113,7 @@ class TestChannelImageEndpoint:
             "chronovista.api.routers.images._image_cache_service.get_channel_image",
             return_value=mock_response,
         ):
-            response = await async_client.get(
-                f"/api/v1/images/channels/{channel_id}"
-            )
+            response = await async_client.get(f"/api/v1/images/channels/{channel_id}")
 
         assert response.status_code == 200
         assert response.headers["Content-Type"] == "image/jpeg"
@@ -146,9 +142,7 @@ class TestChannelImageEndpoint:
             "chronovista.api.routers.images._image_cache_service.get_channel_image",
             return_value=mock_response,
         ):
-            response = await async_client.get(
-                f"/api/v1/images/channels/{channel_id}"
-            )
+            response = await async_client.get(f"/api/v1/images/channels/{channel_id}")
 
         assert response.status_code == 200
         assert response.headers["Content-Type"] == "image/svg+xml"
@@ -178,9 +172,7 @@ class TestChannelImageEndpoint:
             "chronovista.api.routers.images._image_cache_service.get_channel_image",
             return_value=mock_response,
         ):
-            response = await async_client.get(
-                f"/api/v1/images/channels/{channel_id}"
-            )
+            response = await async_client.get(f"/api/v1/images/channels/{channel_id}")
 
         assert response.status_code == 200
         assert response.headers["Content-Type"] == "image/svg+xml"
@@ -234,9 +226,7 @@ class TestChannelImageEndpoint:
             "chronovista.api.routers.images._image_cache_service.get_channel_image",
             return_value=mock_response,
         ):
-            response = await async_client.get(
-                f"/api/v1/images/channels/{channel_id}"
-            )
+            response = await async_client.get(f"/api/v1/images/channels/{channel_id}")
 
         assert response.status_code == 200
         assert response.headers["Cache-Control"] == "public, max-age=604800, immutable"
@@ -263,9 +253,7 @@ class TestChannelImageEndpoint:
             "chronovista.api.routers.images._image_cache_service.get_channel_image",
             return_value=mock_response,
         ):
-            response = await async_client.get(
-                f"/api/v1/images/channels/{channel_id}"
-            )
+            response = await async_client.get(f"/api/v1/images/channels/{channel_id}")
 
         assert response.status_code == 200
         assert response.headers["Cache-Control"] == "public, max-age=3600"
@@ -293,9 +281,7 @@ class TestChannelImageEndpoint:
             return_value=mock_response,
         ):
             # No auth headers
-            response = await async_client.get(
-                f"/api/v1/images/channels/{channel_id}"
-            )
+            response = await async_client.get(f"/api/v1/images/channels/{channel_id}")
 
         assert response.status_code == 200
 
@@ -337,9 +323,7 @@ class TestChannelImageEndpoint:
             "chronovista.api.routers.images._image_cache_service.get_channel_image",
             return_value=mock_response,
         ):
-            response = await async_client.get(
-                f"/api/v1/images/channels/{channel_id}"
-            )
+            response = await async_client.get(f"/api/v1/images/channels/{channel_id}")
 
         assert response.status_code == 200
         assert response.headers["Content-Type"] == "image/png"
@@ -366,9 +350,7 @@ class TestChannelImageEndpoint:
             "chronovista.api.routers.images._image_cache_service.get_channel_image",
             return_value=mock_response,
         ):
-            response = await async_client.get(
-                f"/api/v1/images/channels/{channel_id}"
-            )
+            response = await async_client.get(f"/api/v1/images/channels/{channel_id}")
 
         assert response.status_code == 200
         assert response.headers["Content-Type"] == "image/webp"
@@ -462,9 +444,7 @@ class TestChannelImageEndpoint:
             "chronovista.api.routers.images._image_cache_service.get_channel_image",
             return_value=mock_response,
         ):
-            response = await async_client.get(
-                f"/api/v1/images/channels/{channel_id}"
-            )
+            response = await async_client.get(f"/api/v1/images/channels/{channel_id}")
 
         # Response should be raw binary, not JSON
         assert response.status_code == 200

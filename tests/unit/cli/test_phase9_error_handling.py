@@ -75,7 +75,9 @@ class TestAuthenticationFailureHandling:
 
     def test_authentication_error_message_content(self) -> None:
         """Test that authentication error includes re-auth guidance."""
-        expected_message = "Authentication expired - please run 'chronovista auth login'"
+        expected_message = (
+            "Authentication expired - please run 'chronovista auth login'"
+        )
         auth_error = AuthenticationError(
             message=expected_message,
             expired=True,
@@ -363,9 +365,7 @@ class TestDatabaseCommitFailureHandling:
         mock_session = AsyncMock()
         orig_error = Exception("UNIQUE constraint failed")
         mock_session.commit = AsyncMock(
-            side_effect=IntegrityError(
-                "statement", {"param": "value"}, orig_error
-            )
+            side_effect=IntegrityError("statement", {"param": "value"}, orig_error)
         )
 
         with pytest.raises(IntegrityError):
@@ -485,9 +485,7 @@ class TestErrorHandlingIntegration:
         assert 1 in committed_batches
 
         # Second batch has network error - previous commit preserved
-        mock_session.commit = AsyncMock(
-            side_effect=ConnectionError("Network error")
-        )
+        mock_session.commit = AsyncMock(side_effect=ConnectionError("Network error"))
 
         with pytest.raises(ConnectionError):
             await mock_session.commit(2)

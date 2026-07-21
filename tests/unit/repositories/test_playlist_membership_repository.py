@@ -20,6 +20,7 @@ from tests.factories.id_factory import TestIds
 
 # CRITICAL: This line ensures async tests work with coverage
 
+
 class TestPlaylistMembershipRepository:
     """Test the PlaylistMembershipRepository CRUD operations and specialized queries."""
 

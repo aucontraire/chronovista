@@ -30,9 +30,15 @@ class TakeoutWatchEntry(BaseModel):
     video_id: str | None = Field(
         default=None, description="YouTube video ID extracted from URL"
     )
-    channel_name: str | None = Field(default=None, description="Channel name from subtitles")
-    channel_url: str | None = Field(default=None, description="Channel URL from subtitles")
-    channel_id: str | None = Field(default=None, description="Channel ID extracted from URL")
+    channel_name: str | None = Field(
+        default=None, description="Channel name from subtitles"
+    )
+    channel_url: str | None = Field(
+        default=None, description="Channel URL from subtitles"
+    )
+    channel_id: str | None = Field(
+        default=None, description="Channel ID extracted from URL"
+    )
     watched_at: datetime | None = Field(
         default=None, description="When the video was watched"
     )
@@ -210,13 +216,16 @@ class TakeoutData(BaseModel):
 
     # Metadata
     parsed_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC), description="When this data was parsed"
+        default_factory=lambda: datetime.now(UTC),
+        description="When this data was parsed",
     )
     total_videos_watched: int = Field(
         default=0, description="Total unique videos in watch history"
     )
     total_playlists: int = Field(default=0, description="Total playlists found")
-    total_subscriptions: int = Field(default=0, description="Total channel subscriptions")
+    total_subscriptions: int = Field(
+        default=0, description="Total channel subscriptions"
+    )
     date_range: tuple[datetime, datetime] | None = Field(
         default=None, description="Date range of watch history"
     )

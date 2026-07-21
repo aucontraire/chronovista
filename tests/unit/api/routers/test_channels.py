@@ -164,7 +164,9 @@ class TestChannelListDefaultSort:
             response = await async_client.get("/api/v1/channels")
             assert response.status_code == 200
 
-    async def test_default_sort_is_video_count_desc(self, async_client: AsyncClient) -> None:
+    async def test_default_sort_is_video_count_desc(
+        self, async_client: AsyncClient
+    ) -> None:
         """Test that default sort field is video_count with desc order."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
@@ -240,19 +242,17 @@ class TestChannelListSortFields:
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
 
-            response = await async_client.get(
-                "/api/v1/channels?sort_by=invalid_field"
-            )
+            response = await async_client.get("/api/v1/channels?sort_by=invalid_field")
             assert response.status_code == 422
 
-    async def test_invalid_sort_order_returns_422(self, async_client: AsyncClient) -> None:
+    async def test_invalid_sort_order_returns_422(
+        self, async_client: AsyncClient
+    ) -> None:
         """Test that invalid sort_order value returns 422 validation error."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
 
-            response = await async_client.get(
-                "/api/v1/channels?sort_order=invalid"
-            )
+            response = await async_client.get("/api/v1/channels?sort_order=invalid")
             assert response.status_code == 422
 
 
@@ -269,9 +269,7 @@ class TestChannelListSubscriptionFilter:
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
 
-            response = await async_client.get(
-                "/api/v1/channels?is_subscribed=true"
-            )
+            response = await async_client.get("/api/v1/channels?is_subscribed=true")
             assert response.status_code == 200
 
     async def test_is_subscribed_false(self, async_client: AsyncClient) -> None:
@@ -279,12 +277,12 @@ class TestChannelListSubscriptionFilter:
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
 
-            response = await async_client.get(
-                "/api/v1/channels?is_subscribed=false"
-            )
+            response = await async_client.get("/api/v1/channels?is_subscribed=false")
             assert response.status_code == 200
 
-    async def test_is_subscribed_omitted_returns_all(self, async_client: AsyncClient) -> None:
+    async def test_is_subscribed_omitted_returns_all(
+        self, async_client: AsyncClient
+    ) -> None:
         """Test that omitting is_subscribed returns all channels."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
@@ -331,7 +329,11 @@ class TestChannelListItemResponseSchema:
 
             # Find Alpha Channel (subscribed)
             alpha = next(
-                (ch for ch in data["data"] if ch["channel_id"] == "UCaaaaaaaaaaaaaaaaaaaaa"),
+                (
+                    ch
+                    for ch in data["data"]
+                    if ch["channel_id"] == "UCaaaaaaaaaaaaaaaaaaaaa"
+                ),
                 None,
             )
             assert alpha is not None
@@ -350,7 +352,11 @@ class TestChannelListItemResponseSchema:
 
             # Find Charlie Channel (not subscribed)
             charlie = next(
-                (ch for ch in data["data"] if ch["channel_id"] == "UCcccccccccccccccccccccc"),
+                (
+                    ch
+                    for ch in data["data"]
+                    if ch["channel_id"] == "UCcccccccccccccccccccccc"
+                ),
                 None,
             )
             assert charlie is not None
@@ -524,8 +530,12 @@ def _create_channel_videos_mock_session(
 
 CHANNEL_VIDEO_ID = "UCaaaaaaaaaaaaaaaaaaaaaa"  # Exactly 24 characters
 
-VIDEO_A = _make_video_row(video_id="dQw4w9WgXcQ", title="Alpha Video", channel_id=CHANNEL_VIDEO_ID)
-VIDEO_B = _make_video_row(video_id="jNQXAC9IVRw", title="Beta Video", channel_id=CHANNEL_VIDEO_ID)
+VIDEO_A = _make_video_row(
+    video_id="dQw4w9WgXcQ", title="Alpha Video", channel_id=CHANNEL_VIDEO_ID
+)
+VIDEO_B = _make_video_row(
+    video_id="jNQXAC9IVRw", title="Beta Video", channel_id=CHANNEL_VIDEO_ID
+)
 ALL_VIDEOS = [VIDEO_A, VIDEO_B]
 
 CHANNEL_ID = CHANNEL_VIDEO_ID
@@ -621,9 +631,7 @@ class TestChannelVideosSortFields:
             )
             assert response.status_code == 200
 
-    async def test_sort_by_title_asc(
-        self, channel_videos_client: AsyncClient
-    ) -> None:
+    async def test_sort_by_title_asc(self, channel_videos_client: AsyncClient) -> None:
         """Test sorting by title ascending returns 200."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
@@ -633,9 +641,7 @@ class TestChannelVideosSortFields:
             )
             assert response.status_code == 200
 
-    async def test_sort_by_title_desc(
-        self, channel_videos_client: AsyncClient
-    ) -> None:
+    async def test_sort_by_title_desc(self, channel_videos_client: AsyncClient) -> None:
         """Test sorting by title descending returns 200."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True

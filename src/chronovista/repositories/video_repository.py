@@ -152,7 +152,10 @@ class VideoRepository(
         result = await session.execute(
             select(VideoDB)
             .where(
-                and_(VideoDB.channel_id == channel_id, VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
+                and_(
+                    VideoDB.channel_id == channel_id,
+                    VideoDB.availability_status == AvailabilityStatus.AVAILABLE,
+                )
             )
             .order_by(VideoDB.upload_date.desc())
             .offset(skip)
@@ -366,7 +369,9 @@ class VideoRepository(
 
         # Exclude deleted videos by default
         if filters.exclude_deleted:
-            conditions.append(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
+            conditions.append(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
 
         # Channel filters
         if filters.channel_ids:
@@ -379,10 +384,10 @@ class VideoRepository(
 
         # Text search in description
         if filters.description_query:
-            escaped_desc = filters.description_query.replace("%", r"\%").replace("_", r"\_")
-            conditions.append(
-                VideoDB.description.ilike(f"%{escaped_desc}%")
+            escaped_desc = filters.description_query.replace("%", r"\%").replace(
+                "_", r"\_"
             )
+            conditions.append(VideoDB.description.ilike(f"%{escaped_desc}%"))
 
         # Language filters
         if filters.language_codes:
@@ -598,9 +603,15 @@ class VideoRepository(
                 func.sum(VideoDB.comment_count).label("total_comments"),
                 func.avg(VideoDB.view_count).label("avg_views"),
                 func.avg(VideoDB.like_count).label("avg_likes"),
-                func.sum(func.case((VideoDB.availability_status != AvailabilityStatus.AVAILABLE, 1), else_=0)).label(
-                    "deleted_count"
-                ),
+                func.sum(
+                    func.case(
+                        (
+                            VideoDB.availability_status != AvailabilityStatus.AVAILABLE,
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ).label("deleted_count"),
                 func.sum(
                     func.case(
                         (
@@ -1007,7 +1018,9 @@ class VideoRepository(
         query = select(VideoDB).where(VideoDB.category_id == category_id)
 
         if exclude_deleted:
-            query = query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
+            query = query.where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
 
         query = query.order_by(desc(VideoDB.view_count)).offset(skip)
 
@@ -1041,12 +1054,16 @@ class VideoRepository(
         int
             Number of videos in the category
         """
-        query = select(func.count()).select_from(VideoDB).where(
-            VideoDB.category_id == category_id
+        query = (
+            select(func.count())
+            .select_from(VideoDB)
+            .where(VideoDB.category_id == category_id)
         )
 
         if exclude_deleted:
-            query = query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
+            query = query.where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
 
         result = await session.execute(query)
         return result.scalar() or 0
@@ -1133,9 +1150,7 @@ class VideoRepository(
             conditions.append(VideoDB.channel_name_hint.is_not(None))
 
         result = await session.execute(
-            select(func.count())
-            .select_from(VideoDB)
-            .where(and_(*conditions))
+            select(func.count()).select_from(VideoDB).where(and_(*conditions))
         )
         return result.scalar() or 0
 

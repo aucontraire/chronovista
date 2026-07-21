@@ -185,8 +185,11 @@ class CDXClient:
 
             # Cache the results
             self._write_cache(
-                video_id, snapshots, raw_count=len(raw_rows),
-                from_year=from_year, to_year=to_year,
+                video_id,
+                snapshots,
+                raw_count=len(raw_rows),
+                from_year=from_year,
+                to_year=to_year,
             )
 
         # When from_year is set, return oldest-first (ascending) so the
@@ -297,7 +300,7 @@ class CDXClient:
                             status_code=0,
                         ) from e
                     attempt = _MAX_RETRIES - retries_remaining
-                    delay = _BACKOFF_BASE_SECONDS * (2 ** attempt)
+                    delay = _BACKOFF_BASE_SECONDS * (2**attempt)
                     retries_remaining -= 1
                     logger.warning(
                         "CDX fetch attempt %d/%d for video %s failed "
@@ -339,7 +342,7 @@ class CDXClient:
                             status_code=503,
                         )
                     attempt = _MAX_RETRIES - retries_remaining
-                    delay = _BACKOFF_BASE_SECONDS * (2 ** attempt)
+                    delay = _BACKOFF_BASE_SECONDS * (2**attempt)
                     retries_remaining -= 1
                     await asyncio.sleep(delay)
                     continue
@@ -354,9 +357,7 @@ class CDXClient:
                     status_code=response.status_code,
                 )
 
-    def _parse_cdx_response(
-        self, raw_rows: list[list[str]]
-    ) -> list[CdxSnapshot]:
+    def _parse_cdx_response(self, raw_rows: list[list[str]]) -> list[CdxSnapshot]:
         """
         Parse raw CDX JSON rows into filtered, sorted CdxSnapshot objects.
 
@@ -590,14 +591,18 @@ class CDXClient:
         """
         # Check cache first
         cached = self._read_channel_cache(
-            channel_id, from_year=from_year, to_year=to_year,
+            channel_id,
+            from_year=from_year,
+            to_year=to_year,
         )
         if cached is not None:
             snapshots = cached
         else:
             # Fetch from CDX API with retries
             raw_rows = await self._fetch_channel_with_retries(
-                channel_id, from_year=from_year, to_year=to_year,
+                channel_id,
+                from_year=from_year,
+                to_year=to_year,
             )
 
             # Parse and filter
@@ -605,8 +610,11 @@ class CDXClient:
 
             # Cache the results
             self._write_channel_cache(
-                channel_id, snapshots, raw_count=len(raw_rows),
-                from_year=from_year, to_year=to_year,
+                channel_id,
+                snapshots,
+                raw_count=len(raw_rows),
+                from_year=from_year,
+                to_year=to_year,
             )
 
         # When from_year is set, return oldest-first (ascending) so the
@@ -690,7 +698,9 @@ class CDXClient:
             If all retries are exhausted without a successful response.
         """
         url = self._build_channel_cdx_url(
-            channel_id, from_year=from_year, to_year=to_year,
+            channel_id,
+            from_year=from_year,
+            to_year=to_year,
         )
         headers = {"User-Agent": f"chronovista/{__version__}"}
         retries_remaining = _MAX_RETRIES
@@ -719,7 +729,7 @@ class CDXClient:
                             status_code=0,
                         ) from e
                     attempt = _MAX_RETRIES - retries_remaining
-                    delay = _BACKOFF_BASE_SECONDS * (2 ** attempt)
+                    delay = _BACKOFF_BASE_SECONDS * (2**attempt)
                     retries_remaining -= 1
                     logger.warning(
                         "CDX fetch attempt %d/%d for channel %s failed "
@@ -761,7 +771,7 @@ class CDXClient:
                             status_code=503,
                         )
                     attempt = _MAX_RETRIES - retries_remaining
-                    delay = _BACKOFF_BASE_SECONDS * (2 ** attempt)
+                    delay = _BACKOFF_BASE_SECONDS * (2**attempt)
                     retries_remaining -= 1
                     await asyncio.sleep(delay)
                     continue
@@ -837,7 +847,9 @@ class CDXClient:
             Cached snapshots if valid, or None if cache miss/expired/corrupt.
         """
         cache_file = self._channel_cache_path(
-            channel_id, from_year=from_year, to_year=to_year,
+            channel_id,
+            from_year=from_year,
+            to_year=to_year,
         )
         if not cache_file.exists():
             return None
@@ -888,7 +900,9 @@ class CDXClient:
             End year filter used in the CDX query (default: None).
         """
         cache_file = self._channel_cache_path(
-            channel_id, from_year=from_year, to_year=to_year,
+            channel_id,
+            from_year=from_year,
+            to_year=to_year,
         )
         cache_file.parent.mkdir(parents=True, exist_ok=True)
 

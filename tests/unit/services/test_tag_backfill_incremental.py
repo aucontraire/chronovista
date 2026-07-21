@@ -340,7 +340,9 @@ class TestRunIncrementalBackfill:
                 [],
             )
 
-            def capture_ta(session: Any, records: Any, batch_size: Any) -> tuple[int, int]:
+            def capture_ta(
+                session: Any, records: Any, batch_size: Any
+            ) -> tuple[int, int]:
                 ta_records_captured.append(list(records))
                 return (1, 0)
 
@@ -602,14 +604,10 @@ class TestRunIncrementalBackfill:
                 return_value=unresolved
             )
             ct_records = [{"id": uuid.uuid4(), "canonical_form": "Preview Tag"}]
-            ta_records = [
-                {"raw_form": "Preview Tag", "creation_method": "backfill"}
-            ]
+            ta_records = [{"raw_form": "Preview Tag", "creation_method": "backfill"}]
             mock_normalize.return_value = (ct_records, ta_records, [])
 
-            result = await service.run_incremental_backfill(
-                mock_session, dry_run=True
-            )
+            result = await service.run_incremental_backfill(mock_session, dry_run=True)
 
         # No writes should have occurred
         mock_batch_ct.assert_not_called()
@@ -722,9 +720,7 @@ class TestEnrichmentServiceNormalizationHook:
         ):
             await service.enrich_videos(mock_session)
 
-        mock_backfill_svc.run_incremental_backfill.assert_called_once_with(
-            mock_session
-        )
+        mock_backfill_svc.run_incremental_backfill.assert_called_once_with(mock_session)
 
     @pytest.mark.asyncio
     async def test_enrichment_skips_normalization_when_skip_normalize_true(

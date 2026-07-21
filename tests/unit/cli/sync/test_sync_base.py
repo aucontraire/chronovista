@@ -98,17 +98,13 @@ class TestCheckAuthenticated:
     """Tests for check_authenticated function."""
 
     @patch("chronovista.cli.sync.base.youtube_oauth")
-    def test_returns_true_when_authenticated(
-        self, mock_oauth: MagicMock
-    ) -> None:
+    def test_returns_true_when_authenticated(self, mock_oauth: MagicMock) -> None:
         """Test returns True when authenticated."""
         mock_oauth.is_authenticated.return_value = True
         assert check_authenticated() is True
 
     @patch("chronovista.cli.sync.base.youtube_oauth")
-    def test_returns_false_when_not_authenticated(
-        self, mock_oauth: MagicMock
-    ) -> None:
+    def test_returns_false_when_not_authenticated(self, mock_oauth: MagicMock) -> None:
         """Test returns False when not authenticated."""
         mock_oauth.is_authenticated.return_value = False
         assert check_authenticated() is False
@@ -214,9 +210,7 @@ class TestRunSyncOperation:
     """Tests for run_sync_operation function."""
 
     @patch("chronovista.cli.sync.base.console")
-    def test_runs_async_function_successfully(
-        self, mock_console: MagicMock
-    ) -> None:
+    def test_runs_async_function_successfully(self, mock_console: MagicMock) -> None:
         """Test run_sync_operation executes async function."""
 
         async def my_async_fn() -> str:
@@ -237,9 +231,7 @@ class TestRunSyncOperation:
         mock_console.print.assert_called_once()
 
     @patch("chronovista.cli.sync.base.console")
-    def test_displays_error_panel_on_exception(
-        self, mock_console: MagicMock
-    ) -> None:
+    def test_displays_error_panel_on_exception(self, mock_console: MagicMock) -> None:
         """Test run_sync_operation displays error panel."""
         from rich.panel import Panel
 

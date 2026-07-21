@@ -83,18 +83,14 @@ class NamedEntityCreate(NamedEntityBase):
     def merged_status_requires_target(self) -> NamedEntityCreate:
         """Validate that merged status has a merge target (FR-027)."""
         if self.status == TagStatus.MERGED and self.merged_into_id is None:
-            raise ValueError(
-                "merged_into_id is required when status is 'merged'"
-            )
+            raise ValueError("merged_into_id is required when status is 'merged'")
         return self
 
 
 class NamedEntityUpdate(BaseModel):
     """Model for updating named entities (PATCH-style, all fields optional)."""
 
-    canonical_name: str | None = Field(
-        default=None, min_length=1, max_length=500
-    )
+    canonical_name: str | None = Field(default=None, min_length=1, max_length=500)
     canonical_name_normalized: str | None = Field(
         default=None, min_length=1, max_length=500
     )
@@ -167,9 +163,7 @@ class NamedEntity(NamedEntityBase):
     def merged_status_requires_target(self) -> NamedEntity:
         """Validate that merged status has a merge target (FR-027)."""
         if self.status == TagStatus.MERGED and self.merged_into_id is None:
-            raise ValueError(
-                "merged_into_id is required when status is 'merged'"
-            )
+            raise ValueError("merged_into_id is required when status is 'merged'")
         return self
 
     @model_validator(mode="after")

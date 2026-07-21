@@ -52,9 +52,7 @@ class TranscriptSegmentFactory(TranscriptSegmentBaseFactory):
     id: Any = Sequence(lambda n: n + 1)
     has_correction: Any = LazyFunction(lambda: False)
     corrected_text: Any = LazyFunction(lambda: None)
-    created_at: Any = LazyFunction(
-        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
-    )
+    created_at: Any = LazyFunction(lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC))
 
 
 class TranscriptSegmentResponseFactory(factory.Factory[TranscriptSegmentResponse]):
@@ -68,12 +66,8 @@ class TranscriptSegmentResponseFactory(factory.Factory[TranscriptSegmentResponse
     start_time: Any = Sequence(lambda n: float(n * 3))
     duration: Any = LazyFunction(lambda: 2.5)
     end_time: Any = LazyAttribute(lambda obj: obj.start_time + obj.duration)
-    start_formatted: Any = LazyAttribute(
-        lambda obj: _format_time(obj.start_time)
-    )
-    end_formatted: Any = LazyAttribute(
-        lambda obj: _format_time(obj.end_time)
-    )
+    start_formatted: Any = LazyAttribute(lambda obj: _format_time(obj.start_time))
+    end_formatted: Any = LazyAttribute(lambda obj: _format_time(obj.end_time))
 
 
 def _format_time(seconds: float) -> str:

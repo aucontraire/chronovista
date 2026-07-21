@@ -117,8 +117,12 @@ class TestCanonicalTagRepositorySearch:
         mock_session: MagicMock,
     ) -> None:
         """Search without q filter returns items ordered by video_count DESC."""
-        tag_a = _make_canonical_tag(canonical_form="Python", normalized_form="python", video_count=200)
-        tag_b = _make_canonical_tag(canonical_form="Java", normalized_form="java", video_count=100)
+        tag_a = _make_canonical_tag(
+            canonical_form="Python", normalized_form="python", video_count=200
+        )
+        tag_b = _make_canonical_tag(
+            canonical_form="Java", normalized_form="java", video_count=100
+        )
 
         # First execute call: count query
         count_result = MagicMock()
@@ -144,7 +148,9 @@ class TestCanonicalTagRepositorySearch:
         mock_session: MagicMock,
     ) -> None:
         """Search with q parameter applies ILIKE prefix pattern."""
-        tag = _make_canonical_tag(canonical_form="Python", normalized_form="python", video_count=50)
+        tag = _make_canonical_tag(
+            canonical_form="Python", normalized_form="python", video_count=50
+        )
 
         count_result = MagicMock()
         count_result.scalar_one.return_value = 1
@@ -193,7 +199,9 @@ class TestCanonicalTagRepositorySearch:
         mock_session: MagicMock,
     ) -> None:
         """Search applies skip and limit for pagination."""
-        tag_c = _make_canonical_tag(canonical_form="Go", normalized_form="go", video_count=50)
+        tag_c = _make_canonical_tag(
+            canonical_form="Go", normalized_form="go", video_count=50
+        )
 
         count_result = MagicMock()
         count_result.scalar_one.return_value = 5  # Total is 5 but we only get 1 page
@@ -237,7 +245,9 @@ class TestCanonicalTagRepositorySearch:
 
         # Inspect the SQL of the count query (first execute call)
         count_call_stmt = mock_session.execute.call_args_list[0].args[0]
-        sql_string = str(count_call_stmt.compile(compile_kwargs={"literal_binds": False}))
+        sql_string = str(
+            count_call_stmt.compile(compile_kwargs={"literal_binds": False})
+        )
 
         assert "tag_aliases" in sql_string, (
             "Expected EXISTS subquery referencing tag_aliases table in search SQL; "
@@ -271,7 +281,9 @@ class TestCanonicalTagRepositorySearch:
         await repository.search(mock_session)  # No q parameter
 
         count_call_stmt = mock_session.execute.call_args_list[0].args[0]
-        sql_string = str(count_call_stmt.compile(compile_kwargs={"literal_binds": False}))
+        sql_string = str(
+            count_call_stmt.compile(compile_kwargs={"literal_binds": False})
+        )
 
         assert "tag_aliases" not in sql_string, (
             "Expected NO tag_aliases reference in search SQL when q is not provided; "
@@ -305,10 +317,12 @@ class TestCanonicalTagRepositorySearch:
         # WHERE uses the substring pattern on all three targets. (A bare `music%`
         # also legitimately appears inside the ORDER BY tier CASE — the prefix
         # tier — so we assert the substring pattern's presence, not prefix absence.)
-        assert sql.count("'%music%'") >= 3, (
-            f"expected %music% on canonical_form, normalized_form, and alias; got: {sql}"
-        )
-        assert "tag_aliases" in sql, "contains search must include alias EXISTS subquery"
+        assert (
+            sql.count("'%music%'") >= 3
+        ), f"expected %music% on canonical_form, normalized_form, and alias; got: {sql}"
+        assert (
+            "tag_aliases" in sql
+        ), "contains search must include alias EXISTS subquery"
         assert "CASE" in sql.upper(), "contains mode must include relevance tier CASE"
 
     async def test_search_prefix_mode_uses_prefix_pattern_no_tier(
@@ -443,9 +457,15 @@ class TestCanonicalTagRepositoryGetTopAliases:
     ) -> None:
         """get_top_aliases returns aliases ordered by occurrence_count DESC."""
         ct_id = _make_uuid()
-        alias_a = _make_tag_alias(raw_form="Python", occurrence_count=100, canonical_tag_id=ct_id)
-        alias_b = _make_tag_alias(raw_form="python", occurrence_count=80, canonical_tag_id=ct_id)
-        alias_c = _make_tag_alias(raw_form="PYTHON", occurrence_count=20, canonical_tag_id=ct_id)
+        alias_a = _make_tag_alias(
+            raw_form="Python", occurrence_count=100, canonical_tag_id=ct_id
+        )
+        alias_b = _make_tag_alias(
+            raw_form="python", occurrence_count=80, canonical_tag_id=ct_id
+        )
+        alias_c = _make_tag_alias(
+            raw_form="PYTHON", occurrence_count=20, canonical_tag_id=ct_id
+        )
 
         mock_scalars = MagicMock()
         mock_scalars.all.return_value = [alias_a, alias_b, alias_c]
@@ -456,7 +476,11 @@ class TestCanonicalTagRepositoryGetTopAliases:
         result = await repository.get_top_aliases(mock_session, ct_id)
 
         assert result == [alias_a, alias_b, alias_c]
-        assert result[0].occurrence_count > result[1].occurrence_count > result[2].occurrence_count
+        assert (
+            result[0].occurrence_count
+            > result[1].occurrence_count
+            > result[2].occurrence_count
+        )
         mock_session.execute.assert_called_once()
 
     async def test_respects_limit_parameter(
@@ -466,7 +490,9 @@ class TestCanonicalTagRepositoryGetTopAliases:
     ) -> None:
         """get_top_aliases respects the limit parameter."""
         ct_id = _make_uuid()
-        alias_top = _make_tag_alias(raw_form="Python", occurrence_count=200, canonical_tag_id=ct_id)
+        alias_top = _make_tag_alias(
+            raw_form="Python", occurrence_count=200, canonical_tag_id=ct_id
+        )
 
         mock_scalars = MagicMock()
         mock_scalars.all.return_value = [alias_top]
@@ -706,9 +732,7 @@ class TestCanonicalTagRepositoryBuildSubqueries:
         mock_session: MagicMock,
     ) -> None:
         """Empty normalized_forms list returns []."""
-        result = await repository.build_canonical_tag_video_subqueries(
-            mock_session, []
-        )
+        result = await repository.build_canonical_tag_video_subqueries(mock_session, [])
 
         assert result == []
         mock_session.execute.assert_not_called()

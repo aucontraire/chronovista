@@ -37,8 +37,12 @@ class PlaylistBaseFactory(factory.Factory[PlaylistBase]):
     youtube_id: Any = None  # Optional YouTube playlist ID (None by default)
     title: Any = Faker("sentence", nb_words=4)
     description: Any = Faker("text", max_nb_chars=200)
-    default_language: Any = Faker("random_element", elements=["en", "es", "fr", "de", "ja"])
-    privacy_status: Any = Faker("random_element", elements=["private", "public", "unlisted"])
+    default_language: Any = Faker(
+        "random_element", elements=["en", "es", "fr", "de", "ja"]
+    )
+    privacy_status: Any = Faker(
+        "random_element", elements=["private", "public", "unlisted"]
+    )
     channel_id: Any = factory.LazyFunction(
         lambda: "UCuAXFkgsw1L7xaCfnd5JJOw"
     )  # Use fixed valid channel ID

@@ -502,9 +502,7 @@ class UserVideoRepository(
                     # Create new interaction
                     # Set rewatch count based on how many times we've seen this video
                     user_video_create.rewatch_count = video_counts[video_id] - 1
-                    await self.create(
-                        session, obj_in=user_video_create
-                    )
+                    await self.create(session, obj_in=user_video_create)
                     stats["created"] += 1
 
             except Exception:

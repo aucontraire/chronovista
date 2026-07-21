@@ -31,21 +31,15 @@ class EnrichmentSummary(BaseModel):
     channels_auto_resolved: int = Field(
         default=0, ge=0, description="Number of orphan videos linked to real channels"
     )
-    tags_created: int = Field(
-        ..., ge=0, description="Number of new tags created"
-    )
+    tags_created: int = Field(..., ge=0, description="Number of new tags created")
     topic_associations: int = Field(
         ..., ge=0, description="Number of topic associations created"
     )
     categories_assigned: int = Field(
         ..., ge=0, description="Number of category assignments made"
     )
-    errors: int = Field(
-        ..., ge=0, description="Number of errors encountered"
-    )
-    quota_used: int = Field(
-        ..., ge=0, description="YouTube API quota units consumed"
-    )
+    errors: int = Field(..., ge=0, description="Number of errors encountered")
+    quota_used: int = Field(..., ge=0, description="YouTube API quota units consumed")
     # Playlist enrichment statistics
     playlists_processed: int = Field(
         default=0, ge=0, description="Total number of playlists processed"
@@ -65,12 +59,10 @@ class EnrichmentSummary(BaseModel):
 class EnrichmentDetail(BaseModel):
     """Detailed enrichment result for a single video."""
 
-    video_id: str = Field(
-        ..., min_length=1, description="YouTube video ID"
-    )
-    status: Literal["updated", "deleted", "error", "skipped", "pending_confirmation"] = Field(
-        ..., description="Enrichment status for this video"
-    )
+    video_id: str = Field(..., min_length=1, description="YouTube video ID")
+    status: Literal[
+        "updated", "deleted", "error", "skipped", "pending_confirmation"
+    ] = Field(..., description="Enrichment status for this video")
     old_title: str | None = Field(
         default=None, description="Previous video title (if changed)"
     )

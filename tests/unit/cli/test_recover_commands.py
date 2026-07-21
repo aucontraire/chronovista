@@ -24,8 +24,10 @@ runner = CliRunner()
 
 def create_async_mock_recover(result: RecoveryResult):
     """Create an async mock for recover_video that returns the given result."""
+
     async def mock_recover_async(*args, **kwargs):
         return result
+
     return mock_recover_async
 
 
@@ -39,7 +41,9 @@ def create_async_mock_session() -> tuple[AsyncGenerator[AsyncMock, None], AsyncM
     return mock_session_gen(), mock_session
 
 
-def create_mock_video_db(video_id: str, availability_status: AvailabilityStatus = AvailabilityStatus.DELETED):
+def create_mock_video_db(
+    video_id: str, availability_status: AvailabilityStatus = AvailabilityStatus.DELETED
+):
     """Create a mock Video DB object."""
     mock_video = MagicMock()
     mock_video.video_id = video_id
@@ -75,7 +79,10 @@ class TestRecoverArgumentParsing:
         )
 
         assert result.exit_code != 0
-        assert "mutually exclusive" in result.stdout.lower() or "cannot" in result.stdout.lower()
+        assert (
+            "mutually exclusive" in result.stdout.lower()
+            or "cannot" in result.stdout.lower()
+        )
 
     @patch("chronovista.cli.commands.recover.recover_video")
     @patch("chronovista.cli.commands.recover.db_manager.get_session")
@@ -112,7 +119,16 @@ class TestRecoverArgumentParsing:
         # Test valid float
         result = runner.invoke(
             app,
-            ["recover", "video", "--all", "--limit", "1", "--delay", "1.5", "--dry-run"],
+            [
+                "recover",
+                "video",
+                "--all",
+                "--limit",
+                "1",
+                "--delay",
+                "1.5",
+                "--dry-run",
+            ],
         )
 
         # Should not fail on argument parsing (may fail on other things)
@@ -390,6 +406,7 @@ class TestBatchRecovery:
         ]
 
         call_count = 0
+
         async def mock_recover_side_effect(*args, **kwargs):
             nonlocal call_count
             result = results[call_count]
@@ -459,6 +476,7 @@ class TestBatchRecovery:
         ]
 
         call_count = 0
+
         async def mock_recover_side_effect(*args, **kwargs):
             nonlocal call_count
             result = results[call_count]
@@ -562,7 +580,11 @@ class TestDryRunMode:
 
         assert result.exit_code == 0
         # Should mention snapshots available or dry run mode
-        assert "snapshot" in result.stdout.lower() or "dry" in result.stdout.lower() or "10" in result.stdout
+        assert (
+            "snapshot" in result.stdout.lower()
+            or "dry" in result.stdout.lower()
+            or "10" in result.stdout
+        )
 
 
 class TestSummaryReport:
@@ -612,6 +634,7 @@ class TestSummaryReport:
         ]
 
         call_count = 0
+
         async def mock_recover_side_effect(*args, **kwargs):
             nonlocal call_count
             result = results[call_count]
@@ -627,7 +650,9 @@ class TestSummaryReport:
 
         # Check for summary information
         assert result.exit_code == 0
-        assert "summary" in result.stdout.lower() or "succeeded" in result.stdout.lower()
+        assert (
+            "summary" in result.stdout.lower() or "succeeded" in result.stdout.lower()
+        )
         # Should show count information (3 attempted, 2 succeeded, 1 failed)
         assert "3" in result.stdout and "2" in result.stdout
 
@@ -681,7 +706,10 @@ class TestDependencyChecks:
 
         # Should fail with error about missing dependency
         assert result.exit_code != 0
-        assert "beautifulsoup" in result.stdout.lower() or "dependency" in result.stdout.lower()
+        assert (
+            "beautifulsoup" in result.stdout.lower()
+            or "dependency" in result.stdout.lower()
+        )
 
     @patch("chronovista.cli.commands.recover.SELENIUM_AVAILABLE", False)
     @patch("chronovista.cli.commands.recover.BEAUTIFULSOUP_AVAILABLE", True)
@@ -865,18 +893,38 @@ class TestYearFilterValidation:
         """Test that --start-year > --end-year prints error and exits with code 2."""
         result = runner.invoke(
             app,
-            ["recover", "video", "--video-id", "dQw4w9WgXcQ", "--start-year", "2022", "--end-year", "2018"],
+            [
+                "recover",
+                "video",
+                "--video-id",
+                "dQw4w9WgXcQ",
+                "--start-year",
+                "2022",
+                "--end-year",
+                "2018",
+            ],
         )
 
         assert result.exit_code == 2
-        assert "start-year" in result.stdout.lower() or "greater" in result.stdout.lower()
+        assert (
+            "start-year" in result.stdout.lower() or "greater" in result.stdout.lower()
+        )
 
     def test_start_year_equal_to_end_year_accepted(self) -> None:
         """Test that --start-year == --end-year is accepted (not an error)."""
         # This should not fail on validation (may fail on other things like dependencies)
         result = runner.invoke(
             app,
-            ["recover", "video", "--video-id", "dQw4w9WgXcQ", "--start-year", "2020", "--end-year", "2020"],
+            [
+                "recover",
+                "video",
+                "--video-id",
+                "dQw4w9WgXcQ",
+                "--start-year",
+                "2020",
+                "--end-year",
+                "2020",
+            ],
         )
 
         # Should NOT be exit code 2 (the year-range validation error)
@@ -970,7 +1018,16 @@ class TestYearFilterValidation:
 
         result = runner.invoke(
             app,
-            ["recover", "video", "--video-id", "dQw4w9WgXcQ", "--start-year", "2018", "--end-year", "2020"],
+            [
+                "recover",
+                "video",
+                "--video-id",
+                "dQw4w9WgXcQ",
+                "--start-year",
+                "2018",
+                "--end-year",
+                "2020",
+            ],
         )
 
         assert result.exit_code == 0
@@ -1005,7 +1062,17 @@ class TestYearFilterValidation:
 
         result = runner.invoke(
             app,
-            ["recover", "video", "--all", "--limit", "1", "--start-year", "2018", "--end-year", "2020"],
+            [
+                "recover",
+                "video",
+                "--all",
+                "--limit",
+                "1",
+                "--start-year",
+                "2018",
+                "--end-year",
+                "2020",
+            ],
         )
 
         assert result.exit_code == 0
@@ -1086,7 +1153,9 @@ class TestChannelRecoveryDisplay:
         # Look for the field name but not in context of channel recovery
         stdout_lines = result.stdout.split("\n")
         # Count occurrences - should only see "Channel Recovery" as part of headers, not data
-        channel_recovery_lines = [line for line in stdout_lines if "channel recovery" in line.lower()]
+        channel_recovery_lines = [
+            line for line in stdout_lines if "channel recovery" in line.lower()
+        ]
         # If channel_recovered=False and no failure_reason, there should be no channel recovery row
         assert len(channel_recovery_lines) == 0
 
@@ -1175,6 +1244,7 @@ class TestChannelRecoveryDisplay:
         ]
 
         call_count = 0
+
         async def mock_recover_side_effect(*args, **kwargs):
             nonlocal call_count
             result = results[call_count]
@@ -1238,6 +1308,7 @@ class TestChannelRecoveryDisplay:
         ]
 
         call_count = 0
+
         async def mock_recover_side_effect(*args, **kwargs):
             nonlocal call_count
             result = results[call_count]
@@ -1275,7 +1346,10 @@ class TestChannelRecoveryDisplay:
                 snapshot_used="20220106075526",
                 fields_recovered=["title", "description"],
                 duration_seconds=1.5,
-                channel_recovery_candidates=["UC123456789012345678901", "UC987654321098765432109"],
+                channel_recovery_candidates=[
+                    "UC123456789012345678901",
+                    "UC987654321098765432109",
+                ],
             )
         )
 

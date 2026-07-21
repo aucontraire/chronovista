@@ -51,12 +51,28 @@ _IMMUTABLE_FIELDS = frozenset(["channel_id", "category_id"])
 
 # Mutable fields that can be overwritten if snapshot is newer than existing recovery_source
 _MUTABLE_FIELDS = frozenset(
-    ["title", "description", "upload_date", "view_count", "like_count", "channel_name_hint", "thumbnail_url"]
+    [
+        "title",
+        "description",
+        "upload_date",
+        "view_count",
+        "like_count",
+        "channel_name_hint",
+        "thumbnail_url",
+    ]
 )
 
 # Channel mutable fields (channels have NO immutable fields — all are mutable overwrite-if-newer)
 _CHANNEL_MUTABLE_FIELDS = frozenset(
-    ["title", "description", "subscriber_count", "video_count", "thumbnail_url", "country", "default_language"]
+    [
+        "title",
+        "description",
+        "subscriber_count",
+        "video_count",
+        "thumbnail_url",
+        "country",
+        "default_language",
+    ]
 )
 
 
@@ -201,7 +217,7 @@ async def recover_video(
         snapshots_tried = 0
         recovered_data: RecoveredVideoData | None = None
 
-        for snapshot in snapshots[: _MAX_SNAPSHOTS_TO_TRY]:
+        for snapshot in snapshots[:_MAX_SNAPSHOTS_TO_TRY]:
             snapshots_tried += 1
 
             # Skip page fetching in dry-run mode
@@ -269,8 +285,7 @@ async def recover_video(
                 )
                 if not channel_exists:
                     stub_title = (
-                        recovered_data.channel_name_hint
-                        or update_dict["channel_id"]
+                        recovered_data.channel_name_hint or update_dict["channel_id"]
                     )
                     try:
                         stub_channel = ChannelCreate(
@@ -330,15 +345,16 @@ async def recover_video(
         if recovered_data.channel_id:
             # Check if this channel exists and is unavailable
             channel = await channel_repo.get(session, recovered_data.channel_id)
-            if channel is not None and channel.availability_status != AvailabilityStatus.AVAILABLE.value:
+            if (
+                channel is not None
+                and channel.availability_status != AvailabilityStatus.AVAILABLE.value
+            ):
                 channel_recovery_candidates.append(recovered_data.channel_id)
 
                 # Attempt auto-channel recovery with remaining time budget
                 try:
                     elapsed = (datetime.now(UTC) - start_time).total_seconds()
-                    remaining_timeout = max(
-                        _RECOVERY_TIMEOUT_SECONDS - elapsed, 30.0
-                    )
+                    remaining_timeout = max(_RECOVERY_TIMEOUT_SECONDS - elapsed, 30.0)
                     channel_result = await recover_channel(
                         session=session,
                         channel_id=recovered_data.channel_id,
@@ -357,8 +373,7 @@ async def recover_video(
                         channel_failure_reason = channel_result.failure_reason
                 except Exception as e:
                     logger.warning(
-                        "Auto-channel recovery failed for channel %s "
-                        "(video %s): %s",
+                        "Auto-channel recovery failed for channel %s " "(video %s): %s",
                         recovered_data.channel_id,
                         video_id,
                         e,
@@ -732,7 +747,7 @@ async def recover_channel(
         snapshots_tried = 0
         recovered_data: RecoveredChannelData | None = None
 
-        for snapshot in snapshots[: _MAX_SNAPSHOTS_TO_TRY]:
+        for snapshot in snapshots[:_MAX_SNAPSHOTS_TO_TRY]:
             snapshots_tried += 1
 
             # Check remaining time budget

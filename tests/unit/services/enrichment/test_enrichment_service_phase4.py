@@ -296,7 +296,9 @@ class TestEnrichVideos:
         ) as mock_get:
             mock_get.return_value = []
 
-            report = await service.enrich_videos(mock_session, check_prerequisites=False)
+            report = await service.enrich_videos(
+                mock_session, check_prerequisites=False
+            )
 
             assert report.summary.videos_processed == 0
             assert report.summary.videos_updated == 0
@@ -332,16 +334,24 @@ class TestEnrichVideos:
         mock_video.title = "[Placeholder] Video deleted123"
         mock_video.availability_status = AvailabilityStatus.AVAILABLE
 
-        with patch.object(
-            service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([], {"deleted123"}))
-        ), patch.object(
-            service.video_repository, "get", new=AsyncMock(return_value=mock_video)
+        with (
+            patch.object(
+                service, "_get_videos_for_enrichment", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
+                service.youtube_service,
+                "fetch_videos_batched",
+                new=AsyncMock(return_value=([], {"deleted123"})),
+            ),
+            patch.object(
+                service.video_repository, "get", new=AsyncMock(return_value=mock_video)
+            ),
         ):
             mock_get.return_value = [mock_video]
 
-            report = await service.enrich_videos(mock_session, check_prerequisites=False)
+            report = await service.enrich_videos(
+                mock_session, check_prerequisites=False
+            )
 
             assert report.summary.videos_deleted == 1
             assert mock_video.availability_status == AvailabilityStatus.UNAVAILABLE
@@ -371,20 +381,28 @@ class TestEnrichVideos:
             },
         )
 
-        with patch.object(
-            service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([api_response], set()))
-        ), patch.object(
-            service.channel_repository, "get", new=AsyncMock(return_value=None)
-        ), patch.object(
-            service.channel_repository, "create", new=AsyncMock()
-        ), patch.object(
-            service.video_repository, "get", new=AsyncMock(return_value=mock_video)
+        with (
+            patch.object(
+                service, "_get_videos_for_enrichment", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
+                service.youtube_service,
+                "fetch_videos_batched",
+                new=AsyncMock(return_value=([api_response], set())),
+            ),
+            patch.object(
+                service.channel_repository, "get", new=AsyncMock(return_value=None)
+            ),
+            patch.object(service.channel_repository, "create", new=AsyncMock()),
+            patch.object(
+                service.video_repository, "get", new=AsyncMock(return_value=mock_video)
+            ),
         ):
             mock_get.return_value = [mock_video]
 
-            report = await service.enrich_videos(mock_session, check_prerequisites=False)
+            report = await service.enrich_videos(
+                mock_session, check_prerequisites=False
+            )
 
             assert report.summary.videos_updated == 1
             assert mock_video.title == "Never Gonna Give You Up"
@@ -431,11 +449,14 @@ class TestEnsureChannelExists:
         self, service: EnrichmentService, mock_session: AsyncMock
     ) -> None:
         """Test creating a new channel when it doesn't exist."""
-        with patch.object(
-            service.channel_repository, "get", new=AsyncMock(return_value=None)
-        ), patch.object(
-            service.channel_repository, "create", new=AsyncMock()
-        ) as mock_create:
+        with (
+            patch.object(
+                service.channel_repository, "get", new=AsyncMock(return_value=None)
+            ),
+            patch.object(
+                service.channel_repository, "create", new=AsyncMock()
+            ) as mock_create,
+        ):
             created = await service._ensure_channel_exists(
                 mock_session,
                 "UCuAXFkgsw1L7xaCfnd5JJOw",

@@ -243,13 +243,16 @@ class TestVideoLocalization:
     def test_create_valid_video_localization(self):
         """Test creating valid VideoLocalization with keyword arguments."""
         now = datetime.now(UTC)
-        localization = cast(VideoLocalization, VideoLocalizationFactory.build(
-            video_id="dQw4w9WgXcQ",
-            language_code=LanguageCode.JAPANESE,
-            localized_title="テストビデオ",
-            localized_description="テストの説明",
-            created_at=now,
-        ))
+        localization = cast(
+            VideoLocalization,
+            VideoLocalizationFactory.build(
+                video_id="dQw4w9WgXcQ",
+                language_code=LanguageCode.JAPANESE,
+                localized_title="テストビデオ",
+                localized_description="テストの説明",
+                created_at=now,
+            ),
+        )
 
         assert localization.video_id == "dQw4w9WgXcQ"
         assert localization.language_code == LanguageCode.JAPANESE
@@ -403,13 +406,16 @@ class TestVideoLocalizationModelInteractions:
 
         # Simulate creation
         now = datetime.now(UTC)
-        localization_full = cast(VideoLocalization, VideoLocalizationFactory.build(
-            video_id=localization_create.video_id,
-            language_code=localization_create.language_code,
-            localized_title=localization_create.localized_title,
-            localized_description=localization_create.localized_description,
-            created_at=now,
-        ))
+        localization_full = cast(
+            VideoLocalization,
+            VideoLocalizationFactory.build(
+                video_id=localization_create.video_id,
+                language_code=localization_create.language_code,
+                localized_title=localization_create.localized_title,
+                localized_description=localization_create.localized_description,
+                created_at=now,
+            ),
+        )
 
         # Update
         localization_update = VideoLocalizationUpdateFactory.build(

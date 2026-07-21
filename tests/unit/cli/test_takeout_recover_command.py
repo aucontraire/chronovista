@@ -54,7 +54,9 @@ class TestTakeoutRecoverCommand:
         result.mark_complete()
         return result
 
-    @patch("chronovista.services.takeout_service.TakeoutService.discover_historical_takeouts")
+    @patch(
+        "chronovista.services.takeout_service.TakeoutService.discover_historical_takeouts"
+    )
     def test_recover_dry_run(
         self,
         mock_discover: MagicMock,
@@ -72,7 +74,9 @@ class TestTakeoutRecoverCommand:
         # Command should run (exits with 0 for "no takeouts found" or runs successfully)
         assert result.exit_code == 0 or "No historical takeouts found" in result.stdout
 
-    @patch("chronovista.services.takeout_service.TakeoutService.discover_historical_takeouts")
+    @patch(
+        "chronovista.services.takeout_service.TakeoutService.discover_historical_takeouts"
+    )
     def test_recover_verbose_mode(
         self,
         mock_discover: MagicMock,
@@ -94,12 +98,16 @@ class TestTakeoutRecoverCommand:
         result = runner.invoke(app, ["takeout", "recover", "--help"])
 
         assert result.exit_code == 0
-        assert "Recover metadata from historical Google Takeout exports" in result.stdout
+        assert (
+            "Recover metadata from historical Google Takeout exports" in result.stdout
+        )
         assert "--dry-run" in result.stdout
         assert "--verbose" in result.stdout
         assert "--takeout-dir" in result.stdout
 
-    @patch("chronovista.services.takeout_service.TakeoutService.discover_historical_takeouts")
+    @patch(
+        "chronovista.services.takeout_service.TakeoutService.discover_historical_takeouts"
+    )
     def test_recover_no_takeouts_found(
         self,
         mock_discover: MagicMock,
@@ -113,9 +121,14 @@ class TestTakeoutRecoverCommand:
         )
 
         # Command shows informative message and exits (may be 0 or 1 depending on implementation)
-        assert "No Historical Takeouts Found" in result.stdout or "No historical takeouts found" in result.stdout
+        assert (
+            "No Historical Takeouts Found" in result.stdout
+            or "No historical takeouts found" in result.stdout
+        )
 
-    @patch("chronovista.services.takeout_service.TakeoutService.discover_historical_takeouts")
+    @patch(
+        "chronovista.services.takeout_service.TakeoutService.discover_historical_takeouts"
+    )
     def test_recover_shows_no_takeouts_message(
         self,
         mock_discover: MagicMock,
@@ -130,7 +143,10 @@ class TestTakeoutRecoverCommand:
         )
 
         # The command should show informative message about expected structure
-        assert "Expected directory structure" in result.stdout or "No Historical Takeouts Found" in result.stdout
+        assert (
+            "Expected directory structure" in result.stdout
+            or "No Historical Takeouts Found" in result.stdout
+        )
 
 
 class TestTakeoutRecoverCommandOptions:
@@ -164,13 +180,20 @@ class TestTakeoutRecoverErrorHandling:
         """Test that nonexistent directory is handled gracefully."""
         result = runner.invoke(
             app,
-            ["takeout", "recover", "--takeout-dir", "/nonexistent/path/that/does/not/exist"],
+            [
+                "takeout",
+                "recover",
+                "--takeout-dir",
+                "/nonexistent/path/that/does/not/exist",
+            ],
         )
 
         # Should exit with error code (directory doesn't exist)
         assert result.exit_code != 0 or "Error" in result.stdout
 
-    @patch("chronovista.services.takeout_service.TakeoutService.discover_historical_takeouts")
+    @patch(
+        "chronovista.services.takeout_service.TakeoutService.discover_historical_takeouts"
+    )
     def test_recover_handles_discovery_error(
         self,
         mock_discover: MagicMock,

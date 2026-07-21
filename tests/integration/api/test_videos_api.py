@@ -61,7 +61,9 @@ class TestListVideos:
             assert data["pagination"]["limit"] == 20
             assert data["pagination"]["offset"] == 0
 
-    async def test_list_videos_limit_validation(self, async_client: AsyncClient) -> None:
+    async def test_list_videos_limit_validation(
+        self, async_client: AsyncClient
+    ) -> None:
         """Test limit validation (max 100)."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
@@ -212,7 +214,9 @@ class TestVideoDetail:
             # Either 200 with data or 404 if video doesn't exist
             assert response.status_code in [200, 404]
 
-    async def test_get_video_404_for_nonexistent(self, async_client: AsyncClient) -> None:
+    async def test_get_video_404_for_nonexistent(
+        self, async_client: AsyncClient
+    ) -> None:
         """Test 404 response for non-existent video."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True

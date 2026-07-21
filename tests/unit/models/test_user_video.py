@@ -141,9 +141,7 @@ class TestUserVideoUpdateFactory:
 
     def test_user_video_update_creation(self):
         """Test basic UserVideoUpdate creation from factory with explicit values."""
-        user_video_update = UserVideoUpdateFactory.build(
-            rewatch_count=2, liked=True
-        )
+        user_video_update = UserVideoUpdateFactory.build(rewatch_count=2, liked=True)
 
         assert isinstance(user_video_update, UserVideoUpdate)
         assert user_video_update.rewatch_count == 2
@@ -517,18 +515,14 @@ class TestValidationEdgeCases:
 
     def test_none_values_handling(self):
         """Test handling of None values in optional fields."""
-        user_video = UserVideoBaseFactory.build(
-            watched_at=None
-        )
+        user_video = UserVideoBaseFactory.build(watched_at=None)
 
         assert user_video.watched_at is None
 
     def test_boundary_values(self):
         """Test boundary values for validation."""
         # Test minimum valid values
-        min_video = UserVideoBaseFactory.build(
-            rewatch_count=0
-        )
+        min_video = UserVideoBaseFactory.build(rewatch_count=0)
         assert min_video.rewatch_count == 0
 
         # Test valid video ID length

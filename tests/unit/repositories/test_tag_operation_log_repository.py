@@ -126,7 +126,13 @@ class TestTagOperationLogRepositoryInit:
     async def test_repository_exposes_expected_methods(self) -> None:
         """All public methods described in the spec must exist on the repository."""
         repo = TagOperationLogRepository()
-        for method_name in ("create", "get", "exists", "get_recent", "get_by_operation_id"):
+        for method_name in (
+            "create",
+            "get",
+            "exists",
+            "get_recent",
+            "get_by_operation_id",
+        ):
             assert hasattr(repo, method_name), f"Missing method: {method_name}"
 
 
@@ -689,7 +695,9 @@ class TestTagOperationLogRepositoryGetByOperationId:
 
         get_call_args: list[uuid.UUID] = []
 
-        async def _spy_get(session: AsyncSession, id: uuid.UUID) -> TagOperationLogDB | None:
+        async def _spy_get(
+            session: AsyncSession, id: uuid.UUID
+        ) -> TagOperationLogDB | None:
             get_call_args.append(id)
             # Reproduce the real SELECT path via mock.
             mock_result = MagicMock()

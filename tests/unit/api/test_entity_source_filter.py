@@ -134,9 +134,7 @@ async def _build_client(
 
     try:
         transport = ASGITransport(app=app)
-        async with AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
     finally:
         app.dependency_overrides.clear()
@@ -210,9 +208,7 @@ class TestScanEntitySourcesParameter:
 
         mock_service = MagicMock()
         mock_service.scan = AsyncMock(return_value=_empty_scan_result())
-        mock_service.scan_metadata = AsyncMock(
-            return_value=_empty_scan_result()
-        )
+        mock_service.scan_metadata = AsyncMock(return_value=_empty_scan_result())
 
         with patch(
             "chronovista.api.routers.entity_mentions._get_scan_service",
@@ -249,9 +245,7 @@ class TestScanEntitySourcesParameter:
 
         mock_service = MagicMock()
         mock_service.scan = AsyncMock(return_value=_empty_scan_result())
-        mock_service.scan_metadata = AsyncMock(
-            return_value=_empty_scan_result()
-        )
+        mock_service.scan_metadata = AsyncMock(return_value=_empty_scan_result())
 
         with patch(
             "chronovista.api.routers.entity_mentions._get_scan_service",
@@ -318,9 +312,7 @@ class TestScanVideoEntitiesSourcesParameter:
 
         mock_service = MagicMock()
         mock_service.scan = AsyncMock(return_value=_empty_scan_result())
-        mock_service.scan_metadata = AsyncMock(
-            return_value=_empty_scan_result()
-        )
+        mock_service.scan_metadata = AsyncMock(return_value=_empty_scan_result())
 
         with patch(
             "chronovista.api.routers.entity_mentions._get_scan_service",
@@ -537,9 +529,7 @@ class TestGetEntityVideosSourceFilter:
             return_value=(all_videos, 3),
         ) as mock_repo:
             async for client in _build_client(mock_session):
-                response = await client.get(
-                    f"/api/v1/entities/{entity_id}/videos"
-                )
+                response = await client.get(f"/api/v1/entities/{entity_id}/videos")
 
         assert response.status_code == 200
         body = response.json()

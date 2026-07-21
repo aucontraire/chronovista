@@ -53,11 +53,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Paths that should not have their details logged (sensitive endpoints)
-SENSITIVE_PATHS: frozenset[str] = frozenset({
-    "/api/v1/auth",
-    "/api/v1/oauth",
-    "/api/v1/token",
-})
+SENSITIVE_PATHS: frozenset[str] = frozenset(
+    {
+        "/api/v1/auth",
+        "/api/v1/oauth",
+        "/api/v1/token",
+    }
+)
 
 
 @asynccontextmanager
@@ -124,9 +126,7 @@ async def add_security_headers(
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Permissions-Policy"] = (
-        "camera=(), microphone=(), geolocation=()"
-    )
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     # CSP: allow self-origin resources; inline styles needed for Rich/Tailwind;
     # YouTube IFrame API requires script-src + frame-src for youtube.com
     response.headers["Content-Security-Policy"] = (
@@ -141,6 +141,7 @@ async def add_security_headers(
         "base-uri 'self'"
     )
     return response
+
 
 # Register centralized exception handlers for consistent error responses
 register_exception_handlers(app)
@@ -203,13 +204,12 @@ async def log_requests(
     if _is_sensitive_path(path):
         logger.info(
             "Request: %s [sensitive endpoint] from %s [%s]",
-            method, client_ip, request_id
+            method,
+            client_ip,
+            request_id,
         )
     else:
-        logger.info(
-            "Request: %s %s from %s [%s]",
-            method, path, client_ip, request_id
-        )
+        logger.info("Request: %s %s from %s [%s]", method, path, client_ip, request_id)
 
     # Process the request
     response = await call_next(request)
@@ -260,14 +260,20 @@ app.include_router(tags.router, prefix="/api/v1", tags=["tags"])
 app.include_router(canonical_tags.router, prefix="/api/v1", tags=["canonical-tags"])
 app.include_router(videos.router, prefix="/api/v1", tags=["videos"])
 app.include_router(transcripts.router, prefix="/api/v1", tags=["transcripts"])
-app.include_router(transcript_corrections.router, prefix="/api/v1", tags=["transcript-corrections"])
+app.include_router(
+    transcript_corrections.router, prefix="/api/v1", tags=["transcript-corrections"]
+)
 app.include_router(search.router, prefix="/api/v1", tags=["search"])
 app.include_router(preferences.router, prefix="/api/v1", tags=["preferences"])
 app.include_router(sync.router, prefix="/api/v1", tags=["sync"])
 app.include_router(sidebar.router, prefix="/api/v1", tags=["sidebar"])
 app.include_router(images.router, prefix="/api/v1", tags=["images"])
 app.include_router(entity_mentions.router, prefix="/api/v1", tags=["entity-mentions"])
-app.include_router(batch_corrections.router, prefix="/api/v1/corrections/batch", tags=["batch-corrections"])
+app.include_router(
+    batch_corrections.router,
+    prefix="/api/v1/corrections/batch",
+    tags=["batch-corrections"],
+)
 app.include_router(settings.router, prefix="/api/v1", tags=["settings"])
 app.include_router(onboarding.router, prefix="/api/v1", tags=["onboarding"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])

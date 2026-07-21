@@ -1,4 +1,5 @@
 """Integration tests for language preferences endpoints (US4)."""
+
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
@@ -56,7 +57,9 @@ class TestGetLanguagePreferences:
                 mock_oauth.is_authenticated.return_value = True
 
                 # Mock the repository to return empty list
-                with patch("chronovista.api.routers.preferences.container") as mock_container:
+                with patch(
+                    "chronovista.api.routers.preferences.container"
+                ) as mock_container:
                     mock_repo = AsyncMock()
                     mock_repo.get_user_preferences = AsyncMock(return_value=[])
                     mock_container.create_user_language_preference_repository.return_value = (
@@ -83,7 +86,9 @@ class TestGetLanguagePreferences:
                 mock_oauth.is_authenticated.return_value = True
 
                 # Mock the repository to return empty list
-                with patch("chronovista.api.routers.preferences.container") as mock_container:
+                with patch(
+                    "chronovista.api.routers.preferences.container"
+                ) as mock_container:
                     mock_repo = AsyncMock()
                     mock_repo.get_user_preferences = AsyncMock(return_value=[])
                     mock_container.create_user_language_preference_repository.return_value = (
@@ -175,7 +180,9 @@ class TestUpdateLanguagePreferences:
                 mock_oauth.is_authenticated.return_value = True
 
                 # Mock repository operations
-                with patch("chronovista.api.routers.preferences.container") as mock_container:
+                with patch(
+                    "chronovista.api.routers.preferences.container"
+                ) as mock_container:
                     mock_repo = AsyncMock()
                     mock_repo.delete_all_user_preferences = AsyncMock()
                     mock_repo.save_preferences = AsyncMock()
@@ -253,7 +260,9 @@ class TestUpdateLanguagePreferences:
                 valid_types = ["fluent", "learning", "curious", "exclude"]
 
                 for pref_type in valid_types:
-                    with patch("chronovista.api.routers.preferences.container") as mock_container:
+                    with patch(
+                        "chronovista.api.routers.preferences.container"
+                    ) as mock_container:
                         # Create mock preference return value
                         from chronovista.models.enums import (
                             LanguageCode,
@@ -308,7 +317,9 @@ class TestUpdateLanguagePreferences:
                 mock_oauth.is_authenticated.return_value = True
 
                 # Mock repository operations
-                with patch("chronovista.api.routers.preferences.container") as mock_container:
+                with patch(
+                    "chronovista.api.routers.preferences.container"
+                ) as mock_container:
                     from chronovista.models.enums import (
                         LanguageCode,
                         LanguagePreferenceType,
@@ -369,7 +380,9 @@ class TestUpdateLanguagePreferences:
                 mock_oauth.is_authenticated.return_value = True
 
                 # Mock repository operations
-                with patch("chronovista.api.routers.preferences.container") as mock_container:
+                with patch(
+                    "chronovista.api.routers.preferences.container"
+                ) as mock_container:
                     from chronovista.models.enums import (
                         LanguageCode,
                         LanguagePreferenceType,
@@ -421,7 +434,9 @@ class TestUpdateLanguagePreferences:
                 mock_oauth.is_authenticated.return_value = True
 
                 # Mock repository operations
-                with patch("chronovista.api.routers.preferences.container") as mock_container:
+                with patch(
+                    "chronovista.api.routers.preferences.container"
+                ) as mock_container:
                     from chronovista.models.enums import (
                         LanguageCode,
                         LanguagePreferenceType,
@@ -474,7 +489,9 @@ class TestUpdateLanguagePreferences:
                 mock_oauth.is_authenticated.return_value = True
 
                 # Mock repository operations
-                with patch("chronovista.api.routers.preferences.container") as mock_container:
+                with patch(
+                    "chronovista.api.routers.preferences.container"
+                ) as mock_container:
                     from chronovista.models.enums import (
                         LanguageCode,
                         LanguagePreferenceType,
@@ -545,7 +562,9 @@ class TestUpdateLanguagePreferences:
                 mock_oauth.is_authenticated.return_value = True
 
                 # Mock repository operations
-                with patch("chronovista.api.routers.preferences.container") as mock_container:
+                with patch(
+                    "chronovista.api.routers.preferences.container"
+                ) as mock_container:
                     from chronovista.models.enums import (
                         LanguageCode,
                         LanguagePreferenceType,

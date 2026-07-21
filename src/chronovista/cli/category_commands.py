@@ -334,9 +334,7 @@ def videos_by_category(
                 videos_table.add_column("Duration", style="yellow", width=10)
 
                 for video in videos:
-                    view_count = (
-                        f"{video.view_count:,}" if video.view_count else "N/A"
-                    )
+                    view_count = f"{video.view_count:,}" if video.view_count else "N/A"
 
                     # Format duration
                     if video.duration:
@@ -350,7 +348,11 @@ def videos_by_category(
                         duration_str = "N/A"
 
                     # Truncate title if too long
-                    title = video.title[:47] + "..." if len(video.title) > 50 else video.title
+                    title = (
+                        video.title[:47] + "..."
+                        if len(video.title) > 50
+                        else video.title
+                    )
 
                     videos_table.add_row(
                         video.video_id,
@@ -366,9 +368,7 @@ def videos_by_category(
                     f"\n[dim]Total videos in {resolved_category.name}: {total_count:,}[/dim]"
                 )
                 if total_count > limit:
-                    console.print(
-                        "[dim]Use --limit to see more videos[/dim]"
-                    )
+                    console.print("[dim]Use --limit to see more videos[/dim]")
 
         except Exception as e:
             console.print(

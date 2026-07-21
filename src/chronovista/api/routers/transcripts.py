@@ -160,7 +160,9 @@ async def get_transcript_languages(
     video_query = select(VideoDB).where(VideoDB.video_id == video_id)
     # Apply availability filter unless include_unavailable is True
     if not include_unavailable:
-        video_query = video_query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
+        video_query = video_query.where(
+            VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+        )
 
     video_result = await session.execute(video_query)
     if not video_result.scalar_one_or_none():
@@ -183,7 +185,9 @@ async def get_transcript_languages(
             language_code=t.language_code,
             language_name=get_language_name(t.language_code),
             transcript_type=(
-                "manual" if t.is_cc or t.transcript_type == "MANUAL" else "auto_generated"
+                "manual"
+                if t.is_cc or t.transcript_type == "MANUAL"
+                else "auto_generated"
             ),
             is_translatable=True,  # Default - could check from API
             downloaded_at=t.downloaded_at,
@@ -194,7 +198,11 @@ async def get_transcript_languages(
     return TranscriptLanguagesResponse(data=languages)
 
 
-@router.get("/videos/{video_id}/transcript", response_model=TranscriptResponse, responses=GET_ITEM_ERRORS)
+@router.get(
+    "/videos/{video_id}/transcript",
+    response_model=TranscriptResponse,
+    responses=GET_ITEM_ERRORS,
+)
 async def get_transcript(
     video_id: str = Path(..., min_length=11, max_length=11),
     language: str | None = Query(
@@ -359,7 +367,9 @@ async def get_transcript_segments(
         meta_query = (
             select(
                 TranscriptCorrectionDB.segment_id,
-                func.max(TranscriptCorrectionDB.corrected_at).label("latest_corrected_at"),
+                func.max(TranscriptCorrectionDB.corrected_at).label(
+                    "latest_corrected_at"
+                ),
                 func.count().label("correction_count"),
             )
             .where(TranscriptCorrectionDB.segment_id.in_(segment_ids))
@@ -367,12 +377,19 @@ async def get_transcript_segments(
         )
         meta_result = await session.execute(meta_query)
         for row in meta_result.all():
-            correction_meta[row.segment_id] = (row.latest_corrected_at, row.correction_count)
+            correction_meta[row.segment_id] = (
+                row.latest_corrected_at,
+                row.correction_count,
+            )
 
     items = [
         TranscriptSegment(
             id=seg.id,
-            text=seg.corrected_text if seg.has_correction and seg.corrected_text else seg.text,
+            text=(
+                seg.corrected_text
+                if seg.has_correction and seg.corrected_text
+                else seg.text
+            ),
             start_time=seg.start_time,
             end_time=seg.end_time,
             duration=seg.duration,
@@ -420,7 +437,10 @@ async def download_transcript(
         None, description="BCP-47 language code (default: user's preferred language)"
     ),
     session: AsyncSession = Depends(get_db),
-) -> ApiResponse[TranscriptDownloadResponse] | ApiResponse[MultiTranscriptDownloadResponse]:
+) -> (
+    ApiResponse[TranscriptDownloadResponse]
+    | ApiResponse[MultiTranscriptDownloadResponse]
+):
     """Download a transcript from YouTube for the given video.
 
     Fetches the transcript from YouTube's transcript API and saves it
@@ -480,9 +500,7 @@ async def download_transcript(
         existing_transcripts = await _transcript_repo.get_video_transcripts(
             session, video_id
         )
-        existing_lang_codes = {
-            t.language_code.lower() for t in existing_transcripts
-        }
+        existing_lang_codes = {t.language_code.lower() for t in existing_transcripts}
 
         # --- Path A: Explicit language override (FR-014) ---
         if language:
@@ -504,9 +522,7 @@ async def download_transcript(
             )
 
         # --- Check for user preferences ---
-        user_prefs = await _pref_repo.get_user_preferences(
-            session, DEFAULT_USER_ID
-        )
+        user_prefs = await _pref_repo.get_user_preferences(session, DEFAULT_USER_ID)
 
         # --- Path C: No preferences → preserve existing default behavior (FR-013) ---
         if not user_prefs:
@@ -533,9 +549,7 @@ async def download_transcript(
             # Pass preference language codes as "available" so the filter
             # returns Fluent + Learning codes. Actual YouTube availability
             # is checked per-language during download.
-            available_languages=[
-                str(p.language_code) for p in domain_prefs
-            ],
+            available_languages=[str(p.language_code) for p in domain_prefs],
             user_preferences=domain_prefs,
         )
 
@@ -555,15 +569,15 @@ async def download_transcript(
 
         # Filter out already-downloaded languages
         remaining_languages = [
-            lang for lang in preferred_languages
+            lang
+            for lang in preferred_languages
             if lang.lower() not in existing_lang_codes
         ]
 
         # All preferred languages already downloaded → 409
         if not remaining_languages:
             already_names = [
-                f"{get_language_name(lang)} ({lang})"
-                for lang in preferred_languages
+                f"{get_language_name(lang)} ({lang})" for lang in preferred_languages
             ]
             raise ConflictError(
                 message=(
@@ -649,17 +663,14 @@ async def download_transcript(
 
                 transcript_type_display = (
                     "manual"
-                    if db_transcript.is_cc
-                    or db_transcript.transcript_type == "MANUAL"
+                    if db_transcript.is_cc or db_transcript.transcript_type == "MANUAL"
                     else "auto_generated"
                 )
 
                 downloaded.append(
                     TranscriptDownloadResult(
                         language_code=db_transcript.language_code,
-                        language_name=get_language_name(
-                            db_transcript.language_code
-                        ),
+                        language_name=get_language_name(db_transcript.language_code),
                         transcript_type=transcript_type_display,
                         segment_count=db_transcript.segment_count or 0,
                         downloaded_at=db_transcript.downloaded_at,
@@ -692,8 +703,7 @@ async def download_transcript(
 
         # Build attempted languages list with display names (FR-015)
         attempted_languages = [
-            f"{get_language_name(lang)} ({lang})"
-            for lang in remaining_languages
+            f"{get_language_name(lang)} ({lang})" for lang in remaining_languages
         ]
 
         # If NOTHING was downloaded and everything was skipped/failed → 404

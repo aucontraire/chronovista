@@ -104,9 +104,7 @@ class TestListTags:
             response = await async_client.get("/api/v1/tags?offset=-1")
             assert response.status_code == 422  # Validation error
 
-    async def test_list_tags_item_structure(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_list_tags_item_structure(self, async_client: AsyncClient) -> None:
         """Test tag list items have correct structure."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
@@ -231,12 +229,12 @@ class TestListTagsWithCounts:
             assert tag_counts.get("niche") == 1
 
             # Verify sorted order (most popular first)
-            test_tags = [
-                item for item in data["data"] if item["tag"] in tag_counts
-            ]
+            test_tags = [item for item in data["data"] if item["tag"] in tag_counts]
             if len(test_tags) >= 2:
                 for i in range(len(test_tags) - 1):
-                    assert test_tags[i]["video_count"] >= test_tags[i + 1]["video_count"]
+                    assert (
+                        test_tags[i]["video_count"] >= test_tags[i + 1]["video_count"]
+                    )
 
         # Cleanup
         async with integration_session_factory() as session:
@@ -321,9 +319,7 @@ class TestTagDetail:
             assert data["code"] == "NOT_FOUND"
             assert "Tag" in data["detail"]
 
-    async def test_get_empty_tag_returns_404(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_get_empty_tag_returns_404(self, async_client: AsyncClient) -> None:
         """Test empty string tag returns 404 (T042)."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
@@ -469,9 +465,15 @@ class TestTagVideos:
 
         # Cleanup - delete in correct order (foreign key constraints)
         async with integration_session_factory() as session:
-            await session.execute(delete(VideoTag).where(VideoTag.video_id == "tag_vid_test_00"))
-            await session.execute(delete(Video).where(Video.video_id == "tag_vid_test_00"))
-            await session.execute(delete(Channel).where(Channel.channel_id == "UC" + "V" * 22))
+            await session.execute(
+                delete(VideoTag).where(VideoTag.video_id == "tag_vid_test_00")
+            )
+            await session.execute(
+                delete(Video).where(Video.video_id == "tag_vid_test_00")
+            )
+            await session.execute(
+                delete(Channel).where(Channel.channel_id == "UC" + "V" * 22)
+            )
             await session.commit()
 
     async def test_get_tag_videos_excludes_deleted(
@@ -824,9 +826,7 @@ async def _reg_cleanup(
     await _reg_test_session.execute(
         delete(VideoTag).where(VideoTag.video_id.in_(video_ids))
     )
-    await _reg_test_session.execute(
-        delete(Video).where(Video.video_id.in_(video_ids))
-    )
+    await _reg_test_session.execute(delete(Video).where(Video.video_id.in_(video_ids)))
     await _reg_test_session.execute(
         delete(Channel).where(Channel.channel_id == _REG_CHANNEL_ID)
     )
@@ -872,9 +872,9 @@ class TestTagEndpointRegression:
             mock_oauth.is_authenticated.return_value = True
             response = await async_client.get("/api/v1/tags")
 
-        assert response.status_code == 200, (
-            f"Expected 200 from /api/v1/tags, got {response.status_code}"
-        )
+        assert (
+            response.status_code == 200
+        ), f"Expected 200 from /api/v1/tags, got {response.status_code}"
         body = response.json()
 
         assert "data" in body, "Response missing 'data' key"
@@ -891,17 +891,13 @@ class TestTagEndpointRegression:
         tag_python = _reg_sample_data["tags"]["python"]
         tag_testing = _reg_sample_data["tags"]["testing"]
 
-        assert tag_python in our_tags, (
-            f"Expected '{tag_python}' in tag list response"
-        )
+        assert tag_python in our_tags, f"Expected '{tag_python}' in tag list response"
         assert our_tags[tag_python]["video_count"] == 2, (
             f"Expected video_count=2 for '{tag_python}' (deleted video excluded), "
             f"got {our_tags[tag_python]['video_count']}"
         )
 
-        assert tag_testing in our_tags, (
-            f"Expected '{tag_testing}' in tag list response"
-        )
+        assert tag_testing in our_tags, f"Expected '{tag_testing}' in tag list response"
         assert our_tags[tag_testing]["video_count"] == 1, (
             f"Expected video_count=1 for '{tag_testing}', "
             f"got {our_tags[tag_testing]['video_count']}"
@@ -925,17 +921,15 @@ class TestTagEndpointRegression:
             mock_oauth.is_authenticated.return_value = True
             response = await async_client.get(f"/api/v1/tags/{tag}")
 
-        assert response.status_code == 200, (
-            f"Expected 200 for tag detail, got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 200
+        ), f"Expected 200 for tag detail, got {response.status_code}: {response.text}"
         body = response.json()
 
         assert "data" in body, "Tag detail response missing 'data' key"
         detail = body["data"]
 
-        assert detail["tag"] == tag, (
-            f"Expected tag='{tag}', got '{detail.get('tag')}'"
-        )
+        assert detail["tag"] == tag, f"Expected tag='{tag}', got '{detail.get('tag')}'"
         assert detail["video_count"] == 2, (
             f"Expected video_count=2 (available videos only), "
             f"got {detail.get('video_count')}"
@@ -972,19 +966,19 @@ class TestTagEndpointRegression:
 
         video_ids = [v["video_id"] for v in body["data"]]
 
-        assert _REG_VID1_ID in video_ids, (
-            "vid1 (available) should appear in tag videos response"
-        )
-        assert _REG_VID2_ID in video_ids, (
-            "vid2 (available) should appear in tag videos response"
-        )
-        assert _REG_VID3_ID not in video_ids, (
-            "vid3_deleted must NOT appear when include_unavailable=false (default)"
-        )
+        assert (
+            _REG_VID1_ID in video_ids
+        ), "vid1 (available) should appear in tag videos response"
+        assert (
+            _REG_VID2_ID in video_ids
+        ), "vid2 (available) should appear in tag videos response"
+        assert (
+            _REG_VID3_ID not in video_ids
+        ), "vid3_deleted must NOT appear when include_unavailable=false (default)"
 
-        assert body["pagination"]["total"] == 2, (
-            f"Expected total=2 available videos, got {body['pagination']['total']}"
-        )
+        assert (
+            body["pagination"]["total"] == 2
+        ), f"Expected total=2 available videos, got {body['pagination']['total']}"
 
     async def test_response_shapes_unchanged(
         self,
@@ -1059,9 +1053,9 @@ class TestTagEndpointRegression:
         for field in ("tag", "video_count"):
             assert field in detail, f"Detail response missing field '{field}'"
         assert isinstance(detail["tag"], str), "'tag' in detail must be a string"
-        assert isinstance(detail["video_count"], int), (
-            "'video_count' in detail must be an int"
-        )
+        assert isinstance(
+            detail["video_count"], int
+        ), "'video_count' in detail must be an int"
 
         # --- Videos shape ---
         assert videos_resp.status_code == 200
@@ -1069,9 +1063,7 @@ class TestTagEndpointRegression:
 
         assert "data" in videos_body, "Videos response missing 'data'"
         assert "pagination" in videos_body, "Videos response missing 'pagination'"
-        assert "total" in videos_body["pagination"], (
-            "Videos pagination missing 'total'"
-        )
+        assert "total" in videos_body["pagination"], "Videos pagination missing 'total'"
 
         assert videos_body["data"], "Expected at least one video in response"
         video_item = videos_body["data"][0]
@@ -1085,9 +1077,9 @@ class TestTagEndpointRegression:
             "availability_status",
         }
         missing_video_fields = required_video_fields - set(video_item.keys())
-        assert not missing_video_fields, (
-            f"Tag videos item missing fields: {missing_video_fields}"
-        )
+        assert (
+            not missing_video_fields
+        ), f"Tag videos item missing fields: {missing_video_fields}"
         assert isinstance(video_item["video_id"], str)
         assert isinstance(video_item["title"], str)
         assert isinstance(video_item["duration"], int)

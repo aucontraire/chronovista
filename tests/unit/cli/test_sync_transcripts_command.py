@@ -117,7 +117,9 @@ class TestSyncTranscriptsCommandHelp:
         result = runner.invoke(app, ["sync", "transcripts", "--help"])
 
         assert result.exit_code == 0
-        assert "Sync transcripts" in result.stdout or "transcript" in result.stdout.lower()
+        assert (
+            "Sync transcripts" in result.stdout or "transcript" in result.stdout.lower()
+        )
 
 
 class TestSyncTranscriptsDryRun:
@@ -212,7 +214,9 @@ class TestSyncTranscriptsDryRun:
         mock_video_repo.search_videos = AsyncMock(return_value=mock_video_db_list)
 
         # Execute command with dry-run
-        result = runner.invoke(app, ["sync", "transcripts", "--dry-run", "--limit", "3"])
+        result = runner.invoke(
+            app, ["sync", "transcripts", "--dry-run", "--limit", "3"]
+        )
 
         # Verify table elements are present
         assert "preview" in result.stdout.lower() or "videos" in result.stdout.lower()
@@ -316,9 +320,7 @@ class TestSyncTranscriptsVideoIdFilter:
         mock_container.transcript_service = mock_transcript_service
 
         # Execute command with specific video ID
-        runner.invoke(
-            app, ["sync", "transcripts", "--video-id", "dQw4w9WgXcQ"]
-        )
+        runner.invoke(app, ["sync", "transcripts", "--video-id", "dQw4w9WgXcQ"])
 
         # Verify video was fetched
         mock_video_repo.get_by_video_id.assert_called()
@@ -415,9 +417,7 @@ class TestSyncTranscriptsVideoIdFilter:
         # Setup database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ]
+        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
         # Mock repository to return None (video not found)
         mock_video_repo.get_by_video_id = AsyncMock(return_value=None)
@@ -570,9 +570,7 @@ class TestSyncTranscriptsDownload:
         mock_container.transcript_service = mock_transcript_service
 
         # Execute command with Spanish language preference
-        runner.invoke(
-            app, ["sync", "transcripts", "--limit", "1", "--language", "es"]
-        )
+        runner.invoke(app, ["sync", "transcripts", "--limit", "1", "--language", "es"])
 
         # Verify transcript service was called with Spanish language code
         call_args = mock_transcript_service.get_transcript.call_args
@@ -695,7 +693,10 @@ class TestSyncTranscriptsErrorHandling:
         result = runner.invoke(app, ["sync", "transcripts", "--limit", "1"])
 
         # Verify command doesn't crash and shows appropriate message
-        assert "no transcript" in result.stdout.lower() or "skipped" in result.stdout.lower()
+        assert (
+            "no transcript" in result.stdout.lower()
+            or "skipped" in result.stdout.lower()
+        )
 
     @patch("chronovista.cli.sync_commands.check_authenticated")
     @patch("chronovista.cli.sync_commands.container")
@@ -773,9 +774,7 @@ class TestSyncTranscriptsFlags:
         # Setup database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ]
+        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
         # Create a large list of videos
         many_videos = mock_video_db_list * 10  # 30 videos
@@ -912,7 +911,10 @@ class TestSyncTranscriptsFlags:
 
         # Verify transcript service was NOT called (existing transcript skipped)
         # The check happens in a loop, so the call might not occur
-        assert "skipped" in result.stdout.lower() or "transcript exists" in result.stdout.lower()
+        assert (
+            "skipped" in result.stdout.lower()
+            or "transcript exists" in result.stdout.lower()
+        )
 
 
 class TestSyncTranscriptsNoVideosToProcess:

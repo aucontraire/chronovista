@@ -89,9 +89,9 @@ class TestLevenshteinDistance:
             ("intention", "execution", 5),
         ]
         for s1, s2, expected in known_pairs:
-            assert levenshtein_distance(s1, s2) == expected, (
-                f"levenshtein_distance({s1!r}, {s2!r}) != {expected}"
-            )
+            assert (
+                levenshtein_distance(s1, s2) == expected
+            ), f"levenshtein_distance({s1!r}, {s2!r}) != {expected}"
 
 
 # -------------------------------------------------------------------------
@@ -150,7 +150,9 @@ class TestFindSimilar:
         assert "JavaScript" in result  # Distance 1, within default max_distance=2
 
         # Use max_distance=0 for exact matches only
-        result = find_similar("javascript", candidates, case_sensitive=True, max_distance=0)
+        result = find_similar(
+            "javascript", candidates, case_sensitive=True, max_distance=0
+        )
         assert result == ["javascript"]
 
     def test_empty_query(self) -> None:
@@ -191,6 +193,7 @@ class TestFindSimilar:
 
     def test_generator_input(self) -> None:
         """Test that generator input works."""
+
         def candidate_gen() -> Generator[str, None, None]:
             yield from ["en", "es", "fr"]
 

@@ -20,6 +20,7 @@ def _uuid7() -> uuid.UUID:
     """Generate a UUIDv7 as a standard uuid.UUID for Pydantic compatibility."""
     return uuid.UUID(bytes=uuid7().bytes)
 
+
 from chronovista.models.enums import CreationMethod
 from chronovista.models.tag_alias import (
     TagAlias,
@@ -87,9 +88,7 @@ class TagAliasFactory(factory.Factory[TagAlias]):
     last_seen_at: Any = LazyFunction(
         lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
     )
-    created_at: Any = LazyFunction(
-        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
-    )
+    created_at: Any = LazyFunction(lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC))
 
 
 # Convenience factory methods

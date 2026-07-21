@@ -627,9 +627,7 @@ class TestPlaylistModelInteractions:
         updated_data = playlist_full.model_dump()
         update_data = playlist_update.model_dump(exclude_unset=True)
         updated_data.update(update_data)
-        updated_data["updated_at"] = datetime.now(
-            UTC
-        )  # Simulate timestamp update
+        updated_data["updated_at"] = datetime.now(UTC)  # Simulate timestamp update
 
         playlist_updated = Playlist.model_validate(updated_data)
 

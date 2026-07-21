@@ -193,9 +193,7 @@ class YouTubeServiceInterface(ABC):
         pass
 
     @abstractmethod
-    async def download_caption(
-        self, caption_id: str, fmt: str = "srt"
-    ) -> str | None:
+    async def download_caption(self, caption_id: str, fmt: str = "srt") -> str | None:
         """
         Download caption content using YouTube Data API v3.
 
@@ -273,7 +271,10 @@ class YouTubeServiceInterface(ABC):
 
     @abstractmethod
     async def get_playlist_videos(
-        self, playlist_id: PlaylistId, max_results: int | None = None, fetch_all: bool = True
+        self,
+        playlist_id: PlaylistId,
+        max_results: int | None = None,
+        fetch_all: bool = True,
     ) -> list[YouTubePlaylistItemResponse]:
         """
         Get videos from a specific playlist.

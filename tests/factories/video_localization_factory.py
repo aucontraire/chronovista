@@ -74,7 +74,9 @@ class VideoLocalizationFactory(VideoLocalizationBaseFactory):
     created_at: Any = Faker("date_time", tzinfo=UTC)
 
 
-class VideoLocalizationSearchFiltersFactory(factory.Factory[VideoLocalizationSearchFilters]):
+class VideoLocalizationSearchFiltersFactory(
+    factory.Factory[VideoLocalizationSearchFilters]
+):
     """Factory for VideoLocalizationSearchFilters models."""
 
     class Meta:

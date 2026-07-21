@@ -23,16 +23,16 @@ from chronovista.repositories.base import BaseSQLAlchemyRepository
 
 
 class TopicCategoryRepository(
-    BaseSQLAlchemyRepository[TopicCategoryDB, TopicCategoryCreate, TopicCategoryUpdate, str]
+    BaseSQLAlchemyRepository[
+        TopicCategoryDB, TopicCategoryCreate, TopicCategoryUpdate, str
+    ]
 ):
     """Repository for topic category operations."""
 
     def __init__(self) -> None:
         super().__init__(TopicCategoryDB)
 
-    async def get(
-        self, session: AsyncSession, topic_id: str
-    ) -> TopicCategoryDB | None:
+    async def get(self, session: AsyncSession, topic_id: str) -> TopicCategoryDB | None:
         """Get topic category by topic ID."""
         result = await session.execute(
             select(TopicCategoryDB).where(TopicCategoryDB.topic_id == topic_id)

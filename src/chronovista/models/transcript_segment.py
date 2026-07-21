@@ -196,7 +196,9 @@ class TranscriptSegmentResponse(BaseModel):
     start_time: float = Field(..., description="Start time in seconds")
     end_time: float = Field(..., description="End time in seconds")
     duration: float = Field(..., description="Duration in seconds")
-    start_formatted: str = Field(..., description="Formatted start time (e.g., '0:01:30')")
+    start_formatted: str = Field(
+        ..., description="Formatted start time (e.g., '0:01:30')"
+    )
     end_formatted: str = Field(..., description="Formatted end time (e.g., '0:01:32')")
 
     @classmethod

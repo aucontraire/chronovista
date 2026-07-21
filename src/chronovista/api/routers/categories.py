@@ -74,7 +74,9 @@ async def list_categories(
     video_count_conditions = [Video.category_id == VideoCategory.category_id]
     # Apply availability filter unless include_unavailable is True
     if not include_unavailable:
-        video_count_conditions.append(Video.availability_status == AvailabilityStatus.AVAILABLE)
+        video_count_conditions.append(
+            Video.availability_status == AvailabilityStatus.AVAILABLE
+        )
 
     video_count_subq = (
         select(func.count(Video.video_id))
@@ -97,11 +99,7 @@ async def list_categories(
     total = total_result.scalar() or 0
 
     # Apply ordering (video_count DESC per spec) and pagination
-    query = (
-        query.order_by(video_count_subq.desc())
-        .offset(offset)
-        .limit(limit)
-    )
+    query = query.order_by(video_count_subq.desc()).offset(offset).limit(limit)
 
     # Execute query
     result = await session.execute(query)
@@ -132,7 +130,11 @@ async def list_categories(
 
 # IMPORTANT: This endpoint MUST be defined before the detail endpoint below
 # to avoid path matching conflicts with /{category_id}.
-@router.get("/categories/{category_id}/videos", response_model=VideoListResponse, responses=GET_ITEM_ERRORS)
+@router.get(
+    "/categories/{category_id}/videos",
+    response_model=VideoListResponse,
+    responses=GET_ITEM_ERRORS,
+)
 async def get_category_videos(
     category_id: str = Path(
         ...,
@@ -176,7 +178,9 @@ async def get_category_videos(
     """
     # Verify category exists
     cat_result = await session.execute(
-        select(VideoCategory.category_id).where(VideoCategory.category_id == category_id)
+        select(VideoCategory.category_id).where(
+            VideoCategory.category_id == category_id
+        )
     )
     if not cat_result.scalar_one_or_none():
         raise NotFoundError(
@@ -193,7 +197,9 @@ async def get_category_videos(
         .options(selectinload(Video.channel))
         .options(selectinload(Video.category))
         .options(selectinload(Video.tags))
-        .options(selectinload(Video.video_topics).selectinload(VideoTopic.topic_category))
+        .options(
+            selectinload(Video.video_topics).selectinload(VideoTopic.topic_category)
+        )
     )
 
     # Apply availability filter unless include_unavailable is True
@@ -201,13 +207,14 @@ async def get_category_videos(
         query = query.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
 
     # Get total count (before pagination)
-    count_query = (
-        select(func.count(Video.video_id))
-        .where(Video.category_id == category_id)
+    count_query = select(func.count(Video.video_id)).where(
+        Video.category_id == category_id
     )
     # Apply availability filter unless include_unavailable is True
     if not include_unavailable:
-        count_query = count_query.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
+        count_query = count_query.where(
+            Video.availability_status == AvailabilityStatus.AVAILABLE
+        )
     total_result = await session.execute(count_query)
     total = total_result.scalar() or 0
 
@@ -225,9 +232,7 @@ async def get_category_videos(
         transcripts = list(video.transcripts) if video.transcripts else []
         transcript_count = len(transcripts)
         languages = list({t.language_code for t in transcripts})
-        has_manual = any(
-            t.is_cc or t.transcript_type == "MANUAL" for t in transcripts
-        )
+        has_manual = any(t.is_cc or t.transcript_type == "MANUAL" for t in transcripts)
 
         transcript_summary = TranscriptSummary(
             count=transcript_count,
@@ -240,14 +245,18 @@ async def get_category_videos(
         # Build classification fields
         category_name = video.category.name if video.category else None
         tags = [tag.tag for tag in video.tags] if video.tags else []
-        topics = [
-            TopicSummary(
-                topic_id=vt.topic_category.topic_id,
-                name=vt.topic_category.category_name,
-                parent_path=None,  # TODO: Compute hierarchy path if needed
-            )
-            for vt in video.video_topics
-        ] if video.video_topics else []
+        topics = (
+            [
+                TopicSummary(
+                    topic_id=vt.topic_category.topic_id,
+                    name=vt.topic_category.category_name,
+                    parent_path=None,  # TODO: Compute hierarchy path if needed
+                )
+                for vt in video.video_topics
+            ]
+            if video.video_topics
+            else []
+        )
 
         items.append(
             VideoListItem(
@@ -278,7 +287,11 @@ async def get_category_videos(
     return VideoListResponse(data=items, pagination=pagination)
 
 
-@router.get("/categories/{category_id}", response_model=CategoryDetailResponse, responses=GET_ITEM_ERRORS)
+@router.get(
+    "/categories/{category_id}",
+    response_model=CategoryDetailResponse,
+    responses=GET_ITEM_ERRORS,
+)
 async def get_category(
     category_id: str = Path(
         ...,
@@ -318,7 +331,9 @@ async def get_category(
     video_count_conditions = [Video.category_id == VideoCategory.category_id]
     # Apply availability filter unless include_unavailable is True
     if not include_unavailable:
-        video_count_conditions.append(Video.availability_status == AvailabilityStatus.AVAILABLE)
+        video_count_conditions.append(
+            Video.availability_status == AvailabilityStatus.AVAILABLE
+        )
 
     video_count_subq = (
         select(func.count(Video.video_id))

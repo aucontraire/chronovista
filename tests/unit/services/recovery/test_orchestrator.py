@@ -31,6 +31,7 @@ from chronovista.services.recovery.page_parser import PageParser
 
 # Mark all tests in this module as async
 
+
 @pytest.fixture(autouse=True)
 def _mock_channel_repo():
     """Mock ChannelRepository for all orchestrator tests to prevent real DB access."""
@@ -40,7 +41,9 @@ def _mock_channel_repo():
         mock_instance = AsyncMock()
         mock_cls.return_value = mock_instance
         mock_instance.get.return_value = None  # Default: no channel found
-        mock_instance.exists.return_value = True  # Default: channel exists (skip stub creation)
+        mock_instance.exists.return_value = (
+            True  # Default: channel exists (skip stub creation)
+        )
         yield mock_instance
 
 
@@ -2322,7 +2325,9 @@ class TestEdgeCases:
             mock_repo_class.return_value = mock_repo
 
             # Mock repository to raise an unexpected exception
-            mock_repo.get_by_video_id.side_effect = Exception("Database connection error")
+            mock_repo.get_by_video_id.side_effect = Exception(
+                "Database connection error"
+            )
 
             # WHEN: We attempt to recover the video
             result = await recover_video(
@@ -2723,9 +2728,7 @@ class TestYearFiltering:
             # Return empty snapshots so we hit "no_snapshots_found"
             cdx_client.fetch_snapshots.return_value = []
 
-            with patch(
-                "chronovista.services.recovery.orchestrator.VideoTagRepository"
-            ):
+            with patch("chronovista.services.recovery.orchestrator.VideoTagRepository"):
                 await recover_video(
                     session=session,
                     video_id="yearTest001",
@@ -2767,9 +2770,7 @@ class TestYearFiltering:
 
             cdx_client.fetch_snapshots.return_value = []
 
-            with patch(
-                "chronovista.services.recovery.orchestrator.VideoTagRepository"
-            ):
+            with patch("chronovista.services.recovery.orchestrator.VideoTagRepository"):
                 await recover_video(
                     session=session,
                     video_id="yearTest002",
@@ -2810,9 +2811,7 @@ class TestYearFiltering:
 
             cdx_client.fetch_snapshots.return_value = []
 
-            with patch(
-                "chronovista.services.recovery.orchestrator.VideoTagRepository"
-            ):
+            with patch("chronovista.services.recovery.orchestrator.VideoTagRepository"):
                 await recover_video(
                     session=session,
                     video_id="yearTest003",
@@ -2854,9 +2853,7 @@ class TestYearFiltering:
 
             cdx_client.fetch_snapshots.return_value = []
 
-            with patch(
-                "chronovista.services.recovery.orchestrator.VideoTagRepository"
-            ):
+            with patch("chronovista.services.recovery.orchestrator.VideoTagRepository"):
                 await recover_video(
                     session=session,
                     video_id="yearTest004",
@@ -3424,13 +3421,17 @@ class TestAutoChannelRecovery:
         rate_limiter = AsyncMock(spec=RateLimiter)
 
         # Mock video repository
-        with patch(
-            "chronovista.services.recovery.orchestrator.VideoRepository"
-        ) as mock_video_repo_class, patch(
-            "chronovista.services.recovery.orchestrator.VideoTagRepository"
-        ) as mock_tag_repo_class, patch(
-            "chronovista.services.recovery.orchestrator.recover_channel"
-        ) as mock_recover_channel:
+        with (
+            patch(
+                "chronovista.services.recovery.orchestrator.VideoRepository"
+            ) as mock_video_repo_class,
+            patch(
+                "chronovista.services.recovery.orchestrator.VideoTagRepository"
+            ) as mock_tag_repo_class,
+            patch(
+                "chronovista.services.recovery.orchestrator.recover_channel"
+            ) as mock_recover_channel,
+        ):
             mock_video_repo = AsyncMock()
             mock_video_repo_class.return_value = mock_video_repo
             mock_video_repo.get_by_video_id.return_value = video
@@ -3536,13 +3537,17 @@ class TestAutoChannelRecovery:
         rate_limiter = AsyncMock(spec=RateLimiter)
 
         # Mock video repository
-        with patch(
-            "chronovista.services.recovery.orchestrator.VideoRepository"
-        ) as mock_video_repo_class, patch(
-            "chronovista.services.recovery.orchestrator.VideoTagRepository"
-        ) as mock_tag_repo_class, patch(
-            "chronovista.services.recovery.orchestrator.recover_channel"
-        ) as mock_recover_channel:
+        with (
+            patch(
+                "chronovista.services.recovery.orchestrator.VideoRepository"
+            ) as mock_video_repo_class,
+            patch(
+                "chronovista.services.recovery.orchestrator.VideoTagRepository"
+            ) as mock_tag_repo_class,
+            patch(
+                "chronovista.services.recovery.orchestrator.recover_channel"
+            ) as mock_recover_channel,
+        ):
             mock_video_repo = AsyncMock()
             mock_video_repo_class.return_value = mock_video_repo
             mock_video_repo.get_by_video_id.return_value = video
@@ -3645,13 +3650,17 @@ class TestAutoChannelRecovery:
         rate_limiter = AsyncMock(spec=RateLimiter)
 
         # Mock video repository
-        with patch(
-            "chronovista.services.recovery.orchestrator.VideoRepository"
-        ) as mock_video_repo_class, patch(
-            "chronovista.services.recovery.orchestrator.VideoTagRepository"
-        ) as mock_tag_repo_class, patch(
-            "chronovista.services.recovery.orchestrator.recover_channel"
-        ) as mock_recover_channel:
+        with (
+            patch(
+                "chronovista.services.recovery.orchestrator.VideoRepository"
+            ) as mock_video_repo_class,
+            patch(
+                "chronovista.services.recovery.orchestrator.VideoTagRepository"
+            ) as mock_tag_repo_class,
+            patch(
+                "chronovista.services.recovery.orchestrator.recover_channel"
+            ) as mock_recover_channel,
+        ):
             mock_video_repo = AsyncMock()
             mock_video_repo_class.return_value = mock_video_repo
             mock_video_repo.get_by_video_id.return_value = video
@@ -3740,13 +3749,17 @@ class TestAutoChannelRecovery:
         rate_limiter = AsyncMock(spec=RateLimiter)
 
         # Mock video repository
-        with patch(
-            "chronovista.services.recovery.orchestrator.VideoRepository"
-        ) as mock_video_repo_class, patch(
-            "chronovista.services.recovery.orchestrator.VideoTagRepository"
-        ) as mock_tag_repo_class, patch(
-            "chronovista.services.recovery.orchestrator.recover_channel"
-        ) as mock_recover_channel:
+        with (
+            patch(
+                "chronovista.services.recovery.orchestrator.VideoRepository"
+            ) as mock_video_repo_class,
+            patch(
+                "chronovista.services.recovery.orchestrator.VideoTagRepository"
+            ) as mock_tag_repo_class,
+            patch(
+                "chronovista.services.recovery.orchestrator.recover_channel"
+            ) as mock_recover_channel,
+        ):
             mock_video_repo = AsyncMock()
             mock_video_repo_class.return_value = mock_video_repo
             mock_video_repo.get_by_video_id.return_value = video

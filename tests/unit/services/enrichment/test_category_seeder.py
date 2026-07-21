@@ -57,8 +57,7 @@ class TestCategorySeederInitialization:
         mock_youtube = MagicMock(spec=YouTubeService)
 
         seeder = CategorySeeder(
-            category_repository=mock_repo,
-            youtube_service=mock_youtube
+            category_repository=mock_repo, youtube_service=mock_youtube
         )
 
         assert seeder.category_repository == mock_repo
@@ -74,13 +73,7 @@ class TestCategorySeederAPITransformation:
         mock_youtube = MagicMock(spec=YouTubeService)
         seeder = CategorySeeder(mock_repo, mock_youtube)
 
-        api_item = {
-            "id": "10",
-            "snippet": {
-                "title": "Music",
-                "assignable": True
-            }
-        }
+        api_item = {"id": "10", "snippet": {"title": "Music", "assignable": True}}
 
         category = seeder._transform_api_response_to_category(api_item)
 
@@ -97,10 +90,7 @@ class TestCategorySeederAPITransformation:
 
         api_item = {
             "id": "29",
-            "snippet": {
-                "title": "Nonprofits & Activism",
-                "assignable": False
-            }
+            "snippet": {"title": "Nonprofits & Activism", "assignable": False},
         }
 
         category = seeder._transform_api_response_to_category(api_item)
@@ -119,7 +109,7 @@ class TestCategorySeederAPITransformation:
             "snippet": {
                 "title": "Music"
                 # No assignable field
-            }
+            },
         }
 
         category = seeder._transform_api_response_to_category(api_item)
@@ -133,12 +123,7 @@ class TestCategorySeederAPITransformation:
         mock_youtube = MagicMock(spec=YouTubeService)
         seeder = CategorySeeder(mock_repo, mock_youtube)
 
-        api_item = {
-            "snippet": {
-                "title": "Music",
-                "assignable": True
-            }
-        }
+        api_item = {"snippet": {"title": "Music", "assignable": True}}
 
         category = seeder._transform_api_response_to_category(api_item)
         assert category is None
@@ -149,12 +134,7 @@ class TestCategorySeederAPITransformation:
         mock_youtube = MagicMock(spec=YouTubeService)
         seeder = CategorySeeder(mock_repo, mock_youtube)
 
-        api_item = {
-            "id": "10",
-            "snippet": {
-                "assignable": True
-            }
-        }
+        api_item = {"id": "10", "snippet": {"assignable": True}}
 
         category = seeder._transform_api_response_to_category(api_item)
         assert category is None
@@ -222,7 +202,10 @@ class TestCategorySeederSeeding:
             {"id": "20", "snippet": {"title": "Gaming", "assignable": True}},
         ]
         gb_categories = [
-            {"id": "10", "snippet": {"title": "Music", "assignable": True}},  # Duplicate
+            {
+                "id": "10",
+                "snippet": {"title": "Music", "assignable": True},
+            },  # Duplicate
             {"id": "24", "snippet": {"title": "Entertainment", "assignable": True}},
         ]
 
@@ -233,7 +216,9 @@ class TestCategorySeederSeeding:
                 return gb_categories
             return []
 
-        mock_youtube.get_video_categories = AsyncMock(side_effect=get_categories_side_effect)
+        mock_youtube.get_video_categories = AsyncMock(
+            side_effect=get_categories_side_effect
+        )
         mock_repo.exists = AsyncMock(return_value=False)
         mock_repo.create_or_update = AsyncMock()
 
@@ -308,7 +293,9 @@ class TestCategorySeederSeeding:
                 raise ValueError("API error for GB")
             return []
 
-        mock_youtube.get_video_categories = AsyncMock(side_effect=get_categories_side_effect)
+        mock_youtube.get_video_categories = AsyncMock(
+            side_effect=get_categories_side_effect
+        )
         mock_repo.exists = AsyncMock(return_value=False)
         mock_repo.create_or_update = AsyncMock()
 
@@ -335,6 +322,7 @@ class TestCategorySeederSeeding:
 
         # Mock create to fail for second category
         call_count = 0
+
         async def create_side_effect(*args, **kwargs):
             nonlocal call_count
             call_count += 1
@@ -397,7 +385,9 @@ class TestCategorySeederQuotaTracking:
                 return []
             raise ValueError("API error")
 
-        mock_youtube.get_video_categories = AsyncMock(side_effect=get_categories_side_effect)
+        mock_youtube.get_video_categories = AsyncMock(
+            side_effect=get_categories_side_effect
+        )
         mock_repo.exists = AsyncMock(return_value=False)
 
         seeder = CategorySeeder(mock_repo, mock_youtube)
@@ -437,7 +427,7 @@ class TestCategorySeedResult:
             deleted=0,
             failed=0,
             duration_seconds=10.5,
-            quota_used=7
+            quota_used=7,
         )
 
         assert result.created == 25

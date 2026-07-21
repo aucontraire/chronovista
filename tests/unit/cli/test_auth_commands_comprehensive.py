@@ -460,10 +460,7 @@ class TestAuthCommandsEdgeCases:
             [cmd.name for cmd in commands.values()]
         else:
             # If it's a list, extract command names differently
-            [
-                cmd.name if hasattr(cmd, "name") else str(cmd) for cmd in commands
-            ]
-
+            [cmd.name if hasattr(cmd, "name") else str(cmd) for cmd in commands]
 
         # Check that auth app has expected commands
         assert isinstance(auth_app, object)

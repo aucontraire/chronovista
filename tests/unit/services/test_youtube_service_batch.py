@@ -363,7 +363,6 @@ class TestPartialResults:
         """Test when no requested playlists are found (all deleted/private)."""
         requested_ids = ["PLdeleted1", "PLdeleted2", "PLdeleted3"]
 
-
         found_ids: set[str] = set()
         not_found = set(requested_ids) - found_ids
 
@@ -546,7 +545,9 @@ class TestPlaylistBatchFetchIntegration:
             if isinstance(status_obj, dict):
                 status = status_obj["privacyStatus"]
                 if isinstance(status, str):
-                    privacy_distribution[status] = privacy_distribution.get(status, 0) + 1
+                    privacy_distribution[status] = (
+                        privacy_distribution.get(status, 0) + 1
+                    )
 
         assert privacy_distribution["public"] == 1
         assert privacy_distribution["unlisted"] == 1

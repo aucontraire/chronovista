@@ -128,7 +128,9 @@ def peek_data(
                 # Validate topic filter if provided
                 if topic_filter:
                     progress.update(task, description="🏷️ Validating topic filter...")
-                    topic_category_repository = container.create_topic_category_repository()
+                    topic_category_repository = (
+                        container.create_topic_category_repository()
+                    )
                     async for session in db_manager.get_session():
                         if not await topic_category_repository.exists(
                             session, topic_filter
@@ -1748,12 +1750,18 @@ async def _peek_comments(
             comment_text = comment["clean_text"]
 
             # Filter out problematic comments that are just symbols or very short
-            if not comment_text or comment_text.strip() in ["\\", "@", "", "\n", '""'] or len(comment_text.strip()) <= 2 and comment_text.strip() in [
-                "@",
-                "\\",
-                "&",
-                "#",
-            ]:
+            if (
+                not comment_text
+                or comment_text.strip() in ["\\", "@", "", "\n", '""']
+                or len(comment_text.strip()) <= 2
+                and comment_text.strip()
+                in [
+                    "@",
+                    "\\",
+                    "&",
+                    "#",
+                ]
+            ):
                 comment_text = "[Comment text unavailable]"
 
             # Truncate comment text for display
@@ -2023,12 +2031,18 @@ async def _peek_live_chats(
             chat_text = chat["clean_text"]
 
             # Filter out problematic chats that are just symbols or very short
-            if not chat_text or chat_text.strip() in ["\\", "@", "", "\n", '""'] or len(chat_text.strip()) <= 2 and chat_text.strip() in [
-                "@",
-                "\\",
-                "&",
-                "#",
-            ]:
+            if (
+                not chat_text
+                or chat_text.strip() in ["\\", "@", "", "\n", '""']
+                or len(chat_text.strip()) <= 2
+                and chat_text.strip()
+                in [
+                    "@",
+                    "\\",
+                    "&",
+                    "#",
+                ]
+            ):
                 chat_text = "[Chat text unavailable]"
 
             # Truncate chat text for display
@@ -2601,11 +2615,15 @@ def recover_metadata(
         try:
             # Validate takeout directory exists
             if not takeout_dir.exists():
-                console.print(f"[red]Error: Takeout directory not found: {takeout_dir}[/red]")
+                console.print(
+                    f"[red]Error: Takeout directory not found: {takeout_dir}[/red]"
+                )
                 raise typer.Exit(2)
 
             if not takeout_dir.is_dir():
-                console.print(f"[red]Error: Path is not a directory: {takeout_dir}[/red]")
+                console.print(
+                    f"[red]Error: Path is not a directory: {takeout_dir}[/red]"
+                )
                 raise typer.Exit(2)
 
             with Progress(
@@ -2667,9 +2685,21 @@ def recover_metadata(
                     for takeout in historical_takeouts:
                         table.add_row(
                             str(takeout.export_date.date()),
-                            "[green]Yes[/green]" if takeout.has_watch_history else "[red]No[/red]",
-                            "[green]Yes[/green]" if takeout.has_playlists else "[red]No[/red]",
-                            "[green]Yes[/green]" if takeout.has_subscriptions else "[red]No[/red]",
+                            (
+                                "[green]Yes[/green]"
+                                if takeout.has_watch_history
+                                else "[red]No[/red]"
+                            ),
+                            (
+                                "[green]Yes[/green]"
+                                if takeout.has_playlists
+                                else "[red]No[/red]"
+                            ),
+                            (
+                                "[green]Yes[/green]"
+                                if takeout.has_subscriptions
+                                else "[red]No[/red]"
+                            ),
                         )
 
                     console.print(table)
@@ -2684,7 +2714,9 @@ def recover_metadata(
                 )
 
                 if dry_run:
-                    console.print("\n[yellow]DRY RUN MODE - No changes will be made[/yellow]\n")
+                    console.print(
+                        "\n[yellow]DRY RUN MODE - No changes will be made[/yellow]\n"
+                    )
 
                 # Run recovery
                 progress.update(task, description="Running recovery...")
@@ -2705,6 +2737,7 @@ def recover_metadata(
         except Exception as e:
             console.print(f"[red]Recovery failed: {e}[/red]")
             import traceback
+
             if verbose:
                 traceback.print_exc()
             raise typer.Exit(1) from e
@@ -2729,7 +2762,9 @@ def _display_recovery_results(result: Any, verbose: bool) -> None:
         duration_seconds = (result.completed_at - result.started_at).total_seconds()
 
     # Build summary
-    mode_str = "[yellow]DRY RUN[/yellow]" if result.dry_run else "[green]APPLIED[/green]"
+    mode_str = (
+        "[yellow]DRY RUN[/yellow]" if result.dry_run else "[green]APPLIED[/green]"
+    )
 
     summary_text = f"""
 Mode: {mode_str}
@@ -2764,8 +2799,16 @@ Duration: {duration_seconds:.1f} seconds
             table.add_column("Source Date", style="yellow", width=12)
 
             for action in result.video_actions[:20]:  # Limit to first 20
-                old_title = action.old_title[:32] + "..." if len(action.old_title) > 35 else action.old_title
-                new_title = action.new_title[:32] + "..." if len(action.new_title) > 35 else action.new_title
+                old_title = (
+                    action.old_title[:32] + "..."
+                    if len(action.old_title) > 35
+                    else action.old_title
+                )
+                new_title = (
+                    action.new_title[:32] + "..."
+                    if len(action.new_title) > 35
+                    else action.new_title
+                )
                 table.add_row(
                     action.video_id,
                     old_title,
@@ -2788,7 +2831,11 @@ Duration: {duration_seconds:.1f} seconds
 
             channel_action: ChannelRecoveryAction
             for channel_action in result.channel_actions[:20]:  # Limit to first 20
-                name = channel_action.channel_name[:32] + "..." if len(channel_action.channel_name) > 35 else channel_action.channel_name
+                name = (
+                    channel_action.channel_name[:32] + "..."
+                    if len(channel_action.channel_name) > 35
+                    else channel_action.channel_name
+                )
                 table.add_row(
                     channel_action.channel_id,
                     name,
@@ -2803,7 +2850,9 @@ Duration: {duration_seconds:.1f} seconds
 
     # Show videos that couldn't be recovered
     if result.videos_not_recovered and verbose:
-        console.print(f"\n[yellow]Videos still missing metadata ({len(result.videos_not_recovered)}):[/yellow]")
+        console.print(
+            f"\n[yellow]Videos still missing metadata ({len(result.videos_not_recovered)}):[/yellow]"
+        )
         for video_id in result.videos_not_recovered[:10]:
             console.print(f"   - {video_id}")
         if len(result.videos_not_recovered) > 10:
@@ -2822,6 +2871,8 @@ Duration: {duration_seconds:.1f} seconds
         console.print("\n[bold]To apply these changes, run without --dry-run:[/bold]")
         console.print("   chronovista takeout recover --takeout-dir <path>")
     elif result.videos_still_missing > 0:
-        console.print(f"\n[yellow]Note: {result.videos_still_missing} videos could not be recovered.[/yellow]")
+        console.print(
+            f"\n[yellow]Note: {result.videos_still_missing} videos could not be recovered.[/yellow]"
+        )
         console.print("These videos may not be present in your historical takeouts.")
         console.print("Consider using the YouTube API to fetch their metadata.")

@@ -251,11 +251,14 @@ class TestCreateEntityAliasHappyPath:
         mock_session = _make_session_entity_found(entity_row, alias_row)
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._alias_repo"
-            ) as mock_repo, patch(
-                "chronovista.api.routers.entity_mentions._normalizer"
-            ) as mock_normalizer:
+            with (
+                patch(
+                    "chronovista.api.routers.entity_mentions._alias_repo"
+                ) as mock_repo,
+                patch(
+                    "chronovista.api.routers.entity_mentions._normalizer"
+                ) as mock_normalizer,
+            ):
                 mock_normalizer.normalize.return_value = "musk"
                 mock_repo.create = AsyncMock(return_value=alias_row)
 
@@ -279,11 +282,14 @@ class TestCreateEntityAliasHappyPath:
         mock_session = _make_session_entity_found(entity_row, alias_row)
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._alias_repo"
-            ) as mock_repo, patch(
-                "chronovista.api.routers.entity_mentions._normalizer"
-            ) as mock_normalizer:
+            with (
+                patch(
+                    "chronovista.api.routers.entity_mentions._alias_repo"
+                ) as mock_repo,
+                patch(
+                    "chronovista.api.routers.entity_mentions._normalizer"
+                ) as mock_normalizer,
+            ):
                 mock_normalizer.normalize.return_value = "the technoking"
                 mock_repo.create = AsyncMock(return_value=alias_row)
 
@@ -312,11 +318,14 @@ class TestCreateEntityAliasHappyPath:
         mock_session = _make_session_entity_found(entity_row, alias_row)
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._alias_repo"
-            ) as mock_repo, patch(
-                "chronovista.api.routers.entity_mentions._normalizer"
-            ) as mock_normalizer:
+            with (
+                patch(
+                    "chronovista.api.routers.entity_mentions._alias_repo"
+                ) as mock_repo,
+                patch(
+                    "chronovista.api.routers.entity_mentions._normalizer"
+                ) as mock_normalizer,
+            ):
                 mock_normalizer.normalize.return_value = "em"
                 mock_repo.create = AsyncMock(return_value=alias_row)
 
@@ -342,11 +351,14 @@ class TestCreateEntityAliasHappyPath:
         mock_session = _make_session_entity_found(entity_row, alias_row)
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._alias_repo"
-            ) as mock_repo, patch(
-                "chronovista.api.routers.entity_mentions._normalizer"
-            ) as mock_normalizer:
+            with (
+                patch(
+                    "chronovista.api.routers.entity_mentions._alias_repo"
+                ) as mock_repo,
+                patch(
+                    "chronovista.api.routers.entity_mentions._normalizer"
+                ) as mock_normalizer,
+            ):
                 mock_normalizer.normalize.return_value = "spacex ceo"
                 mock_repo.create = AsyncMock(return_value=alias_row)
 
@@ -369,11 +381,14 @@ class TestCreateEntityAliasHappyPath:
         mock_session = _make_session_entity_found(entity_row, alias_row)
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._alias_repo"
-            ) as mock_repo, patch(
-                "chronovista.api.routers.entity_mentions._normalizer"
-            ) as mock_normalizer:
+            with (
+                patch(
+                    "chronovista.api.routers.entity_mentions._alias_repo"
+                ) as mock_repo,
+                patch(
+                    "chronovista.api.routers.entity_mentions._normalizer"
+                ) as mock_normalizer,
+            ):
                 mock_normalizer.normalize.return_value = "musk"
                 mock_repo.create = AsyncMock(return_value=alias_row)
 
@@ -441,9 +456,9 @@ class TestCreateEntityAliasEntityNotFound:
         assert response.status_code == 404
         body = response.json()
         # RFC-7807 structure expected from the project's exception handlers
-        assert "status" in body or "type" in body, (
-            f"Expected RFC-7807 error body, got: {body}"
-        )
+        assert (
+            "status" in body or "type" in body
+        ), f"Expected RFC-7807 error body, got: {body}"
 
     async def test_invalid_uuid_entity_id_returns_404(self) -> None:
         """Malformed entity_id string (not a valid UUID) → 404 Not Found.
@@ -527,9 +542,9 @@ class TestCreateEntityAliasConflict:
 
         assert response.status_code == 409
         body = response.json()
-        assert "status" in body or "type" in body, (
-            f"Expected RFC-7807 error body, got: {body}"
-        )
+        assert (
+            "status" in body or "type" in body
+        ), f"Expected RFC-7807 error body, got: {body}"
 
     async def test_alias_normalizes_to_empty_returns_409(self) -> None:
         """Alias whose normalized form is None (empty string) → 409 Conflict.
@@ -577,11 +592,14 @@ class TestCreateEntityAliasConflict:
         mock_session.execute = AsyncMock(return_value=entity_result)
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._alias_repo"
-            ) as mock_repo, patch(
-                "chronovista.api.routers.entity_mentions._normalizer"
-            ) as mock_normalizer:
+            with (
+                patch(
+                    "chronovista.api.routers.entity_mentions._alias_repo"
+                ) as mock_repo,
+                patch(
+                    "chronovista.api.routers.entity_mentions._normalizer"
+                ) as mock_normalizer,
+            ):
                 mock_normalizer.normalize.return_value = None
                 mock_repo.create = AsyncMock()
 
@@ -680,15 +698,20 @@ class TestCreateEntityAliasValidation:
         """
         boundary_name = "a" * 500
         entity_row = _make_named_entity_row()
-        alias_row = _make_alias_db_row(alias_name=boundary_name, alias_type="name_variant")
+        alias_row = _make_alias_db_row(
+            alias_name=boundary_name, alias_type="name_variant"
+        )
         mock_session = _make_session_entity_found(entity_row, alias_row)
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._alias_repo"
-            ) as mock_repo, patch(
-                "chronovista.api.routers.entity_mentions._normalizer"
-            ) as mock_normalizer:
+            with (
+                patch(
+                    "chronovista.api.routers.entity_mentions._alias_repo"
+                ) as mock_repo,
+                patch(
+                    "chronovista.api.routers.entity_mentions._normalizer"
+                ) as mock_normalizer,
+            ):
                 mock_normalizer.normalize.return_value = "a" * 500
                 mock_repo.create = AsyncMock(return_value=alias_row)
 
@@ -790,11 +813,14 @@ class TestCreateEntityAliasAllowedTypes:
         status_code: int = 0
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._alias_repo"
-            ) as mock_repo, patch(
-                "chronovista.api.routers.entity_mentions._normalizer"
-            ) as mock_normalizer:
+            with (
+                patch(
+                    "chronovista.api.routers.entity_mentions._alias_repo"
+                ) as mock_repo,
+                patch(
+                    "chronovista.api.routers.entity_mentions._normalizer"
+                ) as mock_normalizer,
+            ):
                 mock_normalizer.normalize.return_value = "musk"
                 mock_repo.create = AsyncMock(return_value=alias_row)
 

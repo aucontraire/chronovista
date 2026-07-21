@@ -169,8 +169,7 @@ def _check_rate_limit(
 
     # Clean old entries (older than window)
     request_counts[client_id] = [
-        ts for ts in request_counts[client_id]
-        if ts > window_start
+        ts for ts in request_counts[client_id] if ts > window_start
     ]
 
     # Check if limit exceeded
@@ -361,7 +360,9 @@ async def list_entities(
 )
 async def search_entities(
     q: str = Query(..., min_length=2, description="Search query (min 2 chars)"),
-    video_id: str | None = Query(default=None, description="Video ID for is_linked check"),
+    video_id: str | None = Query(
+        default=None, description="Video ID for is_linked check"
+    ),
     limit: int = Query(default=10, ge=1, le=20, description="Max results"),
     session: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -458,7 +459,9 @@ async def get_video_entities(
 async def check_duplicate_entity(
     request: Request,
     name: str = Query(..., description="Entity name to check"),
-    type: str = Query(..., description="Entity type (person, organization, place, etc.)"),
+    type: str = Query(
+        ..., description="Entity type (person, organization, place, etc.)"
+    ),
     session: AsyncSession = Depends(get_db),
 ) -> DuplicateCheckResponse | JSONResponse:
     """Check whether an entity with the same normalized name and type already exists.
@@ -630,9 +633,7 @@ async def get_entity_videos(
             "tag, or manual. When omitted, all sources are returned."
         ),
     ),
-    limit: int = Query(
-        default=20, ge=1, le=100, description="Items per page"
-    ),
+    limit: int = Query(default=20, ge=1, le=100, description="Items per page"),
     offset: int = Query(default=0, ge=0, description="Pagination offset"),
     session: AsyncSession = Depends(get_db),
 ) -> EntityVideoResponse:
@@ -674,9 +675,7 @@ async def get_entity_videos(
         raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
     # Check entity existence
-    entity_query = select(NamedEntityDB.id).where(
-        NamedEntityDB.id == parsed_entity_id
-    )
+    entity_query = select(NamedEntityDB.id).where(NamedEntityDB.id == parsed_entity_id)
     entity_result = await session.execute(entity_query)
     if not entity_result.scalar_one_or_none():
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
@@ -1263,9 +1262,11 @@ async def classify_tag(
 
             raise ConflictError(
                 message=error_msg,
-                details={"existing_entity": existing_entity_data}
-                if existing_entity_data
-                else None,
+                details=(
+                    {"existing_entity": existing_entity_data}
+                    if existing_entity_data
+                    else None
+                ),
             ) from exc
 
         # Other ValueError → 400 Bad Request
@@ -1739,9 +1740,7 @@ async def scan_entity(
     # 3. Concurrency guard
     guard_key = f"scan:entity:{entity_id}"
     if guard_key in _scans_in_progress:
-        raise ConflictError(
-            message="A scan is already in progress for this entity"
-        )
+        raise ConflictError(message="A scan is already in progress for this entity")
 
     # 4. Launch the scan in the background and return the job (202).
     _scans_in_progress.add(guard_key)

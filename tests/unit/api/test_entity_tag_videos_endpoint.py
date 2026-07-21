@@ -74,9 +74,7 @@ async def _build_client(
 
     try:
         transport = ASGITransport(app=app)
-        async with AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
     finally:
         app.dependency_overrides.clear()
@@ -149,9 +147,7 @@ class TestEntityVideoEndpointTagSourcedVideos:
         with patch(
             "chronovista.api.routers.entity_mentions._mention_repo"
         ) as mock_repo:
-            mock_repo.get_entity_video_list = AsyncMock(
-                return_value=([tag_video], 1)
-            )
+            mock_repo.get_entity_video_list = AsyncMock(return_value=([tag_video], 1))
 
             async for client in _build_client(mock_session):
                 url = _ENDPOINT_TEMPLATE.format(entity_id=str(entity_id))
@@ -453,9 +449,7 @@ class TestEntityListCombinedVideoCount:
         list_scalars.all.return_value = [mock_entity]
         list_result.scalars.return_value = list_scalars
 
-        mock_session.execute = AsyncMock(
-            side_effect=[count_result, list_result]
-        )
+        mock_session.execute = AsyncMock(side_effect=[count_result, list_result])
         mock_session.commit = AsyncMock()
 
         async for client in _build_client(mock_session):
@@ -512,9 +506,7 @@ class TestEntityListCombinedVideoCount:
         list_scalars.all.return_value = [entity_1, entity_2]
         list_result.scalars.return_value = list_scalars
 
-        mock_session.execute = AsyncMock(
-            side_effect=[count_result, list_result]
-        )
+        mock_session.execute = AsyncMock(side_effect=[count_result, list_result])
         mock_session.commit = AsyncMock()
 
         async for client in _build_client(mock_session):

@@ -31,9 +31,7 @@ class NamedEntityRepository(
         """Initialize repository with NamedEntity model."""
         super().__init__(NamedEntityDB)
 
-    async def get(
-        self, session: AsyncSession, id: uuid.UUID
-    ) -> NamedEntityDB | None:
+    async def get(self, session: AsyncSession, id: uuid.UUID) -> NamedEntityDB | None:
         """Get named entity by UUID primary key."""
         result = await session.execute(
             select(NamedEntityDB).where(NamedEntityDB.id == id)

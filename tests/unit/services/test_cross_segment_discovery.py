@@ -404,7 +404,9 @@ class TestCrossSegmentDiscoveryDiscover:
     async def test_entity_filter_is_case_insensitive(self) -> None:
         """Entity filter matches patterns case-insensitively in the pattern path."""
         pattern_matching = _make_pattern("Chomski is", "Chomsky is", occurrences=5)
-        pattern_not_matching = _make_pattern("wrong text", "correct text", occurrences=5)
+        pattern_not_matching = _make_pattern(
+            "wrong text", "correct text", occurrences=5
+        )
         batch_svc = _make_batch_service(
             patterns=[pattern_matching, pattern_not_matching]
         )
@@ -602,20 +604,32 @@ class TestCrossSegmentDiscoveryDiscover:
 
         # Build two fake candidate pairs to ensure different confidence scores
         seg_high_n = _make_segment_mock(
-            seg_id=40, video_id="vid3", language_code="en",
-            sequence_number=0, text="said Chomski"
+            seg_id=40,
+            video_id="vid3",
+            language_code="en",
+            sequence_number=0,
+            text="said Chomski",
         )
         seg_high_n1 = _make_segment_mock(
-            seg_id=41, video_id="vid3", language_code="en",
-            sequence_number=1, text="is important"
+            seg_id=41,
+            video_id="vid3",
+            language_code="en",
+            sequence_number=1,
+            text="is important",
         )
         seg_low_n = _make_segment_mock(
-            seg_id=50, video_id="vid4", language_code="en",
-            sequence_number=0, text="prefix foo"
+            seg_id=50,
+            video_id="vid4",
+            language_code="en",
+            sequence_number=0,
+            text="prefix foo",
         )
         seg_low_n1 = _make_segment_mock(
-            seg_id=51, video_id="vid4", language_code="en",
-            sequence_number=1, text="bar suffix"
+            seg_id=51,
+            video_id="vid4",
+            language_code="en",
+            sequence_number=1,
+            text="bar suffix",
         )
 
         async def _fake_find_pairs_batched(
@@ -710,12 +724,18 @@ class TestCrossSegmentDiscoveryDiscover:
         session = _make_mock_session()
 
         seg_n = _make_segment_mock(
-            seg_id=70, video_id="vid6", language_code="en",
-            sequence_number=0, text="said Chomski"
+            seg_id=70,
+            video_id="vid6",
+            language_code="en",
+            sequence_number=0,
+            text="said Chomski",
         )
         seg_n1 = _make_segment_mock(
-            seg_id=71, video_id="vid6", language_code="en",
-            sequence_number=1, text="is the point"
+            seg_id=71,
+            video_id="vid6",
+            language_code="en",
+            sequence_number=1,
+            text="is the point",
         )
 
         # Isolate pattern path: entity-based discovery returns nothing
@@ -738,9 +758,9 @@ class TestCrossSegmentDiscoveryDiscover:
             # Confidence rounded to 4dp: str representation should not exceed 4 dp
             str_repr = f"{c.confidence}"
             decimal_part = str_repr.split(".")[1] if "." in str_repr else ""
-            assert len(decimal_part) <= 4, (
-                f"Confidence {c.confidence} has more than 4 decimal places"
-            )
+            assert (
+                len(decimal_part) <= 4
+            ), f"Confidence {c.confidence} has more than 4 decimal places"
 
 
 # ---------------------------------------------------------------------------
@@ -1021,7 +1041,7 @@ class TestScoreEntityCandidate:
             prefix="Chomski",
             suffix="is",
             seg_n_text="He said Chomski",  # ends with prefix
-            seg_n1_text="no match here",   # does NOT start with suffix
+            seg_n1_text="no match here",  # does NOT start with suffix
             is_partially_corrected=False,
             entity_type="organization",
             alias_word_count=3,
@@ -1116,7 +1136,7 @@ class TestScoreEntityCandidate:
             prefix="Chomski",
             suffix="is",
             seg_n_text="He said Chomski",  # exact ends-with
-            seg_n1_text="is the truth",    # exact starts-with
+            seg_n1_text="is the truth",  # exact starts-with
             is_partially_corrected=True,
             entity_type="person",
             alias_word_count=2,
@@ -1223,12 +1243,18 @@ class TestDiscoverFromEntities:
         service._load_multiword_asr_aliases = AsyncMock(return_value=aliases)  # type: ignore[method-assign]
 
         seg_n = _make_segment_mock(
-            seg_id=100, video_id="vid10", language_code="en",
-            sequence_number=0, text="He said Chomski"
+            seg_id=100,
+            video_id="vid10",
+            language_code="en",
+            sequence_number=0,
+            text="He said Chomski",
         )
         seg_n1 = _make_segment_mock(
-            seg_id=101, video_id="vid10", language_code="en",
-            sequence_number=1, text="is here"
+            seg_id=101,
+            video_id="vid10",
+            language_code="en",
+            sequence_number=1,
+            text="is here",
         )
 
         async def _fake_find_pairs_batched(
@@ -1258,12 +1284,18 @@ class TestDiscoverFromEntities:
         service._load_multiword_asr_aliases = AsyncMock(return_value=aliases)  # type: ignore[method-assign]
 
         seg_n = _make_segment_mock(
-            seg_id=110, video_id="vid11", language_code="en",
-            sequence_number=0, text="He said Chomski"
+            seg_id=110,
+            video_id="vid11",
+            language_code="en",
+            sequence_number=0,
+            text="He said Chomski",
         )
         seg_n1 = _make_segment_mock(
-            seg_id=111, video_id="vid11", language_code="en",
-            sequence_number=1, text="is wrong"
+            seg_id=111,
+            video_id="vid11",
+            language_code="en",
+            sequence_number=1,
+            text="is wrong",
         )
 
         async def _fake_find_pairs_batched(
@@ -1291,14 +1323,22 @@ class TestDiscoverFromEntities:
         service._load_multiword_asr_aliases = AsyncMock(return_value=aliases)  # type: ignore[method-assign]
 
         seg_n = _make_segment_mock(
-            seg_id=120, video_id="vid12", language_code="en",
-            sequence_number=0, text="Chomski", has_correction=True,
-            corrected_text="Chomsky"
+            seg_id=120,
+            video_id="vid12",
+            language_code="en",
+            sequence_number=0,
+            text="Chomski",
+            has_correction=True,
+            corrected_text="Chomsky",
         )
         seg_n1 = _make_segment_mock(
-            seg_id=121, video_id="vid12", language_code="en",
-            sequence_number=1, text="is", has_correction=True,
-            corrected_text="is"
+            seg_id=121,
+            video_id="vid12",
+            language_code="en",
+            sequence_number=1,
+            text="is",
+            has_correction=True,
+            corrected_text="is",
         )
 
         async def _fake_find_pairs_batched(
@@ -1328,13 +1368,21 @@ class TestDiscoverFromEntities:
         # seg_n has a correction for something else (punctuation), but its
         # effective text still ends with the alias prefix "Chomski".
         seg_n = _make_segment_mock(
-            seg_id=130, video_id="vid13", language_code="en",
-            sequence_number=0, text="he said Chomski",
-            has_correction=True, corrected_text="He said Chomski"
+            seg_id=130,
+            video_id="vid13",
+            language_code="en",
+            sequence_number=0,
+            text="he said Chomski",
+            has_correction=True,
+            corrected_text="He said Chomski",
         )
         seg_n1 = _make_segment_mock(
-            seg_id=131, video_id="vid13", language_code="en",
-            sequence_number=1, text="is wrong", has_correction=False
+            seg_id=131,
+            video_id="vid13",
+            language_code="en",
+            sequence_number=1,
+            text="is wrong",
+            has_correction=False,
         )
 
         async def _fake_find_pairs_batched(
@@ -1364,9 +1412,7 @@ class TestDiscoverFromEntities:
 
         await service.discover_from_entities(session, entity_name="Chomsky")
 
-        service._load_multiword_asr_aliases.assert_awaited_once_with(
-            session, "Chomsky"
-        )
+        service._load_multiword_asr_aliases.assert_awaited_once_with(session, "Chomsky")
 
     async def test_no_multiword_aliases_returns_empty(
         self, service: CrossSegmentDiscovery
@@ -1401,12 +1447,18 @@ class TestDiscoverFromEntities:
         service._load_multiword_asr_aliases = AsyncMock(return_value=aliases)  # type: ignore[method-assign]
 
         seg_n = _make_segment_mock(
-            seg_id=140, video_id="vid14", language_code="en",
-            sequence_number=0, text="He said Chomski"
+            seg_id=140,
+            video_id="vid14",
+            language_code="en",
+            sequence_number=0,
+            text="He said Chomski",
         )
         seg_n1 = _make_segment_mock(
-            seg_id=141, video_id="vid14", language_code="en",
-            sequence_number=1, text="is the point"
+            seg_id=141,
+            video_id="vid14",
+            language_code="en",
+            sequence_number=1,
+            text="is the point",
         )
 
         async def _fake_find_pairs_batched(
@@ -1424,9 +1476,9 @@ class TestDiscoverFromEntities:
         candidates = await service.discover_from_entities(session)
 
         for c in candidates:
-            assert 0.0 <= c.confidence <= 1.0, (
-                f"Candidate confidence {c.confidence} is out of range"
-            )
+            assert (
+                0.0 <= c.confidence <= 1.0
+            ), f"Candidate confidence {c.confidence} is out of range"
 
     async def test_returns_list_of_cross_segment_candidates(
         self, service: CrossSegmentDiscovery
@@ -1436,12 +1488,18 @@ class TestDiscoverFromEntities:
         service._load_multiword_asr_aliases = AsyncMock(return_value=aliases)  # type: ignore[method-assign]
 
         seg_n = _make_segment_mock(
-            seg_id=150, video_id="vid15", language_code="en",
-            sequence_number=0, text="He said Chomski"
+            seg_id=150,
+            video_id="vid15",
+            language_code="en",
+            sequence_number=0,
+            text="He said Chomski",
         )
         seg_n1 = _make_segment_mock(
-            seg_id=151, video_id="vid15", language_code="en",
-            sequence_number=1, text="is here"
+            seg_id=151,
+            video_id="vid15",
+            language_code="en",
+            sequence_number=1,
+            text="is here",
         )
 
         async def _fake_find_pairs_batched(
@@ -1497,12 +1555,14 @@ class TestMergeCandidates:
         """When entity and pattern candidates share the same (n, n+1) pair,
         the entity candidate is kept and the pattern candidate is dropped."""
         entity_c = _make_candidate(
-            seg_n_id=1, seg_n1_id=2,
+            seg_n_id=1,
+            seg_n1_id=2,
             discovery_source="entity_alias",
             confidence=0.80,
         )
         pattern_c = _make_candidate(
-            seg_n_id=1, seg_n1_id=2,
+            seg_n_id=1,
+            seg_n1_id=2,
             discovery_source="correction_pattern",
             confidence=0.65,
         )
@@ -1515,10 +1575,12 @@ class TestMergeCandidates:
 
     def test_unique_pairs_from_both_sources_all_included(self) -> None:
         """Different (n, n+1) pairs from both sources are all included."""
-        entity_c = _make_candidate(seg_n_id=1, seg_n1_id=2,
-                                   discovery_source="entity_alias")
-        pattern_c = _make_candidate(seg_n_id=3, seg_n1_id=4,
-                                    discovery_source="correction_pattern")
+        entity_c = _make_candidate(
+            seg_n_id=1, seg_n1_id=2, discovery_source="entity_alias"
+        )
+        pattern_c = _make_candidate(
+            seg_n_id=3, seg_n1_id=4, discovery_source="correction_pattern"
+        )
 
         merged = CrossSegmentDiscovery._merge_candidates([entity_c], [pattern_c])
 
@@ -1529,10 +1591,12 @@ class TestMergeCandidates:
 
     def test_empty_entity_list_returns_all_pattern_candidates(self) -> None:
         """When entity_candidates is empty, all pattern candidates are returned."""
-        pattern_c1 = _make_candidate(seg_n_id=5, seg_n1_id=6,
-                                     discovery_source="correction_pattern")
-        pattern_c2 = _make_candidate(seg_n_id=7, seg_n1_id=8,
-                                     discovery_source="correction_pattern")
+        pattern_c1 = _make_candidate(
+            seg_n_id=5, seg_n1_id=6, discovery_source="correction_pattern"
+        )
+        pattern_c2 = _make_candidate(
+            seg_n_id=7, seg_n1_id=8, discovery_source="correction_pattern"
+        )
 
         merged = CrossSegmentDiscovery._merge_candidates([], [pattern_c1, pattern_c2])
 
@@ -1540,14 +1604,14 @@ class TestMergeCandidates:
 
     def test_empty_pattern_list_returns_all_entity_candidates(self) -> None:
         """When pattern_candidates is empty, all entity candidates are returned."""
-        entity_c1 = _make_candidate(seg_n_id=9, seg_n1_id=10,
-                                    discovery_source="entity_alias")
-        entity_c2 = _make_candidate(seg_n_id=11, seg_n1_id=12,
-                                    discovery_source="entity_alias")
-
-        merged = CrossSegmentDiscovery._merge_candidates(
-            [entity_c1, entity_c2], []
+        entity_c1 = _make_candidate(
+            seg_n_id=9, seg_n1_id=10, discovery_source="entity_alias"
         )
+        entity_c2 = _make_candidate(
+            seg_n_id=11, seg_n1_id=12, discovery_source="entity_alias"
+        )
+
+        merged = CrossSegmentDiscovery._merge_candidates([entity_c1, entity_c2], [])
 
         assert len(merged) == 2
 
@@ -1558,26 +1622,29 @@ class TestMergeCandidates:
 
     def test_no_duplicates_in_result(self) -> None:
         """No pair key appears twice in the merged output."""
-        entity_c = _make_candidate(seg_n_id=13, seg_n1_id=14,
-                                   discovery_source="entity_alias")
-        pattern_c = _make_candidate(seg_n_id=13, seg_n1_id=14,
-                                    discovery_source="correction_pattern")
-        extra = _make_candidate(seg_n_id=15, seg_n1_id=16,
-                                discovery_source="correction_pattern")
-
-        merged = CrossSegmentDiscovery._merge_candidates(
-            [entity_c], [pattern_c, extra]
+        entity_c = _make_candidate(
+            seg_n_id=13, seg_n1_id=14, discovery_source="entity_alias"
         )
+        pattern_c = _make_candidate(
+            seg_n_id=13, seg_n1_id=14, discovery_source="correction_pattern"
+        )
+        extra = _make_candidate(
+            seg_n_id=15, seg_n1_id=16, discovery_source="correction_pattern"
+        )
+
+        merged = CrossSegmentDiscovery._merge_candidates([entity_c], [pattern_c, extra])
 
         pair_keys = [(c.segment_n_id, c.segment_n1_id) for c in merged]
         assert len(pair_keys) == len(set(pair_keys))
 
     def test_entity_candidates_preserve_insertion_order(self) -> None:
         """Entity candidates appear before pattern candidates in the merged list."""
-        entity_c = _make_candidate(seg_n_id=17, seg_n1_id=18,
-                                   discovery_source="entity_alias")
-        pattern_c = _make_candidate(seg_n_id=19, seg_n1_id=20,
-                                    discovery_source="correction_pattern")
+        entity_c = _make_candidate(
+            seg_n_id=17, seg_n1_id=18, discovery_source="entity_alias"
+        )
+        pattern_c = _make_candidate(
+            seg_n_id=19, seg_n1_id=20, discovery_source="correction_pattern"
+        )
 
         merged = CrossSegmentDiscovery._merge_candidates([entity_c], [pattern_c])
 
@@ -1587,16 +1654,14 @@ class TestMergeCandidates:
 
     def test_multiple_entity_candidates_same_pair_first_wins(self) -> None:
         """If entity_candidates itself has duplicate pairs, only the first is kept."""
-        entity_c1 = _make_candidate(seg_n_id=21, seg_n1_id=22,
-                                    discovery_source="entity_alias",
-                                    confidence=0.90)
-        entity_c2 = _make_candidate(seg_n_id=21, seg_n1_id=22,
-                                    discovery_source="entity_alias",
-                                    confidence=0.70)
-
-        merged = CrossSegmentDiscovery._merge_candidates(
-            [entity_c1, entity_c2], []
+        entity_c1 = _make_candidate(
+            seg_n_id=21, seg_n1_id=22, discovery_source="entity_alias", confidence=0.90
         )
+        entity_c2 = _make_candidate(
+            seg_n_id=21, seg_n1_id=22, discovery_source="entity_alias", confidence=0.70
+        )
+
+        merged = CrossSegmentDiscovery._merge_candidates([entity_c1, entity_c2], [])
 
         assert len(merged) == 1
         assert merged[0].confidence == pytest.approx(0.90, abs=1e-9)
@@ -1636,12 +1701,14 @@ class TestDiscoverCombined:
     async def test_entity_candidates_ranked_higher_when_same_pair(self) -> None:
         """When the same pair is found by both strategies, entity candidate is kept."""
         entity_c = _make_candidate(
-            seg_n_id=200, seg_n1_id=201,
+            seg_n_id=200,
+            seg_n1_id=201,
             discovery_source="entity_alias",
             confidence=0.85,
         )
         pattern_c = _make_candidate(
-            seg_n_id=200, seg_n1_id=201,
+            seg_n_id=200,
+            seg_n1_id=201,
             discovery_source="correction_pattern",
             confidence=0.60,
         )
@@ -1662,17 +1729,20 @@ class TestDiscoverCombined:
     async def test_results_sorted_by_confidence_descending(self) -> None:
         """discover() returns results sorted by confidence descending."""
         high_entity = _make_candidate(
-            seg_n_id=210, seg_n1_id=211,
+            seg_n_id=210,
+            seg_n1_id=211,
             discovery_source="entity_alias",
             confidence=0.90,
         )
         low_pattern = _make_candidate(
-            seg_n_id=212, seg_n1_id=213,
+            seg_n_id=212,
+            seg_n1_id=213,
             discovery_source="correction_pattern",
             confidence=0.55,
         )
         mid_entity = _make_candidate(
-            seg_n_id=214, seg_n1_id=215,
+            seg_n_id=214,
+            seg_n1_id=215,
             discovery_source="entity_alias",
             confidence=0.70,
         )
@@ -1697,12 +1767,14 @@ class TestDiscoverCombined:
     async def test_unique_pairs_from_both_sources_included(self) -> None:
         """Unique pairs from entity and pattern strategies are all included."""
         entity_c = _make_candidate(
-            seg_n_id=220, seg_n1_id=221,
+            seg_n_id=220,
+            seg_n1_id=221,
             discovery_source="entity_alias",
             confidence=0.80,
         )
         pattern_c = _make_candidate(
-            seg_n_id=222, seg_n1_id=223,
+            seg_n_id=222,
+            seg_n1_id=223,
             discovery_source="correction_pattern",
             confidence=0.65,
         )

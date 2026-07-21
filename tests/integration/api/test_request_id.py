@@ -101,8 +101,7 @@ class TestRequestIdGeneration:
             # Make request with custom X-Request-ID
             client_request_id = "test-correlation-id-123"
             response = await client.get(
-                "/api/v1/health",
-                headers={"X-Request-ID": client_request_id}
+                "/api/v1/health", headers={"X-Request-ID": client_request_id}
             )
 
             # Verify response echoes the same value
@@ -142,10 +141,7 @@ class TestRequestIdValidation:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             # Make request with empty X-Request-ID
-            response = await client.get(
-                "/api/v1/health",
-                headers={"X-Request-ID": ""}
-            )
+            response = await client.get("/api/v1/health", headers={"X-Request-ID": ""})
 
             # Verify response has a valid UUID (not empty)
             assert "x-request-id" in response.headers
@@ -167,8 +163,7 @@ class TestRequestIdValidation:
 
             # Make request with long X-Request-ID
             response = await client.get(
-                "/api/v1/health",
-                headers={"X-Request-ID": long_request_id}
+                "/api/v1/health", headers={"X-Request-ID": long_request_id}
             )
 
             # Verify response value is truncated to 128 chars (first 128 preserved)
@@ -194,8 +189,7 @@ class TestRequestIdValidation:
             # Capture logs at WARNING level
             with caplog.at_level(logging.WARNING):
                 response = await client.get(
-                    "/api/v1/health",
-                    headers={"X-Request-ID": invalid_request_id}
+                    "/api/v1/health", headers={"X-Request-ID": invalid_request_id}
                 )
 
             # Verify response has a new UUID (not the invalid value)
@@ -207,7 +201,8 @@ class TestRequestIdValidation:
             # Verify warning was logged
             # The middleware logs a warning when invalid characters are detected
             warning_records = [
-                record for record in caplog.records
+                record
+                for record in caplog.records
                 if record.levelno == logging.WARNING
                 and "request_id" in record.name.lower()
             ]
@@ -292,9 +287,9 @@ class TestRequestIdPropagation:
             response = await client.get("/api/v1/nonexistent")
 
             # Verify error response (should be 404 Not Found)
-            assert response.status_code == 404, (
-                f"Expected 404, got {response.status_code}: {response.text}"
-            )
+            assert (
+                response.status_code == 404
+            ), f"Expected 404, got {response.status_code}: {response.text}"
 
             # Verify X-Request-ID in response header
             assert "x-request-id" in response.headers
@@ -361,7 +356,7 @@ class TestRequestIdLogging:
             lineno=0,
             msg="test message",
             args=(),
-            exc_info=None
+            exc_info=None,
         )
 
         # Filter should add request_id attribute
@@ -383,7 +378,7 @@ class TestRequestIdLogging:
                 lineno=0,
                 msg="test message 2",
                 args=(),
-                exc_info=None
+                exc_info=None,
             )
             filter_instance.filter(test_record_2)
             assert test_record_2.request_id == test_request_id  # type: ignore[attr-defined]
@@ -396,8 +391,7 @@ class TestRequestIdLogging:
             custom_request_id = "test-logging-correlation-789"
 
             response = await client.get(
-                "/api/v1/health",
-                headers={"X-Request-ID": custom_request_id}
+                "/api/v1/health", headers={"X-Request-ID": custom_request_id}
             )
 
             # Verify the request was successful and request ID was echoed
@@ -428,8 +422,7 @@ class TestRequestIdEndToEnd:
             # Test 1: Request with custom ID
             custom_id_1 = "client-request-001"
             response_1 = await client.get(
-                "/api/v1/health",
-                headers={"X-Request-ID": custom_id_1}
+                "/api/v1/health", headers={"X-Request-ID": custom_id_1}
             )
             assert response_1.headers["x-request-id"] == custom_id_1
 
@@ -441,16 +434,14 @@ class TestRequestIdEndToEnd:
 
             # Test 3: Reuse custom ID (correlation scenario)
             response_3 = await client.get(
-                "/api/v1/health",
-                headers={"X-Request-ID": custom_id_1}
+                "/api/v1/health", headers={"X-Request-ID": custom_id_1}
             )
             assert response_3.headers["x-request-id"] == custom_id_1
 
             # Test 4: Different custom ID
             custom_id_2 = "client-request-002"
             response_4 = await client.get(
-                "/api/v1/health",
-                headers={"X-Request-ID": custom_id_2}
+                "/api/v1/health", headers={"X-Request-ID": custom_id_2}
             )
             assert response_4.headers["x-request-id"] == custom_id_2
             assert custom_id_2 != custom_id_1
@@ -481,8 +472,7 @@ class TestRequestIdEndToEnd:
 
             for request_id in valid_request_ids:
                 response = await client.get(
-                    "/api/v1/health",
-                    headers={"X-Request-ID": request_id}
+                    "/api/v1/health", headers={"X-Request-ID": request_id}
                 )
                 assert response.headers["x-request-id"] == request_id, (
                     f"Expected echo of '{request_id}', "
@@ -534,17 +524,18 @@ class TestContentTypeCompliance:
             response = await api_error_handler(mock_request, not_found_error)
 
             # Verify it's a 404 response
-            assert response.status_code == 404, (
-                f"Expected 404, got {response.status_code}"
-            )
+            assert (
+                response.status_code == 404
+            ), f"Expected 404, got {response.status_code}"
 
             # Verify Content-Type is application/problem+json
-            assert response.media_type == "application/problem+json", (
-                f"Expected 'application/problem+json', got '{response.media_type}'"
-            )
+            assert (
+                response.media_type == "application/problem+json"
+            ), f"Expected 'application/problem+json', got '{response.media_type}'"
 
             # Also verify the response body is valid RFC 7807 format
             import json
+
             response_data = json.loads(response.body.decode("utf-8"))
             assert "type" in response_data
             assert "title" in response_data
@@ -603,17 +594,18 @@ class TestContentTypeCompliance:
             )
 
             # Verify it's a 422 response
-            assert response.status_code == 422, (
-                f"Expected 422, got {response.status_code}"
-            )
+            assert (
+                response.status_code == 422
+            ), f"Expected 422, got {response.status_code}"
 
             # Verify Content-Type is application/problem+json
-            assert response.media_type == "application/problem+json", (
-                f"Expected 'application/problem+json', got '{response.media_type}'"
-            )
+            assert (
+                response.media_type == "application/problem+json"
+            ), f"Expected 'application/problem+json', got '{response.media_type}'"
 
             # Verify response includes errors array (validation-specific)
             import json
+
             response_data = json.loads(response.body.decode("utf-8"))
             assert "errors" in response_data
             assert isinstance(response_data["errors"], list)
@@ -658,18 +650,19 @@ class TestContentTypeCompliance:
             )
 
             # Verify it's a 500 response
-            assert response.status_code == 500, (
-                f"Expected 500, got {response.status_code}"
-            )
+            assert (
+                response.status_code == 500
+            ), f"Expected 500, got {response.status_code}"
 
             # Verify Content-Type is application/problem+json
             # ProblemJSONResponse sets media_type = "application/problem+json"
-            assert response.media_type == "application/problem+json", (
-                f"Expected 'application/problem+json', got '{response.media_type}'"
-            )
+            assert (
+                response.media_type == "application/problem+json"
+            ), f"Expected 'application/problem+json', got '{response.media_type}'"
 
             # Verify the response body is valid RFC 7807 format
             import json
+
             response_data = json.loads(response.body.decode("utf-8"))
             assert "type" in response_data
             assert "title" in response_data
@@ -697,18 +690,18 @@ class TestContentTypeCompliance:
             response = await client.get("/api/v1/health")
 
             # Verify success response
-            assert response.status_code == 200, (
-                f"Expected 200, got {response.status_code}: {response.text}"
-            )
+            assert (
+                response.status_code == 200
+            ), f"Expected 200, got {response.status_code}: {response.text}"
 
             # Verify Content-Type is application/json (not problem+json)
             content_type = response.headers.get("content-type", "")
-            assert "application/json" in content_type, (
-                f"Expected 'application/json' in content type, got '{content_type}'"
-            )
-            assert "problem" not in content_type.lower(), (
-                f"Success responses should NOT use problem+json, got '{content_type}'"
-            )
+            assert (
+                "application/json" in content_type
+            ), f"Expected 'application/json' in content type, got '{content_type}'"
+            assert (
+                "problem" not in content_type.lower()
+            ), f"Success responses should NOT use problem+json, got '{content_type}'"
 
     async def test_204_no_content_has_no_body(self) -> None:
         """T056: 204 No Content responses should have no Content-Type header.

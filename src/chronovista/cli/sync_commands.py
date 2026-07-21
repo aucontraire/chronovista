@@ -135,7 +135,9 @@ async def process_watch_history_batch(
                     video_data = VideoCreate(
                         video_id=entry.video_id,
                         channel_id=entry.channel_id if entry.channel_id else None,
-                        channel_name_hint=entry.channel_name if not entry.channel_id else None,
+                        channel_name_hint=(
+                            entry.channel_name if not entry.channel_id else None
+                        ),
                         title=entry.title,
                         description=None,
                         upload_date=entry.watched_at,  # Placeholder - we don't have actual upload date
@@ -718,16 +720,18 @@ async def _show_transcripts_dry_run(
     )
     console.print()
     console.print("[blue]What would happen:[/blue]")
-    console.print(f"   [green]Attempt to download transcripts for {len(videos)} videos[/green]")
-    console.print(f"   [dim]Languages tried in order: {', '.join(language_codes)}[/dim]")
+    console.print(
+        f"   [green]Attempt to download transcripts for {len(videos)} videos[/green]"
+    )
+    console.print(
+        f"   [dim]Languages tried in order: {', '.join(language_codes)}[/dim]"
+    )
     if force:
         console.print(
             "   [yellow]Existing transcripts will be re-downloaded (--force enabled)[/yellow]"
         )
     else:
-        console.print(
-            "   [dim]Videos with existing transcripts will be skipped[/dim]"
-        )
+        console.print("   [dim]Videos with existing transcripts will be skipped[/dim]")
     console.print()
     console.print("[yellow]Remove --dry-run to perform actual sync[/yellow]")
 
@@ -809,9 +813,7 @@ def transcripts(
         # Determine if we should use preferences or the --language flag
         if language_override:
             # User explicitly provided --language flag, use that
-            console.print(
-                f"[blue]Using --language flag: {', '.join(language)}[/blue]"
-            )
+            console.print(f"[blue]Using --language flag: {', '.join(language)}[/blue]")
             using_preferences = False
         elif user_preferences:
             # Use configured preferences
@@ -859,9 +861,7 @@ def transcripts(
                         session, skip=0, limit=limit
                     )
                 else:
-                    console.print(
-                        "[blue]Fetching videos without transcripts...[/blue]"
-                    )
+                    console.print("[blue]Fetching videos without transcripts...[/blue]")
                     # Use VideoSearchFilters to find videos without transcripts
                     filters = VideoSearchFilters(
                         has_transcripts=False,
@@ -908,8 +908,8 @@ def transcripts(
 
                 if using_preferences and user_preferences:
                     # Get available transcript languages for this video
-                    available_languages = await transcript_service.get_available_languages(
-                        video.video_id
+                    available_languages = (
+                        await transcript_service.get_available_languages(video.video_id)
                     )
                     available_codes = [
                         lang["language_code"] for lang in available_languages
@@ -965,9 +965,7 @@ def transcripts(
                             result.skipped += 1
                             continue
                     else:
-                        console.print(
-                            "   [yellow]No transcripts available[/yellow]"
-                        )
+                        console.print("   [yellow]No transcripts available[/yellow]")
                         result.skipped += 1
                         continue
                 else:
@@ -1153,7 +1151,9 @@ def topics(
             for category in categories:
                 try:
                     # Use transformer to create the model
-                    topic_data = DataTransformers.extract_topic_category_create(category)
+                    topic_data = DataTransformers.extract_topic_category_create(
+                        category
+                    )
 
                     # Check if category already exists and create or update
                     existing = await topic_category_repository.exists(
@@ -1279,7 +1279,9 @@ def all(
 
             if channel_data:
                 # Process channel data (simplified version)
-                title = channel_data.snippet.title if channel_data.snippet else "Unknown"
+                title = (
+                    channel_data.snippet.title if channel_data.snippet else "Unknown"
+                )
                 display_success(f"Channel synced: {title}")
                 sync_results["channel"]["success"] = True
                 sync_results["channel"]["status"] = "completed"
@@ -1533,8 +1535,7 @@ def channel(
             "Description",
             (
                 (saved_channel.description or "No description")[:100] + "..."
-                if saved_channel.description
-                and len(saved_channel.description) > 100
+                if saved_channel.description and len(saved_channel.description) > 100
                 else saved_channel.description or "No description"
             ),
         )
@@ -1555,9 +1556,7 @@ def channel(
             ),
         )
         table.add_row("Country", saved_channel.country or "Unknown")
-        table.add_row(
-            "Default Language", saved_channel.default_language or "Unknown"
-        )
+        table.add_row("Default Language", saved_channel.default_language or "Unknown")
         table.add_row(
             "Created At", saved_channel.created_at.strftime("%Y-%m-%d %H:%M:%S UTC")
         )
@@ -1782,10 +1781,14 @@ async def _show_liked_videos_dry_run(
 
         # Format counts
         view_count = (
-            f"{statistics.view_count:,}" if statistics and statistics.view_count else "N/A"
+            f"{statistics.view_count:,}"
+            if statistics and statistics.view_count
+            else "N/A"
         )
         like_count = (
-            f"{statistics.like_count:,}" if statistics and statistics.like_count else "N/A"
+            f"{statistics.like_count:,}"
+            if statistics and statistics.like_count
+            else "N/A"
         )
 
         # Add row
@@ -1811,16 +1814,28 @@ async def _show_liked_videos_dry_run(
 
     if create_missing:
         console.print("[blue]📋 What would happen (--create-missing mode):[/blue]")
-        console.print(f"   [green]• Update liked status for {len(existing_video_ids)} existing videos[/green]")
-        console.print(f"   [yellow]• Create {len(missing_video_ids)} new videos with full metadata[/yellow]")
-        console.print(f"   [yellow]• Update liked status for {len(missing_video_ids)} new videos[/yellow]")
+        console.print(
+            f"   [green]• Update liked status for {len(existing_video_ids)} existing videos[/green]"
+        )
+        console.print(
+            f"   [yellow]• Create {len(missing_video_ids)} new videos with full metadata[/yellow]"
+        )
+        console.print(
+            f"   [yellow]• Update liked status for {len(missing_video_ids)} new videos[/yellow]"
+        )
     else:
         console.print("[blue]📋 What would happen (existing-only mode):[/blue]")
-        console.print(f"   [green]• Update liked status for {len(existing_video_ids)} existing videos[/green]")
+        console.print(
+            f"   [green]• Update liked status for {len(existing_video_ids)} existing videos[/green]"
+        )
         if missing_video_ids:
-            console.print(f"   [yellow]• Skip {len(missing_video_ids)} videos not in database[/yellow]")
+            console.print(
+                f"   [yellow]• Skip {len(missing_video_ids)} videos not in database[/yellow]"
+            )
             console.print()
-            console.print("[yellow]💡 To include missing videos, run with --create-missing[/yellow]")
+            console.print(
+                "[yellow]💡 To include missing videos, run with --create-missing[/yellow]"
+            )
 
     console.print()
     console.print("[yellow]💡 Remove --dry-run to perform actual sync[/yellow]")
@@ -1877,9 +1892,7 @@ def liked(
             )
             return
 
-        console.print(
-            "[blue]🔄 Fetching your liked videos...[/blue]"
-        )
+        console.print("[blue]🔄 Fetching your liked videos...[/blue]")
 
         # Fetch all liked videos from YouTube API (no artificial limit)
         liked_videos = await youtube_service.get_liked_videos()
@@ -1951,20 +1964,30 @@ def liked(
 
         console.print()
         console.print("[blue]📊 Database Status:[/blue]")
-        console.print(f"   [green]• Videos already in database: {len(existing_video_ids)}[/green]")
-        console.print(f"   [yellow]• Videos NOT in database: {len(missing_video_ids)}[/yellow]")
+        console.print(
+            f"   [green]• Videos already in database: {len(existing_video_ids)}[/green]"
+        )
+        console.print(
+            f"   [yellow]• Videos NOT in database: {len(missing_video_ids)}[/yellow]"
+        )
         console.print()
 
         # Handle dry-run mode
         if dry_run:
             await _show_liked_videos_dry_run(
-                liked_videos, user_id, existing_video_ids, missing_video_ids, create_missing
+                liked_videos,
+                user_id,
+                existing_video_ids,
+                missing_video_ids,
+                create_missing,
             )
             return
 
         # Process existing videos (default behavior)
         if existing_video_ids:
-            console.print(f"[blue]💾 Updating liked status for {len(existing_video_ids)} videos...[/blue]")
+            console.print(
+                f"[blue]💾 Updating liked status for {len(existing_video_ids)} videos...[/blue]"
+            )
 
             async for session in db_manager.get_session():
                 # Batch update liked status for existing videos
@@ -1978,8 +2001,10 @@ def liked(
                 # For videos that don't have user_video records yet, create them
                 videos_to_like = []
                 for video_id in existing_video_ids:
-                    existing_interaction = await user_video_repository.get_by_composite_key(
-                        session, user_id, video_id
+                    existing_interaction = (
+                        await user_video_repository.get_by_composite_key(
+                            session, user_id, video_id
+                        )
                     )
                     if not existing_interaction:
                         videos_to_like.append(video_id)
@@ -1995,20 +2020,28 @@ def liked(
 
                 await session.commit()
 
-            display_success(f"Updated liked status for {len(existing_video_ids)} videos")
+            display_success(
+                f"Updated liked status for {len(existing_video_ids)} videos"
+            )
 
         # Process missing videos only if --create-missing flag is set
         if missing_video_ids and create_missing:
             console.print()
-            console.print(f"[blue]💾 Creating {len(missing_video_ids)} new videos and channels...[/blue]")
+            console.print(
+                f"[blue]💾 Creating {len(missing_video_ids)} new videos and channels...[/blue]"
+            )
 
             videos_to_create = [v for v in liked_videos if v.id in missing_video_ids]
             created_videos, created_channels = await _create_videos_with_channels(
                 videos_to_create, user_id
             )
 
-            display_success(f"Created {len(created_videos)} new videos, {created_channels} new channels")
-            console.print(f"[blue]💾 Updating liked status for {len(created_videos)} videos...[/blue]")
+            display_success(
+                f"Created {len(created_videos)} new videos, {created_channels} new channels"
+            )
+            console.print(
+                f"[blue]💾 Updating liked status for {len(created_videos)} videos...[/blue]"
+            )
 
             # Update liked status for newly created videos
             async for session in db_manager.get_session():
@@ -2025,13 +2058,19 @@ def liked(
 
         elif missing_video_ids and not create_missing:
             console.print()
-            console.print(f"[yellow]ℹ️  Skipped {len(missing_video_ids)} videos not in your database[/yellow]")
-            console.print("[yellow]💡 To fetch metadata for these videos, run:[/yellow]")
+            console.print(
+                f"[yellow]ℹ️  Skipped {len(missing_video_ids)} videos not in your database[/yellow]"
+            )
+            console.print(
+                "[yellow]💡 To fetch metadata for these videos, run:[/yellow]"
+            )
             console.print("[yellow]   chronovista sync liked --create-missing[/yellow]")
 
         # Final summary
         console.print()
-        total_updated = len(existing_video_ids) + (len(missing_video_ids) if create_missing else 0)
+        total_updated = len(existing_video_ids) + (
+            len(missing_video_ids) if create_missing else 0
+        )
         console.print(
             Panel(
                 f"[green]✅ Liked videos synced successfully![/green]\n"

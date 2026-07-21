@@ -114,7 +114,9 @@ class TagBackfillService:
         self,
         distinct_tags: dict[str, int],
     ) -> tuple[
-        dict[str, list[tuple[str, int]]],  # groups: normalized_form -> [(raw_form, count), ...]
+        dict[
+            str, list[tuple[str, int]]
+        ],  # groups: normalized_form -> [(raw_form, count), ...]
         list[tuple[str, int]],  # skip_list: [(raw_form, count), ...]
     ]:
         """Normalize tags and group aliases by normalized form.
@@ -195,16 +197,10 @@ class TagBackfillService:
         groups, skip_list = self._normalize_and_group_core(distinct_tags)
 
         # Look up existing canonical tags so aliases reference the correct IDs
-        existing_ct_stmt = select(
-            CanonicalTagDB.normalized_form, CanonicalTagDB.id
-        )
+        existing_ct_stmt = select(CanonicalTagDB.normalized_form, CanonicalTagDB.id)
         result = await session.execute(existing_ct_stmt)
-        existing_ct_ids: dict[str, uuid.UUID] = {
-            row[0]: row[1] for row in result.all()
-        }
-        logger.info(
-            "Found %d existing canonical tags in DB", len(existing_ct_ids)
-        )
+        existing_ct_ids: dict[str, uuid.UUID] = {row[0]: row[1] for row in result.all()}
+        logger.info("Found %d existing canonical tags in DB", len(existing_ct_ids))
 
         canonical_tags_batch: list[dict[str, Any]] = []
         tag_aliases_batch: list[dict[str, Any]] = []
@@ -214,7 +210,9 @@ class TagBackfillService:
             ct_id = existing_ct_ids.get(normalized_form)
             if ct_id is None:
                 ct_id = uuid.UUID(bytes=uuid7().bytes)
-                canonical_form = self._normalization_service.select_canonical_form(aliases)
+                canonical_form = self._normalization_service.select_canonical_form(
+                    aliases
+                )
                 canonical_tags_batch.append(
                     {
                         "id": ct_id,
@@ -580,7 +578,9 @@ class TagBackfillService:
                 "tags_processed": len(distinct_tags),
                 "aliases_created": len(ta_records),
                 "canonical_tags_created": len(ct_records),
-                "canonical_tags_reused": len(ta_records) - len(ct_records) - len(skip_list),
+                "canonical_tags_reused": len(ta_records)
+                - len(ct_records)
+                - len(skip_list),
                 "skipped": len(skip_list),
                 "duration": elapsed,
                 "dry_run": True,
@@ -698,8 +698,7 @@ class TagBackfillService:
                 {
                     "normalized_form": normalized_form,
                     "aliases": [
-                        {"raw_form": rf, "occurrence_count": c}
-                        for rf, c in aliases
+                        {"raw_form": rf, "occurrence_count": c} for rf, c in aliases
                     ],
                     "is_known_false_merge": is_known,
                 }
@@ -792,9 +791,7 @@ class TagBackfillService:
         collision_candidates = self._detect_collisions(groups)
 
         # Step 7: Build skip list
-        skipped_tags = [
-            {"raw_form": rf, "occurrence_count": c} for rf, c in skip_list
-        ]
+        skipped_tags = [{"raw_form": rf, "occurrence_count": c} for rf, c in skip_list]
 
         # ---- Output ----
 
@@ -818,7 +815,9 @@ class TagBackfillService:
             f"[bold]Estimated canonical tags:[/bold]  {estimated_canonical_tags:>10,}\n"
             f"[bold]Tags skipped:[/bold]              {skip_count:>10,}"
         )
-        _console.print(Panel(summary_text, title="Analysis Summary", border_style="blue"))
+        _console.print(
+            Panel(summary_text, title="Analysis Summary", border_style="blue")
+        )
 
         # Top 20 canonical tags table
         top_table = Table(title="Top 20 Canonical Tags by Alias Count")
@@ -881,7 +880,9 @@ class TagBackfillService:
             skip_table.add_column("Raw Form", width=40)
             skip_table.add_column("Occurrences", justify="right", width=12)
             for entry in skipped_tags:
-                skip_table.add_row(repr(entry["raw_form"]), str(entry["occurrence_count"]))
+                skip_table.add_row(
+                    repr(entry["raw_form"]), str(entry["occurrence_count"])
+                )
             _console.print(skip_table)
         else:
             _console.print(

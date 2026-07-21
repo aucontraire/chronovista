@@ -76,9 +76,7 @@ class VideoTagSearchFilters(BaseModel):
     video_ids: list[VideoId] | None = Field(
         default=None, description="Filter by video IDs"
     )
-    tags: list[str] | None = Field(
-        default=None, description="Filter by specific tags"
-    )
+    tags: list[str] | None = Field(default=None, description="Filter by specific tags")
     tag_pattern: str | None = Field(
         default=None,
         min_length=1,

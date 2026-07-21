@@ -310,7 +310,9 @@ class ImageCacheService:
 
         # 404 / 410 → create .missing marker (FR-006)
         if status_code in (404, 410):
-            logger.info("Image not found (%d) at %s; creating .missing marker", status_code, url)
+            logger.info(
+                "Image not found (%d) at %s; creating .missing marker", status_code, url
+            )
             self._create_missing_marker(cache_path)
             return False, f"not_found_{status_code}"
 
@@ -331,32 +333,24 @@ class ImageCacheService:
         # Validate Content-Type contains "image/"
         content_type = response.headers.get("content-type", "")
         if "image/" not in content_type:
-            logger.warning(
-                "Non-image content-type '%s' from %s", content_type, url
-            )
+            logger.warning("Non-image content-type '%s' from %s", content_type, url)
             return False, f"invalid_content_type: {content_type}"
 
         body = response.content
 
         # Validate body size (FR-025, FR-029)
         if len(body) < _MIN_IMAGE_BYTES:
-            logger.warning(
-                "Image too small (%d bytes) from %s", len(body), url
-            )
+            logger.warning("Image too small (%d bytes) from %s", len(body), url)
             return False, f"too_small_{len(body)}"
 
         if len(body) > _MAX_IMAGE_BYTES:
-            logger.warning(
-                "Image too large (%d bytes) from %s", len(body), url
-            )
+            logger.warning("Image too large (%d bytes) from %s", len(body), url)
             return False, f"too_large_{len(body)}"
 
         # Atomic write: temp file → rename (POSIX atomic rename)
         try:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp_path = cache_path.with_name(
-                f".{cache_path.stem}.tmp.{uuid4()}"
-            )
+            tmp_path = cache_path.with_name(f".{cache_path.stem}.tmp.{uuid4()}")
             tmp_path.write_bytes(body)
             tmp_path.rename(cache_path)
             logger.info("Cached image: %s (%d bytes)", cache_path, len(body))
@@ -496,9 +490,7 @@ class ImageCacheService:
         if not cache_path.is_file():
             return None
         if cache_path.stat().st_size < _MIN_IMAGE_BYTES:
-            logger.warning(
-                "Corrupted cache file (too small), deleting: %s", cache_path
-            )
+            logger.warning("Corrupted cache file (too small), deleting: %s", cache_path)
             with contextlib.suppress(OSError):
                 cache_path.unlink()
             return None
@@ -597,16 +589,12 @@ class ImageCacheService:
 
         # 2. .missing marker
         if self._check_missing(cache_path):
-            logger.debug(
-                "Missing marker found for channel image: %s", channel_id
-            )
+            logger.debug("Missing marker found for channel image: %s", channel_id)
             return self._serve_placeholder("channel")
 
         # 3. Look up thumbnail_url from DB
         result = await session.execute(
-            select(ChannelDB.thumbnail_url).where(
-                ChannelDB.channel_id == channel_id
-            )
+            select(ChannelDB.thumbnail_url).where(ChannelDB.channel_id == channel_id)
         )
         row = result.first()
 
@@ -749,7 +737,7 @@ class ImageCacheService:
         progress_callback : Callable[[str, str], None] | None
             Optional callback for reporting backoff status.
         """
-        wait = min(initial_wait * (multiplier ** attempt), max_wait)
+        wait = min(initial_wait * (multiplier**attempt), max_wait)
         if progress_callback is not None:
             progress_callback(
                 "__backoff__",
@@ -975,9 +963,7 @@ class ImageCacheService:
         no_url = 0
 
         # Count total videos for reporting
-        count_result = await session.execute(
-            select(func.count()).select_from(VideoDB)
-        )
+        count_result = await session.execute(select(func.count()).select_from(VideoDB))
         total = count_result.scalar_one()
 
         # Stream video IDs in 1,000-row batches
@@ -996,9 +982,7 @@ class ImageCacheService:
                 break
 
             for video_id in batch:
-                cache_path = self._resolve_cache_path(
-                    "video", video_id, quality
-                )
+                cache_path = self._resolve_cache_path("video", video_id, quality)
                 missing_path = self._get_missing_path(cache_path)
 
                 # Check if already cached
@@ -1029,9 +1013,7 @@ class ImageCacheService:
                         missing_path.unlink()
 
                 # Deterministic URL
-                thumbnail_url = (
-                    f"https://i.ytimg.com/vi/{video_id}/{quality}.jpg"
-                )
+                thumbnail_url = f"https://i.ytimg.com/vi/{video_id}/{quality}.jpg"
 
                 # Fetch with retry
                 success, reason = await self._fetch_with_warm_retry(
@@ -1182,9 +1164,7 @@ class ImageCacheService:
                 self._config.videos_dir, recursive=True
             )
 
-        logger.info(
-            "Purge complete (type=%s): freed %d bytes", type_, bytes_freed
-        )
+        logger.info("Purge complete (type=%s): freed %d bytes", type_, bytes_freed)
         return bytes_freed
 
     def _purge_directory(self, directory: Path, *, recursive: bool) -> int:
@@ -1225,9 +1205,7 @@ class ImageCacheService:
 
         return bytes_freed
 
-    async def count_unavailable_cached(
-        self, session: AsyncSession, type_: str
-    ) -> int:
+    async def count_unavailable_cached(self, session: AsyncSession, type_: str) -> int:
         """Count cached images belonging to unavailable content.
 
         Queries the database for channels or videos whose
@@ -1301,9 +1279,7 @@ class ImageCacheService:
             try:
                 cache_path.unlink()
                 deleted = True
-                logger.info(
-                    "Invalidated cached channel image: %s", channel_id
-                )
+                logger.info("Invalidated cached channel image: %s", channel_id)
             except OSError:
                 logger.error(
                     "Failed to delete cached channel image for %s",
@@ -1315,9 +1291,7 @@ class ImageCacheService:
             try:
                 missing_path.unlink()
                 deleted = True
-                logger.info(
-                    "Removed .missing marker for channel: %s", channel_id
-                )
+                logger.info("Removed .missing marker for channel: %s", channel_id)
             except OSError:
                 logger.error(
                     "Failed to delete .missing marker for channel %s",
@@ -1327,7 +1301,6 @@ class ImageCacheService:
 
         if not deleted:
             logger.debug(
-                "No cached image or .missing marker to invalidate "
-                "for channel: %s",
+                "No cached image or .missing marker to invalidate " "for channel: %s",
                 channel_id,
             )

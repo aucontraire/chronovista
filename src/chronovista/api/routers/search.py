@@ -1,6 +1,5 @@
 """Search endpoints for transcript segment search."""
 
-
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,7 +31,11 @@ from chronovista.repositories.transcript_segment_repository import _escape_like_
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
-SEARCH_ERRORS = {**BAD_REQUEST_RESPONSE, **UNAUTHORIZED_RESPONSE, **INTERNAL_ERROR_RESPONSE}
+SEARCH_ERRORS = {
+    **BAD_REQUEST_RESPONSE,
+    **UNAUTHORIZED_RESPONSE,
+    **INTERNAL_ERROR_RESPONSE,
+}
 
 
 def _display_text(seg: "SegmentDB") -> str:
@@ -162,14 +165,15 @@ async def search_segments(
     # Build a FRESH query specifically for extracting available languages
     # This avoids any potential issues from the complex joined base query
     # Only query transcript_segments directly to get ACTUAL language codes in results
-    lang_base_query = (
-        select(SegmentDB.language_code)
-        .join(VideoDB, SegmentDB.video_id == VideoDB.video_id)
+    lang_base_query = select(SegmentDB.language_code).join(
+        VideoDB, SegmentDB.video_id == VideoDB.video_id
     )
 
     # Apply availability filter unless include_unavailable is True
     if not include_unavailable:
-        lang_base_query = lang_base_query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
+        lang_base_query = lang_base_query.where(
+            VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+        )
 
     # Apply the same text search filter (single phrase, both original and corrected text)
     lang_base_query = lang_base_query.where(
@@ -238,9 +242,7 @@ async def search_segments(
                 # (video_id, language_code) groups as our results.
                 # This keeps the window computation bounded.
                 and_(
-                    SegmentDB.video_id.in_(
-                        [s.video_id for s, _t, _v, _c in rows]
-                    ),
+                    SegmentDB.video_id.in_([s.video_id for s, _t, _v, _c in rows]),
                     SegmentDB.language_code.in_(
                         [s.language_code for s, _t, _v, _c in rows]
                     ),
@@ -249,18 +251,19 @@ async def search_segments(
             .cte("context_cte")
         )
 
-        context_query = (
-            select(
-                context_cte.c.seg_id,
-                context_cte.c.prev_text,
-                context_cte.c.next_text,
-            )
-            .where(context_cte.c.seg_id.in_(segment_ids))
-        )
+        context_query = select(
+            context_cte.c.seg_id,
+            context_cte.c.prev_text,
+            context_cte.c.next_text,
+        ).where(context_cte.c.seg_id.in_(segment_ids))
         context_result = await session.execute(context_query)
         for seg_id, prev_text, next_text in context_result.all():
-            ctx_before = prev_text[:200] if prev_text and len(prev_text) > 200 else prev_text
-            ctx_after = next_text[:200] if next_text and len(next_text) > 200 else next_text
+            ctx_before = (
+                prev_text[:200] if prev_text and len(prev_text) > 200 else prev_text
+            )
+            ctx_after = (
+                next_text[:200] if next_text and len(next_text) > 200 else next_text
+            )
             context_map[seg_id] = (ctx_before, ctx_after)
 
     # Build response items using the pre-fetched context
@@ -299,7 +302,9 @@ async def search_segments(
     )
 
 
-@router.get("/search/titles", response_model=TitleSearchResponse, responses=SEARCH_ERRORS)
+@router.get(
+    "/search/titles", response_model=TitleSearchResponse, responses=SEARCH_ERRORS
+)
 async def search_titles(
     q: str = Query(
         ..., min_length=2, max_length=500, description="Search query (2-500 characters)"
@@ -308,7 +313,9 @@ async def search_titles(
         False,
         description="Include unavailable records in results",
     ),
-    limit: int = Query(50, ge=1, le=50, description="Maximum results (1-50, default 50)"),
+    limit: int = Query(
+        50, ge=1, le=50, description="Maximum results (1-50, default 50)"
+    ),
     session: AsyncSession = Depends(get_db),
 ) -> TitleSearchResponse:
     """
@@ -370,7 +377,13 @@ async def search_titles(
 
     # Build results query with channel join, ordering, and limit
     results_query = (
-        select(VideoDB.video_id, VideoDB.title, ChannelDB.title.label("channel_title"), VideoDB.upload_date, VideoDB.availability_status)
+        select(
+            VideoDB.video_id,
+            VideoDB.title,
+            ChannelDB.title.label("channel_title"),
+            VideoDB.upload_date,
+            VideoDB.availability_status,
+        )
         .outerjoin(ChannelDB, VideoDB.channel_id == ChannelDB.channel_id)
         .where(*conditions)
         .order_by(VideoDB.upload_date.desc())
@@ -393,7 +406,9 @@ async def search_titles(
     return TitleSearchResponse(data=items, total_count=total_count)
 
 
-def _generate_snippet(description: str, query_terms: list[str], target_length: int = 200) -> str:
+def _generate_snippet(
+    description: str, query_terms: list[str], target_length: int = 200
+) -> str:
     """
     Generate a snippet from a description centered around the first match.
 
@@ -451,7 +466,11 @@ def _generate_snippet(description: str, query_terms: list[str], target_length: i
     return snippet
 
 
-@router.get("/search/descriptions", response_model=DescriptionSearchResponse, responses=SEARCH_ERRORS)
+@router.get(
+    "/search/descriptions",
+    response_model=DescriptionSearchResponse,
+    responses=SEARCH_ERRORS,
+)
 async def search_descriptions(
     q: str = Query(
         ..., min_length=2, max_length=500, description="Search query (2-500 characters)"
@@ -460,7 +479,9 @@ async def search_descriptions(
         False,
         description="Include unavailable records in results",
     ),
-    limit: int = Query(50, ge=1, le=50, description="Maximum results (1-50, default 50)"),
+    limit: int = Query(
+        50, ge=1, le=50, description="Maximum results (1-50, default 50)"
+    ),
     session: AsyncSession = Depends(get_db),
 ) -> DescriptionSearchResponse:
     """

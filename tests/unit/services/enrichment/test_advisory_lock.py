@@ -185,10 +185,12 @@ class TestFileBasedLock:
         """Test successful file-based lock acquisition."""
         lock = EnrichmentLock()
 
-        with patch("os.open") as mock_open, \
-             patch("os.write") as mock_write, \
-             patch("os.close") as mock_close, \
-             patch.object(Path, "exists", return_value=False):
+        with (
+            patch("os.open") as mock_open,
+            patch("os.write") as mock_write,
+            patch("os.close") as mock_close,
+            patch.object(Path, "exists", return_value=False),
+        ):
 
             mock_open.return_value = 3  # File descriptor
             acquired = await lock._acquire_file_lock(force=False)
@@ -203,9 +205,11 @@ class TestFileBasedLock:
         lock = EnrichmentLock()
 
         # Mock lock file exists and process is running
-        with patch.object(Path, "exists", return_value=True), \
-             patch.object(lock, "get_lock_holder_pid", return_value=os.getpid()), \
-             patch("os.kill") as mock_kill:
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(lock, "get_lock_holder_pid", return_value=os.getpid()),
+            patch("os.kill") as mock_kill,
+        ):
 
             # os.kill with signal 0 succeeds (process exists)
             mock_kill.return_value = None
@@ -219,13 +223,15 @@ class TestFileBasedLock:
         lock = EnrichmentLock()
 
         # Mock lock file exists but process is not running
-        with patch.object(Path, "exists", return_value=True), \
-             patch.object(lock, "get_lock_holder_pid", return_value=99999), \
-             patch("os.kill", side_effect=OSError("No such process")), \
-             patch.object(Path, "unlink") as mock_unlink, \
-             patch("os.open") as mock_open, \
-             patch("os.write"), \
-             patch("os.close"):
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(lock, "get_lock_holder_pid", return_value=99999),
+            patch("os.kill", side_effect=OSError("No such process")),
+            patch.object(Path, "unlink") as mock_unlink,
+            patch("os.open") as mock_open,
+            patch("os.write"),
+            patch("os.close"),
+        ):
 
             mock_open.return_value = 3
             acquired = await lock._acquire_file_lock(force=False)
@@ -237,11 +243,13 @@ class TestFileBasedLock:
         """Test file lock acquisition with force flag."""
         lock = EnrichmentLock()
 
-        with patch.object(Path, "exists", return_value=True), \
-             patch.object(Path, "unlink") as mock_unlink, \
-             patch("os.open") as mock_open, \
-             patch("os.write"), \
-             patch("os.close"):
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "unlink") as mock_unlink,
+            patch("os.open") as mock_open,
+            patch("os.write"),
+            patch("os.close"),
+        ):
 
             mock_open.return_value = 3
             acquired = await lock._acquire_file_lock(force=True)
@@ -254,9 +262,11 @@ class TestFileBasedLock:
         """Test file-based lock release."""
         lock = EnrichmentLock()
 
-        with patch.object(Path, "exists", return_value=True), \
-             patch.object(lock, "get_lock_holder_pid", return_value=os.getpid()), \
-             patch.object(Path, "unlink") as mock_unlink:
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(lock, "get_lock_holder_pid", return_value=os.getpid()),
+            patch.object(Path, "unlink") as mock_unlink,
+        ):
 
             lock._release_file_lock()
 
@@ -266,9 +276,11 @@ class TestFileBasedLock:
         """Test that lock is not released if owned by different process."""
         lock = EnrichmentLock()
 
-        with patch.object(Path, "exists", return_value=True), \
-             patch.object(lock, "get_lock_holder_pid", return_value=99999), \
-             patch.object(Path, "unlink") as mock_unlink:
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(lock, "get_lock_holder_pid", return_value=99999),
+            patch.object(Path, "unlink") as mock_unlink,
+        ):
 
             lock._release_file_lock()
 
@@ -278,8 +290,10 @@ class TestFileBasedLock:
         """Test retrieving lock holder PID from file."""
         lock = EnrichmentLock()
 
-        with patch.object(Path, "exists", return_value=True), \
-             patch.object(Path, "read_text", return_value="12345"):
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "read_text", return_value="12345"),
+        ):
 
             pid = lock.get_lock_holder_pid()
 
@@ -298,8 +312,10 @@ class TestFileBasedLock:
         """Test get_lock_holder_pid with invalid file content."""
         lock = EnrichmentLock()
 
-        with patch.object(Path, "exists", return_value=True), \
-             patch.object(Path, "read_text", return_value="not_a_number"):
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "read_text", return_value="not_a_number"),
+        ):
 
             pid = lock.get_lock_holder_pid()
 
@@ -332,12 +348,14 @@ class TestLockAcquireReleaseCycle:
         """Test acquiring and releasing file-based lock."""
         lock = EnrichmentLock()
 
-        with patch("os.open") as mock_open, \
-             patch("os.write"), \
-             patch("os.close"), \
-             patch.object(Path, "exists", side_effect=[False, True]), \
-             patch.object(lock, "get_lock_holder_pid", return_value=os.getpid()), \
-             patch.object(Path, "unlink") as mock_unlink:
+        with (
+            patch("os.open") as mock_open,
+            patch("os.write"),
+            patch("os.close"),
+            patch.object(Path, "exists", side_effect=[False, True]),
+            patch.object(lock, "get_lock_holder_pid", return_value=os.getpid()),
+            patch.object(Path, "unlink") as mock_unlink,
+        ):
 
             mock_open.return_value = 3
 
@@ -364,10 +382,12 @@ class TestLockAcquireReleaseCycle:
         # Mock PostgreSQL lock failure
         mock_session.execute = AsyncMock(side_effect=Exception("DB error"))
 
-        with patch("os.open") as mock_open, \
-             patch("os.write"), \
-             patch("os.close"), \
-             patch.object(Path, "exists", return_value=False):
+        with (
+            patch("os.open") as mock_open,
+            patch("os.write"),
+            patch("os.close"),
+            patch.object(Path, "exists", return_value=False),
+        ):
 
             mock_open.return_value = 3
             acquired = await lock.acquire(mock_session)
@@ -393,7 +413,9 @@ class TestLockForceFlag:
         unlock_all_result = MagicMock()
         lock_result = MagicMock()
         lock_result.fetchone.return_value = (True,)
-        mock_session.execute = AsyncMock(side_effect=[prerequisite_result, unlock_all_result, lock_result])
+        mock_session.execute = AsyncMock(
+            side_effect=[prerequisite_result, unlock_all_result, lock_result]
+        )
 
         acquired = await lock.acquire(mock_session, force=True)
 
@@ -405,11 +427,13 @@ class TestLockForceFlag:
         """Test that force=True removes stale file lock."""
         lock = EnrichmentLock()
 
-        with patch.object(Path, "exists", return_value=True), \
-             patch.object(Path, "unlink") as mock_unlink, \
-             patch("os.open") as mock_open, \
-             patch("os.write"), \
-             patch("os.close"):
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "unlink") as mock_unlink,
+            patch("os.open") as mock_open,
+            patch("os.write"),
+            patch("os.close"),
+        ):
 
             mock_open.return_value = 3
             acquired = await lock.acquire(session=None, force=True)
@@ -433,9 +457,11 @@ class TestLockErrorHandling:
         mock_session.execute = AsyncMock(return_value=pg_result)
 
         # Mock file lock also held
-        with patch.object(Path, "exists", return_value=True), \
-             patch.object(lock, "get_lock_holder_pid", return_value=12345), \
-             patch("os.kill"):
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(lock, "get_lock_holder_pid", return_value=12345),
+            patch("os.kill"),
+        ):
 
             with pytest.raises(LockAcquisitionError) as exc_info:
                 await lock.acquire(mock_session, force=False)

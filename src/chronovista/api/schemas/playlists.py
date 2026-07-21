@@ -25,11 +25,15 @@ class PlaylistListItem(BaseModel):
 
     model_config = ConfigDict(strict=True, from_attributes=True)
 
-    playlist_id: str = Field(..., description="Playlist ID (YouTube, system, or internal)")
+    playlist_id: str = Field(
+        ..., description="Playlist ID (YouTube, system, or internal)"
+    )
     title: str = Field(..., description="Playlist title")
     description: str | None = Field(None, description="Playlist description")
     video_count: int = Field(0, description="Number of videos in playlist")
-    privacy_status: str = Field(..., description="Privacy status: public, private, unlisted")
+    privacy_status: str = Field(
+        ..., description="Privacy status: public, private, unlisted"
+    )
     is_linked: bool = Field(..., description="Whether playlist is linked to YouTube")
 
     @model_validator(mode="before")

@@ -150,7 +150,9 @@ class TestScanAuditFlag:
             finally:
                 loop.close()
 
-        with patch("chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run):
+        with patch(
+            "chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run
+        ):
             result = runner.invoke(entity_app, ["scan", "--audit"])
 
         assert result.exit_code == 0
@@ -200,7 +202,9 @@ class TestScanAuditFlag:
             finally:
                 loop.close()
 
-        with patch("chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run):
+        with patch(
+            "chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run
+        ):
             result = runner.invoke(entity_app, ["scan", "--audit"])
 
         assert result.exit_code == 0
@@ -248,7 +252,9 @@ class TestScanAuditFlag:
             finally:
                 loop.close()
 
-        with patch("chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run):
+        with patch(
+            "chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run
+        ):
             result = runner.invoke(entity_app, ["scan", "--audit"])
 
         assert result.exit_code == 0
@@ -290,7 +296,9 @@ class TestScanAuditFlag:
             finally:
                 loop.close()
 
-        with patch("chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run):
+        with patch(
+            "chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run
+        ):
             result = runner.invoke(entity_app, ["scan", "--audit"])
 
         assert result.exit_code == 0
@@ -329,7 +337,9 @@ class TestScanAuditFlag:
             finally:
                 loop.close()
 
-        with patch("chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run):
+        with patch(
+            "chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run
+        ):
             result = runner.invoke(entity_app, ["scan", "--audit"])
 
         assert result.exit_code == 0
@@ -364,7 +374,9 @@ class TestScanAuditFlag:
             finally:
                 loop.close()
 
-        with patch("chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run):
+        with patch(
+            "chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run
+        ):
             result = runner.invoke(entity_app, ["scan", "--audit"])
 
         assert result.exit_code == 0
@@ -425,7 +437,9 @@ class TestScanAuditFlag:
             finally:
                 loop.close()
 
-        with patch("chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run):
+        with patch(
+            "chronovista.cli.entity_commands.asyncio.run", side_effect=fake_asyncio_run
+        ):
             result = runner.invoke(entity_app, ["scan", "--audit", "--dry-run"])
 
         assert result.exit_code == 0

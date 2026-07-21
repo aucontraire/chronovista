@@ -49,7 +49,9 @@ class TakeoutWatchEntryMinimalFactory(factory.Factory[TakeoutWatchEntry]):
         model = TakeoutWatchEntry
 
     # Only required fields
-    title: Any = factory.LazyFunction(lambda: "Watched Python Tutorial - Complete Course")
+    title: Any = factory.LazyFunction(
+        lambda: "Watched Python Tutorial - Complete Course"
+    )
     title_url: Any = factory.LazyFunction(
         lambda: "https://www.youtube.com/watch?v=9bZkp7q19f0"
     )
@@ -76,7 +78,9 @@ class TakeoutWatchEntryWithTimeFactory(factory.Factory[TakeoutWatchEntry]):
         lambda: "https://www.youtube.com/watch?v=3tmd-ClpJxA"
     )
     video_id: Any = factory.LazyFunction(lambda: "3tmd-ClpJxA")
-    channel_name: Any = factory.LazyFunction(lambda: "The Late Show with Stephen Colbert")
+    channel_name: Any = factory.LazyFunction(
+        lambda: "The Late Show with Stephen Colbert"
+    )
     channel_url: Any = factory.LazyFunction(
         lambda: "https://www.youtube.com/channel/UCMtFAi84ehTSYSE9XoHefig"
     )

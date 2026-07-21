@@ -64,9 +64,7 @@ class PlaylistSeeder(BaseSeeder):
     def get_data_type(self) -> str:
         return "playlists"
 
-    async def clear_existing_user_playlists(
-        self, session: AsyncSession
-    ) -> int:
+    async def clear_existing_user_playlists(self, session: AsyncSession) -> int:
         """
         Clear all user playlists (those with channel_id=NULL).
 
@@ -268,4 +266,3 @@ class PlaylistSeeder(BaseSeeder):
         else:
             # Default to PRIVATE for "Private" or any unknown value
             return PrivacyStatus.PRIVATE
-

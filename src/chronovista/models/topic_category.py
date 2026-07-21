@@ -28,7 +28,8 @@ class TopicCategoryBase(BaseModel):
         description="Parent topic ID for hierarchical structure (validated)",
     )
     topic_type: TopicType = Field(
-        default=TopicType.YOUTUBE, description="Type of topic: youtube (official) or custom"
+        default=TopicType.YOUTUBE,
+        description="Type of topic: youtube (official) or custom",
     )
 
     # Dynamic topic resolution fields (Option 4 implementation)

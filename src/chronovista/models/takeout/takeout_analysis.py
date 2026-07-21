@@ -40,9 +40,7 @@ class ChannelSummary(BaseModel):
     first_watched: datetime | None = Field(
         None, description="First video watched from channel"
     )
-    last_watched: datetime | None = Field(
-        None, description="Most recent video watched"
-    )
+    last_watched: datetime | None = Field(None, description="Most recent video watched")
 
     # Engagement indicators
     videos_in_playlists: int = Field(
@@ -229,7 +227,8 @@ class TakeoutAnalysis(BaseModel):
 
     # Analysis metadata
     analyzed_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC), description="When this analysis was performed"
+        default_factory=lambda: datetime.now(UTC),
+        description="When this analysis was performed",
     )
     analysis_version: str = Field(
         "1.0", description="Version of analysis algorithm used"

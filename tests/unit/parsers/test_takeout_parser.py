@@ -399,7 +399,9 @@ class TestTakeoutParserFileProcessing:
         file_path = Path(temp_file.name)
 
         try:
-            with pytest.raises(ValidationError, match="Expected JSON array at root level"):
+            with pytest.raises(
+                ValidationError, match="Expected JSON array at root level"
+            ):
                 list(TakeoutParser.parse_watch_history_file(file_path))
         finally:
             file_path.unlink()

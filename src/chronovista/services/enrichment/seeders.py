@@ -45,9 +45,7 @@ class TopicSeedResult(BaseModel):
     )
     deleted: int = Field(default=0, description="Number of topics deleted (force mode)")
     failed: int = Field(default=0, description="Number of topics that failed to seed")
-    aliases_seeded: int = Field(
-        default=0, description="Number of topic aliases seeded"
-    )
+    aliases_seeded: int = Field(default=0, description="Number of topic aliases seeded")
     aliases_skipped: int = Field(
         default=0, description="Number of aliases skipped (already exist)"
     )
@@ -176,7 +174,11 @@ class TopicSeeder:
         "/m/03hf_rm": ("Music video game", "/m/0bzvm2", "Music_video_game"),
         "/m/04q1x3q": ("Puzzle video game", "/m/0bzvm2", "Puzzle_video_game"),
         "/m/01sjng": ("Racing video game", "/m/0bzvm2", "Racing_video_game"),
-        "/m/0403zg": ("Role-playing video game", "/m/0bzvm2", "Role-playing_video_game"),
+        "/m/0403zg": (
+            "Role-playing video game",
+            "/m/0bzvm2",
+            "Role-playing_video_game",
+        ),
         "/m/021bms": ("Simulation video game", "/m/0bzvm2", "Simulation_video_game"),
         "/m/022lj": ("Strategy video game", "/m/0bzvm2", "Strategy_video_game"),
         "/m/03npn": ("Sports game", "/m/0bzvm2", "Sports_game"),
@@ -199,7 +201,11 @@ class TopicSeeder:
         # =================================================================
         # ENTERTAINMENT CHILDREN (5 subcategories)
         # =================================================================
-        "/m/09kqc": ("Humor", "/m/02jjt", "Humour"),  # Note: Wikipedia uses British spelling
+        "/m/09kqc": (
+            "Humor",
+            "/m/02jjt",
+            "Humour",
+        ),  # Note: Wikipedia uses British spelling
         "/m/02vxn": ("Movies", "/m/02jjt", "Film"),
         "/m/05qjc": ("Performing arts", "/m/02jjt", "Performing_arts"),
         "/m/066wd": ("Professional wrestling", "/m/02jjt", "Professional_wrestling"),
@@ -212,7 +218,11 @@ class TopicSeeder:
         "/m/02wbm": ("Food", "/m/019_rr", "Food"),
         "/m/03glg": ("Hobby", "/m/019_rr", "Hobby"),
         "/m/068hy": ("Pets", "/m/019_rr", "Pet"),
-        "/m/041xxh": ("Physical attractiveness [Beauty]", "/m/019_rr", "Physical_attractiveness"),
+        "/m/041xxh": (
+            "Physical attractiveness [Beauty]",
+            "/m/019_rr",
+            "Physical_attractiveness",
+        ),
         "/m/07c1v": ("Technology", "/m/019_rr", "Technology"),
         "/m/07bxq": ("Tourism", "/m/019_rr", "Tourism"),
         "/m/0kt51": ("Vehicles", "/m/019_rr", "Vehicle"),
@@ -977,7 +987,11 @@ class CategorySeeder:
                 category_id = item.get("id")
                 snippet = item.get("snippet", {})
                 name = snippet.get("title") if isinstance(snippet, dict) else None
-                assignable = snippet.get("assignable", True) if isinstance(snippet, dict) else True
+                assignable = (
+                    snippet.get("assignable", True)
+                    if isinstance(snippet, dict)
+                    else True
+                )
             else:
                 # Pydantic model
                 category_id = item.id

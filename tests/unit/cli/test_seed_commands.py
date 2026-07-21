@@ -53,9 +53,7 @@ class TestTopicsCommandDryRun:
         mock_seeder_class.get_child_count.return_value = 51
         mock_seeder_class.PARENT_TOPIC_IDS = {"/m/04rlf"}  # Music only for simplicity
         mock_seeder_class.get_topic_by_id.return_value = ("Music", None, "Music")
-        mock_seeder_class.get_topics_by_parent.return_value = [
-            ("/m/03_d0", "Jazz")
-        ]
+        mock_seeder_class.get_topics_by_parent.return_value = [("/m/03_d0", "Jazz")]
 
         result = runner.invoke(seed_app, ["topics", "--dry-run"])
 
@@ -102,12 +100,7 @@ class TestTopicsCommandNormalRun:
 
         # Mock successful seeding result
         mock_seeder.seed.return_value = TopicSeedResult(
-            created=58,
-            skipped=0,
-            deleted=0,
-            failed=0,
-            duration_seconds=2.5,
-            errors=[]
+            created=58, skipped=0, deleted=0, failed=0, duration_seconds=2.5, errors=[]
         )
 
         # Mock static methods through TopicSeeder class
@@ -142,7 +135,7 @@ class TestTopicsCommandNormalRun:
             deleted=0,
             failed=3,
             duration_seconds=2.5,
-            errors=["Error 1", "Error 2", "Error 3"]
+            errors=["Error 1", "Error 2", "Error 3"],
         )
 
         # Mock static methods through TopicSeeder class
@@ -163,7 +156,9 @@ class TestTopicsCommandNormalRun:
     ) -> None:
         """Test handling of database errors."""
         # Mock database session error
-        mock_db_manager.get_session.side_effect = Exception("Database connection failed")
+        mock_db_manager.get_session.side_effect = Exception(
+            "Database connection failed"
+        )
 
         result = runner.invoke(seed_app, ["topics"])
 
@@ -191,12 +186,7 @@ class TestTopicsCommandForceFlag:
 
         # Mock force seeding result (deleted and created)
         mock_seeder.seed.return_value = TopicSeedResult(
-            created=58,
-            skipped=0,
-            deleted=58,
-            failed=0,
-            duration_seconds=3.0,
-            errors=[]
+            created=58, skipped=0, deleted=58, failed=0, duration_seconds=3.0, errors=[]
         )
 
         # Mock static methods through TopicSeeder class
@@ -240,12 +230,13 @@ class TestCategoriesCommandDryRun:
     """Test 'chronovista seed categories --dry-run' command."""
 
     @patch("chronovista.cli.commands.seed.container")
-    def test_categories_dry_run_shows_preview(
-        self, mock_container: MagicMock
-    ) -> None:
+    def test_categories_dry_run_shows_preview(self, mock_container: MagicMock) -> None:
         """Test that --dry-run shows what would be seeded."""
         # Mock CategorySeeder static method
-        with patch("chronovista.services.enrichment.seeders.CategorySeeder.get_expected_quota_cost", return_value=7):
+        with patch(
+            "chronovista.services.enrichment.seeders.CategorySeeder.get_expected_quota_cost",
+            return_value=7,
+        ):
             result = runner.invoke(seed_app, ["categories", "--dry-run"])
 
             assert result.exit_code == 0
@@ -260,7 +251,10 @@ class TestCategoriesCommandDryRun:
     ) -> None:
         """Test --dry-run with custom regions."""
         # Mock CategorySeeder static method
-        with patch("chronovista.services.enrichment.seeders.CategorySeeder.get_expected_quota_cost", return_value=3):
+        with patch(
+            "chronovista.services.enrichment.seeders.CategorySeeder.get_expected_quota_cost",
+            return_value=3,
+        ):
             result = runner.invoke(
                 seed_app, ["categories", "--dry-run", "--regions", "US,GB,FR"]
             )
@@ -299,7 +293,7 @@ class TestCategoriesCommandNormalRun:
             failed=0,
             duration_seconds=5.0,
             quota_used=7,
-            errors=[]
+            errors=[],
         )
 
         result = runner.invoke(seed_app, ["categories"])
@@ -332,12 +326,10 @@ class TestCategoriesCommandNormalRun:
             failed=0,
             duration_seconds=3.0,
             quota_used=3,
-            errors=[]
+            errors=[],
         )
 
-        result = runner.invoke(
-            seed_app, ["categories", "--regions", "US,GB,FR"]
-        )
+        result = runner.invoke(seed_app, ["categories", "--regions", "US,GB,FR"])
 
         # Verify regions were parsed correctly
         mock_seeder.seed.assert_called_once()
@@ -394,7 +386,7 @@ class TestCategoriesCommandNormalRun:
             failed=0,
             duration_seconds=4.0,
             quota_used=5,
-            errors=["Region GB failed: API error", "Region JP failed: timeout"]
+            errors=["Region GB failed: API error", "Region JP failed: timeout"],
         )
 
         result = runner.invoke(seed_app, ["categories"])
@@ -430,7 +422,7 @@ class TestCategoriesCommandForceFlag:
             failed=0,
             duration_seconds=5.0,
             quota_used=7,
-            errors=[]
+            errors=[],
         )
 
         result = runner.invoke(seed_app, ["categories", "--force"])
@@ -462,12 +454,7 @@ class TestSeedCommandOutputFormatting:
         mock_container.create_topic_seeder.return_value = mock_seeder
 
         mock_seeder.seed.return_value = TopicSeedResult(
-            created=58,
-            skipped=0,
-            deleted=0,
-            failed=0,
-            duration_seconds=2.5,
-            errors=[]
+            created=58, skipped=0, deleted=0, failed=0, duration_seconds=2.5, errors=[]
         )
 
         # Mock static methods through TopicSeeder class
@@ -505,7 +492,7 @@ class TestSeedCommandOutputFormatting:
             failed=0,
             duration_seconds=5.0,
             quota_used=7,
-            errors=[]
+            errors=[],
         )
 
         result = runner.invoke(seed_app, ["categories"])
@@ -556,8 +543,12 @@ class TestSeedCommandExitCodes:
         mock_container.create_topic_seeder.return_value = mock_seeder
 
         mock_seeder.seed.return_value = TopicSeedResult(
-            created=55, skipped=0, deleted=0, failed=3, duration_seconds=2.5,
-            errors=["Error 1", "Error 2", "Error 3"]
+            created=55,
+            skipped=0,
+            deleted=0,
+            failed=3,
+            duration_seconds=2.5,
+            errors=["Error 1", "Error 2", "Error 3"],
         )
 
         # Mock static methods through TopicSeeder class

@@ -103,7 +103,10 @@ _REMOVAL_TEXT_PATTERNS: list[tuple[str, str]] = [
     ("copyright claim", "text_copyright"),
     ("violating youtube", "text_tos_violation"),
     ("terms of service", "text_tos_violation"),
-    ("account associated with this video has been terminated", "text_account_terminated"),
+    (
+        "account associated with this video has been terminated",
+        "text_account_terminated",
+    ),
 ]
 
 
@@ -357,12 +360,13 @@ class PageParser:
             # incomplete videoDetails (no shortDescription) and no like
             # count in ytInitialData.  The full data is often present in
             # dedicated HTML elements (#eow-description, like button).
-            desc_needs_supplement = (
-                result.description is None
-                or (result.description.endswith("...") and len(result.description) < 200)
+            desc_needs_supplement = result.description is None or (
+                result.description.endswith("...") and len(result.description) < 200
             )
             if desc_needs_supplement or result.like_count is None:
-                self._supplement_from_html(result, html, supplement_desc=desc_needs_supplement)
+                self._supplement_from_html(
+                    result, html, supplement_desc=desc_needs_supplement
+                )
             return result
 
         # Fall back to meta tag extraction
@@ -373,9 +377,7 @@ class PageParser:
         # If neither found data and Selenium is available, try Selenium
         if SELENIUM_AVAILABLE:
             try:
-                selenium_result = await self._extract_with_selenium(
-                    snapshot
-                )
+                selenium_result = await self._extract_with_selenium(snapshot)
                 if selenium_result is not None:
                     return selenium_result
             except TimeoutError:
@@ -383,9 +385,7 @@ class PageParser:
                     "Selenium timeout for snapshot %s",
                     snapshot.timestamp,
                 )
-                return RecoveredVideoData(
-                    snapshot_timestamp=snapshot.timestamp
-                )
+                return RecoveredVideoData(snapshot_timestamp=snapshot.timestamp)
 
         # No data could be recovered
         return RecoveredVideoData(snapshot_timestamp=snapshot.timestamp)
@@ -461,9 +461,9 @@ class PageParser:
         publish_date_str = renderer.get("publishDate")
         if publish_date_str:
             with contextlib.suppress(ValueError, TypeError):
-                upload_date = datetime.strptime(
-                    publish_date_str, "%Y-%m-%d"
-                ).replace(tzinfo=UTC)
+                upload_date = datetime.strptime(publish_date_str, "%Y-%m-%d").replace(
+                    tzinfo=UTC
+                )
 
         category_name = renderer.get("category")
         if category_name:
@@ -539,9 +539,7 @@ class PageParser:
             full_desc = eow_desc.get_text().strip()
             # Clean up excessive consecutive newlines
             full_desc = re.sub(r"\n{3,}", "\n\n", full_desc)
-            if full_desc and (
-                description is None or len(full_desc) > len(description)
-            ):
+            if full_desc and (description is None or len(full_desc) > len(description)):
                 description = full_desc
 
         # Extract og:image -> thumbnail_url
@@ -552,9 +550,7 @@ class PageParser:
 
         # Extract all og:video:tag -> tags list
         tags: list[str] = []
-        for tag_meta in soup.find_all(
-            "meta", attrs={"property": "og:video:tag"}
-        ):
+        for tag_meta in soup.find_all("meta", attrs={"property": "og:video:tag"}):
             content = tag_meta.get("content")
             if content:
                 tags.append(str(content))
@@ -566,9 +562,9 @@ class PageParser:
             date_str = date_meta.get("content")
             if date_str:
                 with contextlib.suppress(ValueError, TypeError):
-                    upload_date = datetime.strptime(
-                        str(date_str), "%Y-%m-%d"
-                    ).replace(tzinfo=UTC)
+                    upload_date = datetime.strptime(str(date_str), "%Y-%m-%d").replace(
+                        tzinfo=UTC
+                    )
 
         # Extract itemprop="interactionCount" -> view_count
         view_count: int | None = None
@@ -635,17 +631,19 @@ class PageParser:
                 break
 
         # Check if any usable data was found
-        has_any = any([
-            title,
-            description,
-            thumbnail_url,
-            tags,
-            upload_date,
-            view_count is not None,
-            category_id,
-            channel_id,
-            channel_name_hint,
-        ])
+        has_any = any(
+            [
+                title,
+                description,
+                thumbnail_url,
+                tags,
+                upload_date,
+                view_count is not None,
+                category_id,
+                channel_id,
+                channel_name_hint,
+            ]
+        )
 
         if not has_any:
             return None
@@ -701,9 +699,7 @@ class PageParser:
         try:
             text = json.dumps(data)
             # Search for the "N likes" pattern in accessibility labels
-            like_match = re.search(
-                r'"label"\s*:\s*"([\d,]+)\s+likes?"', text
-            )
+            like_match = re.search(r'"label"\s*:\s*"([\d,]+)\s+likes?"', text)
             if like_match:
                 count_str = like_match.group(1).replace(",", "")
                 return int(count_str)
@@ -759,9 +755,7 @@ class PageParser:
         if result.like_count is None:
             result.like_count = self._extract_like_count_from_html(soup)
 
-    def _extract_like_count_from_html(
-        self, soup: BeautifulSoup
-    ) -> int | None:
+    def _extract_like_count_from_html(self, soup: BeautifulSoup) -> int | None:
         """
         Extract like count from HTML elements as a fallback.
 
@@ -798,13 +792,9 @@ class PageParser:
         """
         # Collect like buttons (exclude dislike) once for patterns 1-2
         like_buttons: list[Tag] = []
-        for btn in soup.find_all(
-            "button", class_="like-button-renderer-like-button"
-        ):
+        for btn in soup.find_all("button", class_="like-button-renderer-like-button"):
             classes = btn.get("class")
-            if classes is not None and any(
-                "dislike" in str(c) for c in classes
-            ):
+            if classes is not None and any("dislike" in str(c) for c in classes):
                 continue
             like_buttons.append(btn)
 
@@ -968,9 +958,7 @@ class PageParser:
             return None
 
         # Try JSON extraction first
-        result = self._extract_channel_from_json(
-            html, snapshot.timestamp, channel_id
-        )
+        result = self._extract_channel_from_json(html, snapshot.timestamp, channel_id)
         if result is not None:
             return result
 
@@ -1024,9 +1012,7 @@ class PageParser:
             return None
 
         # --- channelMetadataRenderer ---
-        metadata_renderer = (
-            data.get("metadata", {}).get("channelMetadataRenderer", {})
-        )
+        metadata_renderer = data.get("metadata", {}).get("channelMetadataRenderer", {})
         if not metadata_renderer:
             return None
 
@@ -1061,37 +1047,30 @@ class PageParser:
                 country = None
 
         # --- c4TabbedHeaderRenderer (subscriber + video counts) ---
-        header_renderer = (
-            data.get("header", {}).get("c4TabbedHeaderRenderer", {})
-        )
+        header_renderer = data.get("header", {}).get("c4TabbedHeaderRenderer", {})
         subscriber_count: int | None = None
         video_count: int | None = None
 
-        sub_text = (
-            header_renderer.get("subscriberCountText", {})
-            .get("simpleText", "")
-        )
+        sub_text = header_renderer.get("subscriberCountText", {}).get("simpleText", "")
         if sub_text:
             subscriber_count = self._parse_subscriber_count(sub_text)
 
-        video_text_runs = (
-            header_renderer.get("videosCountText", {}).get("runs", [])
-        )
+        video_text_runs = header_renderer.get("videosCountText", {}).get("runs", [])
         if video_text_runs:
-            video_count = self._parse_video_count(
-                video_text_runs[0].get("text", "")
-            )
+            video_count = self._parse_video_count(video_text_runs[0].get("text", ""))
 
         # Check if any usable data was found
-        has_any = any([
-            title,
-            description,
-            thumbnail_url,
-            subscriber_count is not None,
-            video_count is not None,
-            country,
-            default_language,
-        ])
+        has_any = any(
+            [
+                title,
+                description,
+                thumbnail_url,
+                subscriber_count is not None,
+                video_count is not None,
+                country,
+                default_language,
+            ]
+        )
         if not has_any:
             return None
 

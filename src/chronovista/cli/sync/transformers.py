@@ -224,7 +224,11 @@ class DataTransformers:
             channel_name_hint = snippet.channel_title
 
         # Handle made_for_kids fields - ensure bool, not None
-        made_for_kids = status.made_for_kids if status and status.made_for_kids is not None else False
+        made_for_kids = (
+            status.made_for_kids
+            if status and status.made_for_kids is not None
+            else False
+        )
         self_declared = (
             status.self_declared_made_for_kids
             if status and status.self_declared_made_for_kids is not None
@@ -247,7 +251,9 @@ class DataTransformers:
         )
 
     @staticmethod
-    def extract_topic_ids(channel_or_video: YouTubeChannelResponse | YouTubeVideoResponse) -> list[str]:
+    def extract_topic_ids(
+        channel_or_video: YouTubeChannelResponse | YouTubeVideoResponse,
+    ) -> list[str]:
         """
         Extract topic IDs from a channel or video response.
 

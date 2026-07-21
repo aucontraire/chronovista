@@ -112,9 +112,7 @@ class TestChannelDetailAvailableStatus:
             )
             await test_data_session.commit()
 
-            response = await async_client.get(
-                f"/api/v1/channels/{channel.channel_id}"
-            )
+            response = await async_client.get(f"/api/v1/channels/{channel.channel_id}")
             assert response.status_code == 200
             data = response.json()
             assert data["data"]["channel_id"] == channel.channel_id
@@ -142,9 +140,7 @@ class TestChannelDetailUnavailableStatuses:
             )
             await test_data_session.commit()
 
-            response = await async_client.get(
-                f"/api/v1/channels/{channel.channel_id}"
-            )
+            response = await async_client.get(f"/api/v1/channels/{channel.channel_id}")
             assert response.status_code == 200
             data = response.json()
             assert data["data"]["channel_id"] == channel.channel_id
@@ -168,9 +164,7 @@ class TestChannelDetailUnavailableStatuses:
             )
             await test_data_session.commit()
 
-            response = await async_client.get(
-                f"/api/v1/channels/{channel.channel_id}"
-            )
+            response = await async_client.get(f"/api/v1/channels/{channel.channel_id}")
             assert response.status_code == 200
             data = response.json()
             assert data["data"]["channel_id"] == channel.channel_id
@@ -194,9 +188,7 @@ class TestChannelDetailUnavailableStatuses:
             )
             await test_data_session.commit()
 
-            response = await async_client.get(
-                f"/api/v1/channels/{channel.channel_id}"
-            )
+            response = await async_client.get(f"/api/v1/channels/{channel.channel_id}")
             assert response.status_code == 200
             data = response.json()
             assert data["data"]["channel_id"] == channel.channel_id
@@ -245,9 +237,7 @@ class TestChannelDetailResponseSchema:
             )
             await test_data_session.commit()
 
-            response = await async_client.get(
-                f"/api/v1/channels/{channel.channel_id}"
-            )
+            response = await async_client.get(f"/api/v1/channels/{channel.channel_id}")
             assert response.status_code == 200
             data = response.json()
             assert "availability_status" in data["data"]
@@ -271,9 +261,7 @@ class TestChannelDetailResponseSchema:
             )
             await test_data_session.commit()
 
-            response = await async_client.get(
-                f"/api/v1/channels/{channel.channel_id}"
-            )
+            response = await async_client.get(f"/api/v1/channels/{channel.channel_id}")
             assert response.status_code == 200
             data = response.json()
             channel_data = data["data"]
@@ -318,9 +306,7 @@ class TestChannelDetailResponseSchema:
             )
             await test_data_session.commit()
 
-            response = await async_client.get(
-                f"/api/v1/channels/{channel.channel_id}"
-            )
+            response = await async_client.get(f"/api/v1/channels/{channel.channel_id}")
             assert response.status_code == 200
             data = response.json()
             channel_data = data["data"]

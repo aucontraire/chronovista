@@ -196,9 +196,7 @@ async def seed_scan_data(
 
         # ---- Video ---------------------------------------------------------
         existing_video = (
-            await session.execute(
-                select(VideoDB).where(VideoDB.video_id == _VIDEO_ID)
-            )
+            await session.execute(select(VideoDB).where(VideoDB.video_id == _VIDEO_ID))
         ).scalar_one_or_none()
         if not existing_video:
             video = VideoDB(
@@ -232,9 +230,7 @@ async def seed_scan_data(
         # ---- Inactive (merged) NamedEntity ---------------------------------
         existing_inactive = (
             await session.execute(
-                select(NamedEntityDB).where(
-                    NamedEntityDB.id == inactive_entity_uuid
-                )
+                select(NamedEntityDB).where(NamedEntityDB.id == inactive_entity_uuid)
             )
         ).scalar_one_or_none()
         if not existing_inactive:
@@ -264,9 +260,7 @@ async def seed_scan_data(
                 NamedEntityDB.id.in_([entity_uuid, inactive_entity_uuid])
             )
         )
-        await session.execute(
-            delete(VideoDB).where(VideoDB.video_id == _VIDEO_ID)
-        )
+        await session.execute(delete(VideoDB).where(VideoDB.video_id == _VIDEO_ID))
         await session.execute(
             delete(ChannelDB).where(ChannelDB.channel_id == _CHANNEL_ID)
         )
@@ -383,9 +377,7 @@ class TestEntityScanEndpoint:
             mock_service.scan = AsyncMock(return_value=mock_result)
             mock_get_service.return_value = mock_service
 
-            response = await async_client.post(
-                _entity_scan_url(entity_id_str), json={}
-            )
+            response = await async_client.post(_entity_scan_url(entity_id_str), json={})
             assert response.status_code == 202, response.text
             job_id = response.json()["data"]["job_id"]
 
@@ -512,9 +504,7 @@ class TestEntityScanEndpoint:
 
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.post(
-                _entity_scan_url(non_existent_uuid)
-            )
+            response = await async_client.post(_entity_scan_url(non_existent_uuid))
 
         assert response.status_code == 404, response.text
 
@@ -536,9 +526,7 @@ class TestEntityScanEndpoint:
 
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.post(
-                _entity_scan_url(inactive_id_str)
-            )
+            response = await async_client.post(_entity_scan_url(inactive_id_str))
 
         assert response.status_code == 400, response.text
         response.json()
@@ -571,9 +559,7 @@ class TestEntityScanEndpoint:
         try:
             with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
                 mock_oauth.is_authenticated.return_value = True
-                response = await async_client.post(
-                    _entity_scan_url(entity_id_str)
-                )
+                response = await async_client.post(_entity_scan_url(entity_id_str))
         finally:
             em_router._scans_in_progress.discard(guard_key)
 
@@ -609,9 +595,9 @@ class TestEntityScanEndpoint:
             data = await _poll_scan_job(async_client, job_id)
 
         assert data["status"] == "succeeded"
-        assert guard_key not in em_router._scans_in_progress, (
-            f"Guard key {guard_key!r} still present after scan completion"
-        )
+        assert (
+            guard_key not in em_router._scans_in_progress
+        ), f"Guard key {guard_key!r} still present after scan completion"
 
     async def test_entity_scan_job_failed_when_service_raises(
         self,
@@ -651,9 +637,9 @@ class TestEntityScanEndpoint:
         assert data["result"] is None
         assert data["error"] is not None
         assert "scan failed" in data["error"]
-        assert guard_key not in em_router._scans_in_progress, (
-            f"Guard key {guard_key!r} still present after scan failure"
-        )
+        assert (
+            guard_key not in em_router._scans_in_progress
+        ), f"Guard key {guard_key!r} still present after scan failure"
 
 
 # ---------------------------------------------------------------------------
@@ -832,9 +818,7 @@ class TestVideoScanEndpoint:
             mock_service.scan = AsyncMock(return_value=mock_result)
             mock_get_service.return_value = mock_service
 
-            response = await async_client.post(
-                _video_scan_url(video_id), json={}
-            )
+            response = await async_client.post(_video_scan_url(video_id), json={})
             assert response.status_code == 202, response.text
             job_id = response.json()["data"]["job_id"]
 
@@ -860,9 +844,7 @@ class TestVideoScanEndpoint:
 
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.post(
-                _video_scan_url(non_existent_video_id)
-            )
+            response = await async_client.post(_video_scan_url(non_existent_video_id))
 
         assert response.status_code == 404, response.text
 
@@ -923,9 +905,9 @@ class TestVideoScanEndpoint:
             data = await _poll_scan_job(async_client, job_id)
 
         assert data["status"] == "succeeded"
-        assert guard_key not in em_router._scans_in_progress, (
-            f"Guard key {guard_key!r} still present after scan completion"
-        )
+        assert (
+            guard_key not in em_router._scans_in_progress
+        ), f"Guard key {guard_key!r} still present after scan completion"
 
     async def test_video_scan_job_failed_when_service_raises(
         self,
@@ -951,9 +933,7 @@ class TestVideoScanEndpoint:
         ):
             mock_oauth.is_authenticated.return_value = True
             mock_service = MagicMock()
-            mock_service.scan = AsyncMock(
-                side_effect=RuntimeError("scan exploded")
-            )
+            mock_service.scan = AsyncMock(side_effect=RuntimeError("scan exploded"))
             mock_get_service.return_value = mock_service
 
             response = await async_client.post(_video_scan_url(video_id))
@@ -966,9 +946,9 @@ class TestVideoScanEndpoint:
         assert data["result"] is None
         assert data["error"] is not None
         assert "scan exploded" in data["error"]
-        assert guard_key not in em_router._scans_in_progress, (
-            f"Guard key {guard_key!r} still present after scan failure"
-        )
+        assert (
+            guard_key not in em_router._scans_in_progress
+        ), f"Guard key {guard_key!r} still present after scan failure"
 
     # ------------------------------------------------------------------
     # Response shape validation

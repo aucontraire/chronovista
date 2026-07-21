@@ -16,7 +16,9 @@ from httpx import AsyncClient
 class TestListPlaylists:
     """Tests for GET /api/v1/playlists endpoint."""
 
-    async def test_list_playlists_requires_auth(self, async_client: AsyncClient) -> None:
+    async def test_list_playlists_requires_auth(
+        self, async_client: AsyncClient
+    ) -> None:
         """Test that playlist list requires authentication."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = False
@@ -185,7 +187,9 @@ class TestPlaylistDetail:
         """Test that playlist detail requires authentication."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = False
-            response = await async_client.get("/api/v1/playlists/PLtest123456789012345678901234")
+            response = await async_client.get(
+                "/api/v1/playlists/PLtest123456789012345678901234"
+            )
             assert response.status_code == 401
 
     async def test_get_playlist_404_for_nonexistent(
@@ -194,7 +198,9 @@ class TestPlaylistDetail:
         """Test 404 response for non-existent playlist."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get("/api/v1/playlists/PLnonexistent123456789012345")
+            response = await async_client.get(
+                "/api/v1/playlists/PLnonexistent123456789012345"
+            )
             assert response.status_code == 404
             data = response.json()
             # RFC 7807 format: code is at top level
@@ -207,7 +213,9 @@ class TestPlaylistDetail:
         """Test that 404 error has actionable message."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get("/api/v1/playlists/PLnonexistent123456789012345")
+            response = await async_client.get(
+                "/api/v1/playlists/PLnonexistent123456789012345"
+            )
             data = response.json()
             # RFC 7807 format: Check actionable guidance in detail field
             assert "Verify the playlist ID or run a sync" in data["detail"]
@@ -219,7 +227,9 @@ class TestPlaylistDetail:
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
             # PL-prefixed ID (YouTube format)
-            response = await async_client.get("/api/v1/playlists/PLtest123456789012345678901234")
+            response = await async_client.get(
+                "/api/v1/playlists/PLtest123456789012345678901234"
+            )
             # Should be 404 (not found) not 422 (validation error)
             assert response.status_code == 404
 
@@ -355,7 +365,9 @@ class TestPlaylistItemStructure:
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
             # Use unlinked filter to get internal playlists
-            response = await async_client.get("/api/v1/playlists?unlinked=true&limit=10")
+            response = await async_client.get(
+                "/api/v1/playlists?unlinked=true&limit=10"
+            )
             assert response.status_code == 200
             data = response.json()
 

@@ -46,6 +46,7 @@ class TestTopicSeederIdempotency:
 
         # First 10 exist, rest don't
         call_count = 0
+
         async def exists_side_effect(*args, **kwargs):
             nonlocal call_count
             call_count += 1
@@ -174,6 +175,7 @@ class TestCategorySeederIdempotency:
 
         # First category exists, rest don't
         call_count = 0
+
         async def exists_side_effect(*args, **kwargs):
             nonlocal call_count
             call_count += 1
@@ -199,7 +201,9 @@ class TestCategorySeederIdempotency:
         existing_cat1 = MagicMock(category_id="10")
         existing_cat2 = MagicMock(category_id="20")
         existing_cat3 = MagicMock(category_id="24")
-        mock_repo.get_all = AsyncMock(return_value=[existing_cat1, existing_cat2, existing_cat3])
+        mock_repo.get_all = AsyncMock(
+            return_value=[existing_cat1, existing_cat2, existing_cat3]
+        )
         mock_repo.delete_by_category_id = AsyncMock()
 
         # Mock API response
@@ -268,7 +272,9 @@ class TestUpsertBehavior:
         assert mock_repo.create_or_update.call_count == 1
         assert result.created == 1
 
-    async def test_category_create_or_update_updates_existing_in_force_mode(self) -> None:
+    async def test_category_create_or_update_updates_existing_in_force_mode(
+        self,
+    ) -> None:
         """Test that create_or_update updates existing category in force mode."""
         mock_repo = AsyncMock(spec=VideoCategoryRepository)
         mock_youtube = AsyncMock(spec=YouTubeService)
@@ -307,6 +313,7 @@ class TestMixedScenarios:
 
         # Half exist, half don't
         call_count = 0
+
         async def exists_side_effect(*args, **kwargs):
             nonlocal call_count
             call_count += 1
@@ -478,7 +485,11 @@ class TestSC015IdempotencyVerification:
     async def test_topic_seeder_preserves_parent_child_relationships(self) -> None:
         """Test that TopicSeeder preserves parent-child relationships."""
         # All child topics should have valid parent references
-        for _topic_id, (_name, parent_id, _wiki_slug) in TopicSeeder.YOUTUBE_TOPICS.items():
+        for _topic_id, (
+            _name,
+            parent_id,
+            _wiki_slug,
+        ) in TopicSeeder.YOUTUBE_TOPICS.items():
             if parent_id is not None:
                 # Parent must exist in the topics dict
                 assert parent_id in TopicSeeder.YOUTUBE_TOPICS
@@ -486,7 +497,9 @@ class TestSC015IdempotencyVerification:
                 parent_info = TopicSeeder.YOUTUBE_TOPICS[parent_id]
                 assert parent_info[1] is None
 
-    async def test_topic_seeder_get_topics_by_parent_returns_correct_children(self) -> None:
+    async def test_topic_seeder_get_topics_by_parent_returns_correct_children(
+        self,
+    ) -> None:
         """Test that get_topics_by_parent returns correct child topics."""
         # Music parent topic
         music_parent_id = "/m/04rlf"

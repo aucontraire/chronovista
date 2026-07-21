@@ -208,9 +208,13 @@ class TakeoutService(TakeoutServiceInterface):
                 watch_entries.append(watch_entry)
 
             if skipped_community_posts > 0:
-                logger.info(f"   ⏭️  Skipped {skipped_community_posts} Community Posts (not videos)")
+                logger.info(
+                    f"   ⏭️  Skipped {skipped_community_posts} Community Posts (not videos)"
+                )
             if skipped_no_video_id > 0:
-                logger.info(f"   ⏭️  Skipped {skipped_no_video_id} entries without video IDs")
+                logger.info(
+                    f"   ⏭️  Skipped {skipped_no_video_id} entries without video IDs"
+                )
 
             logger.info(f"✅ Parsed {len(watch_entries)} watch history entries")
             return watch_entries
@@ -296,7 +300,9 @@ class TakeoutService(TakeoutServiceInterface):
                         visibility: str | None = None
 
                         # Parse created_at timestamp
-                        created_at_raw = row.get("Playlist Create Timestamp", "").strip()
+                        created_at_raw = row.get(
+                            "Playlist Create Timestamp", ""
+                        ).strip()
                         if created_at_raw:
                             try:
                                 created_at = datetime.fromisoformat(created_at_raw)
@@ -306,7 +312,9 @@ class TakeoutService(TakeoutServiceInterface):
                                 )
 
                         # Parse updated_at timestamp
-                        updated_at_raw = row.get("Playlist Update Timestamp", "").strip()
+                        updated_at_raw = row.get(
+                            "Playlist Update Timestamp", ""
+                        ).strip()
                         if updated_at_raw:
                             try:
                                 updated_at = datetime.fromisoformat(updated_at_raw)
@@ -388,8 +396,7 @@ class TakeoutService(TakeoutServiceInterface):
         playlists: list[TakeoutPlaylist] = []
         # Find video files (exclude playlists*.csv which are ID mapping files)
         playlist_files = [
-            f for f in playlists_dir.glob("*.csv")
-            if not f.name.startswith("playlists")
+            f for f in playlists_dir.glob("*.csv") if not f.name.startswith("playlists")
         ]
 
         matched_count = 0
@@ -469,9 +476,7 @@ class TakeoutService(TakeoutServiceInterface):
         # Summary logging
         logger.info(f"✅ Parsed {len(playlists)} playlists")
         if id_to_metadata:
-            logger.info(
-                f"   🔗 Matched {matched_count} playlists to YouTube IDs"
-            )
+            logger.info(f"   🔗 Matched {matched_count} playlists to YouTube IDs")
             if unmatched_names and len(unmatched_names) <= 5:
                 logger.info(f"   ⚠️  Unmatched: {', '.join(unmatched_names)}")
             elif unmatched_names:
@@ -840,9 +845,7 @@ class TakeoutService(TakeoutServiceInterface):
             # Higher priority for recent videos
             if entry.watched_at:
                 # Make datetime timezone-aware for comparison
-                now_utc = datetime.now(UTC).replace(
-                    tzinfo=entry.watched_at.tzinfo
-                )
+                now_utc = datetime.now(UTC).replace(tzinfo=entry.watched_at.tzinfo)
                 days_since = (now_utc - entry.watched_at).days
                 recency_score = max(
                     0.0, 1.0 - (float(days_since) / 365.0)
@@ -1297,9 +1300,7 @@ class TakeoutService(TakeoutServiceInterface):
                         # Use directory mtime as fallback date
                         try:
                             mtime = os.path.getmtime(item)
-                            export_date = datetime.fromtimestamp(
-                                mtime, tz=UTC
-                            )
+                            export_date = datetime.fromtimestamp(mtime, tz=UTC)
 
                             takeout = HistoricalTakeout(
                                 path=youtube_path,
@@ -1349,7 +1350,9 @@ class TakeoutService(TakeoutServiceInterface):
             Parsed watch history entries from the historical takeout
         """
         if not takeout.has_watch_history:
-            logger.debug(f"No watch history in takeout from {takeout.export_date.date()}")
+            logger.debug(
+                f"No watch history in takeout from {takeout.export_date.date()}"
+            )
             return []
 
         history_file = takeout.path / "history" / "watch-history.json"

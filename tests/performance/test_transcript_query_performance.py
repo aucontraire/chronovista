@@ -66,13 +66,19 @@ class TestTranscriptQueryPerformance:
     false failures when running alongside other database-intensive tests.
     """
 
-    PERFORMANCE_THRESHOLD_SECONDS = 10.0  # Generous threshold for full test suite runs with DB contention
+    PERFORMANCE_THRESHOLD_SECONDS = (
+        10.0  # Generous threshold for full test suite runs with DB contention
+    )
     TARGET_RECORD_COUNT = 10000
 
     # Test data configuration for varied metadata
     SOURCES = ["youtube_transcript_api", "youtube_data_api_v3", "manual_upload"]
     LANGUAGES = ["en", "es", "fr", "de", "ja", "ko", "pt", "it", "ru", "zh"]
-    TRANSCRIPT_TYPES = [TranscriptType.AUTO, TranscriptType.MANUAL, TranscriptType.TRANSLATED]
+    TRANSCRIPT_TYPES = [
+        TranscriptType.AUTO,
+        TranscriptType.MANUAL,
+        TranscriptType.TRANSLATED,
+    ]
     DOWNLOAD_REASONS = [
         DownloadReason.USER_REQUEST,
         DownloadReason.AUTO_PREFERRED,
@@ -81,9 +87,7 @@ class TestTranscriptQueryPerformance:
     ]
 
     @pytest_asyncio.fixture
-    async def performance_videos(
-        self, integration_db_session
-    ) -> list[VideoDB]:
+    async def performance_videos(self, integration_db_session) -> list[VideoDB]:
         """
         Create parent video records for transcript performance testing.
 
@@ -109,13 +113,13 @@ class TestTranscriptQueryPerformance:
             videos = []
             video_count = 1000  # Create 1000 videos
 
-
             for i in range(video_count):
                 video = VideoDB(
                     video_id=f"perf_test_{i:05d}",
                     title=f"Performance Test Video {i}",
                     description=f"Test video {i} for performance testing",
-                    upload_date=datetime.now(UTC) - timedelta(days=random.randint(1, 365)),
+                    upload_date=datetime.now(UTC)
+                    - timedelta(days=random.randint(1, 365)),
                     duration=random.randint(60, 3600),
                     made_for_kids=False,
                     view_count=random.randint(100, 1000000),
@@ -187,9 +191,13 @@ class TestTranscriptQueryPerformance:
 
                 for lang_idx in range(count):
                     # Use varied metadata for diverse query patterns
-                    has_timestamps = random.choice([True, True, True, False])  # 75% have timestamps
+                    has_timestamps = random.choice(
+                        [True, True, True, False]
+                    )  # 75% have timestamps
                     segment_count = random.randint(5, 500) if has_timestamps else None
-                    total_duration = random.uniform(30.0, 7200.0) if has_timestamps else None
+                    total_duration = (
+                        random.uniform(30.0, 7200.0) if has_timestamps else None
+                    )
                     source = random.choice(self.SOURCES)
                     # Use language by index to ensure uniqueness per video
                     language = self.LANGUAGES[lang_idx]
@@ -201,11 +209,13 @@ class TestTranscriptQueryPerformance:
                         current_time = 0.0
                         for seg in range(segment_count):
                             duration = random.uniform(1.0, 5.0)
-                            snippets.append({
-                                "text": f"Segment {seg} content",
-                                "start": current_time,
-                                "duration": duration,
-                            })
+                            snippets.append(
+                                {
+                                    "text": f"Segment {seg} content",
+                                    "start": current_time,
+                                    "duration": duration,
+                                }
+                            )
                             current_time += duration
 
                         raw_data = {
@@ -230,7 +240,8 @@ class TestTranscriptQueryPerformance:
                         is_auto_synced=random.choice([True, False]),
                         track_kind=TrackKind.STANDARD.value,
                         caption_name=f"Caption {language}",
-                        downloaded_at=datetime.now(UTC) - timedelta(days=random.randint(1, 30)),
+                        downloaded_at=datetime.now(UTC)
+                        - timedelta(days=random.randint(1, 30)),
                         raw_transcript_data=raw_data,
                         has_timestamps=has_timestamps,
                         segment_count=segment_count,
@@ -255,7 +266,6 @@ class TestTranscriptQueryPerformance:
             if transcripts_batch:
                 session.add_all(transcripts_batch)
                 await session.commit()
-
 
             return transcripts_created
 
@@ -287,10 +297,9 @@ class TestTranscriptQueryPerformance:
 
             elapsed = time.perf_counter() - start_time
 
-
-            assert elapsed < self.PERFORMANCE_THRESHOLD_SECONDS, (
-                f"Query took {elapsed:.3f}s, exceeds {self.PERFORMANCE_THRESHOLD_SECONDS}s threshold (SC-005)"
-            )
+            assert (
+                elapsed < self.PERFORMANCE_THRESHOLD_SECONDS
+            ), f"Query took {elapsed:.3f}s, exceeds {self.PERFORMANCE_THRESHOLD_SECONDS}s threshold (SC-005)"
             assert len(results) > 0, "Expected at least some results with timestamps"
 
     async def test_filter_min_segment_count_performance(
@@ -316,10 +325,9 @@ class TestTranscriptQueryPerformance:
 
             elapsed = time.perf_counter() - start_time
 
-
-            assert elapsed < self.PERFORMANCE_THRESHOLD_SECONDS, (
-                f"Query took {elapsed:.3f}s, exceeds {self.PERFORMANCE_THRESHOLD_SECONDS}s threshold (SC-003)"
-            )
+            assert (
+                elapsed < self.PERFORMANCE_THRESHOLD_SECONDS
+            ), f"Query took {elapsed:.3f}s, exceeds {self.PERFORMANCE_THRESHOLD_SECONDS}s threshold (SC-003)"
 
             # Verify results meet criteria
             for transcript in results:
@@ -349,10 +357,9 @@ class TestTranscriptQueryPerformance:
 
             elapsed = time.perf_counter() - start_time
 
-
-            assert elapsed < self.PERFORMANCE_THRESHOLD_SECONDS, (
-                f"Query took {elapsed:.3f}s, exceeds {self.PERFORMANCE_THRESHOLD_SECONDS}s threshold (SC-004)"
-            )
+            assert (
+                elapsed < self.PERFORMANCE_THRESHOLD_SECONDS
+            ), f"Query took {elapsed:.3f}s, exceeds {self.PERFORMANCE_THRESHOLD_SECONDS}s threshold (SC-004)"
 
             # Verify results meet criteria
             for transcript in results:
@@ -382,10 +389,9 @@ class TestTranscriptQueryPerformance:
 
             elapsed = time.perf_counter() - start_time
 
-
-            assert elapsed < self.PERFORMANCE_THRESHOLD_SECONDS, (
-                f"Query took {elapsed:.3f}s, exceeds {self.PERFORMANCE_THRESHOLD_SECONDS}s threshold (SC-006)"
-            )
+            assert (
+                elapsed < self.PERFORMANCE_THRESHOLD_SECONDS
+            ), f"Query took {elapsed:.3f}s, exceeds {self.PERFORMANCE_THRESHOLD_SECONDS}s threshold (SC-006)"
 
             # Verify results meet criteria
             for transcript in results:
@@ -418,10 +424,9 @@ class TestTranscriptQueryPerformance:
 
             elapsed = time.perf_counter() - start_time
 
-
-            assert elapsed < self.PERFORMANCE_THRESHOLD_SECONDS, (
-                f"Combined query took {elapsed:.3f}s, exceeds {self.PERFORMANCE_THRESHOLD_SECONDS}s threshold"
-            )
+            assert (
+                elapsed < self.PERFORMANCE_THRESHOLD_SECONDS
+            ), f"Combined query took {elapsed:.3f}s, exceeds {self.PERFORMANCE_THRESHOLD_SECONDS}s threshold"
 
             # Verify results meet all criteria
             for transcript in results:
@@ -450,46 +455,74 @@ class TestTranscriptQueryPerformance:
 
             # Test 1: has_timestamps=True
             start = time.perf_counter()
-            results = await repository.filter_by_metadata(session, has_timestamps=True, limit=10000)
+            results = await repository.filter_by_metadata(
+                session, has_timestamps=True, limit=10000
+            )
             elapsed = time.perf_counter() - start
-            baseline_results.append(("has_timestamps=True", elapsed, len(results), "SC-005"))
+            baseline_results.append(
+                ("has_timestamps=True", elapsed, len(results), "SC-005")
+            )
 
             # Test 2: has_timestamps=False
             start = time.perf_counter()
-            results = await repository.filter_by_metadata(session, has_timestamps=False, limit=10000)
+            results = await repository.filter_by_metadata(
+                session, has_timestamps=False, limit=10000
+            )
             elapsed = time.perf_counter() - start
-            baseline_results.append(("has_timestamps=False", elapsed, len(results), "SC-005"))
+            baseline_results.append(
+                ("has_timestamps=False", elapsed, len(results), "SC-005")
+            )
 
             # Test 3: min_segment_count
             start = time.perf_counter()
-            results = await repository.filter_by_metadata(session, min_segment_count=100, limit=10000)
+            results = await repository.filter_by_metadata(
+                session, min_segment_count=100, limit=10000
+            )
             elapsed = time.perf_counter() - start
-            baseline_results.append(("min_segment_count>=100", elapsed, len(results), "SC-003"))
+            baseline_results.append(
+                ("min_segment_count>=100", elapsed, len(results), "SC-003")
+            )
 
             # Test 4: max_segment_count
             start = time.perf_counter()
-            results = await repository.filter_by_metadata(session, max_segment_count=50, limit=10000)
+            results = await repository.filter_by_metadata(
+                session, max_segment_count=50, limit=10000
+            )
             elapsed = time.perf_counter() - start
-            baseline_results.append(("max_segment_count<=50", elapsed, len(results), "SC-003"))
+            baseline_results.append(
+                ("max_segment_count<=50", elapsed, len(results), "SC-003")
+            )
 
             # Test 5: min_duration
             start = time.perf_counter()
-            results = await repository.filter_by_metadata(session, min_duration=1800.0, limit=10000)
+            results = await repository.filter_by_metadata(
+                session, min_duration=1800.0, limit=10000
+            )
             elapsed = time.perf_counter() - start
-            baseline_results.append(("min_duration>=1800s", elapsed, len(results), "SC-004"))
+            baseline_results.append(
+                ("min_duration>=1800s", elapsed, len(results), "SC-004")
+            )
 
             # Test 6: max_duration
             start = time.perf_counter()
-            results = await repository.filter_by_metadata(session, max_duration=600.0, limit=10000)
+            results = await repository.filter_by_metadata(
+                session, max_duration=600.0, limit=10000
+            )
             elapsed = time.perf_counter() - start
-            baseline_results.append(("max_duration<=600s", elapsed, len(results), "SC-004"))
+            baseline_results.append(
+                ("max_duration<=600s", elapsed, len(results), "SC-004")
+            )
 
             # Test 7: source filters
             for source in self.SOURCES:
                 start = time.perf_counter()
-                results = await repository.filter_by_metadata(session, source=source, limit=10000)
+                results = await repository.filter_by_metadata(
+                    session, source=source, limit=10000
+                )
                 elapsed = time.perf_counter() - start
-                baseline_results.append((f"source='{source}'", elapsed, len(results), "SC-006"))
+                baseline_results.append(
+                    (f"source='{source}'", elapsed, len(results), "SC-006")
+                )
 
             # Test 8: Combined filters
             start = time.perf_counter()
@@ -502,7 +535,9 @@ class TestTranscriptQueryPerformance:
                 limit=10000,
             )
             elapsed = time.perf_counter() - start
-            baseline_results.append(("Combined (4 filters)", elapsed, len(results), "Combined"))
+            baseline_results.append(
+                ("Combined (4 filters)", elapsed, len(results), "Combined")
+            )
 
             # Print results table
 
@@ -510,7 +545,6 @@ class TestTranscriptQueryPerformance:
             for _query, elapsed, _count, _sc in baseline_results:
                 if elapsed >= self.PERFORMANCE_THRESHOLD_SECONDS:
                     all_passed = False
-
 
             # Assert all passed
             assert all_passed, (
@@ -538,14 +572,14 @@ async def cleanup_performance_data(integration_db_session):
 
         # Delete all performance test transcripts
         await session.execute(
-            delete(VideoTranscriptDB)
-            .where(VideoTranscriptDB.video_id.like("perf_test_%"))
+            delete(VideoTranscriptDB).where(
+                VideoTranscriptDB.video_id.like("perf_test_%")
+            )
         )
 
         # Delete all performance test videos
         await session.execute(
-            delete(VideoDB)
-            .where(VideoDB.video_id.like("perf_test_%"))
+            delete(VideoDB).where(VideoDB.video_id.like("perf_test_%"))
         )
 
         await session.commit()

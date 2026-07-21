@@ -38,8 +38,8 @@ SAFE_TO_STRIP: frozenset[str] = frozenset(
         "\u0304",  # COMBINING MACRON
         "\u0306",  # COMBINING BREVE
         "\u0308",  # COMBINING DIAERESIS
-        "\u030B",  # COMBINING DOUBLE ACUTE ACCENT
-        "\u030F",  # COMBINING DOUBLE GRAVE ACCENT
+        "\u030b",  # COMBINING DOUBLE ACUTE ACCENT
+        "\u030f",  # COMBINING DOUBLE GRAVE ACCENT
     }
 )
 
@@ -48,10 +48,10 @@ SAFE_TO_STRIP: frozenset[str] = frozenset(
 # ---------------------------------------------------------------------------
 _ZERO_WIDTH_CHARS: frozenset[str] = frozenset(
     {
-        "\u200B",  # ZERO WIDTH SPACE
-        "\u200C",  # ZERO WIDTH NON-JOINER
-        "\u200D",  # ZERO WIDTH JOINER
-        "\uFEFF",  # ZERO WIDTH NO-BREAK SPACE / BOM
+        "\u200b",  # ZERO WIDTH SPACE
+        "\u200c",  # ZERO WIDTH NON-JOINER
+        "\u200d",  # ZERO WIDTH JOINER
+        "\ufeff",  # ZERO WIDTH NO-BREAK SPACE / BOM
     }
 )
 
@@ -136,7 +136,7 @@ class TagNormalizationService:
         text = text.lstrip("#")
 
         # Step 3: Replace non-breaking spaces and tabs with regular space
-        text = text.replace("\u00A0", " ").replace("\t", " ")
+        text = text.replace("\u00a0", " ").replace("\t", " ")
 
         # Step 4: Collapse multiple spaces to single space
         parts = text.split()

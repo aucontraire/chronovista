@@ -101,7 +101,9 @@ async def channel_sort_data(
     await test_data_session.commit()
 
 
-def _get_test_channels(data: list[dict[str, Any]], test_ids: list[str] | None = None) -> list[dict[str, Any]]:
+def _get_test_channels(
+    data: list[dict[str, Any]], test_ids: list[str] | None = None
+) -> list[dict[str, Any]]:
     """Filter response data to only include our test channels."""
     ids = test_ids or ALL_TEST_IDS
     return [ch for ch in data if ch["channel_id"] in ids]
@@ -727,8 +729,7 @@ class TestChannelVideoLikedFilter:
             mock_oauth.is_authenticated.return_value = True
 
             response = await async_client.get(
-                f"/api/v1/channels/{CH_VID_TEST}/videos"
-                "?liked_only=true&limit=100"
+                f"/api/v1/channels/{CH_VID_TEST}/videos" "?liked_only=true&limit=100"
             )
             assert response.status_code == 200
             data = response.json()
@@ -752,8 +753,7 @@ class TestChannelVideoLikedFilter:
 
             # No liked data fixture loaded — no user_videos rows
             response = await async_client.get(
-                f"/api/v1/channels/{CH_VID_TEST}/videos"
-                "?liked_only=true&limit=100"
+                f"/api/v1/channels/{CH_VID_TEST}/videos" "?liked_only=true&limit=100"
             )
             assert response.status_code == 200
             data = response.json()

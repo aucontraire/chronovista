@@ -60,9 +60,15 @@ LARGE_SEGMENT_WARNING_THRESHOLD = 5000  # NFR-PERF-04
 @transcript_app.command("segment")
 def segment_command(
     video_id: Annotated[str, typer.Argument(help="YouTube video ID")],
-    timestamp: Annotated[str, typer.Argument(help="Timestamp (e.g., 1:30 or 00:01:30)")],
-    language: Annotated[str, typer.Option("--language", "-l", help="Language code")] = DEFAULT_LANGUAGE,
-    format: Annotated[OutputFormat, typer.Option("--format", "-f", help="Output format")] = OutputFormat.HUMAN,
+    timestamp: Annotated[
+        str, typer.Argument(help="Timestamp (e.g., 1:30 or 00:01:30)")
+    ],
+    language: Annotated[
+        str, typer.Option("--language", "-l", help="Language code")
+    ] = DEFAULT_LANGUAGE,
+    format: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.HUMAN,
 ) -> None:
     """Get the transcript segment at a specific timestamp.
 
@@ -99,7 +105,10 @@ def segment_command(
                 return EXIT_NO_TRANSCRIPT
 
             # Warn for large transcripts (NFR-PERF-04)
-            if transcript.segment_count and transcript.segment_count > LARGE_SEGMENT_WARNING_THRESHOLD:
+            if (
+                transcript.segment_count
+                and transcript.segment_count > LARGE_SEGMENT_WARNING_THRESHOLD
+            ):
                 err_console.print(
                     f"[yellow]Note:[/yellow] This transcript has {transcript.segment_count:,} segments. "
                     "Consider using specific timestamp or range queries for better performance."
@@ -121,6 +130,7 @@ def segment_command(
             from chronovista.models.transcript_segment import (
                 TranscriptSegment as TSPydantic,
             )
+
             pydantic_segment = TSPydantic.model_validate(segment)
 
             if format == OutputFormat.HUMAN:
@@ -144,9 +154,15 @@ def segment_command(
 def context_command(
     video_id: Annotated[str, typer.Argument(help="YouTube video ID")],
     timestamp: Annotated[str, typer.Argument(help="Center timestamp")],
-    window: Annotated[float, typer.Option("--window", "-w", help="Window size in seconds")] = DEFAULT_WINDOW,
-    language: Annotated[str, typer.Option("--language", "-l", help="Language code")] = DEFAULT_LANGUAGE,
-    format: Annotated[OutputFormat, typer.Option("--format", "-f", help="Output format")] = OutputFormat.HUMAN,
+    window: Annotated[
+        float, typer.Option("--window", "-w", help="Window size in seconds")
+    ] = DEFAULT_WINDOW,
+    language: Annotated[
+        str, typer.Option("--language", "-l", help="Language code")
+    ] = DEFAULT_LANGUAGE,
+    format: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.HUMAN,
 ) -> None:
     """Get transcript segments within a context window around a timestamp.
 
@@ -191,7 +207,10 @@ def context_command(
                 return EXIT_NO_TRANSCRIPT
 
             # Warn for large transcripts (NFR-PERF-04)
-            if transcript.segment_count and transcript.segment_count > LARGE_SEGMENT_WARNING_THRESHOLD:
+            if (
+                transcript.segment_count
+                and transcript.segment_count > LARGE_SEGMENT_WARNING_THRESHOLD
+            ):
                 err_console.print(
                     f"[yellow]Note:[/yellow] This transcript has {transcript.segment_count:,} segments. "
                     "Query results may take longer for large transcripts."
@@ -213,6 +232,7 @@ def context_command(
             from chronovista.models.transcript_segment import (
                 TranscriptSegment as TSPydantic,
             )
+
             pydantic_segments = [TSPydantic.model_validate(s) for s in segments]
 
             # Format output
@@ -220,9 +240,11 @@ def context_command(
             if format == OutputFormat.HUMAN:
                 console.print(format_segments_human(pydantic_segments, title=title))
             elif format == OutputFormat.JSON:
-                console.print(format_segments_json(
-                    pydantic_segments, video_id=video_id, language_code=language
-                ))
+                console.print(
+                    format_segments_json(
+                        pydantic_segments, video_id=video_id, language_code=language
+                    )
+                )
             elif format == OutputFormat.SRT:
                 console.print(format_segments_srt(pydantic_segments))
 
@@ -241,8 +263,12 @@ def range_command(
     video_id: Annotated[str, typer.Argument(help="YouTube video ID")],
     start: Annotated[str, typer.Argument(help="Start timestamp")],
     end: Annotated[str, typer.Argument(help="End timestamp")],
-    language: Annotated[str, typer.Option("--language", "-l", help="Language code")] = DEFAULT_LANGUAGE,
-    format: Annotated[OutputFormat, typer.Option("--format", "-f", help="Output format")] = OutputFormat.HUMAN,
+    language: Annotated[
+        str, typer.Option("--language", "-l", help="Language code")
+    ] = DEFAULT_LANGUAGE,
+    format: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.HUMAN,
 ) -> None:
     """Get all transcript segments within a time range.
 
@@ -291,7 +317,10 @@ def range_command(
                 return EXIT_NO_TRANSCRIPT
 
             # Warn for large transcripts (NFR-PERF-04)
-            if transcript.segment_count and transcript.segment_count > LARGE_SEGMENT_WARNING_THRESHOLD:
+            if (
+                transcript.segment_count
+                and transcript.segment_count > LARGE_SEGMENT_WARNING_THRESHOLD
+            ):
                 err_console.print(
                     f"[yellow]Note:[/yellow] This transcript has {transcript.segment_count:,} segments. "
                     "Large range queries may take longer to complete."
@@ -313,6 +342,7 @@ def range_command(
             from chronovista.models.transcript_segment import (
                 TranscriptSegment as TSPydantic,
             )
+
             pydantic_segments = [TSPydantic.model_validate(s) for s in segments]
 
             # Format output
@@ -321,9 +351,11 @@ def range_command(
             if format == OutputFormat.HUMAN:
                 console.print(format_segments_human(pydantic_segments, title=title))
             elif format == OutputFormat.JSON:
-                console.print(format_segments_json(
-                    pydantic_segments, video_id=video_id, language_code=language
-                ))
+                console.print(
+                    format_segments_json(
+                        pydantic_segments, video_id=video_id, language_code=language
+                    )
+                )
             elif format == OutputFormat.SRT:
                 console.print(format_segments_srt(pydantic_segments))
 

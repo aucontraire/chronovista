@@ -202,7 +202,9 @@ class TestBatchCorrectionIntegration:
 
         await _seed_video(db_session, video_id=video_id)
         await _seed_transcript(
-            db_session, video_id=video_id, language_code=language_code,
+            db_session,
+            video_id=video_id,
+            language_code=language_code,
         )
 
         # Seed three segments: two with the pattern, one without
@@ -239,12 +241,12 @@ class TestBatchCorrectionIntegration:
         )
 
         assert isinstance(result, BatchCorrectionResult)
-        assert result.total_matched == 2, (
-            f"Expected 2 matched segments, got {result.total_matched}"
-        )
-        assert result.total_applied == 2, (
-            f"Expected 2 applied corrections, got {result.total_applied}"
-        )
+        assert (
+            result.total_matched == 2
+        ), f"Expected 2 matched segments, got {result.total_matched}"
+        assert (
+            result.total_applied == 2
+        ), f"Expected 2 applied corrections, got {result.total_applied}"
         assert result.total_skipped == 0
         assert result.total_failed == 0
         assert result.unique_videos == 1
@@ -282,7 +284,9 @@ class TestBatchCorrectionIntegration:
 
         await _seed_video(db_session, video_id=video_id)
         await _seed_transcript(
-            db_session, video_id=video_id, language_code=language_code,
+            db_session,
+            video_id=video_id,
+            language_code=language_code,
         )
 
         seg = await _seed_segment(
@@ -314,12 +318,12 @@ class TestBatchCorrectionIntegration:
             select(TranscriptSegmentDB).where(TranscriptSegmentDB.id == seg.id)
         )
         persisted_seg = seg_result.scalar_one()
-        assert persisted_seg.has_correction is False, (
-            "Dry-run must not modify segment.has_correction"
-        )
-        assert persisted_seg.corrected_text is None, (
-            "Dry-run must not modify segment.corrected_text"
-        )
+        assert (
+            persisted_seg.has_correction is False
+        ), "Dry-run must not modify segment.has_correction"
+        assert (
+            persisted_seg.corrected_text is None
+        ), "Dry-run must not modify segment.corrected_text"
 
         # Verify no correction audit records created
         corrections_result = await db_session.execute(
@@ -328,9 +332,7 @@ class TestBatchCorrectionIntegration:
             )
         )
         corrections = list(corrections_result.scalars().all())
-        assert len(corrections) == 0, (
-            "Dry-run must not create any audit records"
-        )
+        assert len(corrections) == 0, "Dry-run must not create any audit records"
 
     # ------------------------------------------------------------------
     # 3. Idempotency (NFR-005)
@@ -351,7 +353,9 @@ class TestBatchCorrectionIntegration:
 
         await _seed_video(db_session, video_id=video_id)
         await _seed_transcript(
-            db_session, video_id=video_id, language_code=language_code,
+            db_session,
+            video_id=video_id,
+            language_code=language_code,
         )
         await _seed_segment(
             db_session,
@@ -404,7 +408,9 @@ class TestBatchCorrectionIntegration:
 
         await _seed_video(db_session, video_id=video_id)
         await _seed_transcript(
-            db_session, video_id=video_id, language_code=language_code,
+            db_session,
+            video_id=video_id,
+            language_code=language_code,
         )
 
         seg_a = await _seed_segment(
@@ -441,18 +447,18 @@ class TestBatchCorrectionIntegration:
             video_ids=[video_id],
         )
         assert isinstance(revert_result, BatchCorrectionResult)
-        assert revert_result.total_applied == 2, (
-            f"Expected 2 reverted segments, got {revert_result.total_applied}"
-        )
+        assert (
+            revert_result.total_applied == 2
+        ), f"Expected 2 reverted segments, got {revert_result.total_applied}"
 
         # Verify segments are reverted (has_correction=False for single-correction revert)
         seg_a_result = await db_session.execute(
             select(TranscriptSegmentDB).where(TranscriptSegmentDB.id == seg_a.id)
         )
         persisted_a = seg_a_result.scalar_one()
-        assert persisted_a.has_correction is False, (
-            "After batch revert of single correction, segment must be fully reverted"
-        )
+        assert (
+            persisted_a.has_correction is False
+        ), "After batch revert of single correction, segment must be fully reverted"
         assert persisted_a.corrected_text is None
 
         seg_b_result = await db_session.execute(
@@ -481,7 +487,9 @@ class TestBatchCorrectionIntegration:
 
         await _seed_video(db_session, video_id=video_id)
         await _seed_transcript(
-            db_session, video_id=video_id, language_code=language_code,
+            db_session,
+            video_id=video_id,
+            language_code=language_code,
         )
         seg = await _seed_segment(
             db_session,
@@ -517,15 +525,23 @@ class TestBatchCorrectionIntegration:
         assert len(rows) == 1
 
         expected_columns = {
-            "id", "video_id", "language_code", "segment_id",
-            "correction_type", "original_text", "corrected_text",
-            "correction_note", "corrected_by_user_id", "corrected_at",
-            "version_number", "batch_id",
+            "id",
+            "video_id",
+            "language_code",
+            "segment_id",
+            "correction_type",
+            "original_text",
+            "corrected_text",
+            "correction_note",
+            "corrected_by_user_id",
+            "corrected_at",
+            "version_number",
+            "batch_id",
         }
         assert reader.fieldnames is not None
-        assert set(reader.fieldnames) == expected_columns, (
-            f"CSV columns mismatch: {set(reader.fieldnames)} != {expected_columns}"
-        )
+        assert (
+            set(reader.fieldnames) == expected_columns
+        ), f"CSV columns mismatch: {set(reader.fieldnames)} != {expected_columns}"
 
         row = rows[0]
         assert row["video_id"] == video_id
@@ -553,7 +569,9 @@ class TestBatchCorrectionIntegration:
 
         await _seed_video(db_session, video_id=video_id)
         await _seed_transcript(
-            db_session, video_id=video_id, language_code=language_code,
+            db_session,
+            video_id=video_id,
+            language_code=language_code,
         )
         seg = await _seed_segment(
             db_session,
@@ -587,14 +605,22 @@ class TestBatchCorrectionIntegration:
 
         record = data[0]
         expected_keys = {
-            "id", "video_id", "language_code", "segment_id",
-            "correction_type", "original_text", "corrected_text",
-            "correction_note", "corrected_by_user_id", "corrected_at",
-            "version_number", "batch_id",
+            "id",
+            "video_id",
+            "language_code",
+            "segment_id",
+            "correction_type",
+            "original_text",
+            "corrected_text",
+            "correction_note",
+            "corrected_by_user_id",
+            "corrected_at",
+            "version_number",
+            "batch_id",
         }
-        assert set(record.keys()) == expected_keys, (
-            f"JSON keys mismatch: {set(record.keys())} != {expected_keys}"
-        )
+        assert (
+            set(record.keys()) == expected_keys
+        ), f"JSON keys mismatch: {set(record.keys())} != {expected_keys}"
         assert record["video_id"] == video_id
         assert record["corrected_text"] == "the lazy dog"
         assert record["version_number"] == 1
@@ -618,7 +644,9 @@ class TestBatchCorrectionIntegration:
 
         await _seed_video(db_session, video_id=video_id)
         await _seed_transcript(
-            db_session, video_id=video_id, language_code=language_code,
+            db_session,
+            video_id=video_id,
+            language_code=language_code,
         )
 
         seg_a = await _seed_segment(
@@ -670,12 +698,12 @@ class TestBatchCorrectionIntegration:
 
         # 2 non-revert corrections + 1 revert = 3 total records
         # total_corrections counts non-revert records
-        assert stats.total_corrections >= 2, (
-            f"Expected at least 2 non-revert corrections, got {stats.total_corrections}"
-        )
-        assert stats.total_reverts >= 1, (
-            f"Expected at least 1 revert, got {stats.total_reverts}"
-        )
+        assert (
+            stats.total_corrections >= 2
+        ), f"Expected at least 2 non-revert corrections, got {stats.total_corrections}"
+        assert (
+            stats.total_reverts >= 1
+        ), f"Expected at least 1 revert, got {stats.total_reverts}"
         assert stats.unique_videos >= 1
         assert stats.unique_segments >= 1
 
@@ -698,7 +726,9 @@ class TestBatchCorrectionIntegration:
 
         await _seed_video(db_session, video_id=video_id)
         await _seed_transcript(
-            db_session, video_id=video_id, language_code=language_code,
+            db_session,
+            video_id=video_id,
+            language_code=language_code,
         )
 
         # Create two segments with the same original text pattern
@@ -746,21 +776,20 @@ class TestBatchCorrectionIntegration:
             show_completed=True,
         )
 
-        assert len(patterns) >= 1, (
-            f"Expected at least 1 pattern, got {len(patterns)}"
-        )
+        assert len(patterns) >= 1, f"Expected at least 1 pattern, got {len(patterns)}"
 
         # Find our specific pattern
         matching = [
-            p for p in patterns
+            p
+            for p in patterns
             if p.original_text == "teh quick" and p.corrected_text == "the quick"
         ]
-        assert len(matching) == 1, (
-            f"Expected exactly 1 matching pattern, got {len(matching)}"
-        )
-        assert matching[0].occurrences == 2, (
-            f"Expected 2 occurrences, got {matching[0].occurrences}"
-        )
+        assert (
+            len(matching) == 1
+        ), f"Expected exactly 1 matching pattern, got {len(matching)}"
+        assert (
+            matching[0].occurrences == 2
+        ), f"Expected 2 occurrences, got {matching[0].occurrences}"
 
     # ------------------------------------------------------------------
     # 9. Rebuild text
@@ -842,7 +871,9 @@ class TestBatchCorrectionIntegration:
         )
 
         assert rebuilt == 1, f"Expected 1 transcript rebuilt, got {rebuilt}"
-        assert total_segments == 3, f"Expected 3 segments processed, got {total_segments}"
+        assert (
+            total_segments == 3
+        ), f"Expected 3 segments processed, got {total_segments}"
 
         # Verify the rebuilt transcript text
         transcript_result = await db_session.execute(
@@ -934,7 +965,9 @@ class TestCrossFeatureDataContract:
 
         await _seed_video(db_session, video_id=video_id)
         await _seed_transcript(
-            db_session, video_id=video_id, language_code=language_code,
+            db_session,
+            video_id=video_id,
+            language_code=language_code,
         )
         await _seed_segment(
             db_session,
@@ -969,29 +1002,23 @@ class TestCrossFeatureDataContract:
         assert correction.id is not None, "Correction must have a UUID id"
         assert correction.video_id == video_id
         assert correction.language_code == language_code
-        assert correction.segment_id is not None, (
-            "Correction must reference a segment_id"
-        )
+        assert (
+            correction.segment_id is not None
+        ), "Correction must reference a segment_id"
         assert correction.correction_type == CorrectionType.PROPER_NOUN.value, (
             f"correction_type must be a valid CorrectionType value, "
             f"got {correction.correction_type!r}"
         )
-        assert correction.original_text is not None, (
-            "original_text must be populated"
-        )
-        assert correction.corrected_text is not None, (
-            "corrected_text must be populated"
-        )
+        assert correction.original_text is not None, "original_text must be populated"
+        assert correction.corrected_text is not None, "corrected_text must be populated"
         assert correction.corrected_by_user_id == ACTOR_CLI_BATCH, (
             f"corrected_by_user_id must be ACTOR_CLI_BATCH ('{ACTOR_CLI_BATCH}'), "
             f"got {correction.corrected_by_user_id!r}"
         )
-        assert correction.corrected_at is not None, (
-            "corrected_at timestamp must be set"
-        )
-        assert correction.version_number >= 1, (
-            f"version_number must be >= 1, got {correction.version_number}"
-        )
+        assert correction.corrected_at is not None, "corrected_at timestamp must be set"
+        assert (
+            correction.version_number >= 1
+        ), f"version_number must be >= 1, got {correction.version_number}"
 
         # Verify correction_type is a valid CorrectionType enum value
         valid_types = {ct.value for ct in CorrectionType}
@@ -1019,7 +1046,9 @@ class TestCrossFeatureDataContract:
 
         await _seed_video(db_session, video_id=video_id)
         await _seed_transcript(
-            db_session, video_id=video_id, language_code=language_code,
+            db_session,
+            video_id=video_id,
+            language_code=language_code,
         )
         seg = await _seed_segment(
             db_session,
@@ -1045,12 +1074,12 @@ class TestCrossFeatureDataContract:
         persisted_seg = seg_result.scalar_one()
 
         # Frontend inline edit component checks these two fields
-        assert persisted_seg.has_correction is True, (
-            "Feature 035: segment.has_correction must be True after batch correction"
-        )
-        assert persisted_seg.corrected_text is not None, (
-            "Feature 035: segment.corrected_text must be set after batch correction"
-        )
+        assert (
+            persisted_seg.has_correction is True
+        ), "Feature 035: segment.has_correction must be True after batch correction"
+        assert (
+            persisted_seg.corrected_text is not None
+        ), "Feature 035: segment.corrected_text must be set after batch correction"
         assert persisted_seg.corrected_text == "the quick brown fox", (
             f"Feature 035: segment.corrected_text must be the corrected text, "
             f"got {persisted_seg.corrected_text!r}"
@@ -1063,9 +1092,9 @@ class TestCrossFeatureDataContract:
             if persisted_seg.has_correction and persisted_seg.corrected_text
             else persisted_seg.text
         )
-        assert display == "the quick brown fox", (
-            f"Frontend inline ternary must return corrected text, got {display!r}"
-        )
+        assert (
+            display == "the quick brown fox"
+        ), f"Frontend inline ternary must return corrected text, got {display!r}"
 
     # ------------------------------------------------------------------
     # Contract 3: Rebuilt text format
@@ -1170,23 +1199,19 @@ class TestCrossFeatureDataContract:
         3. Is actually persisted when batch corrections are applied
         """
         # Contract: ACTOR_CLI_BATCH format and length
-        assert ACTOR_CLI_BATCH == "cli:batch", (
-            f"ACTOR_CLI_BATCH must be 'cli:batch', got {ACTOR_CLI_BATCH!r}"
-        )
+        assert (
+            ACTOR_CLI_BATCH == "cli:batch"
+        ), f"ACTOR_CLI_BATCH must be 'cli:batch', got {ACTOR_CLI_BATCH!r}"
         assert len(ACTOR_CLI_BATCH) <= 100, (
             f"ACTOR_CLI_BATCH must fit in String(100) column, "
             f"length={len(ACTOR_CLI_BATCH)}"
         )
-        assert ":" in ACTOR_CLI_BATCH, (
-            "ACTOR_CLI_BATCH must follow prefix:detail format"
-        )
+        assert (
+            ":" in ACTOR_CLI_BATCH
+        ), "ACTOR_CLI_BATCH must follow prefix:detail format"
         prefix, detail = ACTOR_CLI_BATCH.split(":", 1)
-        assert prefix == "cli", (
-            f"Actor prefix must be 'cli', got {prefix!r}"
-        )
-        assert detail == "batch", (
-            f"Actor detail must be 'batch', got {detail!r}"
-        )
+        assert prefix == "cli", f"Actor prefix must be 'cli', got {prefix!r}"
+        assert detail == "batch", f"Actor detail must be 'batch', got {detail!r}"
 
         # Verify the actor string is actually persisted in the DB
         video_id = "contractAct"
@@ -1194,7 +1219,9 @@ class TestCrossFeatureDataContract:
 
         await _seed_video(db_session, video_id=video_id)
         await _seed_transcript(
-            db_session, video_id=video_id, language_code=language_code,
+            db_session,
+            video_id=video_id,
+            language_code=language_code,
         )
         await _seed_segment(
             db_session,

@@ -235,9 +235,9 @@ class TestGetCategory:
         """Test category detail returns correct structure (T015)."""
         # Create test category (max 10 chars for category_id)
         async with integration_session_factory() as session:
-            await session.execute(delete(VideoCategory).where(
-                VideoCategory.category_id == "99"
-            ))
+            await session.execute(
+                delete(VideoCategory).where(VideoCategory.category_id == "99")
+            )
             await session.commit()
 
             category = VideoCategory(
@@ -264,18 +264,18 @@ class TestGetCategory:
 
         # Cleanup
         async with integration_session_factory() as session:
-            await session.execute(delete(VideoCategory).where(
-                VideoCategory.category_id == "99"
-            ))
+            await session.execute(
+                delete(VideoCategory).where(VideoCategory.category_id == "99")
+            )
             await session.commit()
 
-    async def test_get_category_not_found(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_get_category_not_found(self, async_client: AsyncClient) -> None:
         """Test 404 response for non-existent category (T016)."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get("/api/v1/categories/nonexistent_category_xyz")
+            response = await async_client.get(
+                "/api/v1/categories/nonexistent_category_xyz"
+            )
             assert response.status_code == 404
             data = response.json()
             # RFC 7807 format: code is at top level
@@ -301,9 +301,9 @@ class TestGetCategoryVideos:
             await session.execute(delete(VideoTopic))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
-            await session.execute(delete(VideoCategory).where(
-                VideoCategory.category_id == "98"
-            ))
+            await session.execute(
+                delete(VideoCategory).where(VideoCategory.category_id == "98")
+            )
             await session.commit()
 
             # Create category
@@ -337,9 +337,7 @@ class TestGetCategoryVideos:
 
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                "/api/v1/categories/98/videos"
-            )
+            response = await async_client.get("/api/v1/categories/98/videos")
             assert response.status_code == 200
             data = response.json()
             assert "data" in data
@@ -360,9 +358,9 @@ class TestGetCategoryVideos:
             await session.execute(delete(VideoTopic))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
-            await session.execute(delete(VideoCategory).where(
-                VideoCategory.category_id == "98"
-            ))
+            await session.execute(
+                delete(VideoCategory).where(VideoCategory.category_id == "98")
+            )
             await session.commit()
 
     async def test_get_category_videos_excludes_deleted(
@@ -378,9 +376,9 @@ class TestGetCategoryVideos:
             await session.execute(delete(VideoTopic))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
-            await session.execute(delete(VideoCategory).where(
-                VideoCategory.category_id == "97"
-            ))
+            await session.execute(
+                delete(VideoCategory).where(VideoCategory.category_id == "97")
+            )
             await session.commit()
 
             # Create category
@@ -424,9 +422,7 @@ class TestGetCategoryVideos:
 
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                "/api/v1/categories/97/videos"
-            )
+            response = await async_client.get("/api/v1/categories/97/videos")
             assert response.status_code == 200
             data = response.json()
 
@@ -441,9 +437,9 @@ class TestGetCategoryVideos:
             await session.execute(delete(VideoTopic))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
-            await session.execute(delete(VideoCategory).where(
-                VideoCategory.category_id == "97"
-            ))
+            await session.execute(
+                delete(VideoCategory).where(VideoCategory.category_id == "97")
+            )
             await session.commit()
 
     async def test_get_category_videos_sorted_by_upload_date_desc(
@@ -459,9 +455,9 @@ class TestGetCategoryVideos:
             await session.execute(delete(VideoTopic))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
-            await session.execute(delete(VideoCategory).where(
-                VideoCategory.category_id == "96"
-            ))
+            await session.execute(
+                delete(VideoCategory).where(VideoCategory.category_id == "96")
+            )
             await session.commit()
 
             # Create category
@@ -483,6 +479,7 @@ class TestGetCategoryVideos:
 
             # Create videos with different upload dates
             from datetime import timedelta
+
             base_date = datetime.now(UTC)
             videos = [
                 Video(
@@ -500,9 +497,7 @@ class TestGetCategoryVideos:
 
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                "/api/v1/categories/96/videos"
-            )
+            response = await async_client.get("/api/v1/categories/96/videos")
             assert response.status_code == 200
             data = response.json()
 
@@ -511,7 +506,10 @@ class TestGetCategoryVideos:
                 upload_dates = [v["upload_date"] for v in data["data"]]
                 # Convert to datetime for comparison
                 from datetime import datetime as dt
-                dates = [dt.fromisoformat(d.replace("Z", "+00:00")) for d in upload_dates]
+
+                dates = [
+                    dt.fromisoformat(d.replace("Z", "+00:00")) for d in upload_dates
+                ]
                 # Verify descending order
                 for i in range(len(dates) - 1):
                     assert dates[i] >= dates[i + 1]
@@ -522,9 +520,9 @@ class TestGetCategoryVideos:
             await session.execute(delete(VideoTopic))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
-            await session.execute(delete(VideoCategory).where(
-                VideoCategory.category_id == "96"
-            ))
+            await session.execute(
+                delete(VideoCategory).where(VideoCategory.category_id == "96")
+            )
             await session.commit()
 
 
@@ -543,9 +541,7 @@ class TestCategoryAuthRequirements:
             # Auth errors still use old format (HTTPException detail dict)
             assert data["detail"]["code"] == "NOT_AUTHENTICATED"
 
-    async def test_get_category_requires_auth(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_get_category_requires_auth(self, async_client: AsyncClient) -> None:
         """Test GET /categories/{category_id} requires authentication."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = False

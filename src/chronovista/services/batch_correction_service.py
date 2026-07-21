@@ -359,14 +359,16 @@ class BatchCorrectionService:
         # Single-segment matches
         for segment in matched_segments:
             effective_text: str = (
-                segment.corrected_text
-                if segment.has_correction
-                else segment.text
+                segment.corrected_text if segment.has_correction else segment.text
             ) or ""
 
             # T011: Regex timeout enforcement
             proposed_text = await self._compute_replacement_with_timeout(
-                effective_text, pattern, replacement, regex, re_flags,
+                effective_text,
+                pattern,
+                replacement,
+                regex,
+                re_flags,
                 case_insensitive,
             )
 
@@ -376,7 +378,11 @@ class BatchCorrectionService:
 
             # Compute match offset
             match_start, match_end = self._find_match_offsets(
-                effective_text, pattern, regex, re_flags, case_insensitive,
+                effective_text,
+                pattern,
+                regex,
+                re_flags,
+                case_insensitive,
             )
 
             v_title = video_title_map.get(segment.video_id, "")
@@ -392,24 +398,26 @@ class BatchCorrectionService:
                 f"&t={segment.start_time}"
             )
 
-            all_matches.append(BatchPreviewMatch(
-                segment_id=segment.id,
-                video_id=segment.video_id,
-                video_title=v_title,
-                channel_title=ch_title,
-                language_code=segment.language_code,
-                start_time=segment.start_time,
-                current_text=effective_text,
-                proposed_text=proposed_text,
-                match_start=match_start,
-                match_end=match_end,
-                context_before=ctx_before,
-                context_after=ctx_after,
-                has_existing_correction=segment.has_correction,
-                is_cross_segment=False,
-                pair_id=None,
-                deep_link_url=deep_link,
-            ))
+            all_matches.append(
+                BatchPreviewMatch(
+                    segment_id=segment.id,
+                    video_id=segment.video_id,
+                    video_title=v_title,
+                    channel_title=ch_title,
+                    language_code=segment.language_code,
+                    start_time=segment.start_time,
+                    current_text=effective_text,
+                    proposed_text=proposed_text,
+                    match_start=match_start,
+                    match_end=match_end,
+                    context_before=ctx_before,
+                    context_after=ctx_after,
+                    has_existing_correction=segment.has_correction,
+                    is_cross_segment=False,
+                    pair_id=None,
+                    deep_link_url=deep_link,
+                )
+            )
 
         # Cross-segment matches (two rows per pair)
         for csm in cross_segment_matches:
@@ -450,24 +458,26 @@ class BatchCorrectionService:
             a_match_start = min(csm.match_start, len(eff_a))
             a_match_end = min(csm.match_end, len(eff_a))
 
-            all_matches.append(BatchPreviewMatch(
-                segment_id=seg_a.id,
-                video_id=seg_a.video_id,
-                video_title=v_title_a,
-                channel_title=ch_title_a,
-                language_code=seg_a.language_code,
-                start_time=seg_a.start_time,
-                current_text=eff_a,
-                proposed_text=csm.text_for_seg_a,
-                match_start=a_match_start,
-                match_end=a_match_end,
-                context_before=ctx_before_a,
-                context_after=ctx_after_a,
-                has_existing_correction=seg_a.has_correction,
-                is_cross_segment=True,
-                pair_id=pair_id_str,
-                deep_link_url=deep_link_a,
-            ))
+            all_matches.append(
+                BatchPreviewMatch(
+                    segment_id=seg_a.id,
+                    video_id=seg_a.video_id,
+                    video_title=v_title_a,
+                    channel_title=ch_title_a,
+                    language_code=seg_a.language_code,
+                    start_time=seg_a.start_time,
+                    current_text=eff_a,
+                    proposed_text=csm.text_for_seg_a,
+                    match_start=a_match_start,
+                    match_end=a_match_end,
+                    context_before=ctx_before_a,
+                    context_after=ctx_after_a,
+                    has_existing_correction=seg_a.has_correction,
+                    is_cross_segment=True,
+                    pair_id=pair_id_str,
+                    deep_link_url=deep_link_a,
+                )
+            )
 
             # Segment B
             v_title_b = video_title_map.get(seg_b.video_id, "")
@@ -487,24 +497,26 @@ class BatchCorrectionService:
             b_consumed = csm.match_end - (boundary + 1)
             b_match_end = max(b_consumed, 0)
 
-            all_matches.append(BatchPreviewMatch(
-                segment_id=seg_b.id,
-                video_id=seg_b.video_id,
-                video_title=v_title_b,
-                channel_title=ch_title_b,
-                language_code=seg_b.language_code,
-                start_time=seg_b.start_time,
-                current_text=eff_b,
-                proposed_text=csm.text_for_seg_b,
-                match_start=b_match_start,
-                match_end=b_match_end,
-                context_before=ctx_before_b,
-                context_after=ctx_after_b,
-                has_existing_correction=seg_b.has_correction,
-                is_cross_segment=True,
-                pair_id=pair_id_str,
-                deep_link_url=deep_link_b,
-            ))
+            all_matches.append(
+                BatchPreviewMatch(
+                    segment_id=seg_b.id,
+                    video_id=seg_b.video_id,
+                    video_title=v_title_b,
+                    channel_title=ch_title_b,
+                    language_code=seg_b.language_code,
+                    start_time=seg_b.start_time,
+                    current_text=eff_b,
+                    proposed_text=csm.text_for_seg_b,
+                    match_start=b_match_start,
+                    match_end=b_match_end,
+                    context_before=ctx_before_b,
+                    context_after=ctx_after_b,
+                    has_existing_correction=seg_b.has_correction,
+                    is_cross_segment=True,
+                    pair_id=pair_id_str,
+                    deep_link_url=deep_link_b,
+                )
+            )
 
         # T012: Cap at max_matches but report true total
         total_count = len(all_matches)
@@ -618,9 +630,7 @@ class BatchCorrectionService:
             )
             entity = entity_result.scalar_one_or_none()
             if entity is None:
-                raise ValueError(
-                    f"Named entity with id={entity_id} not found"
-                )
+                raise ValueError(f"Named entity with id={entity_id} not found")
             if entity.status != "active":
                 raise ValueError(
                     f"Named entity with id={entity_id} is not active "
@@ -631,9 +641,7 @@ class BatchCorrectionService:
 
         # Step 2: Fetch segments by IDs
         segments_result = await session.execute(
-            select(TranscriptSegmentDB).where(
-                TranscriptSegmentDB.id.in_(segment_ids)
-            )
+            select(TranscriptSegmentDB).where(TranscriptSegmentDB.id.in_(segment_ids))
         )
         segments = list(segments_result.scalars().all())
         segment_map = {seg.id: seg for seg in segments}
@@ -657,9 +665,7 @@ class BatchCorrectionService:
                 continue
 
             effective_text: str = (
-                segment.corrected_text
-                if segment.has_correction
-                else segment.text
+                segment.corrected_text if segment.has_correction else segment.text
             ) or ""
 
             # Re-validate that pattern still matches
@@ -683,9 +689,7 @@ class BatchCorrectionService:
 
             # Compute replacement
             if regex:
-                new_text = re.sub(
-                    pattern, replacement, effective_text, flags=re_flags
-                )
+                new_text = re.sub(pattern, replacement, effective_text, flags=re_flags)
             elif case_insensitive:
                 new_text = re.sub(
                     re.escape(pattern),
@@ -719,12 +723,8 @@ class BatchCorrectionService:
 
                 # Track matched forms for ASR alias registration
                 if regex:
-                    for m in re.findall(
-                        pattern, effective_text, flags=re_flags
-                    ):
-                        matched_form_counts[m] = (
-                            matched_form_counts.get(m, 0) + 1
-                        )
+                    for m in re.findall(pattern, effective_text, flags=re_flags):
+                        matched_form_counts[m] = matched_form_counts.get(m, 0) + 1
                 else:
                     matched_form_counts[pattern] = (
                         matched_form_counts.get(pattern, 0) + 1
@@ -746,8 +746,7 @@ class BatchCorrectionService:
                 total_failed += 1
                 failed_segment_ids.append(seg_id)
                 logger.warning(
-                    "apply_to_segments: failed to apply correction "
-                    "to segment %d",
+                    "apply_to_segments: failed to apply correction " "to segment %d",
                     seg_id,
                     exc_info=True,
                 )
@@ -765,20 +764,14 @@ class BatchCorrectionService:
         # Step 5 (T031): Update entity counters after all mentions created
         if entity is not None and total_applied > 0:
             mention_repo = EntityMentionRepository()
-            await mention_repo.update_entity_counters(
-                session, [entity.id]
-            )
-            await mention_repo.update_alias_counters(
-                session, [entity.id]
-            )
+            await mention_repo.update_entity_counters(session, [entity.id])
+            await mention_repo.update_alias_counters(session, [entity.id])
             await session.flush()
 
         # Step 6: Auto-rebuild
         rebuild_triggered = False
         if auto_rebuild and affected_video_ids:
-            await self.rebuild_text(
-                session, video_ids=list(affected_video_ids)
-            )
+            await self.rebuild_text(session, video_ids=list(affected_video_ids))
             rebuild_triggered = True
 
         await session.commit()
@@ -912,17 +905,18 @@ class BatchCorrectionService:
             # Convert BatchPreviewMatch objects to legacy tuple format
             previews: list[tuple[str, int, float, str, str]] = []
             for m in preview_matches:
-                previews.append((
-                    m.video_id,
-                    m.segment_id,
-                    m.start_time,
-                    m.current_text,
-                    m.proposed_text,
-                ))
+                previews.append(
+                    (
+                        m.video_id,
+                        m.segment_id,
+                        m.start_time,
+                        m.current_text,
+                        m.proposed_text,
+                    )
+                )
             _elapsed = time.monotonic() - _start_time
             logger.info(
-                "find_and_replace completed (dry_run): matched=%d, "
-                "duration=%.2fs",
+                "find_and_replace completed (dry_run): matched=%d, " "duration=%.2fs",
                 len(previews),
                 _elapsed,
             )
@@ -960,9 +954,7 @@ class BatchCorrectionService:
         # Helper: compute the new text for a segment
         def _compute_new_text(segment: Any) -> str:
             effective_text: str = (
-                segment.corrected_text
-                if segment.has_correction
-                else segment.text
+                segment.corrected_text if segment.has_correction else segment.text
             ) or ""
             if regex:
                 return re.sub(pattern, replacement, effective_text, flags=re_flags)
@@ -1034,9 +1026,7 @@ class BatchCorrectionService:
             # Capture effective text BEFORE apply_correction mutates the ORM object
             # (apply_correction sets segment.corrected_text and has_correction=True).
             effective_text: str = (
-                segment.corrected_text
-                if segment.has_correction
-                else segment.text
+                segment.corrected_text if segment.has_correction else segment.text
             ) or ""
 
             new_text = _compute_new_text(segment)
@@ -1098,7 +1088,7 @@ class BatchCorrectionService:
             # Track matched forms for cross-segment alias registration
             for csm in cross_segment_matches:
                 combined = csm.pair.combined_text
-                matched_text = combined[csm.match_start:csm.match_end]
+                matched_text = combined[csm.match_start : csm.match_end]
                 matched_form_counts[matched_text] = (
                     matched_form_counts.get(matched_text, 0) + 1
                 )
@@ -1234,12 +1224,14 @@ class BatchCorrectionService:
             current_text = transcript.transcript_text or ""
 
             if dry_run:
-                previews.append({
-                    "video_id": transcript.video_id,
-                    "language_code": transcript.language_code,
-                    "current_length": len(current_text),
-                    "new_length": len(new_text),
-                })
+                previews.append(
+                    {
+                        "video_id": transcript.video_id,
+                        "language_code": transcript.language_code,
+                        "current_length": len(current_text),
+                        "new_length": len(new_text),
+                    }
+                )
             else:
                 transcript.transcript_text = new_text
                 await session.flush()
@@ -1351,7 +1343,9 @@ class BatchCorrectionService:
             def _json_default(obj: Any) -> str:
                 if isinstance(obj, UUID | datetime):
                     return str(obj)
-                raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+                raise TypeError(
+                    f"Object of type {type(obj).__name__} is not JSON serializable"
+                )
 
             data = [r.model_dump() for r in records]
             indent = None if compact else 2
@@ -1360,10 +1354,18 @@ class BatchCorrectionService:
             # CSV format
             output = io.StringIO()
             fieldnames = [
-                "id", "video_id", "language_code", "segment_id",
-                "correction_type", "original_text", "corrected_text",
-                "correction_note", "corrected_by_user_id", "corrected_at",
-                "version_number", "batch_id",
+                "id",
+                "video_id",
+                "language_code",
+                "segment_id",
+                "correction_type",
+                "original_text",
+                "corrected_text",
+                "correction_note",
+                "corrected_by_user_id",
+                "corrected_at",
+                "version_number",
+                "batch_id",
             ]
             writer = csv.DictWriter(output, fieldnames=fieldnames)
             writer.writeheader()
@@ -1412,7 +1414,9 @@ class BatchCorrectionService:
         )
 
         result = await self._correction_repo.get_stats(
-            session, language=language, top=top,
+            session,
+            language=language,
+            top=top,
         )
 
         stats = CorrectionStats(**result)
@@ -1556,9 +1560,7 @@ class BatchCorrectionService:
 
         # ------ batch_id mode: revert by batch provenance ------
         if batch_id is not None:
-            corrections = await self._correction_repo.get_by_batch_id(
-                session, batch_id
-            )
+            corrections = await self._correction_repo.get_by_batch_id(session, batch_id)
             if not corrections:
                 _elapsed = time.monotonic() - _start_time
                 logger.info(
@@ -1578,7 +1580,9 @@ class BatchCorrectionService:
                 )
 
             # Collect unique segment IDs from the batch corrections
-            batch_segment_ids = list({c.segment_id for c in corrections if c.segment_id is not None})
+            batch_segment_ids = list(
+                {c.segment_id for c in corrections if c.segment_id is not None}
+            )
 
             # Fetch segments — skip deleted ones
             segments_result = await session.execute(
@@ -1610,13 +1614,15 @@ class BatchCorrectionService:
             if dry_run:
                 previews_batch: list[tuple[str, int, float, str, bool]] = []
                 for seg in corrected_matches:
-                    previews_batch.append((
-                        seg.video_id,
-                        seg.id,
-                        seg.start_time,
-                        seg.corrected_text or "",
-                        False,
-                    ))
+                    previews_batch.append(
+                        (
+                            seg.video_id,
+                            seg.id,
+                            seg.start_time,
+                            seg.corrected_text or "",
+                            False,
+                        )
+                    )
                 return previews_batch
 
             # Skip further partner/cross-segment logic — go straight to revert
@@ -1725,9 +1731,7 @@ class BatchCorrectionService:
         )
 
         # Step 4: Filter to only segments with active corrections
-        corrected_matches = [
-            seg for seg in matched_segments if seg.has_correction
-        ]
+        corrected_matches = [seg for seg in matched_segments if seg.has_correction]
 
         # Step 5: Discover cross-segment partners (T038)
         # For each matched segment, check if its latest correction has a
@@ -1739,13 +1743,9 @@ class BatchCorrectionService:
         partner_map: dict[int, int] = {}
 
         for seg in corrected_matches:
-            partner_id = await self._get_cross_segment_partner_id(
-                session, seg
-            )
+            partner_id = await self._get_cross_segment_partner_id(session, seg)
             if partner_id is not None and partner_id not in seen_segment_ids:
-                partner_seg = await session.get(
-                    TranscriptSegmentDB, partner_id
-                )
+                partner_seg = await session.get(TranscriptSegmentDB, partner_id)
                 if partner_seg is not None and partner_seg.has_correction:
                     partner_segments.append(partner_seg)
                     seen_segment_ids.add(partner_id)
@@ -1770,21 +1770,25 @@ class BatchCorrectionService:
             # whether the segment was added via partner cascade.
             previews: list[tuple[str, int, float, str, bool]] = []
             for seg in corrected_matches:
-                previews.append((
-                    seg.video_id,
-                    seg.id,
-                    seg.start_time,
-                    seg.corrected_text or "",
-                    False,
-                ))
+                previews.append(
+                    (
+                        seg.video_id,
+                        seg.id,
+                        seg.start_time,
+                        seg.corrected_text or "",
+                        False,
+                    )
+                )
             for seg in partner_segments:
-                previews.append((
-                    seg.video_id,
-                    seg.id,
-                    seg.start_time,
-                    seg.corrected_text or "",
-                    True,
-                ))
+                previews.append(
+                    (
+                        seg.video_id,
+                        seg.id,
+                        seg.start_time,
+                        seg.corrected_text or "",
+                        True,
+                    )
+                )
             _elapsed = time.monotonic() - _start_time
             logger.info(
                 "batch_revert completed (dry_run): matched=%d, "
@@ -1856,10 +1860,8 @@ class BatchCorrectionService:
         mentions_deleted = 0
 
         if correction_ids_to_cascade:
-            affected_entity_ids = (
-                await mention_repo.get_entity_ids_by_correction_ids(
-                    session, correction_ids_to_cascade
-                )
+            affected_entity_ids = await mention_repo.get_entity_ids_by_correction_ids(
+                session, correction_ids_to_cascade
             )
             mentions_deleted = await mention_repo.delete_by_correction_ids(
                 session, correction_ids_to_cascade
@@ -1905,12 +1907,8 @@ class BatchCorrectionService:
 
         # T033: Recalculate entity counters after revert completes
         if affected_entity_ids:
-            await mention_repo.update_entity_counters(
-                session, affected_entity_ids
-            )
-            await mention_repo.update_alias_counters(
-                session, affected_entity_ids
-            )
+            await mention_repo.update_entity_counters(session, affected_entity_ids)
+            await mention_repo.update_alias_counters(session, affected_entity_ids)
             await session.flush()
             logger.info(
                 "batch_revert: recalculated counters for %d entities",
@@ -1988,6 +1986,7 @@ class BatchCorrectionService:
         ValueError
             If regex operations time out.
         """
+
         def _do_replace() -> str:
             if regex:
                 return re.sub(pattern, replacement, effective_text, flags=re_flags)
@@ -2087,15 +2086,24 @@ class BatchCorrectionService:
         # Collect all segment info we need context for
         segments_info: list[tuple[int, str, str, int]] = []
         for seg in matched_segments:
-            segments_info.append((
-                seg.id, seg.video_id, seg.language_code, seg.sequence_number,
-            ))
+            segments_info.append(
+                (
+                    seg.id,
+                    seg.video_id,
+                    seg.language_code,
+                    seg.sequence_number,
+                )
+            )
         for csm in cross_segment_matches:
             for seg in (csm.pair.segment_a, csm.pair.segment_b):
-                segments_info.append((
-                    seg.id, seg.video_id, seg.language_code,
-                    seg.sequence_number,
-                ))
+                segments_info.append(
+                    (
+                        seg.id,
+                        seg.video_id,
+                        seg.language_code,
+                        seg.sequence_number,
+                    )
+                )
 
         if not segments_info:
             return
@@ -2134,9 +2142,7 @@ class BatchCorrectionService:
                 )
             )
             for row in result.all():
-                eff = (
-                    row.corrected_text if row.has_correction else row.text
-                ) or ""
+                eff = (row.corrected_text if row.has_correction else row.text) or ""
                 neighbor_map[(vid, lang, row.sequence_number)] = eff
 
         # Populate context_map
@@ -2145,9 +2151,7 @@ class BatchCorrectionService:
             after = neighbor_map.get((vid, lang, seq + 1))
             context_map[seg_id] = (before, after)
 
-    _CROSS_SEGMENT_PARTNER_RE = re.compile(
-        r"\[cross-segment:partner=(\d+)\]"
-    )
+    _CROSS_SEGMENT_PARTNER_RE = re.compile(r"\[cross-segment:partner=(\d+)\]")
 
     async def _get_cross_segment_partner_id(
         self,
@@ -2185,9 +2189,7 @@ class BatchCorrectionService:
         if not latest.correction_note:
             return None
 
-        match = self._CROSS_SEGMENT_PARTNER_RE.search(
-            latest.correction_note
-        )
+        match = self._CROSS_SEGMENT_PARTNER_RE.search(latest.correction_note)
         if match:
             return int(match.group(1))
         return None
@@ -2228,7 +2230,7 @@ class BatchCorrectionService:
         # first, then keep alphanumeric runs of length >= 3.
         # Order matters: strip \b, \B, \d, \w etc. before stripping lone backslashes
         # so that "bShine" is not left as a token when the input was "\bShine\b".
-        stripped = re.sub(r"\\[a-zA-Z]", " ", pattern)          # \b \B \d \w …
+        stripped = re.sub(r"\\[a-zA-Z]", " ", pattern)  # \b \B \d \w …
         stripped = re.sub(r"[\\^$.*+?()[\]{}|]", " ", stripped)  # remaining metas
         tokens = [t for t in stripped.split() if len(t) >= 3]
         return tokens if tokens else [pattern]
@@ -2419,12 +2421,14 @@ class BatchCorrectionService:
                 combined = eff_a_stripped + " " + eff_b_stripped
                 boundary = len(eff_a_stripped)
 
-                pairs.append(SegmentPair(
-                    segment_a=seg_a,
-                    segment_b=seg_b,
-                    combined_text=combined,
-                    boundary_offset=boundary,
-                ))
+                pairs.append(
+                    SegmentPair(
+                        segment_a=seg_a,
+                        segment_b=seg_b,
+                        combined_text=combined,
+                        boundary_offset=boundary,
+                    )
+                )
 
         # T021: Match pattern against combined text
         # T022: Conflict detection — track claimed segment IDs
@@ -2449,23 +2453,18 @@ class BatchCorrectionService:
 
             # Find matches in combined text
             if regex:
-                found_matches = list(
-                    re.finditer(pattern, combined, flags=re_flags)
-                )
+                found_matches = list(re.finditer(pattern, combined, flags=re_flags))
             else:
                 # Build match objects for substring search
                 search_pattern = re.escape(pattern)
                 flags = re.IGNORECASE if case_insensitive else 0
-                found_matches = list(
-                    re.finditer(search_pattern, combined, flags=flags)
-                )
+                found_matches = list(re.finditer(search_pattern, combined, flags=flags))
 
             # Filter to matches that span the boundary
             # A match spans the boundary if it starts at or before boundary
             # AND ends after boundary (the space at position boundary)
             cross_matches = [
-                m for m in found_matches
-                if m.start() <= boundary and m.end() > boundary
+                m for m in found_matches if m.start() <= boundary and m.end() > boundary
             ]
 
             if not cross_matches:
@@ -2483,7 +2482,7 @@ class BatchCorrectionService:
             # Decompose: replacement goes entirely into seg A,
             # matched fragment removed from seg B
             eff_a_stripped = combined[:boundary]
-            eff_b_stripped = combined[boundary + 1:]  # skip the space
+            eff_b_stripped = combined[boundary + 1 :]  # skip the space
 
             new_a = eff_a_stripped[:ms] + actual_replacement
             b_consumed = me - (boundary + 1)  # chars of seg B consumed by match
@@ -2579,7 +2578,7 @@ class BatchCorrectionService:
 
         # Process in batches (batch_size counts pairs)
         for offset in range(0, len(matches), batch_size):
-            chunk = matches[offset:offset + batch_size]
+            chunk = matches[offset : offset + batch_size]
             try:
                 chunk_applied = 0
                 chunk_skipped = 0
@@ -2795,9 +2794,7 @@ class BatchCorrectionService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _find_all_occurrences(
-        text: str, substring: str
-    ) -> list[tuple[int, int]]:
+    def _find_all_occurrences(text: str, substring: str) -> list[tuple[int, int]]:
         """Find all non-overlapping case-insensitive occurrences of substring.
 
         Parameters
@@ -3002,9 +2999,7 @@ class BatchCorrectionService:
         try:
             re.compile(pattern)
         except re.error as exc:
-            raise ValueError(
-                f"Invalid regex pattern '{pattern}': {exc}"
-            ) from exc
+            raise ValueError(f"Invalid regex pattern '{pattern}': {exc}") from exc
 
 
 __all__ = ["BatchCorrectionService", "WordLevelDiffResult", "word_level_diff"]

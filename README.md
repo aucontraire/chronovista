@@ -288,7 +288,7 @@ Import your complete YouTube history from [Google Takeout](https://takeout.googl
 chronovista takeout seed /path/to/takeout              # Full import
 chronovista takeout seed /path/to/takeout --dry-run    # Preview changes
 chronovista takeout seed /path/to/takeout --incremental # Safe re-run
-chronovista takeout analyze /path/to/takeout           # Analyze patterns
+chronovista takeout analyze --path /path/to/takeout     # Analyze patterns
 ```
 
 <details>
@@ -301,10 +301,9 @@ chronovista takeout analyze /path/to/takeout           # Analyze patterns
 
 **Analysis commands:**
 ```bash
-chronovista takeout peek /path/to/takeout --summary
-chronovista takeout analyze /path/to/takeout --type viewing-patterns
-chronovista takeout analyze /path/to/takeout --type channel-relationships
-chronovista takeout inspect /path/to/takeout --focus playlists
+chronovista takeout peek playlists --path /path/to/takeout
+chronovista takeout analyze --path /path/to/takeout
+chronovista takeout relationships channel-clusters --path /path/to/takeout
 ```
 
 **Combine with API data:**

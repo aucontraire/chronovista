@@ -63,9 +63,7 @@ class TestNormalizeAndGroupCore:
     """Tests for ``_normalize_and_group_core`` method."""
 
     @pytest.mark.asyncio
-    async def test_groups_by_normalized_form(
-        self, service: TagBackfillService
-    ) -> None:
+    async def test_groups_by_normalized_form(self, service: TagBackfillService) -> None:
         """Pass multiple raw forms that normalize to the same form — verify single group."""
         distinct_tags = {"Python": 10, "python": 5, "#Python": 3}
         groups, skip_list = service._normalize_and_group_core(distinct_tags)
@@ -184,7 +182,9 @@ class TestNormalizeAndGroup:
     """Tests for ``_normalize_and_group`` method (with UUID generation)."""
 
     @pytest.mark.asyncio
-    async def test_generates_uuid7_ids(self, service: TagBackfillService, empty_ct_session: AsyncMock) -> None:
+    async def test_generates_uuid7_ids(
+        self, service: TagBackfillService, empty_ct_session: AsyncMock
+    ) -> None:
         """Verify all IDs in batch records are valid UUIDs."""
         distinct_tags = {"Python": 10, "Java": 5}
         execution_timestamp = datetime.now(UTC)
@@ -203,7 +203,9 @@ class TestNormalizeAndGroup:
             assert isinstance(record["canonical_tag_id"], uuid.UUID)
 
     @pytest.mark.asyncio
-    async def test_canonical_form_selection(self, service: TagBackfillService, empty_ct_session: AsyncMock) -> None:
+    async def test_canonical_form_selection(
+        self, service: TagBackfillService, empty_ct_session: AsyncMock
+    ) -> None:
         """Verify select_canonical_form is called with correct aliases list."""
         distinct_tags = {"Python": 100, "python": 50, "PYTHON": 25}
         execution_timestamp = datetime.now(UTC)
@@ -220,7 +222,9 @@ class TestNormalizeAndGroup:
         assert ct_records[0]["normalized_form"] == "python"
 
     @pytest.mark.asyncio
-    async def test_batch_record_fields(self, service: TagBackfillService, empty_ct_session: AsyncMock) -> None:
+    async def test_batch_record_fields(
+        self, service: TagBackfillService, empty_ct_session: AsyncMock
+    ) -> None:
         """Verify canonical_tags records have correct keys and types."""
         distinct_tags = {"Python": 10}
         execution_timestamp = datetime.now(UTC)
@@ -258,7 +262,9 @@ class TestNormalizeAndGroup:
         assert record["status"] == "active"
 
     @pytest.mark.asyncio
-    async def test_alias_record_fields(self, service: TagBackfillService, empty_ct_session: AsyncMock) -> None:
+    async def test_alias_record_fields(
+        self, service: TagBackfillService, empty_ct_session: AsyncMock
+    ) -> None:
         """Verify tag_aliases records have correct keys and types."""
         distinct_tags = {"Python": 10}
         execution_timestamp = datetime.now(UTC)
@@ -302,7 +308,9 @@ class TestNormalizeAndGroup:
         assert record["occurrence_count"] == 10
 
     @pytest.mark.asyncio
-    async def test_execution_timestamp_used(self, service: TagBackfillService, empty_ct_session: AsyncMock) -> None:
+    async def test_execution_timestamp_used(
+        self, service: TagBackfillService, empty_ct_session: AsyncMock
+    ) -> None:
         """Verify first_seen_at and last_seen_at both match execution_timestamp."""
         distinct_tags = {"Python": 10}
         execution_timestamp = datetime(2023, 5, 15, 10, 30, 45, tzinfo=UTC)
@@ -1062,9 +1070,9 @@ class TestRunRecount:
 
         mock_session.execute = AsyncMock(
             side_effect=[
-                empty_result,   # alias count query
-                empty_result,   # video count query
-                empty_result,   # current counts query
+                empty_result,  # alias count query
+                empty_result,  # video count query
+                empty_result,  # current counts query
                 update_result,  # alias_count UPDATE
                 update_result,  # video_count UPDATE
             ]

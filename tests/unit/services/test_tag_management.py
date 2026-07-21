@@ -237,8 +237,8 @@ class TestValidateActiveTag:
         merged_tag = _make_canonical_tag(normalized_form="oldtag", status="merged")
         # Return None for "active" query, merged tag for "merged" query
         mock_canonical_tag_repo.get_by_normalized_form.side_effect = [
-            None,         # first call: status="active"
-            merged_tag,   # second call: status="merged"
+            None,  # first call: status="active"
+            merged_tag,  # second call: status="merged"
         ]
 
         with pytest.raises(ValueError) as exc_info:
@@ -273,9 +273,9 @@ class TestValidateActiveTag:
             normalized_form="oldertag", status="deprecated"
         )
         mock_canonical_tag_repo.get_by_normalized_form.side_effect = [
-            None,           # first call: status="active"
-            None,           # second call: status="merged"
-            deprecated_tag, # third call: status="deprecated"
+            None,  # first call: status="active"
+            None,  # second call: status="merged"
+            deprecated_tag,  # third call: status="deprecated"
         ]
 
         with pytest.raises(ValueError) as exc_info:
@@ -332,9 +332,9 @@ class TestValidateActiveTag:
 
         result = await service._validate_active_tag(mock_session, "java")
 
-        assert result is sentinel_tag, (
-            "Expected the exact CanonicalTagDB object returned by the repo"
-        )
+        assert (
+            result is sentinel_tag
+        ), "Expected the exact CanonicalTagDB object returned by the repo"
 
     async def test_validate_active_tag_passes_session_to_repo(
         self,
@@ -352,7 +352,9 @@ class TestValidateActiveTag:
         await service._validate_active_tag(mock_session, "sometag")
 
         # Verify the exact session object was passed
-        first_call_args = mock_canonical_tag_repo.get_by_normalized_form.call_args_list[0]
+        first_call_args = mock_canonical_tag_repo.get_by_normalized_form.call_args_list[
+            0
+        ]
         assert first_call_args.args[0] is mock_session
 
 
@@ -405,9 +407,7 @@ class TestRecalculateCounts:
 
         result = await service._recalculate_counts(mock_session, canonical_tag_id)
 
-        assert result == (7, 42), (
-            f"Expected (7, 42) but got {result!r}"
-        )
+        assert result == (7, 42), f"Expected (7, 42) but got {result!r}"
 
     async def test_recalculate_counts_calls_execute_three_times(
         self,
@@ -430,9 +430,9 @@ class TestRecalculateCounts:
 
         await service._recalculate_counts(mock_session, canonical_tag_id)
 
-        assert mock_session.execute.call_count == 3, (
-            "Expected exactly 3 execute calls (2 SELECTs + 1 UPDATE)"
-        )
+        assert (
+            mock_session.execute.call_count == 3
+        ), "Expected exactly 3 execute calls (2 SELECTs + 1 UPDATE)"
 
     async def test_recalculate_counts_zero_aliases(
         self,
@@ -621,9 +621,9 @@ class TestLogOperation:
 
         # Extract the obj_in keyword argument
         obj_in: TagOperationLogCreate = call_kwargs.kwargs["obj_in"]
-        assert isinstance(obj_in, TagOperationLogCreate), (
-            f"Expected TagOperationLogCreate, got {type(obj_in).__name__}"
-        )
+        assert isinstance(
+            obj_in, TagOperationLogCreate
+        ), f"Expected TagOperationLogCreate, got {type(obj_in).__name__}"
 
         # Verify field values
         assert obj_in.operation_type == "merge"
@@ -782,9 +782,9 @@ class TestLogOperation:
                 rollback_data={},
             )
 
-            assert isinstance(result, uuid.UUID), (
-                f"Expected UUID return for operation_type={op_type!r}"
-            )
+            assert isinstance(
+                result, uuid.UUID
+            ), f"Expected UUID return for operation_type={op_type!r}"
 
     async def test_log_operation_rollback_data_preserved(
         self,
@@ -945,9 +945,9 @@ class TestMerge:
         mock_session.execute = AsyncMock(
             side_effect=[
                 _make_scalars_result([]),  # source alias SELECT (merge reassign)
-                _make_scalar_result(5),    # recalculate alias count
-                _make_scalar_result(10),   # recalculate video count
-                MagicMock(),               # UPDATE
+                _make_scalar_result(5),  # recalculate alias count
+                _make_scalar_result(10),  # recalculate video count
+                MagicMock(),  # UPDATE
             ]
         )
 
@@ -990,8 +990,8 @@ class TestMerge:
         # First get_by_normalized_form call = target validation (active)
         # Second call = source validation (active)
         mock_canonical_tag_repo.get_by_normalized_form.side_effect = [
-            target_tag,   # target validate_active_tag
-            source_tag,   # source validate_active_tag
+            target_tag,  # target validate_active_tag
+            source_tag,  # source validate_active_tag
         ]
 
         source_alias = _make_tag_alias(
@@ -1009,11 +1009,11 @@ class TestMerge:
         # recalculate: alias_count, video_count, UPDATE
         mock_session.execute = AsyncMock(
             side_effect=[
-                alias_select_result,         # SELECT aliases for source
-                MagicMock(),                 # UPDATE aliases to target (bulk UPDATE)
-                _make_scalar_result(4),      # alias count after merge (recalculate)
-                _make_scalar_result(12),     # video count after merge (recalculate)
-                MagicMock(),                 # UPDATE canonical_tags counts
+                alias_select_result,  # SELECT aliases for source
+                MagicMock(),  # UPDATE aliases to target (bulk UPDATE)
+                _make_scalar_result(4),  # alias count after merge (recalculate)
+                _make_scalar_result(12),  # video count after merge (recalculate)
+                MagicMock(),  # UPDATE canonical_tags counts
             ]
         )
 
@@ -1047,30 +1047,40 @@ class TestMerge:
         """
         from chronovista.services.tag_management import MergeResult
 
-        source1 = _make_canonical_tag(normalized_form="ml", canonical_form="ML", status="active")
+        source1 = _make_canonical_tag(
+            normalized_form="ml", canonical_form="ML", status="active"
+        )
         source1.entity_type = None
         source1.entity_id = None
         source2 = _make_canonical_tag(
-            normalized_form="machine learning", canonical_form="Machine Learning", status="active"
+            normalized_form="machine learning",
+            canonical_form="Machine Learning",
+            status="active",
         )
         source2.entity_type = None
         source2.entity_id = None
         target = _make_canonical_tag(
-            normalized_form="machine_learning", canonical_form="Machine_Learning", status="active"
+            normalized_form="machine_learning",
+            canonical_form="Machine_Learning",
+            status="active",
         )
         target.entity_type = None
         target.entity_id = None
 
         # validate_active_tag calls: target, source1, source2
         mock_canonical_tag_repo.get_by_normalized_form.side_effect = [
-            target,    # target
-            source1,   # source1
-            source2,   # source2
+            target,  # target
+            source1,  # source1
+            source2,  # source2
         ]
 
         alias1 = _make_tag_alias(raw_form="ML", canonical_tag_id=source1.id)
-        alias2a = _make_tag_alias(raw_form="Machine Learning", canonical_tag_id=source2.id)
-        alias2b = _make_tag_alias(raw_form="machine learning", canonical_tag_id=source2.id)
+        alias2a = _make_tag_alias(
+            raw_form="Machine Learning", canonical_tag_id=source2.id
+        )
+        alias2b = _make_tag_alias(
+            raw_form="machine learning", canonical_tag_id=source2.id
+        )
 
         op_id = uuid.uuid4()
         log_entry = _make_operation_log()
@@ -1079,13 +1089,13 @@ class TestMerge:
 
         mock_session.execute = AsyncMock(
             side_effect=[
-                _make_scalars_result([alias1]),         # SELECT aliases for source1
-                MagicMock(),                             # UPDATE aliases for source1
+                _make_scalars_result([alias1]),  # SELECT aliases for source1
+                MagicMock(),  # UPDATE aliases for source1
                 _make_scalars_result([alias2a, alias2b]),  # SELECT aliases for source2
-                MagicMock(),                             # UPDATE aliases for source2
-                _make_scalar_result(6),                  # recalculate alias count
-                _make_scalar_result(15),                 # recalculate video count
-                MagicMock(),                             # UPDATE canonical_tags
+                MagicMock(),  # UPDATE aliases for source2
+                _make_scalar_result(6),  # recalculate alias count
+                _make_scalar_result(15),  # recalculate video count
+                MagicMock(),  # UPDATE canonical_tags
             ]
         )
 
@@ -1139,9 +1149,9 @@ class TestMerge:
 
         # target validation succeeds, then source status check reveals merged
         mock_canonical_tag_repo.get_by_normalized_form.side_effect = [
-            target,          # target validate_active_tag -> active
-            None,            # source validate_active_tag -> not active (first call)
-            merged_source,   # source status check -> merged
+            target,  # target validate_active_tag -> active
+            None,  # source validate_active_tag -> not active (first call)
+            merged_source,  # source status check -> merged
         ]
 
         with pytest.raises(ValueError, match="python3"):
@@ -1183,9 +1193,9 @@ class TestMerge:
             normalized_form="old_python", status="deprecated"
         )
         mock_canonical_tag_repo.get_by_normalized_form.side_effect = [
-            None,              # active query -> None
-            None,              # merged query -> None
-            deprecated_target, # deprecated query -> found
+            None,  # active query -> None
+            None,  # merged query -> None
+            deprecated_target,  # deprecated query -> found
         ]
 
         with pytest.raises(ValueError, match="deprecated"):
@@ -1231,10 +1241,10 @@ class TestMerge:
         mock_session.execute = AsyncMock(
             side_effect=[
                 _make_scalars_result([alias]),  # SELECT aliases for source
-                MagicMock(),                     # UPDATE aliases to target
-                _make_scalar_result(4),          # recalculate alias_count
-                _make_scalar_result(12),         # recalculate video_count
-                MagicMock(),                     # UPDATE canonical_tags counts
+                MagicMock(),  # UPDATE aliases to target
+                _make_scalar_result(4),  # recalculate alias_count
+                _make_scalar_result(12),  # recalculate video_count
+                MagicMock(),  # UPDATE canonical_tags counts
             ]
         )
 
@@ -1285,10 +1295,10 @@ class TestMerge:
         mock_session.execute = AsyncMock(
             side_effect=[
                 _make_scalars_result([alias]),  # SELECT aliases for source
-                MagicMock(),                     # UPDATE aliases to target
-                _make_scalar_result(4),          # recalculate alias_count
-                _make_scalar_result(10),         # recalculate video_count
-                MagicMock(),                     # UPDATE canonical_tags counts
+                MagicMock(),  # UPDATE aliases to target
+                _make_scalar_result(4),  # recalculate alias_count
+                _make_scalar_result(10),  # recalculate video_count
+                MagicMock(),  # UPDATE canonical_tags counts
             ]
         )
 
@@ -1347,10 +1357,10 @@ class TestMerge:
         mock_session.execute = AsyncMock(
             side_effect=[
                 _make_scalars_result([alias]),  # SELECT aliases for source
-                MagicMock(),                     # UPDATE aliases to target
-                _make_scalar_result(4),          # recalculate alias_count
-                _make_scalar_result(12),         # recalculate video_count
-                MagicMock(),                     # UPDATE canonical_tags counts
+                MagicMock(),  # UPDATE aliases to target
+                _make_scalar_result(4),  # recalculate alias_count
+                _make_scalar_result(12),  # recalculate video_count
+                MagicMock(),  # UPDATE canonical_tags counts
             ]
         )
 
@@ -1421,10 +1431,10 @@ class TestMerge:
         mock_session.execute = AsyncMock(
             side_effect=[
                 _make_scalars_result([alias]),  # SELECT aliases for source
-                MagicMock(),                     # UPDATE aliases to target
-                _make_scalar_result(4),          # recalculate alias_count
-                _make_scalar_result(12),         # recalculate video_count
-                MagicMock(),                     # UPDATE canonical_tags counts
+                MagicMock(),  # UPDATE aliases to target
+                _make_scalar_result(4),  # recalculate alias_count
+                _make_scalar_result(12),  # recalculate video_count
+                MagicMock(),  # UPDATE canonical_tags counts
             ]
         )
 
@@ -1493,8 +1503,8 @@ class TestMerge:
 
         # validate_active_tag: target first, then source
         mock_canonical_tag_repo.get_by_normalized_form.side_effect = [
-            target_tag,   # target validate_active_tag
-            source_tag,   # source validate_active_tag
+            target_tag,  # target validate_active_tag
+            source_tag,  # source validate_active_tag
         ]
 
         source_alias = _make_tag_alias(
@@ -1510,11 +1520,11 @@ class TestMerge:
 
         mock_session.execute = AsyncMock(
             side_effect=[
-                alias_select_result,   # [0] SELECT aliases for source
-                MagicMock(),           # [1] UPDATE aliases to target (the call under test)
+                alias_select_result,  # [0] SELECT aliases for source
+                MagicMock(),  # [1] UPDATE aliases to target (the call under test)
                 _make_scalar_result(4),  # [2] recalculate alias_count
-                _make_scalar_result(12), # [3] recalculate video_count
-                MagicMock(),             # [4] UPDATE canonical_tags counts
+                _make_scalar_result(12),  # [3] recalculate video_count
+                MagicMock(),  # [4] UPDATE canonical_tags counts
             ]
         )
 
@@ -1528,8 +1538,7 @@ class TestMerge:
         # The bulk alias UPDATE is the second execute call (index 1).
         all_calls = mock_session.execute.call_args_list
         assert len(all_calls) >= 2, (
-            "Expected at least 2 session.execute calls; "
-            f"got {len(all_calls)}"
+            "Expected at least 2 session.execute calls; " f"got {len(all_calls)}"
         )
 
         update_stmt = all_calls[1].args[0]
@@ -1582,9 +1591,7 @@ class TestSplit:
 
         import chronovista.services.tag_normalization as _tn_module
 
-        monkeypatch.setattr(
-            _tn_module, "TagNormalizationService", lambda: mock_norm
-        )
+        monkeypatch.setattr(_tn_module, "TagNormalizationService", lambda: mock_norm)
 
     async def test_basic_split_returns_split_result(
         self,
@@ -1632,8 +1639,8 @@ class TestSplit:
         # validate_active_tag -> source
         mock_canonical_tag_repo.get_by_normalized_form.side_effect = [
             source_tag,  # validate source
-            None,        # collision check active
-            None,        # collision check deprecated
+            None,  # collision check active
+            None,  # collision check deprecated
         ]
         mock_canonical_tag_repo.create.return_value = new_tag
 
@@ -1645,13 +1652,13 @@ class TestSplit:
         mock_session.execute = AsyncMock(
             side_effect=[
                 _make_scalars_result([alias_a, alias_b, alias_c]),  # all aliases
-                MagicMock(),   # UPDATE aliases (reassign to new tag)
-                _make_scalar_result(1),   # orig recalculate alias_count
-                _make_scalar_result(5),   # orig recalculate video_count
-                MagicMock(),              # orig UPDATE
-                _make_scalar_result(2),   # new recalculate alias_count
-                _make_scalar_result(3),   # new recalculate video_count
-                MagicMock(),              # new UPDATE
+                MagicMock(),  # UPDATE aliases (reassign to new tag)
+                _make_scalar_result(1),  # orig recalculate alias_count
+                _make_scalar_result(5),  # orig recalculate video_count
+                MagicMock(),  # orig UPDATE
+                _make_scalar_result(2),  # new recalculate alias_count
+                _make_scalar_result(3),  # new recalculate video_count
+                MagicMock(),  # new UPDATE
             ]
         )
 
@@ -1759,8 +1766,8 @@ class TestSplit:
         existing_active = _make_canonical_tag(normalized_form="ml", status="active")
 
         mock_canonical_tag_repo.get_by_normalized_form.side_effect = [
-            source,          # validate source tag
-            existing_active, # collision check: active tag with same normalized form
+            source,  # validate source tag
+            existing_active,  # collision check: active tag with same normalized form
         ]
 
         alias_a = _make_tag_alias(raw_form="ML", canonical_tag_id=source.id)
@@ -1772,7 +1779,9 @@ class TestSplit:
             ]
         )
 
-        with pytest.raises(ValueError, match="already exists as an active canonical tag"):
+        with pytest.raises(
+            ValueError, match="already exists as an active canonical tag"
+        ):
             await service.split(
                 mock_session,
                 normalized_form="python",
@@ -1796,12 +1805,14 @@ class TestSplit:
         )
 
         source = _make_canonical_tag(normalized_form="python", status="active")
-        deprecated_tag = _make_canonical_tag(normalized_form="oldml", status="deprecated")
+        deprecated_tag = _make_canonical_tag(
+            normalized_form="oldml", status="deprecated"
+        )
 
         mock_canonical_tag_repo.get_by_normalized_form.side_effect = [
-            source,         # validate source
-            None,           # collision check: no active tag
-            deprecated_tag, # collision check: deprecated tag found
+            source,  # validate source
+            None,  # collision check: no active tag
+            deprecated_tag,  # collision check: deprecated tag found
         ]
 
         alias_a = _make_tag_alias(raw_form="OldML", canonical_tag_id=source.id)
@@ -1836,7 +1847,9 @@ class TestSplit:
         - ``previous_counts`` with ``original_alias_count`` and
           ``original_video_count``
         """
-        self._patch_normalization(monkeypatch, canonical_form="PY3", normalized_form="py3")
+        self._patch_normalization(
+            monkeypatch, canonical_form="PY3", normalized_form="py3"
+        )
 
         source = _make_canonical_tag(
             normalized_form="python",
@@ -1852,7 +1865,9 @@ class TestSplit:
         )
 
         mock_canonical_tag_repo.get_by_normalized_form.side_effect = [
-            source, None, None
+            source,
+            None,
+            None,
         ]
         mock_canonical_tag_repo.create.return_value = new_tag
 
@@ -1960,16 +1975,16 @@ class TestUndoSplit:
         # get original_tag for name
         mock_session.execute = AsyncMock(
             side_effect=[
-                _make_scalars_result([]),    # subsequent_ops check
-                MagicMock(),                  # UPDATE alias canonical_tag_id + normalized_form
-                _make_scalar_result(3),       # recalculate alias_count
-                _make_scalar_result(8),       # recalculate video_count
-                MagicMock(),                  # UPDATE canonical_tags
+                _make_scalars_result([]),  # subsequent_ops check
+                MagicMock(),  # UPDATE alias canonical_tag_id + normalized_form
+                _make_scalar_result(3),  # recalculate alias_count
+                _make_scalar_result(8),  # recalculate video_count
+                MagicMock(),  # UPDATE canonical_tags
             ]
         )
         mock_canonical_tag_repo.get.side_effect = [
             original_tag,  # get original_tag for normalized_form (before alias UPDATE)
-            created_tag,   # get created_tag for deletion
+            created_tag,  # get created_tag for deletion
             original_tag,  # get original_tag for name display
         ]
         mock_session.flush = AsyncMock()
@@ -2122,13 +2137,13 @@ class TestUndo:
 
         mock_session.execute = AsyncMock(
             side_effect=[
-                MagicMock(),              # UPDATE alias back to source
-                _make_scalar_result(2),   # source recalculate alias_count
-                _make_scalar_result(5),   # source recalculate video_count
-                MagicMock(),              # source UPDATE
-                _make_scalar_result(3),   # target recalculate alias_count
+                MagicMock(),  # UPDATE alias back to source
+                _make_scalar_result(2),  # source recalculate alias_count
+                _make_scalar_result(5),  # source recalculate video_count
+                MagicMock(),  # source UPDATE
+                _make_scalar_result(3),  # target recalculate alias_count
                 _make_scalar_result(10),  # target recalculate video_count
-                MagicMock(),              # target UPDATE
+                MagicMock(),  # target UPDATE
             ]
         )
         mock_session.add = MagicMock()
@@ -2185,17 +2200,17 @@ class TestUndo:
         )
         mock_canonical_tag_repo.get.side_effect = [
             original_tag,  # get original_tag for normalized_form (before alias UPDATE)
-            created_tag,   # get created_tag for deletion
+            created_tag,  # get created_tag for deletion
             original_tag,  # get original_tag for name display
         ]
 
         mock_session.execute = AsyncMock(
             side_effect=[
                 _make_scalars_result([]),  # no subsequent ops
-                MagicMock(),               # UPDATE alias (FK + normalized_form)
-                _make_scalar_result(3),    # recalculate alias_count
-                _make_scalar_result(8),    # recalculate video_count
-                MagicMock(),               # UPDATE
+                MagicMock(),  # UPDATE alias (FK + normalized_form)
+                _make_scalar_result(3),  # recalculate alias_count
+                _make_scalar_result(8),  # recalculate video_count
+                MagicMock(),  # UPDATE
             ]
         )
         mock_session.flush = AsyncMock()
@@ -2407,7 +2422,9 @@ class TestRename:
         """
         deprecated = _make_canonical_tag(normalized_form="oldtag", status="deprecated")
         mock_canonical_tag_repo.get_by_normalized_form.side_effect = [
-            None, None, deprecated
+            None,
+            None,
+            deprecated,
         ]
 
         with pytest.raises(ValueError, match="deprecated"):
@@ -2567,8 +2584,12 @@ class TestClassify:
         # SELECT: self-alias existence check (should not exist yet)
         mock_session.execute = AsyncMock(
             side_effect=[
-                MagicMock(**{"scalar_one_or_none.return_value": None}),  # existing entity check
-                MagicMock(**{"scalar_one_or_none.return_value": None}),  # self-alias check
+                MagicMock(
+                    **{"scalar_one_or_none.return_value": None}
+                ),  # existing entity check
+                MagicMock(
+                    **{"scalar_one_or_none.return_value": None}
+                ),  # self-alias check
             ]
         )
         mock_session.add = MagicMock()
@@ -2725,8 +2746,8 @@ class TestClassify:
             canonical_form="Python",
             status="active",
         )
-        tag.entity_type = "topic"    # previously classified as topic (tag-only)
-        tag.entity_id = None         # no entity record for tag-only
+        tag.entity_type = "topic"  # previously classified as topic (tag-only)
+        tag.entity_id = None  # no entity record for tag-only
 
         mock_canonical_tag_repo.get_by_normalized_form.return_value = tag
 
@@ -2748,9 +2769,13 @@ class TestClassify:
 
         mock_session.execute = AsyncMock(
             side_effect=[
-                MagicMock(**{"scalar_one_or_none.return_value": None}),  # existing entity check
-                _make_scalars_result([alias_a]),                          # tag aliases
-                MagicMock(**{"scalar_one_or_none.return_value": None}),  # alias_a upsert check
+                MagicMock(
+                    **{"scalar_one_or_none.return_value": None}
+                ),  # existing entity check
+                _make_scalars_result([alias_a]),  # tag aliases
+                MagicMock(
+                    **{"scalar_one_or_none.return_value": None}
+                ),  # alias_a upsert check
             ]
         )
         mock_session.add = MagicMock()
@@ -2812,8 +2837,12 @@ class TestClassify:
 
         mock_session.execute = AsyncMock(
             side_effect=[
-                MagicMock(**{"scalar_one_or_none.return_value": None}),  # existing entity check
-                MagicMock(**{"scalar_one_or_none.return_value": None}),  # self-alias check
+                MagicMock(
+                    **{"scalar_one_or_none.return_value": None}
+                ),  # existing entity check
+                MagicMock(
+                    **{"scalar_one_or_none.return_value": None}
+                ),  # self-alias check
             ]
         )
         mock_session.add = MagicMock()
@@ -3015,8 +3044,8 @@ class TestGetCollisions:
 
         mock_session.execute = AsyncMock(
             side_effect=[
-                _make_scalars_result([tag]),               # active tags (first)
-                _make_scalars_result([]),                  # reviewed log entries (none)
+                _make_scalars_result([tag]),  # active tags (first)
+                _make_scalars_result([]),  # reviewed log entries (none)
                 _make_scalars_result([alias_a, alias_b]),  # aliases for tag
             ]
         )
@@ -3041,15 +3070,17 @@ class TestGetCollisions:
         A tag whose aliases all casefold to the same string must NOT appear
         in the collision list (e.g. 'Python' and 'PYTHON' both casefold to 'python').
         """
-        tag = _make_canonical_tag(normalized_form="python", canonical_form="Python", status="active")
+        tag = _make_canonical_tag(
+            normalized_form="python", canonical_form="Python", status="active"
+        )
 
         alias_a = _make_tag_alias(raw_form="Python", canonical_tag_id=tag.id)
         alias_b = _make_tag_alias(raw_form="PYTHON", canonical_tag_id=tag.id)
 
         mock_session.execute = AsyncMock(
             side_effect=[
-                _make_scalars_result([tag]),               # active tags (first)
-                _make_scalars_result([]),                  # reviewed entries (none)
+                _make_scalars_result([tag]),  # active tags (first)
+                _make_scalars_result([]),  # reviewed entries (none)
                 _make_scalars_result([alias_a, alias_b]),  # aliases
             ]
         )
@@ -3071,9 +3102,9 @@ class TestGetCollisions:
 
         mock_session.execute = AsyncMock(
             side_effect=[
-                _make_scalars_result([tag]),      # active tags (first)
-                _make_scalars_result([]),          # reviewed (none)
-                _make_scalars_result([alias_a]),   # single alias
+                _make_scalars_result([tag]),  # active tags (first)
+                _make_scalars_result([]),  # reviewed (none)
+                _make_scalars_result([alias_a]),  # single alias
             ]
         )
 
@@ -3091,25 +3122,37 @@ class TestGetCollisions:
         so the highest-impact collisions appear first.
         """
 
-        tag1 = _make_canonical_tag(normalized_form="cafe", canonical_form="Cafe", status="active")
+        tag1 = _make_canonical_tag(
+            normalized_form="cafe", canonical_form="Cafe", status="active"
+        )
         tag1.id = uuid.uuid4()
-        tag2 = _make_canonical_tag(normalized_form="resume", canonical_form="Resume", status="active")
+        tag2 = _make_canonical_tag(
+            normalized_form="resume", canonical_form="Resume", status="active"
+        )
         tag2.id = uuid.uuid4()
 
-        alias1a = _make_tag_alias(raw_form="cafe", canonical_tag_id=tag1.id, occurrence_count=2)
-        alias1b = _make_tag_alias(raw_form="café", canonical_tag_id=tag1.id, occurrence_count=3)
+        alias1a = _make_tag_alias(
+            raw_form="cafe", canonical_tag_id=tag1.id, occurrence_count=2
+        )
+        alias1b = _make_tag_alias(
+            raw_form="café", canonical_tag_id=tag1.id, occurrence_count=3
+        )
         # tag1 total = 5
 
-        alias2a = _make_tag_alias(raw_form="resume", canonical_tag_id=tag2.id, occurrence_count=50)
-        alias2b = _make_tag_alias(raw_form="résumé", canonical_tag_id=tag2.id, occurrence_count=50)
+        alias2a = _make_tag_alias(
+            raw_form="resume", canonical_tag_id=tag2.id, occurrence_count=50
+        )
+        alias2b = _make_tag_alias(
+            raw_form="résumé", canonical_tag_id=tag2.id, occurrence_count=50
+        )
         # tag2 total = 100
 
         mock_session.execute = AsyncMock(
             side_effect=[
-                _make_scalars_result([tag1, tag2]),           # active tags (first)
-                _make_scalars_result([]),                     # reviewed (none)
-                _make_scalars_result([alias1a, alias1b]),     # tag1 aliases
-                _make_scalars_result([alias2a, alias2b]),     # tag2 aliases
+                _make_scalars_result([tag1, tag2]),  # active tags (first)
+                _make_scalars_result([]),  # reviewed (none)
+                _make_scalars_result([alias1a, alias1b]),  # tag1 aliases
+                _make_scalars_result([alias2a, alias2b]),  # tag2 aliases
             ]
         )
 
@@ -3181,13 +3224,17 @@ class TestGetCollisions:
         )
         tag.id = uuid.uuid4()
 
-        alias_a = _make_tag_alias(raw_form="naive", canonical_tag_id=tag.id, occurrence_count=10)
-        alias_b = _make_tag_alias(raw_form="naïve", canonical_tag_id=tag.id, occurrence_count=5)
+        alias_a = _make_tag_alias(
+            raw_form="naive", canonical_tag_id=tag.id, occurrence_count=10
+        )
+        alias_b = _make_tag_alias(
+            raw_form="naïve", canonical_tag_id=tag.id, occurrence_count=5
+        )
 
         # With include_reviewed=True: no reviewed-log query, just active tags + aliases
         mock_session.execute = AsyncMock(
             side_effect=[
-                _make_scalars_result([tag]),           # active tags
+                _make_scalars_result([tag]),  # active tags
                 _make_scalars_result([alias_a, alias_b]),  # aliases
             ]
         )
@@ -3209,16 +3256,22 @@ class TestGetCollisions:
         """
         from chronovista.services.tag_management import CollisionGroup
 
-        tag = _make_canonical_tag(normalized_form="cafe", canonical_form="Cafe", status="active")
+        tag = _make_canonical_tag(
+            normalized_form="cafe", canonical_form="Cafe", status="active"
+        )
         tag.id = uuid.uuid4()
 
-        alias_a = _make_tag_alias(raw_form="#cafe", canonical_tag_id=tag.id, occurrence_count=8)
-        alias_b = _make_tag_alias(raw_form="café", canonical_tag_id=tag.id, occurrence_count=4)
+        alias_a = _make_tag_alias(
+            raw_form="#cafe", canonical_tag_id=tag.id, occurrence_count=8
+        )
+        alias_b = _make_tag_alias(
+            raw_form="café", canonical_tag_id=tag.id, occurrence_count=4
+        )
 
         mock_session.execute = AsyncMock(
             side_effect=[
-                _make_scalars_result([tag]),               # active tags (first)
-                _make_scalars_result([]),                  # reviewed (none)
+                _make_scalars_result([tag]),  # active tags (first)
+                _make_scalars_result([]),  # reviewed (none)
                 _make_scalars_result([alias_a, alias_b]),  # aliases
             ]
         )
@@ -3325,7 +3378,9 @@ class TestDeprecate:
         """
         deprecated = _make_canonical_tag(normalized_form="oldtag", status="deprecated")
         mock_canonical_tag_repo.get_by_normalized_form.side_effect = [
-            None, None, deprecated
+            None,
+            None,
+            deprecated,
         ]
 
         with pytest.raises(ValueError, match="deprecated"):
@@ -3342,9 +3397,7 @@ class TestDeprecate:
         the 'merged' status mentioned.
         """
         merged = _make_canonical_tag(normalized_form="oldtag", status="merged")
-        mock_canonical_tag_repo.get_by_normalized_form.side_effect = [
-            None, merged
-        ]
+        mock_canonical_tag_repo.get_by_normalized_form.side_effect = [None, merged]
 
         with pytest.raises(ValueError, match="merged"):
             await service.deprecate(mock_session, normalized_form="oldtag")
@@ -3548,9 +3601,13 @@ class TestClassifyDescriptionAndAutoCase:
 
         mock_session.execute = AsyncMock(
             side_effect=[
-                MagicMock(**{"scalar_one_or_none.return_value": None}),  # existing entity check
-                _make_scalars_result([alias_a]),                          # tag aliases
-                MagicMock(**{"scalar_one_or_none.return_value": None}),  # alias upsert check
+                MagicMock(
+                    **{"scalar_one_or_none.return_value": None}
+                ),  # existing entity check
+                _make_scalars_result([alias_a]),  # tag aliases
+                MagicMock(
+                    **{"scalar_one_or_none.return_value": None}
+                ),  # alias upsert check
             ]
         )
         mock_session.add = MagicMock()
@@ -3594,9 +3651,9 @@ class TestClassifyDescriptionAndAutoCase:
 
         create_call = mock_named_entity_repo.create.call_args
         obj_in = create_call.kwargs["obj_in"]
-        assert obj_in.description == "British journalist", (
-            "description argument should take priority over reason"
-        )
+        assert (
+            obj_in.description == "British journalist"
+        ), "description argument should take priority over reason"
 
     async def test_classify_description_falls_back_to_reason_when_none(
         self,
@@ -3635,9 +3692,9 @@ class TestClassifyDescriptionAndAutoCase:
 
         create_call = mock_named_entity_repo.create.call_args
         obj_in = create_call.kwargs["obj_in"]
-        assert obj_in.description == "War reporter", (
-            "description should fall back to reason when description is None"
-        )
+        assert (
+            obj_in.description == "War reporter"
+        ), "description should fall back to reason when description is None"
 
     async def test_classify_description_none_and_reason_none(
         self,
@@ -3675,9 +3732,9 @@ class TestClassifyDescriptionAndAutoCase:
 
         create_call = mock_named_entity_repo.create.call_args
         obj_in = create_call.kwargs["obj_in"]
-        assert obj_in.description is None, (
-            "description should be None when both description and reason are None"
-        )
+        assert (
+            obj_in.description is None
+        ), "description should be None when both description and reason are None"
 
     async def test_classify_auto_case_title_cases_canonical_form(
         self,
@@ -3716,9 +3773,9 @@ class TestClassifyDescriptionAndAutoCase:
             auto_case=True,
         )
 
-        assert tag.canonical_form == "Vanessa Beeley", (
-            "auto_case=True should title-case a lowercase canonical_form"
-        )
+        assert (
+            tag.canonical_form == "Vanessa Beeley"
+        ), "auto_case=True should title-case a lowercase canonical_form"
         # session.add must have been called with the tag to persist the mutation
         mock_session.add.assert_any_call(tag)
 
@@ -3757,9 +3814,9 @@ class TestClassifyDescriptionAndAutoCase:
             auto_case=False,
         )
 
-        assert tag.canonical_form == "vanessa beeley", (
-            "auto_case=False should leave canonical_form unchanged"
-        )
+        assert (
+            tag.canonical_form == "vanessa beeley"
+        ), "auto_case=False should leave canonical_form unchanged"
 
     async def test_classify_auto_case_skips_already_title_cased(
         self,
@@ -3799,9 +3856,9 @@ class TestClassifyDescriptionAndAutoCase:
             auto_case=True,
         )
 
-        assert tag.canonical_form == "Vanessa Beeley", (
-            "auto_case=True must not alter a canonical_form that is already title-cased"
-        )
+        assert (
+            tag.canonical_form == "Vanessa Beeley"
+        ), "auto_case=True must not alter a canonical_form that is already title-cased"
 
     async def test_classify_auto_case_no_effect_for_tag_only_types(
         self,
@@ -3848,9 +3905,9 @@ class TestClassifyDescriptionAndAutoCase:
         )
 
         assert isinstance(result, ClassifyResult)
-        assert tag.canonical_form == "machine learning", (
-            "auto_case must have no effect for tag-only types such as TOPIC"
-        )
+        assert (
+            tag.canonical_form == "machine learning"
+        ), "auto_case must have no effect for tag-only types such as TOPIC"
         mock_named_entity_repo.create.assert_not_called()
 
 
@@ -3926,7 +3983,9 @@ class TestClassifyLinkEntity:
         # because we skip straight to link_entity_id branch)
         mock_session.execute = AsyncMock(
             side_effect=[
-                MagicMock(**{"scalar_one_or_none.return_value": None}),  # self-alias check
+                MagicMock(
+                    **{"scalar_one_or_none.return_value": None}
+                ),  # self-alias check
             ]
         )
         mock_session.add = MagicMock()
@@ -4095,9 +4154,7 @@ class TestMergeAliasUpdateColumns:
         log_entry.id = uuid.uuid4()
         mock_operation_log_repo.create.return_value = log_entry
 
-        await service.merge(
-            mock_session, ["professor hannah fry"], "hannah fry"
-        )
+        await service.merge(mock_session, ["professor hannah fry"], "hannah fry")
 
         # Find the UPDATE targeting tag_aliases and inspect its SET clause.
         alias_update_sql = None
@@ -4109,12 +4166,12 @@ class TestMergeAliasUpdateColumns:
                 break
 
         assert alias_update_sql is not None, "no UPDATE tag_aliases statement issued"
-        assert "canonical_tag_id" in alias_update_sql, (
-            f"SET clause missing canonical_tag_id: {alias_update_sql}"
-        )
-        assert "normalized_form" in alias_update_sql, (
-            f"SET clause missing normalized_form: {alias_update_sql}"
-        )
+        assert (
+            "canonical_tag_id" in alias_update_sql
+        ), f"SET clause missing canonical_tag_id: {alias_update_sql}"
+        assert (
+            "normalized_form" in alias_update_sql
+        ), f"SET clause missing normalized_form: {alias_update_sql}"
 
 
 class TestMergePreview:
@@ -4145,9 +4202,7 @@ class TestMergePreview:
         mock_canonical_tag_repo: AsyncMock,
         mock_session: AsyncMock,
     ) -> None:
-        target = _make_canonical_tag(
-            normalized_form="music", canonical_form="Music"
-        )
+        target = _make_canonical_tag(normalized_form="music", canonical_form="Music")
         source = _make_canonical_tag(
             normalized_form="rock music", canonical_form="Rock Music"
         )
@@ -4172,9 +4227,7 @@ class TestMergePreview:
             src_video,
         ]
 
-        result = await service.merge_preview(
-            mock_session, ["rock music"], "music"
-        )
+        result = await service.merge_preview(mock_session, ["rock music"], "music")
 
         assert result.resulting_alias_count == 8
         assert result.resulting_video_count == 30

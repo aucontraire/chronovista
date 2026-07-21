@@ -99,8 +99,7 @@ def _check_rate_limit(
 
     # Clean old entries (older than window)
     request_counts[client_id] = [
-        ts for ts in request_counts[client_id]
-        if ts > window_start
+        ts for ts in request_counts[client_id] if ts > window_start
     ]
 
     # Check if limit exceeded
@@ -223,21 +222,24 @@ async def list_tags(
     )
     # Apply availability filter unless include_unavailable is True
     if not include_unavailable:
-        count_base = count_base.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
+        count_base = count_base.where(
+            Video.availability_status == AvailabilityStatus.AVAILABLE
+        )
     if q is not None:
         count_base = count_base.where(VideoTag.tag.ilike(f"{q}%"))
     total_result = await session.execute(count_base)
     total = total_result.scalar() or 0
 
     # Apply ordering and pagination
-    query = query.order_by(func.count(VideoTag.video_id).desc()).offset(offset).limit(limit)
+    query = (
+        query.order_by(func.count(VideoTag.video_id).desc()).offset(offset).limit(limit)
+    )
 
     result = await session.execute(query)
     rows = result.all()
 
     items: list[TagListItem] = [
-        TagListItem(tag=row.tag, video_count=row.video_count)
-        for row in rows
+        TagListItem(tag=row.tag, video_count=row.video_count) for row in rows
     ]
 
     pagination = PaginationMeta(
@@ -267,8 +269,8 @@ async def list_tags(
                 .where(func.length(VideoTag.tag) <= max_len)
                 .where(
                     # Match tags starting with similar prefix OR containing query
-                    (func.lower(VideoTag.tag).like(f"{prefix}%")) |
-                    (func.lower(VideoTag.tag).like(f"%{q.lower()}%"))
+                    (func.lower(VideoTag.tag).like(f"{prefix}%"))
+                    | (func.lower(VideoTag.tag).like(f"%{q.lower()}%"))
                 )
                 .distinct()
                 .limit(500)
@@ -278,7 +280,11 @@ async def list_tags(
 
             logger.debug(
                 "[tags] Fuzzy search for '%s': %d candidates (prefix='%s', len %d-%d)",
-                q, len(candidate_tags), prefix, min_len, max_len
+                q,
+                len(candidate_tags),
+                prefix,
+                min_len,
+                max_len,
             )
 
             # Find similar tags using Levenshtein distance
@@ -306,7 +312,9 @@ async def list_tags(
 
 # IMPORTANT: This endpoint MUST be defined before the detail endpoint below
 # to ensure correct URL matching, following the same pattern as topics router.
-@router.get("/tags/{tag}/videos", response_model=VideoListResponse, responses=GET_ITEM_ERRORS)
+@router.get(
+    "/tags/{tag}/videos", response_model=VideoListResponse, responses=GET_ITEM_ERRORS
+)
 async def get_tag_videos(
     tag: str = Path(
         ...,
@@ -357,7 +365,9 @@ async def get_tag_videos(
     )
     # Apply availability filter unless include_unavailable is True
     if not include_unavailable:
-        tag_query = tag_query.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
+        tag_query = tag_query.where(
+            Video.availability_status == AvailabilityStatus.AVAILABLE
+        )
 
     tag_result = await session.execute(tag_query)
     if not tag_result.scalar_one_or_none():
@@ -389,7 +399,9 @@ async def get_tag_videos(
     )
     # Apply availability filter unless include_unavailable is True
     if not include_unavailable:
-        count_query = count_query.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
+        count_query = count_query.where(
+            Video.availability_status == AvailabilityStatus.AVAILABLE
+        )
 
     total_result = await session.execute(count_query)
     total = total_result.scalar() or 0
@@ -407,9 +419,7 @@ async def get_tag_videos(
         transcripts = list(video.transcripts) if video.transcripts else []
         transcript_count = len(transcripts)
         languages = list({t.language_code for t in transcripts})
-        has_manual = any(
-            t.is_cc or t.transcript_type == "MANUAL" for t in transcripts
-        )
+        has_manual = any(t.is_cc or t.transcript_type == "MANUAL" for t in transcripts)
 
         from chronovista.api.schemas.videos import TranscriptSummary
 
@@ -423,7 +433,11 @@ async def get_tag_videos(
 
         # Extract category info
         category_id_val = video.category_id if hasattr(video, "category_id") else None
-        category_name = video.category.name if hasattr(video, "category") and video.category else None
+        category_name = (
+            video.category.name
+            if hasattr(video, "category") and video.category
+            else None
+        )
 
         items.append(
             VideoListItem(

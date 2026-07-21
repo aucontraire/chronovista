@@ -68,7 +68,8 @@ class BatchPreviewRequest(BaseModel):
     @field_validator("video_ids")
     @classmethod
     def validate_video_ids_length(
-        cls, v: list[str] | None,
+        cls,
+        v: list[str] | None,
     ) -> list[str] | None:
         """Ensure video_ids list does not exceed 50 items.
 
@@ -313,9 +314,7 @@ class BatchRebuildRequest(BaseModel):
 
     model_config = ConfigDict(strict=True, str_strip_whitespace=True)
 
-    video_ids: list[str] = Field(
-        ..., description="Video IDs to rebuild (1-50 items)"
-    )
+    video_ids: list[str] = Field(..., description="Video IDs to rebuild (1-50 items)")
 
     @field_validator("video_ids")
     @classmethod

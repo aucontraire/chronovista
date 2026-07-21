@@ -412,9 +412,7 @@ class TestEnrichmentServiceLogging:
         return service
 
     @pytest.fixture
-    def enrichment_service(
-        self, mock_youtube_service: MagicMock
-    ) -> EnrichmentService:
+    def enrichment_service(self, mock_youtube_service: MagicMock) -> EnrichmentService:
         """Create an EnrichmentService instance with mocks."""
         return EnrichmentService(
             video_repository=MagicMock(),
@@ -460,8 +458,7 @@ class TestEnrichmentServiceLogging:
 
             # Should log that no videos were found
             assert any(
-                "no video" in record.message.lower()
-                for record in caplog.records
+                "no video" in record.message.lower() for record in caplog.records
             )
 
     @pytest.mark.asyncio
@@ -477,16 +474,19 @@ class TestEnrichmentServiceLogging:
         mock_video.title = "[Placeholder] Video test_vid"
         mock_video.availability_status = "available"
 
-        with patch.object(
-            enrichment_service,
-            "_get_videos_for_enrichment",
-            new_callable=AsyncMock,
-        ) as mock_get, patch.object(
-            enrichment_service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([], {"test_vid"}))
-        ), patch.object(
-            mock_session, "commit", new=AsyncMock()
-        ), patch.object(
-            mock_session, "rollback", new=AsyncMock()
+        with (
+            patch.object(
+                enrichment_service,
+                "_get_videos_for_enrichment",
+                new_callable=AsyncMock,
+            ) as mock_get,
+            patch.object(
+                enrichment_service.youtube_service,
+                "fetch_videos_batched",
+                new=AsyncMock(return_value=([], {"test_vid"})),
+            ),
+            patch.object(mock_session, "commit", new=AsyncMock()),
+            patch.object(mock_session, "rollback", new=AsyncMock()),
         ):
             mock_get.return_value = [mock_video]
 
@@ -503,9 +503,7 @@ class TestEnrichmentServiceLogging:
 class TestLoggingWithCaplog:
     """Tests using pytest's caplog fixture for capturing logs."""
 
-    def test_caplog_captures_info(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_caplog_captures_info(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that caplog captures INFO level messages."""
         test_logger = logging.getLogger("test_caplog_info")
 
@@ -513,13 +511,9 @@ class TestLoggingWithCaplog:
             test_logger.info("Test INFO message for caplog")
 
         assert "Test INFO message for caplog" in caplog.text
-        assert any(
-            record.levelname == "INFO" for record in caplog.records
-        )
+        assert any(record.levelname == "INFO" for record in caplog.records)
 
-    def test_caplog_captures_error(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_caplog_captures_error(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that caplog captures ERROR level messages."""
         test_logger = logging.getLogger("test_caplog_error")
 
@@ -527,13 +521,9 @@ class TestLoggingWithCaplog:
             test_logger.error("Test ERROR message for caplog")
 
         assert "Test ERROR message for caplog" in caplog.text
-        assert any(
-            record.levelname == "ERROR" for record in caplog.records
-        )
+        assert any(record.levelname == "ERROR" for record in caplog.records)
 
-    def test_caplog_enrichment_module(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_caplog_enrichment_module(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test capturing logs from the enrichment module specifically."""
         with caplog.at_level(logging.INFO, logger="chronovista.services.enrichment"):
             enrichment_logger.info("Enrichment test message")

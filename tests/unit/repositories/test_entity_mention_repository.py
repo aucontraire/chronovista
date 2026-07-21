@@ -391,7 +391,9 @@ class TestBulkCreateWithConflictSkip:
         mock_session.execute.return_value = mock_result
 
         # Should not raise (e.g. database type mismatch for enum object)
-        result = await repository.bulk_create_with_conflict_skip(mock_session, [mention])
+        result = await repository.bulk_create_with_conflict_skip(
+            mock_session, [mention]
+        )
         assert result == 1
 
     async def test_single_mention_executes_once(
@@ -549,9 +551,7 @@ class TestDeleteByScope:
         mock_result.rowcount = 0
         mock_session.execute.return_value = mock_result
 
-        count = await repository.delete_by_scope(
-            mock_session, entity_ids=[_uuid()]
-        )
+        count = await repository.delete_by_scope(mock_session, entity_ids=[_uuid()])
 
         assert count == 0
 
@@ -725,7 +725,9 @@ class TestDeleteByCorrectionIds:
         """Provide a fresh repository instance for each test."""
         return EntityMentionRepository()
 
-    async def test_deletes_by_correction_ids(self, repository: EntityMentionRepository) -> None:
+    async def test_deletes_by_correction_ids(
+        self, repository: EntityMentionRepository
+    ) -> None:
         """Deletes mentions whose correction_id is in the given list."""
         session = MagicMock(spec=AsyncSession)
         session.execute = AsyncMock()
@@ -739,7 +741,9 @@ class TestDeleteByCorrectionIds:
         assert count == 5
         session.execute.assert_called_once()
 
-    async def test_empty_list_returns_zero(self, repository: EntityMentionRepository) -> None:
+    async def test_empty_list_returns_zero(
+        self, repository: EntityMentionRepository
+    ) -> None:
         """Empty correction_ids list returns 0 without executing."""
         session = MagicMock(spec=AsyncSession)
         session.execute = AsyncMock()
@@ -766,7 +770,9 @@ class TestGetEntityIdsByCorrectionIds:
         """Provide a fresh repository instance for each test."""
         return EntityMentionRepository()
 
-    async def test_returns_distinct_entity_ids(self, repository: EntityMentionRepository) -> None:
+    async def test_returns_distinct_entity_ids(
+        self, repository: EntityMentionRepository
+    ) -> None:
         """Returns entity IDs for mentions linked to given correction IDs."""
         session = MagicMock(spec=AsyncSession)
         session.execute = AsyncMock()
@@ -782,7 +788,9 @@ class TestGetEntityIdsByCorrectionIds:
         assert result == [entity_id_1, entity_id_2]
         session.execute.assert_called_once()
 
-    async def test_empty_correction_ids_returns_empty(self, repository: EntityMentionRepository) -> None:
+    async def test_empty_correction_ids_returns_empty(
+        self, repository: EntityMentionRepository
+    ) -> None:
         """Empty correction_ids returns empty list without DB call."""
         session = MagicMock(spec=AsyncSession)
         session.execute = AsyncMock()
@@ -792,7 +800,9 @@ class TestGetEntityIdsByCorrectionIds:
         assert result == []
         session.execute.assert_not_called()
 
-    async def test_no_matching_mentions_returns_empty(self, repository: EntityMentionRepository) -> None:
+    async def test_no_matching_mentions_returns_empty(
+        self, repository: EntityMentionRepository
+    ) -> None:
         """Returns empty list when no mentions match the correction IDs."""
         session = MagicMock(spec=AsyncSession)
         session.execute = AsyncMock()
@@ -800,7 +810,9 @@ class TestGetEntityIdsByCorrectionIds:
         mock_result.scalars.return_value.all.return_value = []
         session.execute.return_value = mock_result
 
-        result = await repository.get_entity_ids_by_correction_ids(session, [uuid.uuid4()])
+        result = await repository.get_entity_ids_by_correction_ids(
+            session, [uuid.uuid4()]
+        )
 
         assert result == []
 
@@ -990,9 +1002,9 @@ class TestUpdateEntityCounters:
         for call_args in mock_session.execute.call_args_list:
             stmt = call_args.args[0]
             sql_str = str(stmt.compile(compile_kwargs={"literal_binds": False}))
-            assert "named_entities" in sql_str, (
-                f"Expected UPDATE to target named_entities; got SQL: {sql_str}"
-            )
+            assert (
+                "named_entities" in sql_str
+            ), f"Expected UPDATE to target named_entities; got SQL: {sql_str}"
 
     async def test_first_update_sets_mention_and_video_counts(
         self,
@@ -1073,8 +1085,7 @@ class TestUpdateEntityCounters:
         )
         # The asr_error value must appear as a literal exclusion filter
         assert "asr_error" in sql_str, (
-            "Expected 'asr_error' exclusion in counter SQL; "
-            f"got: {sql_str[:500]}"
+            "Expected 'asr_error' exclusion in counter SQL; " f"got: {sql_str[:500]}"
         )
 
     async def test_sql_references_named_entities_canonical_name(
@@ -1140,12 +1151,10 @@ class TestUpdateEntityCounters:
         )
         # The zero-out branch must still set both counter columns to 0
         assert "mention_count" in sql_str, (
-            "Zero-out UPDATE must include mention_count; "
-            f"got: {sql_str[:400]}"
+            "Zero-out UPDATE must include mention_count; " f"got: {sql_str[:400]}"
         )
         assert "video_count" in sql_str, (
-            "Zero-out UPDATE must include video_count; "
-            f"got: {sql_str[:400]}"
+            "Zero-out UPDATE must include video_count; " f"got: {sql_str[:400]}"
         )
 
     async def test_visible_names_join_uses_lower_for_case_insensitive_match(
@@ -1288,9 +1297,9 @@ class TestUpdateAliasCounters:
         for call_args in mock_session.execute.call_args_list:
             stmt = call_args.args[0]
             sql_str = str(stmt.compile(compile_kwargs={"literal_binds": False}))
-            assert "entity_aliases" in sql_str, (
-                f"Expected UPDATE to target entity_aliases; got SQL: {sql_str}"
-            )
+            assert (
+                "entity_aliases" in sql_str
+            ), f"Expected UPDATE to target entity_aliases; got SQL: {sql_str}"
 
     async def test_first_update_sets_occurrence_count(
         self,
@@ -1534,8 +1543,18 @@ class TestGetEntityVideoList:
         transcript_vid_result.scalars.return_value.all.return_value = []
         mock_session.execute.return_value = transcript_vid_result
 
-        with patch.object(repository, "_get_tag_associated_video_ids", new=AsyncMock(return_value=set())), \
-             patch.object(repository, "_get_alias_matched_tag_video_ids", new=AsyncMock(return_value=set())):
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
             results, total = await repository.get_entity_video_list(
                 mock_session, entity_id=_uuid()
             )
@@ -1563,7 +1582,11 @@ class TestGetEntityVideoList:
         # 5 total video IDs so total_count==5; only 1 returned by main query (page 1)
         transcript_vid_result = MagicMock()
         transcript_vid_result.scalars.return_value.all.return_value = [
-            "dQw4w9WgXcQ", "vid2", "vid3", "vid4", "vid5"
+            "dQw4w9WgXcQ",
+            "vid2",
+            "vid3",
+            "vid4",
+            "vid5",
         ]
 
         main_result = MagicMock()
@@ -1573,10 +1596,24 @@ class TestGetEntityVideoList:
         preview_result.all.return_value = [preview_row]
 
         # transcript_vid → main → preview (one per video row)
-        mock_session.execute.side_effect = [transcript_vid_result, main_result, preview_result]
+        mock_session.execute.side_effect = [
+            transcript_vid_result,
+            main_result,
+            preview_result,
+        ]
 
-        with patch.object(repository, "_get_tag_associated_video_ids", new=AsyncMock(return_value=set())), \
-             patch.object(repository, "_get_alias_matched_tag_video_ids", new=AsyncMock(return_value=set())):
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
             results, total = await repository.get_entity_video_list(
                 mock_session, entity_id=entity_id, limit=1, offset=0
             )
@@ -1605,17 +1642,37 @@ class TestGetEntityVideoList:
         preview_result = MagicMock()
         preview_result.all.return_value = []
 
-        mock_session.execute.side_effect = [transcript_vid_result, main_result, preview_result]
+        mock_session.execute.side_effect = [
+            transcript_vid_result,
+            main_result,
+            preview_result,
+        ]
 
-        with patch.object(repository, "_get_tag_associated_video_ids", new=AsyncMock(return_value=set())), \
-             patch.object(repository, "_get_alias_matched_tag_video_ids", new=AsyncMock(return_value=set())):
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
             results, _ = await repository.get_entity_video_list(
                 mock_session, entity_id=entity_id
             )
 
         assert len(results) == 1
         item = results[0]
-        for key in ("video_id", "video_title", "channel_name", "mention_count", "mentions"):
+        for key in (
+            "video_id",
+            "video_title",
+            "channel_name",
+            "mention_count",
+            "mentions",
+        ):
             assert key in item, f"Expected key '{key}' missing from result dict"
 
     async def test_mention_previews_limited_to_five(
@@ -1644,10 +1701,24 @@ class TestGetEntityVideoList:
         preview_result.all.return_value = preview_rows
 
         # transcript_vid → main → preview
-        mock_session.execute.side_effect = [transcript_vid_result, main_result, preview_result]
+        mock_session.execute.side_effect = [
+            transcript_vid_result,
+            main_result,
+            preview_result,
+        ]
 
-        with patch.object(repository, "_get_tag_associated_video_ids", new=AsyncMock(return_value=set())), \
-             patch.object(repository, "_get_alias_matched_tag_video_ids", new=AsyncMock(return_value=set())):
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
             results, _ = await repository.get_entity_video_list(
                 mock_session, entity_id=entity_id
             )
@@ -1658,9 +1729,9 @@ class TestGetEntityVideoList:
         # call_args_list[2] = third execute = preview query (index 0=transcript_vid, 1=main, 2=preview)
         preview_stmt = mock_session.execute.call_args_list[2].args[0]
         preview_sql = str(preview_stmt.compile(compile_kwargs={"literal_binds": True}))
-        assert "5" in preview_sql, (
-            f"Expected LIMIT 5 in preview SQL; got: {preview_sql}"
-        )
+        assert (
+            "5" in preview_sql
+        ), f"Expected LIMIT 5 in preview SQL; got: {preview_sql}"
 
     async def test_language_code_filter_applied_to_all_queries(
         self,
@@ -1681,10 +1752,24 @@ class TestGetEntityVideoList:
         preview_result = MagicMock()
         preview_result.all.return_value = []
 
-        mock_session.execute.side_effect = [transcript_vid_result, main_result, preview_result]
+        mock_session.execute.side_effect = [
+            transcript_vid_result,
+            main_result,
+            preview_result,
+        ]
 
-        with patch.object(repository, "_get_tag_associated_video_ids", new=AsyncMock(return_value=set())), \
-             patch.object(repository, "_get_alias_matched_tag_video_ids", new=AsyncMock(return_value=set())):
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
             await repository.get_entity_video_list(
                 mock_session, entity_id=entity_id, language_code="fr"
             )
@@ -1693,9 +1778,9 @@ class TestGetEntityVideoList:
         for i, call_args in enumerate(mock_session.execute.call_args_list):
             stmt = call_args.args[0]
             sql_str = str(stmt.compile(compile_kwargs={"literal_binds": False}))
-            assert "language_code" in sql_str, (
-                f"Expected language_code filter in query #{i + 1}; got: {sql_str}"
-            )
+            assert (
+                "language_code" in sql_str
+            ), f"Expected language_code filter in query #{i + 1}; got: {sql_str}"
 
     async def test_pagination_offset_and_limit_are_applied(
         self,
@@ -1717,8 +1802,18 @@ class TestGetEntityVideoList:
 
         mock_session.execute.side_effect = [transcript_vid_result, main_result]
 
-        with patch.object(repository, "_get_tag_associated_video_ids", new=AsyncMock(return_value=set())), \
-             patch.object(repository, "_get_alias_matched_tag_video_ids", new=AsyncMock(return_value=set())):
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
             results, total = await repository.get_entity_video_list(
                 mock_session, entity_id=entity_id, limit=5, offset=10
             )
@@ -1743,7 +1838,8 @@ class TestGetEntityVideoList:
         # New API: transcript_vid_result first, then main, then 2 preview queries
         transcript_vid_result = MagicMock()
         transcript_vid_result.scalars.return_value.all.return_value = [
-            "dQw4w9WgXcQ", "9bZkp7q19f0"
+            "dQw4w9WgXcQ",
+            "9bZkp7q19f0",
         ]
 
         main_result = MagicMock()
@@ -1761,8 +1857,18 @@ class TestGetEntityVideoList:
             preview_result_2,
         ]
 
-        with patch.object(repository, "_get_tag_associated_video_ids", new=AsyncMock(return_value=set())), \
-             patch.object(repository, "_get_alias_matched_tag_video_ids", new=AsyncMock(return_value=set())):
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
             results, total = await repository.get_entity_video_list(
                 mock_session, entity_id=entity_id
             )
@@ -1823,8 +1929,18 @@ class TestGetEntityVideoList:
         count_result.scalar.return_value = 0
         mock_session.execute.return_value = count_result
 
-        with patch.object(repository, "_get_tag_associated_video_ids", new=AsyncMock(return_value=set())), \
-             patch.object(repository, "_get_alias_matched_tag_video_ids", new=AsyncMock(return_value=set())):
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
             await repository.get_entity_video_list(mock_session, entity_id=entity_id)
 
         # Only the count query should have been issued (total=0 short-circuits)
@@ -1893,10 +2009,24 @@ class TestGetEntityVideoList:
         preview_result = MagicMock()
         preview_result.all.return_value = []
 
-        mock_session.execute.side_effect = [transcript_vid_result, main_result, preview_result]
+        mock_session.execute.side_effect = [
+            transcript_vid_result,
+            main_result,
+            preview_result,
+        ]
 
-        with patch.object(repository, "_get_tag_associated_video_ids", new=AsyncMock(return_value=set())), \
-             patch.object(repository, "_get_alias_matched_tag_video_ids", new=AsyncMock(return_value=set())):
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
             await repository.get_entity_video_list(mock_session, entity_id=entity_id)
 
         # transcript_vid=0, main=1, preview=2
@@ -1934,10 +2064,24 @@ class TestGetEntityVideoList:
         preview_result = MagicMock()
         preview_result.all.return_value = [preview_row]
 
-        mock_session.execute.side_effect = [transcript_vid_result, main_result, preview_result]
+        mock_session.execute.side_effect = [
+            transcript_vid_result,
+            main_result,
+            preview_result,
+        ]
 
-        with patch.object(repository, "_get_tag_associated_video_ids", new=AsyncMock(return_value=set())), \
-             patch.object(repository, "_get_alias_matched_tag_video_ids", new=AsyncMock(return_value=set())):
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
             await repository.get_entity_video_list(mock_session, entity_id=entity_id)
 
         # transcript_vid=0, main=1, preview=2
@@ -1970,8 +2114,18 @@ class TestGetEntityVideoList:
         count_result.scalar.return_value = 0
         mock_session.execute.return_value = count_result
 
-        with patch.object(repository, "_get_tag_associated_video_ids", new=AsyncMock(return_value=set())), \
-             patch.object(repository, "_get_alias_matched_tag_video_ids", new=AsyncMock(return_value=set())):
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
             results, total = await repository.get_entity_video_list(
                 mock_session, entity_id=entity_id
             )
@@ -2027,6 +2181,7 @@ class TestGetStatistics:
         5. type_breakdown
         6. top_entities
         """
+
         # Scalar results for the four aggregate COUNT queries
         def _scalar_result(value: int) -> MagicMock:
             r = MagicMock()
@@ -2495,9 +2650,7 @@ class TestGetEntityVideoIds:
     ) -> None:
         """get_entity_video_ids() always returns a set[str], never a list."""
         entity_id = _uuid()
-        mock_session.execute.return_value = self._make_scalars_result(
-            ["dQw4w9WgXcQ"]
-        )
+        mock_session.execute.return_value = self._make_scalars_result(["dQw4w9WgXcQ"])
 
         result = await repository.get_entity_video_ids(mock_session, entity_id)
 
@@ -2514,9 +2667,7 @@ class TestGetEntityVideoIds:
         separate round-trips.
         """
         entity_id = _uuid()
-        mock_session.execute.return_value = self._make_scalars_result(
-            ["dQw4w9WgXcQ"]
-        )
+        mock_session.execute.return_value = self._make_scalars_result(["dQw4w9WgXcQ"])
 
         await repository.get_entity_video_ids(mock_session, entity_id)
 
@@ -2791,9 +2942,7 @@ class TestSearchEntities:
         """
         mock_session.execute.return_value = self._make_all_result([])
 
-        results = await repository.search_entities(
-            mock_session, query="zzznomatch"
-        )
+        results = await repository.search_entities(mock_session, query="zzznomatch")
 
         assert results == []
 
@@ -3276,12 +3425,22 @@ class TestGetEntityVideoListMultiSource:
 
         mock_session.execute.side_effect = [
             self._make_transcript_vid_result(["vid001"]),  # SELECT DISTINCT video_ids
-            self._make_main_result([row]),                  # main grouped query
-            self._make_preview_result(),                    # preview query
+            self._make_main_result([row]),  # main grouped query
+            self._make_preview_result(),  # preview query
         ]
 
-        with patch.object(repository, "_get_tag_associated_video_ids", new=AsyncMock(return_value=set())), \
-             patch.object(repository, "_get_alias_matched_tag_video_ids", new=AsyncMock(return_value=set())):
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
             results, total = await repository.get_entity_video_list(
                 mock_session, entity_id=entity_id
             )
@@ -3308,13 +3467,25 @@ class TestGetEntityVideoListMultiSource:
         )
 
         mock_session.execute.side_effect = [
-            self._make_transcript_vid_result(["vid001"]),  # manual mentions included in transcript_vid
+            self._make_transcript_vid_result(
+                ["vid001"]
+            ),  # manual mentions included in transcript_vid
             self._make_main_result([row]),
             self._make_preview_result([]),  # no transcript previews
         ]
 
-        with patch.object(repository, "_get_tag_associated_video_ids", new=AsyncMock(return_value=set())), \
-             patch.object(repository, "_get_alias_matched_tag_video_ids", new=AsyncMock(return_value=set())):
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
             results, total = await repository.get_entity_video_list(
                 mock_session, entity_id=entity_id
             )
@@ -3344,11 +3515,23 @@ class TestGetEntityVideoListMultiSource:
         mock_session.execute.side_effect = [
             self._make_transcript_vid_result(["vid001"]),
             self._make_main_result([row]),
-            self._make_preview_result([{"segment_id": 1, "start_time": 5.0, "mention_text": "Elon"}]),
+            self._make_preview_result(
+                [{"segment_id": 1, "start_time": 5.0, "mention_text": "Elon"}]
+            ),
         ]
 
-        with patch.object(repository, "_get_tag_associated_video_ids", new=AsyncMock(return_value=set())), \
-             patch.object(repository, "_get_alias_matched_tag_video_ids", new=AsyncMock(return_value=set())):
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
             results, total = await repository.get_entity_video_list(
                 mock_session, entity_id=entity_id
             )
@@ -3382,8 +3565,18 @@ class TestGetEntityVideoListMultiSource:
             self._make_preview_result(),
         ]
 
-        with patch.object(repository, "_get_tag_associated_video_ids", new=AsyncMock(return_value=set())), \
-             patch.object(repository, "_get_alias_matched_tag_video_ids", new=AsyncMock(return_value=set())):
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
             results, total = await repository.get_entity_video_list(
                 mock_session, entity_id=entity_id
             )
@@ -3404,8 +3597,18 @@ class TestGetEntityVideoListMultiSource:
             self._make_transcript_vid_result([]),  # empty → early exit
         ]
 
-        with patch.object(repository, "_get_tag_associated_video_ids", new=AsyncMock(return_value=set())), \
-             patch.object(repository, "_get_alias_matched_tag_video_ids", new=AsyncMock(return_value=set())):
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
             results, total = await repository.get_entity_video_list(
                 mock_session, entity_id=entity_id
             )
@@ -3424,17 +3627,34 @@ class TestGetEntityVideoListMultiSource:
         entity_id = _uuid()
 
         row1 = self._make_video_row(video_id="vid_a", detection_methods=["rule_match"])
-        row2 = self._make_video_row(video_id="vid_b", detection_methods=["manual"], has_manual=True, mention_count=0)
+        row2 = self._make_video_row(
+            video_id="vid_b",
+            detection_methods=["manual"],
+            has_manual=True,
+            mention_count=0,
+        )
 
         mock_session.execute.side_effect = [
-            self._make_transcript_vid_result(["vid_a", "vid_b", "vid_c", "vid_d", "vid_e"]),  # total=5
+            self._make_transcript_vid_result(
+                ["vid_a", "vid_b", "vid_c", "vid_d", "vid_e"]
+            ),  # total=5
             self._make_main_result([row1, row2]),
-            self._make_preview_result(),      # previews for vid_a
-            self._make_preview_result([]),    # previews for vid_b
+            self._make_preview_result(),  # previews for vid_a
+            self._make_preview_result([]),  # previews for vid_b
         ]
 
-        with patch.object(repository, "_get_tag_associated_video_ids", new=AsyncMock(return_value=set())), \
-             patch.object(repository, "_get_alias_matched_tag_video_ids", new=AsyncMock(return_value=set())):
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
             results, total = await repository.get_entity_video_list(
                 mock_session, entity_id=entity_id, limit=2, offset=0
             )
@@ -3464,8 +3684,18 @@ class TestGetEntityVideoListMultiSource:
             self._make_preview_result(),
         ]
 
-        with patch.object(repository, "_get_tag_associated_video_ids", new=AsyncMock(return_value=set())), \
-             patch.object(repository, "_get_alias_matched_tag_video_ids", new=AsyncMock(return_value=set())):
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
             results, _ = await repository.get_entity_video_list(
                 mock_session, entity_id=entity_id
             )
@@ -3494,8 +3724,18 @@ class TestGetEntityVideoListMultiSource:
             self._make_preview_result([]),  # No transcript previews
         ]
 
-        with patch.object(repository, "_get_tag_associated_video_ids", new=AsyncMock(return_value=set())), \
-             patch.object(repository, "_get_alias_matched_tag_video_ids", new=AsyncMock(return_value=set())):
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
             results, _ = await repository.get_entity_video_list(
                 mock_session, entity_id=entity_id
             )
@@ -3606,14 +3846,14 @@ class TestDeleteManualAssociation:
         """
         entity_id = _uuid()
         video_id = "dQw4w9WgXcQ"
-        manual_mention = self._make_manual_mention(entity_id=entity_id, video_id=video_id)
+        manual_mention = self._make_manual_mention(
+            entity_id=entity_id, video_id=video_id
+        )
 
         # execute() finds the manual mention
         mock_session.execute.return_value = self._make_scalar_result(manual_mention)
 
-        with patch.object(
-            repository, "update_entity_counters", new=AsyncMock()
-        ):
+        with patch.object(repository, "update_entity_counters", new=AsyncMock()):
             await repository.delete_manual_association(
                 mock_session, video_id=video_id, entity_id=entity_id
             )
@@ -3664,7 +3904,9 @@ class TestDeleteManualAssociation:
         """
         entity_id = _uuid()
         video_id = "dQw4w9WgXcQ"
-        manual_mention = self._make_manual_mention(entity_id=entity_id, video_id=video_id)
+        manual_mention = self._make_manual_mention(
+            entity_id=entity_id, video_id=video_id
+        )
 
         mock_session.execute.return_value = self._make_scalar_result(manual_mention)
 
@@ -3702,7 +3944,9 @@ class TestDeleteManualAssociation:
         """
         entity_id = _uuid()
         video_id = "dQw4w9WgXcQ"
-        manual_mention = self._make_manual_mention(entity_id=entity_id, video_id=video_id)
+        manual_mention = self._make_manual_mention(
+            entity_id=entity_id, video_id=video_id
+        )
 
         mock_session.execute.return_value = self._make_scalar_result(manual_mention)
 
@@ -3717,15 +3961,18 @@ class TestDeleteManualAssociation:
         mock_session.delete.side_effect = _track_delete
 
         with patch.object(
-            repository, "update_entity_counters", new=AsyncMock(side_effect=_track_counters)
+            repository,
+            "update_entity_counters",
+            new=AsyncMock(side_effect=_track_counters),
         ):
             await repository.delete_manual_association(
                 mock_session, video_id=video_id, entity_id=entity_id
             )
 
-        assert call_order == ["delete", "counters"], (
-            f"Expected delete before counters, got order: {call_order}"
-        )
+        assert call_order == [
+            "delete",
+            "counters",
+        ], f"Expected delete before counters, got order: {call_order}"
 
     async def test_delete_does_not_affect_transcript_mentions(
         self,
@@ -3742,7 +3989,9 @@ class TestDeleteManualAssociation:
         entity_id = _uuid()
         video_id = "dQw4w9WgXcQ"
 
-        manual_mention = self._make_manual_mention(entity_id=entity_id, video_id=video_id)
+        manual_mention = self._make_manual_mention(
+            entity_id=entity_id, video_id=video_id
+        )
         # transcript mention exists alongside the manual one — but the method
         # only queries for detection_method='manual', so only manual_mention
         # appears in the execute result.
@@ -3754,9 +4003,7 @@ class TestDeleteManualAssociation:
         # WHERE detection_method='manual' filter in the repository query.
         mock_session.execute.return_value = self._make_scalar_result(manual_mention)
 
-        with patch.object(
-            repository, "update_entity_counters", new=AsyncMock()
-        ):
+        with patch.object(repository, "update_entity_counters", new=AsyncMock()):
             await repository.delete_manual_association(
                 mock_session, video_id=video_id, entity_id=entity_id
             )
@@ -3878,11 +4125,11 @@ class TestEntityMentionRepositorySourceMapping:
         mock_session.execute = AsyncMock(
             side_effect=[
                 transcript_vid_result,  # transcript video IDs
-                canonical_tag_result,   # canonical tag video IDs
-                alias_tag_result,       # alias tag video IDs
-                main_result,            # main grouped query
-                preview_result,         # mention previews
-                desc_ctx_result,        # description context
+                canonical_tag_result,  # canonical tag video IDs
+                alias_tag_result,  # alias tag video IDs
+                main_result,  # main grouped query
+                preview_result,  # mention previews
+                desc_ctx_result,  # description context
             ]
         )
 

@@ -46,25 +46,31 @@ class TestTopicSeederConstants:
 
         # Verify all parent IDs start with /m/ (Freebase format)
         for topic_id in parent_ids:
-            assert topic_id.startswith("/m/"), f"Parent topic ID {topic_id} should use Freebase format"
+            assert topic_id.startswith(
+                "/m/"
+            ), f"Parent topic ID {topic_id} should use Freebase format"
 
         # Verify expected parent IDs
         expected_parents = {
-            "/m/04rlf",   # Music
+            "/m/04rlf",  # Music
             "/m/0bzvm2",  # Gaming
-            "/m/06ntj",   # Sports
-            "/m/02jjt",   # Entertainment
+            "/m/06ntj",  # Sports
+            "/m/02jjt",  # Entertainment
             "/m/019_rr",  # Lifestyle
             "/m/01k8wb",  # Knowledge
-            "/m/098wr",   # Society
+            "/m/098wr",  # Society
         }
         assert parent_ids == expected_parents
 
     def test_all_topics_have_freebase_format(self) -> None:
         """Test that all topic IDs use Freebase format (/m/...)."""
         for topic_id in TopicSeeder.YOUTUBE_TOPICS:
-            assert topic_id.startswith("/m/"), f"Topic ID {topic_id} should use Freebase format"
-            assert len(topic_id) > 3, f"Topic ID {topic_id} should have content after /m/"
+            assert topic_id.startswith(
+                "/m/"
+            ), f"Topic ID {topic_id} should use Freebase format"
+            assert (
+                len(topic_id) > 3
+            ), f"Topic ID {topic_id} should have content after /m/"
 
     def test_parent_topics_have_no_parent(self) -> None:
         """Test that all parent topics have parent_id=None."""
@@ -74,16 +80,24 @@ class TestTopicSeederConstants:
 
     def test_child_topics_have_valid_parent(self) -> None:
         """Test that all child topics reference valid parent IDs."""
-        for topic_id, (_name, parent_id, _wiki_slug) in TopicSeeder.YOUTUBE_TOPICS.items():
+        for topic_id, (
+            _name,
+            parent_id,
+            _wiki_slug,
+        ) in TopicSeeder.YOUTUBE_TOPICS.items():
             if parent_id is not None:  # Child topic
-                assert parent_id in TopicSeeder.YOUTUBE_TOPICS, \
-                    f"Child topic {topic_id} references non-existent parent {parent_id}"
-                assert parent_id in TopicSeeder.PARENT_TOPIC_IDS, \
-                    f"Child topic {topic_id} references non-root parent {parent_id}"
+                assert (
+                    parent_id in TopicSeeder.YOUTUBE_TOPICS
+                ), f"Child topic {topic_id} references non-existent parent {parent_id}"
+                assert (
+                    parent_id in TopicSeeder.PARENT_TOPIC_IDS
+                ), f"Child topic {topic_id} references non-root parent {parent_id}"
 
     def test_no_duplicate_topic_names(self) -> None:
         """Test that topic names are unique across all topics."""
-        topic_names = [name for name, parent_id, wiki_slug in TopicSeeder.YOUTUBE_TOPICS.values()]
+        topic_names = [
+            name for name, parent_id, wiki_slug in TopicSeeder.YOUTUBE_TOPICS.values()
+        ]
         assert len(topic_names) == len(set(topic_names)), "Topic names should be unique"
 
     def test_get_topic_by_id(self) -> None:
@@ -200,6 +214,7 @@ class TestTopicSeederSeeding:
 
         # Mock to simulate 7 parent topics exist, 51 children don't
         call_count = 0
+
         async def exists_side_effect(*args, **kwargs):
             nonlocal call_count
             call_count += 1
@@ -214,7 +229,7 @@ class TestTopicSeederSeeding:
 
         # Verify result
         assert result.created == 51  # Only children created
-        assert result.skipped == 7   # Parents skipped
+        assert result.skipped == 7  # Parents skipped
         assert result.deleted == 0
         assert result.failed == 0
 
@@ -226,8 +241,8 @@ class TestTopicSeederSeeding:
         # Mock delete operation
         with patch.object(
             seeder := TopicSeeder(topic_repository=mock_repo),
-            '_delete_all_youtube_topics',
-            new_callable=AsyncMock
+            "_delete_all_youtube_topics",
+            new_callable=AsyncMock,
         ) as mock_delete:
             mock_delete.return_value = 58  # All topics deleted
 
@@ -301,6 +316,7 @@ class TestTopicSeederSeeding:
 
         # Mock to fail on 3rd topic
         call_count = 0
+
         async def create_side_effect(session, obj_in):
             nonlocal call_count
             call_count += 1
@@ -405,11 +421,7 @@ class TestTopicSeedResult:
     def test_seed_result_creation(self) -> None:
         """Test basic TopicSeedResult creation."""
         result = TopicSeedResult(
-            created=50,
-            skipped=8,
-            deleted=0,
-            failed=0,
-            duration_seconds=5.5
+            created=50, skipped=8, deleted=0, failed=0, duration_seconds=5.5
         )
 
         assert result.created == 50

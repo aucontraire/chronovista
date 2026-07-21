@@ -455,9 +455,13 @@ def tags_by_video(
                 tags_table.add_column("Tag", style="cyan", width=60)
 
                 for tag_obj in tags:
-                    order = str(tag_obj.tag_order) if tag_obj.tag_order is not None else "-"
+                    order = (
+                        str(tag_obj.tag_order) if tag_obj.tag_order is not None else "-"
+                    )
                     display_tag = (
-                        tag_obj.tag[:57] + "..." if len(tag_obj.tag) > 60 else tag_obj.tag
+                        tag_obj.tag[:57] + "..."
+                        if len(tag_obj.tag) > 60
+                        else tag_obj.tag
                     )
                     tags_table.add_row(order, display_tag)
 
@@ -592,9 +596,7 @@ def _render_dry_run_output(metrics: dict[str, Any]) -> None:
     ta_records: list[dict[str, Any]] = metrics.get("ta_records", [])
 
     # Build a set of normalized forms that would create NEW canonical tags
-    new_normalized_forms: set[str] = {
-        r["normalized_form"] for r in ct_records
-    }
+    new_normalized_forms: set[str] = {r["normalized_form"] for r in ct_records}
 
     # Summary panel (FR-008a §1)
     summary_lines = [
@@ -923,9 +925,7 @@ def rename_tag(
     normalized_form: str = typer.Argument(
         help="Tag name to rename (e.g., 'Chas Freeman')."
     ),
-    to: str = typer.Option(
-        ..., "--to", help="New display form for the canonical tag."
-    ),
+    to: str = typer.Option(..., "--to", help="New display form for the canonical tag."),
     reason: str | None = typer.Option(
         None,
         "--reason",
@@ -1119,9 +1119,7 @@ def undo_operation(
 
         async for session in db_manager.get_session(echo=False):
             if list_ops:
-                operations = await service.list_recent_operations(
-                    session, limit=20
-                )
+                operations = await service.list_recent_operations(session, limit=20)
                 if not operations:
                     console.print(
                         Panel(
@@ -1151,9 +1149,7 @@ def undo_operation(
                         else "N/A"
                     )
                     rolled_back_str = (
-                        "[green]yes[/green]"
-                        if op.rolled_back
-                        else "[red]no[/red]"
+                        "[green]yes[/green]" if op.rolled_back else "[red]no[/red]"
                     )
                     reason_str = (
                         (op.reason[:50] if len(op.reason) > 50 else op.reason)
@@ -1349,9 +1345,7 @@ def classify_tag(
         async for session in db_manager.get_session(echo=False):
             if top is not None:
                 # Show top unclassified tags
-                tags = await service.classify_top_unclassified(
-                    session, limit=top
-                )
+                tags = await service.classify_top_unclassified(session, limit=top)
 
                 if not tags:
                     console.print(
@@ -1368,18 +1362,10 @@ def classify_tag(
                     show_header=True,
                     header_style="bold blue",
                 )
-                classify_table.add_column(
-                    "Normalized Form", style="cyan", width=40
-                )
-                classify_table.add_column(
-                    "Canonical Form", style="white", width=40
-                )
-                classify_table.add_column(
-                    "Videos", style="green", width=10
-                )
-                classify_table.add_column(
-                    "Aliases", style="green", width=10
-                )
+                classify_table.add_column("Normalized Form", style="cyan", width=40)
+                classify_table.add_column("Canonical Form", style="white", width=40)
+                classify_table.add_column("Videos", style="green", width=10)
+                classify_table.add_column("Aliases", style="green", width=10)
 
                 for tag in tags:
                     classify_table.add_row(

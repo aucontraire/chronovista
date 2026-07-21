@@ -321,7 +321,10 @@ class TestConflictHandling:
             # The running operation details should be included
             assert data["code"] == "CONFLICT"
             # Check that the message mentions the running operation
-            assert "already in progress" in data["detail"].lower() or "in progress" in data.get("title", "").lower()
+            assert (
+                "already in progress" in data["detail"].lower()
+                or "in progress" in data.get("title", "").lower()
+            )
 
             # Cleanup
             sync_manager.complete_operation(success=True)
@@ -619,9 +622,7 @@ class TestTranscriptSyncRequestValidation:
             # Cleanup
             sync_manager.complete_operation(success=True)
 
-    async def test_valid_bcp47_language_codes(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_valid_bcp47_language_codes(self, async_client: AsyncClient) -> None:
         """Test that valid BCP-47 language codes are accepted."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True

@@ -115,7 +115,9 @@ class SyncProgress(BaseModel):
     total_items: int | None = Field(
         None, description="Total items to process (None if unknown)"
     )
-    processed_items: int = Field(0, ge=0, description="Number of items processed so far")
+    processed_items: int = Field(
+        0, ge=0, description="Number of items processed so far"
+    )
     current_item: str | None = Field(
         None, description="Identifier of the item currently being processed"
     )
@@ -137,9 +139,7 @@ class SyncStatus(BaseModel):
     operation_type: SyncOperationType | None = Field(
         None, description="Type of current/last operation"
     )
-    operation_id: str | None = Field(
-        None, description="ID of current/last operation"
-    )
+    operation_id: str | None = Field(None, description="ID of current/last operation")
     progress: SyncProgress | None = Field(
         None, description="Progress info (only when running)"
     )

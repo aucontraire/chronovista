@@ -1,10 +1,12 @@
 """Integration tests for health endpoint."""
+
 from datetime import datetime
 from unittest.mock import patch
 
 from httpx import AsyncClient
 
 # CRITICAL: This line ensures async tests work with coverage
+
 
 class TestHealthEndpoint:
     """Tests for GET /api/v1/health endpoint."""
@@ -212,6 +214,7 @@ class TestHealthEndpointDatabaseFailure:
         self, async_client: AsyncClient
     ) -> None:
         """Test health endpoint returns 200 even when database is unavailable."""
+
         # Mock db_manager to raise exception
         async def mock_get_session():
             raise ConnectionError("Database unavailable")
@@ -227,6 +230,7 @@ class TestHealthEndpointDatabaseFailure:
         self, async_client: AsyncClient
     ) -> None:
         """Test health shows database as disconnected when connection fails."""
+
         # Mock db_manager to raise exception
         async def mock_get_session():
             raise ConnectionError("Database unavailable")
@@ -244,6 +248,7 @@ class TestHealthEndpointDatabaseFailure:
         self, async_client: AsyncClient
     ) -> None:
         """Test status is unhealthy when database is disconnected."""
+
         # Mock db_manager to raise exception
         async def mock_get_session():
             raise ConnectionError("Database unavailable")
@@ -261,6 +266,7 @@ class TestHealthEndpointDatabaseFailure:
         self, async_client: AsyncClient
     ) -> None:
         """Test database latency is None when database is disconnected."""
+
         # Mock db_manager to raise exception
         async def mock_get_session():
             raise ConnectionError("Database unavailable")

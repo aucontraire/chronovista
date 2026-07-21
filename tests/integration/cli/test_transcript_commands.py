@@ -36,7 +36,7 @@ from chronovista.models.enums import DownloadReason, TranscriptType
 # Test runner with environment that matches the integration test database
 TEST_DATABASE_URL = os.getenv(
     "DATABASE_INTEGRATION_URL",
-    "postgresql+asyncpg://dev_user:dev_password@localhost:5434/chronovista_integration_test"
+    "postgresql+asyncpg://dev_user:dev_password@localhost:5434/chronovista_integration_test",
 )
 runner = CliRunner()
 
@@ -179,11 +179,11 @@ class TestTranscriptSegmentCommand:
     """Tests for transcript segment command."""
 
     @pytest.mark.asyncio
-    async def test_segment_with_valid_timestamp(self, db_with_segments: AsyncSession) -> None:
+    async def test_segment_with_valid_timestamp(
+        self, db_with_segments: AsyncSession
+    ) -> None:
         """Test segment command returns segment at timestamp."""
-        result = runner.invoke(app, [
-            "transcript", "segment", "dQw4w9WgXcQ", "1:00"
-        ])
+        result = runner.invoke(app, ["transcript", "segment", "dQw4w9WgXcQ", "1:00"])
 
         # Should succeed
         assert result.exit_code == 0, f"Unexpected output: {result.stdout}"
@@ -193,16 +193,18 @@ class TestTranscriptSegmentCommand:
         assert "Testing segments" in result.stdout
 
     @pytest.mark.asyncio
-    async def test_segment_with_json_format(self, db_with_segments: AsyncSession) -> None:
+    async def test_segment_with_json_format(
+        self, db_with_segments: AsyncSession
+    ) -> None:
         """Test segment command with --format json."""
-        result = runner.invoke(app, [
-            "transcript", "segment", "dQw4w9WgXcQ", "1:00",
-            "--format", "json"
-        ])
+        result = runner.invoke(
+            app, ["transcript", "segment", "dQw4w9WgXcQ", "1:00", "--format", "json"]
+        )
 
         assert result.exit_code == 0, f"Unexpected output: {result.stdout}"
         # JSON format should be parseable
         import json
+
         data = json.loads(result.stdout)
         assert "segment_id" in data
         assert "text" in data
@@ -211,9 +213,9 @@ class TestTranscriptSegmentCommand:
     @pytest.mark.asyncio
     async def test_segment_missing_transcript(self, db_session: AsyncSession) -> None:
         """Test segment command with missing transcript shows error."""
-        result = runner.invoke(app, [
-            "transcript", "segment", "nonexistent", "00:01:30"
-        ])
+        result = runner.invoke(
+            app, ["transcript", "segment", "nonexistent", "00:01:30"]
+        )
 
         assert result.exit_code == 1
         # Should mention missing transcript (error goes to stderr, use result.output)
@@ -221,21 +223,20 @@ class TestTranscriptSegmentCommand:
         assert "transcript" in output or "not found" in output
 
     @pytest.mark.asyncio
-    async def test_segment_invalid_timestamp_format(self, db_with_segments: AsyncSession) -> None:
+    async def test_segment_invalid_timestamp_format(
+        self, db_with_segments: AsyncSession
+    ) -> None:
         """Test segment command with invalid timestamp shows error."""
-        result = runner.invoke(app, [
-            "transcript", "segment", "dQw4w9WgXcQ", "invalid"
-        ])
+        result = runner.invoke(app, ["transcript", "segment", "dQw4w9WgXcQ", "invalid"])
 
         assert result.exit_code == 2
 
     @pytest.mark.asyncio
     async def test_segment_language_flag(self, db_with_segments: AsyncSession) -> None:
         """Test segment command with --language flag."""
-        result = runner.invoke(app, [
-            "transcript", "segment", "dQw4w9WgXcQ", "1:00",
-            "--language", "es"
-        ])
+        result = runner.invoke(
+            app, ["transcript", "segment", "dQw4w9WgXcQ", "1:00", "--language", "es"]
+        )
 
         # Should fail since no Spanish transcript exists
         assert result.exit_code == 1
@@ -247,9 +248,7 @@ class TestTranscriptContextCommand:
     @pytest.mark.asyncio
     async def test_context_default_window(self, db_with_segments: AsyncSession) -> None:
         """Test context command with default 30s window."""
-        result = runner.invoke(app, [
-            "transcript", "context", "dQw4w9WgXcQ", "1:00"
-        ])
+        result = runner.invoke(app, ["transcript", "context", "dQw4w9WgXcQ", "1:00"])
 
         assert result.exit_code == 0, f"Unexpected output: {result.stdout}"
         # Should show context title
@@ -258,10 +257,9 @@ class TestTranscriptContextCommand:
     @pytest.mark.asyncio
     async def test_context_custom_window(self, db_with_segments: AsyncSession) -> None:
         """Test context command with custom --window."""
-        result = runner.invoke(app, [
-            "transcript", "context", "dQw4w9WgXcQ", "1:00",
-            "--window", "60"
-        ])
+        result = runner.invoke(
+            app, ["transcript", "context", "dQw4w9WgXcQ", "1:00", "--window", "60"]
+        )
 
         assert result.exit_code == 0, f"Unexpected output: {result.stdout}"
         assert "60s" in result.stdout
@@ -269,10 +267,9 @@ class TestTranscriptContextCommand:
     @pytest.mark.asyncio
     async def test_context_window_clamped(self, db_with_segments: AsyncSession) -> None:
         """Test context command clamps window to 3600s max."""
-        result = runner.invoke(app, [
-            "transcript", "context", "dQw4w9WgXcQ", "1:00",
-            "--window", "9999"
-        ])
+        result = runner.invoke(
+            app, ["transcript", "context", "dQw4w9WgXcQ", "1:00", "--window", "9999"]
+        )
 
         assert result.exit_code == 0, f"Unexpected output: {result.stdout}"
         # Should show warning about clamping
@@ -285,9 +282,9 @@ class TestTranscriptRangeCommand:
     @pytest.mark.asyncio
     async def test_range_valid(self, db_with_segments: AsyncSession) -> None:
         """Test range command with valid range."""
-        result = runner.invoke(app, [
-            "transcript", "range", "dQw4w9WgXcQ", "0:00", "2:00"
-        ])
+        result = runner.invoke(
+            app, ["transcript", "range", "dQw4w9WgXcQ", "0:00", "2:00"]
+        )
 
         assert result.exit_code == 0, f"Unexpected output: {result.stdout}"
         # Should show multiple segments
@@ -296,21 +293,23 @@ class TestTranscriptRangeCommand:
     @pytest.mark.asyncio
     async def test_range_srt_format(self, db_with_segments: AsyncSession) -> None:
         """Test range command with --format srt."""
-        result = runner.invoke(app, [
-            "transcript", "range", "dQw4w9WgXcQ", "0:00", "1:00",
-            "--format", "srt"
-        ])
+        result = runner.invoke(
+            app,
+            ["transcript", "range", "dQw4w9WgXcQ", "0:00", "1:00", "--format", "srt"],
+        )
 
         assert result.exit_code == 0, f"Unexpected output: {result.stdout}"
         # SRT format uses --> for timestamps
         assert "-->" in result.stdout
 
     @pytest.mark.asyncio
-    async def test_range_invalid_end_before_start(self, db_with_segments: AsyncSession) -> None:
+    async def test_range_invalid_end_before_start(
+        self, db_with_segments: AsyncSession
+    ) -> None:
         """Test range command rejects end < start."""
-        result = runner.invoke(app, [
-            "transcript", "range", "dQw4w9WgXcQ", "2:00", "1:00"
-        ])
+        result = runner.invoke(
+            app, ["transcript", "range", "dQw4w9WgXcQ", "2:00", "1:00"]
+        )
 
         assert result.exit_code == 4
         # Should show error about invalid range (error goes to stderr)
@@ -318,11 +317,13 @@ class TestTranscriptRangeCommand:
         assert "Error" in output or "end" in output.lower()
 
     @pytest.mark.asyncio
-    async def test_range_no_segments_in_range(self, db_with_segments: AsyncSession) -> None:
+    async def test_range_no_segments_in_range(
+        self, db_with_segments: AsyncSession
+    ) -> None:
         """Test range command with no segments in range."""
-        result = runner.invoke(app, [
-            "transcript", "range", "dQw4w9WgXcQ", "3:00", "4:00"
-        ])
+        result = runner.invoke(
+            app, ["transcript", "range", "dQw4w9WgXcQ", "3:00", "4:00"]
+        )
 
         # Should succeed but show no segments found (message goes to stderr)
         assert result.exit_code == 0, f"Unexpected output: {result.output}"

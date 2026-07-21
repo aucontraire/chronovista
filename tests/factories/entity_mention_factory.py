@@ -81,9 +81,7 @@ class EntityMentionFactory(factory.Factory[EntityMention]):
     match_start: Any = None
     match_end: Any = None
     correction_id: Any = None
-    created_at: Any = LazyFunction(
-        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
-    )
+    created_at: Any = LazyFunction(lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC))
 
 
 class ManualEntityMentionFactory(factory.Factory[EntityMention]):
@@ -103,9 +101,7 @@ class ManualEntityMentionFactory(factory.Factory[EntityMention]):
     match_start: Any = None
     match_end: Any = None
     correction_id: Any = None
-    created_at: Any = LazyFunction(
-        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
-    )
+    created_at: Any = LazyFunction(lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC))
 
 
 # ---------------------------------------------------------------------------

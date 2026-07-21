@@ -75,11 +75,14 @@ class TestEnrichTagsMethod:
         tags = ["music", "pop", "80s", "classic"]
 
         # Mock repository to return created tags
-        mock_tags_db = [MagicMock(video_id=video_id, tag=t, tag_order=i)
-                        for i, t in enumerate(tags)]
+        mock_tags_db = [
+            MagicMock(video_id=video_id, tag=t, tag_order=i) for i, t in enumerate(tags)
+        ]
 
         with patch.object(
-            service.video_tag_repository, "replace_video_tags", new=AsyncMock(return_value=mock_tags_db)
+            service.video_tag_repository,
+            "replace_video_tags",
+            new=AsyncMock(return_value=mock_tags_db),
         ):
             # When enrich_tags is called (mocking the expected behavior)
             # Note: The actual implementation may differ, but tests document expected behavior
@@ -118,7 +121,9 @@ class TestEnrichTagsMethod:
         tags: list[str] = []
 
         with patch.object(
-            service.video_tag_repository, "replace_video_tags", new=AsyncMock(return_value=[])
+            service.video_tag_repository,
+            "replace_video_tags",
+            new=AsyncMock(return_value=[]),
         ):
             # When enrich_tags is called with empty tags
             result = await service.video_tag_repository.replace_video_tags(
@@ -182,7 +187,9 @@ class TestEnrichTagsMethod:
         mock_tags_db = [MagicMock(video_id=video_id, tag=t) for t in tags]
 
         with patch.object(
-            service.video_tag_repository, "replace_video_tags", new=AsyncMock(return_value=mock_tags_db)
+            service.video_tag_repository,
+            "replace_video_tags",
+            new=AsyncMock(return_value=mock_tags_db),
         ):
             result = await service.video_tag_repository.replace_video_tags(
                 mock_session, video_id, tags
@@ -433,8 +440,7 @@ class TestTagReplacement:
         tag_orders = [0, 1, 2]
 
         mock_tags_db = [
-            MagicMock(video_id=video_id, tag=t, tag_order=i)
-            for i, t in enumerate(tags)
+            MagicMock(video_id=video_id, tag=t, tag_order=i) for i, t in enumerate(tags)
         ]
         mock_video_tag_repository.replace_video_tags = AsyncMock(
             return_value=mock_tags_db
@@ -719,7 +725,9 @@ class TestTagStatisticsInEnrichmentSummary:
         videos_with_tags = 95
         total_tags = 450
 
-        avg_tags_per_video = total_tags / videos_with_tags if videos_with_tags > 0 else 0
+        avg_tags_per_video = (
+            total_tags / videos_with_tags if videos_with_tags > 0 else 0
+        )
 
         assert abs(avg_tags_per_video - 4.74) < 0.01  # ~4.74 tags per video
 
@@ -753,7 +761,10 @@ class TestVideosMissingTagsStatus:
             "videos_without_tags": 250,
         }
 
-        assert status["videos_with_tags"] + status["videos_without_tags"] == status["total_videos"]
+        assert (
+            status["videos_with_tags"] + status["videos_without_tags"]
+            == status["total_videos"]
+        )
 
     async def test_status_shows_videos_missing_tags_percentage(self) -> None:
         """Test that status shows percentage of videos missing tags."""
@@ -773,7 +784,12 @@ class TestVideosMissingTagsStatus:
             "unenriched": 50,  # Placeholder data only
         }
 
-        assert status["fully_enriched"] + status["partially_enriched"] + status["unenriched"] == 1000
+        assert (
+            status["fully_enriched"]
+            + status["partially_enriched"]
+            + status["unenriched"]
+            == 1000
+        )
 
 
 class TestTagEnrichmentIntegration:
@@ -843,12 +859,13 @@ class TestTagEnrichmentIntegration:
 
         # Mock repository behavior
         mock_tags_db = [
-            MagicMock(video_id=video_id, tag=t, tag_order=i)
-            for i, t in enumerate(tags)
+            MagicMock(video_id=video_id, tag=t, tag_order=i) for i, t in enumerate(tags)
         ]
 
         with patch.object(
-            service.video_tag_repository, "replace_video_tags", new=AsyncMock(return_value=mock_tags_db)
+            service.video_tag_repository,
+            "replace_video_tags",
+            new=AsyncMock(return_value=mock_tags_db),
         ):
             # Call repository
             result = await service.video_tag_repository.replace_video_tags(
@@ -884,7 +901,9 @@ class TestTagEnrichmentIntegration:
         tags = ["tag1", "tag2"]
 
         with patch.object(
-            service.video_tag_repository, "replace_video_tags", new=AsyncMock(side_effect=Exception("Database error"))
+            service.video_tag_repository,
+            "replace_video_tags",
+            new=AsyncMock(side_effect=Exception("Database error")),
         ):
             with pytest.raises(Exception) as exc_info:
                 await service.video_tag_repository.replace_video_tags(
@@ -1032,7 +1051,9 @@ class TestEnrichTagsImplementation:
         mock_tags_db = [MagicMock(tag=t) for t in tags]
 
         with patch.object(
-            service.video_tag_repository, "replace_video_tags", new=AsyncMock(return_value=mock_tags_db)
+            service.video_tag_repository,
+            "replace_video_tags",
+            new=AsyncMock(return_value=mock_tags_db),
         ):
             result = await service.enrich_tags(mock_session, video_id, tags)
 
@@ -1066,9 +1087,7 @@ class TestEnrichTagsImplementation:
 
         assert result == 0
 
-    async def test_enrich_tags_method_exists(
-        self, service: EnrichmentService
-    ) -> None:
+    async def test_enrich_tags_method_exists(self, service: EnrichmentService) -> None:
         """Test that enrich_tags method exists on service."""
         assert hasattr(service, "enrich_tags")
         assert callable(service.enrich_tags)
@@ -1104,7 +1123,9 @@ class TestEnrichTagsImplementation:
         mock_tags_db = [MagicMock(tag=t) for t in tags]
 
         with patch.object(
-            service.video_tag_repository, "replace_video_tags", new=AsyncMock(return_value=mock_tags_db)
+            service.video_tag_repository,
+            "replace_video_tags",
+            new=AsyncMock(return_value=mock_tags_db),
         ) as mock_replace:
             await service.enrich_tags(mock_session, video_id, tags)
 
@@ -1126,7 +1147,9 @@ class TestEnrichTagsImplementation:
         mock_tags_db = [MagicMock(tag=t) for t in tags]
 
         with patch.object(
-            service.video_tag_repository, "replace_video_tags", new=AsyncMock(return_value=mock_tags_db)
+            service.video_tag_repository,
+            "replace_video_tags",
+            new=AsyncMock(return_value=mock_tags_db),
         ) as mock_replace:
             await service.enrich_tags(mock_session, video_id, tags)
 

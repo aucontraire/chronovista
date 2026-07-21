@@ -94,9 +94,7 @@ class TestListTopics:
             response = await async_client.get("/api/v1/topics?offset=-1")
             assert response.status_code == 422  # Validation error
 
-    async def test_list_topics_item_structure(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_list_topics_item_structure(self, async_client: AsyncClient) -> None:
         """Test topic list items have correct structure."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
@@ -307,9 +305,11 @@ class TestTopicDetail:
         """Test topic detail returns correct structure."""
         # Create test topic
         async with integration_session_factory() as session:
-            await session.execute(delete(TopicCategory).where(
-                TopicCategory.topic_id == "test_detail_topic"
-            ))
+            await session.execute(
+                delete(TopicCategory).where(
+                    TopicCategory.topic_id == "test_detail_topic"
+                )
+            )
             await session.commit()
 
             topic = TopicCategory(
@@ -341,9 +341,11 @@ class TestTopicDetail:
 
         # Cleanup
         async with integration_session_factory() as session:
-            await session.execute(delete(TopicCategory).where(
-                TopicCategory.topic_id == "test_detail_topic"
-            ))
+            await session.execute(
+                delete(TopicCategory).where(
+                    TopicCategory.topic_id == "test_detail_topic"
+                )
+            )
             await session.commit()
 
     async def test_get_topic_404_for_nonexistent(
@@ -383,9 +385,9 @@ class TestTopicDetail:
         """
         # Create test topic with alphanumeric ID
         async with integration_session_factory() as session:
-            await session.execute(delete(TopicCategory).where(
-                TopicCategory.topic_id == "m_test123_alpha"
-            ))
+            await session.execute(
+                delete(TopicCategory).where(TopicCategory.topic_id == "m_test123_alpha")
+            )
             await session.commit()
 
             topic = TopicCategory(
@@ -406,9 +408,9 @@ class TestTopicDetail:
 
         # Cleanup
         async with integration_session_factory() as session:
-            await session.execute(delete(TopicCategory).where(
-                TopicCategory.topic_id == "m_test123_alpha"
-            ))
+            await session.execute(
+                delete(TopicCategory).where(TopicCategory.topic_id == "m_test123_alpha")
+            )
             await session.commit()
 
 
@@ -450,9 +452,11 @@ class TestTopicVideos:
             await session.execute(delete(VideoTopic))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
-            await session.execute(delete(TopicCategory).where(
-                TopicCategory.topic_id == "test_videos_topic"
-            ))
+            await session.execute(
+                delete(TopicCategory).where(
+                    TopicCategory.topic_id == "test_videos_topic"
+                )
+            )
             await session.commit()
 
             # Create topic
@@ -491,9 +495,7 @@ class TestTopicVideos:
 
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                "/api/v1/topics/test_videos_topic/videos"
-            )
+            response = await async_client.get("/api/v1/topics/test_videos_topic/videos")
             assert response.status_code == 200
             data = response.json()
             assert "data" in data
@@ -513,9 +515,11 @@ class TestTopicVideos:
             await session.execute(delete(VideoTopic))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
-            await session.execute(delete(TopicCategory).where(
-                TopicCategory.topic_id == "test_videos_topic"
-            ))
+            await session.execute(
+                delete(TopicCategory).where(
+                    TopicCategory.topic_id == "test_videos_topic"
+                )
+            )
             await session.commit()
 
     async def test_get_topic_videos_pagination(
@@ -530,9 +534,11 @@ class TestTopicVideos:
             await session.execute(delete(VideoTopic))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
-            await session.execute(delete(TopicCategory).where(
-                TopicCategory.topic_id == "test_pagination_topic"
-            ))
+            await session.execute(
+                delete(TopicCategory).where(
+                    TopicCategory.topic_id == "test_pagination_topic"
+                )
+            )
             await session.commit()
 
             # Create topic
@@ -601,18 +607,18 @@ class TestTopicVideos:
             await session.execute(delete(VideoTopic))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
-            await session.execute(delete(TopicCategory).where(
-                TopicCategory.topic_id == "test_pagination_topic"
-            ))
+            await session.execute(
+                delete(TopicCategory).where(
+                    TopicCategory.topic_id == "test_pagination_topic"
+                )
+            )
             await session.commit()
 
 
 class TestTopicAuthRequirements:
     """Tests for authentication requirements on all topic endpoints (T035)."""
 
-    async def test_list_topics_requires_auth(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_list_topics_requires_auth(self, async_client: AsyncClient) -> None:
         """Test GET /topics requires authentication."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = False
@@ -622,9 +628,7 @@ class TestTopicAuthRequirements:
             # Auth errors still use old format (HTTPException detail dict)
             assert data["detail"]["code"] == "NOT_AUTHENTICATED"
 
-    async def test_get_topic_requires_auth(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_get_topic_requires_auth(self, async_client: AsyncClient) -> None:
         """Test GET /topics/{topic_id} requires authentication."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = False

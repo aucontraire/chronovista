@@ -78,7 +78,9 @@ class VideoTranscriptUpdateFactory(factory.Factory[VideoTranscriptUpdate]):
         lambda: "Updated transcript text with corrections and improvements."
     )
     transcript_type: Any = factory.LazyFunction(lambda: TranscriptType.TRANSLATED)
-    download_reason: Any = factory.LazyFunction(lambda: DownloadReason.LEARNING_LANGUAGE)
+    download_reason: Any = factory.LazyFunction(
+        lambda: DownloadReason.LEARNING_LANGUAGE
+    )
     confidence_score: Any = factory.LazyFunction(lambda: 0.92)
     is_cc: Any = factory.LazyFunction(lambda: True)
     is_auto_synced: Any = factory.LazyFunction(lambda: False)
@@ -114,9 +116,17 @@ class VideoTranscriptFactory(factory.Factory[VideoTranscript]):
             "language_code": "es",
             "language_name": "Spanish",
             "snippets": [
-                {"text": "Hola y bienvenidos al Late Show", "start": 0.0, "duration": 2.5},
+                {
+                    "text": "Hola y bienvenidos al Late Show",
+                    "start": 0.0,
+                    "duration": 2.5,
+                },
                 {"text": "con Stephen Colbert.", "start": 2.5, "duration": 1.8},
-                {"text": "Esta noche tenemos grandes momentos de comedia.", "start": 4.3, "duration": 3.2},
+                {
+                    "text": "Esta noche tenemos grandes momentos de comedia.",
+                    "start": 4.3,
+                    "duration": 3.2,
+                },
             ],
             "is_generated": False,
             "is_translatable": True,

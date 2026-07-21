@@ -40,16 +40,26 @@ app.add_typer(api_app, name="api", help="API server management")
 app.add_typer(auth_app, name="auth", help="Authentication commands")
 app.add_typer(cache_app, name="cache", help="Manage the local image cache")
 app.add_typer(
-    category_app, name="categories", help="📂 Video category exploration (creator-assigned)"
+    category_app,
+    name="categories",
+    help="📂 Video category exploration (creator-assigned)",
 )
 app.add_typer(
     correction_app, name="corrections", help="🔧 Batch transcript correction tools"
 )
 app.add_typer(entity_app, name="entities", help="🧑 Named entity management")
-app.add_typer(enrich_app, name="enrich", help="🔄 Enrich video metadata from YouTube API")
-app.add_typer(language_app, name="languages", help="🌐 Manage language preferences for transcripts")
+app.add_typer(
+    enrich_app, name="enrich", help="🔄 Enrich video metadata from YouTube API"
+)
+app.add_typer(
+    language_app,
+    name="languages",
+    help="🌐 Manage language preferences for transcripts",
+)
 app.add_typer(playlist_app, name="playlist", help="📋 Playlist management commands")
-app.add_typer(recover_app, name="recover", help="🔄 Recover metadata for deleted videos")
+app.add_typer(
+    recover_app, name="recover", help="🔄 Recover metadata for deleted videos"
+)
 app.add_typer(sync_app, name="sync", help="Data synchronization commands")
 app.add_typer(seed_app, name="seed", help="🌱 Seed reference data into the database")
 app.add_typer(tag_app, name="tags", help="🏷️ Video tag exploration and analytics")
@@ -57,7 +67,9 @@ app.add_typer(
     takeout_app, name="takeout", help="📁 Explore Google Takeout data locally"
 )
 app.add_typer(topic_app, name="topics", help="📂 Topic exploration and analytics")
-app.add_typer(transcript_app, name="transcript", help="📝 Query transcript segments by timestamp")
+app.add_typer(
+    transcript_app, name="transcript", help="📝 Query transcript segments by timestamp"
+)
 
 
 @app.command()

@@ -608,7 +608,7 @@ async def _list_preferences(
 
 
 def _format_table_output(
-    grouped: dict[LanguagePreferenceType, list[UserLanguagePreference]]
+    grouped: dict[LanguagePreferenceType, list[UserLanguagePreference]],
 ) -> None:
     """
     Format preferences as grouped Rich table or plain text.
@@ -702,8 +702,14 @@ def _format_table_output(
                 table.add_column("Goal", style="yellow", max_width=goal_column_width)
 
                 for pref in prefs:
-                    lang_code = pref.language_code if isinstance(pref.language_code, str) else pref.language_code.value
-                    lang_display = f"{lang_code} ({get_language_display_name(lang_code)})"
+                    lang_code = (
+                        pref.language_code
+                        if isinstance(pref.language_code, str)
+                        else pref.language_code.value
+                    )
+                    lang_display = (
+                        f"{lang_code} ({get_language_display_name(lang_code)})"
+                    )
                     auto_download = "Yes" if pref.auto_download_transcripts else "No"
                     goal = pref.learning_goal if pref.learning_goal else "-"
                     # Truncate goal for display
@@ -719,12 +725,20 @@ def _format_table_output(
                 # Plain text output
                 print(f"{'Priority':<10}{'Language':<30}{'Auto-Download':<15}{'Goal'}")
                 for pref in prefs:
-                    lang_code = pref.language_code if isinstance(pref.language_code, str) else pref.language_code.value
-                    lang_display = f"{lang_code} ({get_language_display_name(lang_code)})"
+                    lang_code = (
+                        pref.language_code
+                        if isinstance(pref.language_code, str)
+                        else pref.language_code.value
+                    )
+                    lang_display = (
+                        f"{lang_code} ({get_language_display_name(lang_code)})"
+                    )
                     auto_download = "Yes" if pref.auto_download_transcripts else "No"
                     goal = pref.learning_goal if pref.learning_goal else "-"
                     goal_display = _truncate_text(goal, goal_column_width)
-                    print(f"{pref.priority:<10}{lang_display:<30}{auto_download:<15}{goal_display}")
+                    print(
+                        f"{pref.priority:<10}{lang_display:<30}{auto_download:<15}{goal_display}"
+                    )
         else:
             if is_tty:
                 table = Table(show_header=True, header_style="bold cyan")
@@ -733,8 +747,14 @@ def _format_table_output(
                 table.add_column("Auto-Download", justify="center")
 
                 for pref in prefs:
-                    lang_code = pref.language_code if isinstance(pref.language_code, str) else pref.language_code.value
-                    lang_display = f"{lang_code} ({get_language_display_name(lang_code)})"
+                    lang_code = (
+                        pref.language_code
+                        if isinstance(pref.language_code, str)
+                        else pref.language_code.value
+                    )
+                    lang_display = (
+                        f"{lang_code} ({get_language_display_name(lang_code)})"
+                    )
                     auto_download = "Yes" if pref.auto_download_transcripts else "No"
                     table.add_row(
                         str(pref.priority),
@@ -746,8 +766,14 @@ def _format_table_output(
                 # Plain text output
                 print(f"{'Priority':<10}{'Language':<30}{'Auto-Download'}")
                 for pref in prefs:
-                    lang_code = pref.language_code if isinstance(pref.language_code, str) else pref.language_code.value
-                    lang_display = f"{lang_code} ({get_language_display_name(lang_code)})"
+                    lang_code = (
+                        pref.language_code
+                        if isinstance(pref.language_code, str)
+                        else pref.language_code.value
+                    )
+                    lang_display = (
+                        f"{lang_code} ({get_language_display_name(lang_code)})"
+                    )
                     auto_download = "Yes" if pref.auto_download_transcripts else "No"
                     print(f"{pref.priority:<10}{lang_display:<30}{auto_download}")
 
@@ -758,7 +784,7 @@ def _format_table_output(
 
 
 def _format_json_output(
-    grouped: dict[LanguagePreferenceType, list[UserLanguagePreference]]
+    grouped: dict[LanguagePreferenceType, list[UserLanguagePreference]],
 ) -> None:
     """
     Format preferences as JSON.
@@ -792,7 +818,11 @@ def _format_json_output(
         type_key = pref_type.value
         for pref in prefs:
             # language_code is already a string due to use_enum_values=True
-            lang_code = pref.language_code if isinstance(pref.language_code, str) else pref.language_code.value
+            lang_code = (
+                pref.language_code
+                if isinstance(pref.language_code, str)
+                else pref.language_code.value
+            )
             pref_dict: dict[str, Any] = {
                 "language_code": lang_code,
                 "priority": pref.priority,
@@ -807,7 +837,7 @@ def _format_json_output(
 
 
 def _format_yaml_output(
-    grouped: dict[LanguagePreferenceType, list[UserLanguagePreference]]
+    grouped: dict[LanguagePreferenceType, list[UserLanguagePreference]],
 ) -> None:
     """
     Format preferences as YAML.
@@ -841,7 +871,11 @@ def _format_yaml_output(
         type_key = pref_type.value
         for pref in prefs:
             # language_code is already a string due to use_enum_values=True
-            lang_code = pref.language_code if isinstance(pref.language_code, str) else pref.language_code.value
+            lang_code = (
+                pref.language_code
+                if isinstance(pref.language_code, str)
+                else pref.language_code.value
+            )
             pref_dict: dict[str, Any] = {
                 "language_code": lang_code,
                 "priority": pref.priority,
@@ -1012,7 +1046,9 @@ def _show_first_run_defaults(detected_locale: LanguageCode) -> tuple[bool, list[
 
     # Show detected locale
     detected_display = get_language_display_name(detected_locale.value)
-    console.print(f"We detected your system language: {detected_display} ({detected_locale.value})")
+    console.print(
+        f"We detected your system language: {detected_display} ({detected_locale.value})"
+    )
     console.print()
 
     # Show defaults
@@ -1390,7 +1426,11 @@ def _handle_interactive_setup() -> None:
         interactive_goals_dict = _prompt_learning_goals(learning_langs)
 
     # Save preferences synchronously using asyncio.run
-    asyncio.run(_save_preferences(DEFAULT_USER_ID, interactive_prefs_dict, interactive_goals_dict))
+    asyncio.run(
+        _save_preferences(
+            DEFAULT_USER_ID, interactive_prefs_dict, interactive_goals_dict
+        )
+    )
 
     # Show confirmation
     _show_confirmation_summary(interactive_prefs_dict, interactive_goals_dict)
@@ -1434,7 +1474,11 @@ async def check_and_prompt_language_preferences(user_id: str) -> list[str]:
     if prefs:
         # Has preferences - return fluent languages
         return [
-            p.language_code if isinstance(p.language_code, str) else p.language_code.value
+            (
+                p.language_code
+                if isinstance(p.language_code, str)
+                else p.language_code.value
+            )
             for p in prefs
             if p.preference_type == LanguagePreferenceType.FLUENT.value
         ]
@@ -1455,7 +1499,11 @@ async def check_and_prompt_language_preferences(user_id: str) -> list[str]:
         # Re-fetch preferences after setup
         prefs = await _get_preferences(user_id)
         return [
-            p.language_code if isinstance(p.language_code, str) else p.language_code.value
+            (
+                p.language_code
+                if isinstance(p.language_code, str)
+                else p.language_code.value
+            )
             for p in prefs
             if p.preference_type == LanguagePreferenceType.FLUENT.value
         ]
@@ -1464,14 +1512,18 @@ async def check_and_prompt_language_preferences(user_id: str) -> list[str]:
         console.print()
         detected = detect_system_locale()
         detected_display = get_language_display_name(detected.value)
-        console.print(f"[yellow]Using default: {detected_display} ({detected.value}) based on system locale[/yellow]")
-        console.print("[dim]Tip: Configure later with 'chronovista languages set'[/dim]")
+        console.print(
+            f"[yellow]Using default: {detected_display} ({detected.value}) based on system locale[/yellow]"
+        )
+        console.print(
+            "[dim]Tip: Configure later with 'chronovista languages set'[/dim]"
+        )
         console.print()
         return []
 
 
 def _validate_no_conflicts(
-    prefs_dict: dict[LanguagePreferenceType, list[str]]
+    prefs_dict: dict[LanguagePreferenceType, list[str]],
 ) -> tuple[str, str, str] | None:
     """
     Validate that no language appears in multiple preference types.
@@ -1643,22 +1695,30 @@ def set(
 
             # Process each flag if provided
             if fluent:
-                valid, invalid = _process_flag_input(fluent, LanguagePreferenceType.FLUENT)
+                valid, invalid = _process_flag_input(
+                    fluent, LanguagePreferenceType.FLUENT
+                )
                 flag_prefs_dict[LanguagePreferenceType.FLUENT] = valid
                 all_invalid_codes.extend(invalid)
 
             if learning:
-                valid, invalid = _process_flag_input(learning, LanguagePreferenceType.LEARNING)
+                valid, invalid = _process_flag_input(
+                    learning, LanguagePreferenceType.LEARNING
+                )
                 flag_prefs_dict[LanguagePreferenceType.LEARNING] = valid
                 all_invalid_codes.extend(invalid)
 
             if curious:
-                valid, invalid = _process_flag_input(curious, LanguagePreferenceType.CURIOUS)
+                valid, invalid = _process_flag_input(
+                    curious, LanguagePreferenceType.CURIOUS
+                )
                 flag_prefs_dict[LanguagePreferenceType.CURIOUS] = valid
                 all_invalid_codes.extend(invalid)
 
             if exclude:
-                valid, invalid = _process_flag_input(exclude, LanguagePreferenceType.EXCLUDE)
+                valid, invalid = _process_flag_input(
+                    exclude, LanguagePreferenceType.EXCLUDE
+                )
                 flag_prefs_dict[LanguagePreferenceType.EXCLUDE] = valid
                 all_invalid_codes.extend(invalid)
 
@@ -1671,14 +1731,18 @@ def set(
                     if suggestions:
                         console.print(f"    Did you mean: {', '.join(suggestions)}?")
                 console.print()
-                console.print("Use 'chronovista languages list --available' to see all valid codes.")
+                console.print(
+                    "Use 'chronovista languages list --available' to see all valid codes."
+                )
                 raise typer.Exit(1)
 
             # Check for conflicts (T041)
             conflict = _validate_no_conflicts(flag_prefs_dict)
             if conflict:
                 lang_code, type1, type2 = conflict
-                console.print(f"[red]Error: Language '{lang_code}' cannot be in multiple types.[/red]")
+                console.print(
+                    f"[red]Error: Language '{lang_code}' cannot be in multiple types.[/red]"
+                )
                 console.print(f"Found in: --{type1} and --{type2}")
                 console.print()
                 console.print("Remove from one type and try again.")
@@ -1700,7 +1764,11 @@ def set(
                 for pref in existing_prefs:
                     ptype = LanguagePreferenceType(pref.preference_type)
                     # language_code is already a string due to use_enum_values=True
-                    lang_code = pref.language_code if isinstance(pref.language_code, str) else pref.language_code.value
+                    lang_code = (
+                        pref.language_code
+                        if isinstance(pref.language_code, str)
+                        else pref.language_code.value
+                    )
                     if lang_code not in existing_dict[ptype]:
                         existing_dict[ptype].append(lang_code)
 
@@ -1742,11 +1810,17 @@ def set(
                 interactive_prefs_dict = _run_full_interactive_setup()
 
                 # Prompt for learning goals if any learning languages
-                learning_langs = interactive_prefs_dict.get(LanguagePreferenceType.LEARNING, [])
+                learning_langs = interactive_prefs_dict.get(
+                    LanguagePreferenceType.LEARNING, []
+                )
                 interactive_goals_dict = _prompt_learning_goals(learning_langs)
 
             # Save preferences
-            asyncio.run(_save_preferences(DEFAULT_USER_ID, interactive_prefs_dict, interactive_goals_dict))
+            asyncio.run(
+                _save_preferences(
+                    DEFAULT_USER_ID, interactive_prefs_dict, interactive_goals_dict
+                )
+            )
 
             # Show confirmation
             _show_confirmation_summary(interactive_prefs_dict, interactive_goals_dict)
@@ -2078,11 +2152,7 @@ def add(
         raise typer.Exit(3) from e
 
 
-
-
-async def _compact_priorities(
-    user_id: str, pref_type: LanguagePreferenceType
-) -> None:
+async def _compact_priorities(user_id: str, pref_type: LanguagePreferenceType) -> None:
     """
     Compact priorities after removal to ensure sequential numbering.
 
@@ -2149,7 +2219,9 @@ def remove(
     # Check if preference exists
     repo = UserLanguagePreferenceRepository()
 
-    async def _remove_preference() -> tuple[bool, str | None, LanguagePreferenceType | None]:
+    async def _remove_preference() -> (
+        tuple[bool, str | None, LanguagePreferenceType | None]
+    ):
         """Helper to check and remove preference."""
         async for session in db_manager.get_session():
             # Get existing preference
@@ -2210,7 +2282,9 @@ def remove(
 @language_app.command()
 def reset(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
-    no_setup: bool = typer.Option(False, "--no-setup", help="Skip reconfiguration offer"),
+    no_setup: bool = typer.Option(
+        False, "--no-setup", help="Skip reconfiguration offer"
+    ),
 ) -> None:
     """
     Reset all language preferences.
@@ -2237,6 +2311,7 @@ def reset(
         $ chronovista languages reset --yes --no-setup
     """
     try:
+
         async def _reset_preferences() -> tuple[int, bool]:
             """Helper to count and reset preferences."""
             repo = UserLanguagePreferenceRepository()

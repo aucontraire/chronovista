@@ -92,13 +92,13 @@ class TestRecoverFromHistoricalTakeouts:
             channel_repository=channel_repo,
         )
 
-        with patch.object(
-            service, "_recover_videos", new_callable=AsyncMock
-        ), patch.object(
-            service, "_recover_channels", new_callable=AsyncMock
-        ), patch(
-            "chronovista.services.takeout_recovery_service.TakeoutService"
-        ) as mock_takeout:
+        with (
+            patch.object(service, "_recover_videos", new_callable=AsyncMock),
+            patch.object(service, "_recover_channels", new_callable=AsyncMock),
+            patch(
+                "chronovista.services.takeout_recovery_service.TakeoutService"
+            ) as mock_takeout,
+        ):
             mock_takeout.discover_historical_takeouts.return_value = []
 
             result = await service.recover_from_historical_takeouts(
@@ -662,9 +662,7 @@ class TestGetRecoveryPreview:
         ) as mock_recover:
             mock_recover.return_value = RecoveryResult(dry_run=True)
 
-            result = await service.get_recovery_preview(
-                mock_session, Path("/takeouts")
-            )
+            result = await service.get_recovery_preview(mock_session, Path("/takeouts"))
 
             assert result.dry_run is True
             mock_recover.assert_called_once()
@@ -767,7 +765,9 @@ class TestRecoveryNeverSetsDeletedFlag:
         mock_video.video_id = "dQw4w9WgXcQ"
         mock_video.title = "[Placeholder] Video dQw4w9WgXcQ"
         mock_video.channel_id = "UCplaceholder"
-        mock_video.availability_status = AvailabilityStatus.AVAILABLE  # Video is not deleted initially
+        mock_video.availability_status = (
+            AvailabilityStatus.AVAILABLE
+        )  # Video is not deleted initially
 
         video_repo = MagicMock()
         video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
@@ -805,9 +805,9 @@ class TestRecoveryNeverSetsDeletedFlag:
             if obj_in is not None:
                 # The VideoUpdate should not contain availability_status=True
                 if hasattr(obj_in, "availability_status"):
-                    assert obj_in.availability_status is not True, (
-                        "Recovery should never set availability_status=True"
-                    )
+                    assert (
+                        obj_in.availability_status is not True
+                    ), "Recovery should never set availability_status=True"
 
         # Also verify the mock_video itself wasn't modified to have availability_status=True
         # (The service should only update via the repository, not directly)
@@ -822,7 +822,9 @@ class TestRecoveryNeverSetsDeletedFlag:
         mock_video.video_id = "deletedVid123"
         mock_video.title = "[Placeholder] Video deletedVid123"
         mock_video.channel_id = "UCplaceholder"
-        mock_video.availability_status = AvailabilityStatus.UNAVAILABLE  # Previously marked as deleted
+        mock_video.availability_status = (
+            AvailabilityStatus.UNAVAILABLE
+        )  # Previously marked as deleted
 
         video_repo = MagicMock()
         video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])

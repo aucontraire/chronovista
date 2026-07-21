@@ -270,12 +270,14 @@ class TestPatternConstruction:
         session.execute = AsyncMock(side_effect=[entity_result, alias_result])
 
         svc = _build_service(MagicMock())
-        await svc._load_entity_patterns(session, entity_type=None, new_entities_only=False)
+        await svc._load_entity_patterns(
+            session, entity_type=None, new_entities_only=False
+        )
 
         # The alias query is the second execute() call
-        assert session.execute.call_count == 2, (
-            "Expected exactly two execute() calls: one for entities, one for aliases"
-        )
+        assert (
+            session.execute.call_count == 2
+        ), "Expected exactly two execute() calls: one for entities, one for aliases"
         alias_stmt = session.execute.call_args_list[1].args[0]
         sql_str = str(
             alias_stmt.compile(
@@ -309,7 +311,9 @@ class TestPatternConstruction:
         assert len(patterns) == 1
         pat = patterns[0]
         # Both non-ASR-error aliases must appear in the pattern
-        assert "Nap" in pat.alias_names, "name_variant alias 'Nap' must be in alias_names"
+        assert (
+            "Nap" in pat.alias_names
+        ), "name_variant alias 'Nap' must be in alias_names"
         assert "NB" in pat.alias_names, "abbreviation alias 'NB' must be in alias_names"
         assert re.escape("Nap") in pat.pg_pattern
         assert re.escape("NB") in pat.pg_pattern
@@ -334,9 +338,9 @@ class TestPatternConstruction:
         assert len(patterns) == 1
         pat = patterns[0]
         # Only the canonical name must appear — no ASR noise forms
-        assert pat.alias_names == ["Bonanza"], (
-            f"Expected only canonical name in alias_names; got: {pat.alias_names}"
-        )
+        assert pat.alias_names == [
+            "Bonanza"
+        ], f"Expected only canonical name in alias_names; got: {pat.alias_names}"
         # The ASR-error form "Bonazo" must not appear in pg_pattern
         assert "Bonazo" not in pat.pg_pattern
 
@@ -387,9 +391,22 @@ class TestEntityStatusFiltering:
 
         original_load = svc._load_entity_patterns
 
-        async def spy_load(s: Any, entity_type: Any, new_entities_only: Any, entity_ids: Any = None) -> Any:
-            captured_args.append({"entity_type": entity_type, "new_entities_only": new_entities_only, "entity_ids": entity_ids})
-            return await original_load(s, entity_type=entity_type, new_entities_only=new_entities_only, entity_ids=entity_ids)
+        async def spy_load(
+            s: Any, entity_type: Any, new_entities_only: Any, entity_ids: Any = None
+        ) -> Any:
+            captured_args.append(
+                {
+                    "entity_type": entity_type,
+                    "new_entities_only": new_entities_only,
+                    "entity_ids": entity_ids,
+                }
+            )
+            return await original_load(
+                s,
+                entity_type=entity_type,
+                new_entities_only=new_entities_only,
+                entity_ids=entity_ids,
+            )
 
         with patch.object(svc, "_load_entity_patterns", side_effect=spy_load):
             await svc.scan(entity_type="person")
@@ -564,10 +581,12 @@ class TestShortAliasWarning:
                 session, entity_type=None, new_entities_only=False
             )
 
-        warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-        assert any("AI" in msg for msg in warning_messages), (
-            f"Expected WARNING about 'AI', got: {warning_messages}"
-        )
+        warning_messages = [
+            r.message for r in caplog.records if r.levelno == logging.WARNING
+        ]
+        assert any(
+            "AI" in msg for msg in warning_messages
+        ), f"Expected WARNING about 'AI', got: {warning_messages}"
 
     async def test_single_char_alias_triggers_warning(self, caplog: Any) -> None:
         """An alias of length 1 must also emit a WARNING log."""
@@ -591,7 +610,9 @@ class TestShortAliasWarning:
                 session, entity_type=None, new_entities_only=False
             )
 
-        warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+        warning_messages = [
+            r.message for r in caplog.records if r.levelno == logging.WARNING
+        ]
         assert any("X" in msg for msg in warning_messages)
 
     async def test_alias_of_length_3_no_warning(self, caplog: Any) -> None:
@@ -599,7 +620,9 @@ class TestShortAliasWarning:
         import logging
 
         entity_id = _make_uuid()
-        entity_row = _make_entity_row(entity_id=entity_id, canonical_name="International Business Machines")
+        entity_row = _make_entity_row(
+            entity_id=entity_id, canonical_name="International Business Machines"
+        )
         ok_alias = _make_alias_row(entity_id=entity_id, alias_name="IBM")  # 3 chars
 
         session = AsyncMock()
@@ -616,7 +639,9 @@ class TestShortAliasWarning:
                 session, entity_type=None, new_entities_only=False
             )
 
-        warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+        warning_messages = [
+            r.message for r in caplog.records if r.levelno == logging.WARNING
+        ]
         assert not any("IBM" in msg for msg in warning_messages)
 
 
@@ -710,7 +735,9 @@ class TestFilterParameters:
 
         captured: list[dict[str, Any]] = []
 
-        async def spy_load(s: Any, entity_type: Any, new_entities_only: Any, entity_ids: Any = None) -> list[Any]:
+        async def spy_load(
+            s: Any, entity_type: Any, new_entities_only: Any, entity_ids: Any = None
+        ) -> list[Any]:
             captured.append({"entity_type": entity_type})
             return []
 
@@ -748,8 +775,14 @@ class TestBatchProcessing:
         factory = _make_session_factory(session)
         svc = _build_service(factory)
 
-        batch1 = [_make_segment_row(seg_id=i, effective_text="no match here") for i in range(3)]
-        batch2 = [_make_segment_row(seg_id=i + 10, effective_text="no match here") for i in range(2)]
+        batch1 = [
+            _make_segment_row(seg_id=i, effective_text="no match here")
+            for i in range(3)
+        ]
+        batch2 = [
+            _make_segment_row(seg_id=i + 10, effective_text="no match here")
+            for i in range(2)
+        ]
         batches = [batch1, batch2, []]
         batch_idx = 0
 
@@ -867,8 +900,12 @@ class TestBulkCreateConflictSkip:
         svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
-            patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=(mention_creates, 0, [], 0, 0)),
+            patch.object(
+                svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]
+            ),
+            patch.object(
+                svc, "_scan_batch", return_value=(mention_creates, 0, [], 0, 0)
+            ),
         ):
             result = await svc.scan()
 
@@ -911,12 +948,16 @@ class TestBulkCreateConflictSkip:
         svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
-            patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
+            patch.object(
+                svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]
+            ),
             patch.object(svc, "_scan_batch", return_value=([mention], 0, [], 0, 0)),
         ):
             await svc.scan()
         svc._mention_repo.bulk_create_with_conflict_skip.assert_called_once()
-        call_args = svc._mention_repo.bulk_create_with_conflict_skip.call_args      # Second positional argument is the mentions list
+        call_args = (
+            svc._mention_repo.bulk_create_with_conflict_skip.call_args
+        )  # Second positional argument is the mentions list
         assert mention in call_args[0][1]
 
     async def test_bulk_create_not_called_when_no_mentions(self) -> None:
@@ -943,11 +984,14 @@ class TestBulkCreateConflictSkip:
         svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
-            patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
+            patch.object(
+                svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]
+            ),
             patch.object(svc, "_scan_batch", return_value=([], 0, [], 0, 0)),
         ):
             await svc.scan()
         svc._mention_repo.bulk_create_with_conflict_skip.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # TestCounterUpdate
@@ -993,7 +1037,9 @@ class TestCounterUpdate:
         svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
-            patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
+            patch.object(
+                svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]
+            ),
             patch.object(svc, "_scan_batch", return_value=([mention], 0, [], 0, 0)),
         ):
             await svc.scan(dry_run=False)
@@ -1040,7 +1086,9 @@ class TestCounterUpdate:
         svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
-            patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
+            patch.object(
+                svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]
+            ),
             patch.object(svc, "_scan_batch", return_value=([mention], 0, [], 0, 0)),
         ):
             await svc.scan(dry_run=True)
@@ -1071,7 +1119,9 @@ class TestCounterUpdate:
         svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
-            patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
+            patch.object(
+                svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]
+            ),
             patch.object(svc, "_scan_batch", return_value=([], 0, [], 0, 0)),
         ):
             await svc.scan(dry_run=False)
@@ -1152,7 +1202,9 @@ class TestCounterUpdate:
         svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=fake_patterns),
-            patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
+            patch.object(
+                svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]
+            ),
             patch.object(svc, "_scan_batch", return_value=(mentions, 0, [], 0, 0)),
         ):
             await svc.scan(dry_run=False)
@@ -1162,9 +1214,9 @@ class TestCounterUpdate:
 
         # Both entities (including the ASR-only one) must be passed to the
         # repository so the repository can apply its own ASR filtering.
-        assert entity_id_a in passed_entity_ids, (
-            "entity_id_a (visible name) must be in the update_entity_counters call"
-        )
+        assert (
+            entity_id_a in passed_entity_ids
+        ), "entity_id_a (visible name) must be in the update_entity_counters call"
         assert entity_id_b in passed_entity_ids, (
             "entity_id_b (ASR-alias-only) must also be passed to update_entity_counters "
             "so the repository can zero it out if it has no visible-name mentions"
@@ -1204,7 +1256,9 @@ class TestCounterUpdate:
         svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
-            patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
+            patch.object(
+                svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]
+            ),
             # _scan_batch returns empty list → matched_entity_ids stays empty
             patch.object(svc, "_scan_batch", return_value=([], 0, [], 0, 0)),
         ):
@@ -1258,7 +1312,9 @@ class TestDryRunMode:
         svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
-            patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
+            patch.object(
+                svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]
+            ),
             patch.object(svc, "_scan_batch", return_value=([mention], 0, [], 0, 0)),
         ):
             result = await svc.scan(dry_run=True)
@@ -1336,14 +1392,22 @@ class TestDryRunMode:
             detection_method=DetectionMethod.RULE_MATCH,
             confidence=1.0,
         )
-        preview = {"entity_name": "Palantir", "video_id": "dQw4w9WgXcQ", "context": "..."}
+        preview = {
+            "entity_name": "Palantir",
+            "video_id": "dQw4w9WgXcQ",
+            "context": "...",
+        }
 
         svc._mention_repo.update_entity_counters = AsyncMock()
         svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
-            patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
-            patch.object(svc, "_scan_batch", return_value=([mention], 0, [preview], 0, 0)),
+            patch.object(
+                svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]
+            ),
+            patch.object(
+                svc, "_scan_batch", return_value=([mention], 0, [preview], 0, 0)
+            ),
         ):
             result = await svc.scan(dry_run=True)
 
@@ -1389,8 +1453,12 @@ class TestFullRescan:
         ):
             await svc.scan(full_rescan=True, dry_run=False)
         svc._mention_repo.delete_by_scope.assert_called_once()
-        call_kwargs = svc._mention_repo.delete_by_scope.call_args        # entity_ids should contain our entity_id
-        passed_entity_ids = call_kwargs.kwargs.get("entity_ids") or call_kwargs[1].get("entity_ids")
+        call_kwargs = (
+            svc._mention_repo.delete_by_scope.call_args
+        )  # entity_ids should contain our entity_id
+        passed_entity_ids = call_kwargs.kwargs.get("entity_ids") or call_kwargs[1].get(
+            "entity_ids"
+        )
         assert entity_id in passed_entity_ids
 
     async def test_delete_by_scope_not_called_without_full_rescan(self) -> None:
@@ -1422,6 +1490,7 @@ class TestFullRescan:
         ):
             await svc.scan(full_rescan=False)
         svc._mention_repo.delete_by_scope.assert_not_called()
+
     async def test_delete_by_scope_not_called_in_dry_run_full(self) -> None:
         """Full rescan in dry-run mode must NOT call delete_by_scope."""
         from chronovista.services.entity_mention_scan_service import _EntityPattern
@@ -1451,6 +1520,7 @@ class TestFullRescan:
             await svc.scan(full_rescan=True, dry_run=True)
         svc._mention_repo.delete_by_scope.assert_not_called()
 
+
 # ---------------------------------------------------------------------------
 # TestNewEntitiesOnly
 # ---------------------------------------------------------------------------
@@ -1468,7 +1538,8 @@ class TestNewEntitiesOnly:
         result = await svc._load_entity_patterns(
             session, entity_type=None, new_entities_only=True
         )
-        svc._mention_repo.get_entities_with_zero_mentions.assert_called_once_with(            session, entity_type=None
+        svc._mention_repo.get_entities_with_zero_mentions.assert_called_once_with(
+            session, entity_type=None
         )
         assert result == []
 
@@ -1493,7 +1564,8 @@ class TestNewEntitiesOnly:
         await svc._load_entity_patterns(
             session, entity_type="person", new_entities_only=True
         )
-        svc._mention_repo.get_entities_with_zero_mentions.assert_called_once_with(            session, entity_type="person"
+        svc._mention_repo.get_entities_with_zero_mentions.assert_called_once_with(
+            session, entity_type="person"
         )
 
 
@@ -1579,7 +1651,9 @@ class TestScanResult:
         svc._mention_repo.update_alias_counters = AsyncMock()
         with (
             patch.object(svc, "_load_entity_patterns", return_value=fake_patterns),
-            patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
+            patch.object(
+                svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]
+            ),
             patch.object(svc, "_scan_batch", return_value=(mentions, 0, [], 0, 0)),
         ):
             result = await svc.scan()
@@ -1705,7 +1779,9 @@ class TestFailedBatchHandling:
 
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
-            patch.object(svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]),
+            patch.object(
+                svc, "_fetch_segment_batch", side_effect=[[_make_segment_row()], []]
+            ),
             patch.object(svc, "_scan_batch", side_effect=first_scan_fails),
         ):
             result = await svc.scan()
@@ -1756,7 +1832,9 @@ class TestFailedBatchHandling:
 
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
-            patch.object(svc, "_fetch_segment_batch", side_effect=two_batches_then_empty),
+            patch.object(
+                svc, "_fetch_segment_batch", side_effect=two_batches_then_empty
+            ),
             patch.object(svc, "_scan_batch", side_effect=first_fails),
         ):
             result = await svc.scan()
@@ -2091,10 +2169,10 @@ class TestAuditUnregisteredMentions:
 
         assert len(results) == 1
         # Positional field verification
-        assert results[0][0] == "Marie Curie"     # canonical_name
-        assert results[0][1] == entity_id          # entity_id
-        assert results[0][2] == "curie"            # mention_text
-        assert results[0][3] == 11                 # segment_count
+        assert results[0][0] == "Marie Curie"  # canonical_name
+        assert results[0][1] == entity_id  # entity_id
+        assert results[0][2] == "curie"  # mention_text
+        assert results[0][3] == 11  # segment_count
 
     async def test_execute_called_exactly_once(self) -> None:
         """The method must issue exactly one database query per invocation."""
@@ -2273,9 +2351,7 @@ class TestEntityIdsFilter:
             new_entities_only: Any,
             entity_ids: Any = None,
         ) -> Any:
-            captured_args.append(
-                {"entity_type": entity_type, "entity_ids": entity_ids}
-            )
+            captured_args.append({"entity_type": entity_type, "entity_ids": entity_ids})
             return await original_load(
                 s,
                 entity_type=entity_type,
@@ -2326,9 +2402,9 @@ class TestEntityIdsFilter:
             )
         )
         # The UUID should appear in the IN clause
-        assert str(entity_id) in sql_str, (
-            f"Expected entity_id {entity_id} in SQL; got: {sql_str[:600]}"
-        )
+        assert (
+            str(entity_id) in sql_str
+        ), f"Expected entity_id {entity_id} in SQL; got: {sql_str[:600]}"
 
     async def test_load_patterns_with_entity_ids_and_entity_type_filters_both(
         self,
@@ -2367,12 +2443,12 @@ class TestEntityIdsFilter:
                 compile_kwargs={"literal_binds": True},
             )
         )
-        assert "organization" in sql_str, (
-            f"Expected 'organization' in SQL; got: {sql_str[:600]}"
-        )
-        assert str(entity_id) in sql_str, (
-            f"Expected entity_id {entity_id} in SQL; got: {sql_str[:600]}"
-        )
+        assert (
+            "organization" in sql_str
+        ), f"Expected 'organization' in SQL; got: {sql_str[:600]}"
+        assert (
+            str(entity_id) in sql_str
+        ), f"Expected entity_id {entity_id} in SQL; got: {sql_str[:600]}"
 
     async def test_entity_ids_empty_list_returns_no_patterns(self) -> None:
         """An empty entity_ids list must result in no patterns (no matching entities)."""
@@ -2421,9 +2497,9 @@ class TestEntityIdsFilter:
 
         # The INFO log at scan start must reference entity_ids
         log_messages = " ".join(r.getMessage() for r in caplog.records)
-        assert "entity_ids" in log_messages.lower(), (
-            f"Expected 'entity_ids' in scan start log; log output: {log_messages[:400]}"
-        )
+        assert (
+            "entity_ids" in log_messages.lower()
+        ), f"Expected 'entity_ids' in scan start log; log output: {log_messages[:400]}"
 
 
 # ---------------------------------------------------------------------------
@@ -2475,9 +2551,9 @@ class TestAliasRegexOrdering:
         short_escaped = re.escape("Jairo Calixto")
         long_idx = next(i for i, p in enumerate(parts) if p == long_escaped)
         short_idx = next(i for i, p in enumerate(parts) if p == short_escaped)
-        assert long_idx < short_idx, (
-            f"Longer alias must appear before shorter in alternation: {parts}"
-        )
+        assert (
+            long_idx < short_idx
+        ), f"Longer alias must appear before shorter in alternation: {parts}"
 
     async def test_longer_alias_matched_over_shorter_in_text(self) -> None:
         """When text contains the longer form, regex must match it fully."""
@@ -2518,9 +2594,7 @@ class TestAliasRegexOrdering:
 
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
-            patch.object(
-                svc, "_fetch_segment_batch", side_effect=[[segment], []]
-            ),
+            patch.object(svc, "_fetch_segment_batch", side_effect=[[segment], []]),
         ):
             # Use full_rescan=True to skip dedup check (no session.execute needed)
             result = await svc.scan(dry_run=True, full_rescan=True)

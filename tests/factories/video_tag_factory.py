@@ -87,8 +87,12 @@ class VideoTagStatisticsFactory(factory.Factory[VideoTagStatistics]):
         model = VideoTagStatistics
 
     total_tags: Any = Faker("random_int", min=100, max=10000)
-    unique_tags: Any = LazyAttribute(lambda obj: int(obj.total_tags * 0.7))  # 70% unique
-    avg_tags_per_video: Any = Faker("pyfloat", min_value=1.0, max_value=5.0, right_digits=2)
+    unique_tags: Any = LazyAttribute(
+        lambda obj: int(obj.total_tags * 0.7)
+    )  # 70% unique
+    avg_tags_per_video: Any = Faker(
+        "pyfloat", min_value=1.0, max_value=5.0, right_digits=2
+    )
     most_common_tags: Any = factory.LazyFunction(
         lambda: [
             ("gaming", 95),

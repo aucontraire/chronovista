@@ -136,10 +136,17 @@ class TestEnrichCategoriesMethod:
         mock_category.name = "Music"
         mock_category.assignable = True
 
-        with patch.object(
-            service.video_category_repository, "get", new=AsyncMock(return_value=mock_category)
-        ), patch.object(
-            service.video_category_repository, "exists", new=AsyncMock(return_value=True)
+        with (
+            patch.object(
+                service.video_category_repository,
+                "get",
+                new=AsyncMock(return_value=mock_category),
+            ),
+            patch.object(
+                service.video_category_repository,
+                "exists",
+                new=AsyncMock(return_value=True),
+            ),
         ):
             # The category should be found and assigned
             category = await service.video_category_repository.get(
@@ -224,10 +231,17 @@ class TestEnrichCategoriesMethod:
         # Mock category repository to return matching category
         mock_category = MagicMock(category_id=category_id, name="Music")
 
-        with patch.object(
-            service.video_category_repository, "get", new=AsyncMock(return_value=mock_category)
-        ), patch.object(
-            service.video_category_repository, "exists", new=AsyncMock(return_value=True)
+        with (
+            patch.object(
+                service.video_category_repository,
+                "get",
+                new=AsyncMock(return_value=mock_category),
+            ),
+            patch.object(
+                service.video_category_repository,
+                "exists",
+                new=AsyncMock(return_value=True),
+            ),
         ):
             # Category exists
             exists = await service.video_category_repository.exists(
@@ -243,10 +257,17 @@ class TestEnrichCategoriesMethod:
         """Test that enrich_categories() returns False when category is not found."""
         category_id = "99999"  # Non-existent category
 
-        with patch.object(
-            service.video_category_repository, "get", new=AsyncMock(return_value=None)
-        ), patch.object(
-            service.video_category_repository, "exists", new=AsyncMock(return_value=False)
+        with (
+            patch.object(
+                service.video_category_repository,
+                "get",
+                new=AsyncMock(return_value=None),
+            ),
+            patch.object(
+                service.video_category_repository,
+                "exists",
+                new=AsyncMock(return_value=False),
+            ),
         ):
             # Category doesn't exist
             exists = await service.video_category_repository.exists(
@@ -472,7 +493,9 @@ class TestUnrecognizedCategoryHandling:
 
         for video in videos_data:
             snippet = video.get("snippet", {})
-            category_id = snippet.get("categoryId") if isinstance(snippet, dict) else None
+            category_id = (
+                snippet.get("categoryId") if isinstance(snippet, dict) else None
+            )
             if category_id:
                 exists = await mock_video_category_repository.exists(
                     mock_session, category_id
@@ -893,7 +916,9 @@ class TestCategoryEnrichmentIntegration:
         categories_found = 0
         for video in videos:
             snippet = video.get("snippet", {})
-            category_id = snippet.get("categoryId") if isinstance(snippet, dict) else None
+            category_id = (
+                snippet.get("categoryId") if isinstance(snippet, dict) else None
+            )
             if category_id:
                 categories_found += 1
 
@@ -906,7 +931,9 @@ class TestCategoryEnrichmentIntegration:
         category_id = "10"
 
         with patch.object(
-            service.video_category_repository, "get", new=AsyncMock(side_effect=Exception("Database error"))
+            service.video_category_repository,
+            "get",
+            new=AsyncMock(side_effect=Exception("Database error")),
         ):
             with pytest.raises(Exception) as exc_info:
                 await service.video_category_repository.get(mock_session, category_id)

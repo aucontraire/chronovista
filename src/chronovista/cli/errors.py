@@ -38,6 +38,7 @@ console = Console()
 # Error Categories (from contracts/cli-commands.md)
 # =============================================================================
 
+
 class ErrorCategory:
     """
     Standard error categories for CLI commands.
@@ -101,6 +102,7 @@ def get_exit_code_for_category(category: str) -> int:
 # =============================================================================
 # Error Formatting Functions
 # =============================================================================
+
 
 def format_error(
     category: str,
@@ -218,6 +220,7 @@ def format_warning(message: str) -> str:
 # =============================================================================
 # Rich Panel Display Functions
 # =============================================================================
+
 
 def display_error_panel(
     category: str,
@@ -381,6 +384,7 @@ def display_info_panel(
 # Simple Display Functions (No Panel)
 # =============================================================================
 
+
 def print_error(message: str) -> None:
     """
     Print error message without panel.
@@ -432,6 +436,7 @@ def print_info(message: str) -> None:
 # =============================================================================
 # Authentication Error Helpers
 # =============================================================================
+
 
 def display_auth_required_error(command_name: str = "Command") -> None:
     """
@@ -500,6 +505,7 @@ def display_auth_expired_error(
 # =============================================================================
 # Specialized Error Formatters
 # =============================================================================
+
 
 def format_not_found_error(resource_type: str, identifier: str) -> str:
     """
@@ -775,13 +781,15 @@ def display_network_error(
     if details:
         message_lines.append(f"\nDetails: {details}")
 
-    message_lines.extend([
-        "",
-        "[yellow]What to try:[/yellow]",
-        "1. Check your internet connection",
-        "2. Try again in a few moments",
-        "3. If the problem persists, check YouTube API status",
-    ])
+    message_lines.extend(
+        [
+            "",
+            "[yellow]What to try:[/yellow]",
+            "1. Check your internet connection",
+            "2. Try again in a few moments",
+            "3. If the problem persists, check YouTube API status",
+        ]
+    )
 
     console.print(
         Panel(
@@ -845,16 +853,18 @@ def display_database_commit_error(
     if details:
         message_lines.append(f"\nDetails: {details}")
 
-    message_lines.extend([
-        "",
-        "Your data has been safely rolled back to the previous state.",
-        "No partial changes were saved.",
-        "",
-        "[yellow]What to try:[/yellow]",
-        "1. Check database connectivity",
-        "2. Ensure sufficient disk space",
-        "3. Try the operation again",
-    ])
+    message_lines.extend(
+        [
+            "",
+            "Your data has been safely rolled back to the previous state.",
+            "No partial changes were saved.",
+            "",
+            "[yellow]What to try:[/yellow]",
+            "1. Check database connectivity",
+            "2. Ensure sufficient disk space",
+            "3. Try the operation again",
+        ]
+    )
 
     console.print(
         Panel(

@@ -33,7 +33,9 @@ class VideoSeeder(BaseSeeder):
     No placeholder channels are created.
     """
 
-    def __init__(self, video_repo: VideoRepository, channel_repo: ChannelRepository | None = None):
+    def __init__(
+        self, video_repo: VideoRepository, channel_repo: ChannelRepository | None = None
+    ):
         super().__init__(dependencies={"channels"})  # Depends on channels existing
         self.video_repo = video_repo
         self.channel_repo = channel_repo or ChannelRepository()
@@ -165,9 +167,7 @@ class VideoSeeder(BaseSeeder):
         )
 
         # Add debug info about potential updates that didn't happen
-        logger.debug(
-            f"📊 Debug: {len(video_items)} videos processed"
-        )
+        logger.debug(f"📊 Debug: {len(video_items)} videos processed")
 
         return result
 
@@ -189,7 +189,9 @@ class VideoSeeder(BaseSeeder):
         - See: docs/takeout-data-quality.md for full explanation
         """
         # video_id is guaranteed by seed() method - entries without are skipped
-        assert entry.video_id is not None, "video_id must be present (filtered in seed())"
+        assert (
+            entry.video_id is not None
+        ), "video_id must be present (filtered in seed())"
         video_id = entry.video_id
 
         # Use real channel_id if available, otherwise None
@@ -226,4 +228,3 @@ class VideoSeeder(BaseSeeder):
             view_count=None,  # Will be enriched via API
             comment_count=None,  # Will be enriched via API
         )
-

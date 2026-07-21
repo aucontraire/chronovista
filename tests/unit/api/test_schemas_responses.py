@@ -1,4 +1,5 @@
 """Unit tests for API response schemas."""
+
 import pytest
 from pydantic import ValidationError
 

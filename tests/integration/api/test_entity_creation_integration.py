@@ -123,9 +123,7 @@ class TestClassifyFlowEndToEnd:
         async with integration_session_factory() as session:
             # Remove any leftover rows from previous runs
             await session.execute(
-                delete(TagAliasDB).where(
-                    TagAliasDB.normalized_form == normalized_form
-                )
+                delete(TagAliasDB).where(TagAliasDB.normalized_form == normalized_form)
             )
             await session.execute(
                 delete(CanonicalTagDB).where(
@@ -194,9 +192,7 @@ class TestClassifyFlowEndToEnd:
                 )
             )
             await session.execute(
-                delete(TagAliasDB).where(
-                    TagAliasDB.normalized_form == normalized_form
-                )
+                delete(TagAliasDB).where(TagAliasDB.normalized_form == normalized_form)
             )
             await session.execute(
                 delete(CanonicalTagDB).where(
@@ -231,21 +227,21 @@ class TestClassifyFlowEndToEnd:
                 },
             )
 
-        assert response.status_code == 201, (
-            f"Expected 201 but got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 201
+        ), f"Expected 201 but got {response.status_code}: {response.text}"
         body = response.json()
 
         # Response must contain required fields
         assert "entity_id" in body, f"Missing entity_id in response: {body}"
         assert "canonical_name" in body, f"Missing canonical_name in response: {body}"
         assert "entity_type" in body, f"Missing entity_type in response: {body}"
-        assert body["entity_type"] == "person", (
-            f"Expected entity_type 'person', got: {body['entity_type']}"
-        )
-        assert body["entity_created"] is True, (
-            f"Expected entity_created=True, got: {body.get('entity_created')}"
-        )
+        assert (
+            body["entity_type"] == "person"
+        ), f"Expected entity_type 'person', got: {body['entity_type']}"
+        assert (
+            body["entity_created"] is True
+        ), f"Expected entity_created=True, got: {body.get('entity_created')}"
 
         entity_id_str = body["entity_id"]
         assert entity_id_str is not None, "entity_id must not be None after classify"
@@ -254,17 +250,17 @@ class TestClassifyFlowEndToEnd:
         async with integration_session_factory() as session:
             entity_uuid = uuid.UUID(entity_id_str)
             db_entity = await session.get(NamedEntityDB, entity_uuid)
-            assert db_entity is not None, (
-                f"NamedEntity {entity_id_str} not found in DB after classify"
-            )
-            assert db_entity.entity_type == "person", (
-                f"NamedEntity.entity_type mismatch: {db_entity.entity_type}"
-            )
+            assert (
+                db_entity is not None
+            ), f"NamedEntity {entity_id_str} not found in DB after classify"
+            assert (
+                db_entity.entity_type == "person"
+            ), f"NamedEntity.entity_type mismatch: {db_entity.entity_type}"
             # canonical_name should be title-cased (auto_case=True in endpoint)
             assert db_entity.canonical_name is not None
-            assert db_entity.canonical_name_normalized == normalized_form, (
-                f"Normalized name mismatch: {db_entity.canonical_name_normalized}"
-            )
+            assert (
+                db_entity.canonical_name_normalized == normalized_form
+            ), f"Normalized name mismatch: {db_entity.canonical_name_normalized}"
 
             # Verify CanonicalTag.entity_id is linked
             db_tag = await session.get(CanonicalTagDB, seed_canonical_tag["tag_id"])
@@ -273,20 +269,18 @@ class TestClassifyFlowEndToEnd:
                 f"CanonicalTag.entity_id not linked: expected {entity_uuid}, "
                 f"got {db_tag.entity_id}"
             )
-            assert db_tag.entity_type == "person", (
-                f"CanonicalTag.entity_type not set: {db_tag.entity_type}"
-            )
+            assert (
+                db_tag.entity_type == "person"
+            ), f"CanonicalTag.entity_type not set: {db_tag.entity_type}"
 
             # Verify EntityAlias (self-alias) was created
             aliases_result = await session.execute(
-                select(EntityAliasDB).where(
-                    EntityAliasDB.entity_id == entity_uuid
-                )
+                select(EntityAliasDB).where(EntityAliasDB.entity_id == entity_uuid)
             )
             aliases = aliases_result.scalars().all()
-            assert len(aliases) >= 1, (
-                f"Expected at least 1 EntityAlias (self-alias), found {len(aliases)}"
-            )
+            assert (
+                len(aliases) >= 1
+            ), f"Expected at least 1 EntityAlias (self-alias), found {len(aliases)}"
             alias_names_normalized = [a.alias_name_normalized for a in aliases]
             assert normalized_form in alias_names_normalized, (
                 f"Self-alias with normalized_form='{normalized_form}' not found "
@@ -316,9 +310,9 @@ class TestClassifyFlowEndToEnd:
                     "entity_type": "person",
                 },
             )
-            assert first_response.status_code == 201, (
-                f"First classify failed unexpectedly: {first_response.text}"
-            )
+            assert (
+                first_response.status_code == 201
+            ), f"First classify failed unexpectedly: {first_response.text}"
 
             # Second classify — should conflict
             second_response = await async_client.post(
@@ -349,9 +343,9 @@ class TestClassifyFlowEndToEnd:
                 },
             )
 
-        assert response.status_code == 404, (
-            f"Expected 404 for unknown tag, got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 404
+        ), f"Expected 404 for unknown tag, got {response.status_code}: {response.text}"
 
 
 # ---------------------------------------------------------------------------
@@ -375,13 +369,17 @@ class TestStandaloneCreationEndToEnd:
 
         async def _wipe(session: AsyncSession) -> None:
             rows = (
-                await session.execute(
-                    select(NamedEntityDB).where(
-                        NamedEntityDB.canonical_name_normalized == normalized,
-                        NamedEntityDB.entity_type == "person",
+                (
+                    await session.execute(
+                        select(NamedEntityDB).where(
+                            NamedEntityDB.canonical_name_normalized == normalized,
+                            NamedEntityDB.entity_type == "person",
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             for row in rows:
                 await session.execute(
                     delete(EntityAliasDB).where(EntityAliasDB.entity_id == row.id)
@@ -426,9 +424,9 @@ class TestStandaloneCreationEndToEnd:
                 },
             )
 
-        assert response.status_code == 201, (
-            f"Expected 201 but got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 201
+        ), f"Expected 201 but got {response.status_code}: {response.text}"
         body = response.json()
 
         # Verify response shape
@@ -438,12 +436,12 @@ class TestStandaloneCreationEndToEnd:
         assert "alias_count" in body, f"Missing alias_count in response: {body}"
 
         # canonical_name must be title-cased
-        assert body["canonical_name"] == "Edward Snowden", (
-            f"Expected title-cased 'Edward Snowden', got: {body['canonical_name']}"
-        )
-        assert body["entity_type"] == "person", (
-            f"Expected entity_type 'person', got: {body['entity_type']}"
-        )
+        assert (
+            body["canonical_name"] == "Edward Snowden"
+        ), f"Expected title-cased 'Edward Snowden', got: {body['canonical_name']}"
+        assert (
+            body["entity_type"] == "person"
+        ), f"Expected entity_type 'person', got: {body['entity_type']}"
 
         entity_id_str = body["entity_id"]
         entity_uuid = uuid.UUID(entity_id_str)
@@ -451,28 +449,24 @@ class TestStandaloneCreationEndToEnd:
         # Verify DB state
         async with integration_session_factory() as session:
             db_entity = await session.get(NamedEntityDB, entity_uuid)
-            assert db_entity is not None, (
-                f"NamedEntity {entity_id_str} not found in DB"
-            )
-            assert db_entity.canonical_name == "Edward Snowden", (
-                f"DB canonical_name mismatch: {db_entity.canonical_name}"
-            )
+            assert db_entity is not None, f"NamedEntity {entity_id_str} not found in DB"
+            assert (
+                db_entity.canonical_name == "Edward Snowden"
+            ), f"DB canonical_name mismatch: {db_entity.canonical_name}"
             assert db_entity.canonical_name_normalized == self._SNOWDEN_NORMALIZED, (
                 f"DB canonical_name_normalized mismatch: "
                 f"{db_entity.canonical_name_normalized}"
             )
-            assert db_entity.entity_type == "person", (
-                f"DB entity_type mismatch: {db_entity.entity_type}"
-            )
-            assert db_entity.status == "active", (
-                f"DB status mismatch: {db_entity.status}"
-            )
+            assert (
+                db_entity.entity_type == "person"
+            ), f"DB entity_type mismatch: {db_entity.entity_type}"
+            assert (
+                db_entity.status == "active"
+            ), f"DB status mismatch: {db_entity.status}"
 
             # Verify alias count — canonical name + 2 user aliases = 3 aliases
             aliases_result = await session.execute(
-                select(EntityAliasDB).where(
-                    EntityAliasDB.entity_id == entity_uuid
-                )
+                select(EntityAliasDB).where(EntityAliasDB.entity_id == entity_uuid)
             )
             aliases = aliases_result.scalars().all()
             assert len(aliases) == 3, (
@@ -481,15 +475,15 @@ class TestStandaloneCreationEndToEnd:
             )
 
             alias_names = {a.alias_name for a in aliases}
-            assert "Edward Snowden" in alias_names, (
-                f"Canonical alias 'Edward Snowden' missing: {alias_names}"
-            )
-            assert "Ed Snowden" in alias_names, (
-                f"User alias 'Ed Snowden' missing: {alias_names}"
-            )
-            assert "Snowden" in alias_names, (
-                f"User alias 'Snowden' missing: {alias_names}"
-            )
+            assert (
+                "Edward Snowden" in alias_names
+            ), f"Canonical alias 'Edward Snowden' missing: {alias_names}"
+            assert (
+                "Ed Snowden" in alias_names
+            ), f"User alias 'Ed Snowden' missing: {alias_names}"
+            assert (
+                "Snowden" in alias_names
+            ), f"User alias 'Snowden' missing: {alias_names}"
 
     async def test_standalone_creation_deduplicates_identical_aliases(
         self,
@@ -514,17 +508,15 @@ class TestStandaloneCreationEndToEnd:
                 },
             )
 
-        assert response.status_code == 201, (
-            f"Expected 201 but got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 201
+        ), f"Expected 201 but got {response.status_code}: {response.text}"
         body = response.json()
         entity_uuid = uuid.UUID(body["entity_id"])
 
         async with integration_session_factory() as session:
             aliases_result = await session.execute(
-                select(EntityAliasDB).where(
-                    EntityAliasDB.entity_id == entity_uuid
-                )
+                select(EntityAliasDB).where(EntityAliasDB.entity_id == entity_uuid)
             )
             aliases = aliases_result.scalars().all()
             # canonical + "Ed Snowden" only — "Edward Snowden" duplicate skipped
@@ -596,9 +588,7 @@ class TestDuplicateDetection:
             ).scalar_one_or_none()
             if existing is not None:
                 await session.execute(
-                    delete(EntityAliasDB).where(
-                        EntityAliasDB.entity_id == existing.id
-                    )
+                    delete(EntityAliasDB).where(EntityAliasDB.entity_id == existing.id)
                 )
                 await session.execute(
                     delete(NamedEntityDB).where(NamedEntityDB.id == existing.id)
@@ -628,9 +618,7 @@ class TestDuplicateDetection:
         # Cleanup
         async with integration_session_factory() as session:
             await session.execute(
-                delete(EntityAliasDB).where(
-                    EntityAliasDB.entity_id == entity_id
-                )
+                delete(EntityAliasDB).where(EntityAliasDB.entity_id == entity_id)
             )
             await session.execute(
                 delete(NamedEntityDB).where(NamedEntityDB.id == entity_id)
@@ -658,28 +646,28 @@ class TestDuplicateDetection:
                 )
             )
 
-        assert response.status_code == 200, (
-            f"Expected 200 but got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 200
+        ), f"Expected 200 but got {response.status_code}: {response.text}"
         body = response.json()
 
-        assert body["is_duplicate"] is True, (
-            f"Expected is_duplicate=True, got: {body.get('is_duplicate')}"
-        )
+        assert (
+            body["is_duplicate"] is True
+        ), f"Expected is_duplicate=True, got: {body.get('is_duplicate')}"
         existing = body.get("existing_entity")
-        assert existing is not None, (
-            f"Expected existing_entity to be populated, got None. Body: {body}"
-        )
+        assert (
+            existing is not None
+        ), f"Expected existing_entity to be populated, got None. Body: {body}"
         assert existing["entity_id"] == seed_garland_entity["entity_id_str"], (
             f"entity_id mismatch: expected {seed_garland_entity['entity_id_str']}, "
             f"got {existing['entity_id']}"
         )
-        assert existing["canonical_name"] == self._GARLAND_CANONICAL, (
-            f"canonical_name mismatch: {existing['canonical_name']}"
-        )
-        assert existing["entity_type"] == "person", (
-            f"entity_type mismatch: {existing['entity_type']}"
-        )
+        assert (
+            existing["canonical_name"] == self._GARLAND_CANONICAL
+        ), f"canonical_name mismatch: {existing['canonical_name']}"
+        assert (
+            existing["entity_type"] == "person"
+        ), f"entity_type mismatch: {existing['entity_type']}"
 
     async def test_duplicate_check_returns_false_for_unknown_entity(
         self,
@@ -695,16 +683,16 @@ class TestDuplicateDetection:
                 )
             )
 
-        assert response.status_code == 200, (
-            f"Expected 200 but got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 200
+        ), f"Expected 200 but got {response.status_code}: {response.text}"
         body = response.json()
-        assert body["is_duplicate"] is False, (
-            f"Expected is_duplicate=False, got: {body.get('is_duplicate')}"
-        )
-        assert body.get("existing_entity") is None, (
-            f"Expected existing_entity=None, got: {body.get('existing_entity')}"
-        )
+        assert (
+            body["is_duplicate"] is False
+        ), f"Expected is_duplicate=False, got: {body.get('is_duplicate')}"
+        assert (
+            body.get("existing_entity") is None
+        ), f"Expected existing_entity=None, got: {body.get('existing_entity')}"
 
 
 # ---------------------------------------------------------------------------
@@ -744,9 +732,7 @@ class TestConflictOnDuplicateCreation:
             ).scalar_one_or_none()
             if existing is not None:
                 await session.execute(
-                    delete(EntityAliasDB).where(
-                        EntityAliasDB.entity_id == existing.id
-                    )
+                    delete(EntityAliasDB).where(EntityAliasDB.entity_id == existing.id)
                 )
                 await session.execute(
                     delete(NamedEntityDB).where(NamedEntityDB.id == existing.id)
@@ -773,9 +759,7 @@ class TestConflictOnDuplicateCreation:
         # Cleanup
         async with integration_session_factory() as session:
             await session.execute(
-                delete(EntityAliasDB).where(
-                    EntityAliasDB.entity_id == entity_id
-                )
+                delete(EntityAliasDB).where(EntityAliasDB.entity_id == entity_id)
             )
             await session.execute(
                 delete(NamedEntityDB).where(NamedEntityDB.id == entity_id)
@@ -832,9 +816,7 @@ class TestConflictOnDuplicateCreation:
             ).scalar_one_or_none()
             if existing is not None:
                 await session.execute(
-                    delete(EntityAliasDB).where(
-                        EntityAliasDB.entity_id == existing.id
-                    )
+                    delete(EntityAliasDB).where(EntityAliasDB.entity_id == existing.id)
                 )
                 await session.execute(
                     delete(NamedEntityDB).where(NamedEntityDB.id == existing.id)

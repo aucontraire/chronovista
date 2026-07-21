@@ -20,6 +20,7 @@ def _uuid7() -> uuid.UUID:
     """Generate a UUIDv7 as a standard uuid.UUID for Pydantic compatibility."""
     return uuid.UUID(bytes=uuid7().bytes)
 
+
 from chronovista.models.canonical_tag import (
     CanonicalTag,
     CanonicalTagBase,
@@ -86,12 +87,8 @@ class CanonicalTagFactory(factory.Factory[CanonicalTag]):
     video_count: Any = LazyFunction(lambda: 0)
     entity_id: Any = LazyFunction(lambda: None)
     merged_into_id: Any = LazyFunction(lambda: None)
-    created_at: Any = LazyFunction(
-        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
-    )
-    updated_at: Any = LazyFunction(
-        lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
-    )
+    created_at: Any = LazyFunction(lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC))
+    updated_at: Any = LazyFunction(lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC))
 
 
 # Convenience factory methods

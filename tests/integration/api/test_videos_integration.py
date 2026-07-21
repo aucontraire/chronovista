@@ -280,9 +280,7 @@ class TestLikedFilter:
         liked_video_data: None,
     ) -> None:
         """liked_only=true should include the liked video."""
-        response = await async_client.get(
-            "/api/v1/videos?liked_only=true&limit=100"
-        )
+        response = await async_client.get("/api/v1/videos?liked_only=true&limit=100")
         assert response.status_code == 200
         data = response.json()["data"]
 
@@ -296,9 +294,7 @@ class TestLikedFilter:
         liked_video_data: None,
     ) -> None:
         """liked_only=true should exclude non-liked videos."""
-        response = await async_client.get(
-            "/api/v1/videos?liked_only=true&limit=100"
-        )
+        response = await async_client.get("/api/v1/videos?liked_only=true&limit=100")
         assert response.status_code == 200
         data = response.json()["data"]
 
@@ -315,9 +311,7 @@ class TestLikedFilter:
         """liked_only=true with no liked videos should return empty data."""
         # We don't set up liked_video_data here, so no videos are liked
         # (assuming clean state or the test videos have no user_video entries)
-        response = await async_client.get(
-            "/api/v1/videos?liked_only=true&limit=100"
-        )
+        response = await async_client.get("/api/v1/videos?liked_only=true&limit=100")
         assert response.status_code == 200
         # Response should still be valid, just potentially empty data
 

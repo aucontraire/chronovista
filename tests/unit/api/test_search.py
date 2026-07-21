@@ -133,27 +133,19 @@ class TestSearchSegmentsNullByteRejection:
         self, async_client: AsyncClient
     ) -> None:
         """NULL byte embedded in a longer query (segments) is rejected."""
-        response = await async_client.get(
-            "/api/v1/search/segments?q=some%00query"
-        )
+        response = await async_client.get("/api/v1/search/segments?q=some%00query")
         assert response.status_code == 400
 
-    async def test_null_byte_mid_string_titles(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_null_byte_mid_string_titles(self, async_client: AsyncClient) -> None:
         """NULL byte embedded in a title search query is rejected."""
-        response = await async_client.get(
-            "/api/v1/search/titles?q=some%00query"
-        )
+        response = await async_client.get("/api/v1/search/titles?q=some%00query")
         assert response.status_code == 400
 
     async def test_null_byte_mid_string_descriptions(
         self, async_client: AsyncClient
     ) -> None:
         """NULL byte embedded in a description search query is rejected."""
-        response = await async_client.get(
-            "/api/v1/search/descriptions?q=some%00query"
-        )
+        response = await async_client.get("/api/v1/search/descriptions?q=some%00query")
         assert response.status_code == 400
 
 
@@ -178,45 +170,35 @@ class TestSearchSegmentsPhraseMatching:
         self, async_client: AsyncClient
     ) -> None:
         """Multi-word query with space returns 200 (not 422 or 500)."""
-        response = await async_client.get(
-            "/api/v1/search/segments?q=hello+world"
-        )
+        response = await async_client.get("/api/v1/search/segments?q=hello+world")
         assert response.status_code == 200
 
     async def test_multi_word_with_percent_accepted_segments(
         self, async_client: AsyncClient
     ) -> None:
         """Query containing ``%`` is accepted and returns 200."""
-        response = await async_client.get(
-            "/api/v1/search/segments?q=100%25+complete"
-        )
+        response = await async_client.get("/api/v1/search/segments?q=100%25+complete")
         assert response.status_code == 200
 
     async def test_multi_word_with_underscore_accepted_segments(
         self, async_client: AsyncClient
     ) -> None:
         """Query containing ``_`` is accepted and returns 200."""
-        response = await async_client.get(
-            "/api/v1/search/segments?q=__init__+method"
-        )
+        response = await async_client.get("/api/v1/search/segments?q=__init__+method")
         assert response.status_code == 200
 
     async def test_multi_word_with_backslash_accepted_segments(
         self, async_client: AsyncClient
     ) -> None:
         """Query containing backslash is accepted and returns 200."""
-        response = await async_client.get(
-            "/api/v1/search/segments?q=C%3A%5Cpath+file"
-        )
+        response = await async_client.get("/api/v1/search/segments?q=C%3A%5Cpath+file")
         assert response.status_code == 200
 
     async def test_multi_word_query_response_structure(
         self, async_client: AsyncClient
     ) -> None:
         """Multi-word query returns the standard paginated response structure."""
-        response = await async_client.get(
-            "/api/v1/search/segments?q=hello+world"
-        )
+        response = await async_client.get("/api/v1/search/segments?q=hello+world")
         assert response.status_code == 200
         body = response.json()
         assert "data" in body
@@ -228,18 +210,14 @@ class TestSearchSegmentsPhraseMatching:
         self, async_client: AsyncClient
     ) -> None:
         """Title search: multi-word query is accepted without error."""
-        response = await async_client.get(
-            "/api/v1/search/titles?q=python+tutorial"
-        )
+        response = await async_client.get("/api/v1/search/titles?q=python+tutorial")
         assert response.status_code == 200
 
     async def test_multi_word_with_percent_accepted_titles(
         self, async_client: AsyncClient
     ) -> None:
         """Title search: query with ``%`` is accepted and returns 200."""
-        response = await async_client.get(
-            "/api/v1/search/titles?q=100%25+tutorial"
-        )
+        response = await async_client.get("/api/v1/search/titles?q=100%25+tutorial")
         assert response.status_code == 200
 
     async def test_multi_word_query_accepted_descriptions(
@@ -401,7 +379,9 @@ def _make_video_mock(
     return video
 
 
-def _make_channel_mock(channel_id: str = "UCtest", title: str = "Test Channel") -> MagicMock:
+def _make_channel_mock(
+    channel_id: str = "UCtest", title: str = "Test Channel"
+) -> MagicMock:
     """Build a mock Channel ORM object."""
     ch = MagicMock()
     ch.channel_id = channel_id
@@ -472,7 +452,9 @@ class TestSearchSegmentsBatchContextFetching:
     """
 
     @pytest.fixture
-    async def context_client(self) -> AsyncGenerator[tuple[AsyncClient, AsyncMock], None]:
+    async def context_client(
+        self,
+    ) -> AsyncGenerator[tuple[AsyncClient, AsyncMock], None]:
         """
         Async client whose mock session exposes ``execute`` as an AsyncMock
         with a configurable ``side_effect`` list.
@@ -494,7 +476,9 @@ class TestSearchSegmentsBatchContextFetching:
 
         try:
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
+            async with AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
                 yield client, mock_session
         finally:
             app.dependency_overrides.clear()
@@ -734,7 +718,7 @@ class TestSearchSegmentsBatchContextFetching:
         corrected_next = "This is the corrected next segment."
 
         side_effects = self._single_segment_scenario(
-            prev_text=corrected_prev,   # CTE already resolved via COALESCE
+            prev_text=corrected_prev,  # CTE already resolved via COALESCE
             next_text=corrected_next,
         )
         mock_session.execute.side_effect = side_effects
@@ -823,8 +807,12 @@ class TestSearchSegmentsBatchContextFetching:
         from datetime import datetime
 
         upload = datetime(2024, 6, 1, tzinfo=UTC)
-        seg1 = _make_segment_mock(seg_id=1, text="first segment", start_time=0.0, end_time=3.0)
-        seg2 = _make_segment_mock(seg_id=2, text="second segment", start_time=3.0, end_time=6.0)
+        seg1 = _make_segment_mock(
+            seg_id=1, text="first segment", start_time=0.0, end_time=3.0
+        )
+        seg2 = _make_segment_mock(
+            seg_id=2, text="second segment", start_time=3.0, end_time=6.0
+        )
         video = _make_video_mock(upload_date=upload)
         channel = _make_channel_mock()
         transcript = _make_transcript_mock()
@@ -843,11 +831,16 @@ class TestSearchSegmentsBatchContextFetching:
 
         ctx_result = MagicMock()
         ctx_result.all.return_value = [
-            (1, None, "middle text"),   # seg_id=1: no prev, next="middle text"
-            (2, "first segment", None), # seg_id=2: prev="first segment", no next
+            (1, None, "middle text"),  # seg_id=1: no prev, next="middle text"
+            (2, "first segment", None),  # seg_id=2: prev="first segment", no next
         ]
 
-        mock_session.execute.side_effect = [lang_result, count_result, search_result, ctx_result]
+        mock_session.execute.side_effect = [
+            lang_result,
+            count_result,
+            search_result,
+            ctx_result,
+        ]
 
         response = await client.get("/api/v1/search/segments?q=segment")
         assert response.status_code == 200

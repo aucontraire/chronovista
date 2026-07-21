@@ -812,7 +812,9 @@ class VideoTranscriptRepository(
                     "has_timestamps": False,
                     "segment_count": None,
                     "total_duration": None,
-                    "source": raw_transcript_data.get("source", "youtube_transcript_api"),
+                    "source": raw_transcript_data.get(
+                        "source", "youtube_transcript_api"
+                    ),
                 }
 
             # Apply derived metadata to obj_data

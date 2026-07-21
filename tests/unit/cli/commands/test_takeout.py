@@ -506,15 +506,11 @@ class TestShowDetailedPlaylist:
             videos=[
                 create_takeout_playlist_item(
                     video_id="video1",
-                    creation_timestamp=datetime(
-                        2023, 1, 15, 14, 30, 0, tzinfo=UTC
-                    ),
+                    creation_timestamp=datetime(2023, 1, 15, 14, 30, 0, tzinfo=UTC),
                 ),
                 create_takeout_playlist_item(
                     video_id="video2",
-                    creation_timestamp=datetime(
-                        2023, 1, 16, 15, 45, 0, tzinfo=UTC
-                    ),
+                    creation_timestamp=datetime(2023, 1, 16, 15, 45, 0, tzinfo=UTC),
                 ),
             ],
         )

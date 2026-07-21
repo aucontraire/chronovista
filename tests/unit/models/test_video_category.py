@@ -62,7 +62,7 @@ class TestVideoCategoryBase:
             "1.5",  # Decimal
             "1-2",  # Hyphen
             "1 2",  # Space
-            "",     # Empty after strip
+            "",  # Empty after strip
             "   ",  # Only whitespace
         ]
 
@@ -79,7 +79,10 @@ class TestVideoCategoryBase:
         """Test category_id length constraints (1-10 chars)."""
         # Valid lengths
         assert VideoCategoryBase(category_id="1", name="Test").category_id == "1"
-        assert VideoCategoryBase(category_id="1234567890", name="Test").category_id == "1234567890"
+        assert (
+            VideoCategoryBase(category_id="1234567890", name="Test").category_id
+            == "1234567890"
+        )
 
         # Too long (>10 chars)
         with pytest.raises(ValidationError):
@@ -330,21 +333,25 @@ class TestVideoCategory:
         """Test that timestamps are required fields."""
         # Missing created_at
         with pytest.raises(ValidationError):
-            VideoCategory.model_validate({
-                "category_id": "1",
-                "name": "Test",
-                "assignable": True,
-                "updated_at": datetime.now(UTC),
-            })
+            VideoCategory.model_validate(
+                {
+                    "category_id": "1",
+                    "name": "Test",
+                    "assignable": True,
+                    "updated_at": datetime.now(UTC),
+                }
+            )
 
         # Missing updated_at
         with pytest.raises(ValidationError):
-            VideoCategory.model_validate({
-                "category_id": "1",
-                "name": "Test",
-                "assignable": True,
-                "created_at": datetime.now(UTC),
-            })
+            VideoCategory.model_validate(
+                {
+                    "category_id": "1",
+                    "name": "Test",
+                    "assignable": True,
+                    "created_at": datetime.now(UTC),
+                }
+            )
 
     def test_model_dump_includes_timestamps(self):
         """Test model_dump() includes timestamp fields."""

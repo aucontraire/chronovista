@@ -134,9 +134,15 @@ class VideoDetail(BaseModel):
     transcript_summary: TranscriptSummary
     topics: list[TopicSummary] = Field(default_factory=list)  # Associated topics
     availability_status: str = Field(..., description="Video availability status")
-    alternative_url: str | None = Field(None, description="Alternative URL for deleted/unavailable content")
-    recovered_at: datetime | None = Field(None, description="Timestamp when metadata was recovered via Wayback Machine")
-    recovery_source: str | None = Field(None, description="Source used for metadata recovery (e.g., wayback_machine)")
+    alternative_url: str | None = Field(
+        None, description="Alternative URL for deleted/unavailable content"
+    )
+    recovered_at: datetime | None = Field(
+        None, description="Timestamp when metadata was recovered via Wayback Machine"
+    )
+    recovery_source: str | None = Field(
+        None, description="Source used for metadata recovery (e.g., wayback_machine)"
+    )
 
 
 class VideoDetailResponse(ApiResponse[VideoDetail]):

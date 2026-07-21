@@ -1468,7 +1468,10 @@ class TestVideoRepositoryCategoryMethods:
 
     @pytest.mark.asyncio
     async def test_find_by_category_id_basic(
-        self, repository: VideoRepository, mock_session: AsyncMock, sample_videos: list[VideoDB]
+        self,
+        repository: VideoRepository,
+        mock_session: AsyncMock,
+        sample_videos: list[VideoDB],
     ):
         """Test finding videos by category ID."""
         mock_result = MagicMock()
@@ -1484,7 +1487,10 @@ class TestVideoRepositoryCategoryMethods:
 
     @pytest.mark.asyncio
     async def test_find_by_category_id_with_skip(
-        self, repository: VideoRepository, mock_session: AsyncMock, sample_videos: list[VideoDB]
+        self,
+        repository: VideoRepository,
+        mock_session: AsyncMock,
+        sample_videos: list[VideoDB],
     ):
         """Test finding videos by category ID with skip parameter."""
         mock_result = MagicMock()
@@ -1501,7 +1507,10 @@ class TestVideoRepositoryCategoryMethods:
 
     @pytest.mark.asyncio
     async def test_find_by_category_id_with_limit(
-        self, repository: VideoRepository, mock_session: AsyncMock, sample_videos: list[VideoDB]
+        self,
+        repository: VideoRepository,
+        mock_session: AsyncMock,
+        sample_videos: list[VideoDB],
     ):
         """Test finding videos by category ID with limit parameter."""
         mock_result = MagicMock()
@@ -1518,7 +1527,10 @@ class TestVideoRepositoryCategoryMethods:
 
     @pytest.mark.asyncio
     async def test_find_by_category_id_with_skip_and_limit(
-        self, repository: VideoRepository, mock_session: AsyncMock, sample_videos: list[VideoDB]
+        self,
+        repository: VideoRepository,
+        mock_session: AsyncMock,
+        sample_videos: list[VideoDB],
     ):
         """Test finding videos by category ID with both skip and limit."""
         mock_result = MagicMock()
@@ -1537,14 +1549,19 @@ class TestVideoRepositoryCategoryMethods:
 
     @pytest.mark.asyncio
     async def test_find_by_category_id_exclude_deleted(
-        self, repository: VideoRepository, mock_session: AsyncMock, sample_videos: list[VideoDB]
+        self,
+        repository: VideoRepository,
+        mock_session: AsyncMock,
+        sample_videos: list[VideoDB],
     ):
         """Test finding videos by category ID excludes deleted videos by default."""
         # Mark some videos as deleted
         sample_videos[1].availability_status = "unavailable"
         sample_videos[3].availability_status = "unavailable"
 
-        non_deleted_videos = [v for v in sample_videos if v.availability_status == "available"]
+        non_deleted_videos = [
+            v for v in sample_videos if v.availability_status == "available"
+        ]
 
         mock_result = MagicMock()
         mock_scalars = MagicMock()
@@ -1562,7 +1579,10 @@ class TestVideoRepositoryCategoryMethods:
 
     @pytest.mark.asyncio
     async def test_find_by_category_id_include_deleted(
-        self, repository: VideoRepository, mock_session: AsyncMock, sample_videos: list[VideoDB]
+        self,
+        repository: VideoRepository,
+        mock_session: AsyncMock,
+        sample_videos: list[VideoDB],
     ):
         """Test finding videos by category ID includes deleted videos when specified."""
         # Mark some videos as deleted
@@ -1601,7 +1621,10 @@ class TestVideoRepositoryCategoryMethods:
 
     @pytest.mark.asyncio
     async def test_find_by_category_id_ordered_by_view_count(
-        self, repository: VideoRepository, mock_session: AsyncMock, sample_videos: list[VideoDB]
+        self,
+        repository: VideoRepository,
+        mock_session: AsyncMock,
+        sample_videos: list[VideoDB],
     ):
         """Test that videos are ordered by view count descending."""
         # Videos already ordered by view count descending in sample_videos fixture
@@ -1625,7 +1648,10 @@ class TestVideoRepositoryCategoryMethods:
 
     @pytest.mark.asyncio
     async def test_find_by_category_id_with_none_limit(
-        self, repository: VideoRepository, mock_session: AsyncMock, sample_videos: list[VideoDB]
+        self,
+        repository: VideoRepository,
+        mock_session: AsyncMock,
+        sample_videos: list[VideoDB],
     ):
         """Test finding videos by category ID with limit=None returns all videos."""
         mock_result = MagicMock()
@@ -1634,9 +1660,7 @@ class TestVideoRepositoryCategoryMethods:
         mock_result.scalars.return_value = mock_scalars
         mock_session.execute.return_value = mock_result
 
-        result = await repository.find_by_category_id(
-            mock_session, "23", limit=None
-        )
+        result = await repository.find_by_category_id(mock_session, "23", limit=None)
 
         assert result == sample_videos
         mock_session.execute.assert_called_once()
@@ -1754,7 +1778,10 @@ class TestVideoRepositoryCategoryMethods:
 
     @pytest.mark.asyncio
     async def test_find_by_category_id_with_skip_zero(
-        self, repository: VideoRepository, mock_session: AsyncMock, sample_videos: list[VideoDB]
+        self,
+        repository: VideoRepository,
+        mock_session: AsyncMock,
+        sample_videos: list[VideoDB],
     ):
         """Test finding videos with skip=0 returns all videos from start."""
         mock_result = MagicMock()
@@ -1779,9 +1806,7 @@ class TestVideoRepositoryCategoryMethods:
         mock_result.scalars.return_value = mock_scalars
         mock_session.execute.return_value = mock_result
 
-        result = await repository.find_by_category_id(
-            mock_session, "23", skip=10000
-        )
+        result = await repository.find_by_category_id(mock_session, "23", skip=10000)
 
         assert result == []
         mock_session.execute.assert_called_once()
@@ -1890,7 +1915,9 @@ class TestVideoRepositoryCategoryEdgeCases:
                 duration=300,
                 category_id="23",
                 view_count=1000,
-                availability_status="unavailable" if i % 2 == 0 else "available",  # Every other video is unavailable
+                availability_status=(
+                    "unavailable" if i % 2 == 0 else "available"
+                ),  # Every other video is unavailable
             )
             videos.append(video)
 

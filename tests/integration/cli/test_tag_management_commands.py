@@ -74,9 +74,12 @@ class TestMergeCommand:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -101,9 +104,12 @@ class TestMergeCommand:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -134,9 +140,12 @@ class TestMergeCommand:
             entity_hint=hint,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -163,9 +172,12 @@ class TestMergeCommand:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -175,7 +187,15 @@ class TestMergeCommand:
 
             result = runner.invoke(
                 app,
-                ["tags", "merge", "mejico", "--into", "mexico", "--reason", "Test reason"],
+                [
+                    "tags",
+                    "merge",
+                    "mejico",
+                    "--into",
+                    "mexico",
+                    "--reason",
+                    "Test reason",
+                ],
             )
 
         assert result.exit_code == 0
@@ -196,9 +216,12 @@ class TestMergeCommand:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -218,9 +241,12 @@ class TestMergeCommand:
 
     def test_merge_value_error_exits_code_1(self) -> None:
         """ValueError from service (e.g., tag not found) produces exit code 1."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -228,15 +254,20 @@ class TestMergeCommand:
             mock_service.merge.side_effect = ValueError("Tag 'nonexistent' not found")
             mock_factory.return_value = mock_service
 
-            result = runner.invoke(app, ["tags", "merge", "nonexistent", "--into", "mexico"])
+            result = runner.invoke(
+                app, ["tags", "merge", "nonexistent", "--into", "mexico"]
+            )
 
         assert result.exit_code == 1
 
     def test_merge_value_error_shows_error_panel(self) -> None:
         """ValueError message is printed in the output."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -244,16 +275,21 @@ class TestMergeCommand:
             mock_service.merge.side_effect = ValueError("Tag 'nonexistent' not found")
             mock_factory.return_value = mock_service
 
-            result = runner.invoke(app, ["tags", "merge", "nonexistent", "--into", "mexico"])
+            result = runner.invoke(
+                app, ["tags", "merge", "nonexistent", "--into", "mexico"]
+            )
 
         assert "Merge Failed" in result.output
         assert "nonexistent" in result.output
 
     def test_merge_self_merge_exits_code_1(self) -> None:
         """Self-merge (source == target) produces exit code 1."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -317,9 +353,12 @@ class TestSplitCommand:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -350,9 +389,12 @@ class TestSplitCommand:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -386,9 +428,12 @@ class TestSplitCommand:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -430,9 +475,12 @@ class TestSplitCommand:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -461,9 +509,12 @@ class TestSplitCommand:
 
     def test_split_value_error_exits_code_1(self) -> None:
         """ValueError from service produces exit code 1."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -481,9 +532,12 @@ class TestSplitCommand:
 
     def test_split_value_error_shows_split_failed_panel(self) -> None:
         """ValueError message is displayed in Split Failed panel."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -511,7 +565,15 @@ class TestSplitCommand:
 
         result = runner.invoke(
             app,
-            ["tags", "split", "python", "--aliases", "Python3", "--reason", long_reason],
+            [
+                "tags",
+                "split",
+                "python",
+                "--aliases",
+                "Python3",
+                "--reason",
+                long_reason,
+            ],
         )
 
         assert result.exit_code == 2
@@ -544,9 +606,12 @@ class TestRenameCommand:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -571,9 +636,12 @@ class TestRenameCommand:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -601,9 +669,12 @@ class TestRenameCommand:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -630,9 +701,12 @@ class TestRenameCommand:
 
     def test_rename_value_error_exits_code_1(self) -> None:
         """ValueError from service produces exit code 1."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -648,19 +722,22 @@ class TestRenameCommand:
 
     def test_rename_value_error_shows_rename_failed_panel(self) -> None:
         """ValueError message is displayed in Rename Failed panel."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
             mock_service = AsyncMock()
-            mock_service.rename.side_effect = ValueError("New display form cannot be empty")
+            mock_service.rename.side_effect = ValueError(
+                "New display form cannot be empty"
+            )
             mock_factory.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["tags", "rename", "mexico", "--to", "   "]
-            )
+            result = runner.invoke(app, ["tags", "rename", "mexico", "--to", "   "])
 
         assert "Rename Failed" in result.output
 
@@ -723,9 +800,12 @@ class TestUndoCommand:
             details="Unmerged mejico from target",
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -747,9 +827,12 @@ class TestUndoCommand:
             details="Unmerged mejico from target",
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -773,9 +856,12 @@ class TestUndoCommand:
             details="Reunited 2 aliases back into 'python'",
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -797,9 +883,12 @@ class TestUndoCommand:
             details="Reunited 2 aliases back into 'python'",
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -816,9 +905,12 @@ class TestUndoCommand:
         """--list flag outputs a Recent Tag Operations table."""
         log_entry = _make_operation_log_mock(_OP_ID, "merge", reason="test reason")
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -836,9 +928,12 @@ class TestUndoCommand:
 
     def test_undo_list_empty_shows_no_operations_panel(self) -> None:
         """--list with no operations shows 'No Operations' panel."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -853,9 +948,12 @@ class TestUndoCommand:
 
     def test_undo_invalid_uuid_exits_code_1(self) -> None:
         """Passing a non-UUID string produces exit code 1."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -868,9 +966,12 @@ class TestUndoCommand:
 
     def test_undo_invalid_uuid_shows_invalid_operation_id_panel(self) -> None:
         """Passing a non-UUID string shows 'Invalid Operation ID' panel."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -883,9 +984,12 @@ class TestUndoCommand:
 
     def test_undo_no_argument_no_list_exits_code_2(self) -> None:
         """Invoking undo with no argument and no --list flag exits with code 2."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -898,9 +1002,12 @@ class TestUndoCommand:
 
     def test_undo_already_undone_exits_code_1(self) -> None:
         """ValueError for already-undone operation produces exit code 1."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -918,9 +1025,12 @@ class TestUndoCommand:
         """UndoNotImplementedError produces exit code 1 with 'Undo Not Available' panel."""
         from chronovista.services.tag_management import UndoNotImplementedError
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -939,9 +1049,12 @@ class TestUndoCommand:
         """Rolled-back operations display 'yes' in the Rolled Back column."""
         log_entry = _make_operation_log_mock(_OP_ID, "rename", rolled_back=True)
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -984,9 +1097,12 @@ class TestClassifyCommand:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1013,9 +1129,12 @@ class TestClassifyCommand:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1045,9 +1164,12 @@ class TestClassifyCommand:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1076,9 +1198,12 @@ class TestClassifyCommand:
         tag2.video_count = 400
         tag2.alias_count = 3
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1095,9 +1220,12 @@ class TestClassifyCommand:
 
     def test_classify_top_no_unclassified_shows_empty_panel(self) -> None:
         """--top N with no unclassified tags shows 'No unclassified tags found' panel."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1123,9 +1251,12 @@ class TestClassifyCommand:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1143,9 +1274,12 @@ class TestClassifyCommand:
 
     def test_classify_invalid_entity_type_exits_code_1(self) -> None:
         """Invalid --type value exits with code 1 before calling service."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1162,9 +1296,12 @@ class TestClassifyCommand:
 
     def test_classify_invalid_entity_type_shows_invalid_type_panel(self) -> None:
         """Invalid --type shows 'Invalid --type' panel with valid values."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1179,11 +1316,11 @@ class TestClassifyCommand:
         # Valid type names must be listed
         assert "person" in result.output
 
-    def test_classify_top_and_normalized_form_mutual_exclusion_exits_code_2(self) -> None:
+    def test_classify_top_and_normalized_form_mutual_exclusion_exits_code_2(
+        self,
+    ) -> None:
         """Using --top together with a positional tag argument exits with code 2."""
-        result = runner.invoke(
-            app, ["tags", "classify", "python", "--top", "5"]
-        )
+        result = runner.invoke(app, ["tags", "classify", "python", "--top", "5"])
 
         assert result.exit_code == 2
 
@@ -1201,9 +1338,12 @@ class TestClassifyCommand:
 
     def test_classify_value_error_exits_code_1(self) -> None:
         """ValueError from service (e.g., already classified) produces exit code 1."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1233,9 +1373,12 @@ class TestClassifyCommand:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1307,9 +1450,12 @@ class TestCollisionsCommand:
         """--format json exits with code 0 when collisions exist."""
         collision = _make_collision_group()
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1325,13 +1471,14 @@ class TestCollisionsCommand:
         """JSON output contains canonical_form, normalized_form, and aliases."""
         import json
 
-        collision = _make_collision_group(
-            canonical_form="Cafe", normalized_form="cafe"
-        )
+        collision = _make_collision_group(canonical_form="Cafe", normalized_form="cafe")
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1352,9 +1499,12 @@ class TestCollisionsCommand:
 
     def test_json_format_with_limit_respected(self) -> None:
         """--limit is forwarded to service.get_collisions()."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1372,9 +1522,12 @@ class TestCollisionsCommand:
 
     def test_no_collisions_shows_no_candidates_message(self) -> None:
         """No collision candidates prints a green 'No collision candidates found' message."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1389,9 +1542,12 @@ class TestCollisionsCommand:
 
     def test_include_reviewed_flag_forwarded_to_service(self) -> None:
         """--include-reviewed is forwarded to service.get_collisions()."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1421,9 +1577,12 @@ class TestCollisionsCommand:
             "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1465,9 +1624,12 @@ class TestDeprecateCommand:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1490,9 +1652,12 @@ class TestDeprecateCommand:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1518,9 +1683,12 @@ class TestDeprecateCommand:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1545,9 +1713,12 @@ class TestDeprecateCommand:
         tag1.alias_count = 2
         tag1.video_count = 5
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1563,9 +1734,12 @@ class TestDeprecateCommand:
 
     def test_deprecate_list_empty_shows_no_deprecated_panel(self) -> None:
         """--list with no deprecated tags shows 'No deprecated tags found' panel."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1592,9 +1766,12 @@ class TestDeprecateCommand:
 
     def test_deprecate_value_error_exits_code_1(self) -> None:
         """ValueError from service (tag not found or already deprecated) exits code 1."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1610,9 +1787,12 @@ class TestDeprecateCommand:
 
     def test_deprecate_value_error_shows_deprecate_failed_panel(self) -> None:
         """ValueError message is displayed in Deprecate Failed panel."""
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1654,9 +1834,12 @@ class TestDeprecateCommand:
             details="Restored 'old tag' from deprecated to active",
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
@@ -1696,9 +1879,12 @@ class TestInputNormalization:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
             mock_service = AsyncMock()
@@ -1728,9 +1914,12 @@ class TestInputNormalization:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
             mock_service = AsyncMock()
@@ -1760,9 +1949,12 @@ class TestInputNormalization:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
             mock_service = AsyncMock()
@@ -1772,16 +1964,20 @@ class TestInputNormalization:
             result = runner.invoke(
                 app,
                 [
-                    "tags", "merge",
-                    "#ChasFreeman", "Chas Freeman Latest",
-                    "--into", "Chas Freeman",
+                    "tags",
+                    "merge",
+                    "#ChasFreeman",
+                    "Chas Freeman Latest",
+                    "--into",
+                    "Chas Freeman",
                 ],
             )
 
         assert result.exit_code == 0, f"Output: {result.output}"
         call_kwargs = mock_service.merge.call_args[1]
         assert call_kwargs["source_normalized_forms"] == [
-            "chasfreeman", "chas freeman latest"
+            "chasfreeman",
+            "chas freeman latest",
         ]
 
     def test_split_normalizes_input(self) -> None:
@@ -1801,9 +1997,12 @@ class TestInputNormalization:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
             mock_service = AsyncMock()
@@ -1813,8 +2012,11 @@ class TestInputNormalization:
             result = runner.invoke(
                 app,
                 [
-                    "tags", "split", "#ChasFreeman",
-                    "--aliases", "ChasFreeman",
+                    "tags",
+                    "split",
+                    "#ChasFreeman",
+                    "--aliases",
+                    "ChasFreeman",
                 ],
             )
 
@@ -1833,9 +2035,12 @@ class TestInputNormalization:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
             mock_service = AsyncMock()
@@ -1845,8 +2050,11 @@ class TestInputNormalization:
             result = runner.invoke(
                 app,
                 [
-                    "tags", "rename", "#ChasFreeman",
-                    "--to", "Chas W. Freeman",
+                    "tags",
+                    "rename",
+                    "#ChasFreeman",
+                    "--to",
+                    "Chas W. Freeman",
                 ],
             )
 
@@ -1865,9 +2073,12 @@ class TestInputNormalization:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
             mock_service = AsyncMock()
@@ -1896,9 +2107,12 @@ class TestInputNormalization:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
             mock_service = AsyncMock()
@@ -1927,9 +2141,12 @@ class TestInputNormalization:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
             mock_service = AsyncMock()
@@ -1973,9 +2190,12 @@ class TestClassifyDescriptionAndAutoCase:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
             mock_service = AsyncMock()
@@ -2012,9 +2232,12 @@ class TestClassifyDescriptionAndAutoCase:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
             mock_service = AsyncMock()
@@ -2054,9 +2277,12 @@ class TestClassifyDescriptionAndAutoCase:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
             mock_service = AsyncMock()
@@ -2092,9 +2318,12 @@ class TestClassifyDescriptionAndAutoCase:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
             mock_service = AsyncMock()
@@ -2129,9 +2358,12 @@ class TestClassifyDescriptionAndAutoCase:
             operation_id=_OP_ID,
         )
 
-        with patch("chronovista.cli.tag_commands.db_manager") as mock_db, patch(
-            "chronovista.cli.tag_commands._create_tag_management_service"
-        ) as mock_factory:
+        with (
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
+            patch(
+                "chronovista.cli.tag_commands._create_tag_management_service"
+            ) as mock_factory,
+        ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
             mock_service = AsyncMock()

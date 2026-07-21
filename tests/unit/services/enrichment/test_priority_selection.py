@@ -586,7 +586,9 @@ class TestLowPriorityTier:
 
         mock_result = MagicMock()
         mock_scalars = MagicMock()
-        mock_scalars.all.return_value = []  # LOW should not return fully enriched videos
+        mock_scalars.all.return_value = (
+            []
+        )  # LOW should not return fully enriched videos
         mock_result.scalars.return_value = mock_scalars
         mock_session.execute = AsyncMock(return_value=mock_result)
 
@@ -723,7 +725,9 @@ class TestPlaceholderDetectionHelpers:
         assert is_placeholder_video_title("Real Video Title") is False
         assert is_placeholder_video_title("[Other] Video Title") is False
         assert is_placeholder_video_title("") is False
-        assert is_placeholder_video_title("Placeholder Video") is False  # Missing prefix
+        assert (
+            is_placeholder_video_title("Placeholder Video") is False
+        )  # Missing prefix
 
     def test_is_placeholder_channel_name_with_placeholder(self) -> None:
         """Test detection of placeholder channel names."""
@@ -763,9 +767,7 @@ class TestPriorityLimitInteraction:
             youtube_service=mock_youtube_service,
         )
 
-    async def test_priority_respects_limit(
-        self, service: EnrichmentService
-    ) -> None:
+    async def test_priority_respects_limit(self, service: EnrichmentService) -> None:
         """Test that priority selection respects the limit parameter."""
         mock_session = AsyncMock()
 

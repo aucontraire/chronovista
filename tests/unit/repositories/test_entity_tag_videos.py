@@ -142,9 +142,7 @@ class TestGetTagAssociatedVideoIds:
 
         mock_session.execute.return_value = _scalars_result(expected_ids)
 
-        result = await repository._get_tag_associated_video_ids(
-            mock_session, entity_id
-        )
+        result = await repository._get_tag_associated_video_ids(mock_session, entity_id)
 
         assert result == set(expected_ids)
         mock_session.execute.assert_called_once()
@@ -159,9 +157,7 @@ class TestGetTagAssociatedVideoIds:
 
         mock_session.execute.return_value = _scalars_result(["abc123"])
 
-        result = await repository._get_tag_associated_video_ids(
-            mock_session, entity_id
-        )
+        result = await repository._get_tag_associated_video_ids(mock_session, entity_id)
 
         assert isinstance(result, set)
         assert result == {"abc123"}
@@ -185,9 +181,7 @@ class TestGetTagAssociatedVideoIds:
 
         mock_session.execute.return_value = _scalars_result([])
 
-        result = await repository._get_tag_associated_video_ids(
-            mock_session, entity_id
-        )
+        result = await repository._get_tag_associated_video_ids(mock_session, entity_id)
 
         assert result == set()
         mock_session.execute.assert_called_once()
@@ -217,9 +211,7 @@ class TestGetTagAssociatedVideoIds:
 
         mock_session.execute.return_value = _scalars_result(video_ids)
 
-        result = await repository._get_tag_associated_video_ids(
-            mock_session, entity_id
-        )
+        result = await repository._get_tag_associated_video_ids(mock_session, entity_id)
 
         # Method returns whatever the DB produces — status is NOT filtered
         assert result == set(video_ids)
@@ -228,9 +220,9 @@ class TestGetTagAssociatedVideoIds:
         # that was passed to execute() and check it contains no status clause
         stmt = mock_session.execute.call_args.args[0]
         sql_str = str(stmt.compile(compile_kwargs={"literal_binds": False}))
-        assert "status" not in sql_str.lower(), (
-            "Query must NOT filter by canonical_tags.status (Decision 8 / EC-002)"
-        )
+        assert (
+            "status" not in sql_str.lower()
+        ), "Query must NOT filter by canonical_tags.status (Decision 8 / EC-002)"
 
     # ------------------------------------------------------------------
     # T006-4: tag-sourced videos — no availability_status filtering (EC-012/A-006)
@@ -258,9 +250,9 @@ class TestGetTagAssociatedVideoIds:
 
         stmt = mock_session.execute.call_args.args[0]
         sql_str = str(stmt.compile(compile_kwargs={"literal_binds": False}))
-        assert "availability_status" not in sql_str.lower(), (
-            "Query must NOT filter by availability_status (Decision 9 / EC-012)"
-        )
+        assert (
+            "availability_status" not in sql_str.lower()
+        ), "Query must NOT filter by availability_status (Decision 9 / EC-012)"
 
     # ------------------------------------------------------------------
     # T006-5: orphaned canonical tag — no tag_aliases rows (EC-010)
@@ -282,9 +274,7 @@ class TestGetTagAssociatedVideoIds:
         # Simulate DB returning zero rows (orphaned canonical tag → no aliases)
         mock_session.execute.return_value = _scalars_result([])
 
-        result = await repository._get_tag_associated_video_ids(
-            mock_session, entity_id
-        )
+        result = await repository._get_tag_associated_video_ids(mock_session, entity_id)
 
         assert result == set()
 
@@ -308,9 +298,7 @@ class TestGetTagAssociatedVideoIds:
 
         mock_session.execute.return_value = _scalars_result(raw_result)
 
-        result = await repository._get_tag_associated_video_ids(
-            mock_session, entity_id
-        )
+        result = await repository._get_tag_associated_video_ids(mock_session, entity_id)
 
         assert isinstance(result, set)
         assert len(result) == 2
@@ -468,9 +456,9 @@ class TestGetAliasMatchedTagVideoIds:
         sql_str = str(
             second_call_stmt.compile(compile_kwargs={"literal_binds": True})
         ).lower()
-        assert "machine learning" in sql_str, (
-            "SQL must use normalized form 'machine learning' in the IN clause"
-        )
+        assert (
+            "machine learning" in sql_str
+        ), "SQL must use normalized form 'machine learning' in the IN clause"
 
     # ------------------------------------------------------------------
     # T007-3: None-normalized alias is skipped (Decision 7 / EC-008)
@@ -510,9 +498,9 @@ class TestGetAliasMatchedTagVideoIds:
 
         assert result == set()
         # Only one execute() call — the second query must NOT be issued
-        assert mock_session.execute.call_count == 1, (
-            "Second execute() must NOT be called when all aliases normalize to None"
-        )
+        assert (
+            mock_session.execute.call_count == 1
+        ), "Second execute() must NOT be called when all aliases normalize to None"
 
     # ------------------------------------------------------------------
     # T007-3b: asr_error aliases are excluded from tag matching
@@ -554,12 +542,12 @@ class TestGetAliasMatchedTagVideoIds:
         sql_str = str(
             first_stmt.compile(compile_kwargs={"literal_binds": True})
         ).lower()
-        assert "alias_type" in sql_str, (
-            "Query must filter by alias_type to exclude asr_error aliases"
-        )
-        assert "asr_error" in sql_str, (
-            "Query must explicitly reference 'asr_error' in the WHERE clause"
-        )
+        assert (
+            "alias_type" in sql_str
+        ), "Query must filter by alias_type to exclude asr_error aliases"
+        assert (
+            "asr_error" in sql_str
+        ), "Query must explicitly reference 'asr_error' in the WHERE clause"
 
     async def test_asr_error_alias_with_valid_normalized_form_still_excluded(
         self,
@@ -625,9 +613,7 @@ class TestGetAliasMatchedTagVideoIds:
             "chronovista.repositories.entity_mention_repository.TagNormalizationService"
         ) as mock_normalizer_cls:
             mock_normalizer = MagicMock()
-            mock_normalizer.normalize.side_effect = lambda name: normalize_map.get(
-                name
-            )
+            mock_normalizer.normalize.side_effect = lambda name: normalize_map.get(name)
             mock_normalizer_cls.return_value = mock_normalizer
 
             result = await repository._get_alias_matched_tag_video_ids(
@@ -678,9 +664,9 @@ class TestGetAliasMatchedTagVideoIds:
 
         assert result == set()
         # Only one execute call — no second query for videos
-        assert mock_session.execute.call_count == 1, (
-            "Second execute() must NOT be called when entity has no aliases"
-        )
+        assert (
+            mock_session.execute.call_count == 1
+        ), "Second execute() must NOT be called when entity has no aliases"
 
     # ------------------------------------------------------------------
     # T007-5: multiple aliases matching same video are deduplicated
@@ -711,7 +697,10 @@ class TestGetAliasMatchedTagVideoIds:
             "chronovista.repositories.entity_mention_repository.TagNormalizationService"
         ) as mock_normalizer_cls:
             mock_normalizer = MagicMock()
-            alias_map = {"AI": "ai", "Artificial Intelligence": "artificial intelligence"}
+            alias_map = {
+                "AI": "ai",
+                "Artificial Intelligence": "artificial intelligence",
+            }
             mock_normalizer.normalize.side_effect = lambda name: alias_map.get(
                 name, name.lower()
             )
@@ -1000,14 +989,17 @@ class TestGetEntityVideoListTagIntegration:
         # Mock _get_tag_associated_video_ids to return 5 tag video IDs
         # Mock _get_alias_matched_tag_video_ids to return empty set — Phase 3
         # tests focus on canonical tag behaviour, not alias matching.
-        with patch.object(
-            repository,
-            "_get_tag_associated_video_ids",
-            return_value=set(tag_vids),
-        ), patch.object(
-            repository,
-            "_get_alias_matched_tag_video_ids",
-            return_value=set(),
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                return_value=set(tag_vids),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                return_value=set(),
+            ),
         ):
             # Call sequence for get_entity_video_list:
             # 1. transcript_vid_stmt — distinct transcript video IDs
@@ -1017,20 +1009,22 @@ class TestGetEntityVideoListTagIntegration:
             upload_date = _MockUploadDate("2024-01-15")
             mock_session.execute.side_effect = [
                 _scalars_result([transcript_vid]),  # transcript video IDs
-                _row_result([  # main grouped query
-                    _make_video_row(
-                        video_id=transcript_vid,
-                        mention_count=3,
-                        upload_date=upload_date,
-                    ),
-                ]),
+                _row_result(
+                    [  # main grouped query
+                        _make_video_row(
+                            video_id=transcript_vid,
+                            mention_count=3,
+                            upload_date=upload_date,
+                        ),
+                    ]
+                ),
                 _row_result([]),  # preview query (empty for simplicity)
-                _row_result([  # tag-only video metadata
-                    _make_tag_meta_row(
-                        video_id=tv, upload_date=upload_date
-                    )
-                    for tv in tag_vids
-                ]),
+                _row_result(
+                    [  # tag-only video metadata
+                        _make_tag_meta_row(video_id=tv, upload_date=upload_date)
+                        for tv in tag_vids
+                    ]
+                ),
             ]
 
             results, total = await repository.get_entity_video_list(
@@ -1073,24 +1067,27 @@ class TestGetEntityVideoListTagIntegration:
         tag_vids = ["vid_tag_a", "vid_tag_b", "vid_tag_c"]
         upload_date = _MockUploadDate("2024-06-01")
 
-        with patch.object(
-            repository,
-            "_get_tag_associated_video_ids",
-            return_value=set(tag_vids),
-        ), patch.object(
-            repository,
-            "_get_alias_matched_tag_video_ids",
-            return_value=set(),
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                return_value=set(tag_vids),
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                return_value=set(),
+            ),
         ):
             mock_session.execute.side_effect = [
                 _scalars_result([]),  # no transcript video IDs
                 # No main query needed (transcript_video_ids is empty)
-                _row_result([  # tag-only video metadata
-                    _make_tag_meta_row(
-                        video_id=tv, upload_date=upload_date
-                    )
-                    for tv in tag_vids
-                ]),
+                _row_result(
+                    [  # tag-only video metadata
+                        _make_tag_meta_row(video_id=tv, upload_date=upload_date)
+                        for tv in tag_vids
+                    ]
+                ),
             ]
 
             results, total = await repository.get_entity_video_list(
@@ -1129,26 +1126,31 @@ class TestGetEntityVideoListTagIntegration:
         overlap_vid = "vid_overlap_001"
         upload_date = _MockUploadDate("2024-03-20")
 
-        with patch.object(
-            repository,
-            "_get_tag_associated_video_ids",
-            return_value={overlap_vid},
-        ), patch.object(
-            repository,
-            "_get_alias_matched_tag_video_ids",
-            return_value=set(),
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                return_value={overlap_vid},
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                return_value=set(),
+            ),
         ):
             mock_session.execute.side_effect = [
                 _scalars_result([overlap_vid]),  # transcript video IDs
-                _row_result([  # main grouped query
-                    _make_video_row(
-                        video_id=overlap_vid,
-                        mention_count=5,
-                        detection_methods=["rule_match"],
-                        first_mention_time=12.5,
-                        upload_date=upload_date,
-                    ),
-                ]),
+                _row_result(
+                    [  # main grouped query
+                        _make_video_row(
+                            video_id=overlap_vid,
+                            mention_count=5,
+                            detection_methods=["rule_match"],
+                            first_mention_time=12.5,
+                            upload_date=upload_date,
+                        ),
+                    ]
+                ),
                 _row_result([]),  # preview query
                 # No tag_meta_stmt — tag_only_ids is empty
             ]
@@ -1187,25 +1189,30 @@ class TestGetEntityVideoListTagIntegration:
 
         # _get_tag_associated_video_ids already returns a set, so duplicates
         # from different raw forms are collapsed at that level.
-        with patch.object(
-            repository,
-            "_get_tag_associated_video_ids",
-            return_value={overlap_vid},  # set — already deduplicated
-        ), patch.object(
-            repository,
-            "_get_alias_matched_tag_video_ids",
-            return_value=set(),
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                return_value={overlap_vid},  # set — already deduplicated
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                return_value=set(),
+            ),
         ):
             mock_session.execute.side_effect = [
                 _scalars_result([overlap_vid]),  # transcript video IDs
-                _row_result([
-                    _make_video_row(
-                        video_id=overlap_vid,
-                        mention_count=2,
-                        detection_methods=["rule_match"],
-                        upload_date=upload_date,
-                    ),
-                ]),
+                _row_result(
+                    [
+                        _make_video_row(
+                            video_id=overlap_vid,
+                            mention_count=2,
+                            detection_methods=["rule_match"],
+                            upload_date=upload_date,
+                        ),
+                    ]
+                ),
                 _row_result([]),  # preview query
             ]
 
@@ -1240,30 +1247,35 @@ class TestGetEntityVideoListTagIntegration:
         old_date = _MockUploadDate("2020-01-01")
         new_date = _MockUploadDate("2025-12-31")
 
-        with patch.object(
-            repository,
-            "_get_tag_associated_video_ids",
-            return_value={tag_vid},
-        ), patch.object(
-            repository,
-            "_get_alias_matched_tag_video_ids",
-            return_value=set(),
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                return_value={tag_vid},
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                return_value=set(),
+            ),
         ):
             mock_session.execute.side_effect = [
                 _scalars_result([transcript_vid]),  # transcript video IDs
-                _row_result([
-                    _make_video_row(
-                        video_id=transcript_vid,
-                        mention_count=1,
-                        upload_date=old_date,
-                    ),
-                ]),
+                _row_result(
+                    [
+                        _make_video_row(
+                            video_id=transcript_vid,
+                            mention_count=1,
+                            upload_date=old_date,
+                        ),
+                    ]
+                ),
                 _row_result([]),  # preview query
-                _row_result([
-                    _make_tag_meta_row(
-                        video_id=tag_vid, upload_date=new_date
-                    ),
-                ]),
+                _row_result(
+                    [
+                        _make_tag_meta_row(video_id=tag_vid, upload_date=new_date),
+                    ]
+                ),
             ]
 
             results, total = await repository.get_entity_video_list(
@@ -1295,31 +1307,34 @@ class TestGetEntityVideoListTagIntegration:
         tag_vids = {"vid_t2", "vid_tag1", "vid_tag2"}  # vid_t2 overlaps
         upload_date = _MockUploadDate("2024-01-01")
 
-        with patch.object(
-            repository,
-            "_get_tag_associated_video_ids",
-            return_value=tag_vids,
-        ), patch.object(
-            repository,
-            "_get_alias_matched_tag_video_ids",
-            return_value=set(),
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                return_value=tag_vids,
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                return_value=set(),
+            ),
         ):
             mock_session.execute.side_effect = [
                 _scalars_result(transcript_vids),  # transcript video IDs
-                _row_result([
-                    _make_video_row(
-                        video_id=vid, upload_date=upload_date
-                    )
-                    for vid in transcript_vids
-                ]),
+                _row_result(
+                    [
+                        _make_video_row(video_id=vid, upload_date=upload_date)
+                        for vid in transcript_vids
+                    ]
+                ),
                 _row_result([]),  # preview for vid_t1
                 _row_result([]),  # preview for vid_t2
-                _row_result([  # tag-only metadata (vid_tag1, vid_tag2)
-                    _make_tag_meta_row(
-                        video_id=vid, upload_date=upload_date
-                    )
-                    for vid in ["vid_tag1", "vid_tag2"]
-                ]),
+                _row_result(
+                    [  # tag-only metadata (vid_tag1, vid_tag2)
+                        _make_tag_meta_row(video_id=vid, upload_date=upload_date)
+                        for vid in ["vid_tag1", "vid_tag2"]
+                    ]
+                ),
             ]
 
             results, total = await repository.get_entity_video_list(
@@ -1396,12 +1411,12 @@ class TestGetEntityVideoListAliasTagIntegration:
         ):
             mock_session.execute.side_effect = [
                 _scalars_result([]),  # no transcript video IDs
-                _row_result([  # tag-only video metadata
-                    _make_tag_meta_row(
-                        video_id=vid, upload_date=upload_date
-                    )
-                    for vid in alias_tag_vids
-                ]),
+                _row_result(
+                    [  # tag-only video metadata
+                        _make_tag_meta_row(video_id=vid, upload_date=upload_date)
+                        for vid in alias_tag_vids
+                    ]
+                ),
             ]
 
             results, total = await repository.get_entity_video_list(
@@ -1460,12 +1475,12 @@ class TestGetEntityVideoListAliasTagIntegration:
 
             mock_session.execute.side_effect = [
                 _scalars_result([]),  # no transcript video IDs
-                _row_result([  # tag-only video metadata for all 4 vids
-                    _make_tag_meta_row(
-                        video_id=vid, upload_date=upload_date
-                    )
-                    for vid in sorted(all_tag_vids)
-                ]),
+                _row_result(
+                    [  # tag-only video metadata for all 4 vids
+                        _make_tag_meta_row(video_id=vid, upload_date=upload_date)
+                        for vid in sorted(all_tag_vids)
+                    ]
+                ),
             ]
 
             results, total = await repository.get_entity_video_list(
@@ -1516,13 +1531,15 @@ class TestGetEntityVideoListAliasTagIntegration:
         ):
             mock_session.execute.side_effect = [
                 _scalars_result([transcript_vid]),  # transcript video IDs
-                _row_result([  # main grouped query
-                    _make_video_row(
-                        video_id=transcript_vid,
-                        mention_count=2,
-                        upload_date=upload_date,
-                    ),
-                ]),
+                _row_result(
+                    [  # main grouped query
+                        _make_video_row(
+                            video_id=transcript_vid,
+                            mention_count=2,
+                            upload_date=upload_date,
+                        ),
+                    ]
+                ),
                 _row_result([]),  # preview query
                 # No tag-only metadata query — tag_only_ids is empty
             ]
@@ -1573,15 +1590,17 @@ class TestGetEntityVideoListAliasTagIntegration:
         ):
             mock_session.execute.side_effect = [
                 _scalars_result([overlap_vid]),  # transcript video IDs
-                _row_result([  # main grouped query
-                    _make_video_row(
-                        video_id=overlap_vid,
-                        mention_count=7,
-                        detection_methods=["rule_match"],
-                        first_mention_time=5.0,
-                        upload_date=upload_date,
-                    ),
-                ]),
+                _row_result(
+                    [  # main grouped query
+                        _make_video_row(
+                            video_id=overlap_vid,
+                            mention_count=7,
+                            detection_methods=["rule_match"],
+                            first_mention_time=5.0,
+                            upload_date=upload_date,
+                        ),
+                    ]
+                ),
                 _row_result([]),  # preview query
                 # No tag_meta_stmt — tag_only_ids is empty (video is in transcript)
             ]
@@ -1646,36 +1665,43 @@ class TestCombinedVideoCount:
         tag_vids = {"vid_t_1", "vid_t_2", "vid_tag_unique"}
         upload_date = _MockUploadDate("2024-08-01")
 
-        with patch.object(
-            repository,
-            "_get_tag_associated_video_ids",
-            return_value=tag_vids,
-        ), patch.object(
-            repository,
-            "_get_alias_matched_tag_video_ids",
-            return_value=set(),
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                return_value=tag_vids,
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                return_value=set(),
+            ),
         ):
             mock_session.execute.side_effect = [
                 _scalars_result(transcript_vids),  # transcript video IDs
-                _row_result([  # main grouped query
-                    _make_video_row(
-                        video_id=vid,
-                        mention_count=2,
-                        upload_date=upload_date,
-                    )
-                    for vid in transcript_vids
-                ]),
+                _row_result(
+                    [  # main grouped query
+                        _make_video_row(
+                            video_id=vid,
+                            mention_count=2,
+                            upload_date=upload_date,
+                        )
+                        for vid in transcript_vids
+                    ]
+                ),
                 _row_result([]),  # preview for vid_t_1
                 _row_result([]),  # preview for vid_t_2
                 _row_result([]),  # preview for vid_t_3
                 _row_result([]),  # preview for vid_t_4
                 _row_result([]),  # preview for vid_t_5
-                _row_result([  # tag-only video metadata
-                    _make_tag_meta_row(
-                        video_id="vid_tag_unique",
-                        upload_date=upload_date,
-                    ),
-                ]),
+                _row_result(
+                    [  # tag-only video metadata
+                        _make_tag_meta_row(
+                            video_id="vid_tag_unique",
+                            upload_date=upload_date,
+                        ),
+                    ]
+                ),
             ]
 
             results, total = await repository.get_entity_video_list(
@@ -1710,35 +1736,42 @@ class TestCombinedVideoCount:
         tag_vids = {f"vid_tag_{i}" for i in range(1, 8)}  # 7 videos
         upload_date = _MockUploadDate("2024-09-15")
 
-        with patch.object(
-            repository,
-            "_get_tag_associated_video_ids",
-            return_value=tag_vids,
-        ), patch.object(
-            repository,
-            "_get_alias_matched_tag_video_ids",
-            return_value=set(),
+        with (
+            patch.object(
+                repository,
+                "_get_tag_associated_video_ids",
+                return_value=tag_vids,
+            ),
+            patch.object(
+                repository,
+                "_get_alias_matched_tag_video_ids",
+                return_value=set(),
+            ),
         ):
             mock_session.execute.side_effect = [
                 _scalars_result(transcript_vids),  # transcript video IDs
-                _row_result([  # main grouped query
-                    _make_video_row(
-                        video_id=vid,
-                        mention_count=1,
-                        upload_date=upload_date,
-                    )
-                    for vid in transcript_vids
-                ]),
+                _row_result(
+                    [  # main grouped query
+                        _make_video_row(
+                            video_id=vid,
+                            mention_count=1,
+                            upload_date=upload_date,
+                        )
+                        for vid in transcript_vids
+                    ]
+                ),
                 _row_result([]),  # preview for vid_t_1
                 _row_result([]),  # preview for vid_t_2
                 _row_result([]),  # preview for vid_t_3
-                _row_result([  # tag-only video metadata
-                    _make_tag_meta_row(
-                        video_id=vid,
-                        upload_date=upload_date,
-                    )
-                    for vid in sorted(tag_vids)
-                ]),
+                _row_result(
+                    [  # tag-only video metadata
+                        _make_tag_meta_row(
+                            video_id=vid,
+                            upload_date=upload_date,
+                        )
+                        for vid in sorted(tag_vids)
+                    ]
+                ),
             ]
 
             results, total = await repository.get_entity_video_list(

@@ -25,6 +25,7 @@ from tests.factories.takeout_watch_entry_factory import (
 
 # CRITICAL: This line ensures async tests work with coverage
 
+
 class TestChannelSeeder:
     """Test the ChannelSeeder implementation."""
 
@@ -239,7 +240,9 @@ class TestChannelSeeder:
         assert channel_create.channel_id == TestIds.TEST_CHANNEL_1
         assert channel_create.title == "Test Channel"
         assert channel_create.description == ""  # Not available in Takeout
-        assert channel_create.is_subscribed is True  # Subscriptions mean user is subscribed
+        assert (
+            channel_create.is_subscribed is True
+        )  # Subscriptions mean user is subscribed
 
     def test_transform_watch_entry_to_channel(self, channel_seeder):
         """Test transforming watch entry to ChannelCreate model."""

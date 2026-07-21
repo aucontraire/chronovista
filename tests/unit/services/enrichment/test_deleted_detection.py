@@ -83,16 +83,24 @@ class TestDeletedVideoDetection:
         mock_video.title = "[Placeholder] Video dQw4w9WgXcQ"
         mock_video.availability_status = AvailabilityStatus.AVAILABLE
 
-        with patch.object(
-            service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([], {"dQw4w9WgXcQ"}))
-        ), patch.object(
-            service.video_repository, "get", new=AsyncMock(return_value=mock_video)
+        with (
+            patch.object(
+                service, "_get_videos_for_enrichment", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
+                service.youtube_service,
+                "fetch_videos_batched",
+                new=AsyncMock(return_value=([], {"dQw4w9WgXcQ"})),
+            ),
+            patch.object(
+                service.video_repository, "get", new=AsyncMock(return_value=mock_video)
+            ),
         ):
             mock_get.return_value = [mock_video]
 
-            report = await service.enrich_videos(mock_session, check_prerequisites=False)
+            report = await service.enrich_videos(
+                mock_session, check_prerequisites=False
+            )
 
             # Verify the video was marked as deleted
             assert mock_video.availability_status == AvailabilityStatus.UNAVAILABLE
@@ -120,18 +128,25 @@ class TestDeletedVideoDetection:
             contentDetails={"duration": "PT3M33S"},
         )
 
-        with patch.object(
-            service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([api_response], set()))
-        ), patch.object(
-            service.channel_repository, "get", new=AsyncMock(return_value=None)
-        ), patch.object(
-            service.channel_repository, "create", new=AsyncMock()
+        with (
+            patch.object(
+                service, "_get_videos_for_enrichment", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
+                service.youtube_service,
+                "fetch_videos_batched",
+                new=AsyncMock(return_value=([api_response], set())),
+            ),
+            patch.object(
+                service.channel_repository, "get", new=AsyncMock(return_value=None)
+            ),
+            patch.object(service.channel_repository, "create", new=AsyncMock()),
         ):
             mock_get.return_value = [mock_video]
 
-            report = await service.enrich_videos(mock_session, check_prerequisites=False)
+            report = await service.enrich_videos(
+                mock_session, check_prerequisites=False
+            )
 
             # Verify the video was NOT marked as deleted
             assert mock_video.availability_status == AvailabilityStatus.AVAILABLE
@@ -172,24 +187,36 @@ class TestDeletedVideoDetection:
                 return mock_video_deleted
             return mock_video_found
 
-        with patch.object(
-            service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([api_response], {"deletedVideo99"}))
-        ), patch.object(
-            service.channel_repository, "get", new=AsyncMock(return_value=None)
-        ), patch.object(
-            service.channel_repository, "create", new=AsyncMock()
-        ), patch.object(
-            service.video_repository, "get", new=AsyncMock(side_effect=get_video_by_id)
+        with (
+            patch.object(
+                service, "_get_videos_for_enrichment", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
+                service.youtube_service,
+                "fetch_videos_batched",
+                new=AsyncMock(return_value=([api_response], {"deletedVideo99"})),
+            ),
+            patch.object(
+                service.channel_repository, "get", new=AsyncMock(return_value=None)
+            ),
+            patch.object(service.channel_repository, "create", new=AsyncMock()),
+            patch.object(
+                service.video_repository,
+                "get",
+                new=AsyncMock(side_effect=get_video_by_id),
+            ),
         ):
             mock_get.return_value = [mock_video_found, mock_video_deleted]
 
-            report = await service.enrich_videos(mock_session, check_prerequisites=False)
+            report = await service.enrich_videos(
+                mock_session, check_prerequisites=False
+            )
 
             # Verify mixed results
             assert mock_video_found.availability_status == AvailabilityStatus.AVAILABLE
-            assert mock_video_deleted.availability_status == AvailabilityStatus.UNAVAILABLE
+            assert (
+                mock_video_deleted.availability_status == AvailabilityStatus.UNAVAILABLE
+            )
             assert report.summary.videos_deleted == 1
             assert report.summary.videos_updated == 1
             assert report.summary.videos_processed == 2
@@ -203,7 +230,9 @@ class TestDeletedVideoDetection:
         mock_video.video_id = "recoveredVid1"
         mock_video.title = "[Placeholder] Video recoveredVid1"
         mock_video.channel_id = "UCplaceholder"
-        mock_video.availability_status = AvailabilityStatus.UNAVAILABLE  # Previously marked as deleted
+        mock_video.availability_status = (
+            AvailabilityStatus.UNAVAILABLE
+        )  # Previously marked as deleted
 
         api_response = make_video_response(
             "recoveredVid1",
@@ -216,18 +245,25 @@ class TestDeletedVideoDetection:
             contentDetails={"duration": "PT2M30S"},
         )
 
-        with patch.object(
-            service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([api_response], set()))
-        ), patch.object(
-            service.channel_repository, "get", new=AsyncMock(return_value=None)
-        ), patch.object(
-            service.channel_repository, "create", new=AsyncMock()
+        with (
+            patch.object(
+                service, "_get_videos_for_enrichment", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
+                service.youtube_service,
+                "fetch_videos_batched",
+                new=AsyncMock(return_value=([api_response], set())),
+            ),
+            patch.object(
+                service.channel_repository, "get", new=AsyncMock(return_value=None)
+            ),
+            patch.object(service.channel_repository, "create", new=AsyncMock()),
         ):
             mock_get.return_value = [mock_video]
 
-            report = await service.enrich_videos(mock_session, check_prerequisites=False)
+            report = await service.enrich_videos(
+                mock_session, check_prerequisites=False
+            )
 
             # Note: The current implementation doesn't explicitly reset availability_status
             # when a video is found again, but it does update other fields.
@@ -244,14 +280,21 @@ class TestDeletedVideoDetection:
         mock_video.title = "[Placeholder] Video deletedVidXYZ"
         mock_video.availability_status = AvailabilityStatus.AVAILABLE
 
-        with patch.object(
-            service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([], {"deletedVidXYZ"}))
+        with (
+            patch.object(
+                service, "_get_videos_for_enrichment", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
+                service.youtube_service,
+                "fetch_videos_batched",
+                new=AsyncMock(return_value=([], {"deletedVidXYZ"})),
+            ),
         ):
             mock_get.return_value = [mock_video]
 
-            report = await service.enrich_videos(mock_session, check_prerequisites=False)
+            report = await service.enrich_videos(
+                mock_session, check_prerequisites=False
+            )
 
             # Check the detail entry
             assert len(report.details) == 1
@@ -334,7 +377,9 @@ class TestIncludeDeletedFlagBehavior:
         mock_video.video_id = "restoredVideo1"
         mock_video.title = "[Placeholder] Video restoredVideo1"
         mock_video.channel_id = "UCplaceholder"
-        mock_video.availability_status = AvailabilityStatus.UNAVAILABLE  # Was marked as deleted
+        mock_video.availability_status = (
+            AvailabilityStatus.UNAVAILABLE
+        )  # Was marked as deleted
 
         api_response = make_video_response(
             "restoredVideo1",
@@ -347,16 +392,22 @@ class TestIncludeDeletedFlagBehavior:
             contentDetails={"duration": "PT4M"},
         )
 
-        with patch.object(
-            service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([api_response], set()))
-        ), patch.object(
-            service.channel_repository, "get", new=AsyncMock(return_value=None)
-        ), patch.object(
-            service.channel_repository, "create", new=AsyncMock()
-        ), patch.object(
-            service.video_repository, "get", new=AsyncMock(return_value=mock_video)
+        with (
+            patch.object(
+                service, "_get_videos_for_enrichment", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
+                service.youtube_service,
+                "fetch_videos_batched",
+                new=AsyncMock(return_value=([api_response], set())),
+            ),
+            patch.object(
+                service.channel_repository, "get", new=AsyncMock(return_value=None)
+            ),
+            patch.object(service.channel_repository, "create", new=AsyncMock()),
+            patch.object(
+                service.video_repository, "get", new=AsyncMock(return_value=mock_video)
+            ),
         ):
             mock_get.return_value = [mock_video]
 
@@ -543,19 +594,36 @@ class TestMultipleDeletedVideosInBatch:
         # Mock video_repository.get to return the correct video by ID
         video_lookup = {v.video_id: v for v in mock_videos}
 
-        with patch.object(
-            service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([], {"deleted001", "deleted002", "deleted003"}))
-        ), patch.object(
-            service.video_repository, "get", new=AsyncMock(side_effect=lambda session, video_id: video_lookup.get(video_id))
+        with (
+            patch.object(
+                service, "_get_videos_for_enrichment", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
+                service.youtube_service,
+                "fetch_videos_batched",
+                new=AsyncMock(
+                    return_value=([], {"deleted001", "deleted002", "deleted003"})
+                ),
+            ),
+            patch.object(
+                service.video_repository,
+                "get",
+                new=AsyncMock(
+                    side_effect=lambda session, video_id: video_lookup.get(video_id)
+                ),
+            ),
         ):
             mock_get.return_value = mock_videos
 
-            report = await service.enrich_videos(mock_session, check_prerequisites=False)
+            report = await service.enrich_videos(
+                mock_session, check_prerequisites=False
+            )
 
             # All should be marked as deleted
-            assert all(v.availability_status == AvailabilityStatus.UNAVAILABLE for v in mock_videos)
+            assert all(
+                v.availability_status == AvailabilityStatus.UNAVAILABLE
+                for v in mock_videos
+            )
             assert report.summary.videos_deleted == 3
             assert report.summary.videos_updated == 0
             assert report.summary.videos_processed == 3
@@ -580,16 +648,28 @@ class TestMultipleDeletedVideosInBatch:
         # Mock video_repository.get to return distinct mock objects per video ID
         video_lookup = {v.video_id: v for v in mock_videos}
 
-        with patch.object(
-            service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            service.youtube_service, "fetch_videos_batched", new=AsyncMock(return_value=([], {"del_vid_A", "del_vid_B"}))
-        ), patch.object(
-            service.video_repository, "get", new=AsyncMock(side_effect=lambda session, video_id: video_lookup.get(video_id))
+        with (
+            patch.object(
+                service, "_get_videos_for_enrichment", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
+                service.youtube_service,
+                "fetch_videos_batched",
+                new=AsyncMock(return_value=([], {"del_vid_A", "del_vid_B"})),
+            ),
+            patch.object(
+                service.video_repository,
+                "get",
+                new=AsyncMock(
+                    side_effect=lambda session, video_id: video_lookup.get(video_id)
+                ),
+            ),
         ):
             mock_get.return_value = mock_videos
 
-            report = await service.enrich_videos(mock_session, check_prerequisites=False)
+            report = await service.enrich_videos(
+                mock_session, check_prerequisites=False
+            )
 
             # Check details — multi-cycle confirmation means first detection
             # produces "deleted" (MagicMock.unavailability_first_detected is truthy)
@@ -672,7 +752,9 @@ class TestLocalRecoveryDoesNotSetAvailabilityStatusUnavailable:
                 f"Entry title: {entry.title}"
             )
 
-    def test_video_seeder_docstring_documents_availability_status_behavior(self) -> None:
+    def test_video_seeder_docstring_documents_availability_status_behavior(
+        self,
+    ) -> None:
         """
         Test that VideoSeeder._transform_entry_to_video docstring documents the behavior.
 
@@ -683,14 +765,17 @@ class TestLocalRecoveryDoesNotSetAvailabilityStatusUnavailable:
         docstring = VideoSeeder._transform_entry_to_video.__doc__ or ""
 
         # Verify the docstring mentions availability_status behavior
-        assert "availability_status" in docstring.lower() or "availability" in docstring.lower(), (
-            "_transform_entry_to_video should document availability_status behavior"
-        )
-        assert "api" in docstring.lower(), (
-            "_transform_entry_to_video should mention API verification requirement"
-        )
+        assert (
+            "availability_status" in docstring.lower()
+            or "availability" in docstring.lower()
+        ), "_transform_entry_to_video should document availability_status behavior"
+        assert (
+            "api" in docstring.lower()
+        ), "_transform_entry_to_video should mention API verification requirement"
 
-    def test_playlist_membership_seeder_sets_availability_status_available(self) -> None:
+    def test_playlist_membership_seeder_sets_availability_status_available(
+        self,
+    ) -> None:
         """
         Test that PlaylistMembershipSeeder also sets availability_status=available for new videos.
 
@@ -704,16 +789,17 @@ class TestLocalRecoveryDoesNotSetAvailabilityStatusUnavailable:
         from chronovista.services.seeding.playlist_membership_seeder import (
             PlaylistMembershipSeeder,
         )
+
         source = inspect.getsource(PlaylistMembershipSeeder)
 
         # Verify the code explicitly sets availability_status=AvailabilityStatus.AVAILABLE
-        assert "availability_status=AvailabilityStatus.AVAILABLE" in source, (
-            "PlaylistMembershipSeeder should explicitly set availability_status=AvailabilityStatus.AVAILABLE"
-        )
+        assert (
+            "availability_status=AvailabilityStatus.AVAILABLE" in source
+        ), "PlaylistMembershipSeeder should explicitly set availability_status=AvailabilityStatus.AVAILABLE"
         # Verify there's a comment explaining why
-        assert "API verification" in source or "Only set" in source, (
-            "PlaylistMembershipSeeder should document why availability_status is set this way"
-        )
+        assert (
+            "API verification" in source or "Only set" in source
+        ), "PlaylistMembershipSeeder should document why availability_status is set this way"
 
     def test_takeout_data_flow_never_sets_availability_status_unavailable(self) -> None:
         """
@@ -772,7 +858,9 @@ class TestLocalRecoveryDoesNotSetAvailabilityStatusUnavailable:
         ]
 
         # Pattern that would set availability_status to UNAVAILABLE
-        set_unavailable_pattern = re.compile(r"availability_status\s*=\s*AvailabilityStatus\.UNAVAILABLE")
+        set_unavailable_pattern = re.compile(
+            r"availability_status\s*=\s*AvailabilityStatus\.UNAVAILABLE"
+        )
 
         # Use rglob to find all Python files matching prohibited names
         for file_path in src_dir.rglob("*.py"):

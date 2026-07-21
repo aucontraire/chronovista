@@ -205,9 +205,7 @@ class PhoneticMatcher:
             candidate_codes = doublemetaphone(candidate_stripped)
 
             phonetic_sim = _metaphone_similarity(ngram_codes, candidate_codes)
-            levenshtein_sim = Levenshtein.ratio(
-                ngram_stripped, candidate_stripped
-            )
+            levenshtein_sim = Levenshtein.ratio(ngram_stripped, candidate_stripped)
 
             score = (
                 0.4 * phonetic_sim
@@ -259,9 +257,7 @@ class PhoneticMatcher:
 
         # 2. Get entity aliases
         alias_result = await session.execute(
-            select(EntityAliasDB.alias_name).where(
-                EntityAliasDB.entity_id == entity_id
-            )
+            select(EntityAliasDB.alias_name).where(EntityAliasDB.entity_id == entity_id)
         )
         entity_aliases: list[str] = list(alias_result.scalars().all())
 
@@ -327,9 +323,7 @@ class PhoneticMatcher:
                         f"phonetic+levenshtein match (conf={confidence:.2f})"
                     )
                     if has_evidence:
-                        evidence_parts.append(
-                            "entity confirmed in same video"
-                        )
+                        evidence_parts.append("entity confirmed in same video")
 
                     matches.append(
                         PhoneticMatch(

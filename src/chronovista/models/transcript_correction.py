@@ -96,16 +96,12 @@ class TranscriptCorrectionBase(BaseModel):
             If version_number is less than 1.
         """
         if v < 1:
-            raise ValueError(
-                f"version_number must be >= 1, got {v}"
-            )
+            raise ValueError(f"version_number must be >= 1, got {v}")
         return v
 
     @field_validator("corrected_text")
     @classmethod
-    def validate_corrected_text_differs(
-        cls, v: str, info: ValidationInfo
-    ) -> str:
+    def validate_corrected_text_differs(cls, v: str, info: ValidationInfo) -> str:
         """Ensure corrected_text is different from original_text (no-op prevention).
 
         Parameters

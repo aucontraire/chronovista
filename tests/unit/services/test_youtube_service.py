@@ -302,7 +302,9 @@ class TestYouTubeService:
         mock_request.execute.return_value = mock_response
         mock_service_client.channels.return_value.list.return_value = mock_request
 
-        with pytest.raises(YouTubeAPIError, match="No channel found for authenticated user"):
+        with pytest.raises(
+            YouTubeAPIError, match="No channel found for authenticated user"
+        ):
             await youtube_service.get_my_channel()
 
     @pytest.mark.asyncio
@@ -359,7 +361,11 @@ class TestYouTubeService:
         # Mock channel details response for uploads playlist ID
         mock_channel_response = {
             "items": [
-                {"contentDetails": {"relatedPlaylists": {"uploads": "UUtest123456789012345"}}}
+                {
+                    "contentDetails": {
+                        "relatedPlaylists": {"uploads": "UUtest123456789012345"}
+                    }
+                }
             ]
         }
 
@@ -383,7 +389,9 @@ class TestYouTubeService:
         mock_request2.execute.return_value = mock_playlist_response
         mock_service_client.playlistItems.return_value.list.return_value = mock_request2
 
-        result = await youtube_service.get_channel_videos("UCtest123456789012345", max_results=25)
+        result = await youtube_service.get_channel_videos(
+            "UCtest123456789012345", max_results=25
+        )
 
         # Now returns list[YouTubePlaylistItemResponse]
         assert len(result) == 2
@@ -428,8 +436,12 @@ class TestYouTubeService:
 
         mock_response = {
             "items": [
-                make_video_response(video_id="video1_____", title="Video 1", view_count="1000"),
-                make_video_response(video_id="video2_____", title="Video 2", view_count="2000"),
+                make_video_response(
+                    video_id="video1_____", title="Video 1", view_count="1000"
+                ),
+                make_video_response(
+                    video_id="video2_____", title="Video 2", view_count="2000"
+                ),
             ]
         }
 
@@ -578,15 +590,25 @@ class TestYouTubeService:
 
         # Mock channel response for liked playlist ID
         mock_channel_response = {
-            "items": [{"contentDetails": {"relatedPlaylists": {"likes": "LLtest12345678901234567890"}}}]
+            "items": [
+                {
+                    "contentDetails": {
+                        "relatedPlaylists": {"likes": "LLtest12345678901234567890"}
+                    }
+                }
+            ]
         }
 
         # Mock playlist items response
-        mock_playlist_response = {"items": [{"contentDetails": {"videoId": "video1_____"}}]}
+        mock_playlist_response = {
+            "items": [{"contentDetails": {"videoId": "video1_____"}}]
+        }
 
         # Mock video details response with all required fields
         mock_video_response = {
-            "items": [make_video_response(video_id="video1_____", title="Liked Video 1")]
+            "items": [
+                make_video_response(video_id="video1_____", title="Liked Video 1")
+            ]
         }
 
         # Mock the three API calls
@@ -821,7 +843,9 @@ class TestYouTubeServiceEdgeCases:
         mock_request.execute.return_value = mock_response
         mock_service_client.channels.return_value.list.return_value = mock_request
 
-        with pytest.raises(YouTubeAPIError, match="No channel found for authenticated user"):
+        with pytest.raises(
+            YouTubeAPIError, match="No channel found for authenticated user"
+        ):
             await youtube_service.get_my_channel()
 
     @pytest.mark.asyncio
@@ -833,7 +857,9 @@ class TestYouTubeServiceEdgeCases:
 
         # Mock responses for different methods with all required fields
         mock_channel_response = {
-            "items": [make_channel_response(channel_id="UC12345678901234567890", title="Test")]
+            "items": [
+                make_channel_response(channel_id="UC12345678901234567890", title="Test")
+            ]
         }
         mock_video_response = {
             "items": [make_video_response(video_id="video1_____", title="Video")]
@@ -891,7 +917,11 @@ class TestYouTubeServiceIntegration:
 
             # Mock channel response with all required fields
             mock_channel_response = {
-                "items": [make_channel_response(channel_id="UC12345678901234567890", title="My Channel")]
+                "items": [
+                    make_channel_response(
+                        channel_id="UC12345678901234567890", title="My Channel"
+                    )
+                ]
             }
             mock_request = MagicMock()
             mock_request.execute.return_value = mock_channel_response
@@ -905,7 +935,11 @@ class TestYouTubeServiceIntegration:
             # Mock videos response for channel videos
             mock_channel_detail_response = {
                 "items": [
-                    {"contentDetails": {"relatedPlaylists": {"uploads": "UUtest123456789012345"}}}
+                    {
+                        "contentDetails": {
+                            "relatedPlaylists": {"uploads": "UUtest123456789012345"}
+                        }
+                    }
                 ]
             }
             mock_video_response: dict[str, Any] = {"items": []}
@@ -1256,7 +1290,9 @@ class TestYouTubeServiceMissingCoverage:
     ):
         """Test video categories with lowercase region code."""
         # Mock response with all required fields
-        mock_categories = [make_category_response(category_id="1", title="Film & Animation")]
+        mock_categories = [
+            make_category_response(category_id="1", title="Film & Animation")
+        ]
         mock_response = {"items": mock_categories}
         mock_request = MagicMock()
         mock_request.execute.return_value = mock_response
@@ -1334,19 +1370,22 @@ class TestYouTubeServicePagination:
         # Create responses for 3 pages
         page1_playlists = [
             make_playlist_response(
-                playlist_id=f"PL{'page1' + str(i).zfill(19)}", title=f"Page1 Playlist {i}"
+                playlist_id=f"PL{'page1' + str(i).zfill(19)}",
+                title=f"Page1 Playlist {i}",
             )
             for i in range(50)
         ]
         page2_playlists = [
             make_playlist_response(
-                playlist_id=f"PL{'page2' + str(i).zfill(19)}", title=f"Page2 Playlist {i}"
+                playlist_id=f"PL{'page2' + str(i).zfill(19)}",
+                title=f"Page2 Playlist {i}",
             )
             for i in range(50)
         ]
         page3_playlists = [
             make_playlist_response(
-                playlist_id=f"PL{'page3' + str(i).zfill(19)}", title=f"Page3 Playlist {i}"
+                playlist_id=f"PL{'page3' + str(i).zfill(19)}",
+                title=f"Page3 Playlist {i}",
             )
             for i in range(25)
         ]
@@ -1384,7 +1423,8 @@ class TestYouTubeServicePagination:
         # Second page only returns 25 items (which is what the API would return)
         page2_playlists = [
             make_playlist_response(
-                playlist_id=f"PL{'page2' + str(i).zfill(19)}", title=f"Playlist {i + 50}"
+                playlist_id=f"PL{'page2' + str(i).zfill(19)}",
+                title=f"Playlist {i + 50}",
             )
             for i in range(25)
         ]

@@ -202,12 +202,16 @@ class TestFullBackfillPipeline:
         # 1. python (from Python, python, PYTHON, #Python)
         # 2. machine learning (from Machine Learning, machine learning)
         # 3. ai (from AI)
-        result = await seeded_session.execute(select(func.count()).select_from(CanonicalTagDB))
+        result = await seeded_session.execute(
+            select(func.count()).select_from(CanonicalTagDB)
+        )
         canonical_count = result.scalar()
         assert canonical_count == 3, f"Expected 3 canonical tags, got {canonical_count}"
 
         # Verify tag_aliases count (7 raw tags)
-        result = await seeded_session.execute(select(func.count()).select_from(TagAliasDB))
+        result = await seeded_session.execute(
+            select(func.count()).select_from(TagAliasDB)
+        )
         alias_count = result.scalar()
         assert alias_count == 7, f"Expected 7 tag aliases, got {alias_count}"
 
@@ -215,19 +219,23 @@ class TestFullBackfillPipeline:
         # "Python" tag group: has 2 title case forms ("Python", "#Python") both with count=1
         # Alphabetical min tiebreaker selects "#Python" (# < P in ASCII)
         result = await seeded_session.execute(
-            select(CanonicalTagDB.canonical_form, CanonicalTagDB.normalized_form)
-            .where(CanonicalTagDB.normalized_form == "python")
+            select(CanonicalTagDB.canonical_form, CanonicalTagDB.normalized_form).where(
+                CanonicalTagDB.normalized_form == "python"
+            )
         )
         row = result.first()
         assert row is not None
         canonical_form, normalized_form = row
-        assert canonical_form == "#Python", f"Expected '#Python', got '{canonical_form}'"
+        assert (
+            canonical_form == "#Python"
+        ), f"Expected '#Python', got '{canonical_form}'"
         assert normalized_form == "python"
 
         # Verify "Machine Learning" tag group (title case preference)
         result = await seeded_session.execute(
-            select(CanonicalTagDB.canonical_form, CanonicalTagDB.normalized_form)
-            .where(CanonicalTagDB.normalized_form == "machine learning")
+            select(CanonicalTagDB.canonical_form, CanonicalTagDB.normalized_form).where(
+                CanonicalTagDB.normalized_form == "machine learning"
+            )
         )
         row = result.first()
         assert row is not None
@@ -237,8 +245,9 @@ class TestFullBackfillPipeline:
 
         # Verify "AI" tag group (only one variant, no title case alternative)
         result = await seeded_session.execute(
-            select(CanonicalTagDB.canonical_form, CanonicalTagDB.normalized_form)
-            .where(CanonicalTagDB.normalized_form == "ai")
+            select(CanonicalTagDB.canonical_form, CanonicalTagDB.normalized_form).where(
+                CanonicalTagDB.normalized_form == "ai"
+            )
         )
         row = result.first()
         assert row is not None
@@ -248,12 +257,15 @@ class TestFullBackfillPipeline:
 
         # Verify alias_count values
         result = await seeded_session.execute(
-            select(CanonicalTagDB.canonical_form, CanonicalTagDB.alias_count)
-            .order_by(CanonicalTagDB.canonical_form)
+            select(CanonicalTagDB.canonical_form, CanonicalTagDB.alias_count).order_by(
+                CanonicalTagDB.canonical_form
+            )
         )
         alias_counts = {row[0]: row[1] for row in result.all()}
         assert alias_counts["#Python"] == 4  # Python, python, PYTHON, #Python
-        assert alias_counts["Machine Learning"] == 2  # Machine Learning, machine learning
+        assert (
+            alias_counts["Machine Learning"] == 2
+        )  # Machine Learning, machine learning
         assert alias_counts["AI"] == 1
 
         # Verify normalized_form values in tag_aliases match canonical_tags
@@ -300,15 +312,20 @@ class TestIdempotentRerun:
         )
 
         # Count records after first run
-        result = await seeded_session.execute(select(func.count()).select_from(CanonicalTagDB))
+        result = await seeded_session.execute(
+            select(func.count()).select_from(CanonicalTagDB)
+        )
         canonical_count_1 = result.scalar()
-        result = await seeded_session.execute(select(func.count()).select_from(TagAliasDB))
+        result = await seeded_session.execute(
+            select(func.count()).select_from(TagAliasDB)
+        )
         alias_count_1 = result.scalar()
 
         # Capture canonical_forms and normalized_forms before second run
         result = await seeded_session.execute(
-            select(CanonicalTagDB.canonical_form, CanonicalTagDB.normalized_form)
-            .order_by(CanonicalTagDB.canonical_form)
+            select(
+                CanonicalTagDB.canonical_form, CanonicalTagDB.normalized_form
+            ).order_by(CanonicalTagDB.canonical_form)
         )
         canonical_forms_before = {row[0]: row[1] for row in result.all()}
 
@@ -320,28 +337,33 @@ class TestIdempotentRerun:
         )
 
         # Count records after second run
-        result = await seeded_session.execute(select(func.count()).select_from(CanonicalTagDB))
+        result = await seeded_session.execute(
+            select(func.count()).select_from(CanonicalTagDB)
+        )
         canonical_count_2 = result.scalar()
-        result = await seeded_session.execute(select(func.count()).select_from(TagAliasDB))
+        result = await seeded_session.execute(
+            select(func.count()).select_from(TagAliasDB)
+        )
         alias_count_2 = result.scalar()
 
         # Verify no new records created
-        assert canonical_count_2 == canonical_count_1, (
-            f"Second run created new canonical tags: {canonical_count_1} -> {canonical_count_2}"
-        )
-        assert alias_count_2 == alias_count_1, (
-            f"Second run created new tag aliases: {alias_count_1} -> {alias_count_2}"
-        )
+        assert (
+            canonical_count_2 == canonical_count_1
+        ), f"Second run created new canonical tags: {canonical_count_1} -> {canonical_count_2}"
+        assert (
+            alias_count_2 == alias_count_1
+        ), f"Second run created new tag aliases: {alias_count_1} -> {alias_count_2}"
 
         # Verify canonical_forms unchanged
         result = await seeded_session.execute(
-            select(CanonicalTagDB.canonical_form, CanonicalTagDB.normalized_form)
-            .order_by(CanonicalTagDB.canonical_form)
+            select(
+                CanonicalTagDB.canonical_form, CanonicalTagDB.normalized_form
+            ).order_by(CanonicalTagDB.canonical_form)
         )
         canonical_forms_after = {row[0]: row[1] for row in result.all()}
-        assert canonical_forms_after == canonical_forms_before, (
-            "Canonical forms changed after second run"
-        )
+        assert (
+            canonical_forms_after == canonical_forms_before
+        ), "Canonical forms changed after second run"
 
 
 # =============================================================================
@@ -375,24 +397,29 @@ class TestVideoCountCorrectness:
 
         # Verify video_count for "python" (3 videos)
         result = await seeded_session.execute(
-            select(CanonicalTagDB.video_count)
-            .where(CanonicalTagDB.normalized_form == "python")
+            select(CanonicalTagDB.video_count).where(
+                CanonicalTagDB.normalized_form == "python"
+            )
         )
         video_count = result.scalar()
         assert video_count == 3, f"Expected 3 videos for 'python', got {video_count}"
 
         # Verify video_count for "machine learning" (2 videos)
         result = await seeded_session.execute(
-            select(CanonicalTagDB.video_count)
-            .where(CanonicalTagDB.normalized_form == "machine learning")
+            select(CanonicalTagDB.video_count).where(
+                CanonicalTagDB.normalized_form == "machine learning"
+            )
         )
         video_count = result.scalar()
-        assert video_count == 2, f"Expected 2 videos for 'machine learning', got {video_count}"
+        assert (
+            video_count == 2
+        ), f"Expected 2 videos for 'machine learning', got {video_count}"
 
         # Verify video_count for "ai" (1 video)
         result = await seeded_session.execute(
-            select(CanonicalTagDB.video_count)
-            .where(CanonicalTagDB.normalized_form == "ai")
+            select(CanonicalTagDB.video_count).where(
+                CanonicalTagDB.normalized_form == "ai"
+            )
         )
         video_count = result.scalar()
         assert video_count == 1, f"Expected 1 video for 'ai', got {video_count}"
@@ -432,24 +459,26 @@ class TestTimestampFields:
 
         # Verify all tag aliases have first_seen_at and last_seen_at set
         result = await seeded_session.execute(
-            select(TagAliasDB.raw_form, TagAliasDB.first_seen_at, TagAliasDB.last_seen_at)
+            select(
+                TagAliasDB.raw_form, TagAliasDB.first_seen_at, TagAliasDB.last_seen_at
+            )
         )
         for raw_form, first_seen, last_seen in result.all():
             assert first_seen is not None, f"first_seen_at is NULL for '{raw_form}'"
             assert last_seen is not None, f"last_seen_at is NULL for '{raw_form}'"
 
             # Verify timestamps are within expected range
-            assert before_timestamp <= first_seen <= after_timestamp, (
-                f"first_seen_at for '{raw_form}' is outside expected range"
-            )
-            assert before_timestamp <= last_seen <= after_timestamp, (
-                f"last_seen_at for '{raw_form}' is outside expected range"
-            )
+            assert (
+                before_timestamp <= first_seen <= after_timestamp
+            ), f"first_seen_at for '{raw_form}' is outside expected range"
+            assert (
+                before_timestamp <= last_seen <= after_timestamp
+            ), f"last_seen_at for '{raw_form}' is outside expected range"
 
             # For backfill, first_seen_at should equal last_seen_at
-            assert first_seen == last_seen, (
-                f"first_seen_at != last_seen_at for '{raw_form}'"
-            )
+            assert (
+                first_seen == last_seen
+            ), f"first_seen_at != last_seen_at for '{raw_form}'"
 
 
 # =============================================================================
@@ -513,8 +542,9 @@ class TestVideoTagsUnchanged:
 
         # Capture all video_tags content before backfill
         result = await seeded_session.execute(
-            select(VideoTagDB.video_id, VideoTagDB.tag, VideoTagDB.tag_order)
-            .order_by(VideoTagDB.video_id, VideoTagDB.tag)
+            select(VideoTagDB.video_id, VideoTagDB.tag, VideoTagDB.tag_order).order_by(
+                VideoTagDB.video_id, VideoTagDB.tag
+            )
         )
         video_tags_before = [(row[0], row[1], row[2]) for row in result.all()]
 
@@ -533,20 +563,21 @@ class TestVideoTagsUnchanged:
 
         # Capture all video_tags content after backfill
         result = await seeded_session.execute(
-            select(VideoTagDB.video_id, VideoTagDB.tag, VideoTagDB.tag_order)
-            .order_by(VideoTagDB.video_id, VideoTagDB.tag)
+            select(VideoTagDB.video_id, VideoTagDB.tag, VideoTagDB.tag_order).order_by(
+                VideoTagDB.video_id, VideoTagDB.tag
+            )
         )
         video_tags_after = [(row[0], row[1], row[2]) for row in result.all()]
 
         # Verify count unchanged
-        assert count_after == count_before, (
-            f"video_tags row count changed: {count_before} -> {count_after}"
-        )
+        assert (
+            count_after == count_before
+        ), f"video_tags row count changed: {count_before} -> {count_after}"
 
         # Verify content unchanged
-        assert video_tags_after == video_tags_before, (
-            "video_tags content changed after backfill"
-        )
+        assert (
+            video_tags_after == video_tags_before
+        ), "video_tags content changed after backfill"
 
 
 # =============================================================================
@@ -656,13 +687,14 @@ class TestLargeCanonicalGroup:
         await db_session.commit()
 
         # Verify we have at least 40 unique variants
-        assert len(unique_variants) >= 40, (
-            f"Expected at least 40 unique variants, got {len(unique_variants)}"
-        )
+        assert (
+            len(unique_variants) >= 40
+        ), f"Expected at least 40 unique variants, got {len(unique_variants)}"
 
         # Debug: Check that video_tags were actually inserted
         result = await db_session.execute(
-            select(func.count()).select_from(VideoTagDB)
+            select(func.count())
+            .select_from(VideoTagDB)
             .where(VideoTagDB.video_id == "vid999")
         )
         video_tag_count = result.scalar()
@@ -677,21 +709,25 @@ class TestLargeCanonicalGroup:
         # Count how many of our unique variants normalize to "python"
         normalization_service = TagNormalizationService()
         python_variants = [
-            v for v in unique_variants
-            if normalization_service.normalize(v) == "python"
+            v for v in unique_variants if normalization_service.normalize(v) == "python"
         ]
         expected_count = len(python_variants)
 
         # Debug: Check what canonical tags were actually created
         result = await db_session.execute(
-            select(CanonicalTagDB.normalized_form, CanonicalTagDB.canonical_form, CanonicalTagDB.alias_count)
+            select(
+                CanonicalTagDB.normalized_form,
+                CanonicalTagDB.canonical_form,
+                CanonicalTagDB.alias_count,
+            )
         )
         all_canonical_tags = [(row[0], row[1], row[2]) for row in result.all()]
 
         # Get the "python" canonical tag
         result = await db_session.execute(
-            select(CanonicalTagDB.canonical_form, CanonicalTagDB.alias_count)
-            .where(CanonicalTagDB.normalized_form == "python")
+            select(CanonicalTagDB.canonical_form, CanonicalTagDB.alias_count).where(
+                CanonicalTagDB.normalized_form == "python"
+            )
         )
         row = result.first()
 
@@ -704,9 +740,9 @@ class TestLargeCanonicalGroup:
         )
 
         canonical_form, alias_count = row
-        assert alias_count == expected_count, (
-            f"Expected alias_count {expected_count}, got {alias_count}"
-        )
+        assert (
+            alias_count == expected_count
+        ), f"Expected alias_count {expected_count}, got {alias_count}"
         # Verify we have a large group (>= 40 variants)
         assert alias_count >= 40, f"Expected at least 40 aliases, got {alias_count}"
 
@@ -738,9 +774,13 @@ class TestInterruptedThenResumed:
         )
 
         # Count records after partial run
-        result = await seeded_session.execute(select(func.count()).select_from(CanonicalTagDB))
+        result = await seeded_session.execute(
+            select(func.count()).select_from(CanonicalTagDB)
+        )
         canonical_count_1 = result.scalar()
-        result = await seeded_session.execute(select(func.count()).select_from(TagAliasDB))
+        result = await seeded_session.execute(
+            select(func.count()).select_from(TagAliasDB)
+        )
         alias_count_1 = result.scalar()
 
         # Run full backfill with normal batch size
@@ -751,13 +791,19 @@ class TestInterruptedThenResumed:
         )
 
         # Count records after full run
-        result = await seeded_session.execute(select(func.count()).select_from(CanonicalTagDB))
+        result = await seeded_session.execute(
+            select(func.count()).select_from(CanonicalTagDB)
+        )
         canonical_count_2 = result.scalar()
-        result = await seeded_session.execute(select(func.count()).select_from(TagAliasDB))
+        result = await seeded_session.execute(
+            select(func.count()).select_from(TagAliasDB)
+        )
         alias_count_2 = result.scalar()
 
         # Verify all records exist (ON CONFLICT filled gaps)
-        assert canonical_count_2 == 3, f"Expected 3 canonical tags, got {canonical_count_2}"
+        assert (
+            canonical_count_2 == 3
+        ), f"Expected 3 canonical tags, got {canonical_count_2}"
         assert alias_count_2 == 7, f"Expected 7 tag aliases, got {alias_count_2}"
 
         # Verify at least some records were added in the second run
@@ -795,7 +841,9 @@ class TestEdgeCases:
         )
 
         # Verify no records created
-        result = await db_session.execute(select(func.count()).select_from(CanonicalTagDB))
+        result = await db_session.execute(
+            select(func.count()).select_from(CanonicalTagDB)
+        )
         canonical_count = result.scalar()
         assert canonical_count == 0
 
@@ -864,7 +912,9 @@ class TestEdgeCases:
         )
 
         # Verify only the valid tag created canonical_tags and tag_aliases
-        result = await db_session.execute(select(func.count()).select_from(CanonicalTagDB))
+        result = await db_session.execute(
+            select(func.count()).select_from(CanonicalTagDB)
+        )
         canonical_count = result.scalar()
         assert canonical_count == 1, f"Expected 1 canonical tag, got {canonical_count}"
 
@@ -873,9 +923,7 @@ class TestEdgeCases:
         assert alias_count == 1, f"Expected 1 tag alias, got {alias_count}"
 
         # Verify the canonical tag is for "ValidTag"
-        result = await db_session.execute(
-            select(CanonicalTagDB.canonical_form)
-        )
+        result = await db_session.execute(select(CanonicalTagDB.canonical_form))
         canonical_forms = [row[0] for row in result.all()]
         assert "ValidTag" in canonical_forms
 
@@ -921,12 +969,15 @@ class TestEdgeCases:
             )
 
         # Verify error message mentions missing tables
-        assert "canonical_tags" in str(exc_info.value) or "tag_aliases" in str(exc_info.value)
+        assert "canonical_tags" in str(exc_info.value) or "tag_aliases" in str(
+            exc_info.value
+        )
 
         # Recreate tables for cleanup (conftest will drop all tables anyway)
         # This prevents FK constraint violations in cleanup
         await db_session.execute(
-            text("""
+            text(
+                """
                 CREATE TABLE IF NOT EXISTS canonical_tags (
                     id UUID PRIMARY KEY,
                     canonical_form VARCHAR(500) NOT NULL,
@@ -935,10 +986,12 @@ class TestEdgeCases:
                     video_count INTEGER NOT NULL DEFAULT 0,
                     status VARCHAR(20) NOT NULL DEFAULT 'active'
                 )
-            """)
+            """
+            )
         )
         await db_session.execute(
-            text("""
+            text(
+                """
                 CREATE TABLE IF NOT EXISTS tag_aliases (
                     id UUID PRIMARY KEY,
                     raw_form VARCHAR(500) NOT NULL UNIQUE,
@@ -951,6 +1004,7 @@ class TestEdgeCases:
                     last_seen_at TIMESTAMP WITH TIME ZONE NOT NULL,
                     created_at TIMESTAMP WITH TIME ZONE NOT NULL
                 )
-            """)
+            """
+            )
         )
         await db_session.commit()

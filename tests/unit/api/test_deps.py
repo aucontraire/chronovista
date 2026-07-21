@@ -1,4 +1,5 @@
 """Unit tests for API dependencies."""
+
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
@@ -6,6 +7,7 @@ import pytest
 from fastapi import HTTPException
 
 # CRITICAL: This line ensures async tests work with coverage
+
 
 class TestGetDb:
     """Tests for get_db dependency."""

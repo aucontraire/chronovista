@@ -67,9 +67,7 @@ class TestTagCommands:
         mock_asyncio.assert_called_once()
 
     @patch("chronovista.cli.tag_commands.asyncio.run")
-    def test_show_tag_command(
-        self, mock_asyncio: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_show_tag_command(self, mock_asyncio: MagicMock, runner: CliRunner) -> None:
         """Test show tag command execution."""
         result = runner.invoke(tag_app, ["show", "--tag", "music"])
 
@@ -155,7 +153,9 @@ class TestTagCommands:
         self, mock_asyncio: MagicMock, runner: CliRunner
     ) -> None:
         """Test search tags command with custom limit."""
-        result = runner.invoke(tag_app, ["search", "--pattern", "music", "--limit", "25"])
+        result = runner.invoke(
+            tag_app, ["search", "--pattern", "music", "--limit", "25"]
+        )
 
         assert result.exit_code == 0
         mock_asyncio.assert_called_once()
@@ -280,13 +280,17 @@ class TestTagCommands:
 
             # Test videos command with various limits
             mock_asyncio.reset_mock()
-            result = runner.invoke(tag_app, ["videos", "--tag", "music", "--limit", str(limit)])
+            result = runner.invoke(
+                tag_app, ["videos", "--tag", "music", "--limit", str(limit)]
+            )
             assert result.exit_code == 0
             mock_asyncio.assert_called_once()
 
             # Test search command with various limits
             mock_asyncio.reset_mock()
-            result = runner.invoke(tag_app, ["search", "--pattern", "music", "--limit", str(limit)])
+            result = runner.invoke(
+                tag_app, ["search", "--pattern", "music", "--limit", str(limit)]
+            )
             assert result.exit_code == 0
             mock_asyncio.assert_called_once()
 
@@ -409,7 +413,9 @@ class TestTagCommandsEdgeCases:
         self, mock_asyncio: MagicMock, runner: CliRunner
     ) -> None:
         """Test search command with limit of 0 (edge case)."""
-        result = runner.invoke(tag_app, ["search", "--pattern", "music", "--limit", "0"])
+        result = runner.invoke(
+            tag_app, ["search", "--pattern", "music", "--limit", "0"]
+        )
 
         # Should accept but may return no results
         assert result.exit_code == 0
@@ -430,7 +436,9 @@ class TestTagCommandsEdgeCases:
         self, mock_asyncio: MagicMock, runner: CliRunner
     ) -> None:
         """Test videos command with very large limit."""
-        result = runner.invoke(tag_app, ["videos", "--tag", "music", "--limit", "10000"])
+        result = runner.invoke(
+            tag_app, ["videos", "--tag", "music", "--limit", "10000"]
+        )
 
         assert result.exit_code == 0
         mock_asyncio.assert_called_once()
@@ -440,10 +448,14 @@ class TestTagCommandsEdgeCases:
         result = runner.invoke(tag_app, ["list", "--limit", "invalid"])
         assert result.exit_code != 0
 
-        result = runner.invoke(tag_app, ["videos", "--tag", "music", "--limit", "invalid"])
+        result = runner.invoke(
+            tag_app, ["videos", "--tag", "music", "--limit", "invalid"]
+        )
         assert result.exit_code != 0
 
-        result = runner.invoke(tag_app, ["search", "--pattern", "music", "--limit", "invalid"])
+        result = runner.invoke(
+            tag_app, ["search", "--pattern", "music", "--limit", "invalid"]
+        )
         assert result.exit_code != 0
 
     @patch("chronovista.cli.tag_commands.asyncio.run")
@@ -485,9 +497,7 @@ class TestTagCommandsEdgeCases:
         mock_asyncio.assert_called_once()
 
     @patch("chronovista.cli.tag_commands.asyncio.run")
-    def test_empty_string_tag(
-        self, mock_asyncio: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_empty_string_tag(self, mock_asyncio: MagicMock, runner: CliRunner) -> None:
         """Test commands with empty string tag."""
         # Typer may handle this differently, but test the behavior
         result = runner.invoke(tag_app, ["show", "--tag", ""])
@@ -495,9 +505,7 @@ class TestTagCommandsEdgeCases:
         assert result.exit_code in [0, 1, 2]
 
     @patch("chronovista.cli.tag_commands.asyncio.run")
-    def test_video_id_formats(
-        self, mock_asyncio: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_video_id_formats(self, mock_asyncio: MagicMock, runner: CliRunner) -> None:
         """Test by-video command with various video ID formats."""
         video_ids = [
             "dQw4w9WgXcQ",  # Standard 11-char
@@ -523,26 +531,37 @@ class TestListTagsAsyncIntegration:
 
     def test_list_tags_with_results(self, runner: CliRunner) -> None:
         """Test list_tags with results through CLI."""
+
         # Mock the entire async call path
         async def mock_run_list() -> None:
             pass  # Simulated successful execution
 
-        with patch("chronovista.cli.tag_commands.asyncio.run", side_effect=lambda f: mock_run_list()):
+        with patch(
+            "chronovista.cli.tag_commands.asyncio.run",
+            side_effect=lambda f: mock_run_list(),
+        ):
             result = runner.invoke(tag_app, ["list", "--limit", "50"])
             assert result.exit_code == 0
 
     def test_list_tags_no_results(self, runner: CliRunner) -> None:
         """Test list_tags with no results through CLI."""
+
         async def mock_run_list() -> None:
             pass  # Simulated execution with no results
 
-        with patch("chronovista.cli.tag_commands.asyncio.run", side_effect=lambda f: mock_run_list()):
+        with patch(
+            "chronovista.cli.tag_commands.asyncio.run",
+            side_effect=lambda f: mock_run_list(),
+        ):
             result = runner.invoke(tag_app, ["list"])
             assert result.exit_code == 0
 
     def test_list_tags_error_handling(self, runner: CliRunner) -> None:
         """Test list_tags error handling through CLI."""
-        with patch("chronovista.cli.tag_commands.asyncio.run", side_effect=RuntimeError("Database error")):
+        with patch(
+            "chronovista.cli.tag_commands.asyncio.run",
+            side_effect=RuntimeError("Database error"),
+        ):
             result = runner.invoke(tag_app, ["list"])
             # Should handle error gracefully
             assert result.exit_code in [0, 1]
@@ -558,11 +577,16 @@ class TestShowTagIntegration:
 
     def test_show_tag_command_integration(self, runner: CliRunner) -> None:
         """Test show_tag command through CLI."""
+
         async def mock_run() -> None:
             pass
 
-        with patch("chronovista.cli.tag_commands.asyncio.run", side_effect=lambda f: mock_run()):
-            result = runner.invoke(tag_app, ["show", "--tag", "music", "--related", "10"])
+        with patch(
+            "chronovista.cli.tag_commands.asyncio.run", side_effect=lambda f: mock_run()
+        ):
+            result = runner.invoke(
+                tag_app, ["show", "--tag", "music", "--related", "10"]
+            )
             assert result.exit_code == 0
 
 
@@ -576,11 +600,16 @@ class TestVideosByTagIntegration:
 
     def test_videos_by_tag_command_integration(self, runner: CliRunner) -> None:
         """Test videos_by_tag command through CLI."""
+
         async def mock_run() -> None:
             pass
 
-        with patch("chronovista.cli.tag_commands.asyncio.run", side_effect=lambda f: mock_run()):
-            result = runner.invoke(tag_app, ["videos", "--tag", "music", "--limit", "20"])
+        with patch(
+            "chronovista.cli.tag_commands.asyncio.run", side_effect=lambda f: mock_run()
+        ):
+            result = runner.invoke(
+                tag_app, ["videos", "--tag", "music", "--limit", "20"]
+            )
             assert result.exit_code == 0
 
 
@@ -594,11 +623,16 @@ class TestSearchTagsIntegration:
 
     def test_search_tags_command_integration(self, runner: CliRunner) -> None:
         """Test search_tags command through CLI."""
+
         async def mock_run() -> None:
             pass
 
-        with patch("chronovista.cli.tag_commands.asyncio.run", side_effect=lambda f: mock_run()):
-            result = runner.invoke(tag_app, ["search", "--pattern", "music", "--limit", "30"])
+        with patch(
+            "chronovista.cli.tag_commands.asyncio.run", side_effect=lambda f: mock_run()
+        ):
+            result = runner.invoke(
+                tag_app, ["search", "--pattern", "music", "--limit", "30"]
+            )
             assert result.exit_code == 0
 
 
@@ -612,10 +646,13 @@ class TestTagStatsIntegration:
 
     def test_tag_stats_command_integration(self, runner: CliRunner) -> None:
         """Test tag_stats command through CLI."""
+
         async def mock_run() -> None:
             pass
 
-        with patch("chronovista.cli.tag_commands.asyncio.run", side_effect=lambda f: mock_run()):
+        with patch(
+            "chronovista.cli.tag_commands.asyncio.run", side_effect=lambda f: mock_run()
+        ):
             result = runner.invoke(tag_app, ["stats"])
             assert result.exit_code == 0
 
@@ -630,9 +667,12 @@ class TestTagsByVideoIntegration:
 
     def test_tags_by_video_command_integration(self, runner: CliRunner) -> None:
         """Test tags_by_video command through CLI."""
+
         async def mock_run() -> None:
             pass
 
-        with patch("chronovista.cli.tag_commands.asyncio.run", side_effect=lambda f: mock_run()):
+        with patch(
+            "chronovista.cli.tag_commands.asyncio.run", side_effect=lambda f: mock_run()
+        ):
             result = runner.invoke(tag_app, ["by-video", "--id", "dQw4w9WgXcQ"])
             assert result.exit_code == 0

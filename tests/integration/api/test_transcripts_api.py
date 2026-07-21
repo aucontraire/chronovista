@@ -69,14 +69,18 @@ class TestTranscriptLanguages:
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
             # Too short
-            response = await async_client.get("/api/v1/videos/short/transcript/languages")
+            response = await async_client.get(
+                "/api/v1/videos/short/transcript/languages"
+            )
             assert response.status_code == 422
 
 
 class TestTranscriptFull:
     """Tests for GET /api/v1/videos/{video_id}/transcript endpoint."""
 
-    async def test_get_transcript_requires_auth(self, async_client: AsyncClient) -> None:
+    async def test_get_transcript_requires_auth(
+        self, async_client: AsyncClient
+    ) -> None:
         """Test that full transcript requires authentication."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = False
@@ -243,7 +247,9 @@ class TestTranscriptSegments:
             )
             assert response.status_code == 200
 
-    async def test_get_segments_time_filter_end(self, async_client: AsyncClient) -> None:
+    async def test_get_segments_time_filter_end(
+        self, async_client: AsyncClient
+    ) -> None:
         """Test end_time filter."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
@@ -370,5 +376,7 @@ class TestTranscriptSegments:
         """Test video_id validation (11 characters)."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get("/api/v1/videos/short/transcript/segments")
+            response = await async_client.get(
+                "/api/v1/videos/short/transcript/segments"
+            )
             assert response.status_code == 422

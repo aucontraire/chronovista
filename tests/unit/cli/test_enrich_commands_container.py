@@ -107,9 +107,7 @@ class TestEnrichRunCommandContainerIntegration:
         mock_enrichment_service = AsyncMock()
         mock_youtube_service = MagicMock()
 
-        mock_container.create_enrichment_service.return_value = (
-            mock_enrichment_service
-        )
+        mock_container.create_enrichment_service.return_value = mock_enrichment_service
         mock_container.youtube_service = mock_youtube_service
 
         # Mock credentials check
@@ -118,9 +116,7 @@ class TestEnrichRunCommandContainerIntegration:
         # Mock database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ]
+        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
         # Mock enrichment service methods
         mock_enrichment_service.lock = AsyncMock()
@@ -159,9 +155,7 @@ class TestEnrichRunCommandContainerIntegration:
         mock_enrichment_service = AsyncMock()
         mock_youtube_service = MagicMock()
 
-        mock_container.create_enrichment_service.return_value = (
-            mock_enrichment_service
-        )
+        mock_container.create_enrichment_service.return_value = mock_enrichment_service
         mock_container.youtube_service = mock_youtube_service
 
         # Mock credentials check
@@ -170,9 +164,7 @@ class TestEnrichRunCommandContainerIntegration:
         # Mock database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ]
+        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
         # Mock enrichment service methods
         mock_enrichment_service.lock = AsyncMock()
@@ -214,9 +206,7 @@ class TestEnrichRunCommandContainerIntegration:
         mock_enrichment_service = AsyncMock()
         mock_youtube_service = MagicMock()
 
-        mock_container.create_enrichment_service.return_value = (
-            mock_enrichment_service
-        )
+        mock_container.create_enrichment_service.return_value = mock_enrichment_service
         mock_container.youtube_service = mock_youtube_service
 
         # Mock credentials check
@@ -225,9 +215,7 @@ class TestEnrichRunCommandContainerIntegration:
         # Mock database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ]
+        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
         # Mock enrichment service methods
         mock_enrichment_service.lock = AsyncMock()
@@ -292,16 +280,12 @@ class TestEnrichStatusCommandContainerIntegration:
         """Test that enrich status command uses container to create enrichment service."""
         # Setup mocks
         mock_enrichment_service = AsyncMock()
-        mock_container.create_enrichment_service.return_value = (
-            mock_enrichment_service
-        )
+        mock_container.create_enrichment_service.return_value = mock_enrichment_service
 
         # Mock database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ]
+        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
         # Mock enrichment service methods
         mock_enrichment_service.get_status = AsyncMock()
@@ -352,9 +336,7 @@ class TestEnrichChannelsCommandContainerIntegration:
         mock_enrichment_service = AsyncMock()
         mock_youtube_service = MagicMock()
 
-        mock_container.create_enrichment_service.return_value = (
-            mock_enrichment_service
-        )
+        mock_container.create_enrichment_service.return_value = mock_enrichment_service
         mock_container.youtube_service = mock_youtube_service
 
         # Mock credentials check
@@ -363,9 +345,7 @@ class TestEnrichChannelsCommandContainerIntegration:
         # Mock database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ]
+        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
         # Mock enrichment service methods
         mock_enrichment_service.lock = AsyncMock()
@@ -438,9 +418,7 @@ class TestAutoSeedFlagContainerIntegration:
         mock_youtube_service = MagicMock()
         mock_topic_seeder = AsyncMock()
 
-        mock_container.create_enrichment_service.return_value = (
-            mock_enrichment_service
-        )
+        mock_container.create_enrichment_service.return_value = mock_enrichment_service
         mock_container.youtube_service = mock_youtube_service
         mock_container.create_topic_seeder.return_value = mock_topic_seeder
 
@@ -450,9 +428,7 @@ class TestAutoSeedFlagContainerIntegration:
         # Mock database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ]
+        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
         # Mock enrichment service methods
         mock_enrichment_service.lock = AsyncMock()
@@ -509,9 +485,7 @@ class TestAutoSeedFlagContainerIntegration:
         mock_youtube_service = MagicMock()
         mock_category_seeder = AsyncMock()
 
-        mock_container.create_enrichment_service.return_value = (
-            mock_enrichment_service
-        )
+        mock_container.create_enrichment_service.return_value = mock_enrichment_service
         mock_container.youtube_service = mock_youtube_service
         mock_container.create_category_seeder.return_value = mock_category_seeder
 
@@ -521,9 +495,7 @@ class TestAutoSeedFlagContainerIntegration:
         # Mock database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ]
+        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
         # Mock enrichment service methods
         mock_enrichment_service.lock = AsyncMock()
@@ -551,7 +523,9 @@ class TestAutoSeedFlagContainerIntegration:
         # Mock seeder
         from chronovista.services.enrichment.seeders import CategorySeedResult
 
-        mock_category_seeder.seed = AsyncMock(return_value=CategorySeedResult(created=43))
+        mock_category_seeder.seed = AsyncMock(
+            return_value=CategorySeedResult(created=43)
+        )
 
         # Mock enrich_videos to succeed after seeding
         mock_enrichment_service.enrich_videos = AsyncMock(
@@ -582,9 +556,7 @@ class TestSyncLikesFlagContainerIntegration:
         mock_enrichment_service = AsyncMock()
         mock_youtube_service = AsyncMock()
 
-        mock_container.create_enrichment_service.return_value = (
-            mock_enrichment_service
-        )
+        mock_container.create_enrichment_service.return_value = mock_enrichment_service
         mock_container.youtube_service = mock_youtube_service
 
         # Mock credentials check

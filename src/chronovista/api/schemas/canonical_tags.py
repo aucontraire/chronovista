@@ -179,9 +179,7 @@ class MergePreview(BaseModel):
     resulting_video_count: int = Field(
         ..., description="Distinct video count after merge (exact)"
     )
-    source_alias_count: int = Field(
-        ..., description="Alias count across sources only"
-    )
+    source_alias_count: int = Field(..., description="Alias count across sources only")
     source_video_count: int = Field(
         ..., description="Distinct video count across sources only"
     )

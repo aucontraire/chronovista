@@ -149,7 +149,9 @@ class TestRepositoryAccessTransientBehavior:
         for factory in factories:
             instance1 = factory()
             instance2 = factory()
-            assert instance1 is not instance2, f"{factory.__name__} should return new instance each call"
+            assert (
+                instance1 is not instance2
+            ), f"{factory.__name__} should return new instance each call"
 
     def test_correct_return_types_all_repositories(self) -> None:
         """T017: Verify all 10 repositories return correct types."""
@@ -159,7 +161,9 @@ class TestRepositoryAccessTransientBehavior:
         assert isinstance(c.create_channel_repository(), ChannelRepository)
         assert isinstance(c.create_playlist_repository(), PlaylistRepository)
         assert isinstance(c.create_user_video_repository(), UserVideoRepository)
-        assert isinstance(c.create_playlist_membership_repository(), PlaylistMembershipRepository)
+        assert isinstance(
+            c.create_playlist_membership_repository(), PlaylistMembershipRepository
+        )
         assert isinstance(c.create_video_tag_repository(), VideoTagRepository)
         assert isinstance(c.create_video_topic_repository(), VideoTopicRepository)
         assert isinstance(c.create_channel_topic_repository(), ChannelTopicRepository)
@@ -192,9 +196,9 @@ class TestServiceWiring:
 
         # Verify service is correctly wired (implementation-agnostic check)
         assert service is not None
-        assert hasattr(service, 'video_repository')
-        assert hasattr(service, 'channel_repository')
-        assert hasattr(service, 'youtube_service')
+        assert hasattr(service, "video_repository")
+        assert hasattr(service, "channel_repository")
+        assert hasattr(service, "youtube_service")
 
     def test_create_enrichment_service_with_optional_playlist_repository(self) -> None:
         """T022: Verify create_enrichment_service supports include_playlists parameter."""
@@ -223,7 +227,7 @@ class TestServiceWiring:
         seeder = c.create_topic_seeder()
 
         assert seeder is not None
-        assert hasattr(seeder, 'topic_repository')
+        assert hasattr(seeder, "topic_repository")
 
     def test_create_category_seeder_dependency_wiring(self) -> None:
         """
@@ -239,8 +243,8 @@ class TestServiceWiring:
         seeder = c.create_category_seeder()
 
         assert seeder is not None
-        assert hasattr(seeder, 'category_repository')
-        assert hasattr(seeder, 'youtube_service')
+        assert hasattr(seeder, "category_repository")
+        assert hasattr(seeder, "youtube_service")
 
     def test_enrichment_service_transient_behavior(self) -> None:
         """T025: Verify create_enrichment_service returns new instance each call."""
@@ -286,16 +290,20 @@ class TestSingletonCaching:
 
         # Check that internal cached properties are not set yet
         # Use __dict__ to inspect cached_property state
-        assert 'youtube_service' not in c.__dict__, "youtube_service should not be initialized yet"
-        assert 'transcript_service' not in c.__dict__, "transcript_service should not be initialized yet"
+        assert (
+            "youtube_service" not in c.__dict__
+        ), "youtube_service should not be initialized yet"
+        assert (
+            "transcript_service" not in c.__dict__
+        ), "transcript_service should not be initialized yet"
 
         # Access them to trigger initialization
         _ = c.youtube_service
         _ = c.transcript_service
 
         # Now they should be in __dict__
-        assert 'youtube_service' in c.__dict__, "youtube_service should be cached"
-        assert 'transcript_service' in c.__dict__, "transcript_service should be cached"
+        assert "youtube_service" in c.__dict__, "youtube_service should be cached"
+        assert "transcript_service" in c.__dict__, "transcript_service should be cached"
 
     def test_singleton_initialization_failure_propagates(self) -> None:
         """T035: Verify singleton initialization errors propagate correctly."""
@@ -327,15 +335,17 @@ class TestMockInjection:
         _ = c.transcript_service
 
         # Verify they're cached
-        assert 'youtube_service' in c.__dict__
-        assert 'transcript_service' in c.__dict__
+        assert "youtube_service" in c.__dict__
+        assert "transcript_service" in c.__dict__
 
         # This will fail until we implement reset()
         c.reset()
 
         # Verify cache is cleared
-        assert 'youtube_service' not in c.__dict__, "youtube_service should be cleared"
-        assert 'transcript_service' not in c.__dict__, "transcript_service should be cleared"
+        assert "youtube_service" not in c.__dict__, "youtube_service should be cleared"
+        assert (
+            "transcript_service" not in c.__dict__
+        ), "transcript_service should be cleared"
 
     def test_mock_injection_via_dict_property_replacement(self) -> None:
         """T043: Verify mocks can be injected by replacing __dict__ properties."""
@@ -345,7 +355,7 @@ class TestMockInjection:
         mock_youtube_service = MagicMock(name="MockYouTubeService")
 
         # Inject mock by setting __dict__ property (bypasses cached_property)
-        c.__dict__['youtube_service'] = mock_youtube_service
+        c.__dict__["youtube_service"] = mock_youtube_service
 
         # Access should return our mock
         assert c.youtube_service is mock_youtube_service
@@ -359,7 +369,7 @@ class TestMockInjection:
 
         # Inject a mock
         mock_service = MagicMock(name="MockService")
-        c.__dict__['youtube_service'] = mock_service
+        c.__dict__["youtube_service"] = mock_service
         assert c.youtube_service is mock_service
 
         # Reset to restore original state

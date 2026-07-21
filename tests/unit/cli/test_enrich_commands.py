@@ -5,7 +5,6 @@ Covers T048c: CLI tests for --priority flag in tests/unit/cli/test_enrich_comman
 Also covers T035f: CLI tests for `chronovista enrich` with flags
 """
 
-
 from datetime import UTC
 
 import pytest
@@ -274,10 +273,7 @@ class TestPriorityDescriptionInHelp:
         output_lower = result.output.lower()
         assert "priority" in output_lower
         # Should mention the cumulative nature or the tiers
-        assert any(
-            level in output_lower
-            for level in ["high", "medium", "low", "all"]
-        )
+        assert any(level in output_lower for level in ["high", "medium", "low", "all"])
 
     def test_priority_docstring_describes_tiers(self) -> None:
         """Test that command docstring describes priority tiers."""
@@ -354,11 +350,13 @@ class TestEnrichRunCommandConstants:
     def test_batch_size_is_imported_from_enrichment_service(self) -> None:
         """Test that BATCH_SIZE is properly imported from enrichment service."""
         from chronovista.cli.commands.enrich import BATCH_SIZE
+
         assert BATCH_SIZE == 50
 
     def test_estimate_quota_cost_is_available(self) -> None:
         """Test that estimate_quota_cost function is imported."""
         from chronovista.cli.commands.enrich import estimate_quota_cost
+
         # Verify it works correctly
         assert estimate_quota_cost(0) == 0
         assert estimate_quota_cost(50) == 1
@@ -373,6 +371,7 @@ class TestEnrichCommandExitCodes:
         from chronovista.services.enrichment.enrichment_service import (
             EXIT_CODE_LOCK_FAILED,
         )
+
         assert EXIT_CODE_LOCK_FAILED == 4
 
     def test_exit_code_no_credentials_constant(self) -> None:
@@ -380,6 +379,7 @@ class TestEnrichCommandExitCodes:
         from chronovista.services.enrichment.enrichment_service import (
             EXIT_CODE_NO_CREDENTIALS,
         )
+
         assert EXIT_CODE_NO_CREDENTIALS == 2
 
 
@@ -398,7 +398,11 @@ class TestStatusCommandOutputFormat:
         assert result.exit_code == 0
         output_lower = result.output.lower()
         # Should mention videos/counts in description
-        assert "video" in output_lower or "count" in output_lower or "statistic" in output_lower
+        assert (
+            "video" in output_lower
+            or "count" in output_lower
+            or "statistic" in output_lower
+        )
 
     def test_status_output_includes_enrichment_percentage_description(self) -> None:
         """Test that status help mentions enrichment progress/percentage."""
@@ -416,7 +420,11 @@ class TestStatusCommandOutputFormat:
         assert result.exit_code == 0
         output_lower = result.output.lower()
         # Should mention quota in description
-        assert "quota" in output_lower or "cost" in output_lower or "estimate" in output_lower
+        assert (
+            "quota" in output_lower
+            or "cost" in output_lower
+            or "estimate" in output_lower
+        )
 
     def test_status_command_shows_examples(self) -> None:
         """Test that status help shows usage examples."""
@@ -425,7 +433,11 @@ class TestStatusCommandOutputFormat:
         assert result.exit_code == 0
         output_lower = result.output.lower()
         # Should have some example or usage indication
-        assert "example" in output_lower or "chronovista" in output_lower or "enrich" in output_lower
+        assert (
+            "example" in output_lower
+            or "chronovista" in output_lower
+            or "enrich" in output_lower
+        )
 
 
 class TestStatusCommandWithMockedDatabase:
@@ -460,7 +472,10 @@ class TestStatusCommandWithMockedDatabase:
         assert show_status is not None
         assert show_status.__doc__ is not None
         # Docstring should describe the functionality
-        assert "status" in show_status.__doc__.lower() or "statistic" in show_status.__doc__.lower()
+        assert (
+            "status" in show_status.__doc__.lower()
+            or "statistic" in show_status.__doc__.lower()
+        )
 
     def test_estimate_quota_cost_available_in_cli_module(self) -> None:
         """Test that estimate_quota_cost is available for status output."""
@@ -477,6 +492,7 @@ class TestStatusCommandWithMockedDatabase:
         from rich.console import Console
 
         from chronovista.cli.commands.enrich import console
+
         assert isinstance(console, Console)
 
 
@@ -820,8 +836,7 @@ class TestIncludePlaylistsFlag:
         output_lower = result.output.lower()
         # Help should mention something about including or enriching playlists
         has_description = any(
-            term in output_lower
-            for term in ["include", "playlist", "enrich"]
+            term in output_lower for term in ["include", "playlist", "enrich"]
         )
         assert has_description
 
@@ -944,8 +959,7 @@ class TestSyncLikesFlag:
         output_lower = result.output.lower()
         # Help should mention syncing likes from YouTube API
         has_description = any(
-            term in output_lower
-            for term in ["sync", "like", "api", "existing"]
+            term in output_lower for term in ["sync", "like", "api", "existing"]
         )
         assert has_description
 
@@ -1151,7 +1165,14 @@ class TestSyncLikesFlag:
         # by reading the implementation file
         from pathlib import Path
 
-        enrich_file = Path(__file__).parent.parent.parent.parent / "src" / "chronovista" / "cli" / "commands" / "enrich.py"
+        enrich_file = (
+            Path(__file__).parent.parent.parent.parent
+            / "src"
+            / "chronovista"
+            / "cli"
+            / "commands"
+            / "enrich.py"
+        )
 
         if enrich_file.exists():
             content = enrich_file.read_text()
@@ -1179,7 +1200,9 @@ class TestAutoResolutionProgressMessages:
         """
         # Simulate detection phase logic
         count = 5
-        expected_message = f"[Auto-Resolution] {count} local playlists need YouTube linking..."
+        expected_message = (
+            f"[Auto-Resolution] {count} local playlists need YouTube linking..."
+        )
 
         # Verify message format matches FR-007 specification
         assert "[Auto-Resolution]" in expected_message
@@ -1189,7 +1212,9 @@ class TestAutoResolutionProgressMessages:
     def test_detection_phase_message_with_zero_playlists(self) -> None:
         """Test detection phase message when zero playlists need linking."""
         count = 0
-        expected_message = f"[Auto-Resolution] {count} local playlists need YouTube linking..."
+        expected_message = (
+            f"[Auto-Resolution] {count} local playlists need YouTube linking..."
+        )
 
         # Even with zero, format should be consistent
         assert "[Auto-Resolution]" in expected_message
@@ -1198,7 +1223,9 @@ class TestAutoResolutionProgressMessages:
     def test_detection_phase_message_with_single_playlist(self) -> None:
         """Test detection phase message with single playlist (grammar check)."""
         count = 1
-        expected_message = f"[Auto-Resolution] {count} local playlists need YouTube linking..."
+        expected_message = (
+            f"[Auto-Resolution] {count} local playlists need YouTube linking..."
+        )
 
         # Message uses "playlists" plural even for 1 (per FR-007)
         assert "[Auto-Resolution]" in expected_message
@@ -1221,7 +1248,9 @@ class TestAutoResolutionProgressMessages:
         expected_message = "[Auto-Resolution] Fetching your YouTube playlists..."
 
         # Message should be exactly as specified (no placeholders)
-        assert expected_message == "[Auto-Resolution] Fetching your YouTube playlists..."
+        assert (
+            expected_message == "[Auto-Resolution] Fetching your YouTube playlists..."
+        )
 
     def test_success_message_format_all_matched_t022(self) -> None:
         """Test success message format when all playlists are matched (T022).
@@ -1230,7 +1259,9 @@ class TestAutoResolutionProgressMessages:
         """
         linked = 10
         total = 10
-        expected_message = f"[Auto-Resolution] Successfully linked {linked}/{total} playlists ✓"
+        expected_message = (
+            f"[Auto-Resolution] Successfully linked {linked}/{total} playlists ✓"
+        )
 
         # Verify message format matches FR-007 specification
         assert "[Auto-Resolution]" in expected_message
@@ -1243,7 +1274,9 @@ class TestAutoResolutionProgressMessages:
         """Test success message format with single playlist."""
         linked = 1
         total = 1
-        expected_message = f"[Auto-Resolution] Successfully linked {linked}/{total} playlists ✓"
+        expected_message = (
+            f"[Auto-Resolution] Successfully linked {linked}/{total} playlists ✓"
+        )
 
         # Message uses "playlists" plural even for 1 (per FR-007)
         assert "[Auto-Resolution]" in expected_message
@@ -1257,9 +1290,7 @@ class TestAutoResolutionProgressMessages:
         linked = 8
         total = 10
         unmatched = 2
-        expected_message = (
-            f"[Auto-Resolution] Linked {linked}/{total} playlists ({unmatched} unmatched)"
-        )
+        expected_message = f"[Auto-Resolution] Linked {linked}/{total} playlists ({unmatched} unmatched)"
 
         # Verify message format matches FR-007 specification
         assert "[Auto-Resolution]" in expected_message
@@ -1272,13 +1303,11 @@ class TestAutoResolutionProgressMessages:
             (5, 10, 5),  # Half matched
             (1, 10, 9),  # Mostly unmatched
             (9, 10, 1),  # Mostly matched
-            (0, 5, 5),   # None matched
+            (0, 5, 5),  # None matched
         ]
 
         for linked, total, unmatched in test_cases:
-            expected_message = (
-                f"[Auto-Resolution] Linked {linked}/{total} playlists ({unmatched} unmatched)"
-            )
+            expected_message = f"[Auto-Resolution] Linked {linked}/{total} playlists ({unmatched} unmatched)"
 
             assert "[Auto-Resolution]" in expected_message
             assert f"Linked {linked}/{total}" in expected_message
@@ -1290,7 +1319,9 @@ class TestAutoResolutionProgressMessages:
         FR-007 specifies: "[Auto-Resolution] {count} playlists already linked (skipped)"
         """
         count = 15
-        expected_message = f"[Auto-Resolution] {count} playlists already linked (skipped)"
+        expected_message = (
+            f"[Auto-Resolution] {count} playlists already linked (skipped)"
+        )
 
         # Verify message format matches FR-007 specification
         assert "[Auto-Resolution]" in expected_message
@@ -1300,7 +1331,9 @@ class TestAutoResolutionProgressMessages:
     def test_skipped_message_with_zero_playlists(self) -> None:
         """Test skipped message when zero playlists are already linked."""
         count = 0
-        expected_message = f"[Auto-Resolution] {count} playlists already linked (skipped)"
+        expected_message = (
+            f"[Auto-Resolution] {count} playlists already linked (skipped)"
+        )
 
         # Format should be consistent even with zero
         assert "[Auto-Resolution]" in expected_message
@@ -1309,7 +1342,9 @@ class TestAutoResolutionProgressMessages:
     def test_skipped_message_with_single_playlist(self) -> None:
         """Test skipped message with single already-linked playlist."""
         count = 1
-        expected_message = f"[Auto-Resolution] {count} playlists already linked (skipped)"
+        expected_message = (
+            f"[Auto-Resolution] {count} playlists already linked (skipped)"
+        )
 
         # Message uses "playlists" plural even for 1 (per FR-007)
         assert "[Auto-Resolution]" in expected_message
@@ -1385,7 +1420,9 @@ class TestAutoResolutionProgressMessages:
 
     def test_detection_phase_message_uses_ellipsis(self) -> None:
         """Test that detection and fetch messages use ellipsis (...) to indicate ongoing action."""
-        detection_message = "[Auto-Resolution] 5 local playlists need YouTube linking..."
+        detection_message = (
+            "[Auto-Resolution] 5 local playlists need YouTube linking..."
+        )
         fetch_message = "[Auto-Resolution] Fetching your YouTube playlists..."
 
         # Both should end with ellipsis
@@ -1428,7 +1465,11 @@ class TestNoAutoResolveFlag:
         assert result.exit_code == 0
         output_lower = result.output.lower()
         # Help should mention skipping auto-resolution
-        assert "skip" in output_lower or "auto" in output_lower or "resolve" in output_lower
+        assert (
+            "skip" in output_lower
+            or "auto" in output_lower
+            or "resolve" in output_lower
+        )
 
     def test_no_auto_resolve_default_is_false(self) -> None:
         """Test that default value for --no-auto-resolve is False.
@@ -1454,7 +1495,13 @@ class TestNoAutoResolveFlag:
         # Help should mention the key concepts
         has_description = any(
             term in output_lower
-            for term in ["skip", "automatic", "resolution", "already linked", "youtube id"]
+            for term in [
+                "skip",
+                "automatic",
+                "resolution",
+                "already linked",
+                "youtube id",
+            ]
         )
         assert has_description
 
@@ -1930,9 +1977,7 @@ class TestSaveReport:
             content = json.loads(output_path.read_text())
 
             # Find the error detail
-            error_detail = next(
-                d for d in content["details"] if d["status"] == "error"
-            )
+            error_detail = next(d for d in content["details"] if d["status"] == "error")
 
             assert error_detail["video_id"] == "xyz789"
             assert error_detail["error"] == "Video not found on YouTube"

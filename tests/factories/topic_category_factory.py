@@ -72,7 +72,9 @@ class TopicCategorySearchFiltersFactory(factory.Factory[TopicCategorySearchFilte
 
     topic_ids: Any = factory.LazyFunction(lambda: ["gaming", "tech", "education"])
     category_name_query: Any = Faker("word")
-    parent_topic_ids: Any = factory.LazyFunction(lambda: ["entertainment", "technology"])
+    parent_topic_ids: Any = factory.LazyFunction(
+        lambda: ["entertainment", "technology"]
+    )
     topic_types: Any = factory.LazyFunction(lambda: ["youtube", "custom"])
     is_root_topic: Any = Faker("boolean")
     has_children: Any = Faker("boolean")

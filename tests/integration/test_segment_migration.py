@@ -59,10 +59,12 @@ async def backfill_single_transcript(
 
     # Delete existing segments (idempotent)
     await session.execute(
-        text("""
+        text(
+            """
             DELETE FROM transcript_segments
             WHERE video_id = :video_id AND language_code = :language_code
-        """),
+        """
+        ),
         {"video_id": video_id, "language_code": language_code},
     )
 
@@ -76,11 +78,13 @@ async def backfill_single_transcript(
     if not snippets:
         # Update segment_count to 0
         await session.execute(
-            text("""
+            text(
+                """
                 UPDATE video_transcripts
                 SET segment_count = 0
                 WHERE video_id = :video_id AND language_code = :language_code
-            """),
+            """
+            ),
             {"video_id": video_id, "language_code": language_code},
         )
         await session.commit()
@@ -105,11 +109,13 @@ async def backfill_single_transcript(
             end_time = start_time + duration_val
 
             await session.execute(
-                text("""
+                text(
+                    """
                     INSERT INTO transcript_segments
                     (video_id, language_code, text, start_time, duration, end_time, sequence_number, has_correction)
                     VALUES (:video_id, :language_code, :text, :start_time, :duration, :end_time, :seq, FALSE)
-                """),
+                """
+                ),
                 {
                     "video_id": video_id,
                     "language_code": language_code,
@@ -128,11 +134,13 @@ async def backfill_single_transcript(
 
     # Update segment_count
     await session.execute(
-        text("""
+        text(
+            """
             UPDATE video_transcripts
             SET segment_count = :count
             WHERE video_id = :video_id AND language_code = :language_code
-        """),
+        """
+        ),
         {
             "count": segment_count,
             "video_id": video_id,

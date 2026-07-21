@@ -134,7 +134,9 @@ class TestPlaylistFieldUpdates:
         ]
 
         for test_case in test_cases:
-            api_response: dict[str, Any] = {"status": {"privacyStatus": test_case["api_status"]}}
+            api_response: dict[str, Any] = {
+                "status": {"privacyStatus": test_case["api_status"]}
+            }
             updated_status = api_response["status"]["privacyStatus"]
             assert updated_status == test_case["expected"]
 
@@ -311,7 +313,6 @@ class TestDryRunModeForPlaylists:
             )
         )
 
-
         # Even in dry run, should call API to show what would be updated
         await mock_youtube_service.fetch_playlists_batched(["PL001"])
 
@@ -375,6 +376,7 @@ class TestPlaylistEnrichmentSummary:
 
     async def test_summary_quota_calculation(self) -> None:
         """Test that quota is calculated correctly for playlists."""
+
         # YouTube API: 50 playlists per request = 1 unit
         def estimate_playlist_quota(playlist_count: int) -> int:
             """Estimate quota units for playlist fetches."""

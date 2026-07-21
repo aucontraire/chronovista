@@ -33,9 +33,13 @@ class TakeoutDataFactory(factory.Factory[TakeoutData]):
     takeout_path: Any = factory.LazyFunction(lambda: Path("/tmp/takeout"))
 
     # Optional fields with realistic defaults
-    watch_history: Any = factory.LazyFunction(lambda: create_batch_takeout_watch_entries(10))
+    watch_history: Any = factory.LazyFunction(
+        lambda: create_batch_takeout_watch_entries(10)
+    )
     playlists: Any = factory.LazyFunction(lambda: create_batch_takeout_playlists(3))
-    subscriptions: Any = factory.LazyFunction(lambda: create_batch_takeout_subscriptions(5))
+    subscriptions: Any = factory.LazyFunction(
+        lambda: create_batch_takeout_subscriptions(5)
+    )
     parsed_at: Any = factory.LazyFunction(
         lambda: datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
     )
@@ -78,7 +82,9 @@ class TakeoutDataLargeFactory(factory.Factory[TakeoutData]):
         lambda: create_batch_takeout_watch_entries(100)
     )
     playlists: Any = factory.LazyFunction(lambda: create_batch_takeout_playlists(15))
-    subscriptions: Any = factory.LazyFunction(lambda: create_batch_takeout_subscriptions(50))
+    subscriptions: Any = factory.LazyFunction(
+        lambda: create_batch_takeout_subscriptions(50)
+    )
     parsed_at: Any = factory.LazyFunction(
         lambda: datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
     )
@@ -95,9 +101,13 @@ class TakeoutDataHistoricalFactory(factory.Factory[TakeoutData]):
         model = TakeoutData
 
     takeout_path: Any = factory.LazyFunction(lambda: Path("/tmp/historical-takeout"))
-    watch_history: Any = factory.LazyFunction(lambda: create_batch_takeout_watch_entries(20))
+    watch_history: Any = factory.LazyFunction(
+        lambda: create_batch_takeout_watch_entries(20)
+    )
     playlists: Any = factory.LazyFunction(lambda: create_batch_takeout_playlists(5))
-    subscriptions: Any = factory.LazyFunction(lambda: create_batch_takeout_subscriptions(10))
+    subscriptions: Any = factory.LazyFunction(
+        lambda: create_batch_takeout_subscriptions(10)
+    )
     parsed_at: Any = factory.LazyFunction(
         lambda: datetime(2020, 6, 1, 12, 0, 0, tzinfo=UTC)
     )
@@ -114,9 +124,13 @@ class TakeoutDataWithExplicitTotalsFactory(factory.Factory[TakeoutData]):
         model = TakeoutData
 
     takeout_path: Any = factory.LazyFunction(lambda: Path("/tmp/explicit-takeout"))
-    watch_history: Any = factory.LazyFunction(lambda: create_batch_takeout_watch_entries(5))
+    watch_history: Any = factory.LazyFunction(
+        lambda: create_batch_takeout_watch_entries(5)
+    )
     playlists: Any = factory.LazyFunction(lambda: create_batch_takeout_playlists(2))
-    subscriptions: Any = factory.LazyFunction(lambda: create_batch_takeout_subscriptions(3))
+    subscriptions: Any = factory.LazyFunction(
+        lambda: create_batch_takeout_subscriptions(3)
+    )
     parsed_at: Any = factory.LazyFunction(
         lambda: datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
     )
@@ -229,11 +243,11 @@ def create_takeout_data_with_counts(
     subscriptions = create_batch_takeout_subscriptions(subscription_count)
 
     result = TakeoutDataFactory.build(
-            watch_history=watch_history,
-            playlists=playlists,
-            subscriptions=subscriptions,
-            **kwargs,
-        )
+        watch_history=watch_history,
+        playlists=playlists,
+        subscriptions=subscriptions,
+        **kwargs,
+    )
     assert isinstance(result, TakeoutData)
     return result
 

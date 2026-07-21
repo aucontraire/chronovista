@@ -56,7 +56,9 @@ class TestDiscoverHistoricalTakeouts:
         if with_subscriptions:
             subs_dir = youtube_dir / "subscriptions"
             subs_dir.mkdir()
-            (subs_dir / "subscriptions.csv").write_text("Channel Id,Channel Url,Channel Title")
+            (subs_dir / "subscriptions.csv").write_text(
+                "Channel Id,Channel Url,Channel Title"
+            )
 
         return takeout_dir
 
@@ -112,9 +114,7 @@ class TestDiscoverHistoricalTakeouts:
         assert takeouts[0].export_date > takeouts[1].export_date
         assert takeouts[1].export_date > takeouts[2].export_date
 
-    def test_discover_takeout_with_all_features(
-        self, temp_takeout_base: Path
-    ) -> None:
+    def test_discover_takeout_with_all_features(self, temp_takeout_base: Path) -> None:
         """Test discovering a takeout with all data types."""
         self._create_takeout_dir(
             temp_takeout_base,
@@ -204,7 +204,10 @@ class TestParseHistoricalWatchHistory:
                 "title": "Watched Python Tutorial",
                 "titleUrl": "https://www.youtube.com/watch?v=python123",
                 "subtitles": [
-                    {"name": "TechChannel", "url": "https://www.youtube.com/channel/UCtech123"}
+                    {
+                        "name": "TechChannel",
+                        "url": "https://www.youtube.com/channel/UCtech123",
+                    }
                 ],
                 "time": "2024-01-16T10:00:00Z",
             },
@@ -434,7 +437,10 @@ class TestBuildRecoveryMetadataMap:
                 "title": "Watched Test Video",
                 "titleUrl": "https://www.youtube.com/watch?v=test123",
                 "subtitles": [
-                    {"name": "TestChannel", "url": "https://www.youtube.com/channel/UCtest"}
+                    {
+                        "name": "TestChannel",
+                        "url": "https://www.youtube.com/channel/UCtest",
+                    }
                 ],
                 "time": "2024-01-15T14:30:00Z",
             }
@@ -466,7 +472,12 @@ class TestBuildRecoveryMetadataMap:
                 "header": "YouTube",
                 "title": "Watched Old Title",
                 "titleUrl": "https://www.youtube.com/watch?v=video123",
-                "subtitles": [{"name": "OldChannel", "url": "https://www.youtube.com/channel/UCold"}],
+                "subtitles": [
+                    {
+                        "name": "OldChannel",
+                        "url": "https://www.youtube.com/channel/UCold",
+                    }
+                ],
                 "time": "2023-01-15T14:30:00Z",
             }
         ]
@@ -476,7 +487,12 @@ class TestBuildRecoveryMetadataMap:
                 "header": "YouTube",
                 "title": "Watched New Title",
                 "titleUrl": "https://www.youtube.com/watch?v=video123",
-                "subtitles": [{"name": "NewChannel", "url": "https://www.youtube.com/channel/UCnew"}],
+                "subtitles": [
+                    {
+                        "name": "NewChannel",
+                        "url": "https://www.youtube.com/channel/UCnew",
+                    }
+                ],
                 "time": "2024-06-15T14:30:00Z",
             }
         ]
@@ -521,7 +537,10 @@ class TestBuildRecoveryMetadataMap:
                 "title": "Watched Video 1",
                 "titleUrl": "https://www.youtube.com/watch?v=vid1",
                 "subtitles": [
-                    {"name": "SameChannel", "url": "https://www.youtube.com/channel/UCsame"}
+                    {
+                        "name": "SameChannel",
+                        "url": "https://www.youtube.com/channel/UCsame",
+                    }
                 ],
                 "time": "2024-01-15T14:30:00Z",
             },
@@ -530,7 +549,10 @@ class TestBuildRecoveryMetadataMap:
                 "title": "Watched Video 2",
                 "titleUrl": "https://www.youtube.com/watch?v=vid2",
                 "subtitles": [
-                    {"name": "SameChannel", "url": "https://www.youtube.com/channel/UCsame"}
+                    {
+                        "name": "SameChannel",
+                        "url": "https://www.youtube.com/channel/UCsame",
+                    }
                 ],
                 "time": "2024-01-16T14:30:00Z",
             },

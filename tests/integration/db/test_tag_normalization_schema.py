@@ -42,6 +42,7 @@ from chronovista.db.models import (
 # Note: This applies to ALL tests in the module, including sync tests
 # For sync tests, we explicitly mark them with @pytest.mark.asyncio(False)
 
+
 def get_table_names_sync(connection: Any) -> list[str]:
     """
     Get all table names from database using synchronous connection.
@@ -134,9 +135,7 @@ class TestCheckConstraints:
         assert "chk_entity_type_valid" in str(exc_info.value).lower()
         await db_session.rollback()
 
-    async def test_named_entity_invalid_status(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_named_entity_invalid_status(self, db_session: AsyncSession) -> None:
         """Verify named_entities.status CHECK constraint rejects invalid values."""
         entity = NamedEntity(
             id=uuid7(),
@@ -197,9 +196,7 @@ class TestCheckConstraints:
         assert "chk_entity_confidence_range" in str(exc_info.value).lower()
         await db_session.rollback()
 
-    async def test_canonical_tag_invalid_status(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_canonical_tag_invalid_status(self, db_session: AsyncSession) -> None:
         """Verify canonical_tags.status CHECK constraint rejects invalid values."""
         tag = CanonicalTag(
             id=uuid7(),
@@ -357,9 +354,7 @@ class TestUniqueConstraints:
         assert "normalized_form" in str(exc_info.value).lower()
         await db_session.rollback()
 
-    async def test_tag_alias_duplicate_raw_form(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_tag_alias_duplicate_raw_form(self, db_session: AsyncSession) -> None:
         """Verify tag_aliases.raw_form UNIQUE constraint rejects duplicates."""
         # Create two canonical tags separately to avoid batch insert UUID issues
         tag1_id = uuid7()
@@ -926,9 +921,7 @@ class TestSchemaIntegration:
         # Compare UUID values as strings to avoid type representation issues
         assert str(stored_entity_id) == str(entity_id)
 
-    async def test_tag_merge_operation_log(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_tag_merge_operation_log(self, db_session: AsyncSession) -> None:
         """Test logging a tag merge operation with rollback data."""
         # Create two tags to merge separately
         tag1_id = uuid7()
@@ -979,9 +972,7 @@ class TestSchemaIntegration:
         assert operation.rolled_back is False
         assert operation.rollback_data["source_tag"] == str(tag2_id)
 
-    async def test_default_values_applied(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_default_values_applied(self, db_session: AsyncSession) -> None:
         """Test that default values are correctly applied on insert."""
         # Create minimal canonical tag (testing defaults)
         tag = CanonicalTag(
@@ -1030,9 +1021,7 @@ class TestSchemaIntegration:
         assert entity.external_ids["wikipedia"] == "Google"
         assert len(entity.external_ids) == 3
 
-    async def test_timestamp_fields_populated(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_timestamp_fields_populated(self, db_session: AsyncSession) -> None:
         """Test that timestamp fields are automatically populated."""
         # Create tag alias
         canonical_tag = CanonicalTag(

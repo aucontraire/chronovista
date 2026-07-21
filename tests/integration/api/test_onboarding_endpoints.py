@@ -81,9 +81,7 @@ def wire_task_router() -> Iterator[None]:
     # (all DB-touching methods are mocked at the service layer).
     fake_session_factory = MagicMock()
 
-    with patch(
-        "chronovista.api.routers.onboarding.db_manager"
-    ) as mock_db_manager:
+    with patch("chronovista.api.routers.onboarding.db_manager") as mock_db_manager:
         mock_db_manager.get_session_factory.return_value = fake_session_factory
         # Reset any cached singleton so it picks up our mocked factory
         onboarding_router._onboarding_service = None
@@ -268,7 +266,9 @@ class TestGetOnboardingStatus:
         assert "steps" in data, "Response must include 'steps'"
         assert "is_authenticated" in data, "Response must include 'is_authenticated'"
         assert "data_export_path" in data, "Response must include 'data_export_path'"
-        assert "data_export_detected" in data, "Response must include 'data_export_detected'"
+        assert (
+            "data_export_detected" in data
+        ), "Response must include 'data_export_detected'"
         assert "counts" in data, "Response must include 'counts'"
         assert "active_task" in data, "Response must include 'active_task'"
 
@@ -297,9 +297,9 @@ class TestGetOnboardingStatus:
             response = await async_client.get("/api/v1/onboarding/status")
 
         data = response.json()
-        assert isinstance(data["is_authenticated"], bool), (
-            "is_authenticated must be a bool"
-        )
+        assert isinstance(
+            data["is_authenticated"], bool
+        ), "is_authenticated must be a bool"
 
     async def test_data_export_path_is_string(self, async_client: AsyncClient) -> None:
         """GET /onboarding/status data_export_path field is a string."""
@@ -312,11 +312,13 @@ class TestGetOnboardingStatus:
             response = await async_client.get("/api/v1/onboarding/status")
 
         data = response.json()
-        assert isinstance(data["data_export_path"], str), (
-            "data_export_path must be a string"
-        )
+        assert isinstance(
+            data["data_export_path"], str
+        ), "data_export_path must be a string"
 
-    async def test_data_export_detected_is_bool(self, async_client: AsyncClient) -> None:
+    async def test_data_export_detected_is_bool(
+        self, async_client: AsyncClient
+    ) -> None:
         """GET /onboarding/status data_export_detected field is a boolean."""
         mocked_status = _make_onboarding_status()
         with patch(
@@ -327,9 +329,9 @@ class TestGetOnboardingStatus:
             response = await async_client.get("/api/v1/onboarding/status")
 
         data = response.json()
-        assert isinstance(data["data_export_detected"], bool), (
-            "data_export_detected must be a bool"
-        )
+        assert isinstance(
+            data["data_export_detected"], bool
+        ), "data_export_detected must be a bool"
 
     async def test_counts_has_expected_keys(self, async_client: AsyncClient) -> None:
         """GET /onboarding/status counts object contains all expected keys."""
@@ -343,7 +345,12 @@ class TestGetOnboardingStatus:
 
         counts = response.json()["counts"]
         expected_keys = {
-            "channels", "videos", "playlists", "transcripts", "categories", "canonical_tags"
+            "channels",
+            "videos",
+            "playlists",
+            "transcripts",
+            "categories",
+            "canonical_tags",
         }
         for key in expected_keys:
             assert key in counts, f"counts must include '{key}'"
@@ -361,9 +368,9 @@ class TestGetOnboardingStatus:
             response = await async_client.get("/api/v1/onboarding/status")
 
         data = response.json()
-        assert data["active_task"] is None, (
-            "active_task must be null when no task is running"
-        )
+        assert (
+            data["active_task"] is None
+        ), "active_task must be null when no task is running"
 
     async def test_active_task_is_present_when_task_running(
         self, async_client: AsyncClient
@@ -382,13 +389,17 @@ class TestGetOnboardingStatus:
             response = await async_client.get("/api/v1/onboarding/status")
 
         data = response.json()
-        assert data["active_task"] is not None, (
-            "active_task must be populated when a task is running"
+        assert (
+            data["active_task"] is not None
+        ), "active_task must be populated when a task is running"
+        assert (
+            data["active_task"]["operation_type"] == OperationType.SEED_REFERENCE.value
         )
-        assert data["active_task"]["operation_type"] == OperationType.SEED_REFERENCE.value
         assert data["active_task"]["status"] == TaskStatus.RUNNING.value
 
-    async def test_each_step_has_required_fields(self, async_client: AsyncClient) -> None:
+    async def test_each_step_has_required_fields(
+        self, async_client: AsyncClient
+    ) -> None:
         """Each pipeline step in the response has all required fields."""
         mocked_status = _make_onboarding_status()
         with patch(
@@ -421,11 +432,13 @@ class TestGetOnboardingStatus:
             response = await async_client.get("/api/v1/onboarding/status")
 
         for step in response.json()["steps"]:
-            assert step["status"] in valid_statuses, (
-                f"Step status '{step['status']}' is not a valid PipelineStepStatus"
-            )
+            assert (
+                step["status"] in valid_statuses
+            ), f"Step status '{step['status']}' is not a valid PipelineStepStatus"
 
-    async def test_response_content_type_is_json(self, async_client: AsyncClient) -> None:
+    async def test_response_content_type_is_json(
+        self, async_client: AsyncClient
+    ) -> None:
         """GET /onboarding/status returns JSON content type."""
         mocked_status = _make_onboarding_status()
         with patch(
@@ -470,9 +483,9 @@ class TestCreateTask:
                 json={"operation_type": "seed_reference"},
             )
 
-        assert response.status_code == 201, (
-            f"Expected 201 Created, got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 201
+        ), f"Expected 201 Created, got {response.status_code}: {response.text}"
 
     async def test_create_task_returns_background_task_payload(
         self,
@@ -555,9 +568,9 @@ class TestCreateTask:
             )
 
         data = response.json()
-        assert isinstance(data["id"], str) and len(data["id"]) > 0, (
-            "Task id must be a non-empty string"
-        )
+        assert (
+            isinstance(data["id"], str) and len(data["id"]) > 0
+        ), "Task id must be a non-empty string"
 
     async def test_create_task_invalid_operation_type_returns_422(
         self,
@@ -569,9 +582,9 @@ class TestCreateTask:
             json={"operation_type": "not_a_real_operation"},
         )
         # FastAPI/Pydantic rejects the invalid enum value with a 422
-        assert response.status_code == 422, (
-            f"Expected 422 for invalid operation_type, got {response.status_code}"
-        )
+        assert (
+            response.status_code == 422
+        ), f"Expected 422 for invalid operation_type, got {response.status_code}"
 
     async def test_create_task_missing_body_returns_422(
         self,
@@ -612,9 +625,9 @@ class TestCreateTaskConflict:
                 json={"operation_type": "seed_reference"},
             )
 
-        assert response.status_code == 409, (
-            f"Expected 409 for duplicate operation, got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 409
+        ), f"Expected 409 for duplicate operation, got {response.status_code}: {response.text}"
 
     async def test_duplicate_operation_409_uses_rfc7807_format(
         self,
@@ -634,9 +647,9 @@ class TestCreateTaskConflict:
 
         data = response.json()
         assert "code" in data, "RFC 7807 error must include 'code'"
-        assert data["code"] == "CONFLICT", (
-            f"Expected code=CONFLICT, got {data.get('code')}"
-        )
+        assert (
+            data["code"] == "CONFLICT"
+        ), f"Expected code=CONFLICT, got {data.get('code')}"
 
     async def test_different_operation_types_can_succeed_independently(
         self,
@@ -667,9 +680,9 @@ class TestCreateTaskConflict:
                 json={"operation_type": "normalize_tags"},
             )
 
-        assert response.status_code == 201, (
-            f"Different operation type should succeed, got {response.status_code}"
-        )
+        assert (
+            response.status_code == 201
+        ), f"Different operation type should succeed, got {response.status_code}"
 
 
 # ---------------------------------------------------------------------------
@@ -707,9 +720,9 @@ class TestCreateTaskUnmetPrerequisites:
                 json={"operation_type": "enrich_metadata"},
             )
 
-        assert response.status_code == 422, (
-            f"Expected 422 for unmet prerequisites, got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 422
+        ), f"Expected 422 for unmet prerequisites, got {response.status_code}: {response.text}"
 
     async def test_unmet_prerequisites_422_uses_rfc7807_format(
         self,
@@ -731,9 +744,9 @@ class TestCreateTaskUnmetPrerequisites:
 
         data = response.json()
         assert "code" in data, "RFC 7807 error must include 'code'"
-        assert data["code"] == "VALIDATION_ERROR", (
-            f"Expected code=VALIDATION_ERROR, got {data.get('code')}"
-        )
+        assert (
+            data["code"] == "VALIDATION_ERROR"
+        ), f"Expected code=VALIDATION_ERROR, got {data.get('code')}"
 
     async def test_sync_transcripts_without_videos_returns_422(
         self,
@@ -799,9 +812,9 @@ class TestGetTask:
 
         response = await async_client.get(f"/api/v1/tasks/{task_id}")
 
-        assert response.status_code == 200, (
-            f"Expected 200 for existing task, got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 200
+        ), f"Expected 200 for existing task, got {response.status_code}: {response.text}"
 
     async def test_get_task_returns_matching_task_id(
         self,
@@ -819,9 +832,9 @@ class TestGetTask:
         response = await async_client.get(f"/api/v1/tasks/{task_id}")
 
         data = response.json()
-        assert data["id"] == task_id, (
-            f"Response id '{data['id']}' does not match requested '{task_id}'"
-        )
+        assert (
+            data["id"] == task_id
+        ), f"Response id '{data['id']}' does not match requested '{task_id}'"
 
     async def test_get_task_returns_correct_operation_type(
         self,
@@ -891,17 +904,17 @@ class TestGetTask:
                 json={"operation_type": "seed_reference"},
             )
 
-        assert create_response.status_code == 201, (
-            f"POST /tasks failed: {create_response.text}"
-        )
+        assert (
+            create_response.status_code == 201
+        ), f"POST /tasks failed: {create_response.text}"
         created_data = create_response.json()
         returned_id = created_data["id"]
 
         # Now fetch the created task
         get_response = await async_client.get(f"/api/v1/tasks/{returned_id}")
-        assert get_response.status_code == 200, (
-            f"GET /tasks/{returned_id} failed: {get_response.text}"
-        )
+        assert (
+            get_response.status_code == 200
+        ), f"GET /tasks/{returned_id} failed: {get_response.text}"
         fetched_data = get_response.json()
         assert fetched_data["id"] == returned_id
         assert fetched_data["operation_type"] == "seed_reference"
@@ -921,9 +934,9 @@ class TestGetTaskNotFound:
     ) -> None:
         """GET /tasks/{task_id} returns HTTP 404 for an unknown task ID."""
         response = await async_client.get("/api/v1/tasks/nonexistent-task-id-xyz")
-        assert response.status_code == 404, (
-            f"Expected 404 for missing task, got {response.status_code}"
-        )
+        assert (
+            response.status_code == 404
+        ), f"Expected 404 for missing task, got {response.status_code}"
 
     async def test_missing_task_404_uses_rfc7807_format(
         self,
@@ -933,9 +946,9 @@ class TestGetTaskNotFound:
         response = await async_client.get("/api/v1/tasks/nonexistent-task-id-xyz")
         data = response.json()
         assert "code" in data, "RFC 7807 error must include 'code'"
-        assert data["code"] == "NOT_FOUND", (
-            f"Expected code=NOT_FOUND, got {data.get('code')}"
-        )
+        assert (
+            data["code"] == "NOT_FOUND"
+        ), f"Expected code=NOT_FOUND, got {data.get('code')}"
 
     async def test_missing_task_404_detail_mentions_task(
         self,
@@ -945,9 +958,9 @@ class TestGetTaskNotFound:
         response = await async_client.get("/api/v1/tasks/no-such-task")
         data = response.json()
         # The NotFoundError is raised with resource_type="Task"
-        assert "Task" in data.get("detail", ""), (
-            f"detail should mention 'Task', got: {data.get('detail')}"
-        )
+        assert "Task" in data.get(
+            "detail", ""
+        ), f"detail should mention 'Task', got: {data.get('detail')}"
 
     async def test_random_uuid_task_returns_404(
         self,
@@ -974,9 +987,9 @@ class TestListTasks:
     ) -> None:
         """GET /tasks returns HTTP 200."""
         response = await async_client.get("/api/v1/tasks")
-        assert response.status_code == 200, (
-            f"Expected 200, got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 200
+        ), f"Expected 200, got {response.status_code}: {response.text}"
 
     async def test_list_tasks_response_has_tasks_key(
         self,
@@ -1005,9 +1018,7 @@ class TestListTasks:
         data = response.json()
 
         task_ids = [t["id"] for t in data["tasks"]]
-        assert task_id in task_ids, (
-            f"Expected task '{task_id}' in list, got {task_ids}"
-        )
+        assert task_id in task_ids, f"Expected task '{task_id}' in list, got {task_ids}"
 
     async def test_list_tasks_empty_when_no_tasks_exist(
         self,
@@ -1016,9 +1027,7 @@ class TestListTasks:
         """GET /tasks returns empty tasks list when no tasks have been created."""
         response = await async_client.get("/api/v1/tasks")
         data = response.json()
-        assert data["tasks"] == [], (
-            f"Expected empty tasks list, got {data['tasks']}"
-        )
+        assert data["tasks"] == [], f"Expected empty tasks list, got {data['tasks']}"
 
     async def test_list_tasks_status_filter_returns_matching_tasks(
         self,
@@ -1044,9 +1053,9 @@ class TestListTasks:
 
         task_ids = [t["id"] for t in data["tasks"]]
         assert queued_id in task_ids, "Queued task must appear in filtered results"
-        assert completed_id not in task_ids, (
-            "Completed task must not appear when filtering for queued"
-        )
+        assert (
+            completed_id not in task_ids
+        ), "Completed task must not appear when filtering for queued"
 
     async def test_list_tasks_status_filter_completed(
         self,
@@ -1071,10 +1080,12 @@ class TestListTasks:
         data = response.json()
 
         task_ids = [t["id"] for t in data["tasks"]]
-        assert completed_id in task_ids, "Completed task must appear in filtered results"
-        assert running_id not in task_ids, (
-            "Running task must not appear when filtering for completed"
-        )
+        assert (
+            completed_id in task_ids
+        ), "Completed task must appear in filtered results"
+        assert (
+            running_id not in task_ids
+        ), "Running task must not appear when filtering for completed"
 
     async def test_list_tasks_invalid_status_filter_returns_422(
         self,
@@ -1082,9 +1093,9 @@ class TestListTasks:
     ) -> None:
         """GET /tasks?status=invalid_value returns HTTP 422."""
         response = await async_client.get("/api/v1/tasks?status=not_a_real_status")
-        assert response.status_code == 422, (
-            f"Expected 422 for invalid status filter, got {response.status_code}"
-        )
+        assert (
+            response.status_code == 422
+        ), f"Expected 422 for invalid status filter, got {response.status_code}"
 
     async def test_list_tasks_multiple_tasks_returned(
         self,
@@ -1110,9 +1121,9 @@ class TestListTasks:
 
         returned_ids = [t["id"] for t in data["tasks"]]
         for expected_id in task_ids:
-            assert expected_id in returned_ids, (
-                f"Task '{expected_id}' missing from list response"
-            )
+            assert (
+                expected_id in returned_ids
+            ), f"Task '{expected_id}' missing from list response"
 
     async def test_list_tasks_after_create_via_post(
         self,
@@ -1144,6 +1155,6 @@ class TestListTasks:
         data = list_response.json()
 
         returned_ids = [t["id"] for t in data["tasks"]]
-        assert task_id in returned_ids, (
-            f"Newly created task '{task_id}' not found in list"
-        )
+        assert (
+            task_id in returned_ids
+        ), f"Newly created task '{task_id}' not found in list"

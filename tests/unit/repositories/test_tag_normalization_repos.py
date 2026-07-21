@@ -57,11 +57,15 @@ class TestCanonicalTagRepository:
             video_count=100,
         )
 
-    def test_repository_initialization(self, repository: CanonicalTagRepository) -> None:
+    def test_repository_initialization(
+        self, repository: CanonicalTagRepository
+    ) -> None:
         """Test repository initialization."""
         assert repository.model == CanonicalTagDB
 
-    def test_repository_has_crud_methods(self, repository: CanonicalTagRepository) -> None:
+    def test_repository_has_crud_methods(
+        self, repository: CanonicalTagRepository
+    ) -> None:
         """Test that repository has standard CRUD methods."""
         # Verify repository has expected methods from BaseSQLAlchemyRepository
         assert hasattr(repository, "get")
@@ -270,7 +274,9 @@ class TestNamedEntityRepository:
         """Test repository initialization."""
         assert repository.model == NamedEntityDB
 
-    def test_repository_has_crud_methods(self, repository: NamedEntityRepository) -> None:
+    def test_repository_has_crud_methods(
+        self, repository: NamedEntityRepository
+    ) -> None:
         """Test that repository has standard CRUD methods."""
         assert hasattr(repository, "get")
         assert hasattr(repository, "exists")
@@ -372,7 +378,9 @@ class TestEntityAliasRepository:
         """Test repository initialization."""
         assert repository.model == EntityAliasDB
 
-    def test_repository_has_crud_methods(self, repository: EntityAliasRepository) -> None:
+    def test_repository_has_crud_methods(
+        self, repository: EntityAliasRepository
+    ) -> None:
         """Test that repository has standard CRUD methods."""
         assert hasattr(repository, "get")
         assert hasattr(repository, "exists")

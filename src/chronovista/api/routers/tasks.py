@@ -88,9 +88,7 @@ def _get_onboarding_service() -> OnboardingService:
         If ``configure()`` has not been called.
     """
     if _onboarding_service is None:
-        raise RuntimeError(
-            "OnboardingService not configured; call configure() first"
-        )
+        raise RuntimeError("OnboardingService not configured; call configure() first")
     return _onboarding_service
 
 

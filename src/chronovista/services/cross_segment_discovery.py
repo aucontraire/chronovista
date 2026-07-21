@@ -70,7 +70,9 @@ class CrossSegmentCandidate(BaseModel):
     segment_n_id: int = Field(..., description="PK of the first segment")
     segment_n_text: str = Field(..., description="Effective text of the first segment")
     segment_n1_id: int = Field(..., description="PK of the second segment")
-    segment_n1_text: str = Field(..., description="Effective text of the second segment")
+    segment_n1_text: str = Field(
+        ..., description="Effective text of the second segment"
+    )
     proposed_correction: str = Field(
         ..., description="Corrected form from the source pattern"
     )
@@ -100,26 +102,140 @@ _WORD_BOUNDARY_RE = re.compile(r"\s+")
 # Common English function words.  When BOTH halves of a 2-word alias
 # split consist entirely of stopwords the split is too noisy for
 # cross-segment discovery (e.g. "be out" from "Rick Beato").
-_STOPWORDS: frozenset[str] = frozenset({
-    "a", "an", "the", "and", "or", "but", "not", "no", "so",
-    "is", "am", "are", "was", "were", "be", "been", "being",
-    "have", "has", "had", "do", "does", "did",
-    "will", "would", "shall", "should", "may", "might", "can", "could",
-    "i", "me", "my", "we", "us", "our", "you", "your",
-    "he", "him", "his", "she", "her", "it", "its", "they", "them", "their",
-    "this", "that", "these", "those",
-    "in", "on", "at", "to", "of", "for", "by", "with", "from",
-    "up", "out", "off", "over", "into", "onto", "upon",
-    "if", "then", "than", "as", "while", "when", "where", "how", "what",
-    "who", "whom", "which", "why",
-    "all", "each", "every", "both", "few", "more", "most", "some", "any",
-    "much", "many", "such", "own", "other",
-    "just", "also", "very", "too", "quite", "about", "still",
-    "here", "there", "now", "well", "back",
-    "get", "got", "go", "going", "gone", "come", "came",
-    "make", "made", "take", "took", "put", "let", "say", "said",
-    "know", "think", "see", "look", "want", "give", "use",
-})
+_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "but",
+        "not",
+        "no",
+        "so",
+        "is",
+        "am",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "shall",
+        "should",
+        "may",
+        "might",
+        "can",
+        "could",
+        "i",
+        "me",
+        "my",
+        "we",
+        "us",
+        "our",
+        "you",
+        "your",
+        "he",
+        "him",
+        "his",
+        "she",
+        "her",
+        "it",
+        "its",
+        "they",
+        "them",
+        "their",
+        "this",
+        "that",
+        "these",
+        "those",
+        "in",
+        "on",
+        "at",
+        "to",
+        "of",
+        "for",
+        "by",
+        "with",
+        "from",
+        "up",
+        "out",
+        "off",
+        "over",
+        "into",
+        "onto",
+        "upon",
+        "if",
+        "then",
+        "than",
+        "as",
+        "while",
+        "when",
+        "where",
+        "how",
+        "what",
+        "who",
+        "whom",
+        "which",
+        "why",
+        "all",
+        "each",
+        "every",
+        "both",
+        "few",
+        "more",
+        "most",
+        "some",
+        "any",
+        "much",
+        "many",
+        "such",
+        "own",
+        "other",
+        "just",
+        "also",
+        "very",
+        "too",
+        "quite",
+        "about",
+        "still",
+        "here",
+        "there",
+        "now",
+        "well",
+        "back",
+        "get",
+        "got",
+        "go",
+        "going",
+        "gone",
+        "come",
+        "came",
+        "make",
+        "made",
+        "take",
+        "took",
+        "put",
+        "let",
+        "say",
+        "said",
+        "know",
+        "think",
+        "see",
+        "look",
+        "want",
+        "give",
+        "use",
+    }
+)
 
 
 def _is_stopword_split(prefix: str, suffix: str) -> bool:
@@ -331,9 +447,7 @@ class CrossSegmentDiscovery:
         # Prioritize aliases: 2-word aliases first (more precise), then
         # shorter names.  Limit to 30 to keep query cost reasonable on
         # large segment tables (~1M rows → sequential ILIKE scan).
-        aliases.sort(
-            key=lambda a: (len(a[0].split()), len(a[0]))
-        )
+        aliases.sort(key=lambda a: (len(a[0].split()), len(a[0])))
         max_aliases = 30
         if len(aliases) > max_aliases:
             logger.info(
@@ -390,9 +504,7 @@ class CrossSegmentDiscovery:
             for prefix, suffix, a_name, c_name, e_type in split_entries:
                 if seg_n_text.lower().rstrip().endswith(
                     prefix.lower().rstrip()
-                ) and seg_n1_text.lower().lstrip().startswith(
-                    suffix.lower().lstrip()
-                ):
+                ) and seg_n1_text.lower().lstrip().startswith(suffix.lower().lstrip()):
                     score = self._score_entity_candidate(
                         prefix=prefix,
                         suffix=suffix,
@@ -400,9 +512,7 @@ class CrossSegmentDiscovery:
                         seg_n1_text=seg_n1_text,
                         is_partially_corrected=is_partial,
                         entity_type=e_type,
-                        alias_word_count=len(
-                            _WORD_BOUNDARY_RE.split(a_name)
-                        ),
+                        alias_word_count=len(_WORD_BOUNDARY_RE.split(a_name)),
                     )
                     if score > best_score:
                         best_score = score
@@ -468,9 +578,7 @@ class CrossSegmentDiscovery:
         )
         if entity_name is not None:
             stmt = stmt.where(
-                func.lower(NamedEntityDB.canonical_name).contains(
-                    entity_name.lower()
-                )
+                func.lower(NamedEntityDB.canonical_name).contains(entity_name.lower())
             )
 
         result = await session.execute(stmt)
@@ -746,9 +854,7 @@ class CrossSegmentDiscovery:
                 or entity_lower in p.corrected_text.lower()
             ]
             if not patterns:
-                logger.info(
-                    "No patterns match entity filter '%s'", entity_name
-                )
+                logger.info("No patterns match entity filter '%s'", entity_name)
                 return []
 
         # Collect word-boundary splits across all patterns
@@ -767,9 +873,7 @@ class CrossSegmentDiscovery:
                 split_entries.append((prefix, suffix, pattern))
 
         if not split_entries:
-            logger.info(
-                "No word-boundary splits from %d patterns", len(patterns)
-            )
+            logger.info("No word-boundary splits from %d patterns", len(patterns))
             return []
 
         logger.info(
@@ -803,9 +907,7 @@ class CrossSegmentDiscovery:
             for prefix, suffix, pat in split_entries:
                 if seg_n_text.lower().rstrip().endswith(
                     prefix.lower().rstrip()
-                ) and seg_n1_text.lower().lstrip().startswith(
-                    suffix.lower().lstrip()
-                ):
+                ) and seg_n1_text.lower().lstrip().startswith(suffix.lower().lstrip()):
                     score = self._score_candidate(
                         prefix=prefix,
                         suffix=suffix,
@@ -989,9 +1091,7 @@ class CrossSegmentDiscovery:
 
         return min(score, 1.0)
 
-    async def _get_corrected_segment_ids(
-        self, session: AsyncSession
-    ) -> set[int]:
+    async def _get_corrected_segment_ids(self, session: AsyncSession) -> set[int]:
         """Get IDs of segments that have existing corrections.
 
         Parameters

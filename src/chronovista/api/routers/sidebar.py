@@ -53,7 +53,9 @@ async def get_sidebar_categories(
     video_count_conditions = [Video.category_id == VideoCategory.category_id]
     # Apply availability filter unless include_unavailable is True
     if not include_unavailable:
-        video_count_conditions.append(Video.availability_status == AvailabilityStatus.AVAILABLE)
+        video_count_conditions.append(
+            Video.availability_status == AvailabilityStatus.AVAILABLE
+        )
 
     video_count_subq = (
         select(func.count(Video.video_id))
@@ -67,7 +69,9 @@ async def get_sidebar_categories(
         VideoCategory.category_id,
         VideoCategory.name,
         video_count_subq.label("video_count"),
-    ).where(video_count_subq > 0)  # Only include categories with videos
+    ).where(
+        video_count_subq > 0
+    )  # Only include categories with videos
 
     # Order by video count descending
     query = query.order_by(video_count_subq.desc())

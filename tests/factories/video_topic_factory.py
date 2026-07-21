@@ -30,7 +30,9 @@ class VideoTopicBaseFactory(factory.Factory[VideoTopicBase]):
         model = VideoTopicBase
 
     video_id: Any = Faker("lexify", text="???????????")  # 11-char YouTube ID pattern
-    topic_id: Any = Faker("lexify", text="topic_????????????????")  # Valid topic ID pattern
+    topic_id: Any = Faker(
+        "lexify", text="topic_????????????????"
+    )  # Valid topic ID pattern
     relevance_type: Any = Faker(
         "random_element", elements=["primary", "relevant", "suggested"]
     )

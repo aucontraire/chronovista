@@ -130,9 +130,7 @@ class TestSyncChannelCommand:
         # Mock database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ]
+        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
         # Mock repository methods
         mock_channel_repo.exists = AsyncMock(return_value=False)
@@ -185,9 +183,7 @@ class TestSyncChannelCommand:
         # Mock database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ]
+        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
         # Mock topic exists check
         mock_topic_category_repo.exists = AsyncMock(return_value=True)
@@ -227,9 +223,7 @@ class TestSyncPlaylistsCommand:
         # Mock database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ]
+        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
         # Mock repository methods
         mock_playlist_repo.exists = AsyncMock(return_value=False)
@@ -351,15 +345,11 @@ class TestSyncTopicsCommand:
         # Mock database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ]
+        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
         # Mock repository methods
         mock_topic_category_repo.exists = AsyncMock(return_value=False)
-        mock_topic_category_repo.create_or_update = AsyncMock(
-            return_value=MagicMock()
-        )
+        mock_topic_category_repo.create_or_update = AsyncMock(return_value=MagicMock())
 
         # Execute command
         runner.invoke(app, ["sync", "topics"])
@@ -398,9 +388,7 @@ class TestSyncLikedCommand:
         mock_user_video_repo = AsyncMock()
 
         mock_container.create_video_repository.return_value = mock_video_repo
-        mock_container.create_user_video_repository.return_value = (
-            mock_user_video_repo
-        )
+        mock_container.create_user_video_repository.return_value = mock_user_video_repo
 
         # Mock YouTube service
         mock_youtube_service.get_my_channel = AsyncMock(
@@ -449,9 +437,7 @@ class TestSyncLikedCommand:
         mock_user_video_repo = AsyncMock()
 
         mock_container.create_video_repository.return_value = mock_video_repo
-        mock_container.create_user_video_repository.return_value = (
-            mock_user_video_repo
-        )
+        mock_container.create_user_video_repository.return_value = mock_user_video_repo
 
         # Mock YouTube service
         mock_youtube_service.get_my_channel = AsyncMock(
@@ -464,9 +450,7 @@ class TestSyncLikedCommand:
         # Mock database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ]
+        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
         # Mock repository methods
         mock_video_repo.exists = AsyncMock(return_value=True)
@@ -521,15 +505,11 @@ class TestSyncAllCommand:
         # Mock database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ]
+        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
         # Mock repository methods
         mock_topic_category_repo.exists = AsyncMock(return_value=False)
-        mock_topic_category_repo.create_or_update = AsyncMock(
-            return_value=MagicMock()
-        )
+        mock_topic_category_repo.create_or_update = AsyncMock(return_value=MagicMock())
 
         # Execute command
         runner.invoke(app, ["sync", "all"])
@@ -560,16 +540,12 @@ class TestProcessWatchHistoryBatch:
 
         mock_container.create_channel_repository.return_value = mock_channel_repo
         mock_container.create_video_repository.return_value = mock_video_repo
-        mock_container.create_user_video_repository.return_value = (
-            mock_user_video_repo
-        )
+        mock_container.create_user_video_repository.return_value = mock_user_video_repo
 
         # Mock database session
         mock_session = AsyncMock()
         mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ]
+        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
 
         # Mock repository methods
         mock_channel_repo.get_by_channel_id = AsyncMock(return_value=None)

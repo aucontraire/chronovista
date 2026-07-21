@@ -27,6 +27,7 @@ from chronovista.services.enrichment.enrichment_service import EnrichmentService
 
 # CRITICAL: This line ensures async tests work with coverage
 
+
 class TestVideoMultiCycleConfirmation:
     """Tests for video multi-cycle unavailability confirmation (FR-024, FR-026)."""
 
@@ -80,12 +81,12 @@ class TestVideoMultiCycleConfirmation:
 
         # Verify first cycle behavior
         assert confirmed is False, "First cycle should return False (not confirmed)"
-        assert mock_video.unavailability_first_detected is not None, (
-            "First cycle should set unavailability_first_detected timestamp"
-        )
-        assert mock_video.availability_status == AvailabilityStatus.AVAILABLE, (
-            "First cycle should NOT change availability_status"
-        )
+        assert (
+            mock_video.unavailability_first_detected is not None
+        ), "First cycle should set unavailability_first_detected timestamp"
+        assert (
+            mock_video.availability_status == AvailabilityStatus.AVAILABLE
+        ), "First cycle should NOT change availability_status"
 
     async def test_second_consecutive_empty_response_confirms_unavailable(
         self, service: EnrichmentService, mock_session: AsyncMock
@@ -113,12 +114,12 @@ class TestVideoMultiCycleConfirmation:
 
         # Verify second cycle behavior
         assert confirmed is True, "Second cycle should return True (confirmed)"
-        assert mock_video.availability_status == AvailabilityStatus.UNAVAILABLE, (
-            "Second cycle should change availability_status to UNAVAILABLE"
-        )
-        assert mock_video.unavailability_first_detected is None, (
-            "Second cycle should clear unavailability_first_detected"
-        )
+        assert (
+            mock_video.availability_status == AvailabilityStatus.UNAVAILABLE
+        ), "Second cycle should change availability_status to UNAVAILABLE"
+        assert (
+            mock_video.unavailability_first_detected is None
+        ), "Second cycle should clear unavailability_first_detected"
 
     async def test_successful_api_response_after_first_empty_clears_flag(
         self, service: EnrichmentService, mock_session: AsyncMock
@@ -168,20 +169,24 @@ class TestVideoMultiCycleConfirmation:
         )
 
         # Mock the enrichment flow
-        with patch.object(
-            service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            service.youtube_service,
-            "fetch_videos_batched",
-            new=AsyncMock(return_value=([api_response], set())),
-        ), patch.object(
-            service.video_repository,
-            "get",
-            new=AsyncMock(return_value=mock_video),
-        ), patch.object(
-            service.channel_repository, "get", new=AsyncMock(return_value=None)
-        ), patch.object(
-            service.channel_repository, "create", new=AsyncMock()
+        with (
+            patch.object(
+                service, "_get_videos_for_enrichment", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
+                service.youtube_service,
+                "fetch_videos_batched",
+                new=AsyncMock(return_value=([api_response], set())),
+            ),
+            patch.object(
+                service.video_repository,
+                "get",
+                new=AsyncMock(return_value=mock_video),
+            ),
+            patch.object(
+                service.channel_repository, "get", new=AsyncMock(return_value=None)
+            ),
+            patch.object(service.channel_repository, "create", new=AsyncMock()),
         ):
             mock_get.return_value = [mock_video]
 
@@ -191,12 +196,12 @@ class TestVideoMultiCycleConfirmation:
             )
 
             # Verify transient error recovery
-            assert mock_video.unavailability_first_detected is None, (
-                "Successful API response should clear unavailability_first_detected"
-            )
-            assert mock_video.availability_status == AvailabilityStatus.AVAILABLE, (
-                "Transient error should not change availability_status"
-            )
+            assert (
+                mock_video.unavailability_first_detected is None
+            ), "Successful API response should clear unavailability_first_detected"
+            assert (
+                mock_video.availability_status == AvailabilityStatus.AVAILABLE
+            ), "Transient error should not change availability_status"
             assert report.summary.videos_updated == 1, "Video should be updated"
             assert report.summary.videos_deleted == 0, "Video should NOT be deleted"
 
@@ -246,20 +251,24 @@ class TestVideoMultiCycleConfirmation:
         )
 
         # Mock the enrichment flow
-        with patch.object(
-            service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            service.youtube_service,
-            "fetch_videos_batched",
-            new=AsyncMock(return_value=([api_response], set())),
-        ), patch.object(
-            service.video_repository,
-            "get",
-            new=AsyncMock(return_value=mock_video),
-        ), patch.object(
-            service.channel_repository, "get", new=AsyncMock(return_value=None)
-        ), patch.object(
-            service.channel_repository, "create", new=AsyncMock()
+        with (
+            patch.object(
+                service, "_get_videos_for_enrichment", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
+                service.youtube_service,
+                "fetch_videos_batched",
+                new=AsyncMock(return_value=([api_response], set())),
+            ),
+            patch.object(
+                service.video_repository,
+                "get",
+                new=AsyncMock(return_value=mock_video),
+            ),
+            patch.object(
+                service.channel_repository, "get", new=AsyncMock(return_value=None)
+            ),
+            patch.object(service.channel_repository, "create", new=AsyncMock()),
         ):
             mock_get.return_value = [mock_video]
 
@@ -269,12 +278,12 @@ class TestVideoMultiCycleConfirmation:
             )
 
             # Verify normal enrichment behavior
-            assert mock_video.unavailability_first_detected is None, (
-                "Normal enrichment should NOT set unavailability_first_detected"
-            )
-            assert mock_video.availability_status == AvailabilityStatus.AVAILABLE, (
-                "Normal enrichment should keep availability_status as AVAILABLE"
-            )
+            assert (
+                mock_video.unavailability_first_detected is None
+            ), "Normal enrichment should NOT set unavailability_first_detected"
+            assert (
+                mock_video.availability_status == AvailabilityStatus.AVAILABLE
+            ), "Normal enrichment should keep availability_status as AVAILABLE"
             assert report.summary.videos_updated == 1, "Video should be updated"
             assert report.summary.videos_deleted == 0, "Video should NOT be deleted"
 
@@ -327,32 +336,36 @@ class TestChannelMultiCycleConfirmation:
         mock_channel.unavailability_first_detected = None
 
         # Mock the channel enrichment flow (channel not found on API)
-        with patch.object(
-            service.youtube_service,
-            "get_channel_details",
-            new=AsyncMock(return_value=[]),  # Empty list = channel not found
-        ), patch.object(
-            service.channel_repository,
-            "get_channels_needing_enrichment",
-            new=AsyncMock(return_value=[mock_channel]),
-        ), patch.object(
-            service.channel_repository,
-            "get",
-            new=AsyncMock(return_value=mock_channel),
+        with (
+            patch.object(
+                service.youtube_service,
+                "get_channel_details",
+                new=AsyncMock(return_value=[]),  # Empty list = channel not found
+            ),
+            patch.object(
+                service.channel_repository,
+                "get_channels_needing_enrichment",
+                new=AsyncMock(return_value=[mock_channel]),
+            ),
+            patch.object(
+                service.channel_repository,
+                "get",
+                new=AsyncMock(return_value=mock_channel),
+            ),
         ):
             # Enrich channels (first cycle)
             result = await service.enrich_channels(mock_session, verbose=True)
 
             # Verify first cycle behavior
-            assert mock_channel.unavailability_first_detected is not None, (
-                "First cycle should set unavailability_first_detected timestamp"
-            )
-            assert mock_channel.availability_status == AvailabilityStatus.AVAILABLE, (
-                "First cycle should NOT change availability_status"
-            )
-            assert result.channels_skipped == 1, (
-                "Channel should be skipped in first cycle"
-            )
+            assert (
+                mock_channel.unavailability_first_detected is not None
+            ), "First cycle should set unavailability_first_detected timestamp"
+            assert (
+                mock_channel.availability_status == AvailabilityStatus.AVAILABLE
+            ), "First cycle should NOT change availability_status"
+            assert (
+                result.channels_skipped == 1
+            ), "Channel should be skipped in first cycle"
 
     async def test_second_consecutive_empty_response_confirms_channel_unavailable(
         self, service: EnrichmentService, mock_session: AsyncMock
@@ -374,32 +387,36 @@ class TestChannelMultiCycleConfirmation:
         mock_channel.unavailability_first_detected = first_detection_time
 
         # Mock the channel enrichment flow (channel still not found on API)
-        with patch.object(
-            service.youtube_service,
-            "get_channel_details",
-            new=AsyncMock(return_value=[]),  # Empty list = channel not found again
-        ), patch.object(
-            service.channel_repository,
-            "get_channels_needing_enrichment",
-            new=AsyncMock(return_value=[mock_channel]),
-        ), patch.object(
-            service.channel_repository,
-            "get",
-            new=AsyncMock(return_value=mock_channel),
+        with (
+            patch.object(
+                service.youtube_service,
+                "get_channel_details",
+                new=AsyncMock(return_value=[]),  # Empty list = channel not found again
+            ),
+            patch.object(
+                service.channel_repository,
+                "get_channels_needing_enrichment",
+                new=AsyncMock(return_value=[mock_channel]),
+            ),
+            patch.object(
+                service.channel_repository,
+                "get",
+                new=AsyncMock(return_value=mock_channel),
+            ),
         ):
             # Enrich channels (second cycle)
             result = await service.enrich_channels(mock_session, verbose=True)
 
             # Verify second cycle behavior
-            assert mock_channel.availability_status == AvailabilityStatus.UNAVAILABLE, (
-                "Second cycle should change availability_status to UNAVAILABLE"
-            )
-            assert mock_channel.unavailability_first_detected is None, (
-                "Second cycle should clear unavailability_first_detected"
-            )
-            assert result.channels_skipped == 1, (
-                "Channel should be skipped in second cycle"
-            )
+            assert (
+                mock_channel.availability_status == AvailabilityStatus.UNAVAILABLE
+            ), "Second cycle should change availability_status to UNAVAILABLE"
+            assert (
+                mock_channel.unavailability_first_detected is None
+            ), "Second cycle should clear unavailability_first_detected"
+            assert (
+                result.channels_skipped == 1
+            ), "Channel should be skipped in second cycle"
 
     async def test_successful_api_response_clears_channel_flag(
         self, service: EnrichmentService, mock_session: AsyncMock
@@ -447,29 +464,33 @@ class TestChannelMultiCycleConfirmation:
         )
 
         # Mock the channel enrichment flow (channel found)
-        with patch.object(
-            service.youtube_service,
-            "get_channel_details",
-            new=AsyncMock(return_value=[api_response]),
-        ), patch.object(
-            service.channel_repository,
-            "get_channels_needing_enrichment",
-            new=AsyncMock(return_value=[mock_channel]),
-        ), patch.object(
-            service.channel_repository,
-            "get",
-            new=AsyncMock(return_value=mock_channel),
+        with (
+            patch.object(
+                service.youtube_service,
+                "get_channel_details",
+                new=AsyncMock(return_value=[api_response]),
+            ),
+            patch.object(
+                service.channel_repository,
+                "get_channels_needing_enrichment",
+                new=AsyncMock(return_value=[mock_channel]),
+            ),
+            patch.object(
+                service.channel_repository,
+                "get",
+                new=AsyncMock(return_value=mock_channel),
+            ),
         ):
             # Enrich channels (should clear the flag)
             result = await service.enrich_channels(mock_session, verbose=True)
 
             # Verify transient error recovery
-            assert mock_channel.unavailability_first_detected is None, (
-                "Successful API response should clear unavailability_first_detected"
-            )
-            assert mock_channel.availability_status == AvailabilityStatus.AVAILABLE, (
-                "Transient error should not change availability_status"
-            )
+            assert (
+                mock_channel.unavailability_first_detected is None
+            ), "Successful API response should clear unavailability_first_detected"
+            assert (
+                mock_channel.availability_status == AvailabilityStatus.AVAILABLE
+            ), "Transient error should not change availability_status"
             assert result.channels_enriched == 1, "Channel should be enriched"
 
 
@@ -550,20 +571,24 @@ class TestRestorationBehavior:
         )
 
         # Mock the enrichment flow
-        with patch.object(
-            service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            service.youtube_service,
-            "fetch_videos_batched",
-            new=AsyncMock(return_value=([api_response], set())),
-        ), patch.object(
-            service.video_repository,
-            "get",
-            new=AsyncMock(return_value=mock_video),
-        ), patch.object(
-            service.channel_repository, "get", new=AsyncMock(return_value=None)
-        ), patch.object(
-            service.channel_repository, "create", new=AsyncMock()
+        with (
+            patch.object(
+                service, "_get_videos_for_enrichment", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
+                service.youtube_service,
+                "fetch_videos_batched",
+                new=AsyncMock(return_value=([api_response], set())),
+            ),
+            patch.object(
+                service.video_repository,
+                "get",
+                new=AsyncMock(return_value=mock_video),
+            ),
+            patch.object(
+                service.channel_repository, "get", new=AsyncMock(return_value=None)
+            ),
+            patch.object(service.channel_repository, "create", new=AsyncMock()),
         ):
             mock_get.return_value = [mock_video]
 
@@ -573,21 +598,21 @@ class TestRestorationBehavior:
             )
 
             # Verify restoration behavior
-            assert mock_video.availability_status == AvailabilityStatus.AVAILABLE, (
-                "Restored video should have availability_status=AVAILABLE"
-            )
-            assert mock_video.recovered_at is not None, (
-                "Restored video should have recovered_at timestamp set"
-            )
-            assert mock_video.recovery_source == "sync", (
-                "Restored video should have recovery_source='sync'"
-            )
-            assert mock_video.unavailability_first_detected is None, (
-                "Restored video should have unavailability_first_detected cleared"
-            )
-            assert mock_video.title == "Restored Video", (
-                "Restored video should have updated metadata"
-            )
+            assert (
+                mock_video.availability_status == AvailabilityStatus.AVAILABLE
+            ), "Restored video should have availability_status=AVAILABLE"
+            assert (
+                mock_video.recovered_at is not None
+            ), "Restored video should have recovered_at timestamp set"
+            assert (
+                mock_video.recovery_source == "sync"
+            ), "Restored video should have recovery_source='sync'"
+            assert (
+                mock_video.unavailability_first_detected is None
+            ), "Restored video should have unavailability_first_detected cleared"
+            assert (
+                mock_video.title == "Restored Video"
+            ), "Restored video should have updated metadata"
             assert report.summary.videos_updated == 1, "Video should be updated"
             assert report.summary.videos_deleted == 0, "Video should NOT be deleted"
 
@@ -615,7 +640,9 @@ class TestRestorationBehavior:
         mock_channel.channel_id = "UCrestoredChannel"
         mock_channel.title = "Old Channel Title"
         mock_channel.availability_status = AvailabilityStatus.UNAVAILABLE
-        mock_channel.unavailability_first_detected = None  # Already confirmed unavailable
+        mock_channel.unavailability_first_detected = (
+            None  # Already confirmed unavailable
+        )
         mock_channel.recovered_at = None
         mock_channel.recovery_source = None
 
@@ -637,38 +664,42 @@ class TestRestorationBehavior:
         )
 
         # Mock the channel enrichment flow
-        with patch.object(
-            service.youtube_service,
-            "get_channel_details",
-            new=AsyncMock(return_value=[api_response]),
-        ), patch.object(
-            service.channel_repository,
-            "get_channels_needing_enrichment",
-            new=AsyncMock(return_value=[mock_channel]),
-        ), patch.object(
-            service.channel_repository,
-            "get",
-            new=AsyncMock(return_value=mock_channel),
+        with (
+            patch.object(
+                service.youtube_service,
+                "get_channel_details",
+                new=AsyncMock(return_value=[api_response]),
+            ),
+            patch.object(
+                service.channel_repository,
+                "get_channels_needing_enrichment",
+                new=AsyncMock(return_value=[mock_channel]),
+            ),
+            patch.object(
+                service.channel_repository,
+                "get",
+                new=AsyncMock(return_value=mock_channel),
+            ),
         ):
             # Enrich channels
             result = await service.enrich_channels(mock_session, verbose=True)
 
             # Verify restoration behavior
-            assert mock_channel.availability_status == AvailabilityStatus.AVAILABLE, (
-                "Restored channel should have availability_status=AVAILABLE"
-            )
-            assert mock_channel.recovered_at is not None, (
-                "Restored channel should have recovered_at timestamp set"
-            )
-            assert mock_channel.recovery_source == "sync", (
-                "Restored channel should have recovery_source='sync'"
-            )
-            assert mock_channel.unavailability_first_detected is None, (
-                "Restored channel should have unavailability_first_detected cleared"
-            )
-            assert mock_channel.title == "Restored Channel Title", (
-                "Restored channel should have updated metadata"
-            )
+            assert (
+                mock_channel.availability_status == AvailabilityStatus.AVAILABLE
+            ), "Restored channel should have availability_status=AVAILABLE"
+            assert (
+                mock_channel.recovered_at is not None
+            ), "Restored channel should have recovered_at timestamp set"
+            assert (
+                mock_channel.recovery_source == "sync"
+            ), "Restored channel should have recovery_source='sync'"
+            assert (
+                mock_channel.unavailability_first_detected is None
+            ), "Restored channel should have unavailability_first_detected cleared"
+            assert (
+                mock_channel.title == "Restored Channel Title"
+            ), "Restored channel should have updated metadata"
             assert result.channels_enriched == 1, "Channel should be enriched"
 
     async def test_restoration_clears_unavailability_first_detected(
@@ -721,20 +752,24 @@ class TestRestorationBehavior:
         )
 
         # Mock the enrichment flow
-        with patch.object(
-            service, "_get_videos_for_enrichment", new_callable=AsyncMock
-        ) as mock_get, patch.object(
-            service.youtube_service,
-            "fetch_videos_batched",
-            new=AsyncMock(return_value=([api_response], set())),
-        ), patch.object(
-            service.video_repository,
-            "get",
-            new=AsyncMock(return_value=mock_video),
-        ), patch.object(
-            service.channel_repository, "get", new=AsyncMock(return_value=None)
-        ), patch.object(
-            service.channel_repository, "create", new=AsyncMock()
+        with (
+            patch.object(
+                service, "_get_videos_for_enrichment", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(
+                service.youtube_service,
+                "fetch_videos_batched",
+                new=AsyncMock(return_value=([api_response], set())),
+            ),
+            patch.object(
+                service.video_repository,
+                "get",
+                new=AsyncMock(return_value=mock_video),
+            ),
+            patch.object(
+                service.channel_repository, "get", new=AsyncMock(return_value=None)
+            ),
+            patch.object(service.channel_repository, "create", new=AsyncMock()),
         ):
             mock_get.return_value = [mock_video]
 
@@ -744,18 +779,18 @@ class TestRestorationBehavior:
             )
 
             # Verify that BOTH restoration AND flag clearing happened
-            assert mock_video.availability_status == AvailabilityStatus.AVAILABLE, (
-                "Restoration should set availability_status=AVAILABLE"
-            )
-            assert mock_video.unavailability_first_detected is None, (
-                "Restoration should clear unavailability_first_detected flag"
-            )
-            assert mock_video.recovered_at is not None, (
-                "Restoration should set recovered_at"
-            )
-            assert mock_video.recovery_source == "sync", (
-                "Restoration should set recovery_source='sync'"
-            )
+            assert (
+                mock_video.availability_status == AvailabilityStatus.AVAILABLE
+            ), "Restoration should set availability_status=AVAILABLE"
+            assert (
+                mock_video.unavailability_first_detected is None
+            ), "Restoration should clear unavailability_first_detected flag"
+            assert (
+                mock_video.recovered_at is not None
+            ), "Restoration should set recovered_at"
+            assert (
+                mock_video.recovery_source == "sync"
+            ), "Restoration should set recovery_source='sync'"
 
 
 class TestDryRunBehavior:
@@ -811,12 +846,12 @@ class TestDryRunBehavior:
 
         # Verify dry run behavior (no changes)
         assert confirmed is False, "Dry run should return False"
-        assert mock_video.unavailability_first_detected is None, (
-            "Dry run should NOT set unavailability_first_detected"
-        )
-        assert mock_video.availability_status == AvailabilityStatus.AVAILABLE, (
-            "Dry run should NOT change availability_status"
-        )
+        assert (
+            mock_video.unavailability_first_detected is None
+        ), "Dry run should NOT set unavailability_first_detected"
+        assert (
+            mock_video.availability_status == AvailabilityStatus.AVAILABLE
+        ), "Dry run should NOT change availability_status"
 
     async def test_dry_run_does_not_confirm_unavailable(
         self, service: EnrichmentService, mock_session: AsyncMock
@@ -843,9 +878,9 @@ class TestDryRunBehavior:
 
         # Verify dry run behavior (no changes, even in second cycle)
         assert confirmed is False, "Dry run should return False"
-        assert mock_video.availability_status == AvailabilityStatus.AVAILABLE, (
-            "Dry run should NOT change availability_status"
-        )
-        assert mock_video.unavailability_first_detected == first_detection_time, (
-            "Dry run should NOT clear unavailability_first_detected"
-        )
+        assert (
+            mock_video.availability_status == AvailabilityStatus.AVAILABLE
+        ), "Dry run should NOT change availability_status"
+        assert (
+            mock_video.unavailability_first_detected == first_detection_time
+        ), "Dry run should NOT clear unavailability_first_detected"

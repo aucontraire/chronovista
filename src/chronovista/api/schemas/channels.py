@@ -85,8 +85,12 @@ class ChannelDetail(ChannelListItem):
     country: str | None = Field(None, description="Country code (ISO 3166-1)")
     created_at: datetime = Field(..., description="Record creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
-    recovered_at: datetime | None = Field(None, description="Timestamp when metadata was recovered via Wayback Machine")
-    recovery_source: str | None = Field(None, description="Source used for metadata recovery (e.g., wayback_machine)")
+    recovered_at: datetime | None = Field(
+        None, description="Timestamp when metadata was recovered via Wayback Machine"
+    )
+    recovery_source: str | None = Field(
+        None, description="Source used for metadata recovery (e.g., wayback_machine)"
+    )
 
 
 class ChannelListResponse(BaseModel):

@@ -281,16 +281,10 @@ class TestUserVideoRepository:
         sample_user_videos_list: list[UserVideoDB],
     ):
         """Test searching user videos with filters."""
-        filters = UserVideoSearchFilters(
-            user_ids=["test_user"], liked_only=True
-        )
+        filters = UserVideoSearchFilters(user_ids=["test_user"], liked_only=True)
 
         # Filter results
-        filtered_videos = [
-            v
-            for v in sample_user_videos_list
-            if v.liked
-        ]
+        filtered_videos = [v for v in sample_user_videos_list if v.liked]
 
         mock_result = MagicMock()
         mock_scalars = MagicMock()
@@ -511,9 +505,7 @@ class TestUserVideoRepository:
                 "get_by_composite_key",
                 side_effect=[None, sample_user_video_db],
             ),
-            patch.object(
-                repository, "create", return_value=sample_user_video_db
-            ),
+            patch.object(repository, "create", return_value=sample_user_video_db),
         ):
 
             result = await repository.import_from_takeout_batch(
@@ -911,9 +903,7 @@ class TestGoogleTakeoutIntegration:
         assert result is not None
         assert result.user_id == "test_user"
         assert result.video_id == "dQw4w9WgXcQ"
-        assert result.watched_at == datetime(
-            2025, 1, 15, 10, 30, 0, tzinfo=UTC
-        )
+        assert result.watched_at == datetime(2025, 1, 15, 10, 30, 0, tzinfo=UTC)
         assert result.rewatch_count == 0
 
     def test_takeout_item_invalid_video_id(self):
@@ -996,9 +986,7 @@ class TestGoogleTakeoutIntegration:
             existing_video,  # jNQXAC9IVRw - found second time
         ]
         with (
-            patch.object(
-                repository, "get_by_composite_key", side_effect=get_calls
-            ),
+            patch.object(repository, "get_by_composite_key", side_effect=get_calls),
             patch.object(repository, "create", return_value=MagicMock()),
         ):
 
@@ -1173,9 +1161,7 @@ class TestUserVideoRepositoryRecordLike:
         )
 
         with (
-            patch.object(
-                repository, "get_by_composite_key", return_value=None
-            ),
+            patch.object(repository, "get_by_composite_key", return_value=None),
             patch.object(
                 repository, "create", return_value=new_interaction
             ) as mock_create,

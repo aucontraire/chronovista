@@ -638,7 +638,9 @@ class Container:
         """
         ctx = _request_context.get()
         if ctx is None:
-            raise RuntimeError("No request context - call from API route with request_scope")
+            raise RuntimeError(
+                "No request context - call from API route with request_scope"
+            )
         return ctx
 
 

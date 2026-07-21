@@ -89,9 +89,12 @@ class TestFindReplaceCommand:
             correction_app,
             [
                 "find-replace",
-                "--pattern", "foo",
-                "--replacement", "bar",
-                "--correction-type", "not_a_type",
+                "--pattern",
+                "foo",
+                "--replacement",
+                "bar",
+                "--correction-type",
+                "not_a_type",
                 "--dry-run",
             ],
         )
@@ -106,8 +109,10 @@ class TestFindReplaceCommand:
             correction_app,
             [
                 "find-replace",
-                "--pattern", "[invalid",
-                "--replacement", "bar",
+                "--pattern",
+                "[invalid",
+                "--replacement",
+                "bar",
                 "--regex",
                 "--dry-run",
             ],
@@ -124,19 +129,29 @@ class TestFindReplaceCommand:
             correction_app,
             [
                 "find-replace",
-                "--pattern", "hello",
-                "--replacement", "world",
+                "--pattern",
+                "hello",
+                "--replacement",
+                "world",
                 "--regex",
                 "--case-insensitive",
-                "--language", "en",
-                "--channel", "UC123",
-                "--video-id", "vid1",
-                "--video-id", "vid2",
-                "--correction-type", "spelling",
-                "--correction-note", "bulk fix",
-                "--batch-size", "50",
+                "--language",
+                "en",
+                "--channel",
+                "UC123",
+                "--video-id",
+                "vid1",
+                "--video-id",
+                "vid2",
+                "--correction-type",
+                "spelling",
+                "--correction-note",
+                "bulk fix",
+                "--batch-size",
+                "50",
                 "--dry-run",
-                "--limit", "10",
+                "--limit",
+                "10",
             ],
         )
         # asyncio.run is mocked so no actual work is done
@@ -151,6 +166,7 @@ class TestFindReplaceCommand:
         self, mock_asyncio: MagicMock, runner: CliRunner
     ) -> None:
         """Test dry-run displays Rich preview table and summary line."""
+
         async def _fake_run() -> None:
             pass
 
@@ -163,8 +179,10 @@ class TestFindReplaceCommand:
             correction_app,
             [
                 "find-replace",
-                "--pattern", "quick",
-                "--replacement", "slow",
+                "--pattern",
+                "quick",
+                "--replacement",
+                "slow",
                 "--dry-run",
             ],
         )
@@ -172,9 +190,7 @@ class TestFindReplaceCommand:
         assert result.exit_code == 0
 
     @patch("chronovista.cli.correction_commands.db_manager")
-    def test_dry_run_zero_matches(
-        self, mock_db: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_dry_run_zero_matches(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test dry-run with zero matches prints appropriate message."""
         mock_session = AsyncMock()
 
@@ -194,8 +210,10 @@ class TestFindReplaceCommand:
                 correction_app,
                 [
                     "find-replace",
-                    "--pattern", "nonexistent",
-                    "--replacement", "bar",
+                    "--pattern",
+                    "nonexistent",
+                    "--replacement",
+                    "bar",
                     "--dry-run",
                 ],
             )
@@ -224,16 +242,16 @@ class TestFindReplaceCommand:
         ) as mock_service_cls:
             mock_svc_instance = MagicMock()
             mock_service_cls.return_value = mock_svc_instance
-            mock_svc_instance.find_and_replace = AsyncMock(
-                return_value=previews
-            )
+            mock_svc_instance.find_and_replace = AsyncMock(return_value=previews)
 
             result = runner.invoke(
                 correction_app,
                 [
                     "find-replace",
-                    "--pattern", "quick",
-                    "--replacement", "slow",
+                    "--pattern",
+                    "quick",
+                    "--replacement",
+                    "slow",
                     "--dry-run",
                 ],
             )
@@ -267,18 +285,19 @@ class TestFindReplaceCommand:
         ) as mock_service_cls:
             mock_svc_instance = MagicMock()
             mock_service_cls.return_value = mock_svc_instance
-            mock_svc_instance.find_and_replace = AsyncMock(
-                return_value=previews
-            )
+            mock_svc_instance.find_and_replace = AsyncMock(return_value=previews)
 
             result = runner.invoke(
                 correction_app,
                 [
                     "find-replace",
-                    "--pattern", "old",
-                    "--replacement", "new",
+                    "--pattern",
+                    "old",
+                    "--replacement",
+                    "new",
                     "--dry-run",
-                    "--limit", "3",
+                    "--limit",
+                    "3",
                 ],
             )
             assert result.exit_code == 0
@@ -310,16 +329,16 @@ class TestFindReplaceCommand:
         ) as mock_service_cls:
             mock_svc_instance = MagicMock()
             mock_service_cls.return_value = mock_svc_instance
-            mock_svc_instance.find_and_replace = AsyncMock(
-                return_value=previews
-            )
+            mock_svc_instance.find_and_replace = AsyncMock(return_value=previews)
 
             result = runner.invoke(
                 correction_app,
                 [
                     "find-replace",
-                    "--pattern", "old",
-                    "--replacement", "new",
+                    "--pattern",
+                    "old",
+                    "--replacement",
+                    "new",
                 ],
                 input="n\n",
             )
@@ -366,8 +385,10 @@ class TestFindReplaceCommand:
                 correction_app,
                 [
                     "find-replace",
-                    "--pattern", "old",
-                    "--replacement", "new",
+                    "--pattern",
+                    "old",
+                    "--replacement",
+                    "new",
                     "--yes",
                 ],
             )
@@ -381,9 +402,7 @@ class TestFindReplaceCommand:
     # ------------------------------------------------------------------
 
     @patch("chronovista.cli.correction_commands.db_manager")
-    def test_summary_table_content(
-        self, mock_db: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_summary_table_content(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test that the summary table contains expected metrics."""
         mock_session = AsyncMock()
 
@@ -416,8 +435,10 @@ class TestFindReplaceCommand:
                 correction_app,
                 [
                     "find-replace",
-                    "--pattern", "old",
-                    "--replacement", "new",
+                    "--pattern",
+                    "old",
+                    "--replacement",
+                    "new",
                     "--yes",
                 ],
             )
@@ -465,8 +486,10 @@ class TestFindReplaceCommand:
                 correction_app,
                 [
                     "find-replace",
-                    "--pattern", "old",
-                    "--replacement", "new",
+                    "--pattern",
+                    "old",
+                    "--replacement",
+                    "new",
                     "--yes",
                 ],
             )
@@ -474,9 +497,7 @@ class TestFindReplaceCommand:
             assert "Failed batches" in result.stdout
 
     @patch("chronovista.cli.correction_commands.db_manager")
-    def test_live_zero_matches(
-        self, mock_db: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_live_zero_matches(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test live mode with zero matches prints message and exits 0."""
         mock_session = AsyncMock()
 
@@ -496,8 +517,10 @@ class TestFindReplaceCommand:
                 correction_app,
                 [
                     "find-replace",
-                    "--pattern", "nonexistent",
-                    "--replacement", "bar",
+                    "--pattern",
+                    "nonexistent",
+                    "--replacement",
+                    "bar",
                     "--yes",
                 ],
             )
@@ -527,18 +550,20 @@ class TestFindReplaceCommand:
         ) as mock_service_cls:
             mock_svc_instance = MagicMock()
             mock_service_cls.return_value = mock_svc_instance
-            mock_svc_instance.find_and_replace = AsyncMock(
-                return_value=previews
-            )
+            mock_svc_instance.find_and_replace = AsyncMock(return_value=previews)
 
             result = runner.invoke(
                 correction_app,
                 [
                     "find-replace",
-                    "--pattern", "old",
-                    "--replacement", "new",
-                    "--language", "en",
-                    "--channel", "UC123",
+                    "--pattern",
+                    "old",
+                    "--replacement",
+                    "new",
+                    "--language",
+                    "en",
+                    "--channel",
+                    "UC123",
                 ],
                 input="n\n",
             )
@@ -573,16 +598,12 @@ class TestHelperFunctions:
 
     def test_truncate_with_context_highlights_match(self) -> None:
         """Test context truncation highlights the matched substring."""
-        result = _truncate_with_context(
-            "the quick brown fox", "quick", max_len=80
-        )
+        result = _truncate_with_context("the quick brown fox", "quick", max_len=80)
         assert "[bold]quick[/bold]" in result
 
     def test_truncate_with_context_case_insensitive_find(self) -> None:
         """Test context truncation finds match case-insensitively."""
-        result = _truncate_with_context(
-            "The QUICK Brown Fox", "quick", max_len=80
-        )
+        result = _truncate_with_context("The QUICK Brown Fox", "quick", max_len=80)
         assert "[bold]QUICK[/bold]" in result
 
     def test_truncate_with_context_long_text(self) -> None:
@@ -596,10 +617,7 @@ class TestHelperFunctions:
         """Test parsing valid correction type strings."""
         assert _parse_correction_type("proper_noun") == CorrectionType.PROPER_NOUN
         assert _parse_correction_type("spelling") == CorrectionType.SPELLING
-        assert (
-            _parse_correction_type("profanity_fix")
-            == CorrectionType.PROFANITY_FIX
-        )
+        assert _parse_correction_type("profanity_fix") == CorrectionType.PROFANITY_FIX
 
     def test_parse_correction_type_invalid(self) -> None:
         """Test parsing invalid correction type raises BadParameter."""
@@ -707,9 +725,7 @@ class TestRebuildTextCommand:
             assert "No transcripts with corrections found" in result.stdout
 
     @patch("chronovista.cli.correction_commands.db_manager")
-    def test_live_mode_summary(
-        self, mock_db: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_live_mode_summary(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test live mode prints rebuilt count and segments processed."""
         mock_session = AsyncMock()
         mock_db.get_session = _mock_session_gen(mock_session)
@@ -729,9 +745,7 @@ class TestRebuildTextCommand:
             mock_svc = MagicMock()
             mock_service_cls.return_value = mock_svc
             # First call (dry-run for count), second call (live)
-            mock_svc.rebuild_text = AsyncMock(
-                side_effect=[previews, (1, 42)]
-            )
+            mock_svc.rebuild_text = AsyncMock(side_effect=[previews, (1, 42)])
 
             result = runner.invoke(
                 correction_app,
@@ -744,9 +758,7 @@ class TestRebuildTextCommand:
             assert "segments processed" in result.stdout
 
     @patch("chronovista.cli.correction_commands.db_manager")
-    def test_live_zero_transcripts(
-        self, mock_db: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_live_zero_transcripts(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test live mode with no corrected transcripts exits cleanly."""
         mock_session = AsyncMock()
         mock_db.get_session = _mock_session_gen(mock_session)
@@ -827,9 +839,7 @@ class TestExportCommand:
         assert "Invalid format" in result.stdout
 
     @patch("chronovista.cli.correction_commands.db_manager")
-    def test_csv_stdout(
-        self, mock_db: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_csv_stdout(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test CSV export to stdout."""
         mock_session = AsyncMock()
         mock_db.get_session = _mock_session_gen(mock_session)
@@ -841,9 +851,7 @@ class TestExportCommand:
         ) as mock_service_cls:
             mock_svc = MagicMock()
             mock_service_cls.return_value = mock_svc
-            mock_svc.export_corrections = AsyncMock(
-                return_value=(1, csv_data)
-            )
+            mock_svc.export_corrections = AsyncMock(return_value=(1, csv_data))
 
             result = runner.invoke(
                 correction_app,
@@ -854,9 +862,7 @@ class TestExportCommand:
             assert "id,video_id" in result.stdout
 
     @patch("chronovista.cli.correction_commands.db_manager")
-    def test_json_stdout(
-        self, mock_db: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_json_stdout(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test JSON export to stdout."""
         mock_session = AsyncMock()
         mock_db.get_session = _mock_session_gen(mock_session)
@@ -868,9 +874,7 @@ class TestExportCommand:
         ) as mock_service_cls:
             mock_svc = MagicMock()
             mock_service_cls.return_value = mock_svc
-            mock_svc.export_corrections = AsyncMock(
-                return_value=(1, json_data)
-            )
+            mock_svc.export_corrections = AsyncMock(return_value=(1, json_data))
 
             result = runner.invoke(
                 correction_app,
@@ -880,9 +884,7 @@ class TestExportCommand:
             assert "vid1" in result.stdout
 
     @patch("chronovista.cli.correction_commands.db_manager")
-    def test_file_output(
-        self, mock_db: MagicMock, runner: CliRunner, tmp_path
-    ) -> None:
+    def test_file_output(self, mock_db: MagicMock, runner: CliRunner, tmp_path) -> None:
         """Test export writes to file when --output is specified."""
         mock_session = AsyncMock()
         mock_db.get_session = _mock_session_gen(mock_session)
@@ -895,9 +897,7 @@ class TestExportCommand:
         ) as mock_service_cls:
             mock_svc = MagicMock()
             mock_service_cls.return_value = mock_svc
-            mock_svc.export_corrections = AsyncMock(
-                return_value=(1, csv_data)
-            )
+            mock_svc.export_corrections = AsyncMock(return_value=(1, csv_data))
 
             result = runner.invoke(
                 correction_app,
@@ -912,9 +912,12 @@ class TestExportCommand:
             correction_app,
             [
                 "export",
-                "--format", "csv",
-                "--since", "2025-06-01",
-                "--until", "2025-01-01",
+                "--format",
+                "csv",
+                "--since",
+                "2025-06-01",
+                "--until",
+                "2025-01-01",
             ],
         )
         assert result.exit_code == 1
@@ -959,9 +962,7 @@ class TestStatsCommand:
         assert "--top" in result.stdout
 
     @patch("chronovista.cli.correction_commands.db_manager")
-    def test_displays_stats_panel(
-        self, mock_db: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_displays_stats_panel(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test that stats command displays panel with metrics."""
         mock_session = AsyncMock()
         mock_db.get_session = _mock_session_gen(mock_session)
@@ -1033,9 +1034,7 @@ class TestStatsCommand:
             assert "spelling" in result.stdout
 
     @patch("chronovista.cli.correction_commands.db_manager")
-    def test_displays_top_videos(
-        self, mock_db: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_displays_top_videos(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test that top videos table is displayed."""
         mock_session = AsyncMock()
         mock_db.get_session = _mock_session_gen(mock_session)
@@ -1257,9 +1256,7 @@ class TestPatternsCommand:
             assert call_kwargs["min_occurrences"] == 5
 
     @patch("chronovista.cli.correction_commands.db_manager")
-    def test_long_text_truncated(
-        self, mock_db: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_long_text_truncated(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test that long original/corrected text is end-truncated."""
         mock_session = AsyncMock()
         mock_db.get_session = _mock_session_gen(mock_session)
@@ -1328,9 +1325,7 @@ class TestBatchRevertCommand:
         assert "Invalid regex" in result.stdout
 
     @patch("chronovista.cli.correction_commands.db_manager")
-    def test_dry_run_preview(
-        self, mock_db: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_dry_run_preview(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test dry-run displays preview table and summary."""
         mock_session = AsyncMock()
         mock_db.get_session = _mock_session_gen(mock_session)
@@ -1361,9 +1356,7 @@ class TestBatchRevertCommand:
             assert "Dry run complete" in result.stdout
 
     @patch("chronovista.cli.correction_commands.db_manager")
-    def test_dry_run_zero_matches(
-        self, mock_db: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_dry_run_zero_matches(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test dry-run with zero matches prints appropriate message."""
         mock_session = AsyncMock()
         mock_db.get_session = _mock_session_gen(mock_session)
@@ -1432,9 +1425,7 @@ class TestBatchRevertCommand:
             mock_svc = MagicMock()
             mock_service_cls.return_value = mock_svc
             # First call (dry-run scan), second call (live)
-            mock_svc.batch_revert = AsyncMock(
-                side_effect=[previews, live_result]
-            )
+            mock_svc.batch_revert = AsyncMock(side_effect=[previews, live_result])
 
             result = runner.invoke(
                 correction_app,
@@ -1445,9 +1436,7 @@ class TestBatchRevertCommand:
             assert "Batch Revert Results" in result.stdout
 
     @patch("chronovista.cli.correction_commands.db_manager")
-    def test_summary_table_content(
-        self, mock_db: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_summary_table_content(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test that the summary table contains expected metric labels."""
         mock_session = AsyncMock()
         mock_db.get_session = _mock_session_gen(mock_session)
@@ -1468,9 +1457,7 @@ class TestBatchRevertCommand:
         ) as mock_service_cls:
             mock_svc = MagicMock()
             mock_service_cls.return_value = mock_svc
-            mock_svc.batch_revert = AsyncMock(
-                side_effect=[previews, live_result]
-            )
+            mock_svc.batch_revert = AsyncMock(side_effect=[previews, live_result])
 
             result = runner.invoke(
                 correction_app,
@@ -1485,9 +1472,7 @@ class TestBatchRevertCommand:
             assert "Unique videos" in result.stdout
 
     @patch("chronovista.cli.correction_commands.db_manager")
-    def test_live_zero_matches(
-        self, mock_db: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_live_zero_matches(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test live mode with zero matches prints message and exits 0."""
         mock_session = AsyncMock()
         mock_db.get_session = _mock_session_gen(mock_session)
@@ -1561,9 +1546,7 @@ class TestCrossSegmentDryRunDisplay:
         ) as mock_service_cls:
             mock_svc_instance = MagicMock()
             mock_service_cls.return_value = mock_svc_instance
-            mock_svc_instance.find_and_replace = AsyncMock(
-                return_value=mock_previews
-            )
+            mock_svc_instance.find_and_replace = AsyncMock(return_value=mock_previews)
 
             # Use a wide terminal so Rich does not truncate column headers or
             # cell content. The box-drawing characters (╶─┐, ╶─┘) are 3 chars
@@ -1573,25 +1556,29 @@ class TestCrossSegmentDryRunDisplay:
                 correction_app,
                 [
                     "find-replace",
-                    "--pattern", "Shane",
-                    "--replacement", "Sheinbaum",
+                    "--pattern",
+                    "Shane",
+                    "--replacement",
+                    "Sheinbaum",
                     "--dry-run",
                     "--cross-segment",
-                    "--video-id", "vid001",
-                    "--video-id", "vid002",
+                    "--video-id",
+                    "vid001",
+                    "--video-id",
+                    "vid002",
                 ],
                 env={"COLUMNS": "200"},
             )
 
-        assert result.exit_code == 0, (
-            f"Expected exit code 0, got {result.exit_code}. Output:\n{result.output}"
-        )
+        assert (
+            result.exit_code == 0
+        ), f"Expected exit code 0, got {result.exit_code}. Output:\n{result.output}"
         output = result.output
 
         # "Type" column header must appear (only visible at wide terminal width)
-        assert "Type" in output, (
-            f"Expected 'Type' column header in output.\nOutput:\n{output}"
-        )
+        assert (
+            "Type" in output
+        ), f"Expected 'Type' column header in output.\nOutput:\n{output}"
 
         # First segment of pair: U+2576 U+2500 U+2510  →  ╶─┐
         assert "\u2576\u2500\u2510" in output, (
@@ -1607,9 +1594,9 @@ class TestCrossSegmentDryRunDisplay:
 
         # The standalone row (vid002, seg 42) must appear but without a pair marker.
         # We verify it appears in the table output.
-        assert "vid002" in output, (
-            f"Expected 'vid002' (standalone segment) in output.\nOutput:\n{output}"
-        )
+        assert (
+            "vid002" in output
+        ), f"Expected 'vid002' (standalone segment) in output.\nOutput:\n{output}"
 
     # ------------------------------------------------------------------
     # T030: Mixed summary line format with cross-segment pair count
@@ -1640,55 +1627,55 @@ class TestCrossSegmentDryRunDisplay:
         ) as mock_service_cls:
             mock_svc_instance = MagicMock()
             mock_service_cls.return_value = mock_svc_instance
-            mock_svc_instance.find_and_replace = AsyncMock(
-                return_value=mock_previews
-            )
+            mock_svc_instance.find_and_replace = AsyncMock(return_value=mock_previews)
 
             result = runner.invoke(
                 correction_app,
                 [
                     "find-replace",
-                    "--pattern", "Shane",
-                    "--replacement", "Sheinbaum",
+                    "--pattern",
+                    "Shane",
+                    "--replacement",
+                    "Sheinbaum",
                     "--dry-run",
                     "--cross-segment",
-                    "--video-id", "vid001",
-                    "--video-id", "vid002",
+                    "--video-id",
+                    "vid001",
+                    "--video-id",
+                    "vid002",
                 ],
             )
 
-        assert result.exit_code == 0, (
-            f"Expected exit code 0, got {result.exit_code}. Output:\n{result.output}"
-        )
+        assert (
+            result.exit_code == 0
+        ), f"Expected exit code 0, got {result.exit_code}. Output:\n{result.output}"
         output = result.output
 
         # Summary must contain the segment count
-        assert "3" in output, (
-            f"Expected segment count '3' in summary.\nOutput:\n{output}"
-        )
+        assert (
+            "3" in output
+        ), f"Expected segment count '3' in summary.\nOutput:\n{output}"
 
         # Summary must name the video count (2 unique videos: vid001 and vid002)
-        assert "2" in output, (
-            f"Expected video count '2' in summary.\nOutput:\n{output}"
-        )
+        assert "2" in output, f"Expected video count '2' in summary.\nOutput:\n{output}"
 
         # Summary must include the cross-segment pair count annotation.
         # Rich may wrap the summary line so "cross-segment" and "pairs" may be
         # on separate lines. Normalise newlines before asserting.
         normalised = output.replace("\n", " ")
-        assert "cross-segment pairs" in normalised, (
-            f"Expected 'cross-segment pairs' in summary line.\nOutput:\n{output}"
-        )
+        assert (
+            "cross-segment pairs" in normalised
+        ), f"Expected 'cross-segment pairs' in summary line.\nOutput:\n{output}"
 
         # Specifically 1 pair was detected (156 and 157 are consecutive)
-        assert "1" in normalised, (
-            f"Expected '1' (pair count) in summary.\nOutput:\n{output}"
-        )
+        assert (
+            "1" in normalised
+        ), f"Expected '1' (pair count) in summary.\nOutput:\n{output}"
 
         # The full dry-run completion message must be present
-        assert "Dry run complete" in output, (
-            f"Expected 'Dry run complete' in output.\nOutput:\n{output}"
-        )
+        assert (
+            "Dry run complete" in output
+        ), f"Expected 'Dry run complete' in output.\nOutput:\n{output}"
 
     @patch("chronovista.cli.correction_commands.db_manager")
     def test_cross_segment_dry_run_summary_zero_pairs(
@@ -1714,26 +1701,28 @@ class TestCrossSegmentDryRunDisplay:
         ) as mock_service_cls:
             mock_svc_instance = MagicMock()
             mock_service_cls.return_value = mock_svc_instance
-            mock_svc_instance.find_and_replace = AsyncMock(
-                return_value=mock_previews
-            )
+            mock_svc_instance.find_and_replace = AsyncMock(return_value=mock_previews)
 
             result = runner.invoke(
                 correction_app,
                 [
                     "find-replace",
-                    "--pattern", "amlo",
-                    "--replacement", "AMLO",
+                    "--pattern",
+                    "amlo",
+                    "--replacement",
+                    "AMLO",
                     "--dry-run",
                     "--cross-segment",
-                    "--video-id", "vid001",
-                    "--video-id", "vid002",
+                    "--video-id",
+                    "vid001",
+                    "--video-id",
+                    "vid002",
                 ],
             )
 
-        assert result.exit_code == 0, (
-            f"Expected exit code 0, got {result.exit_code}. Output:\n{result.output}"
-        )
+        assert (
+            result.exit_code == 0
+        ), f"Expected exit code 0, got {result.exit_code}. Output:\n{result.output}"
         output = result.output
 
         # Even with 0 pairs, the cross-segment pair count should appear.
@@ -1745,9 +1734,9 @@ class TestCrossSegmentDryRunDisplay:
         )
 
         # Pair count should be 0
-        assert "0" in normalised, (
-            f"Expected '0' pair count in summary.\nOutput:\n{output}"
-        )
+        assert (
+            "0" in normalised
+        ), f"Expected '0' pair count in summary.\nOutput:\n{output}"
 
 
 # ======================================================================
@@ -1790,8 +1779,10 @@ class TestBatchRevertBatchIdFlag:
             correction_app,
             [
                 "batch-revert",
-                "--pattern", "teh",
-                "--batch-id", self.VALID_UUID,
+                "--pattern",
+                "teh",
+                "--batch-id",
+                self.VALID_UUID,
             ],
         )
         assert result.exit_code == 1
@@ -1831,7 +1822,8 @@ class TestBatchRevertBatchIdFlag:
                 correction_app,
                 [
                     "batch-revert",
-                    "--batch-id", self.VALID_UUID,
+                    "--batch-id",
+                    self.VALID_UUID,
                     "--dry-run",
                 ],
             )
@@ -1839,6 +1831,7 @@ class TestBatchRevertBatchIdFlag:
             mock_svc.batch_revert.assert_awaited_once()
             call_kwargs = mock_svc.batch_revert.call_args.kwargs
             import uuid as _uuid_mod
+
             assert call_kwargs.get("batch_id") == _uuid_mod.UUID(self.VALID_UUID)
 
     @patch("chronovista.cli.correction_commands.db_manager")
@@ -1860,7 +1853,8 @@ class TestBatchRevertBatchIdFlag:
                 correction_app,
                 [
                     "batch-revert",
-                    "--batch-id", self.VALID_UUID,
+                    "--batch-id",
+                    self.VALID_UUID,
                     "--dry-run",
                 ],
             )
@@ -1892,7 +1886,8 @@ class TestBatchRevertBatchIdFlag:
                 correction_app,
                 [
                     "batch-revert",
-                    "--batch-id", self.VALID_UUID,
+                    "--batch-id",
+                    self.VALID_UUID,
                     "--dry-run",
                 ],
             )
@@ -1932,15 +1927,14 @@ class TestBatchRevertBatchIdFlag:
         ) as mock_service_cls:
             mock_svc = MagicMock()
             mock_service_cls.return_value = mock_svc
-            mock_svc.batch_revert = AsyncMock(
-                side_effect=[previews, live_result]
-            )
+            mock_svc.batch_revert = AsyncMock(side_effect=[previews, live_result])
 
             result = runner.invoke(
                 correction_app,
                 [
                     "batch-revert",
-                    "--batch-id", self.VALID_UUID,
+                    "--batch-id",
+                    self.VALID_UUID,
                     "--yes",
                 ],
             )
@@ -1971,7 +1965,8 @@ class TestBatchRevertBatchIdFlag:
                 correction_app,
                 [
                     "batch-revert",
-                    "--batch-id", self.VALID_UUID,
+                    "--batch-id",
+                    self.VALID_UUID,
                     "--yes",
                 ],
             )
@@ -1992,9 +1987,7 @@ class TestBatchRevertBatchIdFlag:
         assert result.exit_code == 1
         assert "not a valid UUID" in result.stdout
 
-    def test_invalid_uuid_error_shows_expected_format(
-        self, runner: CliRunner
-    ) -> None:
+    def test_invalid_uuid_error_shows_expected_format(self, runner: CliRunner) -> None:
         """Error message hints at the expected UUID format."""
         result = runner.invoke(
             correction_app,
@@ -2002,7 +1995,11 @@ class TestBatchRevertBatchIdFlag:
         )
         assert result.exit_code == 1
         # The error message shows the expected format (see correction_commands.py line ~1036)
-        assert "xxxx" in result.stdout.lower() or "format" in result.stdout.lower() or "valid UUID" in result.stdout
+        assert (
+            "xxxx" in result.stdout.lower()
+            or "format" in result.stdout.lower()
+            or "valid UUID" in result.stdout
+        )
 
     def test_truncated_uuid_shows_error(self, runner: CliRunner) -> None:
         """A truncated UUID (valid prefix only) is rejected with exit code 1."""
@@ -2044,15 +2041,14 @@ class TestBatchRevertBatchIdFlag:
         ) as mock_service_cls:
             mock_svc = MagicMock()
             mock_service_cls.return_value = mock_svc
-            mock_svc.batch_revert = AsyncMock(
-                side_effect=[previews, live_result]
-            )
+            mock_svc.batch_revert = AsyncMock(side_effect=[previews, live_result])
 
             result = runner.invoke(
                 correction_app,
                 [
                     "batch-revert",
-                    "--batch-id", self.VALID_UUID,
+                    "--batch-id",
+                    self.VALID_UUID,
                     "--yes",
                 ],
             )
@@ -2087,15 +2083,14 @@ class TestBatchRevertBatchIdFlag:
         ) as mock_service_cls:
             mock_svc = MagicMock()
             mock_service_cls.return_value = mock_svc
-            mock_svc.batch_revert = AsyncMock(
-                side_effect=[previews, live_result]
-            )
+            mock_svc.batch_revert = AsyncMock(side_effect=[previews, live_result])
 
             result = runner.invoke(
                 correction_app,
                 [
                     "batch-revert",
-                    "--pattern", "some",
+                    "--pattern",
+                    "some",
                     "--yes",
                 ],
             )
@@ -2174,11 +2169,14 @@ class TestAnalyzeDiffsCommand:
             corrected_text="Chomsky",
         )
 
-        with patch(
-            "chronovista.cli.correction_commands.TranscriptCorrectionRepository"
-        ) as MockRepo, patch(
-            "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
-            new=AsyncMock(return_value=None),
+        with (
+            patch(
+                "chronovista.cli.correction_commands.TranscriptCorrectionRepository"
+            ) as MockRepo,
+            patch(
+                "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
+                new=AsyncMock(return_value=None),
+            ),
         ):
             repo_instance = AsyncMock()
             repo_instance.get_all_filtered.return_value = [correction]
@@ -2219,11 +2217,14 @@ class TestAnalyzeDiffsCommand:
             for _ in range(3)
         ]
 
-        with patch(
-            "chronovista.cli.correction_commands.TranscriptCorrectionRepository"
-        ) as MockRepo, patch(
-            "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
-            new=AsyncMock(return_value=None),
+        with (
+            patch(
+                "chronovista.cli.correction_commands.TranscriptCorrectionRepository"
+            ) as MockRepo,
+            patch(
+                "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
+                new=AsyncMock(return_value=None),
+            ),
         ):
             repo_instance = AsyncMock()
             repo_instance.get_all_filtered.return_value = corrections
@@ -2260,11 +2261,14 @@ class TestAnalyzeDiffsCommand:
             corrected_text="same text",
         )
 
-        with patch(
-            "chronovista.cli.correction_commands.TranscriptCorrectionRepository"
-        ) as MockRepo, patch(
-            "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
-            new=AsyncMock(return_value=None),
+        with (
+            patch(
+                "chronovista.cli.correction_commands.TranscriptCorrectionRepository"
+            ) as MockRepo,
+            patch(
+                "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
+                new=AsyncMock(return_value=None),
+            ),
         ):
             repo_instance = AsyncMock()
             repo_instance.get_all_filtered.return_value = [noop]
@@ -2274,7 +2278,9 @@ class TestAnalyzeDiffsCommand:
 
         assert result.exit_code == 0
         # No table rows — command should report that nothing was found
-        assert "No corrections found" in result.stdout or "No word-level" in result.stdout
+        assert (
+            "No corrections found" in result.stdout or "No word-level" in result.stdout
+        )
 
     # ------------------------------------------------------------------
     # (d) Associated entities displayed in output
@@ -2303,11 +2309,14 @@ class TestAnalyzeDiffsCommand:
             corrected_text="Chomsky",
         )
 
-        with patch(
-            "chronovista.cli.correction_commands.TranscriptCorrectionRepository"
-        ) as MockRepo, patch(
-            "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
-            new=AsyncMock(return_value=(entity_id, "Noam Chomsky")),
+        with (
+            patch(
+                "chronovista.cli.correction_commands.TranscriptCorrectionRepository"
+            ) as MockRepo,
+            patch(
+                "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
+                new=AsyncMock(return_value=(entity_id, "Noam Chomsky")),
+            ),
         ):
             repo_instance = AsyncMock()
             repo_instance.get_all_filtered.return_value = [correction]
@@ -2346,11 +2355,14 @@ class TestAnalyzeDiffsCommand:
         mock_session = AsyncMock()
         mock_db.get_session = _mock_session_gen_for_analyze(mock_session)
 
-        with patch(
-            "chronovista.cli.correction_commands.TranscriptCorrectionRepository"
-        ) as MockRepo, patch(
-            "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
-            new=AsyncMock(return_value=None),
+        with (
+            patch(
+                "chronovista.cli.correction_commands.TranscriptCorrectionRepository"
+            ) as MockRepo,
+            patch(
+                "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
+                new=AsyncMock(return_value=None),
+            ),
         ):
             repo_instance = AsyncMock()
             repo_instance.get_all_filtered.return_value = []
@@ -2384,11 +2396,14 @@ class TestAnalyzeDiffsCommand:
             correction_type="revert",
         )
 
-        with patch(
-            "chronovista.cli.correction_commands.TranscriptCorrectionRepository"
-        ) as MockRepo, patch(
-            "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
-            new=AsyncMock(return_value=None),
+        with (
+            patch(
+                "chronovista.cli.correction_commands.TranscriptCorrectionRepository"
+            ) as MockRepo,
+            patch(
+                "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
+                new=AsyncMock(return_value=None),
+            ),
         ):
             repo_instance = AsyncMock()
             repo_instance.get_all_filtered.return_value = [revert_correction]
@@ -2426,11 +2441,14 @@ class TestAnalyzeDiffsCommand:
             ),
         ]
 
-        with patch(
-            "chronovista.cli.correction_commands.TranscriptCorrectionRepository"
-        ) as MockRepo, patch(
-            "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
-            new=AsyncMock(return_value=None),
+        with (
+            patch(
+                "chronovista.cli.correction_commands.TranscriptCorrectionRepository"
+            ) as MockRepo,
+            patch(
+                "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
+                new=AsyncMock(return_value=None),
+            ),
         ):
             repo_instance = AsyncMock()
             repo_instance.get_all_filtered.return_value = corrections
@@ -2443,7 +2461,10 @@ class TestAnalyzeDiffsCommand:
 
         assert result.exit_code == 0
         # Both pairs appear only once; min-frequency=2 should suppress them
-        assert "No word-level diffs" in result.stdout or "frequency" in result.stdout.lower()
+        assert (
+            "No word-level diffs" in result.stdout
+            or "frequency" in result.stdout.lower()
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -2498,6 +2519,7 @@ def _make_named_entity_db_mock(
         Configured mock resembling a NamedEntityDB row.
     """
     import uuid as _uuid_mod
+
     ent = MagicMock()
     ent.id = _uuid_mod.uuid4()
     ent.canonical_name = name
@@ -3217,9 +3239,7 @@ class TestSuggestCrossSegmentCommand:
         mock_discovery_instance.discover = AsyncMock(return_value=[])
         mock_discovery_cls.return_value = mock_discovery_instance
 
-        runner.invoke(
-            correction_app, ["suggest-cross-segment", "--entity", "Chomsky"]
-        )
+        runner.invoke(correction_app, ["suggest-cross-segment", "--entity", "Chomsky"])
 
         call_kwargs = mock_discovery_instance.discover.call_args.kwargs
         assert call_kwargs.get("entity_name") == "Chomsky"
@@ -3303,7 +3323,9 @@ class TestSuggestCrossSegmentCommand:
 
         assert result.exit_code == 0
         # The tip message references --min-corrections
-        assert "--min-corrections" in result.stdout or "min-corrections" in result.stdout
+        assert (
+            "--min-corrections" in result.stdout or "min-corrections" in result.stdout
+        )
 
     @patch("chronovista.cli.correction_commands.db_manager")
     @patch("chronovista.services.cross_segment_discovery.CrossSegmentDiscovery")

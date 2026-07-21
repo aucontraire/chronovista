@@ -137,19 +137,20 @@ class TestTopicCategoryRepository:
         sample_topic_db: TopicCategoryDB,
     ):
         """Test creating a new topic."""
-        with patch.object(
-            repository, "get_by_topic_id", new=AsyncMock(return_value=None)
-        ) as mock_get, patch.object(
-            repository, "create", new=AsyncMock(return_value=sample_topic_db)
-        ) as mock_create:
+        with (
+            patch.object(
+                repository, "get_by_topic_id", new=AsyncMock(return_value=None)
+            ) as mock_get,
+            patch.object(
+                repository, "create", new=AsyncMock(return_value=sample_topic_db)
+            ) as mock_create,
+        ):
             result = await repository.create_or_update(
                 mock_session, sample_topic_create
             )
 
             assert result == sample_topic_db
-            mock_get.assert_called_once_with(
-                mock_session, sample_topic_create.topic_id
-            )
+            mock_get.assert_called_once_with(mock_session, sample_topic_create.topic_id)
             mock_create.assert_called_once_with(
                 mock_session, obj_in=sample_topic_create
             )
@@ -163,19 +164,22 @@ class TestTopicCategoryRepository:
         sample_topic_db: TopicCategoryDB,
     ):
         """Test updating an existing topic."""
-        with patch.object(
-            repository, "get_by_topic_id", new=AsyncMock(return_value=sample_topic_db)
-        ) as mock_get, patch.object(
-            repository, "update", new=AsyncMock(return_value=sample_topic_db)
-        ) as mock_update:
+        with (
+            patch.object(
+                repository,
+                "get_by_topic_id",
+                new=AsyncMock(return_value=sample_topic_db),
+            ) as mock_get,
+            patch.object(
+                repository, "update", new=AsyncMock(return_value=sample_topic_db)
+            ) as mock_update,
+        ):
             result = await repository.create_or_update(
                 mock_session, sample_topic_create
             )
 
             assert result == sample_topic_db
-            mock_get.assert_called_once_with(
-                mock_session, sample_topic_create.topic_id
-            )
+            mock_get.assert_called_once_with(mock_session, sample_topic_create.topic_id)
             mock_update.assert_called_once()
 
     @pytest.mark.asyncio
@@ -324,14 +328,15 @@ class TestTopicCategoryRepository:
         sample_topic_db: TopicCategoryDB,
     ):
         """Test bulk creating new topics."""
-        with patch.object(
-            repository, "get_by_topic_id", new=AsyncMock(return_value=None)
-        ) as mock_get, patch.object(
-            repository, "create", new=AsyncMock(return_value=sample_topic_db)
-        ) as mock_create:
-            result = await repository.bulk_create(
-                mock_session, [sample_topic_create]
-            )
+        with (
+            patch.object(
+                repository, "get_by_topic_id", new=AsyncMock(return_value=None)
+            ) as mock_get,
+            patch.object(
+                repository, "create", new=AsyncMock(return_value=sample_topic_db)
+            ) as mock_create,
+        ):
+            result = await repository.bulk_create(mock_session, [sample_topic_create])
 
             assert result == [sample_topic_db]
             mock_get.assert_called_once()

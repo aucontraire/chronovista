@@ -248,15 +248,9 @@ async def get_app_info(
     """
     # Sequential queries — AsyncSession is not safe for concurrent use
     # via asyncio.gather() (causes IllegalStateChangeError).
-    video_count = await session.scalar(
-        select(func.count()).select_from(Video)
-    )
-    channel_count = await session.scalar(
-        select(func.count()).select_from(Channel)
-    )
-    playlist_count = await session.scalar(
-        select(func.count()).select_from(Playlist)
-    )
+    video_count = await session.scalar(select(func.count()).select_from(Video))
+    channel_count = await session.scalar(select(func.count()).select_from(Channel))
+    playlist_count = await session.scalar(select(func.count()).select_from(Playlist))
     transcript_count = await session.scalar(
         select(func.count()).select_from(VideoTranscript)
     )

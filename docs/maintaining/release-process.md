@@ -53,7 +53,7 @@ gh pr create --title "Release v$(poetry version -s)"
 After PR is approved:
 
 ```bash
-git checkout main
+git checkout master
 git pull
 git tag v$(poetry version -s)
 git push origin v$(poetry version -s)

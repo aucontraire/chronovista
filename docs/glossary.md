@@ -60,7 +60,7 @@ Project-specific terminology used throughout chronovista documentation and code.
 :   A video or channel's current accessibility state. Values: `available` (normal), `deleted`, `private`, `unavailable` (generic), `region_restricted`. Replaces the legacy `deleted_flag` boolean with richer status tracking.
 
 **Recovery**
-:   The process of extracting metadata from a Wayback Machine snapshot of a deleted YouTube page and updating the local database. **Video recovery** pulls title, description, tags, thumbnail, channel info, like/view counts, and upload date using a three-tier overwrite policy. **Channel recovery** pulls title, description, subscriber count, video count, thumbnail, and country using a two-tier overwrite policy. Recovery is available via CLI (`chronovista recover video`), REST API (`POST /api/v1/recovery/videos/{id}` and `POST /api/v1/recovery/channels/{id}`), and the frontend's "Recover from Web Archive" button.
+:   The process of extracting metadata from a Wayback Machine snapshot of a deleted YouTube page and updating the local database. **Video recovery** pulls title, description, tags, thumbnail, channel info, like/view counts, and upload date using a three-tier overwrite policy. **Channel recovery** pulls title, description, subscriber count, video count, thumbnail, and country using a two-tier overwrite policy. Recovery is available via CLI (`chronovista recover video`), REST API (`POST /api/v1/videos/{id}/recover` and `POST /api/v1/channels/{id}/recover`), and the frontend's "Recover from Web Archive" button.
 
 **Recovery Source**
 :   The origin of recovered metadata, recorded in the `recovery_source` field. Typically `wayback_machine` for data extracted from Internet Archive snapshots.

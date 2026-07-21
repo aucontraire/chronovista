@@ -31,7 +31,7 @@ Run CLI commands inside the container:
 
 ```bash
 make docker-shell          # Opens bash inside the container
-chronovista videos list --limit 10
+chronovista tags list --limit 10
 ```
 
 !!! note "What Runs Where"

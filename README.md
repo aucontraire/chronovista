@@ -7,11 +7,10 @@
 <p align="center">
   <a href="https://github.com/aucontraire/chronovista/actions/workflows/test.yml"><img src="https://github.com/aucontraire/chronovista/actions/workflows/test.yml/badge.svg" alt="CI"></a>
   <a href="https://aucontraire.github.io/chronovista/"><img src="https://img.shields.io/badge/docs-online-blue.svg" alt="Docs"></a>
-  <img src="https://img.shields.io/badge/license-AGPL--3.0-green.svg" alt="License: AGPL-3.0">
-  <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/tests-11,400+-brightgreen.svg" alt="Tests: 11,400+">
+  <a href="https://github.com/aucontraire/chronovista/tags"><img src="https://img.shields.io/github/v/tag/aucontraire/chronovista?label=release&color=blueviolet" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/python-3.11%E2%80%933.13-blue.svg" alt="Python 3.11–3.13">
   <img src="https://img.shields.io/badge/mypy-strict%20%E2%9C%93-blue.svg" alt="mypy: strict">
-  <img src="https://img.shields.io/badge/releases-56-purple.svg" alt="Releases: 56">
+  <img src="https://img.shields.io/badge/license-AGPL--3.0-green.svg" alt="License: AGPL-3.0">
 </p>
 
 <p align="center">
@@ -33,8 +32,8 @@
 ## Engineering Highlights
 
 - **11,400+ tests** (7,761 backend + 3,641 frontend) across 229 backend source files with **mypy strict mode, zero errors**
-- **56 releases** under a **versioned constitutional engineering framework** with anti-slop guardrails ([see constitution.md](.specify/memory/constitution.md))
-- **Async-first architecture** with full `async/await` through 75 FastAPI endpoints (asyncpg, httpx) and 94 CLI commands
+- **57 releases** under a versioned constitutional engineering framework — strict typing (zero `Any`), minimal-diff discipline, and the Rule of Three enforced as project law
+- **Async-first architecture** with full `async/await` through 79 FastAPI endpoints (asyncpg, httpx) and 94 CLI commands
 - **Tag normalization** reducing 621,000+ raw tags to 147,000+ canonical forms via a 9-step Unicode pipeline with fuzzy search and 168,000+ alias mappings
 - **Named entity detection** across transcripts, titles, and descriptions — 259 entities, 139,000+ mentions, with longest-match-wins disambiguation and exclusion patterns
 - **Wayback Machine recovery** via CDX API for metadata of deleted YouTube videos — three-tier overwrite policy, retry with backoff, era-anchored search
@@ -42,13 +41,13 @@
 - **1.46 million transcript segments** across 50+ languages with quality hierarchy (manual CC > professional > auto-synced > ASR)
 - **Full-stack TypeScript strict** — React 19 + TypeScript 5.7 strict + TanStack Query v5 + Tailwind CSS 4
 - **Repository pattern** with composite key support, isolating all DB access from business logic across 24 tables and 34 Alembic migrations
-- **CI/CD** via GitHub Actions — 4-job pipeline (unit tests, mypy strict + ruff, frontend tests + TS check, integration tests with PostgreSQL)
+- **CI/CD** via GitHub Actions — 4-job pipeline (unit tests, mypy strict + ruff + black, frontend tests + TS check, integration tests with PostgreSQL)
 
 ## Why This Exists
 
 I built chronovista as the data infrastructure layer for a larger research project: extracting and synthesizing knowledge from YouTube interview transcripts across politics, economics, history, and technology. To do that reliably, I needed accurate transcripts (YouTube ASR has errors — I've manually corrected 3,800+ so far), complete metadata (Google Takeout is sparse and doesn't preserve deleted videos), and normalized tagging across hundreds of channels.
 
-Every feature exists because I hit a real limitation while doing that research. The transcript correction system came from manually fixing the same ASR errors repeatedly. The Wayback Machine recovery came from needing context on channels whose old content had disappeared. The tag normalization came from realizing that "mejico", "mexiko", and "Mexico" all needed to map to the same canonical entity. The named entity detection came from wanting to see every video where a specific person was mentioned — across transcripts, titles, descriptions, and tags — without manually searching each source. Build-as-you-need rather than design-up-front, across 56 incremental releases.
+Every feature exists because I hit a real limitation while doing that research. The transcript correction system came from manually fixing the same ASR errors repeatedly. The Wayback Machine recovery came from needing context on channels whose old content had disappeared. The tag normalization came from realizing that "mejico", "mexiko", and "Mexico" all needed to map to the same canonical entity. The named entity detection came from wanting to see every video where a specific person was mentioned — across transcripts, titles, descriptions, and tags — without manually searching each source. Build-as-you-need rather than design-up-front, across 57 incremental releases.
 
 ## Features
 
@@ -63,10 +62,9 @@ Every feature exists because I hit a real limitation while doing that research. 
 | **Channel Analytics** | Subscription tracking, keyword extraction, topic analysis across 9,600+ channels |
 | **Google Takeout** | Import complete YouTube history including deleted/private videos |
 | **Deleted Video Recovery** | Recover metadata for unavailable videos via the Wayback Machine CDX API |
-| **REST API + Web UI** | FastAPI server (75 endpoints) with React dashboard for browsing, filtering, and entity exploration |
+| **REST API + Web UI** | FastAPI server (79 endpoints) with React dashboard for browsing, filtering, and entity exploration |
 | **One-Command Deploy** | `docker compose up` — full stack with guided onboarding, no Python/Node.js required |
-| **Write Operations** | Create playlists, like videos, subscribe to channels via OAuth |
-| **Export** | CSV/JSON with language-aware filtering |
+| **Data Export** | Per-command CSV/JSON output (`--format`/`--output`) plus correction-audit export |
 
 ### What This Isn't
 
@@ -78,7 +76,7 @@ chronovista is not a multi-user service, not cloud-hosted, and not a YouTube ana
 - **Frontend:** React 19, TypeScript 5.7 (strict), TanStack Query v5, Tailwind CSS 4
 - **Database:** PostgreSQL 15 via asyncpg (24 tables, 34 migrations)
 - **Auth:** Google OAuth 2.0 with progressive scope management
-- **CI:** GitHub Actions (mypy strict, ruff, pytest, vitest, TypeScript check)
+- **CI:** GitHub Actions (mypy strict, ruff, black, pytest, vitest, TypeScript check)
 
 ## Quick Start
 
@@ -91,7 +89,7 @@ cd chronovista
 cp .env.example .env  # Add YouTube API credentials
 
 # One-time OAuth setup (must run natively)
-pip install chronovista  # or: poetry install
+pip install .  # from the cloned repo (not yet on PyPI); or: poetry install
 chronovista auth login
 
 # Start the stack
@@ -130,7 +128,7 @@ The fastest way to get running. No Python or Node.js installation required.
 **One-time OAuth setup:** The container handles token refresh, but the initial OAuth login requires a native install so the browser redirect works:
 
 ```bash
-pip install chronovista  # or: poetry install
+pip install .  # from the cloned repo (not yet on PyPI); or: poetry install
 chronovista auth login
 ```
 
@@ -220,160 +218,41 @@ YOUTUBE_CLIENT_SECRET=your_client_secret
 
 ## Usage
 
-### Authentication
+A few representative commands — see the **[How-to guides](https://aucontraire.github.io/chronovista/)** and the **[CLI reference](https://aucontraire.github.io/chronovista/reference/cli/)** for the complete command set.
 
 ```bash
-chronovista auth login     # OAuth login
-chronovista auth status    # Check status
-chronovista auth logout    # Logout
+# Authenticate, then sync your account
+chronovista auth login
+chronovista sync all
+
+# Search transcripts by timestamp — find what was said at any moment
+chronovista transcript context VIDEO_ID 5:00           # 30s context window
+chronovista transcript range VIDEO_ID 1:00 5:00 --format srt
+
+# Normalize and curate tags
+chronovista tags normalize --incremental
+chronovista tags merge mejico mexiko --into mexico     # merge spelling variants
+
+# Detect named entities across transcripts, titles, and descriptions
+chronovista entities scan --sources transcript,title,description
+
+# Recover deleted videos from the Wayback Machine
+chronovista recover video --all --limit 50
+
+# Import a Google Takeout export
+chronovista takeout seed /path/to/takeout --incremental
+
+# Start the REST API (interactive docs at /docs)
+chronovista api start --port 8765
 ```
 
-### Sync Your Data
-
-```bash
-chronovista sync history      # Watch history
-chronovista sync playlists    # Playlists
-chronovista sync transcripts  # Video transcripts
-chronovista sync topics       # Topic categories
-chronovista sync all          # Everything
-```
-
-### Transcript Queries
-
-```bash
-chronovista transcript segment VIDEO_ID 5:00      # Get segment at timestamp
-chronovista transcript context VIDEO_ID 5:00      # Get 30s context window
-chronovista transcript range VIDEO_ID 1:00 5:00   # Get segments in range
-chronovista transcript range VIDEO_ID 0:00 10:00 --format srt  # SRT export
-```
-
-### Topic Analytics
-
-```bash
-chronovista topics list              # All topics with content counts
-chronovista topics popular           # Most popular by content
-chronovista topics videos 10         # Videos in Music category
-chronovista topics trends            # Popularity over time
-chronovista topics chart             # Visual ASCII chart
-chronovista topics explore           # Interactive exploration
-```
-
-### Tag Management
-
-```bash
-chronovista tags normalize --incremental           # Normalize only new tags
-chronovista tags merge mejico mexiko --into mexico  # Merge spelling variants
-chronovista tags split mexico --aliases "Mexican"   # Split incorrectly merged tags
-chronovista tags rename mexico --to "Mexico"        # Change display form
-chronovista tags classify mexico --type place       # Assign entity type
-chronovista tags classify "destiny" --link-entity "Steven Bonnell"  # Link tag to existing entity
-chronovista tags collisions                         # Review diacritic collision candidates
-chronovista tags undo OPERATION_ID                  # Reverse any operation
-```
-
-### Entity Management
-
-```bash
-chronovista entities create "Norman Finkelstein" --type person  # Create entity
-chronovista entities scan --sources transcript,title,description  # Multi-source detection
-chronovista entities scan --entity-id UUID --full  # Full rescan for one entity
-chronovista entities stats                          # Entity mention statistics
-```
-
-### Google Takeout Import
-
-Import your complete YouTube history from [Google Takeout](https://takeout.google.com/):
-
-```bash
-chronovista takeout seed /path/to/takeout              # Full import
-chronovista takeout seed /path/to/takeout --dry-run    # Preview changes
-chronovista takeout seed /path/to/takeout --incremental # Safe re-run
-chronovista takeout analyze --path /path/to/takeout     # Analyze patterns
-```
-
-<details>
-<summary>Takeout Details</summary>
-
-**What gets imported:**
-- Channels, videos, and watch history with timestamps
-- All playlists with video relationships
-- Historical data including deleted/private videos
-
-**Analysis commands:**
-```bash
-chronovista takeout peek playlists --path /path/to/takeout
-chronovista takeout analyze --path /path/to/takeout
-chronovista takeout relationships channel-clusters --path /path/to/takeout
-```
-
-**Combine with API data:**
-```bash
-chronovista takeout seed /path/to/takeout
-chronovista sync all  # Enriches with current API data
-```
-</details>
-
-### Recover Deleted Videos
-
-Recover metadata for deleted or unavailable videos from the [Wayback Machine](https://web.archive.org/):
-
-```bash
-chronovista recover video --video-id VIDEO_ID                # Single video
-chronovista recover video --all --limit 50                   # Batch recover
-chronovista recover video --all --dry-run                    # Preview changes
-chronovista recover video --video-id VIDEO_ID --start-year 2018  # Anchor to era
-```
-
-<details>
-<summary>Recovery Details</summary>
-
-**What gets recovered:**
-- Title, description, upload date, channel info
-- Tags, category, thumbnail URL
-- View count, like count
-
-**How it works:**
-- Queries the Wayback Machine CDX API for archived YouTube video pages
-- Extracts metadata from JSON or HTML meta tags
-- Three-tier overwrite policy protects existing data
-- Results cached locally for 24 hours
-
-**Options:**
-- `--start-year` / `--end-year` — Focus search on a specific archive era
-- `--delay` — Rate limiting between videos in batch mode (default: 1s)
-- `--dry-run` — Preview without making database changes
-</details>
-
-### REST API
-
-Start the REST API server for programmatic access:
-
-```bash
-chronovista api start --port 8765    # Start server
-
-# Example requests (requires prior auth login)
-curl http://localhost:8765/api/v1/health
-curl http://localhost:8765/api/v1/videos?limit=10
-curl "http://localhost:8765/api/v1/search/segments?q=keyword"
-
-# Interactive API docs
-open http://localhost:8765/docs
-```
-
-### Web Frontend
-
-```bash
-make dev               # Start backend (8765) + frontend (8766)
-open http://localhost:8766
-```
-
-The React dashboard provides video browsing with tag/category/topic filters, transcript search with inline corrections, playlist navigation, entity detail pages with multi-source mention aggregation, deleted video visibility controls, and a guided data onboarding wizard at `/onboarding`.
+The web dashboard — video browsing with tag/category/topic filters, transcript search with inline corrections, entity detail pages, and a guided onboarding wizard — runs at `http://localhost:8766` via `make dev`.
 
 ## Architecture
 
 ```
 chronovista/
-├── api/              # FastAPI REST API: 75 endpoints, RFC 7807 errors, rate limiting
+├── api/              # FastAPI REST API: 79 endpoints, RFC 7807 errors, rate limiting
 ├── cli/              # Typer CLI: 94 commands (auth, sync, topics, recovery, tags, entities)
 ├── services/         # Business logic: sync orchestration, tag normalization, entity detection
 │   ├── enrichment/   # YouTube API enrichment with priority-tier selection
@@ -396,7 +275,7 @@ See [Architecture Overview](https://aucontraire.github.io/chronovista/architectu
 
 chronovista is built under a versioned constitutional engineering framework that enforces production standards on AI-collaborated code: strict typing (mypy strict, zero `Any`), Pydantic-first data modeling, repository pattern, test-driven quality gates, and explicit anti-slop constraints (minimal-diff principle, file/abstraction budgets, the Rule of Three for premature abstraction).
 
-The constitution is a versioned governance document — see [`.specify/memory/constitution.md`](.specify/memory/constitution.md). It evolved through real post-mortems (e.g., v1.1.0 added Cross-Feature Data Contract Verification after integration bugs in Features 030-032 revealed a gap at the seam between features). A multi-tier sub-agent review workflow enforces compliance at PR time.
+The constitution is a versioned governance document that evolved through real post-mortems — for example, v1.1.0 added Cross-Feature Data Contract Verification after integration bugs in Features 030–032 revealed a gap at the seam between features. A multi-tier sub-agent review workflow enforces compliance at PR time.
 
 ## Development
 
@@ -516,6 +395,7 @@ poetry install
 - [ ] Knowledge graph extraction layer over normalized transcript + tag + entity data
 - [ ] Semantic transcript search using embeddings (currently full-text ILIKE with GIN trigram indexes)
 - [ ] Transcript refresh — re-download improved YouTube ASR with correction reconciliation ([#126](https://github.com/aucontraire/chronovista/issues/126))
+- [ ] Write operations — create playlists, rate videos, and manage subscriptions via OAuth write scopes
 - [ ] Browser extension for real-time watch history capture
 
 ## Contributing

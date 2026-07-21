@@ -100,28 +100,13 @@ chronovista/
 
 ## Quick Links
 
-### Models
+The CLI, REST API, and code (models, repositories, services) reference is
+auto-generated from the source at build time. See the [Reference](../reference/)
+section:
 
-- [Channel](models/channel.md) - YouTube channel entities
-- [Video](models/video.md) - Video metadata and content
-- [Transcript](models/transcript.md) - Multi-language transcripts
-- [Topic](models/topic.md) - Topic classification
-
-### Repositories
-
-- [Base Repository](repositories/base.md) - Abstract repository interface
-- [Channel Repository](repositories/channel.md) - Channel data access
-- [Video Repository](repositories/video.md) - Video data access
-
-### Services
-
-- [YouTube Service](services/youtube.md) - YouTube API integration
-- [Takeout Service](services/takeout.md) - Google Takeout processing
-- [Transcript Service](services/transcript.md) - Transcript management
-
-### CLI
-
-- [Commands](cli/commands.md) - CLI command modules
+- **[CLI](../reference/cli.md)** — every `chronovista` command, generated from the Typer app
+- **[REST API](../reference/api/index.md)** — endpoints by tag, generated from the OpenAPI schema
+- **[Code](../reference/code/)** — Pydantic models, DB models, services, and repositories (mkdocstrings)
 
 ## Type Safety
 

@@ -1,0 +1,23 @@
+# Pre-commit hooks: run Black and Ruff on staged Python files before every commit,
+# so formatting/lint issues are fixed locally instead of failing in CI.
+#
+# One-time setup after cloning:
+#     poetry run pre-commit install
+#
+# Scope and versions match the CI lint job (black --check + ruff check on
+# src/chronovista/ and tests/). When Black or Ruff are bumped in pyproject.toml,
+# bump the `rev` values here to match (or run `pre-commit autoupdate`).
+
+repos:
+  - repo: https://github.com/psf/black
+    rev: 25.1.0
+    hooks:
+      - id: black
+        files: ^(src/chronovista/|tests/)
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.3
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+        files: ^(src/chronovista/|tests/)

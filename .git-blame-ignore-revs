@@ -1,0 +1,11 @@
+# Revisions listed here are skipped by `git blame` so that bulk mechanical
+# changes (e.g. a repo-wide formatter run) don't obscure real authorship.
+#
+# GitHub's web "Blame" view honors this file automatically. For the local CLI,
+# enable it once per clone:
+#     git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Only list commits that are PURELY mechanical (no behavior change).
+
+# chore: adopt Black formatting repo-wide (#136 / PR #137) — 312 files reformatted
+593860812ae826c72b1e09ec93f4b64f88cbff72

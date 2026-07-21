@@ -61,6 +61,19 @@ make dev-migrate
 poetry run pre-commit install
 ```
 
+This runs **Black** (format) and **Ruff** (lint, with autofix) on staged Python
+files under `src/chronovista/` and `tests/` before every commit — the same
+checks CI enforces, caught locally instead of in a failed build. If a hook
+reformats or fixes files, the commit is aborted; re-stage the changes and
+commit again.
+
+Also enable the shared blame-ignore list so `git blame` skips the one-time
+repo-wide formatting commit (GitHub's web blame does this automatically):
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
 ### 5. Configure Environment
 
 ```bash

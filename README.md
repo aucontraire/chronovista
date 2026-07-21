@@ -6,6 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/aucontraire/chronovista/actions/workflows/test.yml"><img src="https://github.com/aucontraire/chronovista/actions/workflows/test.yml/badge.svg" alt="CI"></a>
+  <a href="https://aucontraire.github.io/chronovista/"><img src="https://img.shields.io/badge/docs-online-blue.svg" alt="Docs"></a>
   <img src="https://img.shields.io/badge/license-AGPL--3.0-green.svg" alt="License: AGPL-3.0">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/tests-11,400+-brightgreen.svg" alt="Tests: 11,400+">
@@ -20,7 +21,7 @@
   <a href="#usage">Usage</a> |
   <a href="#architecture">Architecture</a> |
   <a href="#development">Development</a> |
-  <a href="docs/README.md">Docs</a>
+  <a href="https://aucontraire.github.io/chronovista/">Docs</a>
 </p>
 
 ---

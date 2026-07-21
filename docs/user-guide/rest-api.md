@@ -47,7 +47,7 @@ The API shares authentication with the CLI:
    chronovista auth login
    ```
 
-2. **API reads tokens automatically** from the CLI's OAuth cache (~/.chronovista/credentials/)
+2. **API reads tokens automatically** from the CLI's OAuth token file (`$DATA_DIR/youtube_token.json`, default `./data/`)
 
 3. **All endpoints require authentication** except `/api/v1/health`
 

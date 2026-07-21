@@ -47,29 +47,9 @@ DATABASE_URL=mysql+aiomysql://username:password@localhost:3306/chronovista
 ## Language Configuration
 
 chronovista supports multi-language preferences for transcript management.
-
-Create `~/.chronovista/language_config.yaml`:
-
-```yaml
-language_preferences:
-  fluent:
-    - en-US  # Native English
-    - es-ES  # Fluent Spanish
-  learning:
-    - it-IT  # Studying Italian
-    - pt-BR  # Learning Portuguese
-  curious:
-    - fr-FR  # Sometimes interesting
-  exclude:
-    - zh-CN  # Not interested
-
-auto_download_rules:
-  fluent_languages: true
-  learning_languages: true
-  curious_languages: false
-  max_transcripts_per_video: 3
-  short_video_threshold: 300  # seconds
-```
+Preferences are **stored in the database** (the `user_language_preferences`
+table) — there is no YAML config file. Manage them with the `languages` command
+group.
 
 ### Language Preference Types
 
@@ -80,18 +60,26 @@ auto_download_rules:
 | `curious` | Languages you find interesting | No (default) |
 | `exclude` | Languages to skip entirely | Never |
 
-### Setting Preferences via CLI
+### Managing Preferences via CLI
 
 ```bash
-# Set language preferences
-chronovista languages set --fluent en-US,es-ES --learning it-IT --curious fr-FR
+# Interactive setup / add preferences for one or more languages
+chronovista languages set
 
-# View current preferences
-chronovista languages show
+# Add a single language at a given tier
+chronovista languages add
 
-# Configure auto-download behavior
-chronovista languages config --auto-download learning
+# List current preferences
+chronovista languages list
+
+# Remove a language, or reset all preferences
+chronovista languages remove
+chronovista languages reset
 ```
+
+Run `chronovista languages --help` (or see the generated
+[CLI reference](../reference/cli.md)) for the exact flags each subcommand
+accepts.
 
 ## OAuth Scope Management
 
@@ -162,38 +150,25 @@ proxy_config = WebshareProxyConfig(
 
 ## Application Configuration
 
-### CLI Configuration
+All application configuration is environment-based (via Pydantic `Settings`);
+there is no `config.yaml`. Beyond the required variables above, these optional
+environment variables tune behavior (defaults shown):
 
-Configure CLI behavior in `~/.chronovista/config.yaml`:
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `LOG_LEVEL` | Logging verbosity | `INFO` |
+| `DATA_DIR` | Directory for the OAuth token and app data | `./data` |
+| `CACHE_DIR` | Directory for the CDX/image cache | `./cache` |
+| `LOGS_DIR` | Directory for log files | `./logs` |
+| `EXPORT_DIR` | Default export output directory | `./exports` |
+| `EXPORT_FORMAT` | Default export format | `csv` |
+| `API_RATE_LIMIT` | YouTube API requests per minute | `100` |
+| `CONCURRENT_REQUESTS` | Max concurrent API requests | (see `settings.py`) |
+| `RETRY_ATTEMPTS` | Retry attempts for transient failures | `3` |
+| `CDX_CACHE_TTL_HOURS` | Wayback CDX cache lifetime | (see `settings.py`) |
 
-```yaml
-cli:
-  output_format: rich  # rich, json, plain
-  color_enabled: true
-  progress_bars: true
-  verbose: false
-
-export:
-  default_format: csv
-  include_headers: true
-  date_format: "%Y-%m-%d"
-
-sync:
-  batch_size: 50
-  retry_attempts: 3
-  retry_delay: 5
-```
-
-### Logging Configuration
-
-```yaml
-logging:
-  level: INFO
-  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-  file: ~/.chronovista/logs/chronovista.log
-  max_size: 10MB
-  backup_count: 5
-```
+See `src/chronovista/config/settings.py` for the authoritative list and default
+values.
 
 ## Development Configuration
 
@@ -244,15 +219,17 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 ### Credential Storage
 
-OAuth tokens are stored encrypted in `~/.chronovista/credentials/`:
+The OAuth token is written to `youtube_token.json` inside the configured
+`DATA_DIR` (default `./data/`):
 
 ```
-~/.chronovista/
-├── credentials/
-│   └── youtube_token.json  # Encrypted OAuth token
-├── config.yaml
-└── language_config.yaml
+$DATA_DIR/
+└── youtube_token.json   # OAuth access + refresh token (JSON)
 ```
+
+The token file contains a live refresh token, so treat it like a credential:
+keep `DATA_DIR` out of version control and off shared storage. Delete the file
+(or run the auth flow again) to force re-authentication.
 
 ## Next Steps
 

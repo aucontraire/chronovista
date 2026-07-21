@@ -250,14 +250,12 @@ WRITE_SCOPES = [
 
 ### Progressive Scope Management
 
-```python
-class AuthService:
-    async def request_write_access(self):
-        """Upgrade to write scopes when needed."""
-        current_scopes = await self.get_current_scopes()
-        if "youtube" not in current_scopes:
-            await self.reauthenticate(WRITE_SCOPES)
-```
+OAuth scopes are configured via the `oauth_scopes` setting and handled by
+`OAuthService` in `src/chronovista/auth/oauth_service.py`. Read scopes are
+requested by default; adding write scopes (playlist management, rating,
+subscribing) requires re-running the OAuth flow so the user can grant the
+broader consent. Credentials are persisted to `{DATA_DIR}/youtube_token.json`
+and refreshed automatically while a valid refresh token exists.
 
 ## Error Handling
 
@@ -387,7 +385,11 @@ Triggers batch recovery of all deleted/unavailable videos for a channel.
 
 ### Dependency Injection
 
-Both endpoints use `get_recovery_deps()` from `api/deps.py` to obtain a `RecoveryDeps` bundle containing the CDX client, page parser, and orchestrator, all sharing a single database session per request.
+Both endpoints use `get_recovery_deps()` from `api/deps.py`, which returns a
+`tuple[CDXClient, PageParser, RateLimiter]`. The `RateLimiter` is a module-level
+singleton shared across requests (so the Wayback Machine rate limit is respected
+globally); the endpoint constructs the recovery orchestrator from these
+dependencies and the request-scoped database session.
 
 ## See Also
 

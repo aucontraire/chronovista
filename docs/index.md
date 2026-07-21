@@ -37,7 +37,7 @@ chronovista is a CLI application that enables users to access, store, and explor
 
     ---
 
-    Advanced topic classification with 17 CLI commands for content discovery and trend analysis
+    Advanced topic classification with a full CLI command group for content discovery and trend analysis
 
 -   :material-database:{ .lg .middle } **Local Storage**
 
@@ -67,7 +67,7 @@ chronovista is a CLI application that enables users to access, store, and explor
 
     ---
 
-    FastAPI-powered REST API with 20+ endpoints for programmatic access to videos, transcripts, and search
+    FastAPI-powered REST API with 70+ endpoints for programmatic access to videos, transcripts, entities, tags, and search
 
 -   :material-delete-restore:{ .lg .middle } **Deleted Content Recovery**
 
@@ -80,13 +80,13 @@ chronovista is a CLI application that enables users to access, store, and explor
 ## Project Status
 
 !!! success "Current Status"
-    - **10,900+ tests** (7,403+ backend, 3,519+ frontend) with **90%+ coverage**
-    - **Comprehensive Pydantic models** with advanced validation and type safety
+    - **Thousands of automated tests** across backend and frontend with a **90%+ coverage** gate
+    - **Comprehensive Pydantic V2 models** with advanced validation and type safety (mypy strict)
     - **Real API integration testing** with YouTube API data validation
     - **Advanced repository pattern** with async support and composite keys
     - **Rate-limited API service** with intelligent error handling and retry logic
-    - **Wayback Machine recovery** for deleted/unavailable video and channel metadata via CLI, REST API, and frontend (v0.28.0)
-    - **React frontend** with video browsing, transcript search, deep link navigation, and recovery UI (v0.21.0)
+    - **Wayback Machine recovery** for deleted/unavailable video and channel metadata via CLI, REST API, and frontend
+    - **React frontend** with video browsing, transcript search, deep link navigation, tag merging, and recovery UI
 
 ## Quick Example
 

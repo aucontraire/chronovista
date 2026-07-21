@@ -52,31 +52,39 @@ Clear separation between layers:
 
 ### Repository Pattern
 
-Abstracted data access with swappable implementations:
+Data access is abstracted behind a generic base. `BaseRepository` (an ABC in
+`repositories/base.py`) declares the async contract, and
+`BaseSQLAlchemyRepository` provides the concrete implementation that every
+specialized repository extends:
 
 ```python
-class VideoRepository(ABC):
+class BaseRepository(
+    ABC, Generic[ModelType, CreateSchemaType, UpdateSchemaType, IdType]
+):
     @abstractmethod
-    async def save(self, video: Video) -> None: ...
+    async def create(self, session: AsyncSession, *, obj_in: CreateSchemaType) -> ModelType: ...
 
     @abstractmethod
-    async def find_by_id(self, video_id: VideoId) -> Optional[Video]: ...
+    async def get(self, session: AsyncSession, id: IdType) -> ModelType | None: ...
+
+    @abstractmethod
+    async def get_multi(self, session: AsyncSession, *, skip: int = 0, limit: int = 100) -> list[ModelType]: ...
+
+    @abstractmethod
+    async def update(self, session: AsyncSession, *, db_obj: ModelType, obj_in: UpdateSchemaType) -> ModelType: ...
+
+    @abstractmethod
+    async def delete(self, session: AsyncSession, *, id: IdType) -> ModelType | None: ...
 ```
 
 ### Dependency Injection
 
-Loose coupling between components enables testing and flexibility:
-
-```python
-class SyncService:
-    def __init__(
-        self,
-        video_repo: VideoRepository,
-        youtube_api: YouTubeAPIClient,
-    ):
-        self.video_repo = video_repo
-        self.youtube_api = youtube_api
-```
+Loose coupling between components enables testing and flexibility. Services
+receive their collaborators (repositories, the `YouTubeService` client, a
+database session) rather than constructing them. In the REST API, FastAPI's
+`Depends()` wires these together per request — for example, the recovery
+endpoints obtain their dependencies from `get_recovery_deps()` in
+`api/deps.py`.
 
 ## Component Overview
 
@@ -92,35 +100,42 @@ Typer-based command-line interface:
 
 FastAPI-based HTTP interface:
 
-- 13 versioned endpoints under `/api/v1/`
+- 70+ versioned operations under `/api/v1/` (see the generated [REST API reference](../reference/api/index.md))
 - OAuth integration with CLI token cache
 - OpenAPI documentation (Swagger, ReDoc)
 - Pydantic V2 response schemas
-- Pagination and error handling
+- Pagination, filtering, and RFC 7807 error handling
 
 ### Service Layer
 
-Business logic services:
+Business logic lives in concrete service classes under `services/`. Most are
+plain classes; only three (`TakeoutService`, `TranscriptService`,
+`YouTubeService`) sit behind ABC interfaces in `services/interfaces/`.
+Representative services:
 
-- **AuthService** - OAuth authentication
-- **SyncService** - Data synchronization
-- **TranscriptService** - Multi-language transcript management
-- **TopicService** - Topic analytics
-- **TakeoutService** - Google Takeout processing
-- **RecoveryOrchestrator** - Wayback Machine video recovery coordination
-- **ChannelRecoveryOrchestrator** - Channel-level archive recovery with two-tier overwrite
-- **CDXClient** - Wayback Machine CDX API client with caching and retry
-- **PageParser** - Archived YouTube page metadata extraction (5-pattern like count, channel metadata)
+- **YouTubeService** - YouTube Data API v3 client wrapper
+- **TranscriptService** - Fetch and download transcripts
+- **TakeoutService** / **TakeoutSeedingService** - Parse and seed Google Takeout archives
+- **EnrichmentService** (`services/enrichment/`) - Metadata enrichment via the API
+- **TagNormalizationService** / **TagManagementService** - Canonical tag pipeline and curation
+- **EntityMentionScanService** - Named-entity mention detection in transcripts
+- **TranscriptCorrectionService** / **BatchCorrectionService** - Correction workflows
+- **TopicAnalyticsService** / **TopicGraphService** - Topic analytics and relationship graphs
+- **Recovery orchestrators** (`services/recovery/`) - Wayback Machine video/channel recovery, plus `CDXClient`, `PageParser`, and `RateLimiter`
 
 ### Repository Layer
 
-Data access abstractions:
+Data access abstractions (all extending `BaseSQLAlchemyRepository`):
 
 - **ChannelRepository** - Channel data
 - **VideoRepository** - Video data
-- **TranscriptRepository** - Transcript storage
-- **TopicRepository** - Topic classification
+- **VideoTranscriptRepository** - Transcript storage
+- **TopicCategoryRepository** - Topic classification
 - **UserVideoRepository** - Watch history
+- **CanonicalTagRepository** / **TagAliasRepository** - Tag normalization
+- **NamedEntityRepository** / **EntityMentionRepository** - Entity knowledge base
+
+...and ~14 more, one per persisted entity.
 
 ### Database Layer
 
@@ -241,7 +256,7 @@ async def fetch_video(self, video_id: str) -> Video:
 2. FastAPI: Validate auth, parse year filters
            |
            v
-3. Dependencies: get_recovery_deps() → CDXClient, PageParser, Orchestrator
+3. Dependencies: get_recovery_deps() → (CDXClient, PageParser, RateLimiter)
            |
            v
 4. Idempotency Guard: Skip if recovered within 5 minutes

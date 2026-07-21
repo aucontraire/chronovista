@@ -120,7 +120,7 @@ Project-specific terminology used throughout chronovista documentation and code.
 :   A user-submitted edit to a transcript segment's text. Each correction records the original text, corrected text, correction type, and version number in an append-only audit trail (`transcript_corrections` table). Corrections are applied via the inline edit UI in the transcript panel or the REST API.
 
 **Correction Type**
-:   A classification for why a segment was corrected. Values: `spelling`, `asr_error` (automatic speech recognition mistake), `context_correction`, `profanity_fix`, `formatting`, `revert`. The `revert` type is reserved for the system and cannot be submitted manually.
+:   A classification for why a segment was corrected. Values: `spelling` (typos/misspellings of common words), `proper_noun` (misrecognized names of people, places, or organizations), `context_correction` (right sound, wrong word), `word_boundary` (run-together or wrongly split words), `formatting` (punctuation, capitalization, spacing), `profanity_fix` (garbled or censored profanity), `other`, and `revert`. The `revert` type is reserved for the system and cannot be submitted manually.
 
 **SegmentEditState**
 :   A TypeScript discriminated union representing the four mutually exclusive UI states of a transcript segment: `read` (default), `editing` (inline edit form open), `confirming-revert` (revert confirmation visible), `history` (correction history panel expanded). Enforces single-edit-at-a-time — only one segment can be in a non-read state.

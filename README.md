@@ -209,7 +209,7 @@ make dev-migrate
 
 You'll need a Google Cloud project with YouTube Data API v3 enabled and OAuth 2.0 credentials.
 
-**[Full setup guide](docs/getting-started/youtube-api-setup.md)** — covers consent screen configuration, test user setup, and common authentication errors.
+**[Full setup guide](https://aucontraire.github.io/chronovista/getting-started/youtube-api-setup/)** — covers consent screen configuration, test user setup, and common authentication errors.
 
 Quick reference for `.env`:
 ```env
@@ -390,7 +390,7 @@ chronovista/
 - Repository pattern isolating all database access
 - Layered architecture: CLI/API -> Services -> Repositories -> DB
 
-See [Architecture Overview](docs/architecture/overview.md) for details.
+See [Architecture Overview](https://aucontraire.github.io/chronovista/architecture/overview/) for details.
 
 ## Engineering Practice
 

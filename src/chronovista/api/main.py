@@ -285,5 +285,16 @@ if _serve_static and _static_dir.exists():
         This catch-all handles React Router paths like /onboarding, /channels,
         /videos/123, etc. API routes, /docs, /redoc, and /openapi.json continue
         to work because they are registered before this catch-all.
+
+        ``index.html`` is served with ``Cache-Control: no-cache`` so browsers
+        revalidate it on every load. After a redeploy the fresh HTML then
+        references the new content-hashed asset filenames, avoiding stale
+        references to chunks that no longer exist (which would otherwise fail
+        as "Failed to fetch dynamically imported module"). The hashed assets
+        under ``/assets`` remain safe to cache since their names change on
+        every build.
         """
-        return FileResponse("static/index.html")
+        return FileResponse(
+            "static/index.html",
+            headers={"Cache-Control": "no-cache"},
+        )

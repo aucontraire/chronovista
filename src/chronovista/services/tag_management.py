@@ -121,6 +121,18 @@ class UndoResult:
 
 
 @dataclass
+class MergePreviewResult:
+    """Read-only preview of a merge's impact (no mutation)."""
+
+    source_tags: list[str]
+    target_tag: str
+    resulting_alias_count: int
+    resulting_video_count: int
+    source_alias_count: int
+    source_video_count: int
+
+
+@dataclass
 class CollisionGroup:
     """A group of aliases that may represent a diacritic collision."""
 
@@ -319,6 +331,104 @@ class TagManagementService:
     # -------------------------------------------------------------------
     # Public operation methods (stubs — implemented in later phases)
     # -------------------------------------------------------------------
+
+    async def merge_preview(
+        self,
+        session: AsyncSession,
+        source_normalized_forms: list[str],
+        target_normalized_form: str,
+    ) -> MergePreviewResult:
+        """
+        Compute the exact impact of a merge without mutating any data.
+
+        Validates the same way ``merge`` does (non-empty sources, no
+        self-merge, all tags active) so the preview matches what the merge
+        would actually produce, then computes resulting counts over the union
+        of source + target tags. Video count is a distinct count, so a video
+        tagged with more than one selected tag is counted once (Feature 056,
+        FR-008a). This method performs only SELECTs.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session (no transaction mutation occurs).
+        source_normalized_forms : list[str]
+            Normalized forms of the source tags to be absorbed.
+        target_normalized_form : str
+            Normalized form of the surviving target tag.
+
+        Returns
+        -------
+        MergePreviewResult
+            Exact resulting alias and video counts, plus source-only context.
+
+        Raises
+        ------
+        ValueError
+            If validation fails (empty sources, self-merge, missing/non-active).
+        """
+        if not source_normalized_forms:
+            raise ValueError("At least one source tag is required")
+
+        target = await self._validate_active_tag(session, target_normalized_form)
+
+        for src_form in source_normalized_forms:
+            if src_form == target_normalized_form:
+                raise ValueError(f"Cannot merge tag '{src_form}' into itself")
+
+        sources: list[CanonicalTagDB] = []
+        for src_form in source_normalized_forms:
+            sources.append(await self._validate_active_tag(session, src_form))
+
+        source_ids = [s.id for s in sources]
+        union_ids = [*source_ids, target.id]
+
+        resulting_alias, resulting_video = await self._count_over_tag_ids(
+            session, union_ids
+        )
+        source_alias, source_video = await self._count_over_tag_ids(
+            session, source_ids
+        )
+
+        return MergePreviewResult(
+            source_tags=[s.canonical_form for s in sources],
+            target_tag=target.canonical_form,
+            resulting_alias_count=resulting_alias,
+            resulting_video_count=resulting_video,
+            source_alias_count=source_alias,
+            source_video_count=source_video,
+        )
+
+    async def _count_over_tag_ids(
+        self, session: AsyncSession, canonical_tag_ids: list[uuid.UUID]
+    ) -> tuple[int, int]:
+        """
+        Count aliases and distinct videos across a set of canonical tags.
+
+        Read-only. Video count uses ``COUNT(DISTINCT video_id)`` so videos
+        shared across the given tags are counted once — the same shape as
+        ``_recalculate_counts`` but over a union of tag IDs and without the
+        accompanying update.
+        """
+        if not canonical_tag_ids:
+            return 0, 0
+
+        alias_result = await session.execute(
+            select(func.count())
+            .select_from(TagAliasDB)
+            .where(TagAliasDB.canonical_tag_id.in_(canonical_tag_ids))
+        )
+        alias_count: int = alias_result.scalar_one()
+
+        video_result = await session.execute(
+            select(func.count(distinct(VideoTag.video_id)))
+            .select_from(VideoTag)
+            .join(TagAliasDB, VideoTag.tag == TagAliasDB.raw_form)
+            .where(TagAliasDB.canonical_tag_id.in_(canonical_tag_ids))
+        )
+        video_count: int = video_result.scalar_one()
+
+        return alias_count, video_count
 
     async def merge(
         self,

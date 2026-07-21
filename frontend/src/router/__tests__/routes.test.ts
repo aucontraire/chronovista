@@ -44,8 +44,8 @@ function findGroup(entries: NavEntry[], label: string): NavGroupRoute | undefine
 // ---------------------------------------------------------------------------
 
 describe("navRoutes — top-level structure", () => {
-  it("has exactly 9 top-level entries", () => {
-    expect(navRoutes).toHaveLength(9);
+  it("has exactly 10 top-level entries", () => {
+    expect(navRoutes).toHaveLength(10);
   });
 
   it("first entry is Videos flat route", () => {
@@ -89,8 +89,16 @@ describe("navRoutes — top-level structure", () => {
     }
   });
 
-  it("sixth entry is Search flat route", () => {
+  it("sixth entry is the Tags group", () => {
     const entry = navRoutes[5];
+    expect(entry?.kind).toBe("group");
+    if (entry?.kind === "group") {
+      expect(entry.label).toBe("Tags");
+    }
+  });
+
+  it("seventh entry is Search flat route", () => {
+    const entry = navRoutes[6];
     expect(entry?.kind).toBe("route");
     if (entry?.kind === "route") {
       expect(entry.path).toBe("/search");
@@ -140,12 +148,12 @@ describe("navRoutes — flat NavRoute entries", () => {
 });
 
 describe("navRoutes — config section order", () => {
-  it("separator appears at index 6", () => {
-    expect(navRoutes[6]?.kind).toBe("separator");
+  it("separator appears at index 7", () => {
+    expect(navRoutes[7]?.kind).toBe("separator");
   });
 
-  it("Setup route appears at index 7, after the separator", () => {
-    const entry = navRoutes[7];
+  it("Setup route appears at index 8, after the separator", () => {
+    const entry = navRoutes[8];
     expect(entry?.kind).toBe("route");
     if (entry?.kind === "route") {
       expect(entry.path).toBe("/onboarding");
@@ -153,8 +161,8 @@ describe("navRoutes — config section order", () => {
     }
   });
 
-  it("Settings route appears at index 8, after Setup", () => {
-    const entry = navRoutes[8];
+  it("Settings route appears at index 9, after Setup", () => {
+    const entry = navRoutes[9];
     expect(entry?.kind).toBe("route");
     if (entry?.kind === "route") {
       expect(entry.path).toBe("/settings");
@@ -255,5 +263,62 @@ describe("navRoutes — Transcripts group", () => {
       "Batch History",
       "ASR Error Patterns",
     ]);
+  });
+});
+
+describe("navRoutes — Tags group (Feature 056)", () => {
+  it("Tags group exists", () => {
+    const group = findGroup(navRoutes, "Tags");
+    expect(group).toBeDefined();
+  });
+
+  it("Tags group has kind='group'", () => {
+    const group = findGroup(navRoutes, "Tags");
+    expect(group?.kind).toBe("group");
+  });
+
+  it("Tags group has an icon", () => {
+    const group = findGroup(navRoutes, "Tags");
+    expect(group?.icon).toBeDefined();
+  });
+
+  it("Tags group has a tooltip", () => {
+    const group = findGroup(navRoutes, "Tags");
+    expect(group?.tooltip).toBeTruthy();
+  });
+
+  it("Tags group has storageKey 'chronovista.sidebar.tagsExpanded'", () => {
+    const group = findGroup(navRoutes, "Tags");
+    expect(group?.storageKey).toBe("chronovista.sidebar.tagsExpanded");
+  });
+
+  it("Tags group defaultExpanded is true", () => {
+    const group = findGroup(navRoutes, "Tags");
+    expect(group?.defaultExpanded).toBe(true);
+  });
+
+  it("Tags group has exactly 1 child", () => {
+    const group = findGroup(navRoutes, "Tags");
+    expect(group?.children).toHaveLength(1);
+  });
+
+  it("Tags group contains Merge Tags child at /tags/merge", () => {
+    const group = findGroup(navRoutes, "Tags");
+    const child = group?.children.find((c) => c.path === "/tags/merge");
+    expect(child).toBeDefined();
+    expect(child?.label).toBe("Merge Tags");
+    expect(child?.icon).toBeDefined();
+  });
+
+  it("Tags group is positioned after Entities and before the config separator", () => {
+    const entitiesIndex = navRoutes.findIndex(
+      (e): e is NavRoute => e.kind === "route" && e.path === "/entities"
+    );
+    const tagsGroupIndex = navRoutes.findIndex(
+      (e) => e.kind === "group" && e.label === "Tags"
+    );
+    const separatorIndex = navRoutes.findIndex((e) => e.kind === "separator");
+    expect(tagsGroupIndex).toBeGreaterThan(entitiesIndex);
+    expect(tagsGroupIndex).toBeLessThan(separatorIndex);
   });
 });

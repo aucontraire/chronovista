@@ -13,14 +13,19 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import uuid
 from collections import defaultdict
 
-from fastapi import APIRouter, Depends, Path, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import (
+    get_db,
+    get_tag_management_service,
+    require_auth,
+)
 from chronovista.api.routers.responses import GET_ITEM_ERRORS, LIST_ERRORS
 from chronovista.api.schemas.canonical_tags import (
     CanonicalTagDetail,
@@ -28,7 +33,16 @@ from chronovista.api.schemas.canonical_tags import (
     CanonicalTagListItem,
     CanonicalTagListResponse,
     CanonicalTagSuggestion,
+    MatchMode,
+    MergePreview,
+    MergePreviewRequest,
+    MergePreviewResponse,
+    MergeRequest,
+    MergeResponse,
+    MergeResultSchema,
     TagAliasItem,
+    UndoResponse,
+    UndoResultSchema,
 )
 from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.videos import (
@@ -39,6 +53,10 @@ from chronovista.api.schemas.videos import (
 from chronovista.db.models import CanonicalTag as CanonicalTagDB
 from chronovista.exceptions import NotFoundError
 from chronovista.repositories.canonical_tag_repository import CanonicalTagRepository
+from chronovista.services.tag_management import (
+    TagManagementService,
+    UndoNotImplementedError,
+)
 from chronovista.utils.fuzzy import find_similar
 
 logger = logging.getLogger(__name__)
@@ -467,6 +485,13 @@ async def list_canonical_tags(
         max_length=500,
         description="Search/autocomplete query for canonical tag names",
     ),
+    match_mode: MatchMode = Query(
+        MatchMode.PREFIX,
+        description=(
+            "Match mode: 'prefix' (default, q%) or 'contains' (%q%). "
+            "Contains requires a query of at least 2 characters."
+        ),
+    ),
     limit: int = Query(
         20, ge=1, le=100, description="Maximum number of items to return"
     ),
@@ -528,8 +553,20 @@ async def list_canonical_tags(
 
     start = time.monotonic()
 
+    # FR-003: contains mode requires a query of at least 2 characters to avoid
+    # excessively broad substring scans. Below the threshold we return an empty
+    # result set rather than an error (typeahead-friendly).
+    if match_mode == MatchMode.CONTAINS and q is not None and len(q) < 2:
+        return CanonicalTagListResponse(
+            data=[],
+            pagination=PaginationMeta(
+                total=0, limit=limit, offset=offset, has_more=False
+            ),
+            suggestions=None,
+        )
+
     items_orm, total = await _repository.search(
-        session, q=q, skip=offset, limit=limit
+        session, q=q, match_mode=match_mode.value, skip=offset, limit=limit
     )
 
     items: list[CanonicalTagListItem] = [
@@ -614,4 +651,118 @@ async def list_canonical_tags(
 
     return CanonicalTagListResponse(
         data=items, pagination=pagination, suggestions=suggestions
+    )
+
+
+def _map_merge_value_error(exc: ValueError) -> HTTPException:
+    """Map a service-layer ValueError to an appropriate HTTP error.
+
+    The service raises ``ValueError`` with descriptive messages for all
+    validation failures. We translate them to conventional status codes:
+    not-found -> 404, already-undone -> 409, everything else -> 400.
+    """
+    message = str(exc)
+    lowered = message.lower()
+    if "not found" in lowered:
+        return HTTPException(status_code=404, detail=message)
+    if "already been undone" in lowered:
+        return HTTPException(status_code=409, detail=message)
+    return HTTPException(status_code=400, detail=message)
+
+
+@router.post(
+    "/canonical-tags/merge/preview",
+    response_model=MergePreviewResponse,
+    responses={**LIST_ERRORS},
+)
+async def preview_merge(
+    payload: MergePreviewRequest,
+    session: AsyncSession = Depends(get_db),
+    service: TagManagementService = Depends(get_tag_management_service),
+) -> MergePreviewResponse:
+    """
+    Preview the exact impact of a merge without mutating any data.
+
+    Returns resulting alias/video counts computed over the union of source and
+    target tags (videos counted once). Read-only (Feature 056, FR-008a).
+    """
+    try:
+        result = await service.merge_preview(
+            session,
+            payload.source_normalized_forms,
+            payload.target_normalized_form,
+        )
+    except ValueError as exc:
+        raise _map_merge_value_error(exc) from exc
+
+    return MergePreviewResponse(data=MergePreview.model_validate(result))
+
+
+@router.post(
+    "/canonical-tags/merge",
+    response_model=MergeResponse,
+    responses={**LIST_ERRORS},
+)
+async def merge_canonical_tags(
+    payload: MergeRequest,
+    session: AsyncSession = Depends(get_db),
+    service: TagManagementService = Depends(get_tag_management_service),
+) -> MergeResponse:
+    """
+    Merge one or more source tags into a target canonical tag.
+
+    Delegates to the existing ``TagManagementService.merge`` (Feature 056,
+    FR-014). The session dependency commits on success.
+    """
+    try:
+        result = await service.merge(
+            session,
+            payload.source_normalized_forms,
+            payload.target_normalized_form,
+            reason=payload.reason,
+        )
+    except ValueError as exc:
+        raise _map_merge_value_error(exc) from exc
+
+    return MergeResponse(
+        data=MergeResultSchema(
+            source_tags=result.source_tags,
+            target_tag=result.target_tag,
+            aliases_moved=result.aliases_moved,
+            new_alias_count=result.new_alias_count,
+            new_video_count=result.new_video_count,
+            operation_id=str(result.operation_id),
+            entity_hint=result.entity_hint,
+        )
+    )
+
+
+@router.post(
+    "/canonical-tags/operations/{operation_id}/undo",
+    response_model=UndoResponse,
+    responses={**GET_ITEM_ERRORS, 409: {"description": "Already undone"}},
+)
+async def undo_operation(
+    operation_id: uuid.UUID = Path(..., description="Operation ID to undo"),
+    session: AsyncSession = Depends(get_db),
+    service: TagManagementService = Depends(get_tag_management_service),
+) -> UndoResponse:
+    """
+    Undo a previously logged tag operation (e.g., a merge) by ID.
+
+    Delegates to ``TagManagementService.undo`` (Feature 056, FR-010).
+    """
+    try:
+        result = await service.undo(session, operation_id)
+    except UndoNotImplementedError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise _map_merge_value_error(exc) from exc
+
+    return UndoResponse(
+        data=UndoResultSchema(
+            operation_type=result.operation_type,
+            operation_id=str(result.operation_id),
+            details=result.details,
+        )
     )

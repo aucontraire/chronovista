@@ -156,7 +156,8 @@ async def create_test_video(
         video_id=video_id,
         channel_id=channel_id,
         title=title or f"Test Video - {availability_status.value}",
-        description=description or f"Test video with status: {availability_status.value}",
+        description=description
+        or f"Test video with status: {availability_status.value}",
         upload_date=datetime(2024, 1, 15, tzinfo=UTC),
         duration=300,
         availability_status=availability_status.value,
@@ -273,7 +274,9 @@ class TestVideoListIncludeUnavailable:
             await test_data_session.commit()
 
             # Request with include_unavailable=false
-            response = await async_client.get("/api/v1/videos?include_unavailable=false")
+            response = await async_client.get(
+                "/api/v1/videos?include_unavailable=false"
+            )
             assert response.status_code == 200
             data = response.json()
 
@@ -367,7 +370,9 @@ class TestChannelListIncludeUnavailable:
             mock_oauth.is_authenticated.return_value = True
 
             # Request with include_unavailable=true
-            response = await async_client.get("/api/v1/channels?include_unavailable=true")
+            response = await async_client.get(
+                "/api/v1/channels?include_unavailable=true"
+            )
             assert response.status_code == 200
             data = response.json()
 
@@ -621,7 +626,9 @@ class TestSearchDescriptionsIncludeUnavailable:
             await test_data_session.commit()
 
             # Search descriptions without include_unavailable
-            response = await async_client.get("/api/v1/search/descriptions?q=epsilonterm")
+            response = await async_client.get(
+                "/api/v1/search/descriptions?q=epsilonterm"
+            )
             assert response.status_code == 200
             data = response.json()
 
@@ -717,7 +724,9 @@ class TestTagVideosIncludeUnavailable:
             await test_data_session.commit()
 
             # Get videos for tag without include_unavailable
-            response = await async_client.get("/api/v1/tags/unique_test_tag_alpha/videos")
+            response = await async_client.get(
+                "/api/v1/tags/unique_test_tag_alpha/videos"
+            )
             assert response.status_code == 200
             data = response.json()
 

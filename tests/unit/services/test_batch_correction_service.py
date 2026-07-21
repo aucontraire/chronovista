@@ -141,10 +141,8 @@ class TestProcessInBatches:
         async def process_fn(session: Any, item: Any) -> str:
             return "applied"
 
-        applied, skipped, failed, failed_batches = (
-            await service._process_in_batches(
-                mock_session, items, process_fn, batch_size=10
-            )
+        applied, skipped, failed, failed_batches = await service._process_in_batches(
+            mock_session, items, process_fn, batch_size=10
         )
 
         assert applied == 3
@@ -187,10 +185,8 @@ class TestProcessInBatches:
         async def process_fn(session: Any, item: Any) -> str:
             return "skipped" if item == "skip" else "applied"
 
-        applied, skipped, failed, failed_batches = (
-            await service._process_in_batches(
-                mock_session, items, process_fn, batch_size=10
-            )
+        applied, skipped, failed, failed_batches = await service._process_in_batches(
+            mock_session, items, process_fn, batch_size=10
         )
 
         assert applied == 2
@@ -207,13 +203,12 @@ class TestProcessInBatches:
         When the items list is empty, all counters are zero and no
         commit/rollback is called.
         """
+
         async def process_fn(session: Any, item: Any) -> str:
             return "applied"
 
-        applied, skipped, failed, failed_batches = (
-            await service._process_in_batches(
-                mock_session, [], process_fn, batch_size=10
-            )
+        applied, skipped, failed, failed_batches = await service._process_in_batches(
+            mock_session, [], process_fn, batch_size=10
         )
 
         assert applied == 0
@@ -237,10 +232,8 @@ class TestProcessInBatches:
         async def process_fn(session: Any, item: Any) -> str:
             return "applied"
 
-        applied, skipped, failed, failed_batches = (
-            await service._process_in_batches(
-                mock_session, items, process_fn, batch_size=2
-            )
+        applied, skipped, failed, failed_batches = await service._process_in_batches(
+            mock_session, items, process_fn, batch_size=2
         )
 
         assert applied == 5
@@ -270,10 +263,8 @@ class TestProcessInBatches:
             return "applied"
 
         items = list(range(4))
-        applied, skipped, failed, failed_batches = (
-            await service._process_in_batches(
-                mock_session, items, process_fn, batch_size=2
-            )
+        applied, skipped, failed, failed_batches = await service._process_in_batches(
+            mock_session, items, process_fn, batch_size=2
         )
 
         assert failed_batches == 1
@@ -289,6 +280,7 @@ class TestProcessInBatches:
         """
         When a batch fails, session.rollback() must be called for that batch.
         """
+
         async def process_fn(session: Any, item: Any) -> str:
             raise RuntimeError("boom")
 
@@ -309,6 +301,7 @@ class TestProcessInBatches:
         When a batch succeeds, session.commit() must be called.
         session.rollback() must not be called.
         """
+
         async def process_fn(session: Any, item: Any) -> str:
             return "applied"
 
@@ -380,14 +373,13 @@ class TestProcessInBatches:
         """
         When progress_callback is None (default), no error should occur.
         """
+
         async def process_fn(session: Any, item: Any) -> str:
             return "applied"
 
         items = ["a"]
-        applied, skipped, failed, failed_batches = (
-            await service._process_in_batches(
-                mock_session, items, process_fn, batch_size=10
-            )
+        applied, skipped, failed, failed_batches = await service._process_in_batches(
+            mock_session, items, process_fn, batch_size=10
         )
 
         assert applied == 1
@@ -413,10 +405,8 @@ class TestProcessInBatches:
             return "applied"
 
         items = ["fail1", "ok", "fail2"]
-        applied, skipped, failed, failed_batches = (
-            await service._process_in_batches(
-                mock_session, items, process_fn, batch_size=1
-            )
+        applied, skipped, failed, failed_batches = await service._process_in_batches(
+            mock_session, items, process_fn, batch_size=1
         )
 
         assert applied == 1
@@ -445,18 +435,14 @@ class TestValidatePattern:
 
     def test_complex_valid_regex(self, service: Any) -> None:
         """A more complex but valid regex should pass validation."""
-        service._validate_pattern(
-            r"(?:hello|world)\s+\d{2,4}", regex=True
-        )
+        service._validate_pattern(r"(?:hello|world)\s+\d{2,4}", regex=True)
 
     def test_invalid_regex_raises_value_error(self, service: Any) -> None:
         """An invalid regex pattern must raise ValueError."""
         with pytest.raises(ValueError, match="Invalid regex pattern"):
             service._validate_pattern("[unclosed", regex=True)
 
-    def test_invalid_regex_error_message_includes_pattern(
-        self, service: Any
-    ) -> None:
+    def test_invalid_regex_error_message_includes_pattern(self, service: Any) -> None:
         """The ValueError message must include the offending pattern."""
         with pytest.raises(ValueError, match=r"\[unclosed"):
             service._validate_pattern("[unclosed", regex=True)
@@ -1111,11 +1097,18 @@ class TestRebuildText:
         )
 
         seg1 = _make_segment(
-            video_id="v1", segment_id=1, text="hello", start_time=0.0,
-            has_correction=True, corrected_text="HELLO",
+            video_id="v1",
+            segment_id=1,
+            text="hello",
+            start_time=0.0,
+            has_correction=True,
+            corrected_text="HELLO",
         )
         seg2 = _make_segment(
-            video_id="v1", segment_id=2, text="world", start_time=1.0,
+            video_id="v1",
+            segment_id=2,
+            text="world",
+            start_time=1.0,
         )
 
         # Mock the session.execute for transcript query
@@ -1145,11 +1138,18 @@ class TestRebuildText:
         transcript = _make_transcript(video_id="v1")
 
         seg1 = _make_segment(
-            video_id="v1", segment_id=1, text="hello", start_time=0.0,
-            has_correction=True, corrected_text="HELLO",
+            video_id="v1",
+            segment_id=1,
+            text="hello",
+            start_time=0.0,
+            has_correction=True,
+            corrected_text="HELLO",
         )
         seg2 = _make_segment(
-            video_id="v1", segment_id=2, text="world", start_time=1.0,
+            video_id="v1",
+            segment_id=2,
+            text="world",
+            start_time=1.0,
         )
 
         transcript_result = MagicMock()
@@ -1174,11 +1174,18 @@ class TestRebuildText:
         transcript = _make_transcript(video_id="v1", transcript_text="old")
 
         seg1 = _make_segment(
-            video_id="v1", segment_id=1, text="hello", start_time=0.0,
-            has_correction=True, corrected_text="HELLO",
+            video_id="v1",
+            segment_id=1,
+            text="hello",
+            start_time=0.0,
+            has_correction=True,
+            corrected_text="HELLO",
         )
         seg2 = _make_segment(
-            video_id="v1", segment_id=2, text="world", start_time=1.0,
+            video_id="v1",
+            segment_id=2,
+            text="world",
+            start_time=1.0,
         )
 
         transcript_result = MagicMock()
@@ -1202,7 +1209,10 @@ class TestRebuildText:
         transcript = _make_transcript(video_id="v1")
 
         seg1 = _make_segment(
-            video_id="v1", segment_id=1, text="hello", start_time=0.0,
+            video_id="v1",
+            segment_id=1,
+            text="hello",
+            start_time=0.0,
         )
 
         transcript_result = MagicMock()
@@ -1255,12 +1265,20 @@ class TestRebuildText:
         t2 = _make_transcript(video_id="v2")
 
         seg1 = _make_segment(
-            video_id="v1", segment_id=1, text="a", start_time=0.0,
-            has_correction=True, corrected_text="A",
+            video_id="v1",
+            segment_id=1,
+            text="a",
+            start_time=0.0,
+            has_correction=True,
+            corrected_text="A",
         )
         seg2 = _make_segment(
-            video_id="v2", segment_id=2, text="b", start_time=0.0,
-            has_correction=True, corrected_text="B",
+            video_id="v2",
+            segment_id=2,
+            text="b",
+            start_time=0.0,
+            has_correction=True,
+            corrected_text="B",
         )
 
         transcript_result = MagicMock()
@@ -1277,7 +1295,9 @@ class TestRebuildText:
         mock_session.flush = AsyncMock()
 
         callback = MagicMock()
-        await service.rebuild_text(mock_session, dry_run=False, progress_callback=callback)
+        await service.rebuild_text(
+            mock_session, dry_run=False, progress_callback=callback
+        )
 
         assert callback.call_count == 2
         callback.assert_has_calls([call(1), call(1)])
@@ -1292,12 +1312,20 @@ class TestRebuildText:
         t2 = _make_transcript(video_id="v2")
 
         seg1 = _make_segment(
-            video_id="v1", segment_id=1, text="a", start_time=0.0,
-            has_correction=True, corrected_text="A",
+            video_id="v1",
+            segment_id=1,
+            text="a",
+            start_time=0.0,
+            has_correction=True,
+            corrected_text="A",
         )
         seg2 = _make_segment(
-            video_id="v2", segment_id=2, text="b", start_time=0.0,
-            has_correction=True, corrected_text="B",
+            video_id="v2",
+            segment_id=2,
+            text="b",
+            start_time=0.0,
+            has_correction=True,
+            corrected_text="B",
         )
 
         transcript_result = MagicMock()
@@ -1334,7 +1362,8 @@ class TestExportCorrections:
         mock_correction_repo.get_all_filtered.return_value = [c]
 
         count, csv_str = await service.export_corrections(
-            mock_session, format="csv",
+            mock_session,
+            format="csv",
         )
 
         assert count == 1
@@ -1351,15 +1380,24 @@ class TestExportCorrections:
         mock_correction_repo.get_all_filtered.return_value = []
 
         _, csv_str = await service.export_corrections(
-            mock_session, format="csv",
+            mock_session,
+            format="csv",
         )
 
         header = csv_str.strip().split("\n")[0]
         expected_cols = [
-            "id", "video_id", "language_code", "segment_id",
-            "correction_type", "original_text", "corrected_text",
-            "correction_note", "corrected_by_user_id", "corrected_at",
-            "version_number", "batch_id",
+            "id",
+            "video_id",
+            "language_code",
+            "segment_id",
+            "correction_type",
+            "original_text",
+            "corrected_text",
+            "correction_note",
+            "corrected_by_user_id",
+            "corrected_at",
+            "version_number",
+            "batch_id",
         ]
         assert header == ",".join(expected_cols)
 
@@ -1376,7 +1414,8 @@ class TestExportCorrections:
         mock_correction_repo.get_all_filtered.return_value = [c]
 
         count, json_str = await service.export_corrections(
-            mock_session, format="json",
+            mock_session,
+            format="json",
         )
 
         assert count == 1
@@ -1398,7 +1437,9 @@ class TestExportCorrections:
         mock_correction_repo.get_all_filtered.return_value = [c]
 
         _, json_str = await service.export_corrections(
-            mock_session, format="json", compact=True,
+            mock_session,
+            format="json",
+            compact=True,
         )
 
         # Compact JSON should be a single line (no indent newlines)
@@ -1418,7 +1459,9 @@ class TestExportCorrections:
         mock_correction_repo.get_all_filtered.return_value = [c]
 
         _, json_str = await service.export_corrections(
-            mock_session, format="json", compact=False,
+            mock_session,
+            format="json",
+            compact=False,
         )
 
         # Should have indented content
@@ -1434,7 +1477,8 @@ class TestExportCorrections:
         mock_correction_repo.get_all_filtered.return_value = []
 
         count, csv_str = await service.export_corrections(
-            mock_session, format="csv",
+            mock_session,
+            format="csv",
         )
 
         assert count == 0
@@ -1483,7 +1527,9 @@ class TestExportCorrections:
 
         callback = MagicMock()
         await service.export_corrections(
-            mock_session, format="csv", progress_callback=callback,
+            mock_session,
+            format="csv",
+            progress_callback=callback,
         )
 
         assert callback.call_count == 2
@@ -1500,7 +1546,8 @@ class TestExportCorrections:
         mock_correction_repo.get_all_filtered.return_value = [c1, c2]
 
         count, csv_str = await service.export_corrections(
-            mock_session, format="csv",
+            mock_session,
+            format="csv",
         )
 
         assert count == 2
@@ -1519,7 +1566,8 @@ class TestExportCorrections:
         mock_correction_repo.get_all_filtered.return_value = []
 
         count, json_str = await service.export_corrections(
-            mock_session, format="json",
+            mock_session,
+            format="json",
         )
 
         assert count == 0
@@ -1553,7 +1601,9 @@ class TestGetStatistics:
         result = await service.get_statistics(mock_session)
 
         mock_correction_repo.get_stats.assert_called_once_with(
-            mock_session, language=None, top=10,
+            mock_session,
+            language=None,
+            top=10,
         )
         assert result.total_corrections == 10
         assert result.total_reverts == 2
@@ -1598,7 +1648,9 @@ class TestGetStatistics:
         await service.get_statistics(mock_session, language="es", top=5)
 
         mock_correction_repo.get_stats.assert_called_once_with(
-            mock_session, language="es", top=5,
+            mock_session,
+            language="es",
+            top=5,
         )
 
     async def test_by_type_populated(
@@ -1746,7 +1798,10 @@ class TestGetPatterns:
         mock_correction_repo.get_correction_patterns.return_value = []
 
         await service.get_patterns(
-            mock_session, min_occurrences=5, limit=10, show_completed=True,
+            mock_session,
+            min_occurrences=5,
+            limit=10,
+            show_completed=True,
         )
 
         mock_correction_repo.get_correction_patterns.assert_called_once_with(
@@ -1779,12 +1834,16 @@ class TestGetPatterns:
 
         patterns = [
             CorrectionPattern(
-                original_text="teh", corrected_text="the",
-                occurrences=5, remaining_matches=10,
+                original_text="teh",
+                corrected_text="the",
+                occurrences=5,
+                remaining_matches=10,
             ),
             CorrectionPattern(
-                original_text="taht", corrected_text="that",
-                occurrences=3, remaining_matches=7,
+                original_text="taht",
+                corrected_text="that",
+                occurrences=3,
+                remaining_matches=7,
             ),
         ]
         mock_correction_repo.get_correction_patterns.return_value = patterns
@@ -1805,8 +1864,10 @@ class TestGetPatterns:
 
         mock_correction_repo.get_correction_patterns.return_value = [
             CorrectionPattern(
-                original_text="x", corrected_text="y",
-                occurrences=2, remaining_matches=99,
+                original_text="x",
+                corrected_text="y",
+                occurrences=2,
+                remaining_matches=99,
             ),
         ]
 
@@ -1863,8 +1924,12 @@ class TestBatchRevert:
     ) -> None:
         """Dry-run returns list of (video_id, segment_id, start_time, corrected_text, is_partner)."""
         seg = _make_segment(
-            video_id="v1", segment_id=10, text="original",
-            corrected_text="fixed text", has_correction=True, start_time=5.5,
+            video_id="v1",
+            segment_id=10,
+            text="original",
+            corrected_text="fixed text",
+            has_correction=True,
+            start_time=5.5,
         )
 
         mock_segment_repo.count_filtered.return_value = 100
@@ -1873,7 +1938,9 @@ class TestBatchRevert:
         mock_correction_repo.get_by_segment.return_value = []
 
         result = await service.batch_revert(
-            mock_session, pattern="fixed", dry_run=True,
+            mock_session,
+            pattern="fixed",
+            dry_run=True,
         )
 
         assert isinstance(result, list)
@@ -1894,23 +1961,31 @@ class TestBatchRevert:
     ) -> None:
         """Dry-run only includes segments with has_correction=True."""
         seg_corrected = _make_segment(
-            video_id="v1", segment_id=1, text="a",
-            corrected_text="fixed", has_correction=True,
+            video_id="v1",
+            segment_id=1,
+            text="a",
+            corrected_text="fixed",
+            has_correction=True,
         )
         seg_uncorrected = _make_segment(
-            video_id="v1", segment_id=2, text="fixed",
+            video_id="v1",
+            segment_id=2,
+            text="fixed",
             has_correction=False,
         )
 
         mock_segment_repo.count_filtered.return_value = 50
         mock_segment_repo.find_by_text_pattern.return_value = [
-            seg_corrected, seg_uncorrected,
+            seg_corrected,
+            seg_uncorrected,
         ]
         # No cross-segment partner
         mock_correction_repo.get_by_segment.return_value = []
 
         result = await service.batch_revert(
-            mock_session, pattern="fixed", dry_run=True,
+            mock_session,
+            pattern="fixed",
+            dry_run=True,
         )
 
         assert len(result) == 1
@@ -1928,8 +2003,11 @@ class TestBatchRevert:
         from chronovista.models.batch_correction_models import BatchCorrectionResult
 
         seg = _make_segment(
-            video_id="v1", segment_id=1, text="orig",
-            corrected_text="fixed", has_correction=True,
+            video_id="v1",
+            segment_id=1,
+            text="orig",
+            corrected_text="fixed",
+            has_correction=True,
         )
 
         mock_segment_repo.count_filtered.return_value = 100
@@ -1940,7 +2018,8 @@ class TestBatchRevert:
         mock_session.execute.return_value = _make_empty_execute_result()
 
         result = await service.batch_revert(
-            mock_session, pattern="fixed",
+            mock_session,
+            pattern="fixed",
         )
 
         assert isinstance(result, BatchCorrectionResult)
@@ -1958,8 +2037,11 @@ class TestBatchRevert:
     ) -> None:
         """Live mode calls revert_correction for each matched segment."""
         seg = _make_segment(
-            video_id="v1", segment_id=42, text="orig",
-            corrected_text="fixed", has_correction=True,
+            video_id="v1",
+            segment_id=42,
+            text="orig",
+            corrected_text="fixed",
+            has_correction=True,
         )
 
         mock_segment_repo.count_filtered.return_value = 10
@@ -1972,7 +2054,8 @@ class TestBatchRevert:
         await service.batch_revert(mock_session, pattern="fixed")
 
         mock_correction_service.revert_correction.assert_called_once_with(
-            mock_session, segment_id=42,
+            mock_session,
+            segment_id=42,
         )
 
     async def test_live_mode_skips_on_value_error(
@@ -1985,12 +2068,18 @@ class TestBatchRevert:
     ) -> None:
         """ValueError from revert_correction is handled as skip."""
         seg1 = _make_segment(
-            video_id="v1", segment_id=1, text="a",
-            corrected_text="fixed a", has_correction=True,
+            video_id="v1",
+            segment_id=1,
+            text="a",
+            corrected_text="fixed a",
+            has_correction=True,
         )
         seg2 = _make_segment(
-            video_id="v1", segment_id=2, text="b",
-            corrected_text="fixed b", has_correction=True,
+            video_id="v1",
+            segment_id=2,
+            text="b",
+            corrected_text="fixed b",
+            has_correction=True,
         )
 
         mock_segment_repo.count_filtered.return_value = 10
@@ -2017,7 +2106,9 @@ class TestBatchRevert:
     ) -> None:
         """When all matches are uncorrected, total_matched is 0."""
         seg = _make_segment(
-            video_id="v1", segment_id=1, text="fixed text",
+            video_id="v1",
+            segment_id=1,
+            text="fixed text",
             has_correction=False,
         )
 
@@ -2039,7 +2130,9 @@ class TestBatchRevert:
         """Invalid regex raises ValueError before processing."""
         with pytest.raises(ValueError, match="Invalid regex pattern"):
             await service.batch_revert(
-                mock_session, pattern="[bad", regex=True,
+                mock_session,
+                pattern="[bad",
+                regex=True,
             )
 
         mock_segment_repo.count_filtered.assert_not_called()
@@ -2054,16 +2147,25 @@ class TestBatchRevert:
     ) -> None:
         """unique_videos counts distinct video_ids from corrected matches."""
         seg1 = _make_segment(
-            video_id="v1", segment_id=1, text="a",
-            corrected_text="fix", has_correction=True,
+            video_id="v1",
+            segment_id=1,
+            text="a",
+            corrected_text="fix",
+            has_correction=True,
         )
         seg2 = _make_segment(
-            video_id="v2", segment_id=2, text="b",
-            corrected_text="fix", has_correction=True,
+            video_id="v2",
+            segment_id=2,
+            text="b",
+            corrected_text="fix",
+            has_correction=True,
         )
         seg3 = _make_segment(
-            video_id="v1", segment_id=3, text="c",
-            corrected_text="fix", has_correction=True,
+            video_id="v1",
+            segment_id=3,
+            text="c",
+            corrected_text="fix",
+            has_correction=True,
         )
 
         mock_segment_repo.count_filtered.return_value = 50
@@ -2087,12 +2189,18 @@ class TestBatchRevert:
     ) -> None:
         """Progress callback is invoked during batch processing."""
         seg1 = _make_segment(
-            video_id="v1", segment_id=1, text="a",
-            corrected_text="fix a", has_correction=True,
+            video_id="v1",
+            segment_id=1,
+            text="a",
+            corrected_text="fix a",
+            has_correction=True,
         )
         seg2 = _make_segment(
-            video_id="v1", segment_id=2, text="b",
-            corrected_text="fix b", has_correction=True,
+            video_id="v1",
+            segment_id=2,
+            text="b",
+            corrected_text="fix b",
+            has_correction=True,
         )
 
         mock_segment_repo.count_filtered.return_value = 10
@@ -2104,7 +2212,10 @@ class TestBatchRevert:
 
         callback = MagicMock()
         await service.batch_revert(
-            mock_session, pattern="fix", batch_size=1, progress_callback=callback,
+            mock_session,
+            pattern="fix",
+            batch_size=1,
+            progress_callback=callback,
         )
 
         assert callback.call_count == 2
@@ -2135,8 +2246,11 @@ class TestBatchRevert:
     ) -> None:
         """Dry-run mode does not call revert_correction."""
         seg = _make_segment(
-            video_id="v1", segment_id=1, text="a",
-            corrected_text="fix", has_correction=True,
+            video_id="v1",
+            segment_id=1,
+            text="a",
+            corrected_text="fix",
+            has_correction=True,
         )
 
         mock_segment_repo.count_filtered.return_value = 10
@@ -2163,8 +2277,11 @@ class TestBatchRevert:
         import uuid as _uuid
 
         seg = _make_segment(
-            video_id="v1", segment_id=1, text="orig",
-            corrected_text="fixed", has_correction=True,
+            video_id="v1",
+            segment_id=1,
+            text="orig",
+            corrected_text="fixed",
+            has_correction=True,
         )
 
         mock_segment_repo.count_filtered.return_value = 10
@@ -2184,7 +2301,9 @@ class TestBatchRevert:
         ) as MockRepo:
             mock_mention_repo = AsyncMock()
             MockRepo.return_value = mock_mention_repo
-            mock_mention_repo.get_entity_ids_by_correction_ids.return_value = [entity_id]
+            mock_mention_repo.get_entity_ids_by_correction_ids.return_value = [
+                entity_id
+            ]
             mock_mention_repo.delete_by_correction_ids.return_value = 3
 
             result = await service.batch_revert(mock_session, pattern="fixed")
@@ -2213,8 +2332,11 @@ class TestBatchRevert:
     ) -> None:
         """No cascade when no correction IDs are found for segments."""
         seg = _make_segment(
-            video_id="v1", segment_id=1, text="orig",
-            corrected_text="fixed", has_correction=True,
+            video_id="v1",
+            segment_id=1,
+            text="orig",
+            corrected_text="fixed",
+            has_correction=True,
         )
 
         mock_segment_repo.count_filtered.return_value = 10
@@ -2252,8 +2374,11 @@ class TestBatchRevert:
 
         # Only seg1 matches the revert pattern; seg2 does not
         seg1 = _make_segment(
-            video_id="v1", segment_id=1, text="a",
-            corrected_text="fix", has_correction=True,
+            video_id="v1",
+            segment_id=1,
+            text="a",
+            corrected_text="fix",
+            has_correction=True,
         )
 
         mock_segment_repo.count_filtered.return_value = 50
@@ -2273,7 +2398,9 @@ class TestBatchRevert:
         ) as MockRepo:
             mock_mention_repo = AsyncMock()
             MockRepo.return_value = mock_mention_repo
-            mock_mention_repo.get_entity_ids_by_correction_ids.return_value = [entity_id]
+            mock_mention_repo.get_entity_ids_by_correction_ids.return_value = [
+                entity_id
+            ]
             mock_mention_repo.delete_by_correction_ids.return_value = 2
 
             result = await service.batch_revert(mock_session, pattern="fix")
@@ -2297,8 +2424,11 @@ class TestBatchRevert:
         import uuid as _uuid
 
         seg = _make_segment(
-            video_id="v1", segment_id=1, text="orig",
-            corrected_text="fixed", has_correction=True,
+            video_id="v1",
+            segment_id=1,
+            text="orig",
+            corrected_text="fixed",
+            has_correction=True,
         )
 
         mock_segment_repo.count_filtered.return_value = 10
@@ -2319,7 +2449,10 @@ class TestBatchRevert:
         ) as MockRepo:
             mock_mention_repo = AsyncMock()
             MockRepo.return_value = mock_mention_repo
-            mock_mention_repo.get_entity_ids_by_correction_ids.return_value = [_uuid.uuid4()]
+            mock_mention_repo.get_entity_ids_by_correction_ids.return_value = [
+                _uuid.uuid4()
+            ]
+
             async def _track_delete(*a: object, **kw: object) -> int:
                 call_order.append("delete_mentions")
                 return 1
@@ -2346,8 +2479,11 @@ class TestBatchRevert:
     ) -> None:
         """Dry-run mode should not delete entity mentions."""
         seg = _make_segment(
-            video_id="v1", segment_id=1, text="a",
-            corrected_text="fix", has_correction=True,
+            video_id="v1",
+            segment_id=1,
+            text="a",
+            corrected_text="fix",
+            has_correction=True,
         )
 
         mock_segment_repo.count_filtered.return_value = 10
@@ -2358,7 +2494,9 @@ class TestBatchRevert:
             "chronovista.services.batch_correction_service.EntityMentionRepository"
         ) as MockRepo:
             result = await service.batch_revert(
-                mock_session, pattern="fix", dry_run=True,
+                mock_session,
+                pattern="fix",
+                dry_run=True,
             )
             # Repository should never be instantiated in dry-run mode
             MockRepo.assert_not_called()
@@ -2536,16 +2674,22 @@ class TestRecordAsrAliasForBatchReplacement:
     ) -> None:
         """Regex find-replace extracts actual matched forms and registers each as alias."""
         seg1 = _make_segment(
-            video_id="v1", segment_id=1,
-            text="presidenta Claudia Shambom también", start_time=0.0,
+            video_id="v1",
+            segment_id=1,
+            text="presidenta Claudia Shambom también",
+            start_time=0.0,
         )
         seg2 = _make_segment(
-            video_id="v1", segment_id=2,
-            text="presidenta Claudia Shamon equipara", start_time=1.0,
+            video_id="v1",
+            segment_id=2,
+            text="presidenta Claudia Shamon equipara",
+            start_time=1.0,
         )
         seg3 = _make_segment(
-            video_id="v2", segment_id=3,
-            text="presidenta Claudia Shambom quien", start_time=2.0,
+            video_id="v2",
+            segment_id=3,
+            text="presidenta Claudia Shambom quien",
+            start_time=2.0,
         )
 
         mock_segment_repo.count_filtered.return_value = 50
@@ -2553,7 +2697,9 @@ class TestRecordAsrAliasForBatchReplacement:
         mock_correction_service.apply_correction.return_value = MagicMock()
 
         with patch.object(
-            service, "_record_asr_alias_for_batch_replacement", new_callable=AsyncMock,
+            service,
+            "_record_asr_alias_for_batch_replacement",
+            new_callable=AsyncMock,
         ) as mock_hook:
             await service.find_and_replace(
                 mock_session,
@@ -2582,8 +2728,10 @@ class TestRecordAsrAliasForBatchReplacement:
     ) -> None:
         """Regex find-replace with a single matched form calls hook once."""
         seg = _make_segment(
-            video_id="v1", segment_id=1,
-            text="Claudia Shainbom here", start_time=0.0,
+            video_id="v1",
+            segment_id=1,
+            text="Claudia Shainbom here",
+            start_time=0.0,
         )
 
         mock_segment_repo.count_filtered.return_value = 10
@@ -2591,7 +2739,9 @@ class TestRecordAsrAliasForBatchReplacement:
         mock_correction_service.apply_correction.return_value = MagicMock()
 
         with patch.object(
-            service, "_record_asr_alias_for_batch_replacement", new_callable=AsyncMock,
+            service,
+            "_record_asr_alias_for_batch_replacement",
+            new_callable=AsyncMock,
         ) as mock_hook:
             await service.find_and_replace(
                 mock_session,
@@ -2614,7 +2764,10 @@ class TestRecordAsrAliasForBatchReplacement:
     ) -> None:
         """find_and_replace with dry_run=True does not call the alias hook."""
         seg = _make_segment(
-            video_id="v1", segment_id=1, text="Shainbom", start_time=0.0,
+            video_id="v1",
+            segment_id=1,
+            text="Shainbom",
+            start_time=0.0,
         )
 
         mock_segment_repo.count_filtered.return_value = 10
@@ -2625,7 +2778,9 @@ class TestRecordAsrAliasForBatchReplacement:
         mock_session.execute.side_effect = _make_empty_execute_result
 
         with patch.object(
-            service, "_record_asr_alias_for_batch_replacement", new_callable=AsyncMock,
+            service,
+            "_record_asr_alias_for_batch_replacement",
+            new_callable=AsyncMock,
         ) as mock_hook:
             await service.find_and_replace(
                 mock_session,
@@ -2646,7 +2801,9 @@ class TestRecordAsrAliasForBatchReplacement:
         mock_segment_repo.find_by_text_pattern.return_value = []
 
         with patch.object(
-            service, "_record_asr_alias_for_batch_replacement", new_callable=AsyncMock,
+            service,
+            "_record_asr_alias_for_batch_replacement",
+            new_callable=AsyncMock,
         ) as mock_hook:
             await service.find_and_replace(
                 mock_session,
@@ -2716,7 +2873,10 @@ class TestRecordAsrAliasForBatchReplacement:
     ) -> None:
         """find_and_replace calls the alias hook after successful live corrections."""
         seg = _make_segment(
-            video_id="v1", segment_id=1, text="Claudia Shainbom", start_time=0.0,
+            video_id="v1",
+            segment_id=1,
+            text="Claudia Shainbom",
+            start_time=0.0,
         )
 
         mock_segment_repo.count_filtered.return_value = 10
@@ -2724,7 +2884,9 @@ class TestRecordAsrAliasForBatchReplacement:
         mock_correction_service.apply_correction.return_value = MagicMock()
 
         with patch.object(
-            service, "_record_asr_alias_for_batch_replacement", new_callable=AsyncMock,
+            service,
+            "_record_asr_alias_for_batch_replacement",
+            new_callable=AsyncMock,
         ) as mock_hook:
             await service.find_and_replace(
                 mock_session,
@@ -2755,6 +2917,7 @@ class TestExtractPatternTokens:
     @pytest.fixture
     def service_cls(self) -> Any:
         from chronovista.services.batch_correction_service import BatchCorrectionService
+
         return BatchCorrectionService
 
     # ------------------------------------------------------------------
@@ -2785,9 +2948,7 @@ class TestExtractPatternTokens:
         assert "a" in tokens
         assert "b" in tokens
 
-    def test_plain_empty_string_returns_list_with_empty(
-        self, service_cls: Any
-    ) -> None:
+    def test_plain_empty_string_returns_list_with_empty(self, service_cls: Any) -> None:
         """An empty string falls back to [pattern] (the empty string itself)."""
         tokens = service_cls._extract_pattern_tokens("", regex=False)
         assert tokens == [""]
@@ -2796,9 +2957,7 @@ class TestExtractPatternTokens:
     # Regex patterns
     # ------------------------------------------------------------------
 
-    def test_regex_word_boundary_pattern_extracts_word(
-        self, service_cls: Any
-    ) -> None:
+    def test_regex_word_boundary_pattern_extracts_word(self, service_cls: Any) -> None:
         r"""Regex \bShine\b yields at least ['Shine'] after metachar stripping."""
         tokens = service_cls._extract_pattern_tokens(r"\bShine\b", regex=True)
         assert "Shine" in tokens
@@ -3181,9 +3340,7 @@ class TestFindAllOccurrences:
             BatchCorrectionService,
         )
 
-        result = BatchCorrectionService._find_all_occurrences(
-            "hello world", "xyz"
-        )
+        result = BatchCorrectionService._find_all_occurrences("hello world", "xyz")
         assert result == []
 
     def test_empty_substring(self) -> None:
@@ -3191,9 +3348,7 @@ class TestFindAllOccurrences:
             BatchCorrectionService,
         )
 
-        result = BatchCorrectionService._find_all_occurrences(
-            "hello world", ""
-        )
+        result = BatchCorrectionService._find_all_occurrences("hello world", "")
         assert result == []
 
     def test_non_overlapping(self) -> None:
@@ -3353,9 +3508,7 @@ class TestApplyToSegmentsEntityMentionCreation:
     ) -> None:
         """When entity_id is present, entity mentions are created."""
         entity = _make_entity()
-        seg = _make_segment(
-            video_id="vid1_test_x", segment_id=10, text="bad text here"
-        )
+        seg = _make_segment(video_id="vid1_test_x", segment_id=10, text="bad text here")
         correction_record = MagicMock()
         correction_record.id = uuid.uuid4()
         mock_correction_service.apply_correction.return_value = correction_record
@@ -3404,9 +3557,7 @@ class TestApplyToSegmentsEntityMentionCreation:
     ) -> None:
         """When replacement is empty (deletion), no mentions are created."""
         entity = _make_entity()
-        seg = _make_segment(
-            video_id="vid1_test_x", segment_id=10, text="remove this"
-        )
+        seg = _make_segment(video_id="vid1_test_x", segment_id=10, text="remove this")
         correction_record = MagicMock()
         correction_record.id = uuid.uuid4()
         mock_correction_service.apply_correction.return_value = correction_record
@@ -3444,9 +3595,7 @@ class TestApplyToSegmentsEntityMentionCreation:
     ) -> None:
         """T029: Exclusion patterns suppress overlapping mentions."""
         entity = _make_entity(exclusion_patterns=["good text here"])
-        seg = _make_segment(
-            video_id="vid1_test_x", segment_id=10, text="bad text here"
-        )
+        seg = _make_segment(video_id="vid1_test_x", segment_id=10, text="bad text here")
         correction_record = MagicMock()
         correction_record.id = uuid.uuid4()
         mock_correction_service.apply_correction.return_value = correction_record
@@ -3492,9 +3641,7 @@ class TestApplyToSegmentsEntityCounterUpdate:
     ) -> None:
         """T031: update_entity_counters is called after successful corrections."""
         entity = _make_entity()
-        seg = _make_segment(
-            video_id="vid1_test_x", segment_id=10, text="bad text"
-        )
+        seg = _make_segment(video_id="vid1_test_x", segment_id=10, text="bad text")
         correction_record = MagicMock()
         correction_record.id = uuid.uuid4()
         mock_correction_service.apply_correction.return_value = correction_record
@@ -3538,9 +3685,7 @@ class TestApplyToSegmentsEntityCounterUpdate:
         mock_correction_service: AsyncMock,
     ) -> None:
         """Counter update is not called when entity_id is None."""
-        seg = _make_segment(
-            video_id="vid1_test_x", segment_id=10, text="bad text"
-        )
+        seg = _make_segment(video_id="vid1_test_x", segment_id=10, text="bad text")
         correction_record = MagicMock()
         correction_record.id = uuid.uuid4()
         mock_correction_service.apply_correction.return_value = correction_record
@@ -3779,16 +3924,16 @@ class TestFindAndReplaceBatchIdGeneration:
 
         # Verify apply_correction was called with a batch_id keyword argument
         call_kwargs = mock_correction_service.apply_correction.call_args.kwargs
-        assert "batch_id" in call_kwargs, (
-            "apply_correction must receive batch_id kwarg from find_and_replace"
-        )
+        assert (
+            "batch_id" in call_kwargs
+        ), "apply_correction must receive batch_id kwarg from find_and_replace"
         batch_id_passed = call_kwargs["batch_id"]
-        assert batch_id_passed is not None, (
-            "batch_id passed to apply_correction must not be None in live mode"
-        )
-        assert isinstance(batch_id_passed, uuid.UUID), (
-            f"batch_id must be a uuid.UUID; got {type(batch_id_passed)}"
-        )
+        assert (
+            batch_id_passed is not None
+        ), "batch_id passed to apply_correction must not be None in live mode"
+        assert isinstance(
+            batch_id_passed, uuid.UUID
+        ), f"batch_id must be a uuid.UUID; got {type(batch_id_passed)}"
 
     async def test_all_corrections_in_batch_share_same_batch_id(
         self,
@@ -3823,9 +3968,9 @@ class TestFindAndReplaceBatchIdGeneration:
         batch_ids_used: set[uuid.UUID] = set()
         for call in mock_correction_service.apply_correction.call_args_list:
             bid = call.kwargs.get("batch_id")
-            assert bid is not None, (
-                "Every apply_correction call must receive a non-None batch_id"
-            )
+            assert (
+                bid is not None
+            ), "Every apply_correction call must receive a non-None batch_id"
             batch_ids_used.add(bid)
 
         # All corrections in a single find_and_replace must share one batch_id
@@ -4021,9 +4166,9 @@ class TestApplyToSegmentsBatchIdPropagation:
 
         assert result.total_applied == 1
         call_kwargs = mock_correction_service.apply_correction.call_args.kwargs
-        assert call_kwargs.get("batch_id") is None, (
-            "apply_correction must receive batch_id=None for individual corrections"
-        )
+        assert (
+            call_kwargs.get("batch_id") is None
+        ), "apply_correction must receive batch_id=None for individual corrections"
 
     async def test_all_segments_in_one_call_share_batch_id(
         self,
@@ -4094,9 +4239,9 @@ class TestExportCorrectionsBatchId:
         _, csv_str = await service.export_corrections(mock_session, format="csv")
 
         header_row = csv_str.strip().split("\n")[0]
-        assert "batch_id" in header_row, (
-            f"CSV header must include 'batch_id' column; got: {header_row!r}"
-        )
+        assert (
+            "batch_id" in header_row
+        ), f"CSV header must include 'batch_id' column; got: {header_row!r}"
 
     async def test_csv_export_batch_id_populated_when_correction_has_batch(
         self,
@@ -4125,9 +4270,9 @@ class TestExportCorrectionsBatchId:
         reader = csv.DictReader(io.StringIO(csv_str))
         rows = list(reader)
         assert len(rows) == 1
-        assert rows[0]["batch_id"] == str(batch_id), (
-            f"CSV batch_id must be the UUID string; got {rows[0]['batch_id']!r}"
-        )
+        assert rows[0]["batch_id"] == str(
+            batch_id
+        ), f"CSV batch_id must be the UUID string; got {rows[0]['batch_id']!r}"
 
     async def test_csv_export_batch_id_empty_when_null(
         self,
@@ -4205,9 +4350,9 @@ class TestExportCorrectionsBatchId:
         assert len(parsed) == 1
         # If batch_id is present and non-null, it must be a string
         if parsed[0]["batch_id"] is not None:
-            assert isinstance(parsed[0]["batch_id"], str), (
-                f"JSON batch_id must be a string; got {type(parsed[0]['batch_id'])}"
-            )
+            assert isinstance(
+                parsed[0]["batch_id"], str
+            ), f"JSON batch_id must be a string; got {type(parsed[0]['batch_id'])}"
             # Must round-trip as a valid UUID
             parsed_uuid = uuid.UUID(parsed[0]["batch_id"])
             assert parsed_uuid == batch_id
@@ -4243,15 +4388,15 @@ class TestBatchRevertByBatchId:
         only corrections from the specified batch are targeted for revert.
         """
         batch_id = uuid.UUID(bytes=__import__("uuid_utils").uuid7().bytes)
-        correction = _make_correction_db(
-            segment_id=10, batch_id=batch_id
-        )
+        correction = _make_correction_db(segment_id=10, batch_id=batch_id)
         mock_correction_repo.get_by_batch_id.return_value = [correction]
 
         # Segment lookup returns a corrected segment
         seg = _make_segment(
-            video_id="v1", segment_id=10,
-            corrected_text="the fox", has_correction=True,
+            video_id="v1",
+            segment_id=10,
+            corrected_text="the fox",
+            has_correction=True,
         )
         segment_result = MagicMock()
         segment_result.scalars.return_value.all.return_value = [seg]
@@ -4297,17 +4442,19 @@ class TestBatchRevertByBatchId:
 
         correction_a = _make_correction_db(segment_id=1, batch_id=batch_id)
         correction_b = _make_correction_db(segment_id=2, batch_id=batch_id)
-        mock_correction_repo.get_by_batch_id.return_value = [
-            correction_a, correction_b
-        ]
+        mock_correction_repo.get_by_batch_id.return_value = [correction_a, correction_b]
 
         seg1 = _make_segment(
-            video_id="v1", segment_id=1,
-            corrected_text="the cat", has_correction=True,
+            video_id="v1",
+            segment_id=1,
+            corrected_text="the cat",
+            has_correction=True,
         )
         seg2 = _make_segment(
-            video_id="v1", segment_id=2,
-            corrected_text="the dog", has_correction=True,
+            video_id="v1",
+            segment_id=2,
+            corrected_text="the dog",
+            has_correction=True,
         )
         segment_result = MagicMock()
         segment_result.scalars.return_value.all.return_value = [seg1, seg2]
@@ -4378,18 +4525,20 @@ class TestBatchRevertByBatchId:
 
         correction_a = _make_correction_db(segment_id=1, batch_id=batch_id)
         correction_b = _make_correction_db(segment_id=2, batch_id=batch_id)
-        mock_correction_repo.get_by_batch_id.return_value = [
-            correction_a, correction_b
-        ]
+        mock_correction_repo.get_by_batch_id.return_value = [correction_a, correction_b]
 
         # seg1 still has an active correction; seg2 was already reverted
         seg1 = _make_segment(
-            video_id="v1", segment_id=1,
-            corrected_text="the cat", has_correction=True,
+            video_id="v1",
+            segment_id=1,
+            corrected_text="the cat",
+            has_correction=True,
         )
         seg2 = _make_segment(
-            video_id="v1", segment_id=2,
-            corrected_text=None, has_correction=False,
+            video_id="v1",
+            segment_id=2,
+            corrected_text=None,
+            has_correction=False,
         )
         segment_result = MagicMock()
         segment_result.scalars.return_value.all.return_value = [seg1, seg2]
@@ -4431,8 +4580,11 @@ class TestBatchRevertByBatchId:
         mock_correction_repo.get_by_batch_id.return_value = [correction]
 
         seg = _make_segment(
-            video_id="vid1", segment_id=5,
-            corrected_text="the fox", has_correction=True, start_time=1.5,
+            video_id="vid1",
+            segment_id=5,
+            corrected_text="the fox",
+            has_correction=True,
+            start_time=1.5,
         )
         segment_result = MagicMock()
         segment_result.scalars.return_value.all.return_value = [seg]
@@ -4712,14 +4864,18 @@ class TestMinimalTokenAliasRegistration:
             return_value=AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
         )
 
-        with patch(
-            "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
-            new=AsyncMock(return_value=(entity_id, "Noam Chomsky")),
-        ), patch(
-            "chronovista.services.asr_alias_registry.TagNormalizationService"
-        ) as MockNormalizer, patch(
-            "chronovista.services.asr_alias_registry.EntityAliasRepository"
-        ) as MockAliasRepo:
+        with (
+            patch(
+                "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
+                new=AsyncMock(return_value=(entity_id, "Noam Chomsky")),
+            ),
+            patch(
+                "chronovista.services.asr_alias_registry.TagNormalizationService"
+            ) as MockNormalizer,
+            patch(
+                "chronovista.services.asr_alias_registry.EntityAliasRepository"
+            ) as MockAliasRepo,
+        ):
             normalizer_instance = MagicMock()
             normalizer_instance.normalize.side_effect = lambda t: t.lower()
             MockNormalizer.return_value = normalizer_instance
@@ -4766,14 +4922,18 @@ class TestMinimalTokenAliasRegistration:
             return_value=AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
         )
 
-        with patch(
-            "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
-            new=AsyncMock(return_value=(entity_id, "Sheinbaum")),
-        ), patch(
-            "chronovista.services.asr_alias_registry.TagNormalizationService"
-        ) as MockNormalizer, patch(
-            "chronovista.services.asr_alias_registry.EntityAliasRepository"
-        ) as MockAliasRepo:
+        with (
+            patch(
+                "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
+                new=AsyncMock(return_value=(entity_id, "Sheinbaum")),
+            ),
+            patch(
+                "chronovista.services.asr_alias_registry.TagNormalizationService"
+            ) as MockNormalizer,
+            patch(
+                "chronovista.services.asr_alias_registry.EntityAliasRepository"
+            ) as MockAliasRepo,
+        ):
             normalizer_instance = MagicMock()
             normalizer_instance.normalize.side_effect = lambda t: t.lower()
             MockNormalizer.return_value = normalizer_instance
@@ -4819,14 +4979,18 @@ class TestMinimalTokenAliasRegistration:
             return_value=AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
         )
 
-        with patch(
-            "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
-            new=AsyncMock(return_value=(entity_id, "Chomsky")),
-        ), patch(
-            "chronovista.services.asr_alias_registry.TagNormalizationService"
-        ) as MockNormalizer, patch(
-            "chronovista.services.asr_alias_registry.EntityAliasRepository"
-        ) as MockAliasRepo:
+        with (
+            patch(
+                "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
+                new=AsyncMock(return_value=(entity_id, "Chomsky")),
+            ),
+            patch(
+                "chronovista.services.asr_alias_registry.TagNormalizationService"
+            ) as MockNormalizer,
+            patch(
+                "chronovista.services.asr_alias_registry.EntityAliasRepository"
+            ) as MockAliasRepo,
+        ):
             normalizer_instance = MagicMock()
             normalizer_instance.normalize.side_effect = lambda t: t.lower()
             MockNormalizer.return_value = normalizer_instance
@@ -4864,12 +5028,15 @@ class TestMinimalTokenAliasRegistration:
 
         mock_session = AsyncMock()
 
-        with patch(
-            "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
-            new=AsyncMock(return_value=None),
-        ), patch(
-            "chronovista.services.asr_alias_registry.EntityAliasRepository"
-        ) as MockAliasRepo:
+        with (
+            patch(
+                "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "chronovista.services.asr_alias_registry.EntityAliasRepository"
+            ) as MockAliasRepo,
+        ):
             repo_instance = AsyncMock()
             MockAliasRepo.return_value = repo_instance
 

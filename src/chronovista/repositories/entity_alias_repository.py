@@ -31,9 +31,7 @@ class EntityAliasRepository(
         """Initialize repository with EntityAlias model."""
         super().__init__(EntityAliasDB)
 
-    async def get(
-        self, session: AsyncSession, id: uuid.UUID
-    ) -> EntityAliasDB | None:
+    async def get(self, session: AsyncSession, id: uuid.UUID) -> EntityAliasDB | None:
         """Get entity alias by UUID primary key."""
         result = await session.execute(
             select(EntityAliasDB).where(EntityAliasDB.id == id)

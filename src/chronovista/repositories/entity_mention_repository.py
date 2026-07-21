@@ -75,9 +75,7 @@ class EntityMentionRepository(
         """Initialize repository with EntityMention model."""
         super().__init__(EntityMentionDB)
 
-    async def get(
-        self, session: AsyncSession, id: uuid.UUID
-    ) -> EntityMentionDB | None:
+    async def get(self, session: AsyncSession, id: uuid.UUID) -> EntityMentionDB | None:
         """Get entity mention by UUID primary key.
 
         Parameters
@@ -153,11 +151,7 @@ class EntityMentionRepository(
             if hasattr(v.get("mention_source"), "value"):
                 v["mention_source"] = v["mention_source"].value
 
-        stmt = (
-            insert(EntityMentionDB)
-            .values(values)
-            .on_conflict_do_nothing()
-        )
+        stmt = insert(EntityMentionDB).values(values).on_conflict_do_nothing()
         result = await session.execute(stmt)
         return int(result.rowcount)
 
@@ -272,9 +266,8 @@ class EntityMentionRepository(
         if not correction_ids:
             return []
 
-        stmt = (
-            select(distinct(EntityMentionDB.entity_id))
-            .where(EntityMentionDB.correction_id.in_(correction_ids))
+        stmt = select(distinct(EntityMentionDB.entity_id)).where(
+            EntityMentionDB.correction_id.in_(correction_ids)
         )
         result = await session.execute(stmt)
         return list(result.scalars().all())
@@ -301,10 +294,7 @@ class EntityMentionRepository(
             List of entity IDs with no mentions.
         """
         # Subquery: entity IDs that DO have mentions
-        mentioned_subq = (
-            select(distinct(EntityMentionDB.entity_id))
-            .scalar_subquery()
-        )
+        mentioned_subq = select(distinct(EntityMentionDB.entity_id)).scalar_subquery()
 
         stmt = select(NamedEntityDB.id).where(
             NamedEntityDB.id.notin_(mentioned_subq),
@@ -387,9 +377,7 @@ class EntityMentionRepository(
         await session.execute(stmt)
 
         # Set counters to 0 for entities with no visible mentions
-        entities_with_visible_mentions = (
-            select(agg_subq.c.entity_id).scalar_subquery()
-        )
+        entities_with_visible_mentions = select(agg_subq.c.entity_id).scalar_subquery()
         zero_stmt = (
             update(NamedEntityDB)
             .where(
@@ -518,18 +506,14 @@ class EntityMentionRepository(
                 NamedEntityDB.canonical_name,
                 NamedEntityDB.entity_type,
                 NamedEntityDB.description,
-                func.count(
-                    distinct(EntityMentionDB.segment_id)
-                ).label("mention_count"),
-                func.min(TranscriptSegmentDB.start_time).label(
-                    "first_mention_time"
+                func.count(distinct(EntityMentionDB.segment_id)).label("mention_count"),
+                func.min(TranscriptSegmentDB.start_time).label("first_mention_time"),
+                func.array_agg(distinct(EntityMentionDB.detection_method)).label(
+                    "detection_methods"
                 ),
-                func.array_agg(
-                    distinct(EntityMentionDB.detection_method)
-                ).label("detection_methods"),
-                func.bool_or(
-                    EntityMentionDB.detection_method == "manual"
-                ).label("has_manual"),
+                func.bool_or(EntityMentionDB.detection_method == "manual").label(
+                    "has_manual"
+                ),
             )
             .join(
                 NamedEntityDB,
@@ -546,9 +530,7 @@ class EntityMentionRepository(
                 NamedEntityDB.entity_type,
                 NamedEntityDB.description,
             )
-            .order_by(
-                func.count(distinct(EntityMentionDB.segment_id)).desc()
-            )
+            .order_by(func.count(distinct(EntityMentionDB.segment_id)).desc())
         )
 
         if language_code is not None:
@@ -588,7 +570,12 @@ class EntityMentionRepository(
         ]
 
     # Transcript-derived detection methods (excludes manual).
-    _TRANSCRIPT_METHODS = {"rule_match", "spacy_ner", "llm_extraction", "user_correction"}
+    _TRANSCRIPT_METHODS = {
+        "rule_match",
+        "spacy_ner",
+        "llm_extraction",
+        "user_correction",
+    }
 
     async def get_entity_video_list(
         self,
@@ -668,8 +655,7 @@ class EntityMentionRepository(
         mention_filter = and_(
             EntityMentionDB.entity_id == entity_id,
             or_(
-                func.lower(EntityMentionDB.mention_text)
-                == visible_names.c.name_lower,
+                func.lower(EntityMentionDB.mention_text) == visible_names.c.name_lower,
                 EntityMentionDB.detection_method == "manual",
             ),
         )
@@ -691,8 +677,7 @@ class EntityMentionRepository(
             select(distinct(EntityMentionDB.video_id))
             .outerjoin(
                 visible_names,
-                func.lower(EntityMentionDB.mention_text)
-                == visible_names.c.name_lower,
+                func.lower(EntityMentionDB.mention_text) == visible_names.c.name_lower,
             )
             .where(mention_filter)
         )
@@ -700,9 +685,7 @@ class EntityMentionRepository(
             transcript_vid_stmt = transcript_vid_stmt.where(lang_filter)
 
         transcript_vid_result = await session.execute(transcript_vid_stmt)
-        transcript_video_ids: set[str] = set(
-            transcript_vid_result.scalars().all()
-        )
+        transcript_video_ids: set[str] = set(transcript_vid_result.scalars().all())
 
         # ------------------------------------------------------------------
         # Step 2: Fetch tag-associated video_ids (Sources 2 & 3)
@@ -743,24 +726,22 @@ class EntityMentionRepository(
                     # Transcript-only mention count (excludes manual)
                     func.count()
                     .filter(
-                        EntityMentionDB.detection_method.in_(
-                            self._TRANSCRIPT_METHODS
-                        ),
+                        EntityMentionDB.detection_method.in_(self._TRANSCRIPT_METHODS),
                         EntityMentionDB.mention_source == "transcript",
                     )
                     .label("mention_count"),
                     # Collect distinct detection methods for source mapping
-                    func.array_agg(
-                        distinct(EntityMentionDB.detection_method)
-                    ).label("detection_methods"),
+                    func.array_agg(distinct(EntityMentionDB.detection_method)).label(
+                        "detection_methods"
+                    ),
                     # Collect distinct mention sources
-                    func.array_agg(
-                        distinct(EntityMentionDB.mention_source)
-                    ).label("mention_sources"),
+                    func.array_agg(distinct(EntityMentionDB.mention_source)).label(
+                        "mention_sources"
+                    ),
                     # Has manual flag
-                    func.bool_or(
-                        EntityMentionDB.detection_method == "manual"
-                    ).label("has_manual"),
+                    func.bool_or(EntityMentionDB.detection_method == "manual").label(
+                        "has_manual"
+                    ),
                     # First mention time from transcript segments (LEFT JOIN)
                     func.min(TranscriptSegmentDB.start_time).label(
                         "first_mention_time"
@@ -802,7 +783,7 @@ class EntityMentionRepository(
                     for dm in (row.detection_methods or [])
                 }
                 # Add mention_source values directly (title, description)
-                for ms in (row.mention_sources or []):
+                for ms in row.mention_sources or []:
                     if ms in ("title", "description"):
                         sources_set.add(ms)
                 sources = sorted(sources_set)
@@ -938,27 +919,26 @@ class EntityMentionRepository(
         # Composite sort key: (has_transcript_mention DESC, mention_count DESC,
         # upload_date DESC)  — per research.md Decision 5
         def _sort_key(item: dict[str, Any]) -> tuple[int, int, str]:
-            has_transcript = 1 if item["mention_count"] > 0 or any(
-                s in ("transcript", "manual") for s in item["sources"]
-            ) else 0
+            has_transcript = (
+                1
+                if item["mention_count"] > 0
+                or any(s in ("transcript", "manual") for s in item["sources"])
+                else 0
+            )
             return (
                 has_transcript,
                 item["mention_count"],
                 item["upload_date"] or "",
             )
 
-        sorted_results = sorted(
-            results_dict.values(), key=_sort_key, reverse=True
-        )
+        sorted_results = sorted(results_dict.values(), key=_sort_key, reverse=True)
 
         # ------------------------------------------------------------------
         # Step 5b: Apply source_filter if provided (T064, FR-031)
         # ------------------------------------------------------------------
         if source_filter is not None:
             sorted_results = [
-                item
-                for item in sorted_results
-                if source_filter in item["sources"]
+                item for item in sorted_results if source_filter in item["sources"]
             ]
 
         # ------------------------------------------------------------------
@@ -1015,8 +995,7 @@ class EntityMentionRepository(
         mention_filter = and_(
             EntityMentionDB.entity_id == entity_id,
             or_(
-                func.lower(EntityMentionDB.mention_text)
-                == visible_names.c.name_lower,
+                func.lower(EntityMentionDB.mention_text) == visible_names.c.name_lower,
                 EntityMentionDB.detection_method == "manual",
             ),
         )
@@ -1025,15 +1004,12 @@ class EntityMentionRepository(
             select(distinct(EntityMentionDB.video_id))
             .outerjoin(
                 visible_names,
-                func.lower(EntityMentionDB.mention_text)
-                == visible_names.c.name_lower,
+                func.lower(EntityMentionDB.mention_text) == visible_names.c.name_lower,
             )
             .where(mention_filter)
         )
         transcript_vid_result = await session.execute(transcript_vid_stmt)
-        transcript_video_ids: set[str] = set(
-            transcript_vid_result.scalars().all()
-        )
+        transcript_video_ids: set[str] = set(transcript_vid_result.scalars().all())
 
         # Step 2: Fetch tag-associated video IDs
         canonical_tag_video_ids = await self._get_tag_associated_video_ids(
@@ -1089,17 +1065,13 @@ class EntityMentionRepository(
         total_mentions = (await session.execute(total_mentions_stmt)).scalar() or 0
 
         # Unique entities with mentions
-        unique_entities_stmt = select(
-            func.count(distinct(EntityMentionDB.entity_id))
-        )
+        unique_entities_stmt = select(func.count(distinct(EntityMentionDB.entity_id)))
         if mention_filters:
             unique_entities_stmt = unique_entities_stmt.where(*mention_filters)
         unique_entities = (await session.execute(unique_entities_stmt)).scalar() or 0
 
         # Unique videos with mentions
-        unique_videos_stmt = select(
-            func.count(distinct(EntityMentionDB.video_id))
-        )
+        unique_videos_stmt = select(func.count(distinct(EntityMentionDB.video_id)))
         if mention_filters:
             unique_videos_stmt = unique_videos_stmt.where(*mention_filters)
         unique_videos = (await session.execute(unique_videos_stmt)).scalar() or 0
@@ -1212,9 +1184,8 @@ class EntityMentionRepository(
             Unique video IDs associated with the entity.
         """
         # Path 1: direct entity mentions
-        path1 = (
-            select(distinct(EntityMentionDB.video_id).label("video_id"))
-            .where(EntityMentionDB.entity_id == entity_id)
+        path1 = select(distinct(EntityMentionDB.video_id).label("video_id")).where(
+            EntityMentionDB.entity_id == entity_id
         )
 
         # Path 2: tag-based — canonical_tags → tag_aliases → video_tags
@@ -1276,17 +1247,14 @@ class EntityMentionRepository(
         pattern = f"{query}%"
 
         # Canonical name matches
-        canonical_stmt = (
-            select(
-                NamedEntityDB.id.label("entity_id"),
-                NamedEntityDB.canonical_name,
-                NamedEntityDB.entity_type,
-                NamedEntityDB.description,
-                NamedEntityDB.status,
-                type_coerce(literal(None), String).label("matched_alias"),
-            )
-            .where(NamedEntityDB.canonical_name.ilike(pattern))
-        )
+        canonical_stmt = select(
+            NamedEntityDB.id.label("entity_id"),
+            NamedEntityDB.canonical_name,
+            NamedEntityDB.entity_type,
+            NamedEntityDB.description,
+            NamedEntityDB.status,
+            type_coerce(literal(None), String).label("matched_alias"),
+        ).where(NamedEntityDB.canonical_name.ilike(pattern))
 
         # Alias matches — only include if canonical name did NOT match
         alias_stmt = (
@@ -1343,15 +1311,12 @@ class EntityMentionRepository(
         if video_id is not None:
             entity_ids = [r.entity_id for r in unique_rows]
             if entity_ids:
-                link_stmt = (
-                    select(
-                        EntityMentionDB.entity_id,
-                        EntityMentionDB.detection_method,
-                    )
-                    .where(
-                        EntityMentionDB.entity_id.in_(entity_ids),
-                        EntityMentionDB.video_id == video_id,
-                    )
+                link_stmt = select(
+                    EntityMentionDB.entity_id,
+                    EntityMentionDB.detection_method,
+                ).where(
+                    EntityMentionDB.entity_id.in_(entity_ids),
+                    EntityMentionDB.video_id == video_id,
                 )
                 link_result = await session.execute(link_stmt)
                 for link_row in link_result.all():
@@ -1432,9 +1397,7 @@ class EntityMentionRepository(
         )
         entity = entity_result.scalar_one_or_none()
         if entity is None:
-            raise NotFoundError(
-                resource_type="Entity", identifier=str(entity_id)
-            )
+            raise NotFoundError(resource_type="Entity", identifier=str(entity_id))
 
         # 3. Check entity not deprecated
         if entity.status == "deprecated":

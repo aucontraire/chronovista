@@ -327,9 +327,7 @@ class TestCreateEntityCommand:
 
     def test_create_entity_empty_normalized_name_exits_code_1(self) -> None:
         """Name that normalizes to empty (e.g. '###') exits with code 1."""
-        result = runner.invoke(
-            app, ["entities", "create", "###", "--type", "person"]
-        )
+        result = runner.invoke(app, ["entities", "create", "###", "--type", "person"])
 
         assert result.exit_code == 1, f"Output: {result.output}"
         assert "Invalid Name" in result.output
@@ -876,9 +874,7 @@ class TestBackfillDescriptionsCommand:
 
     def test_backfill_help_flag(self) -> None:
         """--help shows usage text including --dry-run and exits 0."""
-        result = runner.invoke(
-            app, ["entities", "backfill-descriptions", "--help"]
-        )
+        result = runner.invoke(app, ["entities", "backfill-descriptions", "--help"])
 
         assert result.exit_code == 0
         assert "--dry-run" in result.output

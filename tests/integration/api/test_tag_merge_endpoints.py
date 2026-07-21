@@ -55,9 +55,9 @@ class TestMergePreview:
             )
         assert resp.status_code == 200, resp.text
         data = resp.json()["data"]
-        assert data["resulting_video_count"] == 3, (
-            "vid2 is shared; distinct union of Music{vid1,vid2,vid4}+NY{vid2} is 3, not 4"
-        )
+        assert (
+            data["resulting_video_count"] == 3
+        ), "vid2 is shared; distinct union of Music{vid1,vid2,vid4}+NY{vid2} is 3, not 4"
         assert data["target_tag"] == "Music"
 
 
@@ -124,7 +124,9 @@ class TestMerge:
             )
         assert resp.status_code == 200, resp.text
         data = resp.json()["data"]
-        assert data["new_video_count"] == 3, "distinct video count after merge (vid2 deduped)"
+        assert (
+            data["new_video_count"] == 3
+        ), "distinct video count after merge (vid2 deduped)"
         assert data["operation_id"]
 
     async def test_preview_equals_actual_merge(
@@ -145,9 +147,7 @@ class TestMerge:
             preview = await async_client.post(
                 "/api/v1/canonical-tags/merge/preview", json=body
             )
-            merge = await async_client.post(
-                "/api/v1/canonical-tags/merge", json=body
-            )
+            merge = await async_client.post("/api/v1/canonical-tags/merge", json=body)
         assert preview.status_code == 200 and merge.status_code == 200
         assert (
             preview.json()["data"]["resulting_video_count"]
@@ -221,9 +221,9 @@ class TestCrossFeatureContract:
             )
             assert videos.status_code == 200, videos.text
             vids = {v["video_id"] for v in videos.json()["data"]}
-            assert len(vids) == 3, (
-                f"Music retains 3 distinct videos; shared vid2 not double-counted, got {vids}"
-            )
+            assert (
+                len(vids) == 3
+            ), f"Music retains 3 distinct videos; shared vid2 not double-counted, got {vids}"
 
             # Consumer 2: the former New York raw alias now resolves to Music.
             resolve = await async_client.get(

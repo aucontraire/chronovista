@@ -19,6 +19,7 @@ from chronovista.db.models import TopicCategory
 
 # CRITICAL: This line ensures async tests work with coverage
 
+
 class TestTopicHierarchyPerformance:
     """Test NFR-002: Topic hierarchy load performance."""
 
@@ -144,9 +145,9 @@ class TestTopicHierarchyPerformance:
             Fixture to clean up topics after test.
         """
         # Verify we have at least 1000 topics
-        assert len(seed_topics) >= 1000, (
-            f"Expected at least 1000 topics, got {len(seed_topics)}"
-        )
+        assert (
+            len(seed_topics) >= 1000
+        ), f"Expected at least 1000 topics, got {len(seed_topics)}"
 
         async with integration_db_session() as session:
             # Warm up query (exclude from timing)
@@ -171,9 +172,9 @@ class TestTopicHierarchyPerformance:
                 times.append(elapsed_ms)
 
                 # Verify we got all topics
-                assert len(rows) >= 1000, (
-                    f"Expected at least 1000 topics in result, got {len(rows)}"
-                )
+                assert (
+                    len(rows) >= 1000
+                ), f"Expected at least 1000 topics in result, got {len(rows)}"
 
             # Calculate p95 latency
             times.sort()
@@ -181,9 +182,9 @@ class TestTopicHierarchyPerformance:
             p95 = times[p95_index] if p95_index < len(times) else times[-1]
 
             # Assert p95 is under 500ms
-            assert p95 < 500, (
-                f"p95 latency {p95:.1f}ms exceeds 500ms target for topic hierarchy load"
-            )
+            assert (
+                p95 < 500
+            ), f"p95 latency {p95:.1f}ms exceeds 500ms target for topic hierarchy load"
 
             # Log results for debugging
             sum(times) / len(times)

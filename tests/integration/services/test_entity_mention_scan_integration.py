@@ -219,6 +219,7 @@ def _make_session_factory_from_session(
 
     return _FakeFactory()
 
+
 # ---------------------------------------------------------------------------
 # T016-01: End-to-end scan
 # ---------------------------------------------------------------------------
@@ -239,7 +240,10 @@ class TestEndToEndScan:
         await _seed_transcript(db_session, video_id(seed="ee_001"))
 
         seg = await _seed_segment(
-            db_session, video_id(seed="ee_001"), text="Aaron is a famous person", start_time=0.0
+            db_session,
+            video_id(seed="ee_001"),
+            text="Aaron is a famous person",
+            start_time=0.0,
         )
         entity = await _seed_entity(db_session, "Aaron", entity_type="person")
 
@@ -250,9 +254,7 @@ class TestEndToEndScan:
         result: ScanResult = await service.scan()
 
         # Query mentions inserted
-        rows = (
-            await db_session.execute(select(EntityMentionDB))
-        ).scalars().all()
+        rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
 
         assert len(rows) == 1, f"Expected 1 mention, got {len(rows)}"
         mention = rows[0]
@@ -285,9 +287,7 @@ class TestEndToEndScan:
         service = EntityMentionScanService(session_factory=factory)
         result = await service.scan()
 
-        rows = (
-            await db_session.execute(select(EntityMentionDB))
-        ).scalars().all()
+        rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
 
         assert len(rows) == 0
         assert result.mentions_found == 0
@@ -311,9 +311,7 @@ class TestEndToEndScan:
         service = EntityMentionScanService(session_factory=factory)
         await service.scan()
 
-        rows = (
-            await db_session.execute(select(EntityMentionDB))
-        ).scalars().all()
+        rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
 
         assert len(rows) == 1
         assert rows[0].detection_method == DetectionMethod.RULE_MATCH.value
@@ -359,9 +357,7 @@ class TestIdempotentRerun:
         assert result2.mentions_found == 0
 
         # Total rows unchanged after second scan
-        rows = (
-            await db_session.execute(select(EntityMentionDB))
-        ).scalars().all()
+        rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
         assert len(rows) == result1.mentions_found
 
     async def test_full_rescan_replaces_existing_mentions(
@@ -422,10 +418,17 @@ class TestCounterUpdates:
 
         # Two segments both mention the entity
         await _seed_segment(
-            db_session, video_id(seed="cu_001"), text="SpaceX launched a rocket", sequence_number=0
+            db_session,
+            video_id(seed="cu_001"),
+            text="SpaceX launched a rocket",
+            sequence_number=0,
         )
         await _seed_segment(
-            db_session, video_id(seed="cu_001"), text="SpaceX is building Starship", start_time=10.0, sequence_number=1
+            db_session,
+            video_id(seed="cu_001"),
+            text="SpaceX is building Starship",
+            start_time=10.0,
+            sequence_number=1,
         )
         entity = await _seed_entity(db_session, "SpaceX", entity_type="organization")
 
@@ -438,9 +441,9 @@ class TestCounterUpdates:
         # Re-fetch entity to see updated counters
         await db_session.refresh(entity)
 
-        assert entity.mention_count == 2, (
-            f"Expected mention_count=2, got {entity.mention_count}"
-        )
+        assert (
+            entity.mention_count == 2
+        ), f"Expected mention_count=2, got {entity.mention_count}"
 
     async def test_video_count_updated_after_scan(
         self, db_session: AsyncSession
@@ -452,11 +455,16 @@ class TestCounterUpdates:
         await _seed_channel(db_session)
 
         # Two videos, same entity mentioned in each
-        for vid_idx, vid_id in enumerate([video_id(seed="vc_001"), video_id(seed="vc_002")]):
+        for vid_idx, vid_id in enumerate(
+            [video_id(seed="vc_001"), video_id(seed="vc_002")]
+        ):
             await _seed_video(db_session, vid_id)
             await _seed_transcript(db_session, vid_id)
             await _seed_segment(
-                db_session, vid_id, text="OpenAI released GPT-5", sequence_number=vid_idx
+                db_session,
+                vid_id,
+                text="OpenAI released GPT-5",
+                sequence_number=vid_idx,
             )
 
         entity = await _seed_entity(db_session, "OpenAI", entity_type="organization")
@@ -469,9 +477,9 @@ class TestCounterUpdates:
 
         await db_session.refresh(entity)
 
-        assert entity.video_count == 2, (
-            f"Expected video_count=2, got {entity.video_count}"
-        )
+        assert (
+            entity.video_count == 2
+        ), f"Expected video_count=2, got {entity.video_count}"
         assert entity.mention_count == 2
 
     async def test_counters_not_updated_in_dry_run(
@@ -508,9 +516,7 @@ class TestCounterUpdates:
 class TestWordBoundaryMatching:
     """Verify that entity matching respects word boundaries."""
 
-    async def test_no_match_for_substring(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_no_match_for_substring(self, db_session: AsyncSession) -> None:
         """
         'Aaronson' must NOT match entity 'Aaron' because 'Aaron' ends mid-word.
         The service uses Python \\b word-boundary regex which prevents this.
@@ -531,13 +537,11 @@ class TestWordBoundaryMatching:
         service = EntityMentionScanService(session_factory=factory)
         result = await service.scan()
 
-        rows = (
-            await db_session.execute(select(EntityMentionDB))
-        ).scalars().all()
+        rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
 
-        assert len(rows) == 0, (
-            f"Expected 0 mentions (word boundary mismatch), got {len(rows)}"
-        )
+        assert (
+            len(rows) == 0
+        ), f"Expected 0 mentions (word boundary mismatch), got {len(rows)}"
         assert result.mentions_found == 0
 
     async def test_match_when_entity_stands_alone(
@@ -562,16 +566,12 @@ class TestWordBoundaryMatching:
         service = EntityMentionScanService(session_factory=factory)
         result = await service.scan()
 
-        rows = (
-            await db_session.execute(select(EntityMentionDB))
-        ).scalars().all()
+        rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
 
         assert len(rows) == 1
         assert result.mentions_found == 1
 
-    async def test_case_insensitive_match(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_case_insensitive_match(self, db_session: AsyncSession) -> None:
         """Entity matching is case-insensitive: 'google' must match entity 'Google'."""
         await _seed_channel(db_session)
         await _seed_video(db_session, video_id(seed="wb_003"))
@@ -579,7 +579,9 @@ class TestWordBoundaryMatching:
 
         # Text has lowercase 'google'
         await _seed_segment(
-            db_session, video_id(seed="wb_003"), text="I searched on google for the answer"
+            db_session,
+            video_id(seed="wb_003"),
+            text="I searched on google for the answer",
         )
         await _seed_entity(db_session, "Google", entity_type="organization")
 
@@ -589,16 +591,12 @@ class TestWordBoundaryMatching:
         service = EntityMentionScanService(session_factory=factory)
         result = await service.scan()
 
-        rows = (
-            await db_session.execute(select(EntityMentionDB))
-        ).scalars().all()
+        rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
 
         assert len(rows) == 1
         assert result.mentions_found == 1
 
-    async def test_match_at_sentence_boundaries(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_match_at_sentence_boundaries(self, db_session: AsyncSession) -> None:
         """Entity at the start or end of text is still detected correctly."""
         await _seed_channel(db_session)
         await _seed_video(db_session, video_id(seed="wb_004"))
@@ -651,13 +649,24 @@ class TestMultipleAliases:
 
         # One segment per name form
         await _seed_segment(
-            db_session, video_id(seed="ma_001"), text="Elon Musk spoke at the conference", sequence_number=0
+            db_session,
+            video_id(seed="ma_001"),
+            text="Elon Musk spoke at the conference",
+            sequence_number=0,
         )
         await _seed_segment(
-            db_session, video_id(seed="ma_001"), text="Musk announced new ventures", start_time=10.0, sequence_number=1
+            db_session,
+            video_id(seed="ma_001"),
+            text="Musk announced new ventures",
+            start_time=10.0,
+            sequence_number=1,
         )
         await _seed_segment(
-            db_session, video_id(seed="ma_001"), text="Tesla CEO discussed the roadmap", start_time=20.0, sequence_number=2
+            db_session,
+            video_id(seed="ma_001"),
+            text="Tesla CEO discussed the roadmap",
+            start_time=20.0,
+            sequence_number=2,
         )
 
         entity = await _seed_entity(db_session, "Elon Musk", entity_type="person")
@@ -671,12 +680,16 @@ class TestMultipleAliases:
         result = await service.scan()
 
         rows = (
-            await db_session.execute(
-                select(EntityMentionDB).where(
-                    EntityMentionDB.entity_id == entity.id
+            (
+                await db_session.execute(
+                    select(EntityMentionDB).where(
+                        EntityMentionDB.entity_id == entity.id
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         # All three alias forms should have been matched
         assert len(rows) == 3, (
@@ -709,9 +722,7 @@ class TestMultipleAliases:
         service = EntityMentionScanService(session_factory=factory)
         result = await service.scan()
 
-        rows = (
-            await db_session.execute(select(EntityMentionDB))
-        ).scalars().all()
+        rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
 
         # Exactly one mention, not two (deduplication within pattern builder)
         assert len(rows) == 1
@@ -738,10 +749,17 @@ class TestIncrementalScan:
         await _seed_transcript(db_session, video_id(seed="inc_01"))
 
         await _seed_segment(
-            db_session, video_id(seed="inc_01"), text="Python and JavaScript are both popular", sequence_number=0
+            db_session,
+            video_id(seed="inc_01"),
+            text="Python and JavaScript are both popular",
+            sequence_number=0,
         )
         await _seed_segment(
-            db_session, video_id(seed="inc_01"), text="I prefer Python for scripting", start_time=10.0, sequence_number=1
+            db_session,
+            video_id(seed="inc_01"),
+            text="I prefer Python for scripting",
+            start_time=10.0,
+            sequence_number=1,
         )
 
         entity_python = await _seed_entity(
@@ -766,12 +784,16 @@ class TestIncrementalScan:
         await service.scan(new_entities_only=True)
 
         js_rows = (
-            await db_session.execute(
-                select(EntityMentionDB).where(
-                    EntityMentionDB.entity_id == entity_js.id
+            (
+                await db_session.execute(
+                    select(EntityMentionDB).where(
+                        EntityMentionDB.entity_id == entity_js.id
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         python_rows_before = result1.mentions_found
         python_rows_after = len(
@@ -781,17 +803,19 @@ class TestIncrementalScan:
                         EntityMentionDB.entity_id == entity_python.id
                     )
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
 
         # JavaScript must now have mentions
-        assert len(js_rows) >= 1, (
-            f"Expected JavaScript mentions after incremental scan, got {len(js_rows)}"
-        )
+        assert (
+            len(js_rows) >= 1
+        ), f"Expected JavaScript mentions after incremental scan, got {len(js_rows)}"
         # Python mention count must be unchanged (already had mentions → skipped)
-        assert python_rows_after == python_rows_before, (
-            f"Python mentions changed unexpectedly: {python_rows_before} → {python_rows_after}"
-        )
+        assert (
+            python_rows_after == python_rows_before
+        ), f"Python mentions changed unexpectedly: {python_rows_before} → {python_rows_after}"
 
     async def test_new_entities_only_noop_when_all_entities_have_mentions(
         self, db_session: AsyncSession
@@ -831,19 +855,21 @@ class TestIncrementalScan:
 class TestEntityStatusExclusion:
     """Verify that merged/deprecated entities are not scanned."""
 
-    async def test_merged_entity_not_scanned(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_merged_entity_not_scanned(self, db_session: AsyncSession) -> None:
         """An entity with status='merged' must not produce any mention records."""
         await _seed_channel(db_session)
         await _seed_video(db_session, video_id(seed="st_001"))
         await _seed_transcript(db_session, video_id(seed="st_001"))
 
         await _seed_segment(
-            db_session, video_id(seed="st_001"), text="Alphabet is the parent company of Google"
+            db_session,
+            video_id(seed="st_001"),
+            text="Alphabet is the parent company of Google",
         )
         # Deliberately set status=merged
-        await _seed_entity(db_session, "Alphabet", entity_type="organization", status="merged")
+        await _seed_entity(
+            db_session, "Alphabet", entity_type="organization", status="merged"
+        )
 
         await db_session.commit()
 
@@ -851,9 +877,7 @@ class TestEntityStatusExclusion:
         service = EntityMentionScanService(session_factory=factory)
         result = await service.scan()
 
-        rows = (
-            await db_session.execute(select(EntityMentionDB))
-        ).scalars().all()
+        rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
 
         assert len(rows) == 0
         assert result.mentions_found == 0
@@ -869,7 +893,9 @@ class TestEntityStatusExclusion:
         await _seed_segment(
             db_session, video_id(seed="st_002"), text="Twitter is now called X"
         )
-        await _seed_entity(db_session, "Twitter", entity_type="organization", status="deprecated")
+        await _seed_entity(
+            db_session, "Twitter", entity_type="organization", status="deprecated"
+        )
 
         await db_session.commit()
 
@@ -877,9 +903,7 @@ class TestEntityStatusExclusion:
         service = EntityMentionScanService(session_factory=factory)
         result = await service.scan()
 
-        rows = (
-            await db_session.execute(select(EntityMentionDB))
-        ).scalars().all()
+        rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
 
         assert len(rows) == 0
         assert result.mentions_found == 0
@@ -928,9 +952,7 @@ class TestCorrectedSegmentText:
         service = EntityMentionScanService(session_factory=factory)
         result = await service.scan()
 
-        rows = (
-            await db_session.execute(select(EntityMentionDB))
-        ).scalars().all()
+        rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
 
         # Match via corrected_text, not original text
         assert len(rows) == 1
@@ -990,21 +1012,27 @@ class TestASRErrorAliasCounterExclusion:
 
         # ASR-error aliases are excluded from scan patterns, so no mentions
         mention_rows = (
-            await db_session.execute(
-                select(EntityMentionDB).where(EntityMentionDB.entity_id == entity.id)
+            (
+                await db_session.execute(
+                    select(EntityMentionDB).where(
+                        EntityMentionDB.entity_id == entity.id
+                    )
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(mention_rows) == 0, (
             f"Expected 0 EntityMention rows (ASR alias excluded from scan), "
             f"got {len(mention_rows)}"
         )
 
-        assert entity.mention_count == 0, (
-            f"Expected mention_count=0 (ASR-error alias only), got {entity.mention_count}"
-        )
-        assert entity.video_count == 0, (
-            f"Expected video_count=0 (ASR-error alias only), got {entity.video_count}"
-        )
+        assert (
+            entity.mention_count == 0
+        ), f"Expected mention_count=0 (ASR-error alias only), got {entity.mention_count}"
+        assert (
+            entity.video_count == 0
+        ), f"Expected video_count=0 (ASR-error alias only), got {entity.video_count}"
 
     async def test_canonical_name_mention_included_in_mention_count(
         self, db_session: AsyncSession
@@ -1040,12 +1068,12 @@ class TestASRErrorAliasCounterExclusion:
 
         await db_session.refresh(entity)
 
-        assert entity.mention_count == 1, (
-            f"Expected mention_count=1 (canonical name match), got {entity.mention_count}"
-        )
-        assert entity.video_count == 1, (
-            f"Expected video_count=1, got {entity.video_count}"
-        )
+        assert (
+            entity.mention_count == 1
+        ), f"Expected mention_count=1 (canonical name match), got {entity.mention_count}"
+        assert (
+            entity.video_count == 1
+        ), f"Expected video_count=1, got {entity.video_count}"
 
     async def test_non_asr_alias_mention_included_in_mention_count(
         self, db_session: AsyncSession
@@ -1081,12 +1109,12 @@ class TestASRErrorAliasCounterExclusion:
 
         await db_session.refresh(entity)
 
-        assert entity.mention_count == 1, (
-            f"Expected mention_count=1 (name_variant alias), got {entity.mention_count}"
-        )
-        assert entity.video_count == 1, (
-            f"Expected video_count=1, got {entity.video_count}"
-        )
+        assert (
+            entity.mention_count == 1
+        ), f"Expected mention_count=1 (name_variant alias), got {entity.mention_count}"
+        assert (
+            entity.video_count == 1
+        ), f"Expected video_count=1, got {entity.video_count}"
 
     async def test_mixed_segments_only_canonical_matches_create_mentions(
         self, db_session: AsyncSession
@@ -1146,22 +1174,28 @@ class TestASRErrorAliasCounterExclusion:
         await db_session.refresh(entity)
 
         mention_rows = (
-            await db_session.execute(
-                select(EntityMentionDB).where(EntityMentionDB.entity_id == entity.id)
+            (
+                await db_session.execute(
+                    select(EntityMentionDB).where(
+                        EntityMentionDB.entity_id == entity.id
+                    )
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         # Only canonical-name matches create mentions (ASR alias excluded)
-        assert len(mention_rows) == 2, (
-            f"Expected 2 EntityMention rows (canonical only), got {len(mention_rows)}"
-        )
+        assert (
+            len(mention_rows) == 2
+        ), f"Expected 2 EntityMention rows (canonical only), got {len(mention_rows)}"
 
-        assert entity.mention_count == 2, (
-            f"Expected mention_count=2, got {entity.mention_count}"
-        )
-        assert entity.video_count == 1, (
-            f"Expected video_count=1 (single video), got {entity.video_count}"
-        )
+        assert (
+            entity.mention_count == 2
+        ), f"Expected mention_count=2, got {entity.mention_count}"
+        assert (
+            entity.video_count == 1
+        ), f"Expected video_count=1 (single video), got {entity.video_count}"
 
     async def test_video_count_excludes_videos_with_only_asr_alias_matches(
         self, db_session: AsyncSession
@@ -1209,12 +1243,12 @@ class TestASRErrorAliasCounterExclusion:
 
         await db_session.refresh(entity)
 
-        assert entity.mention_count == 1, (
-            f"Expected mention_count=1 (Video 1 canonical only), got {entity.mention_count}"
-        )
-        assert entity.video_count == 1, (
-            f"Expected video_count=1 (Video 2 excluded due to asr_error), got {entity.video_count}"
-        )
+        assert (
+            entity.mention_count == 1
+        ), f"Expected mention_count=1 (Video 1 canonical only), got {entity.mention_count}"
+        assert (
+            entity.video_count == 1
+        ), f"Expected video_count=1 (Video 2 excluded due to asr_error), got {entity.video_count}"
 
     async def test_full_rescan_resets_counters_for_asr_only_entities(
         self, db_session: AsyncSession

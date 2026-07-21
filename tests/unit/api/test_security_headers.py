@@ -29,9 +29,9 @@ class TestSecurityHeaders:
     ) -> None:
         response = await client.get("/api/v1/health")
         for header, value in EXPECTED_HEADERS.items():
-            assert response.headers.get(header) == value, (
-                f"Missing or wrong header: {header}"
-            )
+            assert (
+                response.headers.get(header) == value
+            ), f"Missing or wrong header: {header}"
 
     async def test_csp_header_present(self, client: AsyncClient) -> None:
         response = await client.get("/api/v1/health")
@@ -45,6 +45,6 @@ class TestSecurityHeaders:
     async def test_headers_on_404_response(self, client: AsyncClient) -> None:
         response = await client.get("/api/v1/nonexistent")
         for header in EXPECTED_HEADERS:
-            assert header in response.headers, (
-                f"Security header missing on 404: {header}"
-            )
+            assert (
+                header in response.headers
+            ), f"Security header missing on 404: {header}"

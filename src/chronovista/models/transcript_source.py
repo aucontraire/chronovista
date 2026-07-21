@@ -125,14 +125,10 @@ class RawTranscriptData(BaseModel):
     language_code: LanguageCode | str = Field(
         ..., description="BCP-47 language code (enum or string for regional variants)"
     )
-    language_name: str | None = Field(
-        None, description="Human-readable language name"
-    )
+    language_name: str | None = Field(None, description="Human-readable language name")
     snippets: list[TranscriptSnippet] = Field(..., min_length=1)
     is_generated: bool = Field(..., description="Whether transcript is auto-generated")
-    is_translatable: bool | None = Field(
-        None, description="Whether can be translated"
-    )
+    is_translatable: bool | None = Field(None, description="Whether can be translated")
     source: TranscriptSource = Field(..., description="Source of transcript data")
     source_metadata: dict[str, Any] | None = Field(
         None, description="Additional source-specific data"
@@ -309,12 +305,8 @@ class TranscriptSearchFilters(BaseModel):
     )
     min_duration: float | None = Field(None, ge=0.0, description="Minimum duration")
     text_search: str | None = Field(None, description="Search in transcript text")
-    retrieved_after: datetime | None = Field(
-        None, description="Retrieved after date"
-    )
-    retrieved_before: datetime | None = Field(
-        None, description="Retrieved before date"
-    )
+    retrieved_after: datetime | None = Field(None, description="Retrieved after date")
+    retrieved_before: datetime | None = Field(None, description="Retrieved before date")
 
     model_config = ConfigDict(
         validate_assignment=True,

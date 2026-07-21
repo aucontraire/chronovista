@@ -57,21 +57,15 @@ class CanonicalTagCreate(CanonicalTagBase):
     def merged_status_requires_target(self) -> CanonicalTagCreate:
         """Validate that merged status has a merge target (FR-027)."""
         if self.status == TagStatus.MERGED and self.merged_into_id is None:
-            raise ValueError(
-                "merged_into_id is required when status is 'merged'"
-            )
+            raise ValueError("merged_into_id is required when status is 'merged'")
         return self
 
 
 class CanonicalTagUpdate(BaseModel):
     """Model for updating canonical tags (PATCH-style, all fields optional)."""
 
-    canonical_form: str | None = Field(
-        default=None, min_length=1, max_length=500
-    )
-    normalized_form: str | None = Field(
-        default=None, min_length=1, max_length=500
-    )
+    canonical_form: str | None = Field(default=None, min_length=1, max_length=500)
+    normalized_form: str | None = Field(default=None, min_length=1, max_length=500)
     entity_type: EntityType | None = None
     status: TagStatus | None = None
     alias_count: int | None = Field(default=None, ge=0)
@@ -89,9 +83,7 @@ class CanonicalTag(CanonicalTagBase):
 
     id: uuid.UUID = Field(..., description="Canonical tag UUID (UUIDv7)")
     alias_count: int = Field(..., ge=0, description="Number of known aliases")
-    video_count: int = Field(
-        ..., ge=0, description="Number of videos using this tag"
-    )
+    video_count: int = Field(..., ge=0, description="Number of videos using this tag")
     entity_id: uuid.UUID | None = Field(
         default=None, description="Link to named entity"
     )
@@ -110,9 +102,7 @@ class CanonicalTag(CanonicalTagBase):
     def merged_status_requires_target(self) -> CanonicalTag:
         """Validate that merged status has a merge target (FR-027)."""
         if self.status == TagStatus.MERGED and self.merged_into_id is None:
-            raise ValueError(
-                "merged_into_id is required when status is 'merged'"
-            )
+            raise ValueError("merged_into_id is required when status is 'merged'")
         return self
 
     @model_validator(mode="after")

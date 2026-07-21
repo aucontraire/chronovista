@@ -260,7 +260,9 @@ class TestTranscriptCorrectionCreate:
 
     def test_corrected_text_same_as_original_raises_validation_error(self) -> None:
         """Identical original_text and corrected_text raise ValidationError (no-op prevention)."""
-        with pytest.raises(ValidationError, match="no-op corrections are not permitted"):
+        with pytest.raises(
+            ValidationError, match="no-op corrections are not permitted"
+        ):
             TranscriptCorrectionCreate(
                 video_id=_VALID_VIDEO_ID,
                 language_code=_VALID_LANGUAGE_CODE,
@@ -343,7 +345,9 @@ class TestTranscriptCorrectionCreate:
 
     def test_both_empty_strings_raises_validation_error(self) -> None:
         """Two empty strings are equal so should trigger no-op prevention."""
-        with pytest.raises(ValidationError, match="no-op corrections are not permitted"):
+        with pytest.raises(
+            ValidationError, match="no-op corrections are not permitted"
+        ):
             _make_correction_create(
                 original_text="",
                 corrected_text="",
@@ -358,7 +362,9 @@ class TestTranscriptCorrectionCreate:
         "  hello  " becomes "hello" and " hello " also becomes "hello",
         so the no-op validator should fire.
         """
-        with pytest.raises(ValidationError, match="no-op corrections are not permitted"):
+        with pytest.raises(
+            ValidationError, match="no-op corrections are not permitted"
+        ):
             _make_correction_create(
                 original_text="  hello  ",
                 corrected_text=" hello ",
@@ -509,7 +515,9 @@ class TestTranscriptCorrectionRead:
             TranscriptCorrectionRead.model_validate(o) for o in orm_objects
         ]
         ids = [o.id for o in pydantic_objects]
-        assert len(ids) == len(set(ids)), "Each factory-built object must have a unique id"
+        assert len(ids) == len(
+            set(ids)
+        ), "Each factory-built object must have a unique id"
 
     def test_from_attributes_all_correction_types(self) -> None:
         """model_validate() correctly coerces the string correction_type from ORM to enum."""
@@ -656,7 +664,9 @@ class TestTranscriptCorrectionHypothesis:
         # empty-string edge case which is also rejected but for the same reason.
         assume(len(stripped) > 0)
 
-        with pytest.raises(ValidationError, match="no-op corrections are not permitted"):
+        with pytest.raises(
+            ValidationError, match="no-op corrections are not permitted"
+        ):
             _make_correction_create(
                 original_text=stripped,
                 corrected_text=stripped,

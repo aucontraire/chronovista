@@ -156,7 +156,9 @@ def display_auth_error(command_name: str = "Sync") -> None:
     )
 
 
-def require_auth(command_name: str = "Sync") -> Callable[[Callable[..., T]], Callable[..., T | None]]:
+def require_auth(
+    command_name: str = "Sync",
+) -> Callable[[Callable[..., T]], Callable[..., T | None]]:
     """
     Decorator that checks authentication before running a sync command.
 
@@ -238,6 +240,7 @@ def run_sync_operation(
             # Event loop is already running, use nest_asyncio pattern
             # Create a new thread to run the coroutine
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 future = pool.submit(asyncio.run, coro_typed)
                 return future.result()
@@ -254,8 +257,15 @@ def run_sync_operation(
             is_quota_error = False
             try:
                 error_content = e.content.decode("utf-8") if e.content else ""
-                quota_reasons = {"quotaExceeded", "userRateLimitExceeded", "rateLimitExceeded", "dailyLimitExceeded"}
-                is_quota_error = any(reason in error_content for reason in quota_reasons)
+                quota_reasons = {
+                    "quotaExceeded",
+                    "userRateLimitExceeded",
+                    "rateLimitExceeded",
+                    "dailyLimitExceeded",
+                }
+                is_quota_error = any(
+                    reason in error_content for reason in quota_reasons
+                )
             except (UnicodeDecodeError, AttributeError):
                 pass
 
@@ -275,7 +285,9 @@ def run_sync_operation(
             else:
                 # Authentication error - Exit 2
                 display_auth_api_error(status_code, operation_name)
-                logger.error(f"Authentication failed (HTTP {status_code}) during {operation_name}")
+                logger.error(
+                    f"Authentication failed (HTTP {status_code}) during {operation_name}"
+                )
                 raise typer.Exit(EXIT_AUTH_FAILURE) from e
         else:
             # Other HTTP errors
@@ -539,12 +551,14 @@ def display_network_failure(
         truncated = details[:200] + "..." if len(details) > 200 else details
         message_lines.append(f"\nDetails: {truncated}")
 
-    message_lines.extend([
-        "",
-        "[yellow]What to try:[/yellow]",
-        "1. Check your internet connection",
-        "2. Try again in a few moments",
-    ])
+    message_lines.extend(
+        [
+            "",
+            "[yellow]What to try:[/yellow]",
+            "1. Check your internet connection",
+            "2. Try again in a few moments",
+        ]
+    )
 
     console.print(
         Panel(
@@ -583,12 +597,14 @@ def display_database_error(
         truncated = details[:200] + "..." if len(details) > 200 else details
         message_lines.append(f"\nDetails: {truncated}")
 
-    message_lines.extend([
-        "",
-        "[yellow]What to try:[/yellow]",
-        "1. Check database connectivity",
-        "2. Try the operation again",
-    ])
+    message_lines.extend(
+        [
+            "",
+            "[yellow]What to try:[/yellow]",
+            "1. Check database connectivity",
+            "2. Try the operation again",
+        ]
+    )
 
     console.print(
         Panel(

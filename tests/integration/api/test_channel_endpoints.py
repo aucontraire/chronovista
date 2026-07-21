@@ -181,18 +181,14 @@ async def channel_without_videos(
 class TestChannelAuth:
     """Tests for channel endpoint authentication requirements (T018)."""
 
-    async def test_list_channels_requires_auth(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_list_channels_requires_auth(self, async_client: AsyncClient) -> None:
         """Test that channel list requires authentication."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = False
             response = await async_client.get("/api/v1/channels")
             assert response.status_code == 401
 
-    async def test_get_channel_requires_auth(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_get_channel_requires_auth(self, async_client: AsyncClient) -> None:
         """Test that channel detail requires authentication."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = False
@@ -369,9 +365,7 @@ class TestListChannels:
 
             if len(data["data"]) >= 2:
                 # Verify descending order (accounting for nulls)
-                video_counts = [
-                    c.get("video_count") or 0 for c in data["data"]
-                ]
+                video_counts = [c.get("video_count") or 0 for c in data["data"]]
                 for i in range(len(video_counts) - 1):
                     assert video_counts[i] >= video_counts[i + 1]
 
@@ -430,9 +424,7 @@ class TestChannelDetail:
             assert "created_at" in channel
             assert "updated_at" in channel
 
-    async def test_get_channel_not_found(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_get_channel_not_found(self, async_client: AsyncClient) -> None:
         """Test 404 response for non-existent channel."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True

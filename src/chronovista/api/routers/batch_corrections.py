@@ -53,7 +53,9 @@ from chronovista.services.transcript_correction_service import (
 )
 from chronovista.utils.text import strip_boundary_punctuation
 
-router = APIRouter(prefix="", tags=["batch-corrections"], dependencies=[Depends(require_auth)])
+router = APIRouter(
+    prefix="", tags=["batch-corrections"], dependencies=[Depends(require_auth)]
+)
 
 # Module-level service instantiation (singleton pattern)
 _correction_repo = TranscriptCorrectionRepository()
@@ -468,9 +470,8 @@ async def _find_entity_by_name(
     alias_row = (await session.execute(alias_stmt)).first()
     if alias_row is not None:
         # Fetch the entity's canonical name
-        entity_stmt = (
-            select(NamedEntityDB.canonical_name)
-            .where(NamedEntityDB.id == alias_row.entity_id)
+        entity_stmt = select(NamedEntityDB.canonical_name).where(
+            NamedEntityDB.id == alias_row.entity_id
         )
         entity_name_val = (await session.execute(entity_stmt)).scalar_one_or_none()
         return alias_row.entity_id, entity_name_val
@@ -646,8 +647,6 @@ async def get_cross_segment_candidates(
         entity_name=entity_name,
     )
 
-    results = [
-        CrossSegmentCandidateResponse(**c.model_dump()) for c in candidates
-    ]
+    results = [CrossSegmentCandidateResponse(**c.model_dump()) for c in candidates]
 
     return ApiResponse[list[CrossSegmentCandidateResponse]](data=results)

@@ -80,9 +80,7 @@ class TestFindByTextPatternSubstring:
         segments = [_make_segment(text="hello world")]
         self._setup_scalars_result(mock_session, segments)
 
-        result = await repository.find_by_text_pattern(
-            mock_session, pattern="hello"
-        )
+        result = await repository.find_by_text_pattern(mock_session, pattern="hello")
 
         assert len(result) == 1
         assert result[0].text == "hello world"
@@ -128,9 +126,7 @@ class TestFindByTextPatternSubstring:
         segments = [_make_segment(text="Hello World")]
         self._setup_scalars_result(mock_session, segments)
 
-        result = await repository.find_by_text_pattern(
-            mock_session, pattern="Hello"
-        )
+        result = await repository.find_by_text_pattern(mock_session, pattern="Hello")
 
         assert len(result) == 1
         mock_session.execute.assert_called_once()
@@ -352,9 +348,7 @@ class TestFindByTextPatternFilters:
         ]
         self._setup_scalars_result(mock_session, segments)
 
-        result = await repository.find_by_text_pattern(
-            mock_session, pattern="match"
-        )
+        result = await repository.find_by_text_pattern(mock_session, pattern="match")
 
         assert len(result) == 3
         mock_session.execute.assert_called_once()
@@ -440,9 +434,7 @@ class TestFindByTextPatternEffectiveText:
         )
         self._setup_scalars_result(mock_session, [segment])
 
-        result = await repository.find_by_text_pattern(
-            mock_session, pattern="original"
-        )
+        result = await repository.find_by_text_pattern(mock_session, pattern="original")
 
         assert len(result) == 1
         assert result[0].has_correction is False
@@ -465,9 +457,7 @@ class TestFindByTextPatternEffectiveText:
         ]
         self._setup_scalars_result(mock_session, segments)
 
-        result = await repository.find_by_text_pattern(
-            mock_session, pattern="hello"
-        )
+        result = await repository.find_by_text_pattern(mock_session, pattern="hello")
 
         assert len(result) == 2
 
@@ -505,9 +495,7 @@ class TestFindByTextPatternEdgeCases:
         segments = [_make_segment(text="any text")]
         self._setup_scalars_result(mock_session, segments)
 
-        result = await repository.find_by_text_pattern(
-            mock_session, pattern=""
-        )
+        result = await repository.find_by_text_pattern(mock_session, pattern="")
 
         # Empty LIKE pattern '%%' matches everything
         assert len(result) == 1
@@ -525,9 +513,7 @@ class TestFindByTextPatternEdgeCases:
         """
         self._setup_scalars_result(mock_session, [])
 
-        result = await repository.find_by_text_pattern(
-            mock_session, pattern="100%"
-        )
+        result = await repository.find_by_text_pattern(mock_session, pattern="100%")
 
         assert result == []
         mock_session.execute.assert_called_once()
@@ -603,9 +589,7 @@ class TestFindByTextPatternEdgeCases:
         ]
         self._setup_scalars_result(mock_session, segments)
 
-        result = await repository.find_by_text_pattern(
-            mock_session, pattern="hello"
-        )
+        result = await repository.find_by_text_pattern(mock_session, pattern="hello")
 
         assert len(result) == 3
         # Verify the mock returned results in the expected order
@@ -631,9 +615,7 @@ class TestCountFiltered:
         session = AsyncMock(spec=AsyncSession)
         return session
 
-    def _setup_scalar_result(
-        self, mock_session: AsyncMock, count: int
-    ) -> None:
+    def _setup_scalar_result(self, mock_session: AsyncMock, count: int) -> None:
         """Configure mock session to return a scalar count."""
         mock_result = MagicMock()
         mock_result.scalar.return_value = count
@@ -660,9 +642,7 @@ class TestCountFiltered:
         """Test count filtered by language_code."""
         self._setup_scalar_result(mock_session, 15)
 
-        result = await repository.count_filtered(
-            mock_session, language="es"
-        )
+        result = await repository.count_filtered(mock_session, language="es")
 
         assert result == 15
         mock_session.execute.assert_called_once()
@@ -723,9 +703,7 @@ class TestCountFiltered:
         """Test count returns 0 when no segments match filters."""
         self._setup_scalar_result(mock_session, 0)
 
-        result = await repository.count_filtered(
-            mock_session, language="zz"
-        )
+        result = await repository.count_filtered(mock_session, language="zz")
 
         assert result == 0
 
@@ -751,9 +729,7 @@ class TestCountFiltered:
         """Test count with empty video_ids list."""
         self._setup_scalar_result(mock_session, 0)
 
-        result = await repository.count_filtered(
-            mock_session, video_ids=[]
-        )
+        result = await repository.count_filtered(mock_session, video_ids=[])
 
         assert result == 0
 

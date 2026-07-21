@@ -463,9 +463,7 @@ class TestResolveCategoryIdentifier:
         mock_session.execute.return_value = mock_result
 
         # Mock partial name match returning multiple categories
-        mock_category_repo.find_by_name = AsyncMock(
-            return_value=[category1, category2]
-        )
+        mock_category_repo.find_by_name = AsyncMock(return_value=[category1, category2])
 
         # Mock user selecting second option
         with patch("chronovista.cli.category_commands.Prompt.ask", return_value="2"):

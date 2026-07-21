@@ -89,9 +89,7 @@ class TestGetSupportedLanguages:
         assert "data" in body
         assert isinstance(body["data"], list)
 
-    async def test_returns_all_language_codes(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_returns_all_language_codes(self, async_client: AsyncClient) -> None:
         """Test returned language count matches the LanguageCode enum member count."""
         response = await async_client.get("/api/v1/settings/supported-languages")
 
@@ -181,7 +179,9 @@ class TestGetSupportedLanguages:
         assert response.status_code == 200
         languages = response.json()["data"]
         codes = [lang["code"] for lang in languages]
-        assert len(codes) == len(set(codes)), "Duplicate language codes found in response"
+        assert len(codes) == len(
+            set(codes)
+        ), "Duplicate language codes found in response"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -381,7 +381,9 @@ class TestGetCacheStatus:
         ch_stat.st_mtime = mtime
         channel_entry.stat.return_value = ch_stat
 
-        walk_output: list[tuple[str, list[str], list[str]]] = [("/videos/ab", [], ["abcvideo.jpg"])]
+        walk_output: list[tuple[str, list[str], list[str]]] = [
+            ("/videos/ab", [], ["abcvideo.jpg"])
+        ]
 
         video_stat = MagicMock()
         video_stat.st_size = 2048
@@ -513,9 +515,7 @@ class TestClearCache:
         assert isinstance(data["message"], str)
         assert len(data["message"]) > 0
 
-    async def test_purge_exception_returns_500(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_purge_exception_returns_500(self, async_client: AsyncClient) -> None:
         """Test that an exception during purge returns 500 ProblemJSON response."""
         with patch(
             "chronovista.api.routers.settings._image_cache_service.purge",
@@ -562,9 +562,7 @@ class TestClearCache:
         assert "detail" in body
         assert error_message in body["detail"]
 
-    async def test_purge_called_with_type_all(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_purge_called_with_type_all(self, async_client: AsyncClient) -> None:
         """Test purge is called with type_='all' to clear all cache types."""
         with patch(
             "chronovista.api.routers.settings._image_cache_service.purge",
@@ -750,7 +748,14 @@ class TestGetAppInfo:
 
         assert response.status_code == 200
         stats = response.json()["data"]["database_stats"]
-        for field in ["videos", "channels", "playlists", "transcripts", "corrections", "canonical_tags"]:
+        for field in [
+            "videos",
+            "channels",
+            "playlists",
+            "transcripts",
+            "corrections",
+            "canonical_tags",
+        ]:
             assert stats[field] == 0, f"Expected 0 for {field}, got {stats[field]}"
 
     async def test_sync_timestamps_contains_all_sync_types(
@@ -806,9 +811,9 @@ class TestGetAppInfo:
         assert response.status_code == 200
         sync_timestamps = response.json()["data"]["sync_timestamps"]
         for key, value in sync_timestamps.items():
-            assert value is None, (
-                f"Expected None for sync_timestamps['{key}'], got: {value}"
-            )
+            assert (
+                value is None
+            ), f"Expected None for sync_timestamps['{key}'], got: {value}"
 
     async def test_sync_timestamps_include_actual_datetimes_when_synced(
         self, async_client: AsyncClient
@@ -834,7 +839,9 @@ class TestGetAppInfo:
         for key, value in sync_timestamps.items():
             assert value is not None, f"Expected a timestamp for '{key}', got None"
             # Value should be ISO format datetime string
-            assert isinstance(value, str), f"Expected str timestamp for '{key}', got {type(value)}"
+            assert isinstance(
+                value, str
+            ), f"Expected str timestamp for '{key}', got {type(value)}"
 
     async def test_backend_version_is_non_empty_string(
         self, async_client: AsyncClient
@@ -858,9 +865,7 @@ class TestGetAppInfo:
         assert isinstance(data["backend_version"], str)
         assert len(data["backend_version"]) > 0
 
-    async def test_frontend_version_is_set(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_frontend_version_is_set(self, async_client: AsyncClient) -> None:
         """Test frontend_version is set to the expected value."""
         mock_session = self._make_mock_session_with_counts()
 

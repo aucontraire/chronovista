@@ -23,9 +23,7 @@ class ChannelBase(BaseModel):
     subscriber_count: int | None = Field(
         default=None, ge=0, description="Number of subscribers"
     )
-    video_count: int | None = Field(
-        default=None, ge=0, description="Number of videos"
-    )
+    video_count: int | None = Field(default=None, ge=0, description="Number of videos")
     default_language: LanguageCode | None = Field(
         default=None, description="Default language (BCP-47)"
     )
@@ -159,9 +157,7 @@ class ChannelSearchFilters(BaseModel):
     language_codes: list[LanguageCode] | None = Field(
         default=None, description="Filter by languages"
     )
-    countries: list[str] | None = Field(
-        default=None, description="Filter by countries"
-    )
+    countries: list[str] | None = Field(default=None, description="Filter by countries")
     min_subscriber_count: int | None = Field(
         default=None, ge=0, description="Minimum subscribers"
     )

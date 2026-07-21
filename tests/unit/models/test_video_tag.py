@@ -189,9 +189,12 @@ class TestVideoTag:
     def test_create_valid_video_tag(self):
         """Test creating valid VideoTag with keyword arguments."""
         now = datetime.now(UTC)
-        tag = cast(VideoTag, VideoTagFactory.build(
-            video_id="dQw4w9WgXcQ", tag="tutorial", tag_order=1, created_at=now
-        ))
+        tag = cast(
+            VideoTag,
+            VideoTagFactory.build(
+                video_id="dQw4w9WgXcQ", tag="tutorial", tag_order=1, created_at=now
+            ),
+        )
 
         assert tag.video_id == "dQw4w9WgXcQ"
         assert tag.tag == "tutorial"

@@ -330,6 +330,7 @@ async def async_client(
     AsyncClient
         An async HTTP client for making test requests.
     """
+
     # Create a test-scoped session generator that overrides the app's get_db
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
         async with integration_session_factory() as session:

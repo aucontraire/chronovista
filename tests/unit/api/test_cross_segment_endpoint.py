@@ -177,9 +177,7 @@ class TestGetCrossSegmentCandidates:
         client: AsyncClient,
     ) -> None:
         """min_corrections=0 returns 422."""
-        response = await client.get(
-            self.BASE_URL, params={"min_corrections": 0}
-        )
+        response = await client.get(self.BASE_URL, params={"min_corrections": 0})
         assert response.status_code == 422
 
     async def test_min_corrections_above_maximum(
@@ -187,9 +185,7 @@ class TestGetCrossSegmentCandidates:
         client: AsyncClient,
     ) -> None:
         """min_corrections=21 returns 422."""
-        response = await client.get(
-            self.BASE_URL, params={"min_corrections": 21}
-        )
+        response = await client.get(self.BASE_URL, params={"min_corrections": 21})
         assert response.status_code == 422
 
     @patch(

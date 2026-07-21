@@ -113,7 +113,10 @@ def _build_transcript_summary(
     """
     if not transcripts:
         return TranscriptSummary(
-            count=0, languages=[], has_manual=False, has_corrections=has_corrections,
+            count=0,
+            languages=[],
+            has_manual=False,
+            has_corrections=has_corrections,
         )
 
     languages = list({t.language_code for t in transcripts})
@@ -193,7 +196,9 @@ async def list_channels(
 
     # Apply availability filter unless include_unavailable is True
     if not include_unavailable:
-        query = query.where(ChannelDB.availability_status == AvailabilityStatus.AVAILABLE)
+        query = query.where(
+            ChannelDB.availability_status == AvailabilityStatus.AVAILABLE
+        )
 
     # Apply has_videos filter
     if has_videos is True:
@@ -265,7 +270,11 @@ async def list_channels(
     )
 
 
-@router.get("/channels/{channel_id}", response_model=ChannelDetailResponse, responses=GET_ITEM_ERRORS)
+@router.get(
+    "/channels/{channel_id}",
+    response_model=ChannelDetailResponse,
+    responses=GET_ITEM_ERRORS,
+)
 async def get_channel(
     channel_id: str = Path(
         ...,
@@ -332,7 +341,11 @@ async def get_channel(
     return ChannelDetailResponse(data=detail)
 
 
-@router.get("/channels/{channel_id}/videos", response_model=VideoListResponse, responses=GET_ITEM_ERRORS)
+@router.get(
+    "/channels/{channel_id}/videos",
+    response_model=VideoListResponse,
+    responses=GET_ITEM_ERRORS,
+)
 async def get_channel_videos(
     channel_id: str = Path(
         ...,
@@ -414,7 +427,9 @@ async def get_channel_videos(
         .options(selectinload(VideoDB.channel))
         .options(selectinload(VideoDB.category))
         .options(selectinload(VideoDB.tags))
-        .options(selectinload(VideoDB.video_topics).selectinload(VideoTopic.topic_category))
+        .options(
+            selectinload(VideoDB.video_topics).selectinload(VideoTopic.topic_category)
+        )
     )
 
     # Apply availability filter unless include_unavailable is True
@@ -443,7 +458,9 @@ async def get_channel_videos(
     else:
         order_clause = sort_column.desc()
 
-    query = query.order_by(order_clause, VideoDB.video_id.asc()).offset(offset).limit(limit)
+    query = (
+        query.order_by(order_clause, VideoDB.video_id.asc()).offset(offset).limit(limit)
+    )
 
     # Execute query
     result = await db.execute(query)
@@ -462,9 +479,7 @@ async def get_channel_videos(
             .distinct()
         )
         corrections_result = await db.execute(corrections_query)
-        videos_with_corrections = {
-            row[0] for row in corrections_result.fetchall()
-        }
+        videos_with_corrections = {row[0] for row in corrections_result.fetchall()}
 
     # Transform to response items
     items: list[VideoListItem] = []
@@ -478,14 +493,18 @@ async def get_channel_videos(
         # Build classification fields
         category_name = video.category.name if video.category else None
         tags = [tag.tag for tag in video.tags] if video.tags else []
-        topics = [
-            TopicSummary(
-                topic_id=vt.topic_category.topic_id,
-                name=vt.topic_category.category_name,
-                parent_path=None,  # TODO: Compute hierarchy path if needed
-            )
-            for vt in video.video_topics
-        ] if video.video_topics else []
+        topics = (
+            [
+                TopicSummary(
+                    topic_id=vt.topic_category.topic_id,
+                    name=vt.topic_category.category_name,
+                    parent_path=None,  # TODO: Compute hierarchy path if needed
+                )
+                for vt in video.video_topics
+            ]
+            if video.video_topics
+            else []
+        )
 
         items.append(
             VideoListItem(

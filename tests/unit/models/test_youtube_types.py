@@ -63,26 +63,28 @@ class TestValidatePlaylistId:
     def test_invalid_playlist_id_length(self):
         """Test playlist ID validation with invalid lengths."""
         # Too short
-        with pytest.raises(
-            ValueError, match="YouTube PlaylistId must be 30-50 chars"
-        ):
+        with pytest.raises(ValueError, match="YouTube PlaylistId must be 30-50 chars"):
             validate_playlist_id("PLshort")
 
         # Too long
         long_id = "PL" + "x" * 49  # 51 chars
-        with pytest.raises(
-            ValueError, match="YouTube PlaylistId must be 30-50 chars"
-        ):
+        with pytest.raises(ValueError, match="YouTube PlaylistId must be 30-50 chars"):
             validate_playlist_id(long_id)
 
     def test_invalid_playlist_id_prefix(self):
         """Test playlist ID validation with wrong prefix."""
-        with pytest.raises(ValueError, match='PlaylistId must start with "int_", "PL", or be a system ID'):
+        with pytest.raises(
+            ValueError,
+            match='PlaylistId must start with "int_", "PL", or be a system ID',
+        ):
             validate_playlist_id(
                 "UCdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK"
             )  # Channel ID format
 
-        with pytest.raises(ValueError, match='PlaylistId must start with "int_", "PL", or be a system ID'):
+        with pytest.raises(
+            ValueError,
+            match='PlaylistId must start with "int_", "PL", or be a system ID',
+        ):
             validate_playlist_id("XLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")  # Wrong prefix
 
     def test_invalid_playlist_id_characters(self):
@@ -825,7 +827,9 @@ class TestInternalPlaylistIdHelpers:
     def test_fail_fast_validation_order_format_first(self):
         """Test fail-fast: format checked before length."""
         # Wrong prefix, wrong length - should fail on prefix first
-        with pytest.raises(ValueError, match='must start with "int_", "PL", or be a system ID'):
+        with pytest.raises(
+            ValueError, match='must start with "int_", "PL", or be a system ID'
+        ):
             validate_playlist_id("XY" + "x" * 10)
 
     def test_fail_fast_validation_order_length_second(self):

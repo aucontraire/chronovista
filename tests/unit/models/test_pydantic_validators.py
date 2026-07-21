@@ -277,6 +277,7 @@ class TestUserVideoValidators:
                 rewatch_count=-1,
             )
 
+
 class TestGoogleTakeoutValidators:
     """Test Google Takeout model validators."""
 

@@ -755,7 +755,11 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
             "snippets": [
                 {"text": "Never gonna give you up", "start": 0.0, "duration": 2.5},
                 {"text": "Never gonna let you down", "start": 2.5, "duration": 2.3},
-                {"text": "Never gonna run around and desert you", "start": 4.8, "duration": 3.0},
+                {
+                    "text": "Never gonna run around and desert you",
+                    "start": 4.8,
+                    "duration": 3.0,
+                },
             ],
             "is_generated": False,
             "is_translatable": True,
@@ -796,7 +800,9 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
         )
 
     def test_derive_metadata_with_valid_snippets(
-        self, repository: VideoTranscriptRepository, sample_raw_transcript_data: dict[str, Any]
+        self,
+        repository: VideoTranscriptRepository,
+        sample_raw_transcript_data: dict[str, Any],
     ):
         """T016: Test _derive_metadata with valid raw data containing snippets.
 
@@ -809,19 +815,25 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
         metadata = repository._derive_metadata(sample_raw_transcript_data)
 
         # Verify all metadata fields are present and correct
-        assert metadata["has_timestamps"] is True, "Should detect timestamps from snippets"
+        assert (
+            metadata["has_timestamps"] is True
+        ), "Should detect timestamps from snippets"
         assert metadata["segment_count"] == 3, "Should count all snippets"
 
         # Calculate expected duration: last snippet start (4.8) + last snippet duration (3.0) = 7.8
         expected_duration = 4.8 + 3.0
-        assert metadata["total_duration"] == expected_duration, f"Expected {expected_duration}, got {metadata['total_duration']}"
+        assert (
+            metadata["total_duration"] == expected_duration
+        ), f"Expected {expected_duration}, got {metadata['total_duration']}"
 
-        assert metadata["source"] == "youtube_transcript_api", "Should extract source from raw data"
+        assert (
+            metadata["source"] == "youtube_transcript_api"
+        ), "Should extract source from raw data"
 
     def test_derive_metadata_with_empty_snippets(
         self,
         repository: VideoTranscriptRepository,
-        sample_raw_transcript_data_empty_snippets: dict[str, Any]
+        sample_raw_transcript_data_empty_snippets: dict[str, Any],
     ):
         """T017: Test _derive_metadata with empty snippets array.
 
@@ -831,12 +843,16 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
         - total_duration should be None
         - source should still be extracted
         """
-        metadata = repository._derive_metadata(sample_raw_transcript_data_empty_snippets)
+        metadata = repository._derive_metadata(
+            sample_raw_transcript_data_empty_snippets
+        )
 
         assert metadata["has_timestamps"] is False, "Should be False when no snippets"
         assert metadata["segment_count"] is None, "Should be None when no snippets"
         assert metadata["total_duration"] is None, "Should be None when no snippets"
-        assert metadata["source"] == "youtube_transcript_api", "Should extract source even without snippets"
+        assert (
+            metadata["source"] == "youtube_transcript_api"
+        ), "Should extract source even without snippets"
 
     def test_derive_metadata_with_malformed_data(
         self, repository: VideoTranscriptRepository
@@ -856,7 +872,9 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
         }
 
         metadata = repository._derive_metadata(malformed_data_no_snippets)
-        assert metadata["has_timestamps"] is False, "Should handle missing snippets gracefully"
+        assert (
+            metadata["has_timestamps"] is False
+        ), "Should handle missing snippets gracefully"
         assert metadata["segment_count"] is None
         assert metadata["total_duration"] is None
 
@@ -867,7 +885,9 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
         }
 
         metadata = repository._derive_metadata(malformed_data_no_source)
-        assert metadata["source"] == "youtube_transcript_api", "Should default to youtube_transcript_api"
+        assert (
+            metadata["source"] == "youtube_transcript_api"
+        ), "Should default to youtube_transcript_api"
 
         # Test 3: Snippets is None instead of list
         malformed_data_null_snippets = {
@@ -942,9 +962,7 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
             )
 
             # Verify repository checked for existing transcript
-            mock_get.assert_called_once_with(
-                mock_session, "dQw4w9WgXcQ", "en"
-            )
+            mock_get.assert_called_once_with(mock_session, "dQw4w9WgXcQ", "en")
 
             # Verify session.add was called (transcript + segments)
             # First add is transcript, subsequent adds are segments
@@ -1023,19 +1041,32 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
             )
 
             # Verify the existing transcript was updated
-            assert existing_transcript.transcript_text == sample_transcript_create_with_raw_data.transcript_text
+            assert (
+                existing_transcript.transcript_text
+                == sample_transcript_create_with_raw_data.transcript_text
+            )
             assert existing_transcript.transcript_type == TranscriptType.MANUAL.value
             assert existing_transcript.confidence_score == 0.95
 
             # Verify metadata was re-derived and updated
-            assert existing_transcript.has_timestamps is True, "Should update has_timestamps"
+            assert (
+                existing_transcript.has_timestamps is True
+            ), "Should update has_timestamps"
             assert existing_transcript.segment_count == 3, "Should update segment_count"
-            assert existing_transcript.total_duration == 7.8, "Should update total_duration"
-            assert existing_transcript.source == "youtube_transcript_api", "Should update source"
-            assert existing_transcript.raw_transcript_data == sample_raw_transcript_data, "Should replace raw data"
+            assert (
+                existing_transcript.total_duration == 7.8
+            ), "Should update total_duration"
+            assert (
+                existing_transcript.source == "youtube_transcript_api"
+            ), "Should update source"
+            assert (
+                existing_transcript.raw_transcript_data == sample_raw_transcript_data
+            ), "Should replace raw data"
 
             # Verify session operations (transcript + segments)
-            assert mock_session.add.call_count >= 1  # At least transcript, plus segments
+            assert (
+                mock_session.add.call_count >= 1
+            )  # At least transcript, plus segments
             mock_session.flush.assert_called()  # Multiple flushes (transcript + segments)
             mock_session.refresh.assert_called_once_with(existing_transcript)
 
@@ -1064,7 +1095,9 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
             caption_name="English (CC)",
             downloaded_at=datetime.now(UTC),
             # Feature 007 fields
-            raw_transcript_data={"snippets": [{"text": "test", "start": 0.0, "duration": 1.0}]},
+            raw_transcript_data={
+                "snippets": [{"text": "test", "start": 0.0, "duration": 1.0}]
+            },
             has_timestamps=True,
             segment_count=1,
             total_duration=1.0,
@@ -1126,15 +1159,26 @@ class TestVideoTranscriptRepositoryTimestampPreservation:
 
             # Verify default metadata values are used
             assert added_transcript.has_timestamps is True, "Should default to True"
-            assert added_transcript.segment_count is None, "Should be None when no raw data"
-            assert added_transcript.total_duration is None, "Should be None when no raw data"
-            assert added_transcript.source == "youtube_transcript_api", "Should use default source"
-            assert added_transcript.raw_transcript_data is None, "Should be None when not provided"
+            assert (
+                added_transcript.segment_count is None
+            ), "Should be None when no raw data"
+            assert (
+                added_transcript.total_duration is None
+            ), "Should be None when no raw data"
+            assert (
+                added_transcript.source == "youtube_transcript_api"
+            ), "Should use default source"
+            assert (
+                added_transcript.raw_transcript_data is None
+            ), "Should be None when not provided"
 
             # Verify basic fields are still set correctly
             assert added_transcript.video_id == "dQw4w9WgXcQ"
             assert added_transcript.language_code == "en"
-            assert added_transcript.transcript_text == sample_transcript_create_with_raw_data.transcript_text
+            assert (
+                added_transcript.transcript_text
+                == sample_transcript_create_with_raw_data.transcript_text
+            )
 
             # Verify flush and refresh were called
             mock_session.flush.assert_called_once()
@@ -1178,7 +1222,9 @@ class TestVideoTranscriptRepositoryMetadataQueries:
                 caption_name="English (CC)",
                 downloaded_at=base_time,
                 # Feature 007 metadata
-                raw_transcript_data={"snippets": [{"text": "test", "start": 0.0, "duration": 2.6}]},
+                raw_transcript_data={
+                    "snippets": [{"text": "test", "start": 0.0, "duration": 2.6}]
+                },
                 has_timestamps=True,
                 segment_count=3,
                 total_duration=7.8,
@@ -1198,7 +1244,9 @@ class TestVideoTranscriptRepositoryMetadataQueries:
                 caption_name="English (CC)",
                 downloaded_at=base_time,
                 # Feature 007 metadata
-                raw_transcript_data={"snippets": [{"text": "test", "start": 0.0, "duration": 14.4}] * 50},
+                raw_transcript_data={
+                    "snippets": [{"text": "test", "start": 0.0, "duration": 14.4}] * 50
+                },
                 has_timestamps=True,
                 segment_count=50,
                 total_duration=720.0,
@@ -1238,7 +1286,9 @@ class TestVideoTranscriptRepositoryMetadataQueries:
                 caption_name="French (CC)",
                 downloaded_at=base_time,
                 # Feature 007 metadata
-                raw_transcript_data={"snippets": [{"text": "test", "start": 0.0, "duration": 30.0}] * 10},
+                raw_transcript_data={
+                    "snippets": [{"text": "test", "start": 0.0, "duration": 30.0}] * 10
+                },
                 has_timestamps=True,
                 segment_count=10,
                 total_duration=300.0,
@@ -1297,7 +1347,8 @@ class TestVideoTranscriptRepositoryMetadataQueries:
         # Filter to transcripts with at least 10 segments
         min_segments = 10
         transcripts_matching = [
-            t for t in sample_transcripts_with_metadata
+            t
+            for t in sample_transcripts_with_metadata
             if t.segment_count is not None and t.segment_count >= min_segments
         ]
 
@@ -1335,7 +1386,8 @@ class TestVideoTranscriptRepositoryMetadataQueries:
         # Filter to transcripts with at least 600 seconds (10 minutes)
         min_duration = 600.0
         transcripts_matching = [
-            t for t in sample_transcripts_with_metadata
+            t
+            for t in sample_transcripts_with_metadata
             if t.total_duration is not None and t.total_duration >= min_duration
         ]
 
@@ -1374,11 +1426,14 @@ class TestVideoTranscriptRepositoryMetadataQueries:
         """
         # Apply multiple filters: has_timestamps=True AND min_segment_count=5 AND source="youtube_transcript_api"
         transcripts_matching = [
-            t for t in sample_transcripts_with_metadata
-            if (t.has_timestamps
+            t
+            for t in sample_transcripts_with_metadata
+            if (
+                t.has_timestamps
                 and t.segment_count is not None
                 and t.segment_count >= 5
-                and t.source == "youtube_transcript_api")
+                and t.source == "youtube_transcript_api"
+            )
         ]
 
         # Mock the query execution
@@ -1524,7 +1579,9 @@ class TestVideoTranscriptRepositoryMetadataQueries:
             caption_name="English (CC)",
             downloaded_at=datetime.now(UTC),
             # Has timestamps
-            raw_transcript_data={"snippets": [{"text": "test", "start": 0.0, "duration": 2.5}]},
+            raw_transcript_data={
+                "snippets": [{"text": "test", "start": 0.0, "duration": 2.5}]
+            },
             has_timestamps=True,
             segment_count=1,
             total_duration=2.5,
@@ -1655,9 +1712,9 @@ class TestVideoTranscriptRepositorySourceTracking:
             added_transcript = mock_session.add.call_args_list[0][0][0]
 
             # T049 verification: source should be extracted from raw_data
-            assert added_transcript.source == "youtube_data_api_v3", (
-                "Source should be extracted from raw_transcript_data"
-            )
+            assert (
+                added_transcript.source == "youtube_data_api_v3"
+            ), "Source should be extracted from raw_transcript_data"
 
             # Also verify other metadata fields for completeness
             assert added_transcript.has_timestamps is True
@@ -1740,8 +1797,7 @@ class TestVideoTranscriptRepositorySourceTracking:
 
         # Filter to only youtube_transcript_api source
         filtered_transcripts = [
-            t for t in transcripts_mixed_sources
-            if t.source == "youtube_transcript_api"
+            t for t in transcripts_mixed_sources if t.source == "youtube_transcript_api"
         ]
 
         # Mock the query execution
@@ -1757,10 +1813,12 @@ class TestVideoTranscriptRepositorySourceTracking:
         )
 
         # T050 verification: should return only transcripts from youtube_transcript_api
-        assert len(result) == 2, "Should return 2 transcripts with youtube_transcript_api source"
-        assert all(t.source == "youtube_transcript_api" for t in result), (
-            "All returned transcripts should have youtube_transcript_api source"
-        )
+        assert (
+            len(result) == 2
+        ), "Should return 2 transcripts with youtube_transcript_api source"
+        assert all(
+            t.source == "youtube_transcript_api" for t in result
+        ), "All returned transcripts should have youtube_transcript_api source"
         assert result[0].video_id in ("video1", "video3")
         assert result[1].video_id in ("video1", "video3")
 
@@ -1820,9 +1878,9 @@ class TestVideoTranscriptRepositorySourceTracking:
             added_transcript = mock_session.add.call_args_list[0][0][0]
 
             # T051 verification: source should default to "youtube_transcript_api"
-            assert added_transcript.source == "youtube_transcript_api", (
-                "Source should default to 'youtube_transcript_api' when missing from raw_data"
-            )
+            assert (
+                added_transcript.source == "youtube_transcript_api"
+            ), "Source should default to 'youtube_transcript_api' when missing from raw_data"
 
             # Verify other metadata fields are still extracted correctly
             assert added_transcript.has_timestamps is True
@@ -1908,9 +1966,9 @@ class TestSegmentCreationInCreateOrUpdate:
         assert mock_session.execute.call_count >= 1, "Should call execute for DELETE"
 
         # Verify session.add was called 3 times (once per segment)
-        assert mock_session.add.call_count == 3, (
-            f"Expected 3 add calls, got {mock_session.add.call_count}"
-        )
+        assert (
+            mock_session.add.call_count == 3
+        ), f"Expected 3 add calls, got {mock_session.add.call_count}"
 
         # Verify session.flush was called
         mock_session.flush.assert_called_once()

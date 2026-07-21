@@ -64,9 +64,9 @@ class TestYouTubeServiceInterface:
             "close",
         }
 
-        assert expected_methods.issubset(abstract_methods), (
-            f"Missing abstract methods: {expected_methods - abstract_methods}"
-        )
+        assert expected_methods.issubset(
+            abstract_methods
+        ), f"Missing abstract methods: {expected_methods - abstract_methods}"
 
 
 class TestTranscriptServiceInterface:
@@ -96,9 +96,9 @@ class TestTranscriptServiceInterface:
             "is_service_available",
         }
 
-        assert expected_methods.issubset(abstract_methods), (
-            f"Missing abstract methods: {expected_methods - abstract_methods}"
-        )
+        assert expected_methods.issubset(
+            abstract_methods
+        ), f"Missing abstract methods: {expected_methods - abstract_methods}"
 
 
 class TestTakeoutServiceInterface:
@@ -132,9 +132,9 @@ class TestTakeoutServiceInterface:
             "generate_comprehensive_analysis",
         }
 
-        assert expected_methods.issubset(abstract_methods), (
-            f"Missing abstract methods: {expected_methods - abstract_methods}"
-        )
+        assert expected_methods.issubset(
+            abstract_methods
+        ), f"Missing abstract methods: {expected_methods - abstract_methods}"
 
 
 class TestPartialImplementation:

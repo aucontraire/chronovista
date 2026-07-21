@@ -226,7 +226,9 @@ class TestBackfillEndToEnd:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
 
         corr_a = await _seed_correction(
             db_session,
@@ -261,23 +263,19 @@ class TestBackfillEndToEnd:
 
         # --- verify DB state ---
         result_a = await db_session.execute(
-            select(TranscriptCorrectionDB).where(
-                TranscriptCorrectionDB.id == corr_a.id
-            )
+            select(TranscriptCorrectionDB).where(TranscriptCorrectionDB.id == corr_a.id)
         )
         result_b = await db_session.execute(
-            select(TranscriptCorrectionDB).where(
-                TranscriptCorrectionDB.id == corr_b.id
-            )
+            select(TranscriptCorrectionDB).where(TranscriptCorrectionDB.id == corr_b.id)
         )
         persisted_a = result_a.scalar_one()
         persisted_b = result_b.scalar_one()
 
         assert persisted_a.batch_id is not None, "corr_a must have a batch_id assigned"
         assert persisted_b.batch_id is not None, "corr_b must have a batch_id assigned"
-        assert persisted_a.batch_id == persisted_b.batch_id, (
-            "Both corrections in the same window must share the same batch_id"
-        )
+        assert (
+            persisted_a.batch_id == persisted_b.batch_id
+        ), "Both corrections in the same window must share the same batch_id"
         assert persisted_a.batch_id == batch_uuid
 
     async def test_singleton_correction_remains_null(
@@ -292,7 +290,9 @@ class TestBackfillEndToEnd:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
 
         corr = await _seed_correction(
             db_session,
@@ -312,9 +312,7 @@ class TestBackfillEndToEnd:
 
         # No assign_batch_id call → row remains NULL
         result = await db_session.execute(
-            select(TranscriptCorrectionDB).where(
-                TranscriptCorrectionDB.id == corr.id
-            )
+            select(TranscriptCorrectionDB).where(TranscriptCorrectionDB.id == corr.id)
         )
         persisted = result.scalar_one()
         assert persisted.batch_id is None, "Singleton correction must stay NULL"
@@ -331,7 +329,9 @@ class TestBackfillEndToEnd:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
 
         corr_a = await _seed_correction(
             db_session,
@@ -360,14 +360,10 @@ class TestBackfillEndToEnd:
 
         # Neither correction should have a batch_id
         result_a = await db_session.execute(
-            select(TranscriptCorrectionDB).where(
-                TranscriptCorrectionDB.id == corr_a.id
-            )
+            select(TranscriptCorrectionDB).where(TranscriptCorrectionDB.id == corr_a.id)
         )
         result_b = await db_session.execute(
-            select(TranscriptCorrectionDB).where(
-                TranscriptCorrectionDB.id == corr_b.id
-            )
+            select(TranscriptCorrectionDB).where(TranscriptCorrectionDB.id == corr_b.id)
         )
         assert result_a.scalar_one().batch_id is None
         assert result_b.scalar_one().batch_id is None
@@ -389,7 +385,9 @@ class TestBackfillEndToEnd:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
 
         await _seed_correction(
             db_session,
@@ -417,13 +415,15 @@ class TestBackfillEndToEnd:
         assert len(batches_run1) == 1
 
         first_batch_id = uuid.uuid4()
-        await assign_batch_id(db_session, batches_run1[0].correction_ids, first_batch_id)
+        await assign_batch_id(
+            db_session, batches_run1[0].correction_ids, first_batch_id
+        )
 
         # --- Second run ---
         corrections_run2 = await fetch_unassigned_corrections(db_session)
-        assert len(corrections_run2) == 0, (
-            "Second fetch must return 0 rows: all already have batch_id"
-        )
+        assert (
+            len(corrections_run2) == 0
+        ), "Second fetch must return 0 rows: all already have batch_id"
 
         batches_run2 = identify_batches(corrections_run2, window_seconds=5.0)
         assert batches_run2 == [], "No new batches on second run"
@@ -440,7 +440,9 @@ class TestBackfillEndToEnd:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
 
         corr_a = await _seed_correction(
             db_session,
@@ -495,7 +497,9 @@ class TestBackfillEndToEnd:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
 
         existing_batch = uuid.uuid4()
 
@@ -524,9 +528,7 @@ class TestBackfillEndToEnd:
 
         corrections = await fetch_unassigned_corrections(db_session)
 
-        assert len(corrections) == 1, (
-            "Only unassigned corrections must be returned"
-        )
+        assert len(corrections) == 1, "Only unassigned corrections must be returned"
         assert corrections[0].id == str(corr_unassigned.id)
 
     # ------------------------------------------------------------------
@@ -550,7 +552,9 @@ class TestBackfillEndToEnd:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
 
         # Pair that forms a batch
         pair_a = await _seed_correction(
@@ -604,7 +608,9 @@ class TestBackfillEndToEnd:
             select(TranscriptCorrectionDB).where(TranscriptCorrectionDB.id == pair_b.id)
         )
         res_s = await db_session.execute(
-            select(TranscriptCorrectionDB).where(TranscriptCorrectionDB.id == singleton.id)
+            select(TranscriptCorrectionDB).where(
+                TranscriptCorrectionDB.id == singleton.id
+            )
         )
 
         persisted_a = res_a.scalar_one()
@@ -627,30 +633,52 @@ class TestBackfillEndToEnd:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
 
         # Group 1: teh → the
         g1_a = await _seed_correction(
-            db_session, video_id=video_id, language_code=language_code,
-            original_text="teh", corrected_text="the",
-            corrected_by_user_id="cli", corrected_at=_ts(0), version_number=1,
+            db_session,
+            video_id=video_id,
+            language_code=language_code,
+            original_text="teh",
+            corrected_text="the",
+            corrected_by_user_id="cli",
+            corrected_at=_ts(0),
+            version_number=1,
         )
         g1_b = await _seed_correction(
-            db_session, video_id=video_id, language_code=language_code,
-            original_text="teh", corrected_text="the",
-            corrected_by_user_id="cli", corrected_at=_ts(2), version_number=2,
+            db_session,
+            video_id=video_id,
+            language_code=language_code,
+            original_text="teh",
+            corrected_text="the",
+            corrected_by_user_id="cli",
+            corrected_at=_ts(2),
+            version_number=2,
         )
 
         # Group 2: recieve → receive
         g2_a = await _seed_correction(
-            db_session, video_id=video_id, language_code=language_code,
-            original_text="recieve", corrected_text="receive",
-            corrected_by_user_id="cli", corrected_at=_ts(10), version_number=3,
+            db_session,
+            video_id=video_id,
+            language_code=language_code,
+            original_text="recieve",
+            corrected_text="receive",
+            corrected_by_user_id="cli",
+            corrected_at=_ts(10),
+            version_number=3,
         )
         g2_b = await _seed_correction(
-            db_session, video_id=video_id, language_code=language_code,
-            original_text="recieve", corrected_text="receive",
-            corrected_by_user_id="cli", corrected_at=_ts(12), version_number=4,
+            db_session,
+            video_id=video_id,
+            language_code=language_code,
+            original_text="recieve",
+            corrected_text="receive",
+            corrected_by_user_id="cli",
+            corrected_at=_ts(12),
+            version_number=4,
         )
 
         corrections = await fetch_unassigned_corrections(db_session)
@@ -698,7 +726,9 @@ class TestBackfillEndToEnd:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
 
         null_a = await _seed_correction(
             db_session,
@@ -754,7 +784,9 @@ class TestBackfillEndToEnd:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
 
         # Valid row — must be included
         valid_corr = await _seed_correction(
@@ -793,7 +825,7 @@ class TestBackfillEndToEnd:
 
         corrections = await fetch_unassigned_corrections(db_session)
 
-        assert len(corrections) == 1, (
-            "Only the valid correction must be returned; empty-text rows must be excluded"
-        )
+        assert (
+            len(corrections) == 1
+        ), "Only the valid correction must be returned; empty-text rows must be excluded"
         assert corrections[0].id == str(valid_corr.id)

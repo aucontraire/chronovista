@@ -105,7 +105,10 @@ class TestPlaylistsCommand:
 
         assert result.exit_code == 0
         # Should display auth error message
-        assert "Authentication Required" in result.output or "not authenticated" in result.output.lower()
+        assert (
+            "Authentication Required" in result.output
+            or "not authenticated" in result.output.lower()
+        )
 
     @patch("chronovista.cli.sync.base.asyncio.run")
     @patch("chronovista.cli.sync.base.youtube_oauth")
@@ -193,7 +196,11 @@ class TestPlaylistsCommand:
 
         # Should complete with error handling
         assert result.exit_code == 0
-        assert "error" in result.output.lower() or "Error" in result.output or "failed" in result.output.lower()
+        assert (
+            "error" in result.output.lower()
+            or "Error" in result.output
+            or "failed" in result.output.lower()
+        )
 
     @patch("chronovista.cli.sync.base.youtube_oauth")
     def test_playlists_command_help(

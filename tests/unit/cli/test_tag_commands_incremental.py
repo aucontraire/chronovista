@@ -120,9 +120,7 @@ class TestIncrementalFlag:
                 "chronovista.services.tag_normalization.TagNormalizationService",
                 return_value=MagicMock(),
             ),
-            patch(
-                "chronovista.cli.tag_commands.db_manager"
-            ) as mock_db,
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
         ):
             mock_db.get_session.return_value = fake_get_session()
             result = runner.invoke(tag_app, ["normalize", "--incremental"])
@@ -163,9 +161,7 @@ class TestBackwardCompatibility:
                 "chronovista.services.tag_normalization.TagNormalizationService",
                 return_value=MagicMock(),
             ),
-            patch(
-                "chronovista.cli.tag_commands.db_manager"
-            ) as mock_db,
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
         ):
             mock_db.get_session.return_value = fake_get_session()
             result = runner.invoke(tag_app, ["normalize"])
@@ -197,9 +193,7 @@ class TestBackwardCompatibility:
                 "chronovista.services.tag_normalization.TagNormalizationService",
                 return_value=MagicMock(),
             ),
-            patch(
-                "chronovista.cli.tag_commands.db_manager"
-            ) as mock_db,
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
         ):
             mock_db.get_session.return_value = fake_get_session()
             result = runner.invoke(tag_app, ["normalize", "--no-incremental"])
@@ -270,14 +264,10 @@ class TestIncrementalDryRun:
                 "chronovista.services.tag_normalization.TagNormalizationService",
                 return_value=MagicMock(),
             ),
-            patch(
-                "chronovista.cli.tag_commands.db_manager"
-            ) as mock_db,
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
         ):
             mock_db.get_session.return_value = fake_get_session()
-            result = runner.invoke(
-                tag_app, ["normalize", "--incremental", "--dry-run"]
-            )
+            result = runner.invoke(tag_app, ["normalize", "--incremental", "--dry-run"])
 
         assert result.exit_code == 0
         output = result.output
@@ -327,14 +317,10 @@ class TestIncrementalDryRun:
                 "chronovista.services.tag_normalization.TagNormalizationService",
                 return_value=MagicMock(),
             ),
-            patch(
-                "chronovista.cli.tag_commands.db_manager"
-            ) as mock_db,
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
         ):
             mock_db.get_session.return_value = fake_get_session()
-            result = runner.invoke(
-                tag_app, ["normalize", "--incremental", "--dry-run"]
-            )
+            result = runner.invoke(tag_app, ["normalize", "--incremental", "--dry-run"])
 
         assert result.exit_code == 0
         call_kwargs = mock_service.run_incremental_backfill.call_args
@@ -387,14 +373,10 @@ class TestIncrementalDryRun:
                 "chronovista.services.tag_normalization.TagNormalizationService",
                 return_value=MagicMock(),
             ),
-            patch(
-                "chronovista.cli.tag_commands.db_manager"
-            ) as mock_db,
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
         ):
             mock_db.get_session.return_value = fake_get_session()
-            result = runner.invoke(
-                tag_app, ["normalize", "--incremental", "--dry-run"]
-            )
+            result = runner.invoke(tag_app, ["normalize", "--incremental", "--dry-run"])
 
         assert result.exit_code == 0
         assert "New" in result.output
@@ -439,9 +421,7 @@ class TestIncrementalNoUnresolvedTags:
                 "chronovista.services.tag_normalization.TagNormalizationService",
                 return_value=MagicMock(),
             ),
-            patch(
-                "chronovista.cli.tag_commands.db_manager"
-            ) as mock_db,
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
         ):
             mock_db.get_session.return_value = fake_get_session()
             result = runner.invoke(tag_app, ["normalize", "--incremental"])
@@ -479,9 +459,7 @@ class TestIncrementalNoUnresolvedTags:
                 "chronovista.services.tag_normalization.TagNormalizationService",
                 return_value=MagicMock(),
             ),
-            patch(
-                "chronovista.cli.tag_commands.db_manager"
-            ) as mock_db,
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
         ):
             mock_db.get_session.return_value = fake_get_session()
             result = runner.invoke(tag_app, ["normalize", "--incremental"])
@@ -527,9 +505,7 @@ class TestIncrementalLiveOutput:
                 "chronovista.services.tag_normalization.TagNormalizationService",
                 return_value=MagicMock(),
             ),
-            patch(
-                "chronovista.cli.tag_commands.db_manager"
-            ) as mock_db,
+            patch("chronovista.cli.tag_commands.db_manager") as mock_db,
         ):
             mock_db.get_session.return_value = fake_get_session()
             result = runner.invoke(tag_app, ["normalize", "--incremental"])
@@ -538,8 +514,8 @@ class TestIncrementalLiveOutput:
         output = result.output
         # Key metric values must appear in the output panel
         assert "10" in output  # tags_processed
-        assert "7" in output   # canonical_tags_created
-        assert "3" in output   # canonical_tags_reused
+        assert "7" in output  # canonical_tags_created
+        assert "3" in output  # canonical_tags_reused
 
 
 # ---------------------------------------------------------------------------
@@ -625,9 +601,12 @@ class TestClassifyLinkEntityCli:
             [
                 "classify",
                 "destiny",
-                "--type", "person",
-                "--description", "A streamer",
-                "--link-entity", "Steven Bonnell",
+                "--type",
+                "person",
+                "--description",
+                "A streamer",
+                "--link-entity",
+                "Steven Bonnell",
             ],
         )
         assert result.exit_code == 2

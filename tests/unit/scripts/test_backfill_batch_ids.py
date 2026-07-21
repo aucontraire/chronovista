@@ -146,8 +146,12 @@ class TestGroupKey:
 
     def test_same_fields_produce_equal_keys(self) -> None:
         """Two rows with identical grouping fields must produce the same key."""
-        row_a = _make_row(id="id-1", corrected_by_user_id="u", original_text="x", corrected_text="y")
-        row_b = _make_row(id="id-2", corrected_by_user_id="u", original_text="x", corrected_text="y")
+        row_a = _make_row(
+            id="id-1", corrected_by_user_id="u", original_text="x", corrected_text="y"
+        )
+        row_b = _make_row(
+            id="id-2", corrected_by_user_id="u", original_text="x", corrected_text="y"
+        )
         assert _group_key(row_a) == _group_key(row_b)
 
 
@@ -183,8 +187,12 @@ class TestIdentifyBatchesGrouping:
     def test_different_original_text_are_separate_groups(self) -> None:
         """Rows with differing ``original_text`` must be in separate groups."""
         rows = [
-            _make_row(id="a", original_text="foo", corrected_text="bar", corrected_at=_at(0)),
-            _make_row(id="b", original_text="baz", corrected_text="bar", corrected_at=_at(1)),
+            _make_row(
+                id="a", original_text="foo", corrected_text="bar", corrected_at=_at(0)
+            ),
+            _make_row(
+                id="b", original_text="baz", corrected_text="bar", corrected_at=_at(1)
+            ),
         ]
         # Each group has only 1 member → no batches
         batches = identify_batches(rows, window_seconds=5.0)
@@ -193,8 +201,12 @@ class TestIdentifyBatchesGrouping:
     def test_different_corrected_text_are_separate_groups(self) -> None:
         """Rows with differing ``corrected_text`` must not be grouped together."""
         rows = [
-            _make_row(id="a", original_text="foo", corrected_text="bar", corrected_at=_at(0)),
-            _make_row(id="b", original_text="foo", corrected_text="BAR", corrected_at=_at(1)),
+            _make_row(
+                id="a", original_text="foo", corrected_text="bar", corrected_at=_at(0)
+            ),
+            _make_row(
+                id="b", original_text="foo", corrected_text="BAR", corrected_at=_at(1)
+            ),
         ]
         batches = identify_batches(rows, window_seconds=5.0)
         assert batches == []
@@ -212,11 +224,35 @@ class TestIdentifyBatchesGrouping:
         """Two separate groups each with 2+ corrections produce two batch groups."""
         rows = [
             # Group 1: user=alice, original=foo → bar
-            _make_row(id="a1", corrected_by_user_id="alice", original_text="foo", corrected_text="bar", corrected_at=_at(0)),
-            _make_row(id="a2", corrected_by_user_id="alice", original_text="foo", corrected_text="bar", corrected_at=_at(2)),
+            _make_row(
+                id="a1",
+                corrected_by_user_id="alice",
+                original_text="foo",
+                corrected_text="bar",
+                corrected_at=_at(0),
+            ),
+            _make_row(
+                id="a2",
+                corrected_by_user_id="alice",
+                original_text="foo",
+                corrected_text="bar",
+                corrected_at=_at(2),
+            ),
             # Group 2: user=alice, original=baz → qux
-            _make_row(id="b1", corrected_by_user_id="alice", original_text="baz", corrected_text="qux", corrected_at=_at(0)),
-            _make_row(id="b2", corrected_by_user_id="alice", original_text="baz", corrected_text="qux", corrected_at=_at(3)),
+            _make_row(
+                id="b1",
+                corrected_by_user_id="alice",
+                original_text="baz",
+                corrected_text="qux",
+                corrected_at=_at(0),
+            ),
+            _make_row(
+                id="b2",
+                corrected_by_user_id="alice",
+                original_text="baz",
+                corrected_text="qux",
+                corrected_at=_at(3),
+            ),
         ]
         batches = identify_batches(rows, window_seconds=5.0)
         assert len(batches) == 2
@@ -256,7 +292,7 @@ class TestIdentifyBatchesSlidingWindow:
         """Gap of 10s with 5s window: the second pair forms a new batch."""
         rows = [
             _make_row(id="a", corrected_at=_at(0)),
-            _make_row(id="b", corrected_at=_at(2)),   # gap 2s < 5s → same batch
+            _make_row(id="b", corrected_at=_at(2)),  # gap 2s < 5s → same batch
             _make_row(id="c", corrected_at=_at(12)),  # gap 10s >= 5s → new window
             _make_row(id="d", corrected_at=_at(14)),  # gap 2s < 5s → same batch as c
         ]
@@ -270,7 +306,7 @@ class TestIdentifyBatchesSlidingWindow:
         """A tighter window (2.5s) must split corrections that fit in the default 5s."""
         rows = [
             _make_row(id="a", corrected_at=_at(0)),
-            _make_row(id="b", corrected_at=_at(3)),   # gap 3s >= 2.5s → new window
+            _make_row(id="b", corrected_at=_at(3)),  # gap 3s >= 2.5s → new window
         ]
         batches = identify_batches(rows, window_seconds=2.5)
         # Each window has only 1 → no batches
@@ -280,8 +316,8 @@ class TestIdentifyBatchesSlidingWindow:
         """A wider window (10s) groups corrections that would split at 5s."""
         rows = [
             _make_row(id="a", corrected_at=_at(0)),
-            _make_row(id="b", corrected_at=_at(7)),   # gap 7s < 10s → same batch
-            _make_row(id="c", corrected_at=_at(9)),   # gap 2s < 10s → same batch
+            _make_row(id="b", corrected_at=_at(7)),  # gap 7s < 10s → same batch
+            _make_row(id="c", corrected_at=_at(9)),  # gap 2s < 10s → same batch
         ]
         batches = identify_batches(rows, window_seconds=10.0)
         assert len(batches) == 1
@@ -291,7 +327,7 @@ class TestIdentifyBatchesSlidingWindow:
         """Gap between second and third correction splits window; first pair forms batch."""
         rows = [
             _make_row(id="a", corrected_at=_at(0)),
-            _make_row(id="b", corrected_at=_at(4)),   # gap 4s < 5s → same window
+            _make_row(id="b", corrected_at=_at(4)),  # gap 4s < 5s → same window
             _make_row(id="c", corrected_at=_at(10)),  # gap 6s >= 5s → new window (solo)
         ]
         batches = identify_batches(rows, window_seconds=5.0)
@@ -358,10 +394,19 @@ class TestIdentifyBatchesSingleCorrectionGroups:
         """Only multi-member groups are returned; singletons are excluded."""
         rows = [
             # Group A: 2 corrections → batch
-            _make_row(id="a1", original_text="foo", corrected_text="bar", corrected_at=_at(0)),
-            _make_row(id="a2", original_text="foo", corrected_text="bar", corrected_at=_at(2)),
+            _make_row(
+                id="a1", original_text="foo", corrected_text="bar", corrected_at=_at(0)
+            ),
+            _make_row(
+                id="a2", original_text="foo", corrected_text="bar", corrected_at=_at(2)
+            ),
             # Group B: 1 correction → excluded
-            _make_row(id="b1", original_text="hello", corrected_text="world", corrected_at=_at(0)),
+            _make_row(
+                id="b1",
+                original_text="hello",
+                corrected_text="world",
+                corrected_at=_at(0),
+            ),
         ]
         batches = identify_batches(rows, window_seconds=5.0)
         assert len(batches) == 1
@@ -369,10 +414,7 @@ class TestIdentifyBatchesSingleCorrectionGroups:
 
     def test_batch_group_has_minimum_two_ids(self) -> None:
         """Every returned BatchGroup must contain at least 2 correction IDs."""
-        rows = [
-            _make_row(id=f"r{i}", corrected_at=_at(i * 0.5))
-            for i in range(5)
-        ]
+        rows = [_make_row(id=f"r{i}", corrected_at=_at(i * 0.5)) for i in range(5)]
         batches = identify_batches(rows, window_seconds=5.0)
         for batch in batches:
             assert len(batch.correction_ids) >= 2
@@ -389,10 +431,7 @@ class TestIdentifyBatchesLargeGroups:
     def test_large_group_all_within_window(self) -> None:
         """1000 corrections within 5s window must form exactly one batch."""
         # All 0.004s apart → total span = 3.996s < 5s
-        rows = [
-            _make_row(id=f"r{i}", corrected_at=_at(i * 0.004))
-            for i in range(1000)
-        ]
+        rows = [_make_row(id=f"r{i}", corrected_at=_at(i * 0.004)) for i in range(1000)]
         batches = identify_batches(rows, window_seconds=5.0)
         assert len(batches) == 1
         assert len(batches[0].correction_ids) == 1000
@@ -400,14 +439,10 @@ class TestIdentifyBatchesLargeGroups:
     def test_large_group_split_into_two_batches(self) -> None:
         """500 corrections in window A + 500 in window B produce exactly 2 batches."""
         # First 500: 0–2.49s (gap 0.005s each)
-        first = [
-            _make_row(id=f"a{i}", corrected_at=_at(i * 0.005))
-            for i in range(500)
-        ]
+        first = [_make_row(id=f"a{i}", corrected_at=_at(i * 0.005)) for i in range(500)]
         # Second 500: start at 100s (gap of 97.5s from last of first group)
         second = [
-            _make_row(id=f"b{i}", corrected_at=_at(100 + i * 0.005))
-            for i in range(500)
+            _make_row(id=f"b{i}", corrected_at=_at(100 + i * 0.005)) for i in range(500)
         ]
         batches = identify_batches(first + second, window_seconds=5.0)
         assert len(batches) == 2
@@ -416,10 +451,7 @@ class TestIdentifyBatchesLargeGroups:
 
     def test_large_group_all_beyond_window_no_batch(self) -> None:
         """100 corrections each 10s apart (> 5s window) → no batches formed."""
-        rows = [
-            _make_row(id=f"r{i}", corrected_at=_at(i * 10.0))
-            for i in range(100)
-        ]
+        rows = [_make_row(id=f"r{i}", corrected_at=_at(i * 10.0)) for i in range(100)]
         batches = identify_batches(rows, window_seconds=5.0)
         assert batches == []
 
@@ -723,6 +755,7 @@ class TestRunBackfillLiveMode:
 
     async def test_error_during_session_returns_exit_code_one(self) -> None:
         """An exception during the DB session must be caught and return exit code 1."""
+
         async def _broken_session_gen(echo: bool) -> Any:
             raise RuntimeError("connection refused")
             yield  # type: ignore[unreachable]  # make it a generator
@@ -820,19 +853,21 @@ class TestProgressReporting:
 
         captured: dict[str, Any] = {}
 
-
         def _capture_display(**kwargs: Any) -> None:
             captured.update(kwargs)
 
         async def _fake_session_gen(echo: bool) -> Any:
             yield mock_session
 
-        with patch(
-            "scripts.utilities.backfill_batch_ids.db_manager.get_session",
-            side_effect=_fake_session_gen,
-        ), patch(
-            "scripts.utilities.backfill_batch_ids._display_summary",
-            side_effect=_capture_display,
+        with (
+            patch(
+                "scripts.utilities.backfill_batch_ids.db_manager.get_session",
+                side_effect=_fake_session_gen,
+            ),
+            patch(
+                "scripts.utilities.backfill_batch_ids._display_summary",
+                side_effect=_capture_display,
+            ),
         ):
             await run_backfill(dry_run=False, window_seconds=5.0)
 
@@ -880,12 +915,15 @@ class TestProgressReporting:
         async def _fake_session_gen(echo: bool) -> Any:
             yield mock_session
 
-        with patch(
-            "scripts.utilities.backfill_batch_ids.db_manager.get_session",
-            side_effect=_fake_session_gen,
-        ), patch(
-            "scripts.utilities.backfill_batch_ids._display_summary",
-            side_effect=_capture_display,
+        with (
+            patch(
+                "scripts.utilities.backfill_batch_ids.db_manager.get_session",
+                side_effect=_fake_session_gen,
+            ),
+            patch(
+                "scripts.utilities.backfill_batch_ids._display_summary",
+                side_effect=_capture_display,
+            ),
         ):
             await run_backfill(dry_run=False, window_seconds=5.0)
 
@@ -969,6 +1007,7 @@ class TestExitCodes:
 
     async def test_exception_returns_exit_code_one(self) -> None:
         """Any unhandled exception must result in exit code 1."""
+
         async def _broken(echo: bool) -> Any:
             raise ValueError("DB unavailable")
             yield  # type: ignore[unreachable]  # make it an async generator
@@ -998,8 +1037,20 @@ class TestIdentifyBatchesByTimestamp:
         """Two corrections with identical actor and timestamp form a batch."""
         ts = _at(0)
         rows = [
-            _make_row(id="a", corrected_by_user_id="user:batch", original_text="foo bar", corrected_text="foo baz", corrected_at=ts),
-            _make_row(id="b", corrected_by_user_id="user:batch", original_text="qux bar", corrected_text="qux baz", corrected_at=ts),
+            _make_row(
+                id="a",
+                corrected_by_user_id="user:batch",
+                original_text="foo bar",
+                corrected_text="foo baz",
+                corrected_at=ts,
+            ),
+            _make_row(
+                id="b",
+                corrected_by_user_id="user:batch",
+                original_text="qux bar",
+                corrected_text="qux baz",
+                corrected_at=ts,
+            ),
         ]
         batches = identify_batches_by_timestamp(rows)
         assert len(batches) == 1
@@ -1040,9 +1091,24 @@ class TestIdentifyBatchesByTimestamp:
         """Strategy 2 groups by timestamp regardless of text differences."""
         ts = _at(0)
         rows = [
-            _make_row(id="a", original_text="context A Kosigible", corrected_text="context A Khashoggi", corrected_at=ts),
-            _make_row(id="b", original_text="context B Kosigible", corrected_text="context B Khashoggi", corrected_at=ts),
-            _make_row(id="c", original_text="context C Kosigible", corrected_text="context C Khashoggi", corrected_at=ts),
+            _make_row(
+                id="a",
+                original_text="context A Kosigible",
+                corrected_text="context A Khashoggi",
+                corrected_at=ts,
+            ),
+            _make_row(
+                id="b",
+                original_text="context B Kosigible",
+                corrected_text="context B Khashoggi",
+                corrected_at=ts,
+            ),
+            _make_row(
+                id="c",
+                original_text="context C Kosigible",
+                corrected_text="context C Khashoggi",
+                corrected_at=ts,
+            ),
         ]
         batches = identify_batches_by_timestamp(rows)
         assert len(batches) == 1
@@ -1088,8 +1154,18 @@ class TestIdentifyAllBatches:
         """Different-text corrections at same timestamp are found by Strategy 2."""
         ts = _at(0)
         rows = [
-            _make_row(id="a", original_text="ctx A error", corrected_text="ctx A fix", corrected_at=ts),
-            _make_row(id="b", original_text="ctx B error", corrected_text="ctx B fix", corrected_at=ts),
+            _make_row(
+                id="a",
+                original_text="ctx A error",
+                corrected_text="ctx A fix",
+                corrected_at=ts,
+            ),
+            _make_row(
+                id="b",
+                original_text="ctx B error",
+                corrected_text="ctx B fix",
+                corrected_at=ts,
+            ),
         ]
         batches = identify_all_batches(rows, window_seconds=5.0)
         assert len(batches) == 1
@@ -1115,11 +1191,31 @@ class TestIdentifyAllBatches:
         ts_frontend = _at(100)
         rows = [
             # CLI batch: same text, within window
-            _make_row(id="cli1", original_text="teh", corrected_text="the", corrected_at=ts_cli),
-            _make_row(id="cli2", original_text="teh", corrected_text="the", corrected_at=_at(2)),
+            _make_row(
+                id="cli1",
+                original_text="teh",
+                corrected_text="the",
+                corrected_at=ts_cli,
+            ),
+            _make_row(
+                id="cli2",
+                original_text="teh",
+                corrected_text="the",
+                corrected_at=_at(2),
+            ),
             # Frontend batch: different text, same timestamp
-            _make_row(id="fe1", original_text="ctx A Shanebam", corrected_text="ctx A Sheinbaum", corrected_at=ts_frontend),
-            _make_row(id="fe2", original_text="ctx B Shanebam", corrected_text="ctx B Sheinbaum", corrected_at=ts_frontend),
+            _make_row(
+                id="fe1",
+                original_text="ctx A Shanebam",
+                corrected_text="ctx A Sheinbaum",
+                corrected_at=ts_frontend,
+            ),
+            _make_row(
+                id="fe2",
+                original_text="ctx B Shanebam",
+                corrected_text="ctx B Sheinbaum",
+                corrected_at=ts_frontend,
+            ),
         ]
         batches = identify_all_batches(rows, window_seconds=5.0)
         assert len(batches) == 2
@@ -1129,7 +1225,12 @@ class TestIdentifyAllBatches:
     def test_singleton_excluded_from_both_strategies(self) -> None:
         """A correction that is alone in both strategies gets no batch_id."""
         rows = [
-            _make_row(id="solo", original_text="unique", corrected_text="fixed", corrected_at=_at(0)),
+            _make_row(
+                id="solo",
+                original_text="unique",
+                corrected_text="fixed",
+                corrected_at=_at(0),
+            ),
         ]
         batches = identify_all_batches(rows, window_seconds=5.0)
         assert batches == []

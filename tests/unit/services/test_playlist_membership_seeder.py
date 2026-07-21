@@ -148,9 +148,7 @@ class TestPlaylistMembershipSeederSeeding:
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
             ),
-            patch.object(
-                seeder.video_repo, "get_by_video_id", return_value=mock_video
-            ),
+            patch.object(seeder.video_repo, "get_by_video_id", return_value=mock_video),
             patch.object(
                 seeder.membership_repo, "membership_exists", return_value=False
             ),
@@ -184,9 +182,7 @@ class TestPlaylistMembershipSeederSeeding:
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
             ),
-            patch.object(
-                seeder.video_repo, "get_by_video_id", return_value=mock_video
-            ),
+            patch.object(seeder.video_repo, "get_by_video_id", return_value=mock_video),
             patch.object(
                 seeder.membership_repo, "membership_exists", return_value=True
             ),
@@ -214,9 +210,7 @@ class TestPlaylistMembershipSeederSeeding:
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
             ),
-            patch.object(
-                seeder.video_repo, "get_by_video_id", return_value=None
-            ),
+            patch.object(seeder.video_repo, "get_by_video_id", return_value=None),
             patch.object(
                 seeder.membership_repo, "membership_exists", return_value=False
             ),
@@ -270,9 +264,7 @@ class TestPlaylistMembershipSeederSeeding:
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
             ),
-            patch.object(
-                seeder.video_repo, "get_by_video_id", return_value=mock_video
-            ),
+            patch.object(seeder.video_repo, "get_by_video_id", return_value=mock_video),
             patch.object(
                 seeder.membership_repo, "membership_exists", return_value=False
             ),
@@ -417,21 +409,15 @@ class TestPlaylistMembershipSeederPositioning:
                     videos=[
                         create_takeout_playlist_item(
                             video_id=TestIds.TEST_VIDEO_1,
-                            creation_timestamp=datetime(
-                                2024, 1, 1, tzinfo=UTC
-                            ),
+                            creation_timestamp=datetime(2024, 1, 1, tzinfo=UTC),
                         ),
                         create_takeout_playlist_item(
                             video_id=TestIds.TEST_VIDEO_2,
-                            creation_timestamp=datetime(
-                                2024, 1, 2, tzinfo=UTC
-                            ),
+                            creation_timestamp=datetime(2024, 1, 2, tzinfo=UTC),
                         ),
                         create_takeout_playlist_item(
                             video_id=TestIds.NEVER_GONNA_GIVE_YOU_UP,
-                            creation_timestamp=datetime(
-                                2024, 1, 3, tzinfo=UTC
-                            ),
+                            creation_timestamp=datetime(2024, 1, 3, tzinfo=UTC),
                         ),
                     ],
                     video_count=3,
@@ -447,9 +433,7 @@ class TestPlaylistMembershipSeederPositioning:
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
             ),
-            patch.object(
-                seeder.video_repo, "get_by_video_id", return_value=mock_video
-            ),
+            patch.object(seeder.video_repo, "get_by_video_id", return_value=mock_video),
             patch.object(
                 seeder.membership_repo, "membership_exists", return_value=False
             ),
@@ -533,9 +517,7 @@ class TestPlaylistMembershipSeederBatchProcessing:
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
             ),
-            patch.object(
-                seeder.video_repo, "get_by_video_id", return_value=mock_video
-            ),
+            patch.object(seeder.video_repo, "get_by_video_id", return_value=mock_video),
             patch.object(
                 seeder.membership_repo, "membership_exists", return_value=False
             ),
@@ -674,9 +656,7 @@ class TestPlaylistMembershipSeederEdgeCases:
             patch.object(
                 seeder.playlist_repo, "get_by_playlist_id", return_value=mock_playlist
             ),
-            patch.object(
-                seeder.video_repo, "get_by_video_id", return_value=mock_video
-            ),
+            patch.object(seeder.video_repo, "get_by_video_id", return_value=mock_video),
             patch.object(
                 seeder.membership_repo,
                 "membership_exists",

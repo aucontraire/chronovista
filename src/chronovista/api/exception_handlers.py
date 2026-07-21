@@ -320,7 +320,9 @@ async def validation_error_handler(
             status_code=422,
         )
     except Exception as e:
-        logger.error("Error serializing validation error response: %s", e, exc_info=True)
+        logger.error(
+            "Error serializing validation error response: %s", e, exc_info=True
+        )
         # Fallback to minimal RFC 7807 response
         return ProblemJSONResponse(
             content={

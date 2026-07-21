@@ -1,6 +1,5 @@
 """Language preferences API schemas."""
 
-
 from pydantic import BaseModel, ConfigDict, Field
 
 from chronovista.api.schemas.responses import ApiResponse

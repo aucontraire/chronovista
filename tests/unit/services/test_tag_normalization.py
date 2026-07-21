@@ -90,7 +90,7 @@ class TestNormalize:
             "München",
             "#MÉXICO",
             "mex\u200bico",
-            "hello\u00A0world",
+            "hello\u00a0world",
         ],
         ids=[
             "upper",
@@ -138,9 +138,7 @@ class TestNormalize:
         """Zero-width space (U+200B) inside a word is removed."""
         assert svc.normalize("mex\u200bico") == "mexico"
 
-    def test_zero_width_non_joiner_removal(
-        self, svc: TagNormalizationService
-    ) -> None:
+    def test_zero_width_non_joiner_removal(self, svc: TagNormalizationService) -> None:
         """Zero-width non-joiner (U+200C) is removed."""
         assert svc.normalize("test\u200cvalue") == "testvalue"
 
@@ -150,7 +148,7 @@ class TestNormalize:
 
     def test_bom_removal(self, svc: TagNormalizationService) -> None:
         """BOM / zero-width no-break space (U+FEFF) is removed."""
-        assert svc.normalize("\uFEFFhello") == "hello"
+        assert svc.normalize("\ufeffhello") == "hello"
 
     # ----- edge cases: whitespace normalization --------------------------
 
@@ -158,7 +156,7 @@ class TestNormalize:
         self, svc: TagNormalizationService
     ) -> None:
         """Non-breaking space (U+00A0) is replaced with regular space."""
-        assert svc.normalize("hello\u00A0world") == "hello world"
+        assert svc.normalize("hello\u00a0world") == "hello world"
 
     def test_tab_normalization(self, svc: TagNormalizationService) -> None:
         """Tab character is replaced with regular space."""
@@ -170,9 +168,7 @@ class TestNormalize:
 
     # ----- edge case: single Tier 1 mark only ----------------------------
 
-    def test_single_tier1_mark_returns_none(
-        self, svc: TagNormalizationService
-    ) -> None:
+    def test_single_tier1_mark_returns_none(self, svc: TagNormalizationService) -> None:
         """A string consisting only of a Tier 1 combining mark yields None."""
         # Compose a string that is just the combining acute accent
         assert svc.normalize("\u0301") is None
@@ -331,12 +327,12 @@ class TestSelectCanonicalForm:
 
     def test_empty_list_raises_error(self, svc: TagNormalizationService) -> None:
         """Empty list raises ValueError."""
-        with pytest.raises(ValueError, match="Cannot select canonical form from empty list"):
+        with pytest.raises(
+            ValueError, match="Cannot select canonical form from empty list"
+        ):
             svc.select_canonical_form([])
 
-    def test_all_equal_counts_no_title_case(
-        self, svc: TagNormalizationService
-    ) -> None:
+    def test_all_equal_counts_no_title_case(self, svc: TagNormalizationService) -> None:
         """When all forms have equal count and none are title case, use alphabetical min."""
         forms = [("zebra", 10), ("apple", 10), ("banana", 10)]
         assert svc.select_canonical_form(forms) == "apple"
@@ -375,9 +371,7 @@ class TestMultilangSpanish:
         """Spanish tilde is preserved in normalization."""
         assert svc.normalize("año") == "año"
 
-    def test_acute_stripped_tilde_preserved(
-        self, svc: TagNormalizationService
-    ) -> None:
+    def test_acute_stripped_tilde_preserved(self, svc: TagNormalizationService) -> None:
         """Acute accent (Tier 1) is stripped, tilde (Tier 2) preserved, casefolded."""
         assert svc.normalize("España") == "españa"
 

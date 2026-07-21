@@ -169,7 +169,6 @@ class YouTubeOAuthService:
         """
         authorization_url, state = self.get_authorization_url()
 
-
         # Open browser
         webbrowser.open(authorization_url)
 

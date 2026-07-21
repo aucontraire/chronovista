@@ -335,7 +335,9 @@ class TestExtractVideoCreate:
 
         # Use a valid 24-char override (UC + 22 chars = 24 total)
         override_channel = "UCyyyyyyyyyyyyyyyyyyyyyy"
-        result = DataTransformers.extract_video_create(video, channel_id=override_channel)
+        result = DataTransformers.extract_video_create(
+            video, channel_id=override_channel
+        )
 
         assert result.channel_id == override_channel
 

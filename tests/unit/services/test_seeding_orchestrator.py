@@ -22,6 +22,7 @@ from tests.factories.takeout_data_factory import create_takeout_data
 
 # CRITICAL: This line ensures async tests work with coverage
 
+
 class MockSeeder(BaseSeeder):
     """Mock seeder for testing."""
 

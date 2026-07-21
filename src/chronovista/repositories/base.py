@@ -23,7 +23,9 @@ UpdateSchemaType = TypeVar("UpdateSchemaType")
 IdType = TypeVar("IdType", default=Any)
 
 
-class BaseRepository(ABC, Generic[ModelType, CreateSchemaType, UpdateSchemaType, IdType]):
+class BaseRepository(
+    ABC, Generic[ModelType, CreateSchemaType, UpdateSchemaType, IdType]
+):
     """
     Base repository interface defining common CRUD operations.
 

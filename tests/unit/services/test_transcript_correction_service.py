@@ -236,12 +236,10 @@ class TestApplyCorrection:
         mock_correction_repo.create.assert_called_once()
         call_kwargs = mock_correction_repo.create.call_args
         obj_in: TranscriptCorrectionCreate = call_kwargs.kwargs["obj_in"]
-        assert obj_in.version_number == 1, (
-            "First correction must have version_number=1"
-        )
-        assert obj_in.original_text == "teh quick brown fox", (
-            "original_text must be segment.text when no prior correction exists"
-        )
+        assert obj_in.version_number == 1, "First correction must have version_number=1"
+        assert (
+            obj_in.original_text == "teh quick brown fox"
+        ), "original_text must be segment.text when no prior correction exists"
 
     async def test_version_chain_uses_corrected_text_as_original(
         self,
@@ -260,8 +258,8 @@ class TestApplyCorrection:
         """
         segment = _make_segment(
             segment_id=1,
-            text="teh quick brown fox",          # original raw text
-            corrected_text="the quick brown fox", # currently corrected
+            text="teh quick brown fox",  # original raw text
+            corrected_text="the quick brown fox",  # currently corrected
             has_correction=True,
         )
         transcript = _make_transcript(correction_count=1, has_corrections=True)
@@ -327,9 +325,9 @@ class TestApplyCorrection:
 
         call_kwargs = mock_correction_repo.create.call_args
         obj_in: TranscriptCorrectionCreate = call_kwargs.kwargs["obj_in"]
-        assert obj_in.version_number == 3, (
-            "version_number must be get_latest_version() + 1 (was 2, expected 3)"
-        )
+        assert (
+            obj_in.version_number == 3
+        ), "version_number must be get_latest_version() + 1 (was 2, expected 3)"
 
     async def test_segment_updated_with_corrected_text_and_has_correction(
         self,
@@ -369,12 +367,12 @@ class TestApplyCorrection:
         )
 
         # Constitution §Cross-Feature: verify WHAT was set, not just that add() was called
-        assert segment.corrected_text == "corrected text", (
-            "segment.corrected_text must be set to the new corrected_text value"
-        )
-        assert segment.has_correction is True, (
-            "segment.has_correction must be set to True after apply_correction"
-        )
+        assert (
+            segment.corrected_text == "corrected text"
+        ), "segment.corrected_text must be set to the new corrected_text value"
+        assert (
+            segment.has_correction is True
+        ), "segment.has_correction must be set to True after apply_correction"
 
     async def test_transcript_metadata_updated_has_corrections_and_count(
         self,
@@ -392,7 +390,9 @@ class TestApplyCorrection:
         These three fields are read by history queries, the REST API, and the
         frontend display — any missing mutation would silently break downstream consumers.
         """
-        segment = _make_segment(text="original", corrected_text=None, has_correction=False)
+        segment = _make_segment(
+            text="original", corrected_text=None, has_correction=False
+        )
         transcript = _make_transcript(
             has_corrections=False,
             correction_count=0,
@@ -417,15 +417,15 @@ class TestApplyCorrection:
         )
 
         # Constitution §Cross-Feature: verify all three required transcript fields
-        assert transcript.has_corrections is True, (
-            "transcript.has_corrections must be set to True after apply_correction"
-        )
-        assert transcript.correction_count == initial_count + 1, (
-            "transcript.correction_count must be incremented by 1"
-        )
-        assert transcript.last_corrected_at is not None, (
-            "transcript.last_corrected_at must be set to a datetime after apply_correction"
-        )
+        assert (
+            transcript.has_corrections is True
+        ), "transcript.has_corrections must be set to True after apply_correction"
+        assert (
+            transcript.correction_count == initial_count + 1
+        ), "transcript.correction_count must be incremented by 1"
+        assert (
+            transcript.last_corrected_at is not None
+        ), "transcript.last_corrected_at must be set to a datetime after apply_correction"
 
     async def test_last_corrected_at_is_datetime(
         self,
@@ -439,7 +439,9 @@ class TestApplyCorrection:
         transcript.last_corrected_at must be set to a timezone-aware datetime,
         not None and not a plain date or string.
         """
-        segment = _make_segment(text="hello world", corrected_text=None, has_correction=False)
+        segment = _make_segment(
+            text="hello world", corrected_text=None, has_correction=False
+        )
         transcript = _make_transcript(last_corrected_at=None)
         created_record = _make_correction_record()
 
@@ -457,9 +459,9 @@ class TestApplyCorrection:
             correction_type=CorrectionType.FORMATTING,
         )
 
-        assert isinstance(transcript.last_corrected_at, datetime), (
-            "transcript.last_corrected_at must be a datetime object"
-        )
+        assert isinstance(
+            transcript.last_corrected_at, datetime
+        ), "transcript.last_corrected_at must be a datetime object"
 
     async def test_raises_value_error_for_nonexistent_segment(
         self,
@@ -564,7 +566,9 @@ class TestApplyCorrection:
         The corrected_by_user_id argument must appear in the created
         TranscriptCorrectionCreate object passed to correction_repo.create().
         """
-        segment = _make_segment(text="original", corrected_text=None, has_correction=False)
+        segment = _make_segment(
+            text="original", corrected_text=None, has_correction=False
+        )
         transcript = _make_transcript()
         created_record = _make_correction_record(corrected_by_user_id="api")
 
@@ -585,9 +589,9 @@ class TestApplyCorrection:
 
         call_kwargs = mock_correction_repo.create.call_args
         obj_in: TranscriptCorrectionCreate = call_kwargs.kwargs["obj_in"]
-        assert obj_in.corrected_by_user_id == "api", (
-            "corrected_by_user_id='api' must be forwarded to the audit record"
-        )
+        assert (
+            obj_in.corrected_by_user_id == "api"
+        ), "corrected_by_user_id='api' must be forwarded to the audit record"
 
     async def test_corrected_by_user_id_defaults_to_none(
         self,
@@ -601,7 +605,9 @@ class TestApplyCorrection:
         When corrected_by_user_id is omitted, the audit record should
         have corrected_by_user_id=None (anonymous/system correction).
         """
-        segment = _make_segment(text="original", corrected_text=None, has_correction=False)
+        segment = _make_segment(
+            text="original", corrected_text=None, has_correction=False
+        )
         transcript = _make_transcript()
         created_record = _make_correction_record(corrected_by_user_id=None)
 
@@ -622,9 +628,9 @@ class TestApplyCorrection:
 
         call_kwargs = mock_correction_repo.create.call_args
         obj_in: TranscriptCorrectionCreate = call_kwargs.kwargs["obj_in"]
-        assert obj_in.corrected_by_user_id is None, (
-            "corrected_by_user_id must be None when not provided"
-        )
+        assert (
+            obj_in.corrected_by_user_id is None
+        ), "corrected_by_user_id must be None when not provided"
 
     async def test_returns_created_correction(
         self,
@@ -638,7 +644,9 @@ class TestApplyCorrection:
         apply_correction must return the TranscriptCorrectionDB record
         created by correction_repo.create(), not None or the segment.
         """
-        segment = _make_segment(text="original", corrected_text=None, has_correction=False)
+        segment = _make_segment(
+            text="original", corrected_text=None, has_correction=False
+        )
         transcript = _make_transcript()
         expected_record = _make_correction_record(version_number=1)
 
@@ -702,9 +710,9 @@ class TestApplyCorrection:
         mock_correction_repo.get_latest_version.assert_called_once()
         call_args = mock_correction_repo.get_latest_version.call_args
         # Verify the correct identifiers are forwarded for the FOR UPDATE lock
-        assert call_args.args[0] is mock_session or mock_session in call_args.args, (
-            "get_latest_version must receive the session"
-        )
+        assert (
+            call_args.args[0] is mock_session or mock_session in call_args.args
+        ), "get_latest_version must receive the session"
 
     async def test_correction_note_passed_through(
         self,
@@ -718,7 +726,9 @@ class TestApplyCorrection:
         When correction_note is provided, it must appear in the created
         TranscriptCorrectionCreate object.
         """
-        segment = _make_segment(text="original", corrected_text=None, has_correction=False)
+        segment = _make_segment(
+            text="original", corrected_text=None, has_correction=False
+        )
         transcript = _make_transcript()
         created_record = _make_correction_record()
 
@@ -739,9 +749,9 @@ class TestApplyCorrection:
 
         call_kwargs = mock_correction_repo.create.call_args
         obj_in: TranscriptCorrectionCreate = call_kwargs.kwargs["obj_in"]
-        assert obj_in.correction_note == "ASR confused homophone 'teh' → 'the'", (
-            "correction_note must be forwarded to the audit record"
-        )
+        assert (
+            obj_in.correction_note == "ASR confused homophone 'teh' → 'the'"
+        ), "correction_note must be forwarded to the audit record"
 
     async def test_session_flush_called_for_each_mutation(
         self,
@@ -756,7 +766,9 @@ class TestApplyCorrection:
         after each of the three mutations (audit record, segment, transcript).
         session.commit() must NEVER be called (caller owns transaction lifecycle).
         """
-        segment = _make_segment(text="original", corrected_text=None, has_correction=False)
+        segment = _make_segment(
+            text="original", corrected_text=None, has_correction=False
+        )
         transcript = _make_transcript()
         created_record = _make_correction_record()
 
@@ -775,9 +787,9 @@ class TestApplyCorrection:
         )
 
         # Three flushes required: audit record + segment + transcript
-        assert mock_session.flush.call_count >= 1, (
-            "session.flush() must be called at least once per mutation step (FR-007a)"
-        )
+        assert (
+            mock_session.flush.call_count >= 1
+        ), "session.flush() must be called at least once per mutation step (FR-007a)"
         # NEVER call commit — caller owns the transaction
         mock_session.commit.assert_not_called()
 
@@ -793,7 +805,9 @@ class TestApplyCorrection:
         The correction_type argument must be forwarded to the TranscriptCorrectionCreate
         object with the correct enum value.
         """
-        segment = _make_segment(text="original", corrected_text=None, has_correction=False)
+        segment = _make_segment(
+            text="original", corrected_text=None, has_correction=False
+        )
         transcript = _make_transcript()
         created_record = _make_correction_record(
             correction_type=CorrectionType.CONTEXT_CORRECTION.value
@@ -815,9 +829,9 @@ class TestApplyCorrection:
 
         call_kwargs = mock_correction_repo.create.call_args
         obj_in: TranscriptCorrectionCreate = call_kwargs.kwargs["obj_in"]
-        assert obj_in.correction_type == CorrectionType.CONTEXT_CORRECTION, (
-            "correction_type must be forwarded to the audit record as-is"
-        )
+        assert (
+            obj_in.correction_type == CorrectionType.CONTEXT_CORRECTION
+        ), "correction_type must be forwarded to the audit record as-is"
 
     async def test_video_id_and_language_code_in_audit_record(
         self,
@@ -860,12 +874,12 @@ class TestApplyCorrection:
 
         call_kwargs = mock_correction_repo.create.call_args
         obj_in: TranscriptCorrectionCreate = call_kwargs.kwargs["obj_in"]
-        assert obj_in.video_id == "xyz123ABCDE", (
-            "audit record must include the correct video_id"
-        )
-        assert obj_in.language_code == "fr", (
-            "audit record must include the correct language_code"
-        )
+        assert (
+            obj_in.video_id == "xyz123ABCDE"
+        ), "audit record must include the correct video_id"
+        assert (
+            obj_in.language_code == "fr"
+        ), "audit record must include the correct language_code"
 
     async def test_segment_id_in_audit_record(
         self,
@@ -904,9 +918,9 @@ class TestApplyCorrection:
 
         call_kwargs = mock_correction_repo.create.call_args
         obj_in: TranscriptCorrectionCreate = call_kwargs.kwargs["obj_in"]
-        assert obj_in.segment_id == 77, (
-            "audit record must include the segment_id FK for history lookups"
-        )
+        assert (
+            obj_in.segment_id == 77
+        ), "audit record must include the segment_id FK for history lookups"
 
 
 # ---------------------------------------------------------------------------
@@ -989,12 +1003,12 @@ class TestRevertCorrection:
         await service.revert_correction(mock_session, segment_id=1)
 
         # Constitution §Cross-Feature: verify WHAT was mutated on segment
-        assert segment.corrected_text is None, (
-            "After revert-to-original, segment.corrected_text must be None"
-        )
-        assert segment.has_correction is False, (
-            "After revert-to-original, segment.has_correction must be False"
-        )
+        assert (
+            segment.corrected_text is None
+        ), "After revert-to-original, segment.corrected_text must be None"
+        assert (
+            segment.has_correction is False
+        ), "After revert-to-original, segment.has_correction must be False"
 
     async def test_revert_to_original_decrements_correction_count(
         self,
@@ -1167,8 +1181,8 @@ class TestRevertCorrection:
         when has_correction=True — it must reflect the prior-version text.
         """
         segment = _make_segment(
-            text="teh lazy dog",              # original raw text
-            corrected_text="The lazy dog.",   # currently at v2 state
+            text="teh lazy dog",  # original raw text
+            corrected_text="The lazy dog.",  # currently at v2 state
             has_correction=True,
         )
         transcript = _make_transcript(
@@ -1195,9 +1209,9 @@ class TestRevertCorrection:
 
         await service.revert_correction(mock_session, segment_id=1)
 
-        assert segment.corrected_text == "the lazy dog", (
-            "Revert-to-prior must set segment.corrected_text = V_N.original_text"
-        )
+        assert (
+            segment.corrected_text == "the lazy dog"
+        ), "Revert-to-prior must set segment.corrected_text = V_N.original_text"
         assert segment.has_correction is True, (
             "Revert-to-prior must leave segment.has_correction=True "
             "(segment is still corrected, just to the prior version)"
@@ -1301,9 +1315,9 @@ class TestRevertCorrection:
         call_kwargs = mock_correction_repo.create.call_args
         obj_in: TranscriptCorrectionCreate = call_kwargs.kwargs["obj_in"]
 
-        assert obj_in.correction_type == CorrectionType.REVERT, (
-            "Revert audit record must have correction_type=CorrectionType.REVERT"
-        )
+        assert (
+            obj_in.correction_type == CorrectionType.REVERT
+        ), "Revert audit record must have correction_type=CorrectionType.REVERT"
         assert obj_in.version_number == 2, (
             f"Revert audit record must have version_number=V_N.version_number+1 "
             f"(V_N.version_number=1, expected 2, got {obj_in.version_number})"
@@ -1442,9 +1456,9 @@ class TestRevertCorrection:
             "FR-014c: transcript.last_corrected_at must be set to a datetime "
             "after revert_correction"
         )
-        assert transcript.last_corrected_at.tzinfo is not None, (
-            "FR-014c: transcript.last_corrected_at must be timezone-aware"
-        )
+        assert (
+            transcript.last_corrected_at.tzinfo is not None
+        ), "FR-014c: transcript.last_corrected_at must be timezone-aware"
 
     async def test_session_flush_called_not_commit(
         self,

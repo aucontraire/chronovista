@@ -37,7 +37,9 @@ class UserLanguagePreferenceBaseFactory(factory.Factory[UserLanguagePreferenceBa
     )
 
 
-class UserLanguagePreferenceCreateFactory(factory.Factory[UserLanguagePreferenceCreate]):
+class UserLanguagePreferenceCreateFactory(
+    factory.Factory[UserLanguagePreferenceCreate]
+):
     """Factory for UserLanguagePreferenceCreate models."""
 
     class Meta:
@@ -53,7 +55,9 @@ class UserLanguagePreferenceCreateFactory(factory.Factory[UserLanguagePreference
     )
 
 
-class UserLanguagePreferenceUpdateFactory(factory.Factory[UserLanguagePreferenceUpdate]):
+class UserLanguagePreferenceUpdateFactory(
+    factory.Factory[UserLanguagePreferenceUpdate]
+):
     """Factory for UserLanguagePreferenceUpdate models."""
 
     class Meta:
@@ -154,14 +158,18 @@ def create_user_language_preference_base(**kwargs: Any) -> UserLanguagePreferenc
     return result
 
 
-def create_user_language_preference_create(**kwargs: Any) -> UserLanguagePreferenceCreate:
+def create_user_language_preference_create(
+    **kwargs: Any,
+) -> UserLanguagePreferenceCreate:
     """Create a UserLanguagePreferenceCreate with optional overrides."""
     result = UserLanguagePreferenceCreateFactory.build(**kwargs)
     assert isinstance(result, UserLanguagePreferenceCreate)
     return result
 
 
-def create_user_language_preference_update(**kwargs: Any) -> UserLanguagePreferenceUpdate:
+def create_user_language_preference_update(
+    **kwargs: Any,
+) -> UserLanguagePreferenceUpdate:
     """Create a UserLanguagePreferenceUpdate with optional overrides."""
     result = UserLanguagePreferenceUpdateFactory.build(**kwargs)
     assert isinstance(result, UserLanguagePreferenceUpdate)

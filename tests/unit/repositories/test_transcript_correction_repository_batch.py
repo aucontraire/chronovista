@@ -400,12 +400,12 @@ class TestGetAllFiltered:
         # Verify both >= and <= predicates on corrected_at appear in SQL
         stmt = mock_session.execute.call_args.args[0]
         sql = str(stmt.compile(compile_kwargs={"literal_binds": False}))
-        assert "corrected_at >= " in sql, (
-            f"Expected corrected_at >= predicate in SQL; got: {sql}"
-        )
-        assert "corrected_at <= " in sql, (
-            f"Expected corrected_at <= predicate in SQL; got: {sql}"
-        )
+        assert (
+            "corrected_at >= " in sql
+        ), f"Expected corrected_at >= predicate in SQL; got: {sql}"
+        assert (
+            "corrected_at <= " in sql
+        ), f"Expected corrected_at <= predicate in SQL; got: {sql}"
 
     # ------------------------------------------------------------------
     # Ordering
@@ -420,12 +420,8 @@ class TestGetAllFiltered:
 
         The SQL must include an ORDER BY corrected_at ASC clause.
         """
-        c_early = _make_correction_db(
-            corrected_at=datetime(2025, 1, 1, tzinfo=UTC)
-        )
-        c_late = _make_correction_db(
-            corrected_at=datetime(2025, 12, 31, tzinfo=UTC)
-        )
+        c_early = _make_correction_db(corrected_at=datetime(2025, 1, 1, tzinfo=UTC))
+        c_late = _make_correction_db(corrected_at=datetime(2025, 12, 31, tzinfo=UTC))
         _setup_scalars_return(mock_session, [c_early, c_late])
 
         results = await repository.get_all_filtered(mock_session)
@@ -633,7 +629,9 @@ class TestGetStats:
         result = await repository.get_stats(session)
 
         assert result["by_type"][0] == TypeCount(correction_type="spelling", count=20)
-        assert result["by_type"][1] == TypeCount(correction_type="proper_noun", count=15)
+        assert result["by_type"][1] == TypeCount(
+            correction_type="proper_noun", count=15
+        )
         assert result["by_type"][2] == TypeCount(correction_type="formatting", count=3)
 
     async def test_by_type_empty_when_no_non_revert_corrections(
@@ -747,9 +745,9 @@ class TestGetStats:
         for call_args in session.execute.call_args_list:
             stmt = call_args.args[0]
             sql = str(stmt.compile(compile_kwargs={"literal_binds": False}))
-            assert "language_code" in sql, (
-                f"Expected language_code filter in SQL; got: {sql}"
-            )
+            assert (
+                "language_code" in sql
+            ), f"Expected language_code filter in SQL; got: {sql}"
 
     async def test_no_language_filter_by_default(
         self,
@@ -770,7 +768,12 @@ class TestGetStats:
         # language_code appears in SELECT (as a column reference) but not in WHERE
         # We check there's no "= :language_code" or "language_code =" pattern
         # which would indicate a filter
-        assert "language_code =" not in totals_sql or "language_code" not in totals_sql.split("WHERE")[-1] if "WHERE" in totals_sql else True
+        assert (
+            "language_code =" not in totals_sql
+            or "language_code" not in totals_sql.split("WHERE")[-1]
+            if "WHERE" in totals_sql
+            else True
+        )
 
     # ------------------------------------------------------------------
     # top parameter
@@ -1011,9 +1014,7 @@ class TestGetCorrectionPatterns:
             remaining_counts=[0, 7],
         )
 
-        result = await repository.get_correction_patterns(
-            session, show_completed=True
-        )
+        result = await repository.get_correction_patterns(session, show_completed=True)
 
         assert len(result) == 2
         # Sorted by remaining_matches DESC
@@ -1052,9 +1053,7 @@ class TestGetCorrectionPatterns:
             remaining_counts=[20],
         )
 
-        result = await repository.get_correction_patterns(
-            session, min_occurrences=5
-        )
+        result = await repository.get_correction_patterns(session, min_occurrences=5)
 
         assert len(result) == 1
         assert result[0].occurrences == 10

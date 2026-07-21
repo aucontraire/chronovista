@@ -177,9 +177,7 @@ def create_entity(
                 discovery_method=DiscoveryMethod.USER_CREATED,
                 confidence=1.0,
             )
-            new_entity = await entity_repo.create(
-                session, obj_in=entity_create
-            )
+            new_entity = await entity_repo.create(session, obj_in=entity_create)
 
             # Create canonical name as an alias (same pattern as classify)
             canonical_alias_create = EntityAliasCreate(
@@ -413,19 +411,13 @@ def list_entities(
 
         async for session in db_manager.get_session(echo=False):
             # Build query
-            query = select(NamedEntityDB).where(
-                NamedEntityDB.status == "active"
-            )
+            query = select(NamedEntityDB).where(NamedEntityDB.status == "active")
 
             if parsed_type is not None:
-                query = query.where(
-                    NamedEntityDB.entity_type == parsed_type.value
-                )
+                query = query.where(NamedEntityDB.entity_type == parsed_type.value)
 
             if search is not None:
-                query = query.where(
-                    NamedEntityDB.canonical_name.ilike(f"%{search}%")
-                )
+                query = query.where(NamedEntityDB.canonical_name.ilike(f"%{search}%"))
 
             if has_mentions:
                 query = query.where(NamedEntityDB.mention_count > 0)
@@ -458,13 +450,9 @@ def list_entities(
                     NamedEntityDB.canonical_name.ilike(f"%{search}%")
                 )
             if has_mentions:
-                count_query = count_query.where(
-                    NamedEntityDB.mention_count > 0
-                )
+                count_query = count_query.where(NamedEntityDB.mention_count > 0)
             if no_mentions:
-                count_query = count_query.where(
-                    NamedEntityDB.mention_count == 0
-                )
+                count_query = count_query.where(NamedEntityDB.mention_count == 0)
             total_result = await session.execute(count_query)
             total_count = total_result.scalar() or 0
 
@@ -489,7 +477,9 @@ def list_entities(
             entity_table.add_column("Type", style="magenta", width=16)
             entity_table.add_column("Description", style="white", width=50)
             entity_table.add_column("Aliases", style="green", width=8)
-            entity_table.add_column("Exclusions", style="red", justify="right", width=10)
+            entity_table.add_column(
+                "Exclusions", style="red", justify="right", width=10
+            )
             entity_table.add_column(
                 "Mentions", style="yellow", justify="right", width=10
             )
@@ -509,9 +499,7 @@ def list_entities(
                 desc = entity.description or ""
                 short_desc = (desc[:47] + "...") if len(desc) > 50 else desc
                 created = (
-                    entity.created_at.strftime("%Y-%m-%d")
-                    if entity.created_at
-                    else ""
+                    entity.created_at.strftime("%Y-%m-%d") if entity.created_at else ""
                 )
 
                 exclusion_count = len(entity.exclusion_patterns or [])
@@ -523,16 +511,12 @@ def list_entities(
                     short_desc,
                     str(alias_count),
                     str(exclusion_count) if exclusion_count else "-",
-                    f"{entity.mention_count:,}"
-                    if entity.mention_count
-                    else "0",
+                    f"{entity.mention_count:,}" if entity.mention_count else "0",
                     created,
                 )
 
             console.print(entity_table)
-            console.print(
-                f"\nShowing {len(entities)} of {total_count} total entities"
-            )
+            console.print(f"\nShowing {len(entities)} of {total_count} total entities")
 
     asyncio.run(_run())
 
@@ -579,9 +563,7 @@ def add_exclusion(
             entity = result.scalar_one_or_none()
 
             if entity is None:
-                console.print(
-                    f'[red]Error: Entity "{entity_name}" not found[/red]'
-                )
+                console.print(f'[red]Error: Entity "{entity_name}" not found[/red]')
                 raise typer.Exit(code=1)
 
             # Validate all patterns before mutating state
@@ -636,7 +618,7 @@ def add_exclusion(
                 )
             else:
                 console.print(
-                    f'[yellow]No new exclusion patterns added to '
+                    f"[yellow]No new exclusion patterns added to "
                     f'"{entity.canonical_name}".[/yellow]'
                 )
 
@@ -680,9 +662,7 @@ def remove_exclusion(
             entity = result.scalar_one_or_none()
 
             if entity is None:
-                console.print(
-                    f'[red]Error: Entity "{entity_name}" not found[/red]'
-                )
+                console.print(f'[red]Error: Entity "{entity_name}" not found[/red]')
                 raise typer.Exit(code=1)
 
             trimmed = pattern.strip()
@@ -733,9 +713,9 @@ def backfill_descriptions(
             query = (
                 select(
                     TagOperationLogDB.reason,
-                    TagOperationLogDB.rollback_data["created_entity_id"].as_string().label(
-                        "entity_id_str"
-                    ),
+                    TagOperationLogDB.rollback_data["created_entity_id"]
+                    .as_string()
+                    .label("entity_id_str"),
                 )
                 .where(
                     TagOperationLogDB.operation_type == "create",
@@ -861,7 +841,10 @@ def _merge_scan_results(
 
     # Combine dry_run_matches
     combined_matches: list[dict[str, Any]] | None = None
-    if transcript_result.dry_run_matches is not None or metadata_result.dry_run_matches is not None:
+    if (
+        transcript_result.dry_run_matches is not None
+        or metadata_result.dry_run_matches is not None
+    ):
         combined_matches = []
         if transcript_result.dry_run_matches:
             combined_matches.extend(transcript_result.dry_run_matches)
@@ -872,19 +855,27 @@ def _merge_scan_results(
     # merge the underlying sets here; in practice the CLI display does not need
     # exact deduplication across the two result objects.
     return ScanResult(
-        segments_scanned=transcript_result.segments_scanned + metadata_result.segments_scanned,
-        mentions_found=transcript_result.mentions_found + metadata_result.mentions_found,
-        mentions_skipped=transcript_result.mentions_skipped + metadata_result.mentions_skipped,
+        segments_scanned=transcript_result.segments_scanned
+        + metadata_result.segments_scanned,
+        mentions_found=transcript_result.mentions_found
+        + metadata_result.mentions_found,
+        mentions_skipped=transcript_result.mentions_skipped
+        + metadata_result.mentions_skipped,
         unique_entities=max(
             transcript_result.unique_entities, metadata_result.unique_entities
         ),
-        unique_videos=max(transcript_result.unique_videos, metadata_result.unique_videos),
-        duration_seconds=transcript_result.duration_seconds + metadata_result.duration_seconds,
+        unique_videos=max(
+            transcript_result.unique_videos, metadata_result.unique_videos
+        ),
+        duration_seconds=transcript_result.duration_seconds
+        + metadata_result.duration_seconds,
         dry_run=transcript_result.dry_run or metadata_result.dry_run,
-        failed_batches=transcript_result.failed_batches + metadata_result.failed_batches,
+        failed_batches=transcript_result.failed_batches
+        + metadata_result.failed_batches,
         dry_run_matches=combined_matches,
         skipped_longest_match=(
-            transcript_result.skipped_longest_match + metadata_result.skipped_longest_match
+            transcript_result.skipped_longest_match
+            + metadata_result.skipped_longest_match
         ),
         skipped_exclusion_pattern=(
             transcript_result.skipped_exclusion_pattern
@@ -1015,9 +1006,7 @@ def scan_entities(
             audit_results = await service.audit_unregistered_mentions()
 
             if not audit_results:
-                console.print(
-                    "[green]No unregistered mention texts found.[/green]"
-                )
+                console.print("[green]No unregistered mention texts found.[/green]")
                 return
 
             audit_table = Table(
@@ -1157,7 +1146,9 @@ def scan_entities(
                 is_metadata = match_source in ("title", "description")
 
                 # For metadata mentions, segment_id and start_time display as em dash
-                segment_id_str = "\u2014" if is_metadata else str(match.get("segment_id"))
+                segment_id_str = (
+                    "\u2014" if is_metadata else str(match.get("segment_id"))
+                )
                 start_time_val = match.get("start_time")
                 start_time_str = (
                     "\u2014"
@@ -1172,12 +1163,14 @@ def scan_entities(
                 ]
                 if has_metadata_sources:
                     row_values.append(match_source)
-                row_values.extend([
-                    match["entity_name"],
-                    match["entity_type"],
-                    match["matched_text"],
-                    context_text,
-                ])
+                row_values.extend(
+                    [
+                        match["entity_name"],
+                        match["entity_type"],
+                        match["matched_text"],
+                        context_text,
+                    ]
+                )
                 preview_table.add_row(*row_values)
 
             console.print(preview_table)

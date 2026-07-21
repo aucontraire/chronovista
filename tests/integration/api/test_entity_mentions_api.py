@@ -140,9 +140,7 @@ async def seed_entity_data(
 
         # ---- Video 1 -------------------------------------------------------
         existing_video1 = (
-            await session.execute(
-                select(VideoDB).where(VideoDB.video_id == _VIDEO_ID)
-            )
+            await session.execute(select(VideoDB).where(VideoDB.video_id == _VIDEO_ID))
         ).scalar_one_or_none()
         if not existing_video1:
             video1 = VideoDB(
@@ -313,7 +311,9 @@ async def seed_entity_data(
     # --- Cleanup phase (FK reverse order) ---------------------------------
     async with integration_session_factory() as session:
         await session.execute(
-            delete(EntityMentionDB).where(EntityMentionDB.video_id.in_([_VIDEO_ID, _VIDEO_ID_2]))
+            delete(EntityMentionDB).where(
+                EntityMentionDB.video_id.in_([_VIDEO_ID, _VIDEO_ID_2])
+            )
         )
         await session.execute(
             delete(TranscriptSegmentDB).where(
@@ -382,7 +382,9 @@ class TestGetVideoEntities:
         assert entity_summary is not None, "Expected 'Elon Musk' in entity summaries"
         assert entity_summary["entity_id"] == seed_entity_data["entity_id"]
         assert entity_summary["entity_type"] == "person"
-        assert entity_summary["description"] == "Entrepreneur and CEO of SpaceX and Tesla."
+        assert (
+            entity_summary["description"] == "Entrepreneur and CEO of SpaceX and Tesla."
+        )
         assert entity_summary["mention_count"] == 2
         # first_mention_time should be 0.0 — the start_time of segment1
         assert entity_summary["first_mention_time"] == pytest.approx(0.0)
@@ -491,7 +493,9 @@ class TestGetVideoEntities:
 
         assert response.status_code == 200, response.text
         body = response.json()
-        assert body["data"] == [], "Expected empty list for non-matching language filter"
+        assert (
+            body["data"] == []
+        ), "Expected empty list for non-matching language filter"
 
     async def test_get_video_entities_response_sorted_by_mention_count_desc(
         self,
@@ -516,9 +520,9 @@ class TestGetVideoEntities:
 
         # Verify items are in descending mention_count order
         counts = [item["mention_count"] for item in data]
-        assert counts == sorted(counts, reverse=True), (
-            f"Expected mention_count sorted descending, got: {counts}"
-        )
+        assert counts == sorted(
+            counts, reverse=True
+        ), f"Expected mention_count sorted descending, got: {counts}"
 
     async def test_get_video_entities_response_schema_fields(
         self,
@@ -859,7 +863,13 @@ class TestGetEntityVideos:
         data = body["data"]
         assert len(data) >= 1
 
-        required_video_fields = {"video_id", "video_title", "channel_name", "mention_count", "mentions"}
+        required_video_fields = {
+            "video_id",
+            "video_title",
+            "channel_name",
+            "mention_count",
+            "mentions",
+        }
         required_mention_fields = {"segment_id", "start_time", "mention_text"}
         required_pagination_fields = {"total", "limit", "offset", "has_more"}
 
@@ -873,14 +883,18 @@ class TestGetEntityVideos:
 
             for preview in video_result["mentions"]:
                 missing_preview = required_mention_fields - preview.keys()
-                assert not missing_preview, f"Missing MentionPreview fields: {missing_preview}"
+                assert (
+                    not missing_preview
+                ), f"Missing MentionPreview fields: {missing_preview}"
                 assert isinstance(preview["segment_id"], int)
                 assert isinstance(preview["start_time"], float)
                 assert isinstance(preview["mention_text"], str)
 
         pagination = body["pagination"]
         missing_pagination = required_pagination_fields - pagination.keys()
-        assert not missing_pagination, f"Missing PaginationMeta fields: {missing_pagination}"
+        assert (
+            not missing_pagination
+        ), f"Missing PaginationMeta fields: {missing_pagination}"
 
     async def test_get_entity_videos_mention_previews_ordered_by_start_time(
         self,
@@ -911,9 +925,9 @@ class TestGetEntityVideos:
         assert len(previews) == 2
 
         start_times = [p["start_time"] for p in previews]
-        assert start_times == sorted(start_times), (
-            f"Expected mention previews sorted by start_time ASC, got: {start_times}"
-        )
+        assert start_times == sorted(
+            start_times
+        ), f"Expected mention previews sorted by start_time ASC, got: {start_times}"
         assert start_times[0] == pytest.approx(0.0)
         assert start_times[1] == pytest.approx(5.0)
 
@@ -1019,9 +1033,9 @@ class TestListEntities:
             assert isinstance(item["canonical_name"], str)
             assert len(item["canonical_name"]) > 0
             assert isinstance(item["entity_type"], str)
-            assert item["status"] == "active", (
-                f"Expected status='active', got: {item['status']!r}"
-            )
+            assert (
+                item["status"] == "active"
+            ), f"Expected status='active', got: {item['status']!r}"
             assert isinstance(item["mention_count"], int)
             assert item["mention_count"] >= 0
             assert isinstance(item["video_count"], int)
@@ -1051,9 +1065,9 @@ class TestListEntities:
 
         assert response_person.status_code == 200, response_person.text
         person_data = response_person.json()["data"]
-        assert all(item["entity_type"] == "person" for item in person_data), (
-            "All items must have entity_type='person' when type filter is applied"
-        )
+        assert all(
+            item["entity_type"] == "person" for item in person_data
+        ), "All items must have entity_type='person' when type filter is applied"
         elon = next(
             (item for item in person_data if item["canonical_name"] == "Elon Musk"),
             None,
@@ -1066,7 +1080,9 @@ class TestListEntities:
             (item for item in org_data if item["canonical_name"] == "Elon Musk"),
             None,
         )
-        assert elon_org is None, "Did not expect 'Elon Musk' in type=organization results"
+        assert (
+            elon_org is None
+        ), "Did not expect 'Elon Musk' in type=organization results"
 
     async def test_list_entities_filter_has_mentions_true(
         self,
@@ -1112,10 +1128,16 @@ class TestListEntities:
 
             # The temp entity with mention_count=5 must appear
             mentioned = next(
-                (item for item in data if item["canonical_name"] == "Mentioned Entity Test"),
+                (
+                    item
+                    for item in data
+                    if item["canonical_name"] == "Mentioned Entity Test"
+                ),
                 None,
             )
-            assert mentioned is not None, "Expected temp entity with mention_count=5 in results"
+            assert (
+                mentioned is not None
+            ), "Expected temp entity with mention_count=5 in results"
             assert mentioned["mention_count"] == 5
         finally:
             async with integration_session_factory() as session:
@@ -1204,9 +1226,9 @@ class TestListEntities:
 
         assert response.status_code == 200, response.text
         body = response.json()
-        assert body["data"] == [], (
-            f"Expected empty data for search that matches nothing, got: {body['data']}"
-        )
+        assert (
+            body["data"] == []
+        ), f"Expected empty data for search that matches nothing, got: {body['data']}"
         assert body["pagination"]["total"] == 0
 
     async def test_list_entities_sort_by_name_default(
@@ -1247,11 +1269,13 @@ class TestListEntities:
 
             # The temp entity should appear — verify ascending canonical_name order for all items
             names = [item["canonical_name"] for item in data]
-            assert names == sorted(names), (
-                f"Expected alphabetical ascending order, got: {names}"
-            )
+            assert names == sorted(
+                names
+            ), f"Expected alphabetical ascending order, got: {names}"
             # The temp entity starting with 'Aaron' must be first if it appears alongside others
-            assert any(item["canonical_name"] == "Aaron Entity Sort Test" for item in data)
+            assert any(
+                item["canonical_name"] == "Aaron Entity Sort Test" for item in data
+            )
         finally:
             async with integration_session_factory() as session:
                 await session.execute(
@@ -1304,14 +1328,14 @@ class TestListEntities:
 
             assert response.status_code == 200, response.text
             data = response.json()["data"]
-            assert len(data) == 2, (
-                f"Expected exactly 2 results for the controlled search, got: {len(data)}"
-            )
+            assert (
+                len(data) == 2
+            ), f"Expected exactly 2 results for the controlled search, got: {len(data)}"
 
             counts = [item["mention_count"] for item in data]
-            assert counts == sorted(counts, reverse=True), (
-                f"Expected mention_count sorted descending with sort=mentions, got: {counts}"
-            )
+            assert counts == sorted(
+                counts, reverse=True
+            ), f"Expected mention_count sorted descending with sort=mentions, got: {counts}"
             assert counts[0] == 10
             assert counts[1] == 2
         finally:
@@ -1340,7 +1364,9 @@ class TestListEntities:
         data = body["data"]
         pagination = body["pagination"]
 
-        assert len(data) <= 1, f"Expected at most 1 result with limit=1, got: {len(data)}"
+        assert (
+            len(data) <= 1
+        ), f"Expected at most 1 result with limit=1, got: {len(data)}"
         assert pagination["limit"] == 1
         assert pagination["offset"] == 0
 
@@ -1358,9 +1384,9 @@ class TestListEntities:
 
         assert response.status_code == 200, response.text
         body = response.json()
-        assert body["data"] == [], (
-            f"Expected empty data list with extreme offset, got: {body['data']}"
-        )
+        assert (
+            body["data"] == []
+        ), f"Expected empty data list with extreme offset, got: {body['data']}"
         assert body["pagination"]["offset"] == 100000
         assert body["pagination"]["total"] >= 1
         assert body["pagination"]["has_more"] is False
@@ -1400,10 +1426,12 @@ class TestListEntities:
             pagination = response.json()["pagination"]
 
             total = pagination["total"]
-            assert total >= 2, "Expected at least 2 active entities after seeding temp entity"
-            assert pagination["has_more"] is True, (
-                f"Expected has_more=True with total={total}, limit=1, offset=0"
-            )
+            assert (
+                total >= 2
+            ), "Expected at least 2 active entities after seeding temp entity"
+            assert (
+                pagination["has_more"] is True
+            ), f"Expected has_more=True with total={total}, limit=1, offset=0"
         finally:
             async with integration_session_factory() as session:
                 await session.execute(
@@ -1430,9 +1458,9 @@ class TestListEntities:
 
         assert response.status_code == 200, response.text
         body = response.json()
-        assert body["data"] == [], (
-            f"Expected empty data for type=organization+search=Elon Musk, got: {body['data']}"
-        )
+        assert (
+            body["data"] == []
+        ), f"Expected empty data for type=organization+search=Elon Musk, got: {body['data']}"
         assert body["pagination"]["total"] == 0
         assert body["pagination"]["has_more"] is False
 
@@ -1734,9 +1762,7 @@ async def seed_search_data(
         # ---- Active NamedEntity: Joanna Hausmann ---------------------------
         existing_active = (
             await session.execute(
-                select(NamedEntityDB).where(
-                    NamedEntityDB.id == active_entity_id
-                )
+                select(NamedEntityDB).where(NamedEntityDB.id == active_entity_id)
             )
         ).scalar_one_or_none()
         if not existing_active:
@@ -1767,9 +1793,7 @@ async def seed_search_data(
         # ---- Deprecated NamedEntity: Old Entity ----------------------------
         existing_deprecated = (
             await session.execute(
-                select(NamedEntityDB).where(
-                    NamedEntityDB.id == deprecated_entity_id
-                )
+                select(NamedEntityDB).where(NamedEntityDB.id == deprecated_entity_id)
             )
         ).scalar_one_or_none()
         if not existing_deprecated:
@@ -1816,24 +1840,18 @@ async def seed_search_data(
     async with integration_session_factory() as session:
         # entity_mentions first
         await session.execute(
-            delete(EntityMentionDB).where(
-                EntityMentionDB.video_id == _SEARCH_VIDEO_ID
-            )
+            delete(EntityMentionDB).where(EntityMentionDB.video_id == _SEARCH_VIDEO_ID)
         )
         # also any manual associations created during tests
         await session.execute(
             delete(EntityMentionDB).where(
-                EntityMentionDB.entity_id.in_(
-                    [active_entity_id, deprecated_entity_id]
-                )
+                EntityMentionDB.entity_id.in_([active_entity_id, deprecated_entity_id])
             )
         )
         # entity_aliases
         await session.execute(
             delete(EntityAliasDB).where(
-                EntityAliasDB.entity_id.in_(
-                    [active_entity_id, deprecated_entity_id]
-                )
+                EntityAliasDB.entity_id.in_([active_entity_id, deprecated_entity_id])
             )
         )
         # named_entities
@@ -1881,9 +1899,7 @@ class TestSearchEntitiesEndpoint:
         """
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                _search_entities_url(), params={"q": "J"}
-            )
+            response = await async_client.get(_search_entities_url(), params={"q": "J"})
 
         assert response.status_code == 422, (
             f"Expected 422 for single-char query, got {response.status_code}: "
@@ -1955,16 +1971,12 @@ class TestSearchEntitiesEndpoint:
         items = raw_list if isinstance(raw_list, list) else []
 
         entity = next(
-            (
-                item
-                for item in items
-                if item.get("canonical_name") == "Joanna Hausmann"
-            ),
+            (item for item in items if item.get("canonical_name") == "Joanna Hausmann"),
             None,
         )
-        assert entity is not None, (
-            f"Expected 'Joanna Hausmann' in alias-match results. Body: {body}"
-        )
+        assert (
+            entity is not None
+        ), f"Expected 'Joanna Hausmann' in alias-match results. Body: {body}"
         # matched_alias should be "Joanna" when query matches via alias
         # (canonical "Joanna Hausmann" also starts with "Joanna", so either
         # None or "Joanna" is acceptable — entity must be present)
@@ -1996,24 +2008,20 @@ class TestSearchEntitiesEndpoint:
         items = raw_list if isinstance(raw_list, list) else []
 
         entity = next(
-            (
-                item
-                for item in items
-                if item.get("canonical_name") == "Joanna Hausmann"
-            ),
+            (item for item in items if item.get("canonical_name") == "Joanna Hausmann"),
             None,
         )
-        assert entity is not None, (
-            f"Expected 'Joanna Hausmann' in results. Body: {body}"
-        )
+        assert (
+            entity is not None
+        ), f"Expected 'Joanna Hausmann' in results. Body: {body}"
         assert entity.get("is_linked") is True, (
             f"Expected is_linked=True for entity already linked to video. "
             f"Got: {entity}"
         )
         link_sources = entity.get("link_sources")
-        assert link_sources is not None and len(link_sources) >= 1, (
-            f"Expected non-empty link_sources. Got: {link_sources}"
-        )
+        assert (
+            link_sources is not None and len(link_sources) >= 1
+        ), f"Expected non-empty link_sources. Got: {link_sources}"
 
     async def test_search_deprecated_entity_in_results(
         self,
@@ -2040,12 +2048,12 @@ class TestSearchEntitiesEndpoint:
             (item for item in items if item.get("canonical_name") == "Old Entity"),
             None,
         )
-        assert deprecated_item is not None, (
-            f"Expected deprecated 'Old Entity' in results. Body: {body}"
-        )
-        assert deprecated_item["status"] == "deprecated", (
-            f"Expected status='deprecated', got: {deprecated_item['status']}"
-        )
+        assert (
+            deprecated_item is not None
+        ), f"Expected deprecated 'Old Entity' in results. Body: {body}"
+        assert (
+            deprecated_item["status"] == "deprecated"
+        ), f"Expected status='deprecated', got: {deprecated_item['status']}"
 
     async def test_search_limit_parameter(
         self,
@@ -2068,9 +2076,9 @@ class TestSearchEntitiesEndpoint:
         body = response.json()
         raw_list = body.get("data", body) if isinstance(body, dict) else body
         items = raw_list if isinstance(raw_list, list) else []
-        assert len(items) <= 1, (
-            f"Expected at most 1 result with limit=1, got {len(items)}"
-        )
+        assert (
+            len(items) <= 1
+        ), f"Expected at most 1 result with limit=1, got {len(items)}"
 
     async def test_search_auth_required(
         self,
@@ -2134,9 +2142,9 @@ class TestCreateManualAssociationEndpoint:
                 _manual_association_url(video_id, entity_id)
             )
 
-        assert response.status_code == 201, (
-            f"Expected 201, got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 201
+        ), f"Expected 201, got {response.status_code}: {response.text}"
         body = response.json()
         data = body.get("data", body) if isinstance(body, dict) else body
 
@@ -2147,14 +2155,14 @@ class TestCreateManualAssociationEndpoint:
         assert "mention_text" in data, f"Missing 'mention_text': {data}"
         assert "created_at" in data, f"Missing 'created_at': {data}"
 
-        assert data["detection_method"] == "manual", (
-            f"Expected detection_method='manual', got: {data['detection_method']}"
-        )
+        assert (
+            data["detection_method"] == "manual"
+        ), f"Expected detection_method='manual', got: {data['detection_method']}"
         assert data["entity_id"] == entity_id
         assert data["video_id"] == video_id
-        assert data["mention_text"] == "Joanna Hausmann", (
-            f"Expected mention_text='Joanna Hausmann', got: {data['mention_text']}"
-        )
+        assert (
+            data["mention_text"] == "Joanna Hausmann"
+        ), f"Expected mention_text='Joanna Hausmann', got: {data['mention_text']}"
 
     async def test_create_404_nonexistent_video(
         self,
@@ -2182,9 +2190,9 @@ class TestCreateManualAssociationEndpoint:
         )
         body = response.json()
         # RFC 7807 Problem Detail fields
-        assert "status" in body or "detail" in body, (
-            f"Expected RFC 7807 body with 'status' or 'detail', got: {body}"
-        )
+        assert (
+            "status" in body or "detail" in body
+        ), f"Expected RFC 7807 body with 'status' or 'detail', got: {body}"
 
     async def test_create_404_nonexistent_entity(
         self,
@@ -2615,9 +2623,7 @@ async def seed_delete_data(
             )
         )
         await session.execute(
-            delete(EntityMentionDB).where(
-                EntityMentionDB.entity_id == entity_id
-            )
+            delete(EntityMentionDB).where(EntityMentionDB.entity_id == entity_id)
         )
         # named_entities
         await session.execute(
@@ -2694,13 +2700,13 @@ class TestDeleteManualAssociation:
                 _delete_manual_url(video_id, entity_id_str)
             )
 
-        assert response.status_code == 204, (
-            f"Expected 204 No Content, got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 204
+        ), f"Expected 204 No Content, got {response.status_code}: {response.text}"
         # 204 responses must have no body
-        assert response.content == b"", (
-            f"Expected empty body for 204 response, got: {response.content!r}"
-        )
+        assert (
+            response.content == b""
+        ), f"Expected empty body for 204 response, got: {response.content!r}"
 
         # Verify the row was actually removed from the DB
         async with integration_session_factory() as session:
@@ -2711,9 +2717,9 @@ class TestDeleteManualAssociation:
                     )
                 )
             ).scalar_one_or_none()
-        assert remaining is None, (
-            "Manual mention row should have been deleted but still exists in DB"
-        )
+        assert (
+            remaining is None
+        ), "Manual mention row should have been deleted but still exists in DB"
 
     async def test_delete_404_no_manual_association(
         self,
@@ -2743,9 +2749,9 @@ class TestDeleteManualAssociation:
         )
         body = response.json()
         # RFC 7807 Problem Detail requires at least 'status' or 'detail'
-        assert "status" in body or "detail" in body, (
-            f"Expected RFC 7807 body with 'status' or 'detail', got: {body}"
-        )
+        assert (
+            "status" in body or "detail" in body
+        ), f"Expected RFC 7807 body with 'status' or 'detail', got: {body}"
 
     async def test_delete_updates_entity_counters(
         self,
@@ -2798,9 +2804,9 @@ class TestDeleteManualAssociation:
                 _delete_manual_url(video_id, entity_id_str)
             )
 
-        assert response.status_code == 204, (
-            f"Expected 204, got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 204
+        ), f"Expected 204, got {response.status_code}: {response.text}"
 
         # Read counter after deletion
         async with integration_session_factory() as session:
@@ -2876,9 +2882,9 @@ class TestDeleteManualAssociation:
                 _delete_manual_url(video_id, entity_id_str)
             )
 
-        assert response.status_code == 204, (
-            f"Expected 204, got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 204
+        ), f"Expected 204, got {response.status_code}: {response.text}"
 
         # Verify the manual mention is gone
         async with integration_session_factory() as session:
@@ -2899,12 +2905,12 @@ class TestDeleteManualAssociation:
                 )
             ).scalar_one_or_none()
 
-        assert manual_gone is None, (
-            "Manual mention should have been deleted but still exists in DB"
-        )
-        assert transcript_still_present is not None, (
-            "Transcript-derived mention should NOT have been deleted, but it is gone"
-        )
+        assert (
+            manual_gone is None
+        ), "Manual mention should have been deleted but still exists in DB"
+        assert (
+            transcript_still_present is not None
+        ), "Transcript-derived mention should NOT have been deleted, but it is gone"
 
     async def test_delete_404_for_nonexistent_entity(
         self,
@@ -2985,9 +2991,9 @@ class TestDeleteManualAssociation:
                 )
             ).scalar_one_or_none()
 
-        assert transcript_still_present is not None, (
-            "Transcript mention should NOT have been deleted by a failed DELETE call"
-        )
+        assert (
+            transcript_still_present is not None
+        ), "Transcript mention should NOT have been deleted by a failed DELETE call"
 
 
 # ---------------------------------------------------------------------------

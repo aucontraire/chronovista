@@ -92,7 +92,9 @@ class UserVideoFactory(factory.Factory[UserVideo]):
     )
 
 
-class GoogleTakeoutWatchHistoryItemFactory(factory.Factory[GoogleTakeoutWatchHistoryItem]):
+class GoogleTakeoutWatchHistoryItemFactory(
+    factory.Factory[GoogleTakeoutWatchHistoryItem]
+):
     """Factory for GoogleTakeoutWatchHistoryItem models."""
 
     class Meta:
@@ -128,18 +130,14 @@ class UserVideoSearchFiltersFactory(factory.Factory[UserVideoSearchFilters]):
     video_ids: Any = factory.LazyFunction(
         lambda: ["dQw4w9WgXcQ", "9bZkp7q19f0", "3tmd-ClpJxA"]
     )
-    watched_after: Any = factory.LazyFunction(
-        lambda: datetime(2023, 1, 1, tzinfo=UTC)
-    )
+    watched_after: Any = factory.LazyFunction(lambda: datetime(2023, 1, 1, tzinfo=UTC))
     watched_before: Any = factory.LazyFunction(
         lambda: datetime(2023, 12, 31, tzinfo=UTC)
     )
     liked_only: Any = factory.LazyFunction(lambda: True)
     playlist_saved_only: Any = factory.LazyFunction(lambda: True)
     min_rewatch_count: Any = factory.LazyFunction(lambda: 1)
-    created_after: Any = factory.LazyFunction(
-        lambda: datetime(2023, 6, 1, tzinfo=UTC)
-    )
+    created_after: Any = factory.LazyFunction(lambda: datetime(2023, 6, 1, tzinfo=UTC))
     created_before: Any = factory.LazyFunction(
         lambda: datetime(2023, 12, 1, tzinfo=UTC)
     )

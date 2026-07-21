@@ -92,7 +92,9 @@ class TakeoutSubscriptionHandleFactory(factory.Factory[TakeoutSubscription]):
         model = TakeoutSubscription
 
     channel_title: Any = factory.LazyFunction(lambda: "Handle Channel")
-    channel_url: Any = factory.LazyFunction(lambda: "https://www.youtube.com/@handlechannel")
+    channel_url: Any = factory.LazyFunction(
+        lambda: "https://www.youtube.com/@handlechannel"
+    )
     channel_id = None  # Cannot extract from handle URL
 
 

@@ -302,14 +302,14 @@ class TestMentionSourceColumn:
         info = await _column_info(dev_session, _TABLE, _COL_MENTION_SOURCE)
         assert info is not None, f"Column '{_COL_MENTION_SOURCE}' not found."
         column_default: str | None = info.get("column_default")
-        assert column_default is not None, (
-            f"Expected a default value on '{_COL_MENTION_SOURCE}', got None."
-        )
+        assert (
+            column_default is not None
+        ), f"Expected a default value on '{_COL_MENTION_SOURCE}', got None."
         # PostgreSQL stores string defaults with type cast, e.g.
         # "'transcript'::character varying"
-        assert "transcript" in column_default, (
-            f"Expected default to contain 'transcript', got: {column_default!r}"
-        )
+        assert (
+            "transcript" in column_default
+        ), f"Expected default to contain 'transcript', got: {column_default!r}"
 
     async def test_mention_source_column_type_is_varchar(
         self, dev_session: AsyncSession
@@ -318,9 +318,9 @@ class TestMentionSourceColumn:
         info = await _column_info(dev_session, _TABLE, _COL_MENTION_SOURCE)
         assert info is not None, f"Column '{_COL_MENTION_SOURCE}' not found."
         data_type: str = info["data_type"]
-        assert "character varying" in data_type, (
-            f"Expected data_type 'character varying', got: {data_type!r}"
-        )
+        assert (
+            "character varying" in data_type
+        ), f"Expected data_type 'character varying', got: {data_type!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -373,9 +373,7 @@ class TestMentionContextColumn:
         info = await _column_info(dev_session, _TABLE, _COL_MENTION_CONTEXT)
         assert info is not None, f"Column '{_COL_MENTION_CONTEXT}' not found."
         data_type: str = info["data_type"]
-        assert data_type == "text", (
-            f"Expected data_type 'text', got: {data_type!r}"
-        )
+        assert data_type == "text", f"Expected data_type 'text', got: {data_type!r}"
 
     async def test_mention_context_column_has_no_default(
         self, dev_session: AsyncSession
@@ -412,9 +410,7 @@ class TestMentionSourceCheckConstraint:
 
     async def _get_any_entity_id(self, session: AsyncSession) -> str | None:
         """Return the first named_entity id as a hex string, or None."""
-        result = await session.execute(
-            text("SELECT id FROM named_entities LIMIT 1")
-        )
+        result = await session.execute(text("SELECT id FROM named_entities LIMIT 1"))
         row = result.one_or_none()
         return str(row[0]) if row else None
 
@@ -457,9 +453,9 @@ class TestMentionSourceCheckConstraint:
             {"tbl": _TABLE},
         )
         row = result.one_or_none()
-        assert row is not None, (
-            f"No CHECK constraint on '{_TABLE}.mention_source' found in pg_constraint."
-        )
+        assert (
+            row is not None
+        ), f"No CHECK constraint on '{_TABLE}.mention_source' found in pg_constraint."
         consrc: str = row[0]
         assert valid_source in consrc, (
             f"Expected valid source '{valid_source}' to be listed in the "
@@ -489,9 +485,9 @@ class TestMentionSourceCheckConstraint:
             {"tbl": _TABLE},
         )
         row = result.one_or_none()
-        assert row is not None, (
-            f"No CHECK constraint on '{_TABLE}.mention_source' found in pg_constraint."
-        )
+        assert (
+            row is not None
+        ), f"No CHECK constraint on '{_TABLE}.mention_source' found in pg_constraint."
         consrc: str = row[0]
         # The constraint must NOT list 'foo' as a permitted value.
         assert _INVALID_SOURCE not in consrc, (
@@ -517,9 +513,9 @@ class TestMentionSourceCheckConstraint:
             {"tbl": _TABLE},
         )
         row = result.one_or_none()
-        assert row is not None, (
-            f"No CHECK constraint on '{_TABLE}.mention_source' found."
-        )
+        assert (
+            row is not None
+        ), f"No CHECK constraint on '{_TABLE}.mention_source' found."
         consrc: str = row[0]
         for source in _VALID_SOURCES:
             assert source in consrc, (
@@ -559,16 +555,14 @@ class TestPartialUniqueIndexTitle:
             "Run migration 054_add_mention_source_column first."
         )
 
-    async def test_title_index_is_unique(
-        self, dev_session: AsyncSession
-    ) -> None:
+    async def test_title_index_is_unique(self, dev_session: AsyncSession) -> None:
         """Verify uq_entity_mentions_title is a UNIQUE index."""
         row = await _index_row(dev_session, _INDEX_TITLE, _TABLE)
         assert row is not None, f"Index '{_INDEX_TITLE}' not found."
         indexdef: str = row["indexdef"].lower()
-        assert "unique index" in indexdef, (
-            f"Expected 'UNIQUE INDEX' in index definition, got: {row['indexdef']!r}"
-        )
+        assert (
+            "unique index" in indexdef
+        ), f"Expected 'UNIQUE INDEX' in index definition, got: {row['indexdef']!r}"
 
     async def test_title_index_covers_correct_columns(
         self, dev_session: AsyncSession
@@ -590,12 +584,12 @@ class TestPartialUniqueIndexTitle:
         row = await _index_row(dev_session, _INDEX_TITLE, _TABLE)
         assert row is not None, f"Index '{_INDEX_TITLE}' not found."
         indexdef: str = row["indexdef"].lower()
-        assert " where " in indexdef, (
-            f"Expected a partial index (WHERE clause), got: {row['indexdef']!r}"
-        )
-        assert "title" in indexdef, (
-            f"Expected predicate to reference 'title', got: {row['indexdef']!r}"
-        )
+        assert (
+            " where " in indexdef
+        ), f"Expected a partial index (WHERE clause), got: {row['indexdef']!r}"
+        assert (
+            "title" in indexdef
+        ), f"Expected predicate to reference 'title', got: {row['indexdef']!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -630,16 +624,14 @@ class TestPartialUniqueIndexDescription:
             f"'{_TABLE}'. Run migration 054_add_mention_source_column first."
         )
 
-    async def test_description_index_is_unique(
-        self, dev_session: AsyncSession
-    ) -> None:
+    async def test_description_index_is_unique(self, dev_session: AsyncSession) -> None:
         """Verify uq_entity_mentions_description is a UNIQUE index."""
         row = await _index_row(dev_session, _INDEX_DESCRIPTION, _TABLE)
         assert row is not None, f"Index '{_INDEX_DESCRIPTION}' not found."
         indexdef: str = row["indexdef"].lower()
-        assert "unique index" in indexdef, (
-            f"Expected 'UNIQUE INDEX' in index definition, got: {row['indexdef']!r}"
-        )
+        assert (
+            "unique index" in indexdef
+        ), f"Expected 'UNIQUE INDEX' in index definition, got: {row['indexdef']!r}"
 
     async def test_description_index_covers_correct_columns(
         self, dev_session: AsyncSession
@@ -661,9 +653,9 @@ class TestPartialUniqueIndexDescription:
         row = await _index_row(dev_session, _INDEX_DESCRIPTION, _TABLE)
         assert row is not None, f"Index '{_INDEX_DESCRIPTION}' not found."
         indexdef: str = row["indexdef"].lower()
-        assert " where " in indexdef, (
-            f"Expected a partial index (WHERE clause), got: {row['indexdef']!r}"
-        )
+        assert (
+            " where " in indexdef
+        ), f"Expected a partial index (WHERE clause), got: {row['indexdef']!r}"
         assert "description" in indexdef, (
             f"Expected predicate to reference 'description', "
             f"got: {row['indexdef']!r}"
@@ -701,16 +693,14 @@ class TestRegularIndexOnMentionSource:
             "Run migration 054_add_mention_source_column first."
         )
 
-    async def test_source_index_is_not_unique(
-        self, dev_session: AsyncSession
-    ) -> None:
+    async def test_source_index_is_not_unique(self, dev_session: AsyncSession) -> None:
         """Verify ix_entity_mentions_mention_source is a non-unique B-tree index."""
         row = await _index_row(dev_session, _INDEX_SOURCE, _TABLE)
         assert row is not None, f"Index '{_INDEX_SOURCE}' not found."
         indexdef: str = row["indexdef"].lower()
-        assert "unique index" not in indexdef, (
-            f"Expected a non-unique index, but got: {row['indexdef']!r}"
-        )
+        assert (
+            "unique index" not in indexdef
+        ), f"Expected a non-unique index, but got: {row['indexdef']!r}"
 
     async def test_source_index_covers_mention_source_column(
         self, dev_session: AsyncSession

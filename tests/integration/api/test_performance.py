@@ -19,6 +19,7 @@ from httpx import AsyncClient
 
 # CRITICAL: This line ensures async tests work with coverage
 
+
 class TestConcurrentRequestsCore:
     """Test SC-008: Core concurrent request handling (stateless endpoints)."""
 
@@ -47,22 +48,22 @@ class TestConcurrentRequestsCore:
         durations = [duration for _, duration in results]
 
         # All should succeed (SC-008 requirement: no degradation)
-        assert all(status == 200 for status in status_codes), (
-            f"Expected all 200 status codes, got: {status_codes}"
-        )
+        assert all(
+            status == 200 for status in status_codes
+        ), f"Expected all 200 status codes, got: {status_codes}"
         assert len(results) == 10, "All 10 requests should complete"
 
         # No request should take longer than 5 seconds (performance requirement)
         max_duration = max(durations)
-        assert max_duration < 5.0, (
-            f"Maximum request duration {max_duration:.2f}s exceeds 5s threshold"
-        )
+        assert (
+            max_duration < 5.0
+        ), f"Maximum request duration {max_duration:.2f}s exceeds 5s threshold"
 
         # Average duration should be reasonable (< 1 second)
         avg_duration = sum(durations) / len(durations)
-        assert avg_duration < 1.0, (
-            f"Average request duration {avg_duration:.2f}s exceeds 1s threshold"
-        )
+        assert (
+            avg_duration < 1.0
+        ), f"Average request duration {avg_duration:.2f}s exceeds 1s threshold"
 
     async def test_20_concurrent_health_requests_stress(
         self, async_client: AsyncClient
@@ -111,12 +112,12 @@ class TestConcurrentRequestsCore:
         avg_duration = sum(durations) / len(durations)
 
         # Allow slightly higher latency under stress (10s max, 2s average)
-        assert max_duration < 10.0, (
-            f"Maximum request duration {max_duration:.2f}s exceeds 10s threshold"
-        )
-        assert avg_duration < 2.0, (
-            f"Average request duration {avg_duration:.2f}s exceeds 2s threshold"
-        )
+        assert (
+            max_duration < 10.0
+        ), f"Maximum request duration {max_duration:.2f}s exceeds 10s threshold"
+        assert (
+            avg_duration < 2.0
+        ), f"Average request duration {avg_duration:.2f}s exceeds 2s threshold"
 
     @pytest.mark.slow
     async def test_50_concurrent_health_requests_extreme_stress(
@@ -161,12 +162,12 @@ class TestConcurrentRequestsCore:
 
         # Allow significant latency under extreme stress (45s max, 5s average)
         # Raised from 30s to 45s for shared CI runners (GitHub Actions)
-        assert max_duration < 45.0, (
-            f"Maximum request duration {max_duration:.2f}s exceeds 45s threshold"
-        )
-        assert avg_duration < 5.0, (
-            f"Average request duration {avg_duration:.2f}s exceeds 5s threshold"
-        )
+        assert (
+            max_duration < 45.0
+        ), f"Maximum request duration {max_duration:.2f}s exceeds 45s threshold"
+        assert (
+            avg_duration < 5.0
+        ), f"Average request duration {avg_duration:.2f}s exceeds 5s threshold"
 
 
 @pytest.mark.xfail(
@@ -206,16 +207,16 @@ class TestConcurrentRequestsWithAuth:
             durations = [duration for _, duration in results]
 
             # All should succeed (200 or empty list)
-            assert all(status == 200 for status in status_codes), (
-                f"Expected all 200 status codes, got: {status_codes}"
-            )
+            assert all(
+                status == 200 for status in status_codes
+            ), f"Expected all 200 status codes, got: {status_codes}"
             assert len(results) == 10
 
             # No request should take longer than 5 seconds
             max_duration = max(durations)
-            assert max_duration < 5.0, (
-                f"Maximum request duration {max_duration:.2f}s exceeds 5s threshold"
-            )
+            assert (
+                max_duration < 5.0
+            ), f"Maximum request duration {max_duration:.2f}s exceeds 5s threshold"
 
     async def test_10_concurrent_mixed_requests(
         self, async_client: AsyncClient
@@ -272,14 +273,12 @@ class TestConcurrentRequestsWithAuth:
 
             # No request should take longer than 5 seconds
             max_duration = max(durations)
-            assert max_duration < 5.0, (
-                f"Maximum request duration {max_duration:.2f}s exceeds 5s threshold"
-            )
+            assert (
+                max_duration < 5.0
+            ), f"Maximum request duration {max_duration:.2f}s exceeds 5s threshold"
 
 
-@pytest.mark.skip(
-    reason="POST endpoints not yet implemented for language preferences"
-)
+@pytest.mark.skip(reason="POST endpoints not yet implemented for language preferences")
 class TestConcurrentWriteRequests:
     """Test SC-008: Concurrent write operations (transaction isolation)."""
 
@@ -330,18 +329,18 @@ class TestConcurrentWriteRequests:
                 for lang, status in results
                 if status >= 500 or status == 0
             ]
-            assert len(server_errors) == 0, (
-                f"Concurrent writes caused server errors or exceptions: {server_errors}"
-            )
+            assert (
+                len(server_errors) == 0
+            ), f"Concurrent writes caused server errors or exceptions: {server_errors}"
 
             # Some requests should succeed (even if some return 409/conflict)
             # We're testing that the system doesn't deadlock or crash
             successful_or_conflict = [
                 status for status in status_codes if status in [200, 201, 409]
             ]
-            assert len(successful_or_conflict) > 0, (
-                "All concurrent write operations failed - possible deadlock or crash"
-            )
+            assert (
+                len(successful_or_conflict) > 0
+            ), "All concurrent write operations failed - possible deadlock or crash"
 
 
 class TestFilterApiPerformance:
@@ -373,9 +372,10 @@ class TestFilterApiPerformance:
                 times.append(elapsed)
 
                 # Verify response is valid (200 or empty result)
-                assert response.status_code in [200, 404], (
-                    f"Unexpected status code: {response.status_code}"
-                )
+                assert response.status_code in [
+                    200,
+                    404,
+                ], f"Unexpected status code: {response.status_code}"
 
             # Calculate p95
             times.sort()
@@ -383,9 +383,9 @@ class TestFilterApiPerformance:
             p95 = times[p95_index] if p95_index < len(times) else times[-1]
 
             # Assert p95 is under 300ms
-            assert p95 < 300, (
-                f"p95 latency {p95:.1f}ms exceeds 300ms target for autocomplete"
-            )
+            assert (
+                p95 < 300
+            ), f"p95 latency {p95:.1f}ms exceeds 300ms target for autocomplete"
 
             # Log results for debugging
             sum(times) / len(times)
@@ -412,9 +412,9 @@ class TestFilterApiPerformance:
                 times.append(elapsed)
 
                 # Verify response is valid
-                assert response.status_code == 200, (
-                    f"Unexpected status code: {response.status_code}"
-                )
+                assert (
+                    response.status_code == 200
+                ), f"Unexpected status code: {response.status_code}"
 
             # Calculate p95
             times.sort()
@@ -422,9 +422,9 @@ class TestFilterApiPerformance:
             p95 = times[p95_index] if p95_index < len(times) else times[-1]
 
             # Assert p95 is under 300ms
-            assert p95 < 300, (
-                f"p95 latency {p95:.1f}ms exceeds 300ms target for sidebar categories"
-            )
+            assert (
+                p95 < 300
+            ), f"p95 latency {p95:.1f}ms exceeds 300ms target for sidebar categories"
 
             # Log results for debugging
             sum(times) / len(times)
@@ -451,9 +451,9 @@ class TestFilterApiPerformance:
                 times.append(elapsed)
 
                 # Verify response is valid
-                assert response.status_code == 200, (
-                    f"Unexpected status code: {response.status_code}"
-                )
+                assert (
+                    response.status_code == 200
+                ), f"Unexpected status code: {response.status_code}"
 
             # Calculate p95
             times.sort()
@@ -461,9 +461,9 @@ class TestFilterApiPerformance:
             p95 = times[p95_index] if p95_index < len(times) else times[-1]
 
             # Assert p95 is under 500ms
-            assert p95 < 500, (
-                f"p95 latency {p95:.1f}ms exceeds 500ms target for topic hierarchy"
-            )
+            assert (
+                p95 < 500
+            ), f"p95 latency {p95:.1f}ms exceeds 500ms target for topic hierarchy"
 
             # Log results for debugging
             sum(times) / len(times)
@@ -489,9 +489,9 @@ class TestRateLimitingBehavior:
             for _ in range(3):
                 response = await async_client.get("/api/v1/videos")
                 # Should succeed (not rate limited)
-                assert response.status_code in [200], (
-                    f"Expected 200, got {response.status_code}"
-                )
+                assert response.status_code in [
+                    200
+                ], f"Expected 200, got {response.status_code}"
 
     async def test_autocomplete_rate_limit_returns_429_after_50_requests(
         self, async_client: AsyncClient
@@ -510,6 +510,7 @@ class TestRateLimitingBehavior:
             for _ in range(3):
                 response = await async_client.get("/api/v1/tags?q=test")
                 # Should succeed (not rate limited) or return empty results
-                assert response.status_code in [200, 404], (
-                    f"Expected 200/404, got {response.status_code}"
-                )
+                assert response.status_code in [
+                    200,
+                    404,
+                ], f"Expected 200/404, got {response.status_code}"

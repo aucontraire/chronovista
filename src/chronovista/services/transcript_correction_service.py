@@ -122,9 +122,7 @@ class TranscriptCorrectionService:
         # Step 1: Get segment — raise ValueError if not found
         segment = await self._segment_repo.get(session, segment_id)
         if segment is None:
-            raise ValueError(
-                f"Transcript segment with id={segment_id} not found"
-            )
+            raise ValueError(f"Transcript segment with id={segment_id} not found")
 
         # Step 2: Determine effective text
         effective_text: str = (
@@ -169,9 +167,7 @@ class TranscriptCorrectionService:
         await session.flush()
 
         # Step 8-9: Update transcript metadata
-        transcript = await self._transcript_repo.get(
-            session, (video_id, language_code)
-        )
+        transcript = await self._transcript_repo.get(session, (video_id, language_code))
         if transcript is not None:
             transcript.has_corrections = True
             transcript.correction_count = transcript.correction_count + 1
@@ -186,7 +182,11 @@ class TranscriptCorrectionService:
             video_id,
             language_code,
             segment_id,
-            correction_type.value if isinstance(correction_type, CorrectionType) else correction_type,
+            (
+                correction_type.value
+                if isinstance(correction_type, CorrectionType)
+                else correction_type
+            ),
             new_version,
             corrected_by_user_id,
         )
@@ -250,9 +250,7 @@ class TranscriptCorrectionService:
         # Step 1: Get segment — raise ValueError if not found or has_correction=False
         segment = await self._segment_repo.get(session, segment_id)
         if segment is None:
-            raise ValueError(
-                f"Transcript segment with id={segment_id} not found"
-            )
+            raise ValueError(f"Transcript segment with id={segment_id} not found")
         if not segment.has_correction:
             raise ValueError(
                 f"Transcript segment with id={segment_id} has no active "
@@ -352,7 +350,6 @@ class TranscriptCorrectionService:
 
         # Step 8: Return the revert audit record
         return revert_record
-
 
     async def _record_asr_alias_if_entity_match(
         self,

@@ -63,9 +63,13 @@ class TestTranscriptServiceInitialization:
 
     def test_init_with_api_unavailable(self):
         """Test initialization when API is unavailable."""
-        with patch(
-            "chronovista.services.transcript_service.TRANSCRIPT_API_AVAILABLE", False
-        ), patch("chronovista.services.transcript_service.logger") as mock_logger:
+        with (
+            patch(
+                "chronovista.services.transcript_service.TRANSCRIPT_API_AVAILABLE",
+                False,
+            ),
+            patch("chronovista.services.transcript_service.logger") as mock_logger,
+        ):
             service = TranscriptService()
             assert service.enable_mock_fallback is False
             assert service._api_available is False
@@ -1133,8 +1137,12 @@ class TestResolveLanguageCode:
 
     def test_resolve_chinese_variants(self, service):
         """Test Chinese simplified and traditional are preserved."""
-        assert service._resolve_language_code("zh-CN") == LanguageCode.CHINESE_SIMPLIFIED
-        assert service._resolve_language_code("zh-TW") == LanguageCode.CHINESE_TRADITIONAL
+        assert (
+            service._resolve_language_code("zh-CN") == LanguageCode.CHINESE_SIMPLIFIED
+        )
+        assert (
+            service._resolve_language_code("zh-TW") == LanguageCode.CHINESE_TRADITIONAL
+        )
 
     def test_resolve_portuguese_variants(self, service):
         """Test Portuguese variants are preserved."""
@@ -1357,8 +1365,12 @@ class TestUpdateSegmentTextRedownloadProtection:
         transcript still has active corrections.
         """
         # Two corrected segments
-        seg_a = _FakeSegment(id=1, text="raw a", corrected_text="fix a", has_correction=True)
-        seg_b = _FakeSegment(id=2, text="raw b", corrected_text="fix b", has_correction=True)
+        seg_a = _FakeSegment(
+            id=1, text="raw a", corrected_text="fix a", has_correction=True
+        )
+        seg_b = _FakeSegment(
+            id=2, text="raw b", corrected_text="fix b", has_correction=True
+        )
 
         # Force-overwrite only segment A
         service._update_segment_text(seg_a, "new raw a", force_overwrite=True)
@@ -1382,8 +1394,12 @@ class TestUpdateSegmentTextRedownloadProtection:
         overwritten, recomputed has_corrections must be False and
         correction_count must be 0.
         """
-        seg_a = _FakeSegment(id=1, text="raw a", corrected_text="fix a", has_correction=True)
-        seg_b = _FakeSegment(id=2, text="raw b", corrected_text="fix b", has_correction=True)
+        seg_a = _FakeSegment(
+            id=1, text="raw a", corrected_text="fix a", has_correction=True
+        )
+        seg_b = _FakeSegment(
+            id=2, text="raw b", corrected_text="fix b", has_correction=True
+        )
 
         service._update_segment_text(seg_a, "new a", force_overwrite=True)
         service._update_segment_text(seg_b, "new b", force_overwrite=True)

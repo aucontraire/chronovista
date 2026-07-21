@@ -75,16 +75,18 @@ class TestEnrichmentSummary:
         """Test that all fields are required."""
         # Missing videos_processed - use model_validate to bypass type checking
         with pytest.raises(ValidationError):
-            EnrichmentSummary.model_validate({
-                "videos_updated": 10,
-                "videos_deleted": 0,
-                "channels_created": 0,
-                "tags_created": 0,
-                "topic_associations": 0,
-                "categories_assigned": 0,
-                "errors": 0,
-                "quota_used": 0,
-            })
+            EnrichmentSummary.model_validate(
+                {
+                    "videos_updated": 10,
+                    "videos_deleted": 0,
+                    "channels_created": 0,
+                    "tags_created": 0,
+                    "topic_associations": 0,
+                    "categories_assigned": 0,
+                    "errors": 0,
+                    "quota_used": 0,
+                }
+            )
 
     def test_negative_values_rejected(self):
         """Test that negative values are rejected."""
@@ -248,12 +250,16 @@ class TestEnrichmentDetail:
         ]
 
         for status in valid_statuses:
-            detail = EnrichmentDetail.model_validate({"video_id": "test123", "status": status})
+            detail = EnrichmentDetail.model_validate(
+                {"video_id": "test123", "status": status}
+            )
             assert detail.status == status
 
         # Invalid status
         with pytest.raises(ValidationError) as exc_info:
-            EnrichmentDetail.model_validate({"video_id": "test123", "status": "invalid"})
+            EnrichmentDetail.model_validate(
+                {"video_id": "test123", "status": "invalid"}
+            )
         error_str = str(exc_info.value)
         assert "pending_confirmation" in error_str
         assert "updated" in error_str
@@ -452,7 +458,9 @@ class TestEnrichmentReport:
         )
 
         with pytest.raises(ValidationError):
-            EnrichmentReport.model_validate({"timestamp": timestamp, "summary": summary})
+            EnrichmentReport.model_validate(
+                {"timestamp": timestamp, "summary": summary}
+            )
 
     def test_priority_min_length(self):
         """Test priority has minimum length of 1."""
@@ -477,7 +485,9 @@ class TestEnrichmentReport:
         timestamp = datetime.now(UTC)
 
         with pytest.raises(ValidationError):
-            EnrichmentReport.model_validate({"timestamp": timestamp, "priority": "high"})
+            EnrichmentReport.model_validate(
+                {"timestamp": timestamp, "priority": "high"}
+            )
 
     def test_details_defaults_to_empty_list(self):
         """Test details defaults to empty list."""

@@ -158,9 +158,12 @@ def list(
                     playlists = sorted(
                         playlists,
                         key=lambda p: (
-                            not (p.playlist_id.startswith("PL") or p.playlist_id in ("LL", "WL", "HL")),
-                            p.title.lower()
-                        )
+                            not (
+                                p.playlist_id.startswith("PL")
+                                or p.playlist_id in ("LL", "WL", "HL")
+                            ),
+                            p.title.lower(),
+                        ),
                     )
 
                 # Format output
@@ -308,9 +311,10 @@ def _output_table(
         truncated_id = _truncate_id(playlist.playlist_id)
 
         # Status with emoji - linked if playlist_id starts with PL or is a system ID
-        is_linked = (
-            playlist.playlist_id.startswith("PL")
-            or playlist.playlist_id in ("LL", "WL", "HL")
+        is_linked = playlist.playlist_id.startswith("PL") or playlist.playlist_id in (
+            "LL",
+            "WL",
+            "HL",
         )
         status = "✅ Linked" if is_linked else "❌ Unlinked"
 
@@ -373,9 +377,10 @@ def _output_csv(playlists: builtins.list[PlaylistDB], stats: dict[str, int]) -> 
 
     # CSV rows
     for p in playlists:
-        is_linked = (
-            p.playlist_id.startswith("PL")
-            or p.playlist_id in ("LL", "WL", "HL")
+        is_linked = p.playlist_id.startswith("PL") or p.playlist_id in (
+            "LL",
+            "WL",
+            "HL",
         )
         linked = "true" if is_linked else "false"
         # Escape title for CSV (quote if contains comma)
@@ -404,9 +409,10 @@ def _display_playlist_details(playlist: PlaylistDB) -> None:
     created_str = playlist.created_at.strftime("%Y-%m-%d %H:%M:%S")
 
     # Determine if playlist is linked (has YouTube ID or is system playlist)
-    is_linked = (
-        playlist.playlist_id.startswith("PL")
-        or playlist.playlist_id in ("LL", "WL", "HL")
+    is_linked = playlist.playlist_id.startswith("PL") or playlist.playlist_id in (
+        "LL",
+        "WL",
+        "HL",
     )
 
     # Build details string
@@ -442,7 +448,9 @@ def _display_playlist_details(playlist: PlaylistDB) -> None:
     elif playlist.channel_id:
         details_lines.append(f"Channel:        {playlist.channel_id}")
     else:
-        details_lines.append("Channel:        (not linked - user playlist from Takeout)")
+        details_lines.append(
+            "Channel:        (not linked - user playlist from Takeout)"
+        )
 
     details_lines.extend(
         [

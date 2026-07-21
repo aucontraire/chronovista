@@ -123,34 +123,22 @@ class EntityMentionCreate(EntityMentionBase):
         """
         if self.detection_method == DetectionMethod.MANUAL:
             if self.segment_id is not None:
-                raise ValueError(
-                    "segment_id must be None for manual mentions"
-                )
+                raise ValueError("segment_id must be None for manual mentions")
             if self.match_start is not None:
-                raise ValueError(
-                    "match_start must be None for manual mentions"
-                )
+                raise ValueError("match_start must be None for manual mentions")
             if self.match_end is not None:
-                raise ValueError(
-                    "match_end must be None for manual mentions"
-                )
+                raise ValueError("match_end must be None for manual mentions")
             if self.confidence is not None:
-                raise ValueError(
-                    "confidence must be None for manual mentions"
-                )
+                raise ValueError("confidence must be None for manual mentions")
             if self.language_code is not None:
-                raise ValueError(
-                    "language_code must be None for manual mentions"
-                )
+                raise ValueError("language_code must be None for manual mentions")
         else:
             # Title and description mentions are not segment-bound
             if (
                 self.mention_source == MentionSource.TRANSCRIPT
                 and self.segment_id is None
             ):
-                raise ValueError(
-                    "segment_id is required for transcript mentions"
-                )
+                raise ValueError("segment_id is required for transcript mentions")
         return self
 
 

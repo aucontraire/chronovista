@@ -25,6 +25,7 @@ from tests.factories.takeout_watch_entry_factory import create_takeout_watch_ent
 
 # Ensure async tests work with coverage
 
+
 class TestTakeoutSeedingService:
     """Test TakeoutSeedingService with modular architecture."""
 

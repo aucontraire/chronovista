@@ -141,11 +141,16 @@ class TestCDXURLConstruction:
 
             # Verify all required components are present
             assert "youtube.com/watch" in requested_url
-            assert "v=dQw4w9WgXcQ" in requested_url or "v%3DdQw4w9WgXcQ" in requested_url
+            assert (
+                "v=dQw4w9WgXcQ" in requested_url or "v%3DdQw4w9WgXcQ" in requested_url
+            )
             assert "output=json" in requested_url
             assert "filter=statuscode:200" in requested_url
             assert "filter=mimetype:text/html" in requested_url
-            assert "fl=timestamp,original,mimetype,statuscode,digest,length" in requested_url
+            assert (
+                "fl=timestamp,original,mimetype,statuscode,digest,length"
+                in requested_url
+            )
             assert "limit=-100" in requested_url
 
     async def test_cdx_response_parsing(self) -> None:
@@ -196,7 +201,9 @@ class TestCDXURLConstruction:
 
             # Verify first snapshot
             assert snapshots[0].timestamp == "20220106075526"
-            assert snapshots[0].original == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+            assert (
+                snapshots[0].original == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+            )
             assert snapshots[0].mimetype == "text/html"
             assert snapshots[0].statuscode == 200
             assert snapshots[0].digest == "ABCDEF123456"
@@ -751,7 +758,14 @@ class TestCDXRetry:
             httpx.Response(
                 status_code=200,
                 json=[
-                    ["timestamp", "original", "mimetype", "statuscode", "digest", "length"],
+                    [
+                        "timestamp",
+                        "original",
+                        "mimetype",
+                        "statuscode",
+                        "digest",
+                        "length",
+                    ],
                     [
                         "20220106075526",
                         "https://www.youtube.com/watch?v=test",
@@ -764,9 +778,10 @@ class TestCDXRetry:
             ),
         ]
 
-        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get, patch(
-            "asyncio.sleep"
-        ) as mock_sleep:
+        with (
+            patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
+            patch("asyncio.sleep") as mock_sleep,
+        ):
             mock_get.side_effect = responses
 
             snapshots = await client.fetch_snapshots("test123")
@@ -795,7 +810,14 @@ class TestCDXRetry:
             httpx.Response(
                 status_code=200,
                 json=[
-                    ["timestamp", "original", "mimetype", "statuscode", "digest", "length"],
+                    [
+                        "timestamp",
+                        "original",
+                        "mimetype",
+                        "statuscode",
+                        "digest",
+                        "length",
+                    ],
                     [
                         "20220106075526",
                         "https://www.youtube.com/watch?v=test",
@@ -808,9 +830,10 @@ class TestCDXRetry:
             ),
         ]
 
-        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get, patch(
-            "asyncio.sleep"
-        ) as mock_sleep:
+        with (
+            patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
+            patch("asyncio.sleep") as mock_sleep,
+        ):
             mock_get.side_effect = responses
 
             snapshots = await client.fetch_snapshots("test123")
@@ -992,9 +1015,7 @@ class TestCDXYearFilteringIntegration:
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
 
-            await client.fetch_snapshots(
-                "dQw4w9WgXcQ", from_year=2018, to_year=2020
-            )
+            await client.fetch_snapshots("dQw4w9WgXcQ", from_year=2018, to_year=2020)
 
             # Verify the URL includes from/to params
             mock_get.assert_called_once()
@@ -1079,9 +1100,7 @@ class TestCDXYearFilteringIntegration:
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
 
-            await client.fetch_snapshots(
-                "dQw4w9WgXcQ", from_year=2018, to_year=2020
-            )
+            await client.fetch_snapshots("dQw4w9WgXcQ", from_year=2018, to_year=2020)
 
         # Cache file should be written at the year-filtered path
         expected_cache = cache_dir / "cdx" / "dQw4w9WgXcQ_from2018_to2020.json"
@@ -1130,9 +1149,7 @@ class TestCDXYearFilteringIntegration:
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
 
-            snapshots = await client.fetch_snapshots(
-                "dQw4w9WgXcQ", from_year=2018
-            )
+            snapshots = await client.fetch_snapshots("dQw4w9WgXcQ", from_year=2018)
 
         # With from_year, results should be oldest-first (ascending)
         assert len(snapshots) == 3
@@ -1218,9 +1235,7 @@ class TestCDXYearFilteringIntegration:
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
 
-            snapshots = await client.fetch_snapshots(
-                "dQw4w9WgXcQ", to_year=2020
-            )
+            snapshots = await client.fetch_snapshots("dQw4w9WgXcQ", to_year=2020)
 
         # Only to_year (no from_year) = newest-first (default)
         assert len(snapshots) == 2
@@ -1273,7 +1288,10 @@ class TestFetchChannelSnapshots:
             assert "output=json" in requested_url
             assert "filter=statuscode:200" in requested_url
             assert "filter=mimetype:text/html" in requested_url
-            assert "fl=timestamp,original,mimetype,statuscode,digest,length" in requested_url
+            assert (
+                "fl=timestamp,original,mimetype,statuscode,digest,length"
+                in requested_url
+            )
             assert "limit=-100" in requested_url
 
     async def test_channel_cache_key_format(self, tmp_path: Path) -> None:

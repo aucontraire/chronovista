@@ -319,8 +319,12 @@ class TestPlaceholderDetection:
     def test_is_placeholder_video_title_edge_cases(self) -> None:
         """Test edge cases for video placeholder detection."""
         assert is_placeholder_video_title("") is False
-        assert is_placeholder_video_title("[Placeholder]") is False  # No " Video " prefix
-        assert is_placeholder_video_title("Placeholder Video abc") is False  # Missing brackets
+        assert (
+            is_placeholder_video_title("[Placeholder]") is False
+        )  # No " Video " prefix
+        assert (
+            is_placeholder_video_title("Placeholder Video abc") is False
+        )  # Missing brackets
 
     def test_is_placeholder_channel_name_true(self) -> None:
         """Test detecting placeholder channel names."""
@@ -336,8 +340,14 @@ class TestPlaceholderDetection:
 
     def test_extract_video_id_from_placeholder(self) -> None:
         """Test extracting video ID from placeholder title."""
-        assert extract_video_id_from_placeholder("[Placeholder] Video dQw4w9WgXcQ") == "dQw4w9WgXcQ"
-        assert extract_video_id_from_placeholder("[Placeholder] Video abc123XYZ_-") == "abc123XYZ_-"
+        assert (
+            extract_video_id_from_placeholder("[Placeholder] Video dQw4w9WgXcQ")
+            == "dQw4w9WgXcQ"
+        )
+        assert (
+            extract_video_id_from_placeholder("[Placeholder] Video abc123XYZ_-")
+            == "abc123XYZ_-"
+        )
 
     def test_extract_video_id_not_placeholder(self) -> None:
         """Test that extract returns None for non-placeholder titles."""

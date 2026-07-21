@@ -245,7 +245,10 @@ class TestDownloadTranscriptVideoIdValidation:
         body = response.json()
         # RFC 7807 shape: type, title, status, detail
         assert body["status"] == 422
-        assert "video" in body.get("detail", "").lower() or "valid" in body.get("detail", "").lower()
+        assert (
+            "video" in body.get("detail", "").lower()
+            or "valid" in body.get("detail", "").lower()
+        )
 
     @patch(
         "chronovista.api.routers.transcripts._transcript_repo",
@@ -981,7 +984,9 @@ class TestDownloadTranscriptInFlightGuard:
     concurrent request for the same video_id should receive 429.
     """
 
-    @patch("chronovista.api.routers.transcripts._downloads_in_progress", new_callable=set)
+    @patch(
+        "chronovista.api.routers.transcripts._downloads_in_progress", new_callable=set
+    )
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_in_flight_video_id_returns_429(
@@ -999,7 +1004,9 @@ class TestDownloadTranscriptInFlightGuard:
 
         assert response.status_code == 429
 
-    @patch("chronovista.api.routers.transcripts._downloads_in_progress", new_callable=set)
+    @patch(
+        "chronovista.api.routers.transcripts._downloads_in_progress", new_callable=set
+    )
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_in_flight_rfc7807_body(
@@ -1020,7 +1027,9 @@ class TestDownloadTranscriptInFlightGuard:
         assert "title" in body
         assert "detail" in body
 
-    @patch("chronovista.api.routers.transcripts._downloads_in_progress", new_callable=set)
+    @patch(
+        "chronovista.api.routers.transcripts._downloads_in_progress", new_callable=set
+    )
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_in_flight_includes_video_id_in_detail(
@@ -1039,7 +1048,9 @@ class TestDownloadTranscriptInFlightGuard:
         assert VALID_VIDEO_ID in body["detail"]
 
     @patch("chronovista.api.routers.transcripts._pref_repo")
-    @patch("chronovista.api.routers.transcripts._downloads_in_progress", new_callable=set)
+    @patch(
+        "chronovista.api.routers.transcripts._downloads_in_progress", new_callable=set
+    )
     @patch("chronovista.api.routers.transcripts._transcript_repo")
     @patch("chronovista.api.routers.transcripts._transcript_service")
     async def test_different_video_id_not_blocked_by_in_flight(
@@ -1272,7 +1283,9 @@ class TestDownloadTranscriptEdgeCases:
         mock_repo.get_video_transcripts = AsyncMock(return_value=[])
         # Enhanced transcript uses enum value 'manual' (lowercase) for Pydantic validation
         mock_service.get_transcript = AsyncMock(
-            return_value=_make_enhanced_transcript(is_cc=False, transcript_type="manual")
+            return_value=_make_enhanced_transcript(
+                is_cc=False, transcript_type="manual"
+            )
         )
         # DB row uses the ORM string "MANUAL" (uppercase) — the endpoint checks this string
         db_transcript = _make_db_transcript(is_cc=False, transcript_type="MANUAL")

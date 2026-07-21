@@ -193,9 +193,7 @@ def _make_named_entity_row(
 # ---------------------------------------------------------------------------
 
 
-def _make_session_success(
-    tag_row: MagicMock, entity_row: MagicMock
-) -> AsyncMock:
+def _make_session_success(tag_row: MagicMock, entity_row: MagicMock) -> AsyncMock:
     """Build a mock AsyncSession for the happy path.
 
     The endpoint makes these DB calls after a successful classify():
@@ -549,7 +547,10 @@ class TestClassifyTagHappyPath:
                 assert call_args.args[1] == "tesla motors"
                 assert call_args.args[2] == EntityType.ORGANIZATION
                 # Verify keyword args
-                assert call_args.kwargs.get("description") == "Electric vehicle manufacturer"
+                assert (
+                    call_args.kwargs.get("description")
+                    == "Electric vehicle manufacturer"
+                )
                 assert call_args.kwargs.get("auto_case") is True
 
     async def test_alias_count_is_zero_when_no_aliases_created(self) -> None:
@@ -639,9 +640,9 @@ class TestClassifyTagNotFound:
 
         assert response.status_code == 404
         body = response.json()
-        assert "status" in body or "type" in body, (
-            f"Expected RFC-7807 error body, got: {body}"
-        )
+        assert (
+            "status" in body or "type" in body
+        ), f"Expected RFC-7807 error body, got: {body}"
 
     async def test_inactive_tag_returns_404(self) -> None:
         """Service raises ValueError mentioning 'status' → endpoint returns 404.
@@ -690,9 +691,7 @@ class TestClassifyTagConflict:
         entity_id = uuid.uuid4()
         tag_row = _make_canonical_tag_row(entity_id=entity_id)
         entity_row = _make_named_entity_row(entity_id=entity_id)
-        mock_session = _make_session_conflict_with_existing_entity(
-            tag_row, entity_row
-        )
+        mock_session = _make_session_conflict_with_existing_entity(tag_row, entity_row)
 
         async for client in _build_client(mock_session):
             with patch(
@@ -719,9 +718,7 @@ class TestClassifyTagConflict:
         entity_id = uuid.uuid4()
         tag_row = _make_canonical_tag_row(entity_id=entity_id)
         entity_row = _make_named_entity_row(entity_id=entity_id)
-        mock_session = _make_session_conflict_with_existing_entity(
-            tag_row, entity_row
-        )
+        mock_session = _make_session_conflict_with_existing_entity(tag_row, entity_row)
 
         async for client in _build_client(mock_session):
             with patch(
@@ -741,9 +738,9 @@ class TestClassifyTagConflict:
 
         assert response.status_code == 409
         body = response.json()
-        assert "status" in body or "type" in body, (
-            f"Expected RFC-7807 error body, got: {body}"
-        )
+        assert (
+            "status" in body or "type" in body
+        ), f"Expected RFC-7807 error body, got: {body}"
 
     async def test_already_classified_includes_existing_entity_in_details(
         self,
@@ -762,9 +759,7 @@ class TestClassifyTagConflict:
             entity_type="person",
             description="CEO of Tesla and SpaceX",
         )
-        mock_session = _make_session_conflict_with_existing_entity(
-            tag_row, entity_row
-        )
+        mock_session = _make_session_conflict_with_existing_entity(tag_row, entity_row)
 
         async for client in _build_client(mock_session):
             with patch(
@@ -879,9 +874,9 @@ class TestClassifyTagBadRequest:
 
         assert response.status_code == 400
         body = response.json()
-        assert "status" in body or "type" in body, (
-            f"Expected RFC-7807 error body, got: {body}"
-        )
+        assert (
+            "status" in body or "type" in body
+        ), f"Expected RFC-7807 error body, got: {body}"
 
 
 # ---------------------------------------------------------------------------
@@ -1344,13 +1339,13 @@ class TestCheckDuplicateEndpoint:
         assert response.status_code == 200, response.text
         body = response.json()
         assert body["is_duplicate"] is True, f"Expected is_duplicate=True in: {body}"
-        assert body["existing_entity"] is not None, (
-            f"Expected existing_entity to be populated in: {body}"
-        )
+        assert (
+            body["existing_entity"] is not None
+        ), f"Expected existing_entity to be populated in: {body}"
         existing = body["existing_entity"]
-        assert existing["entity_id"] == str(entity_id), (
-            f"entity_id mismatch: {existing['entity_id']} != {entity_id}"
-        )
+        assert existing["entity_id"] == str(
+            entity_id
+        ), f"entity_id mismatch: {existing['entity_id']} != {entity_id}"
         assert existing["canonical_name"] == "Garland Nixon"
         assert existing["entity_type"] == "person"
         assert existing["description"] == "Political commentator"
@@ -1374,12 +1369,10 @@ class TestCheckDuplicateEndpoint:
 
         assert response.status_code == 200, response.text
         body = response.json()
-        assert body["is_duplicate"] is False, (
-            f"Expected is_duplicate=False in: {body}"
-        )
-        assert body["existing_entity"] is None, (
-            f"Expected existing_entity=null in: {body}"
-        )
+        assert body["is_duplicate"] is False, f"Expected is_duplicate=False in: {body}"
+        assert (
+            body["existing_entity"] is None
+        ), f"Expected existing_entity=null in: {body}"
 
     async def test_normalization_aware_matching(self) -> None:
         """Lowercase input "garland nixon" matches entity "Garland Nixon".
@@ -1409,12 +1402,12 @@ class TestCheckDuplicateEndpoint:
 
         assert response.status_code == 200, response.text
         body = response.json()
-        assert body["is_duplicate"] is True, (
-            f"Lowercase query should detect mixed-case duplicate, got: {body}"
-        )
-        assert body["existing_entity"]["canonical_name"] == "Garland Nixon", (
-            f"Expected canonical_name='Garland Nixon' in: {body['existing_entity']}"
-        )
+        assert (
+            body["is_duplicate"] is True
+        ), f"Lowercase query should detect mixed-case duplicate, got: {body}"
+        assert (
+            body["existing_entity"]["canonical_name"] == "Garland Nixon"
+        ), f"Expected canonical_name='Garland Nixon' in: {body['existing_entity']}"
 
     async def test_name_normalizes_to_empty(self) -> None:
         """A name that normalizes to empty/None returns is_duplicate=False.
@@ -1439,12 +1432,12 @@ class TestCheckDuplicateEndpoint:
 
         assert response.status_code == 200, response.text
         body = response.json()
-        assert body["is_duplicate"] is False, (
-            f"Empty-normalizing name should yield is_duplicate=False, got: {body}"
-        )
-        assert body["existing_entity"] is None, (
-            f"Expected existing_entity=null when name normalizes empty, got: {body}"
-        )
+        assert (
+            body["is_duplicate"] is False
+        ), f"Empty-normalizing name should yield is_duplicate=False, got: {body}"
+        assert (
+            body["existing_entity"] is None
+        ), f"Expected existing_entity=null when name normalizes empty, got: {body}"
         # Database must NOT be queried when the normalized name is empty
         mock_session.execute.assert_not_called()
 
@@ -1473,12 +1466,12 @@ class TestCheckDuplicateEndpoint:
             f"Expected 429 when rate limit exceeded, got {response.status_code}: "
             f"{response.text}"
         )
-        assert "Retry-After" in response.headers, (
-            f"Missing Retry-After header in 429 response. Headers: {dict(response.headers)}"
-        )
-        assert response.headers["Retry-After"] == "30", (
-            f"Expected Retry-After: 30, got: {response.headers['Retry-After']}"
-        )
+        assert (
+            "Retry-After" in response.headers
+        ), f"Missing Retry-After header in 429 response. Headers: {dict(response.headers)}"
+        assert (
+            response.headers["Retry-After"] == "30"
+        ), f"Expected Retry-After: 30, got: {response.headers['Retry-After']}"
 
     async def test_rate_limit_429_response_body(self) -> None:
         """The 429 response body includes a detail message and retry_after field.
@@ -1503,9 +1496,9 @@ class TestCheckDuplicateEndpoint:
         body = response.json()
         assert "detail" in body, f"Missing 'detail' key in 429 body: {body}"
         assert "retry_after" in body, f"Missing 'retry_after' key in 429 body: {body}"
-        assert body["retry_after"] == 15, (
-            f"Expected retry_after=15, got: {body['retry_after']}"
-        )
+        assert (
+            body["retry_after"] == 15
+        ), f"Expected retry_after=15, got: {body['retry_after']}"
 
     async def test_different_type_not_duplicate(self) -> None:
         """Entity "Garland Nixon" as "person" exists, but checking with type
@@ -1530,12 +1523,12 @@ class TestCheckDuplicateEndpoint:
 
         assert response.status_code == 200, response.text
         body = response.json()
-        assert body["is_duplicate"] is False, (
-            f"Different entity_type should not be flagged as duplicate, got: {body}"
-        )
-        assert body["existing_entity"] is None, (
-            f"Expected existing_entity=null for type mismatch, got: {body}"
-        )
+        assert (
+            body["is_duplicate"] is False
+        ), f"Different entity_type should not be flagged as duplicate, got: {body}"
+        assert (
+            body["existing_entity"] is None
+        ), f"Expected existing_entity=null for type mismatch, got: {body}"
 
 
 # ---------------------------------------------------------------------------
@@ -1714,7 +1707,9 @@ class TestCreateEntityEndpoint:
                 ) as mock_normalizer,
             ):
                 # normalize() maps every alias to a distinct lowercase form
-                mock_normalizer.normalize.side_effect = lambda text: text.strip().lower()
+                mock_normalizer.normalize.side_effect = (
+                    lambda text: text.strip().lower()
+                )
 
                 mock_entity_repo.create = AsyncMock(return_value=db_entity)
                 mock_alias_repo.create = AsyncMock(return_value=MagicMock())
@@ -1730,15 +1725,15 @@ class TestCreateEntityEndpoint:
 
         assert response.status_code == 201, response.text
         body = response.json()
-        assert body["canonical_name"] == "Edward Snowden", (
-            f"Expected 'Edward Snowden', got: {body['canonical_name']}"
-        )
-        assert body["alias_count"] == 3, (
-            f"Expected alias_count=3 (canonical + 2 user aliases), got: {body['alias_count']}"
-        )
-        assert body["entity_type"] == "person", (
-            f"Expected entity_type='person', got: {body['entity_type']}"
-        )
+        assert (
+            body["canonical_name"] == "Edward Snowden"
+        ), f"Expected 'Edward Snowden', got: {body['canonical_name']}"
+        assert (
+            body["alias_count"] == 3
+        ), f"Expected alias_count=3 (canonical + 2 user aliases), got: {body['alias_count']}"
+        assert (
+            body["entity_type"] == "person"
+        ), f"Expected entity_type='person', got: {body['entity_type']}"
 
     async def test_auto_title_casing(self) -> None:
         """Lowercase input "garland nixon" produces canonical_name="Garland Nixon".
@@ -1780,9 +1775,9 @@ class TestCreateEntityEndpoint:
 
         assert response.status_code == 201, response.text
         body = response.json()
-        assert body["canonical_name"] == "Garland Nixon", (
-            f"Expected auto-title-cased 'Garland Nixon', got: {body['canonical_name']}"
-        )
+        assert (
+            body["canonical_name"] == "Garland Nixon"
+        ), f"Expected auto-title-cased 'Garland Nixon', got: {body['canonical_name']}"
 
     async def test_409_duplicate(self) -> None:
         """When an active entity with the same normalized name + type exists, returns 409.
@@ -1854,14 +1849,14 @@ class TestCreateEntityEndpoint:
         # RFC 7807 required fields must be present
         assert "status" in body, f"Missing 'status' in 409 body: {body}"
         assert "detail" in body, f"Missing 'detail' in 409 body: {body}"
-        assert body["status"] == 409, (
-            f"Expected status=409 in body, got: {body['status']}"
-        )
+        assert (
+            body["status"] == 409
+        ), f"Expected status=409 in body, got: {body['status']}"
         # The detail message must reference the normalized name so callers
         # know which entity caused the conflict
-        assert "edward snowden" in body["detail"], (
-            f"Expected normalized name in detail, got: {body['detail']}"
-        )
+        assert (
+            "edward snowden" in body["detail"]
+        ), f"Expected normalized name in detail, got: {body['detail']}"
 
     async def test_422_name_normalizes_to_empty(self) -> None:
         """A name whose normalized form is empty triggers a 422 APIValidationError.
@@ -1918,7 +1913,9 @@ class TestCreateEntityEndpoint:
                 # "edward snowden" -> "edward snowden" (canonical)
                 # "Ed Snowden"     -> "ed snowden" (unique alias)
                 # "ed snowden"     -> "ed snowden" (DUPLICATE -> skipped)
-                mock_normalizer.normalize.side_effect = lambda text: text.strip().lower()
+                mock_normalizer.normalize.side_effect = (
+                    lambda text: text.strip().lower()
+                )
                 mock_entity_repo.create = AsyncMock(return_value=db_entity)
                 mock_alias_repo.create = AsyncMock(return_value=MagicMock())
 

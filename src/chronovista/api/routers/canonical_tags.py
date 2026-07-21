@@ -129,8 +129,7 @@ def _check_rate_limit(
 
     # Clean old entries (older than window)
     request_counts[client_id] = [
-        ts for ts in request_counts[client_id]
-        if ts > window_start
+        ts for ts in request_counts[client_id] if ts > window_start
     ]
 
     # Check if limit exceeded
@@ -251,9 +250,7 @@ async def get_canonical_tag_videos(
         transcripts = list(video.transcripts) if video.transcripts else []
         transcript_count = len(transcripts)
         languages = list({t.language_code for t in transcripts})
-        has_manual = any(
-            t.is_cc or t.transcript_type == "MANUAL" for t in transcripts
-        )
+        has_manual = any(t.is_cc or t.transcript_type == "MANUAL" for t in transcripts)
 
         transcript_summary = TranscriptSummary(
             count=transcript_count,
@@ -264,9 +261,7 @@ async def get_canonical_tag_videos(
         channel_title = video.channel.title if video.channel else None
 
         # Extract category info
-        category_id_val = (
-            video.category_id if hasattr(video, "category_id") else None
-        )
+        category_id_val = video.category_id if hasattr(video, "category_id") else None
         category_name = (
             video.category.name
             if hasattr(video, "category") and video.category
@@ -318,7 +313,9 @@ async def get_canonical_tag_videos(
 )
 async def resolve_canonical_tag(
     raw_form: str = Query(
-        ..., min_length=1, max_length=200,
+        ...,
+        min_length=1,
+        max_length=200,
         description="Exact raw tag string to resolve to a canonical tag",
     ),
     alias_limit: int = Query(
@@ -360,9 +357,7 @@ async def resolve_canonical_tag(
             hint="No canonical tag found for this raw tag. It may be unresolved.",
         )
 
-    aliases = await _repository.get_top_aliases(
-        session, tag.id, limit=alias_limit
-    )
+    aliases = await _repository.get_top_aliases(session, tag.id, limit=alias_limit)
 
     alias_items: list[TagAliasItem] = [
         TagAliasItem(
@@ -436,9 +431,7 @@ async def get_canonical_tag_detail(
         )
 
     # Get top aliases
-    aliases = await _repository.get_top_aliases(
-        session, tag.id, limit=alias_limit
-    )
+    aliases = await _repository.get_top_aliases(session, tag.id, limit=alias_limit)
 
     # Build alias items
     alias_items: list[TagAliasItem] = [

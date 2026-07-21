@@ -50,7 +50,9 @@ logger = logging.getLogger(__name__)
 # Retry configuration for transient failures (FR-052)
 # Uses settings.retry_attempts and settings.retry_backoff for configurability
 MAX_RETRIES = settings.retry_attempts
-RETRY_DELAYS = [1.0 * (settings.retry_backoff**i) for i in range(settings.retry_attempts)]
+RETRY_DELAYS = [
+    1.0 * (settings.retry_backoff**i) for i in range(settings.retry_attempts)
+]
 
 # HTTP status codes
 HTTP_BAD_REQUEST = 400
@@ -525,9 +527,7 @@ class YouTubeService(YouTubeServiceInterface):
             batch = video_ids[i : i + batch_size]
             batch_number = i // batch_size + 1
             try:
-                logger.debug(
-                    f"Fetching batch {batch_number} ({len(batch)} videos)"
-                )
+                logger.debug(f"Fetching batch {batch_number} ({len(batch)} videos)")
                 batch_results = await self.get_video_details(batch)
                 all_videos.extend(batch_results)
 
@@ -658,7 +658,10 @@ class YouTubeService(YouTubeServiceInterface):
         return results
 
     async def get_playlist_videos(
-        self, playlist_id: PlaylistId, max_results: int | None = None, fetch_all: bool = True
+        self,
+        playlist_id: PlaylistId,
+        max_results: int | None = None,
+        fetch_all: bool = True,
     ) -> list[YouTubePlaylistItemResponse]:
         """
         Get videos from a specific playlist.
@@ -796,9 +799,7 @@ class YouTubeService(YouTubeServiceInterface):
             logger.warning(f"Could not fetch captions for video {video_id}: {e}")
             return []
 
-    async def download_caption(
-        self, caption_id: str, fmt: str = "srt"
-    ) -> str | None:
+    async def download_caption(self, caption_id: str, fmt: str = "srt") -> str | None:
         """
         Download caption content using YouTube Data API v3.
 
@@ -1210,7 +1211,9 @@ class YouTubeService(YouTubeServiceInterface):
                     found_ids.add(playlist.id)
             except Exception as e:
                 # Log error but continue with remaining batches
-                logger.warning(f"Error fetching playlist batch {i // batch_size + 1}: {e}")
+                logger.warning(
+                    f"Error fetching playlist batch {i // batch_size + 1}: {e}"
+                )
 
         not_found = requested_ids - found_ids
         return all_playlists, not_found

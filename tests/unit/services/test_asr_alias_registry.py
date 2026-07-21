@@ -171,9 +171,7 @@ class TestResolveEntityIdFromText:
         session = _mock_execute_returns(entity_mock)
 
         # The implementation does text.lower().strip() before the SQL query.
-        result = await resolve_entity_id_from_text(
-            session, "  Claudia Sheinbaum  "
-        )
+        result = await resolve_entity_id_from_text(session, "  Claudia Sheinbaum  ")
 
         # Should still resolve even with surrounding whitespace.
         assert result is not None
@@ -228,11 +226,14 @@ class TestRegisterAsrAlias:
         # execute sequence: entity lookup → existing alias check (None → create)
         session = _mock_execute_returns(entity_mock, None)
 
-        with patch(
-            "chronovista.services.asr_alias_registry.EntityAliasRepository"
-        ) as MockRepo, patch(
-            "chronovista.services.asr_alias_registry.TagNormalizationService"
-        ) as MockNorm:
+        with (
+            patch(
+                "chronovista.services.asr_alias_registry.EntityAliasRepository"
+            ) as MockRepo,
+            patch(
+                "chronovista.services.asr_alias_registry.TagNormalizationService"
+            ) as MockNorm,
+        ):
             mock_repo_instance = AsyncMock()
             MockRepo.return_value = mock_repo_instance
             MockNorm.return_value.normalize.return_value = "claudia shainbom"
@@ -260,11 +261,14 @@ class TestRegisterAsrAlias:
         # execute sequence: entity lookup (None) → alias lookup → existing alias check (None)
         session = _mock_execute_returns(None, alias_mock, None)
 
-        with patch(
-            "chronovista.services.asr_alias_registry.EntityAliasRepository"
-        ) as MockRepo, patch(
-            "chronovista.services.asr_alias_registry.TagNormalizationService"
-        ) as MockNorm:
+        with (
+            patch(
+                "chronovista.services.asr_alias_registry.EntityAliasRepository"
+            ) as MockRepo,
+            patch(
+                "chronovista.services.asr_alias_registry.TagNormalizationService"
+            ) as MockNorm,
+        ):
             mock_repo_instance = AsyncMock()
             MockRepo.return_value = mock_repo_instance
             MockNorm.return_value.normalize.return_value = "seon"
@@ -347,11 +351,14 @@ class TestRegisterAsrAlias:
 
         session = _mock_execute_returns(entity_mock, None)
 
-        with patch(
-            "chronovista.services.asr_alias_registry.EntityAliasRepository"
-        ) as MockRepo, patch(
-            "chronovista.services.asr_alias_registry.TagNormalizationService"
-        ) as MockNorm:
+        with (
+            patch(
+                "chronovista.services.asr_alias_registry.EntityAliasRepository"
+            ) as MockRepo,
+            patch(
+                "chronovista.services.asr_alias_registry.TagNormalizationService"
+            ) as MockNorm,
+        ):
             mock_repo_instance = AsyncMock()
             MockRepo.return_value = mock_repo_instance
             MockNorm.return_value.normalize.return_value = "claudia shainbom"
@@ -483,7 +490,9 @@ class TestRegisterAsrAlias:
         session = AsyncMock()
         session.execute.side_effect = RuntimeError("Connection refused")
 
-        with caplog.at_level(logging.WARNING, logger="chronovista.services.asr_alias_registry"):
+        with caplog.at_level(
+            logging.WARNING, logger="chronovista.services.asr_alias_registry"
+        ):
             await register_asr_alias(
                 session,
                 original_text="Shainbom",
@@ -502,11 +511,14 @@ class TestRegisterAsrAlias:
 
         session = _mock_execute_returns(entity_mock, None)
 
-        with patch(
-            "chronovista.services.asr_alias_registry.EntityAliasRepository"
-        ) as MockRepo, patch(
-            "chronovista.services.asr_alias_registry.TagNormalizationService"
-        ) as MockNorm:
+        with (
+            patch(
+                "chronovista.services.asr_alias_registry.EntityAliasRepository"
+            ) as MockRepo,
+            patch(
+                "chronovista.services.asr_alias_registry.TagNormalizationService"
+            ) as MockNorm,
+        ):
             mock_repo_instance = AsyncMock()
             MockRepo.return_value = mock_repo_instance
             MockNorm.return_value.normalize.return_value = "claudia shainbom"
@@ -572,13 +584,15 @@ class TestRegisterAsrAlias:
         # T022: normalize() is now called twice — once for the full-string alias
         # ("Claudia Shainbom") and once for the minimal error token ("Shainbom").
         calls = mock_normalizer.normalize.call_args_list
-        assert len(calls) == 2, f"Expected 2 normalize() calls, got {len(calls)}: {calls}"
-        assert calls[0].args[0] == "Claudia Shainbom", (
-            f"First call should normalize the full-string alias, got: {calls[0].args[0]}"
-        )
-        assert calls[1].args[0] == "Shainbom", (
-            f"Second call should normalize the minimal error token, got: {calls[1].args[0]}"
-        )
+        assert (
+            len(calls) == 2
+        ), f"Expected 2 normalize() calls, got {len(calls)}: {calls}"
+        assert (
+            calls[0].args[0] == "Claudia Shainbom"
+        ), f"First call should normalize the full-string alias, got: {calls[0].args[0]}"
+        assert (
+            calls[1].args[0] == "Shainbom"
+        ), f"Second call should normalize the minimal error token, got: {calls[1].args[0]}"
 
     async def test_falls_back_to_lower_when_normalize_returns_none(self) -> None:
         """If ``normalize()`` returns None/falsy, falls back to ``original_text.lower()``."""
@@ -589,11 +603,14 @@ class TestRegisterAsrAlias:
         # Normalize returns empty string → falsy
         session = _mock_execute_returns(entity_mock, None)
 
-        with patch(
-            "chronovista.services.asr_alias_registry.EntityAliasRepository"
-        ) as MockRepo, patch(
-            "chronovista.services.asr_alias_registry.TagNormalizationService"
-        ) as MockNorm:
+        with (
+            patch(
+                "chronovista.services.asr_alias_registry.EntityAliasRepository"
+            ) as MockRepo,
+            patch(
+                "chronovista.services.asr_alias_registry.TagNormalizationService"
+            ) as MockNorm,
+        ):
             mock_repo_instance = AsyncMock()
             MockRepo.return_value = mock_repo_instance
             MockNorm.return_value.normalize.return_value = ""  # falsy
@@ -629,9 +646,7 @@ class TestRegisterAsrAlias:
             )
 
         # The log_prefix must appear in the warning message
-        assert any(
-            "batch-correction" in record.message for record in caplog.records
-        )
+        assert any("batch-correction" in record.message for record in caplog.records)
 
     async def test_default_log_prefix_is_asr_alias(self, caplog: Any) -> None:
         """Default ``log_prefix`` is ``'asr-alias'``."""
@@ -661,11 +676,14 @@ class TestRegisterAsrAlias:
 
         session = _mock_execute_returns(entity_mock, None)
 
-        with patch(
-            "chronovista.services.asr_alias_registry.EntityAliasRepository"
-        ) as MockRepo, patch(
-            "chronovista.services.asr_alias_registry.TagNormalizationService"
-        ) as MockNorm:
+        with (
+            patch(
+                "chronovista.services.asr_alias_registry.EntityAliasRepository"
+            ) as MockRepo,
+            patch(
+                "chronovista.services.asr_alias_registry.TagNormalizationService"
+            ) as MockNorm,
+        ):
             mock_repo_instance = AsyncMock()
             MockRepo.return_value = mock_repo_instance
             MockNorm.return_value.normalize.return_value = "claudia shainbom"
@@ -689,11 +707,14 @@ class TestRegisterAsrAlias:
 
         session = _mock_execute_returns(entity_mock, None)
 
-        with patch(
-            "chronovista.services.asr_alias_registry.EntityAliasRepository"
-        ) as MockRepo, patch(
-            "chronovista.services.asr_alias_registry.TagNormalizationService"
-        ) as MockNorm:
+        with (
+            patch(
+                "chronovista.services.asr_alias_registry.EntityAliasRepository"
+            ) as MockRepo,
+            patch(
+                "chronovista.services.asr_alias_registry.TagNormalizationService"
+            ) as MockNorm,
+        ):
             mock_repo_instance = AsyncMock()
             MockRepo.return_value = mock_repo_instance
             MockNorm.return_value.normalize.return_value = "test alias"
@@ -810,11 +831,14 @@ class TestRegisterAsrAliasQualityGate:
 
         session = _mock_execute_returns(entity_mock, None)
 
-        with patch(
-            "chronovista.services.asr_alias_registry.EntityAliasRepository"
-        ) as MockRepo, patch(
-            "chronovista.services.asr_alias_registry.TagNormalizationService"
-        ) as MockNorm:
+        with (
+            patch(
+                "chronovista.services.asr_alias_registry.EntityAliasRepository"
+            ) as MockRepo,
+            patch(
+                "chronovista.services.asr_alias_registry.TagNormalizationService"
+            ) as MockNorm,
+        ):
             mock_repo_instance = AsyncMock()
             MockRepo.return_value = mock_repo_instance
             MockNorm.return_value.normalize.return_value = "claudia shainbom"

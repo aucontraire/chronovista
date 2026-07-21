@@ -147,10 +147,10 @@ def _configure_entity_query(
     segment_result.scalars.return_value = segment_scalars
 
     mock_session.execute.side_effect = [
-        entity_result,    # 1 entity lookup
-        alias_result,     # 2 alias lookup
+        entity_result,  # 1 entity lookup
+        alias_result,  # 2 alias lookup
         evidence_result,  # 4 evidence lookup
-        segment_result,   # 5 segments
+        segment_result,  # 5 segments
     ]
 
 
@@ -182,9 +182,9 @@ class TestPhoneticMatcherScoreMatch:
             entity_aliases=[],
             has_corroborating_evidence=False,
         )
-        assert score > 0.5, (
-            f"Expected 'Shanebam' → 'Sheinbaum' to score above 0.5, got {score:.4f}"
-        )
+        assert (
+            score > 0.5
+        ), f"Expected 'Shanebam' → 'Sheinbaum' to score above 0.5, got {score:.4f}"
 
     def test_single_word_corruption_with_evidence_boosts_score(self) -> None:
         """Corroborating evidence pushes the 'Shanebam' → 'Sheinbaum' score higher.
@@ -204,9 +204,9 @@ class TestPhoneticMatcherScoreMatch:
             entity_aliases=[],
             has_corroborating_evidence=True,
         )
-        assert score_with_evidence > score_no_evidence, (
-            "Evidence boost should increase the score"
-        )
+        assert (
+            score_with_evidence > score_no_evidence
+        ), "Evidence boost should increase the score"
 
     # ---- (b) Truncation ----
 
@@ -223,9 +223,9 @@ class TestPhoneticMatcherScoreMatch:
             has_corroborating_evidence=False,
         )
         # Truncations should show some phonetic similarity but not a high match
-        assert 0.0 < score < 0.85, (
-            f"Expected truncation 'Shan' to score in medium range, got {score:.4f}"
-        )
+        assert (
+            0.0 < score < 0.85
+        ), f"Expected truncation 'Shan' to score in medium range, got {score:.4f}"
 
     # ---- (c) Multi-word match ----
 
@@ -243,9 +243,9 @@ class TestPhoneticMatcherScoreMatch:
             has_corroborating_evidence=False,
         )
         # Multi-word forms that are close but not exact should score positively
-        assert score > 0.0, (
-            f"Expected multi-word 'Shane Bound' to score above 0.0, got {score:.4f}"
-        )
+        assert (
+            score > 0.0
+        ), f"Expected multi-word 'Shane Bound' to score above 0.0, got {score:.4f}"
 
     # ---- (d) Non-match filtered out ----
 
@@ -262,9 +262,9 @@ class TestPhoneticMatcherScoreMatch:
             entity_aliases=[],
             has_corroborating_evidence=False,
         )
-        assert score < 0.5, (
-            f"Expected 'Shane believes' to score below 0.5, got {score:.4f}"
-        )
+        assert (
+            score < 0.5
+        ), f"Expected 'Shane believes' to score below 0.5, got {score:.4f}"
 
     # ---- (e) Weight sum: 0.4 + 0.3 + 0.3 = 1.0 ----
 
@@ -281,9 +281,9 @@ class TestPhoneticMatcherScoreMatch:
             has_corroborating_evidence=True,
         )
         assert score <= 1.0, f"Score exceeded 1.0: {score}"
-        assert score >= 0.9, (
-            f"Identical ngram+entity should score near 1.0, got {score:.4f}"
-        )
+        assert (
+            score >= 0.9
+        ), f"Identical ngram+entity should score near 1.0, got {score:.4f}"
 
     def test_weight_sum_with_no_evidence_caps_at_0_7(self) -> None:
         """Without evidence the maximum reachable score is 0.4+0.3 = 0.7.
@@ -299,9 +299,9 @@ class TestPhoneticMatcherScoreMatch:
             has_corroborating_evidence=False,
         )
         # Should be at or near 0.7 (the two components max out at 1.0 each)
-        assert score <= 0.7 + 1e-9, (
-            f"Without evidence, score must not exceed 0.7; got {score:.4f}"
-        )
+        assert (
+            score <= 0.7 + 1e-9
+        ), f"Without evidence, score must not exceed 0.7; got {score:.4f}"
 
     def test_evidence_contribution_is_exactly_0_3(self) -> None:
         """The evidence boost is exactly 0.3 (not scaled).
@@ -323,9 +323,9 @@ class TestPhoneticMatcherScoreMatch:
         )
         # Both are clipped to 1.0 — confirm that raw diff is ≤ 0.3
         diff = boosted - base
-        assert 0.0 <= diff <= 0.3 + 1e-9, (
-            f"Evidence boost should be at most 0.3; actual diff was {diff:.4f}"
-        )
+        assert (
+            0.0 <= diff <= 0.3 + 1e-9
+        ), f"Evidence boost should be at most 0.3; actual diff was {diff:.4f}"
 
     # ---- (f) Corroborating evidence binary boost ----
 
@@ -371,9 +371,9 @@ class TestPhoneticMatcherScoreMatch:
         )
         # The difference should be 0.3 (subject to min(total, 1.0) clipping)
         diff = score_with - score_without
-        assert diff == pytest.approx(0.3, abs=1e-9), (
-            f"Expected evidence boost of 0.3, got {diff:.6f}"
-        )
+        assert diff == pytest.approx(
+            0.3, abs=1e-9
+        ), f"Expected evidence boost of 0.3, got {diff:.6f}"
 
     # ---- (g) Non-alphabetic character stripping ----
 
@@ -412,9 +412,9 @@ class TestPhoneticMatcherScoreMatch:
         )
         # After stripping the digit '3' becomes 'lmo', which is phonetically
         # similar to 'Elmo' — score should be above zero.
-        assert score_with_digit > 0.0, (
-            "Digit-stripped form should still produce a positive phonetic score"
-        )
+        assert (
+            score_with_digit > 0.0
+        ), "Digit-stripped form should still produce a positive phonetic score"
 
     # ---- (h) Canonical-name-only fallback ----
 
@@ -430,9 +430,9 @@ class TestPhoneticMatcherScoreMatch:
             entity_aliases=[],
             has_corroborating_evidence=False,
         )
-        assert score > 0.5, (
-            "Exact canonical name match with no aliases should score above 0.5"
-        )
+        assert (
+            score > 0.5
+        ), "Exact canonical name match with no aliases should score above 0.5"
 
     def test_alias_match_beats_canonical_name_mismatch(self) -> None:
         """A strong alias match should produce a higher score than entity_name alone.
@@ -454,9 +454,9 @@ class TestPhoneticMatcherScoreMatch:
             entity_aliases=["Noam"],
             has_corroborating_evidence=False,
         )
-        assert score_with_alias > score_no_alias, (
-            "Alias matching ngram exactly should score higher than canonical mismatch"
-        )
+        assert (
+            score_with_alias > score_no_alias
+        ), "Alias matching ngram exactly should score higher than canonical mismatch"
 
     # ---- (i) Score is in [0.0, 1.0] for all inputs ----
 
@@ -470,9 +470,9 @@ class TestPhoneticMatcherScoreMatch:
         ]
         for ngram, name, aliases, evidence in cases:
             score = PhoneticMatcher.score_match(ngram, name, aliases, evidence)
-            assert 0.0 <= score <= 1.0, (
-                f"Score out of range for ({ngram!r}, {name!r}): {score}"
-            )
+            assert (
+                0.0 <= score <= 1.0
+            ), f"Score out of range for ({ngram!r}, {name!r}): {score}"
 
 
 # ---------------------------------------------------------------------------
@@ -601,9 +601,9 @@ class TestPhoneticMatcherMatchEntity:
 
         # Sorted by confidence descending
         confidences = [m.confidence for m in result]
-        assert confidences == sorted(confidences, reverse=True), (
-            "Results must be sorted by confidence descending"
-        )
+        assert confidences == sorted(
+            confidences, reverse=True
+        ), "Results must be sorted by confidence descending"
 
     # ---- (j) threshold filtering ----
 
@@ -643,9 +643,7 @@ class TestPhoneticMatcherMatchEntity:
         )
 
         # Unrelated text should produce no matches above 0.9
-        assert result == [], (
-            "Unrelated text should produce no matches at threshold=0.9"
-        )
+        assert result == [], "Unrelated text should produce no matches at threshold=0.9"
 
     async def test_lower_threshold_returns_more_matches(
         self,
@@ -717,9 +715,9 @@ class TestPhoneticMatcherMatchEntity:
             threshold=0.3,
         )
 
-        assert len(low_threshold_result) >= len(high_threshold_result), (
-            "Lower threshold should yield at least as many matches as higher threshold"
-        )
+        assert len(low_threshold_result) >= len(
+            high_threshold_result
+        ), "Lower threshold should yield at least as many matches as higher threshold"
 
     # ---- PhoneticMatch fields are populated correctly ----
 
@@ -797,7 +795,7 @@ class TestPhoneticMatcherMatchEntity:
         seg = MagicMock()
         seg.video_id = "dQw4w9WgXcQ"
         seg.id = 99
-        seg.text = "garbled nonsense words"          # raw text — unrelated
+        seg.text = "garbled nonsense words"  # raw text — unrelated
         seg.corrected_text = "Sheinbaum spoke today"  # corrected — should score
         seg.has_correction = True
 
@@ -822,6 +820,6 @@ class TestPhoneticMatcherMatchEntity:
 
         # We expect at least the "Sheinbaum" N-gram from the corrected text
         match_texts = [m.original_text for m in result]
-        assert any("Sheinbaum" in t for t in match_texts), (
-            f"Expected 'Sheinbaum' from corrected_text in matches; got {match_texts}"
-        )
+        assert any(
+            "Sheinbaum" in t for t in match_texts
+        ), f"Expected 'Sheinbaum' from corrected_text in matches; got {match_texts}"

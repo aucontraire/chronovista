@@ -41,7 +41,9 @@ from chronovista.services.transcript_service import (
 VIDEO_ID = create_test_video_id("batch")
 
 
-def _make_snippet_mock(text: str = "Hello world", start: float = 0.0, duration: float = 2.0) -> MagicMock:
+def _make_snippet_mock(
+    text: str = "Hello world", start: float = 0.0, duration: float = 2.0
+) -> MagicMock:
     """Return a mock FetchedTranscript snippet (has .text, .start, .duration)."""
     s = MagicMock()
     s.text = text
@@ -326,10 +328,10 @@ class TestGetTranscriptsForLanguages:
                 include_translations=True,
             )
 
-        assert result["en"] is not None   # native
-        assert result["es"] is not None   # translated successfully
-        assert result["it"] is not None   # native
-        assert result["ja"] is None       # translation attempted but failed
+        assert result["en"] is not None  # native
+        assert result["es"] is not None  # translated successfully
+        assert result["it"] is not None  # native
+        assert result["ja"] is None  # translation attempted but failed
 
         en_transcript.fetch.assert_called_once()
         it_transcript.fetch.assert_called_once()
@@ -379,7 +381,9 @@ class TestGetTranscriptsForLanguages:
     # Individual fetch() raises — that language becomes None, others succeed
     # ------------------------------------------------------------------
 
-    async def test_individual_fetch_failure_returns_none_for_that_language(self) -> None:
+    async def test_individual_fetch_failure_returns_none_for_that_language(
+        self,
+    ) -> None:
         """When a specific language's .fetch() raises, it maps to None while others succeed."""
         en_transcript = _make_transcript_mock(
             language_code="en",
@@ -525,7 +529,9 @@ class TestGetTranscriptsForLanguages:
     # Auto-generated fallback as translation source
     # ------------------------------------------------------------------
 
-    async def test_auto_generated_used_as_translation_source_when_no_manual(self) -> None:
+    async def test_auto_generated_used_as_translation_source_when_no_manual(
+        self,
+    ) -> None:
         """When no manual translatable transcript exists, auto-generated is used as translation source."""
         auto_en = _make_transcript_mock(
             language_code="en",
@@ -746,7 +752,9 @@ class TestGetTranscriptsForLanguages:
     # include_translations=False (default): no translation attempted
     # ------------------------------------------------------------------
 
-    async def test_include_translations_false_non_native_language_returns_none(self) -> None:
+    async def test_include_translations_false_non_native_language_returns_none(
+        self,
+    ) -> None:
         """When include_translations=False (default), a non-native language returns None without any translate() call."""
         en_transcript = _make_transcript_mock(
             language_code="en",
@@ -811,7 +819,9 @@ class TestGetTranscriptsForLanguages:
         assert result["fr"] is None
         en_transcript.translate.assert_not_called()
 
-    async def test_include_translations_false_does_not_fetch_non_native_when_translatable_exists(self) -> None:
+    async def test_include_translations_false_does_not_fetch_non_native_when_translatable_exists(
+        self,
+    ) -> None:
         """When include_translations=False, a non-native language returns None even if a translatable
         source exists — translation is never attempted.
         """
@@ -848,10 +858,12 @@ class TestGetTranscriptsForLanguages:
             )
 
         assert result["en"] is not None  # native always works
-        assert result["es"] is None      # non-native is not attempted
+        assert result["es"] is None  # non-native is not attempted
         en_transcript.translate.assert_not_called()
 
-    async def test_include_translations_true_fetches_non_native_via_translation(self) -> None:
+    async def test_include_translations_true_fetches_non_native_via_translation(
+        self,
+    ) -> None:
         """When include_translations=True, a language without a native transcript is fetched
         via translation and returns a non-None result.
         """
@@ -1368,9 +1380,7 @@ class TestApiListIpBlockEarlyTermination:
         service = _service_with_api()
 
         mock_api_instance = MagicMock()
-        mock_api_instance.list.side_effect = Exception(
-            "blocking requests from your ip"
-        )
+        mock_api_instance.list.side_effect = Exception("blocking requests from your ip")
 
         async def _mock_get_transcript(
             video_id: str,
@@ -1398,7 +1408,9 @@ class TestApiListIpBlockEarlyTermination:
         assert result["es"] is None
         assert result["fr"] is None
 
-    async def test_api_list_ip_block_english_also_fails_raises_unavailable(self) -> None:
+    async def test_api_list_ip_block_english_also_fails_raises_unavailable(
+        self,
+    ) -> None:
         """When api.list() IP-blocks and the English last-resort also fails, raises TranscriptServiceUnavailableError."""
         service = _service_with_api()
 
@@ -1420,7 +1432,9 @@ class TestApiListIpBlockEarlyTermination:
             "chronovista.services.transcript_service.YouTubeTranscriptApi",
             return_value=mock_api_instance,
         ):
-            with pytest.raises(TranscriptServiceUnavailableError, match="temporarily blocking"):
+            with pytest.raises(
+                TranscriptServiceUnavailableError, match="temporarily blocking"
+            ):
                 await service.get_transcripts_for_languages(
                     video_id=VIDEO_ID,
                     language_codes=["en", "es", "fr"],
@@ -1438,9 +1452,7 @@ class TestApiListIpBlockEarlyTermination:
         service = _service_with_api()
 
         mock_api_instance = MagicMock()
-        mock_api_instance.list.side_effect = Exception(
-            "your ip is blocked by YouTube"
-        )
+        mock_api_instance.list.side_effect = Exception("your ip is blocked by YouTube")
 
         called_language_codes: list[str] = []
 
@@ -1454,10 +1466,13 @@ class TestApiListIpBlockEarlyTermination:
 
         service.get_transcript = _mock_get_transcript  # type: ignore[method-assign]
 
-        with patch(
-            "chronovista.services.transcript_service.YouTubeTranscriptApi",
-            return_value=mock_api_instance,
-        ), pytest.raises(TranscriptServiceUnavailableError):
+        with (
+            patch(
+                "chronovista.services.transcript_service.YouTubeTranscriptApi",
+                return_value=mock_api_instance,
+            ),
+            pytest.raises(TranscriptServiceUnavailableError),
+        ):
             await service.get_transcripts_for_languages(
                 video_id=VIDEO_ID,
                 language_codes=["en", "es", "fr", "de"],
@@ -1473,9 +1488,7 @@ class TestApiListIpBlockEarlyTermination:
         service = _service_with_api()
 
         mock_api_instance = MagicMock()
-        mock_api_instance.list.side_effect = Exception(
-            "blocking requests from your ip"
-        )
+        mock_api_instance.list.side_effect = Exception("blocking requests from your ip")
 
         async def _mock_get_transcript(
             video_id: str,
@@ -1490,7 +1503,9 @@ class TestApiListIpBlockEarlyTermination:
             "chronovista.services.transcript_service.YouTubeTranscriptApi",
             return_value=mock_api_instance,
         ):
-            with pytest.raises(TranscriptServiceUnavailableError, match="temporarily blocking"):
+            with pytest.raises(
+                TranscriptServiceUnavailableError, match="temporarily blocking"
+            ):
                 await service.get_transcripts_for_languages(
                     video_id=VIDEO_ID,
                     language_codes=["en", "ja", "zh"],
@@ -1583,7 +1598,9 @@ class TestApiListNonIpBlockWithConsecutiveIpBlockFallback:
             "chronovista.services.transcript_service.YouTubeTranscriptApi",
             return_value=mock_api_instance,
         ):
-            with pytest.raises(TranscriptServiceUnavailableError, match="temporarily blocking"):
+            with pytest.raises(
+                TranscriptServiceUnavailableError, match="temporarily blocking"
+            ):
                 await service.get_transcripts_for_languages(
                     video_id=VIDEO_ID,
                     # 'es' and 'fr' both IP-block → 'de' and 'ja' must NOT be attempted
@@ -1647,9 +1664,9 @@ class TestApiListNonIpBlockWithConsecutiveIpBlockFallback:
         # de → IP block (count=1), ja → succeeds (count reset to 0)
         assert call_log == ["es", "fr", "de", "ja"]
 
-        assert result["es"] is None   # IP block
-        assert result["fr"] is None   # TranscriptNotFoundError
-        assert result["de"] is None   # IP block
+        assert result["es"] is None  # IP block
+        assert result["fr"] is None  # TranscriptNotFoundError
+        assert result["de"] is None  # IP block
         assert result["ja"] is not None  # success
 
     async def test_one_ip_block_then_success_does_not_stop_loop(self) -> None:
@@ -1721,9 +1738,7 @@ class TestFetchLoopIpBlockEarlyTermination:
             "YouTube is blocking requests from your IP"
         )
         fr_transcript = _make_transcript_mock(language_code="fr", language="French")
-        fr_transcript.fetch.side_effect = Exception(
-            "blocking requests — ip ban active"
-        )
+        fr_transcript.fetch.side_effect = Exception("blocking requests — ip ban active")
         de_transcript = _make_transcript_mock(language_code="de", language="German")
         ja_transcript = _make_transcript_mock(language_code="ja", language="Japanese")
 
@@ -1805,9 +1820,9 @@ class TestFetchLoopIpBlockEarlyTermination:
                 language_codes=["en", "es", "fr", "de"],
             )
 
-        assert result["en"] is None   # IP block
+        assert result["en"] is None  # IP block
         assert result["es"] is not None  # success
-        assert result["fr"] is None   # IP block
+        assert result["fr"] is None  # IP block
         assert result["de"] is not None  # still attempted — counter was reset
 
         # Verify de.fetch() was actually called
@@ -1816,13 +1831,9 @@ class TestFetchLoopIpBlockEarlyTermination:
     async def test_first_two_fetches_ip_block_raises_unavailable(self) -> None:
         """When the first 2 requested languages both IP-block and all results are None, raises TranscriptServiceUnavailableError."""
         en_transcript = _make_transcript_mock(language_code="en", language="English")
-        en_transcript.fetch.side_effect = Exception(
-            "blocking requests from your ip"
-        )
+        en_transcript.fetch.side_effect = Exception("blocking requests from your ip")
         es_transcript = _make_transcript_mock(language_code="es", language="Spanish")
-        es_transcript.fetch.side_effect = Exception(
-            "your ip has been blocked"
-        )
+        es_transcript.fetch.side_effect = Exception("your ip has been blocked")
         fr_transcript = _make_transcript_mock(language_code="fr", language="French")
         de_transcript = _make_transcript_mock(language_code="de", language="German")
 
@@ -1838,7 +1849,9 @@ class TestFetchLoopIpBlockEarlyTermination:
             "chronovista.services.transcript_service.YouTubeTranscriptApi",
             return_value=mock_api_instance,
         ):
-            with pytest.raises(TranscriptServiceUnavailableError, match="temporarily blocking"):
+            with pytest.raises(
+                TranscriptServiceUnavailableError, match="temporarily blocking"
+            ):
                 await service.get_transcripts_for_languages(
                     video_id=VIDEO_ID,
                     language_codes=["en", "es", "fr", "de"],
@@ -1897,9 +1910,7 @@ class TestFetchLoopIpBlockEarlyTermination:
         en_transcript = _make_transcript_mock(language_code="en", language="English")
         en_transcript.fetch.side_effect = Exception("your ip is blocked")
         es_transcript = _make_transcript_mock(language_code="es", language="Spanish")
-        es_transcript.fetch.side_effect = Exception(
-            "blocking requests from your IP"
-        )
+        es_transcript.fetch.side_effect = Exception("blocking requests from your IP")
         # fr and de are in native_map but will be skipped
         fr_transcript = _make_transcript_mock(
             language_code="fr",
@@ -1924,7 +1935,9 @@ class TestFetchLoopIpBlockEarlyTermination:
             "chronovista.services.transcript_service.YouTubeTranscriptApi",
             return_value=mock_api_instance,
         ):
-            with pytest.raises(TranscriptServiceUnavailableError, match="temporarily blocking"):
+            with pytest.raises(
+                TranscriptServiceUnavailableError, match="temporarily blocking"
+            ):
                 await service.get_transcripts_for_languages(
                     video_id=VIDEO_ID,
                     language_codes=["en", "es", "fr", "de"],
@@ -1949,9 +1962,7 @@ class TestIpBlockPartialSuccessDoesNotRaise:
         service = _service_with_api()
 
         mock_api_instance = MagicMock()
-        mock_api_instance.list.side_effect = Exception(
-            "blocking requests from your ip"
-        )
+        mock_api_instance.list.side_effect = Exception("blocking requests from your ip")
 
         async def _mock_get_transcript(
             video_id: str,
@@ -1995,9 +2006,7 @@ class TestIpBlockPartialSuccessDoesNotRaise:
             "YouTube is blocking requests from your IP"
         )
         fr_transcript = _make_transcript_mock(language_code="fr", language="French")
-        fr_transcript.fetch.side_effect = Exception(
-            "blocking requests — ip ban active"
-        )
+        fr_transcript.fetch.side_effect = Exception("blocking requests — ip ban active")
         de_transcript = _make_transcript_mock(language_code="de", language="German")
 
         transcript_list = _make_transcript_list(

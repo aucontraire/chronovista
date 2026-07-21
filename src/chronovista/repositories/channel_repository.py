@@ -584,9 +584,7 @@ class ChannelRepository(
         result = await session.execute(query)
         return list(result.scalars().all())
 
-    async def count_channels_needing_enrichment(
-        self, session: AsyncSession
-    ) -> int:
+    async def count_channels_needing_enrichment(self, session: AsyncSession) -> int:
         """
         Count channels that need enrichment.
 

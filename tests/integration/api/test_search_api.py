@@ -103,7 +103,9 @@ class TestSearchSegments:
         """Test limit validation (max 100)."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get("/api/v1/search/segments?q=test&limit=200")
+            response = await async_client.get(
+                "/api/v1/search/segments?q=test&limit=200"
+            )
             assert response.status_code == 422
 
     async def test_search_limit_minimum_validation(
@@ -119,7 +121,9 @@ class TestSearchSegments:
         """Test offset validation (minimum 0)."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get("/api/v1/search/segments?q=test&offset=-1")
+            response = await async_client.get(
+                "/api/v1/search/segments?q=test&offset=-1"
+            )
             assert response.status_code == 422
 
     async def test_search_video_filter(self, async_client: AsyncClient) -> None:
@@ -250,9 +254,7 @@ class TestSearchSegments:
         """Test multi-word search query (implicit AND)."""
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
-            response = await async_client.get(
-                "/api/v1/search/segments?q=test%20query"
-            )
+            response = await async_client.get("/api/v1/search/segments?q=test%20query")
             assert response.status_code == 200
 
     async def test_search_special_characters_escaped(
@@ -281,7 +283,10 @@ class TestSearchSegments:
                 # Convert to comparable format
                 from datetime import datetime
 
-                dates = [datetime.fromisoformat(d.replace("Z", "+00:00")) for d in upload_dates]
+                dates = [
+                    datetime.fromisoformat(d.replace("Z", "+00:00"))
+                    for d in upload_dates
+                ]
                 # Check dates are in descending order (most recent first)
                 # Allow same dates (for segments from same video)
                 for i in range(len(dates) - 1):
@@ -345,7 +350,9 @@ class TestSearchEdgeCases:
             # Should return same results (if any exist)
             data_lower = response_lower.json()
             data_upper = response_upper.json()
-            assert data_lower["pagination"]["total"] == data_upper["pagination"]["total"]
+            assert (
+                data_lower["pagination"]["total"] == data_upper["pagination"]["total"]
+            )
 
     async def test_search_with_quotes(self, async_client: AsyncClient) -> None:
         """Test search with quoted text."""

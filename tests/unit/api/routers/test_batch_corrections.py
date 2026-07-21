@@ -298,9 +298,7 @@ class TestListBatches:
         """The corrected_by_user_id query param is forwarded to get_batch_list."""
         mock_repo.get_batch_list = AsyncMock(return_value=[])
 
-        await client.get(
-            "/api/v1/corrections/batch/batches?corrected_by_user_id=cli"
-        )
+        await client.get("/api/v1/corrections/batch/batches?corrected_by_user_id=cli")
 
         call_kwargs = mock_repo.get_batch_list.call_args.kwargs
         assert call_kwargs["corrected_by_user_id"] == "cli"
@@ -647,18 +645,12 @@ class TestRevertBatch:
 
     async def test_422_for_malformed_uuid(self, client: AsyncClient) -> None:
         """DELETE with a non-UUID path segment returns 422 Unprocessable Entity."""
-        response = await client.delete(
-            "/api/v1/corrections/batch/not-a-real-uuid"
-        )
+        response = await client.delete("/api/v1/corrections/batch/not-a-real-uuid")
         assert response.status_code == 422
 
-    async def test_422_for_uuid_with_wrong_length(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_422_for_uuid_with_wrong_length(self, client: AsyncClient) -> None:
         """DELETE with a truncated UUID-like string returns 422."""
-        response = await client.delete(
-            "/api/v1/corrections/batch/01932f4a-dead"
-        )
+        response = await client.delete("/api/v1/corrections/batch/01932f4a-dead")
         assert response.status_code == 422
 
     async def test_422_for_numeric_batch_id(self, client: AsyncClient) -> None:
@@ -666,9 +658,7 @@ class TestRevertBatch:
         response = await client.delete("/api/v1/corrections/batch/12345")
         assert response.status_code == 422
 
-    async def test_422_for_empty_batch_id_segment(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_422_for_empty_batch_id_segment(self, client: AsyncClient) -> None:
         """DELETE with an empty string path segment returns 404 (no route match)."""
         # FastAPI does not match the parameterised route for an empty segment
         response = await client.delete("/api/v1/corrections/batch/")

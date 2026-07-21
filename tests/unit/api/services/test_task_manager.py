@@ -23,7 +23,9 @@ from chronovista.models.enums import OperationType, TaskStatus
 # ---------------------------------------------------------------------------
 
 
-def make_noop_coro() -> Callable[[Callable[[float], None]], Coroutine[Any, Any, dict[str, Any]]]:
+def make_noop_coro() -> (
+    Callable[[Callable[[float], None]], Coroutine[Any, Any, dict[str, Any]]]
+):
     """Return a coro_factory that succeeds immediately with an empty dict."""
 
     async def _coro(progress_cb: Callable[[float], None]) -> dict[str, Any]:
@@ -325,11 +327,11 @@ class TestConcurrentDifferentTypes:
     ) -> None:
         """Two tasks with different types are both accepted without error."""
         gate = asyncio.Event()
-        task_id_a = await manager.submit(
-            OperationType.LOAD_DATA, make_slow_coro(gate)
-        )
+        task_id_a = await manager.submit(OperationType.LOAD_DATA, make_slow_coro(gate))
         # Different type — must NOT raise
-        task_id_b = await manager.submit(OperationType.ENRICH_METADATA, make_noop_coro())
+        task_id_b = await manager.submit(
+            OperationType.ENRICH_METADATA, make_noop_coro()
+        )
 
         assert task_id_a != task_id_b
 
@@ -368,12 +370,8 @@ class TestConcurrentDifferentTypes:
     ) -> None:
         """A fast task of type B completes while a slow task of type A is running."""
         gate = asyncio.Event()
-        task_id_a = await manager.submit(
-            OperationType.LOAD_DATA, make_slow_coro(gate)
-        )
-        task_id_b = await manager.submit(
-            OperationType.NORMALIZE_TAGS, make_noop_coro()
-        )
+        task_id_a = await manager.submit(OperationType.LOAD_DATA, make_slow_coro(gate))
+        task_id_b = await manager.submit(OperationType.NORMALIZE_TAGS, make_noop_coro())
 
         # Let the event loop advance: task B (noop) should complete
         await asyncio.sleep(0)
@@ -464,9 +462,7 @@ class TestFailedTask:
         self, manager: TaskManager
     ) -> None:
         """After failure, the asyncio.Task is removed from _running."""
-        task_id = await manager.submit(
-            OperationType.LOAD_DATA, make_failing_coro()
-        )
+        task_id = await manager.submit(OperationType.LOAD_DATA, make_failing_coro())
         await asyncio.sleep(0)
         await asyncio.sleep(0)
 
@@ -515,9 +511,7 @@ class TestProgressCallback:
         assert captured_progress == [25.0, 50.0, 75.0, 100.0]
         assert task.progress == 100.0
 
-    async def test_progress_above_100_is_clamped(
-        self, manager: TaskManager
-    ) -> None:
+    async def test_progress_above_100_is_clamped(self, manager: TaskManager) -> None:
         """Progress values above 100 are clamped to 100.0 by update_progress."""
 
         async def _coro(progress_cb: Callable[[float], None]) -> dict[str, Any]:
@@ -551,9 +545,7 @@ class TestProgressCallback:
             await gate_end.wait()
             return {}
 
-        task_id = await manager.submit(
-            OperationType.LOAD_DATA, lambda cb: _coro(cb)
-        )
+        task_id = await manager.submit(OperationType.LOAD_DATA, lambda cb: _coro(cb))
 
         # Let the coroutine run until it blocks on gate_mid
         await asyncio.sleep(0)
@@ -702,9 +694,7 @@ class TestGetTask:
 class TestListTasks:
     """Tests for the list_tasks query method."""
 
-    async def test_list_tasks_empty_when_no_tasks(
-        self, manager: TaskManager
-    ) -> None:
+    async def test_list_tasks_empty_when_no_tasks(self, manager: TaskManager) -> None:
         """list_tasks returns an empty list when no tasks have been submitted."""
         result = manager.list_tasks()
         assert result == []
@@ -732,9 +722,7 @@ class TestListTasks:
     ) -> None:
         """list_tasks(status=COMPLETED) returns only completed tasks."""
         gate = asyncio.Event()
-        id_running = await manager.submit(
-            OperationType.LOAD_DATA, make_slow_coro(gate)
-        )
+        id_running = await manager.submit(OperationType.LOAD_DATA, make_slow_coro(gate))
         id_done = await manager.submit(OperationType.NORMALIZE_TAGS, make_noop_coro())
         await asyncio.sleep(0)
         await asyncio.sleep(0)
@@ -770,9 +758,7 @@ class TestListTasks:
     ) -> None:
         """list_tasks(status=RUNNING) returns only running tasks."""
         gate = asyncio.Event()
-        id_running = await manager.submit(
-            OperationType.LOAD_DATA, make_slow_coro(gate)
-        )
+        id_running = await manager.submit(OperationType.LOAD_DATA, make_slow_coro(gate))
         await asyncio.sleep(0)  # let _run() start
 
         running = manager.list_tasks(status=TaskStatus.RUNNING)
@@ -831,9 +817,7 @@ class TestListTasksOrdering:
         )
         # Yield to ensure the second task gets a later timestamp
         await asyncio.sleep(0)
-        id_second = await manager.submit(
-            OperationType.LOAD_DATA, make_slow_coro(gate)
-        )
+        id_second = await manager.submit(OperationType.LOAD_DATA, make_slow_coro(gate))
         await asyncio.sleep(0)
         id_third = await manager.submit(
             OperationType.NORMALIZE_TAGS, make_slow_coro(gate)
@@ -890,9 +874,7 @@ class TestGetRunningTaskForOperation:
         result = manager.get_running_task_for_operation(OperationType.LOAD_DATA)
         assert result is None
 
-    async def test_returns_task_while_it_is_running(
-        self, manager: TaskManager
-    ) -> None:
+    async def test_returns_task_while_it_is_running(self, manager: TaskManager) -> None:
         """Returns the active task when it is in RUNNING state."""
         gate = asyncio.Event()
         task_id = await manager.submit(
@@ -916,9 +898,7 @@ class TestGetRunningTaskForOperation:
         as active.
         """
         gate = asyncio.Event()
-        await manager.submit(
-            OperationType.LOAD_DATA, make_slow_coro(gate)
-        )
+        await manager.submit(OperationType.LOAD_DATA, make_slow_coro(gate))
         # Do NOT yield — the asyncio.Task hasn't started yet
 
         active = manager.get_running_task_for_operation(OperationType.LOAD_DATA)
@@ -949,9 +929,7 @@ class TestGetRunningTaskForOperation:
     ) -> None:
         """Returns the correct task when multiple types are concurrently active."""
         gate = asyncio.Event()
-        id_load = await manager.submit(
-            OperationType.LOAD_DATA, make_slow_coro(gate)
-        )
+        id_load = await manager.submit(OperationType.LOAD_DATA, make_slow_coro(gate))
         id_enrich = await manager.submit(
             OperationType.ENRICH_METADATA, make_slow_coro(gate)
         )
@@ -972,17 +950,11 @@ class TestGetRunningTaskForOperation:
         await asyncio.sleep(0)
         await asyncio.sleep(0)
 
-    async def test_returns_none_after_task_fails(
-        self, manager: TaskManager
-    ) -> None:
+    async def test_returns_none_after_task_fails(self, manager: TaskManager) -> None:
         """Returns None after a task has failed (no longer active)."""
-        await manager.submit(
-            OperationType.SYNC_TRANSCRIPTS, make_failing_coro()
-        )
+        await manager.submit(OperationType.SYNC_TRANSCRIPTS, make_failing_coro())
         await asyncio.sleep(0)
         await asyncio.sleep(0)
 
-        result = manager.get_running_task_for_operation(
-            OperationType.SYNC_TRANSCRIPTS
-        )
+        result = manager.get_running_task_for_operation(OperationType.SYNC_TRANSCRIPTS)
         assert result is None

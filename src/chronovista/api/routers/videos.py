@@ -161,8 +161,7 @@ def _check_rate_limit(
 
     # Clean old entries (older than window)
     request_counts[client_id] = [
-        ts for ts in request_counts[client_id]
-        if ts > window_start
+        ts for ts in request_counts[client_id] if ts > window_start
     ]
 
     # Check if limit exceeded
@@ -201,7 +200,10 @@ def build_transcript_summary(
     """
     if not transcripts:
         return TranscriptSummary(
-            count=0, languages=[], has_manual=False, has_corrections=has_corrections,
+            count=0,
+            languages=[],
+            has_manual=False,
+            has_corrections=has_corrections,
         )
 
     languages = list({t.language_code for t in transcripts})
@@ -287,7 +289,9 @@ def _validate_filter_limits(
         )
 
     # Check total filter count
-    total_filters = len(tags) + len(canonical_tags) + len(topic_ids) + (1 if category else 0)
+    total_filters = (
+        len(tags) + len(canonical_tags) + len(topic_ids) + (1 if category else 0)
+    )
     if total_filters > MAX_TOTAL_FILTERS:
         raise BadRequestError(
             message=(
@@ -363,9 +367,7 @@ async def _validate_tags(
         return [], []
 
     # Query for tags that exist in the database
-    existing_tags_query = (
-        select(VideoTag.tag).where(VideoTag.tag.in_(tags)).distinct()
-    )
+    existing_tags_query = select(VideoTag.tag).where(VideoTag.tag.in_(tags)).distinct()
     result = await session.execute(existing_tags_query)
     existing_tags = {row[0] for row in result.fetchall()}
 
@@ -717,9 +719,7 @@ async def list_videos(
     # Tag filter (OR logic within tags)
     if valid_tags:
         tagged_videos = (
-            select(VideoTag.video_id)
-            .where(VideoTag.tag.in_(valid_tags))
-            .distinct()
+            select(VideoTag.video_id).where(VideoTag.tag.in_(valid_tags)).distinct()
         )
         query = query.where(VideoDB.video_id.in_(tagged_videos))
 
@@ -753,7 +753,10 @@ async def list_videos(
 
     # T099: Execute query with timeout (FR-036: 10s timeout)
     try:
-        async def execute_queries() -> tuple[int, list[VideoDB], dict[str, TopicCategory], set[str]]:
+
+        async def execute_queries() -> (
+            tuple[int, list[VideoDB], dict[str, TopicCategory], set[str]]
+        ):
             """Execute all database queries for video listing."""
             # Get total count (before pagination)
             count_query = select(func.count()).select_from(query.subquery())
@@ -767,8 +770,7 @@ async def list_videos(
             else:
                 order_clause = sort_column.desc()
             paginated_query = (
-                query
-                .order_by(order_clause, VideoDB.video_id.asc())
+                query.order_by(order_clause, VideoDB.video_id.asc())
                 .offset(offset)
                 .limit(limit)
             )
@@ -913,7 +915,9 @@ async def list_videos(
     return VideoListResponse(data=items, pagination=pagination)
 
 
-@router.get("/videos/{video_id}", response_model=VideoDetailResponse, responses=GET_ITEM_ERRORS)
+@router.get(
+    "/videos/{video_id}", response_model=VideoDetailResponse, responses=GET_ITEM_ERRORS
+)
 async def get_video(
     video_id: str = Path(
         ...,
@@ -984,7 +988,8 @@ async def get_video(
 
     # Build response
     transcript_summary = build_transcript_summary(
-        list(video.transcripts), has_corrections=has_corrections,
+        list(video.transcripts),
+        has_corrections=has_corrections,
     )
     channel_title = video.channel.title if video.channel else None
     tags = [tag.tag for tag in video.tags] if video.tags else []
@@ -1234,7 +1239,10 @@ async def update_alternative_url(
 
     # URL format validation - ensure it's a valid HTTP/HTTPS URL
     if alternative_url:
-        if not (alternative_url.startswith("http://") or alternative_url.startswith("https://")):
+        if not (
+            alternative_url.startswith("http://")
+            or alternative_url.startswith("https://")
+        ):
             from chronovista.exceptions import APIValidationError
 
             raise APIValidationError(
@@ -1265,7 +1273,8 @@ async def update_alternative_url(
 
     # Build response (reuse logic from get_video endpoint)
     transcript_summary = build_transcript_summary(
-        list(video.transcripts), has_corrections=has_corrections,
+        list(video.transcripts),
+        has_corrections=has_corrections,
     )
     channel_title = video.channel.title if video.channel else None
     tags = [tag.tag for tag in video.tags] if video.tags else []

@@ -177,9 +177,7 @@ class TestParseWatchHistory:
         assert first_entry.channel_name == "Test Channel 1"
         assert first_entry.channel_url == "https://www.youtube.com/channel/UCtest123"
         assert first_entry.channel_id == "UCtest123"
-        assert first_entry.watched_at == datetime(
-            2023, 1, 15, 14, 30, 0, tzinfo=UTC
-        )
+        assert first_entry.watched_at == datetime(2023, 1, 15, 14, 30, 0, tzinfo=UTC)
 
     async def test_parse_watch_history_no_file(self, temp_takeout_dir):
         """Test watch history parsing when file doesn't exist."""

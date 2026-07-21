@@ -74,7 +74,9 @@ class TestTagsNormalizeCommand:
             mock_session = AsyncMock()
 
             # Mock get_session to yield the mock session
-            async def mock_get_session(echo: bool = False) -> AsyncGenerator[AsyncSession, None]:
+            async def mock_get_session(
+                echo: bool = False,
+            ) -> AsyncGenerator[AsyncSession, None]:
                 yield mock_session
 
             mock_db_manager.get_session.return_value = mock_get_session()
@@ -107,7 +109,9 @@ class TestTagsNormalizeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(echo: bool = False) -> AsyncGenerator[AsyncSession, None]:
+            async def mock_get_session(
+                echo: bool = False,
+            ) -> AsyncGenerator[AsyncSession, None]:
                 yield mock_session
 
             mock_db_manager.get_session.return_value = mock_get_session()
@@ -130,7 +134,9 @@ class TestTagsNormalizeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(echo: bool = False) -> AsyncGenerator[AsyncSession, None]:
+            async def mock_get_session(
+                echo: bool = False,
+            ) -> AsyncGenerator[AsyncSession, None]:
                 yield mock_session
 
             mock_db_manager.get_session.return_value = mock_get_session()
@@ -152,7 +158,9 @@ class TestTagsNormalizeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(echo: bool = False) -> AsyncGenerator[AsyncSession, None]:
+            async def mock_get_session(
+                echo: bool = False,
+            ) -> AsyncGenerator[AsyncSession, None]:
                 yield mock_session
 
             mock_db_manager.get_session.return_value = mock_get_session()
@@ -174,7 +182,9 @@ class TestTagsNormalizeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(echo: bool = False) -> AsyncGenerator[AsyncSession, None]:
+            async def mock_get_session(
+                echo: bool = False,
+            ) -> AsyncGenerator[AsyncSession, None]:
                 yield mock_session
 
             mock_db_manager.get_session.return_value = mock_get_session()
@@ -201,7 +211,9 @@ class TestTagsNormalizeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(echo: bool = False) -> AsyncGenerator[AsyncSession, None]:
+            async def mock_get_session(
+                echo: bool = False,
+            ) -> AsyncGenerator[AsyncSession, None]:
                 yield mock_session
 
             mock_db_manager.get_session.return_value = mock_get_session()
@@ -212,7 +224,9 @@ class TestTagsNormalizeCommand:
             ) as mock_run_backfill:
                 mock_run_backfill.return_value = None
 
-                result = runner.invoke(app, ["tags", "normalize", "--batch-size", "500"])
+                result = runner.invoke(
+                    app, ["tags", "normalize", "--batch-size", "500"]
+                )
 
                 # Command should succeed
                 assert result.exit_code == 0, f"Unexpected output: {result.output}"
@@ -238,7 +252,9 @@ class TestTagsNormalizeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(echo: bool = False) -> AsyncGenerator[AsyncSession, None]:
+            async def mock_get_session(
+                echo: bool = False,
+            ) -> AsyncGenerator[AsyncSession, None]:
                 yield mock_session
 
             mock_db_manager.get_session.return_value = mock_get_session()
@@ -248,7 +264,9 @@ class TestTagsNormalizeCommand:
                 new_callable=AsyncMock,
             ) as mock_run_backfill:
                 # Mock unexpected exception
-                mock_run_backfill.side_effect = RuntimeError("Database connection failed")
+                mock_run_backfill.side_effect = RuntimeError(
+                    "Database connection failed"
+                )
 
                 result = runner.invoke(app, ["tags", "normalize"])
 
@@ -264,7 +282,9 @@ class TestTagsAnalyzeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(echo: bool = False) -> AsyncGenerator[AsyncSession, None]:
+            async def mock_get_session(
+                echo: bool = False,
+            ) -> AsyncGenerator[AsyncSession, None]:
                 yield mock_session
 
             mock_db_manager.get_session.return_value = mock_get_session()
@@ -287,7 +307,9 @@ class TestTagsAnalyzeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(echo: bool = False) -> AsyncGenerator[AsyncSession, None]:
+            async def mock_get_session(
+                echo: bool = False,
+            ) -> AsyncGenerator[AsyncSession, None]:
                 yield mock_session
 
             mock_db_manager.get_session.return_value = mock_get_session()
@@ -317,7 +339,9 @@ class TestTagsAnalyzeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(echo: bool = False) -> AsyncGenerator[AsyncSession, None]:
+            async def mock_get_session(
+                echo: bool = False,
+            ) -> AsyncGenerator[AsyncSession, None]:
                 yield mock_session
 
             mock_db_manager.get_session.return_value = mock_get_session()
@@ -338,7 +362,9 @@ class TestTagsAnalyzeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(echo: bool = False) -> AsyncGenerator[AsyncSession, None]:
+            async def mock_get_session(
+                echo: bool = False,
+            ) -> AsyncGenerator[AsyncSession, None]:
                 yield mock_session
 
             mock_db_manager.get_session.return_value = mock_get_session()
@@ -374,7 +400,9 @@ class TestTagsRecountCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(echo: bool = False) -> AsyncGenerator[AsyncSession, None]:
+            async def mock_get_session(
+                echo: bool = False,
+            ) -> AsyncGenerator[AsyncSession, None]:
                 yield mock_session
 
             mock_db_manager.get_session.return_value = mock_get_session()
@@ -405,7 +433,9 @@ class TestTagsRecountCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(echo: bool = False) -> AsyncGenerator[AsyncSession, None]:
+            async def mock_get_session(
+                echo: bool = False,
+            ) -> AsyncGenerator[AsyncSession, None]:
                 yield mock_session
 
             mock_db_manager.get_session.return_value = mock_get_session()
@@ -431,7 +461,9 @@ class TestTagsRecountCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(echo: bool = False) -> AsyncGenerator[AsyncSession, None]:
+            async def mock_get_session(
+                echo: bool = False,
+            ) -> AsyncGenerator[AsyncSession, None]:
                 yield mock_session
 
             mock_db_manager.get_session.return_value = mock_get_session()

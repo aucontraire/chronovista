@@ -86,7 +86,9 @@ class ResourceId(BaseYouTubeModel):
         default=None, alias="videoId", description="Video ID if resource is a video"
     )
     channel_id: str | None = Field(
-        default=None, alias="channelId", description="Channel ID if resource is a channel"
+        default=None,
+        alias="channelId",
+        description="Channel ID if resource is a channel",
     )
     playlist_id: str | None = Field(
         default=None,
@@ -143,9 +145,7 @@ class RelatedPlaylists(BaseYouTubeModel):
     Contains IDs for system playlists like uploads, likes, favorites.
     """
 
-    likes: str | None = Field(
-        default=None, description="Playlist ID for liked videos"
-    )
+    likes: str | None = Field(default=None, description="Playlist ID for liked videos")
     uploads: str = Field(default="", description="Playlist ID for channel uploads")
     favorites: str | None = Field(
         default=None, description="Playlist ID for favorited videos (deprecated)"
@@ -248,9 +248,7 @@ class ChannelSnippet(BaseYouTubeModel):
     localized: LocalizedString | None = Field(
         default=None, description="Localized title and description"
     )
-    country: str | None = Field(
-        default=None, description="Country code (ISO 3166-1)"
-    )
+    country: str | None = Field(default=None, description="Country code (ISO 3166-1)")
 
     @field_validator("thumbnails", mode="before")
     @classmethod
@@ -552,8 +550,12 @@ class VideoStatisticsResponse(BaseYouTubeModel):
     )
 
     @field_validator(
-        "view_count", "like_count", "dislike_count", "favorite_count", "comment_count",
-        mode="before"
+        "view_count",
+        "like_count",
+        "dislike_count",
+        "favorite_count",
+        "comment_count",
+        mode="before",
     )
     @classmethod
     def parse_count(cls, v: Any) -> int | None:
@@ -595,9 +597,7 @@ class ChannelStatisticsResponse(BaseYouTubeModel):
         default=0, alias="videoCount", description="Number of public videos"
     )
 
-    @field_validator(
-        "view_count", "subscriber_count", "video_count", mode="before"
-    )
+    @field_validator("view_count", "subscriber_count", "video_count", mode="before")
     @classmethod
     def parse_count(cls, v: Any) -> int | None:
         """Parse count from string or int."""
@@ -630,9 +630,7 @@ class VideoContentDetails(BaseYouTubeModel):
     )
     dimension: str = Field(default="2d", description="Video dimension (2d or 3d)")
     definition: str = Field(default="sd", description="Video definition (sd or hd)")
-    caption: str = Field(
-        default="false", description="Whether captions are available"
-    )
+    caption: str = Field(default="false", description="Whether captions are available")
     licensed_content: bool = Field(
         default=False,
         alias="licensedContent",

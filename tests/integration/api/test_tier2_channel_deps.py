@@ -399,7 +399,6 @@ class TestPlaylistFromAPI:
                     DBPlaylist, PlaylistCreate, PlaylistUpdate
                 ] = BaseSQLAlchemyRepository(DBPlaylist)
 
-
                 # test_suffix = f"prep_test_{int(time.time())}"
                 # Create multiple playlists that will be used in Tier 3 video tests
                 # Note: test_suffix was removed as it's not currently used in this test

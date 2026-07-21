@@ -178,9 +178,7 @@ async def _warm_async(
     had_errors = False
 
     if dry_run:
-        console.print(
-            "[yellow]Dry run - no images will be downloaded.[/yellow]\n"
-        )
+        console.print("[yellow]Dry run - no images will be downloaded.[/yellow]\n")
 
     async for session in db_manager.get_session(echo=False):
         # --- Warm channels ---

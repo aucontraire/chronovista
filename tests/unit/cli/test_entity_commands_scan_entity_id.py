@@ -119,22 +119,16 @@ class TestEntityIdUuidValidation:
         result = runner.invoke(entity_app, ["scan", "--entity-id", "not-a-uuid"])
         assert result.exit_code == 1
 
-    def test_invalid_uuid_does_not_call_asyncio_run(
-        self, runner: CliRunner
-    ) -> None:
+    def test_invalid_uuid_does_not_call_asyncio_run(self, runner: CliRunner) -> None:
         """UUID validation failure must exit before ``asyncio.run`` is called."""
-        with patch(
-            "chronovista.cli.entity_commands.asyncio.run"
-        ) as mock_asyncio_run:
+        with patch("chronovista.cli.entity_commands.asyncio.run") as mock_asyncio_run:
             runner.invoke(entity_app, ["scan", "--entity-id", "totally-wrong"])
 
         mock_asyncio_run.assert_not_called()
 
     def test_invalid_uuid_partial_hex_shows_error(self, runner: CliRunner) -> None:
         """A partial hex string must be rejected with exit code 1."""
-        result = runner.invoke(
-            entity_app, ["scan", "--entity-id", "550e8400-e29b"]
-        )
+        result = runner.invoke(entity_app, ["scan", "--entity-id", "550e8400-e29b"])
         assert result.exit_code == 1
 
     def test_valid_uuid_format_passes_validation(self, runner: CliRunner) -> None:
@@ -145,9 +139,7 @@ class TestEntityIdUuidValidation:
 
         with (
             patch("chronovista.cli.entity_commands.db_manager") as mock_db,
-            patch(
-                "chronovista.cli.entity_commands.EntityMentionScanService"
-            ),
+            patch("chronovista.cli.entity_commands.EntityMentionScanService"),
             patch("chronovista.cli.entity_commands.asyncio.run") as mock_asyncio_run,
         ):
             mock_db.get_session_factory.return_value = MagicMock()
@@ -197,15 +189,12 @@ class TestEntityIdEntityNotFound:
             "chronovista.cli.entity_commands.asyncio.run",
             side_effect=_run_coro_via_fake_asyncio_run,
         ):
-            result = runner.invoke(
-                entity_app, ["scan", "--entity-id", valid_uuid]
-            )
+            result = runner.invoke(entity_app, ["scan", "--entity-id", valid_uuid])
 
         assert result.exit_code == 1
         output = result.stdout or ""
         assert (
-            "not found" in output.lower()
-            or "Entity not found" in output
+            "not found" in output.lower() or "Entity not found" in output
         ), f"Expected 'not found' in output; got: {output[:400]}"
 
     @patch("chronovista.cli.entity_commands.EntityMentionScanService")
@@ -231,9 +220,7 @@ class TestEntityIdEntityNotFound:
             "chronovista.cli.entity_commands.asyncio.run",
             side_effect=_run_coro_via_fake_asyncio_run,
         ):
-            result = runner.invoke(
-                entity_app, ["scan", "--entity-id", valid_uuid]
-            )
+            result = runner.invoke(entity_app, ["scan", "--entity-id", valid_uuid])
 
         assert result.exit_code == 1
 
@@ -276,15 +263,12 @@ class TestEntityIdInactiveEntity:
             "chronovista.cli.entity_commands.asyncio.run",
             side_effect=_run_coro_via_fake_asyncio_run,
         ):
-            result = runner.invoke(
-                entity_app, ["scan", "--entity-id", valid_uuid]
-            )
+            result = runner.invoke(entity_app, ["scan", "--entity-id", valid_uuid])
 
         assert result.exit_code == 1
         output = result.stdout or ""
         assert (
-            "not active" in output.lower()
-            or "Entity is not active" in output
+            "not active" in output.lower() or "Entity is not active" in output
         ), f"Expected 'not active' in output; got: {output[:400]}"
 
     @patch("chronovista.cli.entity_commands.EntityMentionScanService")
@@ -312,15 +296,12 @@ class TestEntityIdInactiveEntity:
             "chronovista.cli.entity_commands.asyncio.run",
             side_effect=_run_coro_via_fake_asyncio_run,
         ):
-            result = runner.invoke(
-                entity_app, ["scan", "--entity-id", valid_uuid]
-            )
+            result = runner.invoke(entity_app, ["scan", "--entity-id", valid_uuid])
 
         assert result.exit_code == 1
         output = result.stdout or ""
         assert (
-            "not active" in output.lower()
-            or "deprecated" in output.lower()
+            "not active" in output.lower() or "deprecated" in output.lower()
         ), f"Expected not-active indication; got: {output[:400]}"
 
     @patch("chronovista.cli.entity_commands.EntityMentionScanService")
@@ -348,9 +329,7 @@ class TestEntityIdInactiveEntity:
             "chronovista.cli.entity_commands.asyncio.run",
             side_effect=_run_coro_via_fake_asyncio_run,
         ):
-            result = runner.invoke(
-                entity_app, ["scan", "--entity-id", valid_uuid]
-            )
+            result = runner.invoke(entity_app, ["scan", "--entity-id", valid_uuid])
 
         assert result.exit_code == 1
 
@@ -516,16 +495,14 @@ class TestEntityIdTakesPrecedenceOverFilters:
             "chronovista.cli.entity_commands.asyncio.run",
             side_effect=_run_coro_via_fake_asyncio_run,
         ):
-            result = runner.invoke(
-                entity_app, ["scan", "--entity-id", valid_uuid]
-            )
+            result = runner.invoke(entity_app, ["scan", "--entity-id", valid_uuid])
 
         assert result.exit_code == 0
         assert len(captured_scan_kwargs) == 1
         entity_ids_arg = captured_scan_kwargs[0].get("entity_ids")
-        assert entity_ids_arg == [entity_uuid], (
-            f"Expected entity_ids=[{entity_uuid}]; got: {entity_ids_arg}"
-        )
+        assert entity_ids_arg == [
+            entity_uuid
+        ], f"Expected entity_ids=[{entity_uuid}]; got: {entity_ids_arg}"
 
 
 # ---------------------------------------------------------------------------
@@ -594,9 +571,9 @@ class TestEntityIdWithVideoId:
         assert result.exit_code == 0
         assert len(captured_scan_kwargs) == 1
         # Both entity_ids and video_ids must be set
-        assert captured_scan_kwargs[0].get("entity_ids") == [entity_uuid], (
-            f"entity_ids mismatch: {captured_scan_kwargs[0]}"
-        )
-        assert captured_scan_kwargs[0].get("video_ids") == [test_video_id], (
-            f"video_ids mismatch: {captured_scan_kwargs[0]}"
-        )
+        assert captured_scan_kwargs[0].get("entity_ids") == [
+            entity_uuid
+        ], f"entity_ids mismatch: {captured_scan_kwargs[0]}"
+        assert captured_scan_kwargs[0].get("video_ids") == [
+            test_video_id
+        ], f"video_ids mismatch: {captured_scan_kwargs[0]}"

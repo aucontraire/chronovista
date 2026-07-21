@@ -129,9 +129,7 @@ async def _extension_exists(session: AsyncSession, extension: str) -> bool:
         ``True`` if the extension row exists in ``pg_extension``.
     """
     result = await session.execute(
-        text(
-            "SELECT COUNT(*) FROM pg_extension WHERE extname = :name"
-        ),
+        text("SELECT COUNT(*) FROM pg_extension WHERE extname = :name"),
         {"name": extension},
     )
     count: int = result.scalar_one()
@@ -214,9 +212,7 @@ class TestPgTrgmExtension:
         ``similarity('abc', 'abc')`` returns 1.0 when pg_trgm is installed;
         calling it without the extension raises ``UndefinedFunctionError``.
         """
-        result = await dev_session.execute(
-            text("SELECT similarity('test', 'test')")
-        )
+        result = await dev_session.execute(text("SELECT similarity('test', 'test')"))
         value: float = result.scalar_one()
         assert value == pytest.approx(1.0), (
             "pg_trgm similarity() did not return 1.0 for identical strings; "
@@ -240,9 +236,7 @@ class TestGinIndexOnText:
     Partial: No (full-table index)
     """
 
-    async def test_index_exists_in_catalog(
-        self, dev_session: AsyncSession
-    ) -> None:
+    async def test_index_exists_in_catalog(self, dev_session: AsyncSession) -> None:
         """Verify idx_segments_text_trgm is present in pg_indexes."""
         row = await _index_row(dev_session, _INDEX_TEXT, _TABLE)
         assert row is not None, (
@@ -250,42 +244,34 @@ class TestGinIndexOnText:
             "Ensure migration b2d4f6a8c0e1 has been applied."
         )
 
-    async def test_index_uses_gin_method(
-        self, dev_session: AsyncSession
-    ) -> None:
+    async def test_index_uses_gin_method(self, dev_session: AsyncSession) -> None:
         """Verify idx_segments_text_trgm is a GIN index (not BTree/Hash)."""
         row = await _index_row(dev_session, _INDEX_TEXT, _TABLE)
         assert row is not None, f"Index '{_INDEX_TEXT}' not found."
         indexdef: str = row["indexdef"].lower()
-        assert "using gin" in indexdef, (
-            f"Expected 'USING gin' in index definition, got: {row['indexdef']!r}"
-        )
+        assert (
+            "using gin" in indexdef
+        ), f"Expected 'USING gin' in index definition, got: {row['indexdef']!r}"
 
-    async def test_index_uses_trgm_opclass(
-        self, dev_session: AsyncSession
-    ) -> None:
+    async def test_index_uses_trgm_opclass(self, dev_session: AsyncSession) -> None:
         """Verify idx_segments_text_trgm uses the gin_trgm_ops operator class."""
         row = await _index_row(dev_session, _INDEX_TEXT, _TABLE)
         assert row is not None, f"Index '{_INDEX_TEXT}' not found."
         indexdef: str = row["indexdef"].lower()
-        assert "gin_trgm_ops" in indexdef, (
-            f"Expected 'gin_trgm_ops' in index definition, got: {row['indexdef']!r}"
-        )
+        assert (
+            "gin_trgm_ops" in indexdef
+        ), f"Expected 'gin_trgm_ops' in index definition, got: {row['indexdef']!r}"
 
-    async def test_index_covers_text_column(
-        self, dev_session: AsyncSession
-    ) -> None:
+    async def test_index_covers_text_column(self, dev_session: AsyncSession) -> None:
         """Verify idx_segments_text_trgm is defined on the 'text' column."""
         row = await _index_row(dev_session, _INDEX_TEXT, _TABLE)
         assert row is not None, f"Index '{_INDEX_TEXT}' not found."
         indexdef: str = row["indexdef"].lower()
-        assert "(text" in indexdef or " text " in indexdef, (
-            f"Expected column 'text' in index definition, got: {row['indexdef']!r}"
-        )
+        assert (
+            "(text" in indexdef or " text " in indexdef
+        ), f"Expected column 'text' in index definition, got: {row['indexdef']!r}"
 
-    async def test_index_is_not_partial(
-        self, dev_session: AsyncSession
-    ) -> None:
+    async def test_index_is_not_partial(self, dev_session: AsyncSession) -> None:
         """
         Verify idx_segments_text_trgm is a full-table index (no WHERE clause).
 
@@ -317,9 +303,7 @@ class TestPartialGinIndexOnCorrectedText:
     Partial: Yes — WHERE corrected_text IS NOT NULL
     """
 
-    async def test_index_exists_in_catalog(
-        self, dev_session: AsyncSession
-    ) -> None:
+    async def test_index_exists_in_catalog(self, dev_session: AsyncSession) -> None:
         """Verify idx_segments_corrected_text_trgm is present in pg_indexes."""
         row = await _index_row(dev_session, _INDEX_CORRECTED, _TABLE)
         assert row is not None, (
@@ -327,27 +311,23 @@ class TestPartialGinIndexOnCorrectedText:
             "Ensure migration b2d4f6a8c0e1 has been applied."
         )
 
-    async def test_index_uses_gin_method(
-        self, dev_session: AsyncSession
-    ) -> None:
+    async def test_index_uses_gin_method(self, dev_session: AsyncSession) -> None:
         """Verify idx_segments_corrected_text_trgm is a GIN index."""
         row = await _index_row(dev_session, _INDEX_CORRECTED, _TABLE)
         assert row is not None, f"Index '{_INDEX_CORRECTED}' not found."
         indexdef: str = row["indexdef"].lower()
-        assert "using gin" in indexdef, (
-            f"Expected 'USING gin' in index definition, got: {row['indexdef']!r}"
-        )
+        assert (
+            "using gin" in indexdef
+        ), f"Expected 'USING gin' in index definition, got: {row['indexdef']!r}"
 
-    async def test_index_uses_trgm_opclass(
-        self, dev_session: AsyncSession
-    ) -> None:
+    async def test_index_uses_trgm_opclass(self, dev_session: AsyncSession) -> None:
         """Verify idx_segments_corrected_text_trgm uses gin_trgm_ops operator class."""
         row = await _index_row(dev_session, _INDEX_CORRECTED, _TABLE)
         assert row is not None, f"Index '{_INDEX_CORRECTED}' not found."
         indexdef: str = row["indexdef"].lower()
-        assert "gin_trgm_ops" in indexdef, (
-            f"Expected 'gin_trgm_ops' in index definition, got: {row['indexdef']!r}"
-        )
+        assert (
+            "gin_trgm_ops" in indexdef
+        ), f"Expected 'gin_trgm_ops' in index definition, got: {row['indexdef']!r}"
 
     async def test_index_covers_corrected_text_column(
         self, dev_session: AsyncSession
@@ -373,9 +353,9 @@ class TestPartialGinIndexOnCorrectedText:
         row = await _index_row(dev_session, _INDEX_CORRECTED, _TABLE)
         assert row is not None, f"Index '{_INDEX_CORRECTED}' not found."
         indexdef: str = row["indexdef"].lower()
-        assert " where " in indexdef, (
-            f"Expected a partial index (WHERE clause), but got: {row['indexdef']!r}"
-        )
+        assert (
+            " where " in indexdef
+        ), f"Expected a partial index (WHERE clause), but got: {row['indexdef']!r}"
         assert "corrected_text is not null" in indexdef, (
             f"Expected predicate 'corrected_text IS NOT NULL', "
             f"got: {row['indexdef']!r}"

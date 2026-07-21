@@ -448,9 +448,9 @@ class TestCrossSegmentMatchBasic:
 
         from chronovista.models.batch_correction_models import BatchCorrectionResult
 
-        assert isinstance(result, BatchCorrectionResult), (
-            f"Expected BatchCorrectionResult, got {type(result)!r}"
-        )
+        assert isinstance(
+            result, BatchCorrectionResult
+        ), f"Expected BatchCorrectionResult, got {type(result)!r}"
         assert result.total_matched >= 1, (
             "Cross-segment pair 'Claudia Shane' + 'Bound …' must be counted as matched. "
             f"total_matched={result.total_matched}"
@@ -537,9 +537,9 @@ class TestCrossSegmentMatchBasic:
 
         from chronovista.models.batch_correction_models import BatchCorrectionResult
 
-        assert isinstance(result, BatchCorrectionResult), (
-            f"Expected BatchCorrectionResult, got {type(result)!r}"
-        )
+        assert isinstance(
+            result, BatchCorrectionResult
+        ), f"Expected BatchCorrectionResult, got {type(result)!r}"
         # Both segments should be affected when both occurrences are replaced.
         assert result.total_matched >= 1, (
             "At least the cross-segment pair must be matched. "
@@ -620,9 +620,9 @@ class TestSingleSegmentWithinCrossSegment:
 
         from chronovista.models.batch_correction_models import BatchCorrectionResult
 
-        assert isinstance(result, BatchCorrectionResult), (
-            f"Expected BatchCorrectionResult, got {type(result)!r}"
-        )
+        assert isinstance(
+            result, BatchCorrectionResult
+        ), f"Expected BatchCorrectionResult, got {type(result)!r}"
         assert result.total_matched >= 1, (
             "Pattern 'hello world' must be found (as a single-segment match). "
             f"total_matched={result.total_matched}"
@@ -637,9 +637,9 @@ class TestSingleSegmentWithinCrossSegment:
         assert refreshed1 is not None
 
         corrected0: str = (refreshed0.corrected_text or refreshed0.text) or ""
-        assert "greetings" in corrected0, (
-            f"Segment 0 must contain the replacement 'greetings'. Got: {corrected0!r}"
-        )
+        assert (
+            "greetings" in corrected0
+        ), f"Segment 0 must contain the replacement 'greetings'. Got: {corrected0!r}"
 
         # Segment 1 must NOT be modified — it did not participate in any match.
         assert not refreshed1.has_correction, (
@@ -722,9 +722,9 @@ class TestNoCrossSegmentFlag:
 
         from chronovista.models.batch_correction_models import BatchCorrectionResult
 
-        assert isinstance(result, BatchCorrectionResult), (
-            f"Expected BatchCorrectionResult, got {type(result)!r}"
-        )
+        assert isinstance(
+            result, BatchCorrectionResult
+        ), f"Expected BatchCorrectionResult, got {type(result)!r}"
         assert result.total_matched == 0, (
             "Without --cross-segment, a pattern spanning two segments must NOT be "
             f"matched. total_matched={result.total_matched}"
@@ -836,12 +836,12 @@ class TestLanguageBoundary:
         refreshed_en = await db_session.get(TranscriptSegmentDB, seg_en.id)
         refreshed_es = await db_session.get(TranscriptSegmentDB, seg_es.id)
 
-        assert refreshed_en is not None and not refreshed_en.has_correction, (
-            "English segment must not be corrected — language boundary prevented pairing."
-        )
-        assert refreshed_es is not None and not refreshed_es.has_correction, (
-            "Spanish segment must not be corrected — language boundary prevented pairing."
-        )
+        assert (
+            refreshed_en is not None and not refreshed_en.has_correction
+        ), "English segment must not be corrected — language boundary prevented pairing."
+        assert (
+            refreshed_es is not None and not refreshed_es.has_correction
+        ), "Spanish segment must not be corrected — language boundary prevented pairing."
 
 
 # ---------------------------------------------------------------------------
@@ -925,12 +925,12 @@ class TestNonConsecutiveSequence:
         refreshed5 = await db_session.get(TranscriptSegmentDB, seg5.id)
         refreshed7 = await db_session.get(TranscriptSegmentDB, seg7.id)
 
-        assert refreshed5 is not None and not refreshed5.has_correction, (
-            "Segment 5 must not be corrected — non-consecutive sequence prevented pairing."
-        )
-        assert refreshed7 is not None and not refreshed7.has_correction, (
-            "Segment 7 must not be corrected — non-consecutive sequence prevented pairing."
-        )
+        assert (
+            refreshed5 is not None and not refreshed5.has_correction
+        ), "Segment 5 must not be corrected — non-consecutive sequence prevented pairing."
+        assert (
+            refreshed7 is not None and not refreshed7.has_correction
+        ), "Segment 7 must not be corrected — non-consecutive sequence prevented pairing."
 
 
 # ---------------------------------------------------------------------------
@@ -1037,9 +1037,9 @@ class TestRegexCrossSegment:
             f"Segment 20 must contain 'Claudia Sheinbaum' after regex cross-segment "
             f"replacement. Got: {corrected_a!r}"
         )
-        assert not corrected_b.startswith("Bound"), (
-            f"'Bound' must be removed from segment 21. Got: {corrected_b!r}"
-        )
+        assert not corrected_b.startswith(
+            "Bound"
+        ), f"'Bound' must be removed from segment 21. Got: {corrected_b!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -1133,12 +1133,12 @@ class TestCaseInsensitiveCrossSegment:
         corrected_a: str = (refreshed_a.corrected_text or refreshed_a.text) or ""
         corrected_b: str = (refreshed_b.corrected_text or refreshed_b.text) or ""
 
-        assert "Claudia Sheinbaum" in corrected_a, (
-            f"Segment 30 must contain 'Claudia Sheinbaum'. Got: {corrected_a!r}"
-        )
-        assert not corrected_b.lower().startswith("bound"), (
-            f"'BOUND' (any case) must be removed from segment 31. Got: {corrected_b!r}"
-        )
+        assert (
+            "Claudia Sheinbaum" in corrected_a
+        ), f"Segment 30 must contain 'Claudia Sheinbaum'. Got: {corrected_a!r}"
+        assert not corrected_b.lower().startswith(
+            "bound"
+        ), f"'BOUND' (any case) must be removed from segment 31. Got: {corrected_b!r}"
         assert "también" in corrected_b, (
             f"Remaining text 'también' must be preserved in segment 31. "
             f"Got: {corrected_b!r}"
@@ -1461,9 +1461,9 @@ class TestEmptySegmentAfterCorrection:
         refreshed_a = await db_session.get(TranscriptSegmentDB, seg_a.id)
         refreshed_b = await db_session.get(TranscriptSegmentDB, seg_b.id)
 
-        assert refreshed_a is not None, (
-            "Segment A must still exist in the database after correction."
-        )
+        assert (
+            refreshed_a is not None
+        ), "Segment A must still exist in the database after correction."
         assert refreshed_b is not None, (
             "Segment B (emptied) must NOT be deleted — FR-008 requires the row "
             "to be preserved even when its corrected text is empty."
@@ -1472,9 +1472,9 @@ class TestEmptySegmentAfterCorrection:
         corrected_a: str = (refreshed_a.corrected_text or refreshed_a.text) or ""
         corrected_b: str = (refreshed_b.corrected_text or refreshed_b.text) or ""
 
-        assert "Claudia Sheinbaum" in corrected_a, (
-            f"Segment 40 must contain 'Claudia Sheinbaum'. Got: {corrected_a!r}"
-        )
+        assert (
+            "Claudia Sheinbaum" in corrected_a
+        ), f"Segment 40 must contain 'Claudia Sheinbaum'. Got: {corrected_a!r}"
 
         # Segment B must be empty or whitespace-only after correction.
         assert corrected_b.strip() == "", (
@@ -1581,12 +1581,12 @@ class TestBasicCrossSegmentRevert:
         effective_a = final_a.corrected_text or final_a.text
         effective_b = final_b.corrected_text or final_b.text
 
-        assert effective_a == "Claudia Shane", (
-            f"Segment A must be restored to 'Claudia Shane'. Got: {effective_a!r}"
-        )
-        assert effective_b == "Bound is a word", (
-            f"Segment B must be restored to 'Bound is a word'. Got: {effective_b!r}"
-        )
+        assert (
+            effective_a == "Claudia Shane"
+        ), f"Segment A must be restored to 'Claudia Shane'. Got: {effective_a!r}"
+        assert (
+            effective_b == "Bound is a word"
+        ), f"Segment B must be restored to 'Bound is a word'. Got: {effective_b!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -1602,9 +1602,7 @@ class TestPartnerCascadeRevert:
     marker in the correction note.
     """
 
-    async def test_partner_reverted_via_cascade(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_partner_reverted_via_cascade(self, db_session: AsyncSession) -> None:
         """
         After cross-segment correction, segment A has "Claudia Sheinbaum is a word"
         and segment B has " " (emptied).  Revert using pattern "Claudia Sheinbaum"
@@ -1681,12 +1679,12 @@ class TestPartnerCascadeRevert:
         effective_a = final_a.corrected_text or final_a.text
         effective_b = final_b.corrected_text or final_b.text
 
-        assert effective_a == "Claudia Shane", (
-            f"Segment A must be restored. Got: {effective_a!r}"
-        )
-        assert effective_b == "Bound", (
-            f"Segment B must be restored. Got: {effective_b!r}"
-        )
+        assert (
+            effective_a == "Claudia Shane"
+        ), f"Segment A must be restored. Got: {effective_a!r}"
+        assert (
+            effective_b == "Bound"
+        ), f"Segment B must be restored. Got: {effective_b!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -1754,9 +1752,9 @@ class TestRevertOfEmptiedSegment:
         assert refreshed_b is not None
         assert refreshed_b.has_correction is True
         effective_b_after = (refreshed_b.corrected_text or "").strip()
-        assert effective_b_after == "", (
-            f"Seg B should be empty after correction. Got: {effective_b_after!r}"
-        )
+        assert (
+            effective_b_after == ""
+        ), f"Seg B should be empty after correction. Got: {effective_b_after!r}"
 
         # Revert via batch_revert matching seg A's corrected text
         revert_result = await service.batch_revert(
@@ -1779,12 +1777,12 @@ class TestRevertOfEmptiedSegment:
         effective_a = final_a.corrected_text or final_a.text
         effective_b = final_b.corrected_text or final_b.text
 
-        assert effective_a == "Claudia Shane", (
-            f"Segment A must be restored. Got: {effective_a!r}"
-        )
-        assert effective_b == "Bound", (
-            f"Segment B must be restored to original 'Bound'. Got: {effective_b!r}"
-        )
+        assert (
+            effective_a == "Claudia Shane"
+        ), f"Segment A must be restored. Got: {effective_a!r}"
+        assert (
+            effective_b == "Bound"
+        ), f"Segment B must be restored to original 'Bound'. Got: {effective_b!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -1887,6 +1885,6 @@ class TestMissingPartnerOnRevert:
         assert final_a.has_correction is False
 
         effective_a = final_a.corrected_text or final_a.text
-        assert effective_a == "Claudia Shane", (
-            f"Segment A must be restored. Got: {effective_a!r}"
-        )
+        assert (
+            effective_a == "Claudia Shane"
+        ), f"Segment A must be restored. Got: {effective_a!r}"

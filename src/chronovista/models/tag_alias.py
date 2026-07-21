@@ -55,9 +55,7 @@ class TagAliasUpdate(BaseModel):
     """Model for updating tag aliases (PATCH-style, all fields optional)."""
 
     raw_form: str | None = Field(default=None, min_length=1, max_length=500)
-    normalized_form: str | None = Field(
-        default=None, min_length=1, max_length=500
-    )
+    normalized_form: str | None = Field(default=None, min_length=1, max_length=500)
     canonical_tag_id: uuid.UUID | None = None
     creation_method: CreationMethod | None = None
     normalization_version: int | None = Field(default=None, ge=1)

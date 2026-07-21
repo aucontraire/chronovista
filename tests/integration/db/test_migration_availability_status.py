@@ -28,6 +28,7 @@ from chronovista.db.models import Channel, Playlist, Video
 
 # CRITICAL: This line ensures async tests work with coverage
 
+
 def get_column_names(model: type[Any]) -> list[str]:
     """
     Get column names from a SQLAlchemy model using runtime inspection.
@@ -175,9 +176,7 @@ class TestSchemaIntegration:
         assert video.recovery_source is None
         assert video.unavailability_first_detected is None
 
-    async def test_insert_unavailable_video(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_insert_unavailable_video(self, db_session: AsyncSession) -> None:
         """Verify inserting a video with unavailable status works."""
         channel = Channel(
             channel_id="UC_test_channel_002",

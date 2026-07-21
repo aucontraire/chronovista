@@ -129,17 +129,13 @@ class TestFormatSegmentHuman:
 
     def test_zero_duration_indicator(self) -> None:
         """Test that zero duration shows [0.00s] indicator per FR-EDGE-06."""
-        segment = create_test_segment(
-            id=1, text="Point", start_time=5.0, duration=0.0
-        )
+        segment = create_test_segment(id=1, text="Point", start_time=5.0, duration=0.0)
         result = format_segment_human(segment)
         assert "[0.00s]" in result
 
     def test_custom_max_text_length(self) -> None:
         """Test custom max_text_length parameter."""
-        segment = create_test_segment(
-            id=1, text="A" * 50, start_time=0.0, duration=2.0
-        )
+        segment = create_test_segment(id=1, text="A" * 50, start_time=0.0, duration=2.0)
         result = format_segment_human(segment, max_text_length=20)
         # Text should be truncated to 17 chars + "..."
         assert "..." in result
@@ -196,9 +192,7 @@ class TestFormatSegmentJson:
 
     def test_includes_formatted_timestamps(self) -> None:
         """Test that formatted timestamps are included."""
-        segment = create_test_segment(
-            id=1, text="Hello", start_time=90.0, duration=3.0
-        )
+        segment = create_test_segment(id=1, text="Hello", start_time=90.0, duration=3.0)
         result = format_segment_json(segment)
         parsed = json.loads(result)
         assert parsed["start_formatted"] == "1:30"
@@ -239,9 +233,7 @@ class TestFormatSegmentSrt:
 
     def test_srt_timestamps_with_milliseconds(self) -> None:
         """Test SRT timestamp format HH:MM:SS,mmm."""
-        segment = create_test_segment(
-            id=1, text="Test", start_time=90.5, duration=2.75
-        )
+        segment = create_test_segment(id=1, text="Test", start_time=90.5, duration=2.75)
         result = format_segment_srt(segment, sequence=1)
         assert "00:01:30,500" in result
         assert "00:01:33,250" in result
@@ -256,18 +248,14 @@ class TestFormatSegmentSrt:
 
     def test_sequence_number_matches_parameter(self) -> None:
         """Test that sequence number uses the provided parameter."""
-        segment = create_test_segment(
-            id=99, text="Test", start_time=0.0, duration=2.0
-        )
+        segment = create_test_segment(id=99, text="Test", start_time=0.0, duration=2.0)
         result = format_segment_srt(segment, sequence=5)
         lines = result.strip().split("\n")
         assert lines[0] == "5"  # Uses parameter, not segment id
 
     def test_zero_time_segment(self) -> None:
         """Test segment at time 0."""
-        segment = create_test_segment(
-            id=1, text="Start", start_time=0.0, duration=1.5
-        )
+        segment = create_test_segment(id=1, text="Start", start_time=0.0, duration=1.5)
         result = format_segment_srt(segment, sequence=1)
         assert "00:00:00,000" in result
         assert "00:00:01,500" in result
@@ -356,9 +344,7 @@ class TestFormatSegmentsJson:
         segments = [
             create_test_segment(id=1, text="First", start_time=0.0, duration=2.0),
         ]
-        result = format_segments_json(
-            segments, video_id="abc123", language_code="en"
-        )
+        result = format_segments_json(segments, video_id="abc123", language_code="en")
         parsed = json.loads(result)
         assert parsed["video_id"] == "abc123"
         assert parsed["language_code"] == "en"

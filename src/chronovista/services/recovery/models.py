@@ -87,9 +87,7 @@ class CdxSnapshot(BaseModel):
             If timestamp is not exactly 14 digits.
         """
         if not re.match(r"^\d{14}$", v):
-            raise ValueError(
-                f"timestamp must be exactly 14 digits, got '{v}'"
-            )
+            raise ValueError(f"timestamp must be exactly 14 digits, got '{v}'")
         return v
 
     @field_validator("length")
@@ -227,9 +225,7 @@ class RecoveredVideoData(BaseModel):
             If snapshot_timestamp is not exactly 14 digits.
         """
         if not re.match(r"^\d{14}$", v):
-            raise ValueError(
-                f"snapshot_timestamp must be exactly 14 digits, got '{v}'"
-            )
+            raise ValueError(f"snapshot_timestamp must be exactly 14 digits, got '{v}'")
         return v
 
     @field_validator("channel_id", mode="before")
@@ -258,9 +254,7 @@ class RecoveredVideoData(BaseModel):
         if not isinstance(v, str):
             raise ValueError(f"channel_id must be a string, got {type(v).__name__}")
         if not re.match(r"^UC[A-Za-z0-9_-]{22}$", v):
-            raise ValueError(
-                f"channel_id must match UC[A-Za-z0-9_-]{{22}}, got '{v}'"
-            )
+            raise ValueError(f"channel_id must match UC[A-Za-z0-9_-]{{22}}, got '{v}'")
         return v
 
     @field_validator("view_count")
@@ -445,9 +439,7 @@ class RecoveredChannelData(BaseModel):
             If snapshot_timestamp is not exactly 14 digits.
         """
         if not re.match(r"^\d{14}$", v):
-            raise ValueError(
-                f"snapshot_timestamp must be exactly 14 digits, got '{v}'"
-            )
+            raise ValueError(f"snapshot_timestamp must be exactly 14 digits, got '{v}'")
         return v
 
     @field_validator("subscriber_count")
@@ -740,8 +732,7 @@ class CdxCacheEntry(BaseModel):
         """
         if v.tzinfo is None:
             raise ValueError(
-                "fetched_at must be timezone-aware (has tzinfo), "
-                "got naive datetime"
+                "fetched_at must be timezone-aware (has tzinfo), " "got naive datetime"
             )
         return v
 

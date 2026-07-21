@@ -241,9 +241,9 @@ class TagManagementService:
         """
         # alias_count
         alias_result = await session.execute(
-            select(func.count()).select_from(TagAliasDB).where(
-                TagAliasDB.canonical_tag_id == canonical_tag_id
-            )
+            select(func.count())
+            .select_from(TagAliasDB)
+            .where(TagAliasDB.canonical_tag_id == canonical_tag_id)
         )
         alias_count: int = alias_result.scalar_one()
 
@@ -316,9 +316,7 @@ class TagManagementService:
             rollback_data=rollback_data,
             performed_by="cli",
         )
-        log_entry = await self._operation_log_repo.create(
-            session, obj_in=log_create
-        )
+        log_entry = await self._operation_log_repo.create(session, obj_in=log_create)
         logger.info(
             "Operation logged: type=%s, id=%s, sources=%s, target=%s",
             operation_type,
@@ -386,9 +384,7 @@ class TagManagementService:
         resulting_alias, resulting_video = await self._count_over_tag_ids(
             session, union_ids
         )
-        source_alias, source_video = await self._count_over_tag_ids(
-            session, source_ids
-        )
+        source_alias, source_video = await self._count_over_tag_ids(session, source_ids)
 
         return MergePreviewResult(
             source_tags=[s.canonical_form for s in sources],
@@ -475,9 +471,7 @@ class TagManagementService:
         # Validate no self-merge
         for src_form in source_normalized_forms:
             if src_form == target_normalized_form:
-                raise ValueError(
-                    f"Cannot merge tag '{src_form}' into itself"
-                )
+                raise ValueError(f"Cannot merge tag '{src_form}' into itself")
 
         # Validate all sources are active
         sources: list[CanonicalTagDB] = []
@@ -493,26 +487,26 @@ class TagManagementService:
         for src in sources:
             # Get all aliases for this source
             alias_result = await session.execute(
-                select(TagAliasDB).where(
-                    TagAliasDB.canonical_tag_id == src.id
-                )
+                select(TagAliasDB).where(TagAliasDB.canonical_tag_id == src.id)
             )
             source_aliases = list(alias_result.scalars().all())
             alias_ids = [a.id for a in source_aliases]
 
-            rollback_sources.append({
-                "canonical_tag_id": str(src.id),
-                "previous_status": src.status,
-                "previous_alias_count": src.alias_count,
-                "previous_video_count": src.video_count,
-                "previous_entity_type": (
-                    src.entity_type if src.entity_type else None
-                ),
-                "previous_entity_id": (
-                    str(src.entity_id) if src.entity_id else None
-                ),
-                "alias_ids": [str(a) for a in alias_ids],
-            })
+            rollback_sources.append(
+                {
+                    "canonical_tag_id": str(src.id),
+                    "previous_status": src.status,
+                    "previous_alias_count": src.alias_count,
+                    "previous_video_count": src.video_count,
+                    "previous_entity_type": (
+                        src.entity_type if src.entity_type else None
+                    ),
+                    "previous_entity_id": (
+                        str(src.entity_id) if src.entity_id else None
+                    ),
+                    "alias_ids": [str(a) for a in alias_ids],
+                }
+            )
 
             # Reassign aliases to target — update both FK and normalized_form
             # so that the lookup path (raw_form -> normalized_form -> canonical_tag)
@@ -562,9 +556,7 @@ class TagManagementService:
         # FR-005a: entity hint if target is unclassified but sources had types
         entity_hint = None
         if target.entity_type is None:
-            source_types = [
-                s.entity_type for s in sources if s.entity_type is not None
-            ]
+            source_types = [s.entity_type for s in sources if s.entity_type is not None]
             if source_types:
                 entity_hint = (
                     f"Source tag(s) had entity type(s): "
@@ -635,17 +627,13 @@ class TagManagementService:
 
         # Get all aliases for the source tag
         all_aliases_result = await session.execute(
-            select(TagAliasDB).where(
-                TagAliasDB.canonical_tag_id == source_tag.id
-            )
+            select(TagAliasDB).where(TagAliasDB.canonical_tag_id == source_tag.id)
         )
         all_aliases = list(all_aliases_result.scalars().all())
         all_raw_forms = {a.raw_form for a in all_aliases}
 
         # Validate all specified aliases belong to this tag (all-or-nothing FR-010)
-        invalid_aliases = [
-            rf for rf in alias_raw_forms if rf not in all_raw_forms
-        ]
+        invalid_aliases = [rf for rf in alias_raw_forms if rf not in all_raw_forms]
         if invalid_aliases:
             raise ValueError(
                 f"Alias(es) not found on tag '{normalized_form}': "
@@ -662,12 +650,8 @@ class TagManagementService:
 
         # Select canonical form from moved aliases using existing algorithm
         normalization_service = TagNormalizationService()
-        moved_aliases = [
-            a for a in all_aliases if a.raw_form in alias_raw_forms
-        ]
-        forms_with_counts = [
-            (a.raw_form, a.occurrence_count) for a in moved_aliases
-        ]
+        moved_aliases = [a for a in all_aliases if a.raw_form in alias_raw_forms]
+        forms_with_counts = [(a.raw_form, a.occurrence_count) for a in moved_aliases]
         new_canonical_form = normalization_service.select_canonical_form(
             forms_with_counts
         )
@@ -707,9 +691,7 @@ class TagManagementService:
             alias_count=0,
             video_count=0,
         )
-        new_tag = await self._canonical_tag_repo.create(
-            session, obj_in=new_tag_create
-        )
+        new_tag = await self._canonical_tag_repo.create(session, obj_in=new_tag_create)
 
         # Reassign aliases to the new tag
         moved_alias_ids = [a.id for a in moved_aliases]
@@ -806,9 +788,7 @@ class TagManagementService:
             raise ValueError(f"Operation '{operation_id}' not found")
 
         if log_entry.rolled_back is True:
-            raise ValueError(
-                f"Operation '{operation_id}' has already been undone"
-            )
+            raise ValueError(f"Operation '{operation_id}' has already been undone")
 
         # Dispatch based on operation type
         op_type = log_entry.operation_type
@@ -998,9 +978,7 @@ class TagManagementService:
         if previous_entity_type is not None and force:
             # If old entity was user_created, delete it and its aliases
             if tag.entity_id is not None:
-                old_entity = await self._named_entity_repo.get(
-                    session, tag.entity_id
-                )
+                old_entity = await self._named_entity_repo.get(session, tag.entity_id)
                 if (
                     old_entity is not None
                     and old_entity.discovery_method
@@ -1053,9 +1031,7 @@ class TagManagementService:
                     session, link_entity_id
                 )
                 if target_entity is None:
-                    raise ValueError(
-                        f"Entity '{link_entity_id}' not found."
-                    )
+                    raise ValueError(f"Entity '{link_entity_id}' not found.")
                 if target_entity.status != "active":
                     raise ValueError(
                         f"Entity '{target_entity.canonical_name}' is not active "
@@ -1068,8 +1044,7 @@ class TagManagementService:
                 # 4. Check if a named_entity already exists with same name/type
                 existing_entity_result = await session.execute(
                     select(NamedEntityDB).where(
-                        NamedEntityDB.canonical_name_normalized
-                        == tag.normalized_form,
+                        NamedEntityDB.canonical_name_normalized == tag.normalized_form,
                         NamedEntityDB.entity_type == entity_type.value,
                     )
                 )
@@ -1109,8 +1084,7 @@ class TagManagementService:
 
             normalizer = TagNormalizationService()
             self_norm = (
-                normalizer.normalize(tag.canonical_form)
-                or tag.canonical_form.lower()
+                normalizer.normalize(tag.canonical_form) or tag.canonical_form.lower()
             )
 
             existing_result = await session.execute(
@@ -1129,9 +1103,7 @@ class TagManagementService:
                     alias_type=EntityAliasType.NAME_VARIANT,
                     occurrence_count=0,
                 )
-                ea_db = await self._entity_alias_repo.create(
-                    session, obj_in=ea_create
-                )
+                ea_db = await self._entity_alias_repo.create(session, obj_in=ea_create)
                 created_entity_alias_ids.append(ea_db.id)
 
         elif entity_type in tag_only_types:
@@ -1150,9 +1122,7 @@ class TagManagementService:
                 str(created_entity_id) if created_entity_id else None
             ),
             "linked_existing_entity_id": (
-                str(linked_existing_entity_id)
-                if linked_existing_entity_id
-                else None
+                str(linked_existing_entity_id) if linked_existing_entity_id else None
             ),
             "created_entity_alias_ids": [
                 str(ea_id) for ea_id in created_entity_alias_ids
@@ -1283,9 +1253,7 @@ class TagManagementService:
 
             # Get aliases for this tag
             alias_result = await session.execute(
-                select(TagAliasDB).where(
-                    TagAliasDB.canonical_tag_id == tag.id
-                )
+                select(TagAliasDB).where(TagAliasDB.canonical_tag_id == tag.id)
             )
             aliases = list(alias_result.scalars().all())
 
@@ -1570,9 +1538,7 @@ class TagManagementService:
                 TagOperationLogDB.id != log_entry.id,
                 TagOperationLogDB.rolled_back == False,  # noqa: E712
                 (
-                    TagOperationLogDB.source_canonical_ids.contains(
-                        [str(created_id)]
-                    )
+                    TagOperationLogDB.source_canonical_ids.contains([str(created_id)])
                     | (TagOperationLogDB.target_canonical_id == created_id)
                 ),
             )
@@ -1588,9 +1554,7 @@ class TagManagementService:
 
         # Look up the original canonical tag to get its normalized_form
         # before reassigning aliases, so we can restore normalized_form too.
-        original_tag_for_nf = await self._canonical_tag_repo.get(
-            session, original_id
-        )
+        original_tag_for_nf = await self._canonical_tag_repo.get(session, original_id)
 
         # Move aliases back to original — restore both FK and normalized_form
         if moved_alias_ids and original_tag_for_nf is not None:
@@ -1697,8 +1661,7 @@ class TagManagementService:
         created_entity_id_str = rollback.get("created_entity_id")
         rollback.get("linked_existing_entity_id")
         created_entity_alias_ids = [
-            uuid.UUID(ea_id)
-            for ea_id in rollback.get("created_entity_alias_ids", [])
+            uuid.UUID(ea_id) for ea_id in rollback.get("created_entity_alias_ids", [])
         ]
 
         # Look up the canonical tag
@@ -1724,13 +1687,10 @@ class TagManagementService:
         if created_entity_id_str is not None:
             # We created a new entity — delete it if user_created
             created_entity_id = uuid.UUID(created_entity_id_str)
-            entity = await self._named_entity_repo.get(
-                session, created_entity_id
-            )
+            entity = await self._named_entity_repo.get(session, created_entity_id)
             if (
                 entity is not None
-                and entity.discovery_method
-                == DiscoveryMethod.USER_CREATED.value
+                and entity.discovery_method == DiscoveryMethod.USER_CREATED.value
             ):
                 await session.delete(entity)
                 await session.flush()
@@ -1784,6 +1744,4 @@ class TagManagementService:
         tag.status = previous_status
         session.add(tag)
 
-        return (
-            f"Restored '{tag.normalized_form}' from deprecated to {previous_status}"
-        )
+        return f"Restored '{tag.normalized_form}' from deprecated to {previous_status}"

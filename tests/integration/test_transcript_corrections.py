@@ -201,7 +201,9 @@ class TestApplyCorrectionIntegration:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
         segment = await _seed_segment(
             db_session,
             video_id=video_id,
@@ -228,42 +230,38 @@ class TestApplyCorrectionIntegration:
 
         # Assert 1: audit record was persisted with correct field values
         correction_result = await db_session.execute(
-            select(TranscriptCorrectionDB).where(
-                TranscriptCorrectionDB.id == result.id
-            )
+            select(TranscriptCorrectionDB).where(TranscriptCorrectionDB.id == result.id)
         )
         persisted_correction = correction_result.scalar_one_or_none()
-        assert persisted_correction is not None, (
-            "TranscriptCorrection audit record must be persisted to the database"
-        )
+        assert (
+            persisted_correction is not None
+        ), "TranscriptCorrection audit record must be persisted to the database"
         assert persisted_correction.video_id == video_id
         assert persisted_correction.language_code == language_code
         assert persisted_correction.segment_id == segment_id
-        assert persisted_correction.version_number == 1, (
-            "First correction must have version_number=1"
-        )
-        assert persisted_correction.original_text == "teh quick brown fox", (
-            "original_text must be the segment's pre-correction text"
-        )
-        assert persisted_correction.corrected_text == "the quick brown fox", (
-            "corrected_text must be the new corrected text"
-        )
+        assert (
+            persisted_correction.version_number == 1
+        ), "First correction must have version_number=1"
+        assert (
+            persisted_correction.original_text == "teh quick brown fox"
+        ), "original_text must be the segment's pre-correction text"
+        assert (
+            persisted_correction.corrected_text == "the quick brown fox"
+        ), "corrected_text must be the new corrected text"
         assert persisted_correction.correction_note == "Fixed typo: teh → the"
         assert persisted_correction.corrected_by_user_id == "cli"
 
         # Assert 2-3: segment state updated
         segment_result = await db_session.execute(
-            select(TranscriptSegmentDB).where(
-                TranscriptSegmentDB.id == segment_id
-            )
+            select(TranscriptSegmentDB).where(TranscriptSegmentDB.id == segment_id)
         )
         persisted_segment = segment_result.scalar_one()
-        assert persisted_segment.corrected_text == "the quick brown fox", (
-            "segment.corrected_text must be set to the corrected text"
-        )
-        assert persisted_segment.has_correction is True, (
-            "segment.has_correction must be True after correction"
-        )
+        assert (
+            persisted_segment.corrected_text == "the quick brown fox"
+        ), "segment.corrected_text must be set to the corrected text"
+        assert (
+            persisted_segment.has_correction is True
+        ), "segment.has_correction must be True after correction"
 
         # Assert 4-6: transcript metadata updated
         transcript_result = await db_session.execute(
@@ -273,15 +271,15 @@ class TestApplyCorrectionIntegration:
             )
         )
         persisted_transcript = transcript_result.scalar_one()
-        assert persisted_transcript.has_corrections is True, (
-            "transcript.has_corrections must be True after correction"
-        )
-        assert persisted_transcript.correction_count == 1, (
-            "transcript.correction_count must be incremented to 1"
-        )
-        assert persisted_transcript.last_corrected_at is not None, (
-            "transcript.last_corrected_at must be set after correction"
-        )
+        assert (
+            persisted_transcript.has_corrections is True
+        ), "transcript.has_corrections must be True after correction"
+        assert (
+            persisted_transcript.correction_count == 1
+        ), "transcript.correction_count must be incremented to 1"
+        assert (
+            persisted_transcript.last_corrected_at is not None
+        ), "transcript.last_corrected_at must be set after correction"
 
     async def test_display_text_returns_corrected_text_after_apply(
         self,
@@ -299,7 +297,9 @@ class TestApplyCorrectionIntegration:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
         segment = await _seed_segment(
             db_session,
             video_id=video_id,
@@ -323,9 +323,7 @@ class TestApplyCorrectionIntegration:
 
         # Reload the segment from the DB and convert to Pydantic model
         segment_result = await db_session.execute(
-            select(TranscriptSegmentDB).where(
-                TranscriptSegmentDB.id == segment_id
-            )
+            select(TranscriptSegmentDB).where(TranscriptSegmentDB.id == segment_id)
         )
         db_segment = segment_result.scalar_one()
 
@@ -336,9 +334,9 @@ class TestApplyCorrectionIntegration:
             "NFR-007: display_text must return corrected_text after apply_correction, "
             f"got '{pydantic_segment.display_text}' instead"
         )
-        assert pydantic_segment.text == "i went two the store", (
-            "The original text field must be preserved unchanged"
-        )
+        assert (
+            pydantic_segment.text == "i went two the store"
+        ), "The original text field must be preserved unchanged"
         assert pydantic_segment.has_correction is True
         assert pydantic_segment.corrected_text == "i went to the store"
 
@@ -360,7 +358,9 @@ class TestApplyCorrectionIntegration:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
         segment = await _seed_segment(
             db_session,
             video_id=video_id,
@@ -410,12 +410,8 @@ class TestApplyCorrectionIntegration:
         v2 = v2_result.scalar_one()
 
         # Verify version_numbers are 1 and 2
-        assert v1.version_number == 1, (
-            "First correction must have version_number=1"
-        )
-        assert v2.version_number == 2, (
-            "Second correction must have version_number=2"
-        )
+        assert v1.version_number == 1, "First correction must have version_number=1"
+        assert v2.version_number == 2, "Second correction must have version_number=2"
 
         # Verify the chain: v2.original_text == v1.corrected_text
         assert v2.original_text == v1.corrected_text, (
@@ -426,20 +422,18 @@ class TestApplyCorrectionIntegration:
         )
 
         # Verify v1.original_text is the raw segment text
-        assert v1.original_text == "teh lazy dog", (
-            "v1.original_text must be the segment's raw text before any correction"
-        )
+        assert (
+            v1.original_text == "teh lazy dog"
+        ), "v1.original_text must be the segment's raw text before any correction"
 
         # Verify final segment state
         segment_result = await db_session.execute(
-            select(TranscriptSegmentDB).where(
-                TranscriptSegmentDB.id == segment_id
-            )
+            select(TranscriptSegmentDB).where(TranscriptSegmentDB.id == segment_id)
         )
         final_segment = segment_result.scalar_one()
-        assert final_segment.corrected_text == "The lazy dog.", (
-            "segment.corrected_text must reflect the most recent correction"
-        )
+        assert (
+            final_segment.corrected_text == "The lazy dog."
+        ), "segment.corrected_text must reflect the most recent correction"
         assert final_segment.has_correction is True
 
         # Verify transcript correction_count = 2 (two active corrections)
@@ -450,9 +444,9 @@ class TestApplyCorrectionIntegration:
             )
         )
         transcript = transcript_result.scalar_one()
-        assert transcript.correction_count == 2, (
-            "transcript.correction_count must be 2 after two apply_correction calls"
-        )
+        assert (
+            transcript.correction_count == 2
+        ), "transcript.correction_count must be 2 after two apply_correction calls"
         assert transcript.has_corrections is True
         assert transcript.last_corrected_at is not None
 
@@ -469,7 +463,9 @@ class TestApplyCorrectionIntegration:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
 
         nonexistent_segment_id = 999_999
 
@@ -489,9 +485,9 @@ class TestApplyCorrectionIntegration:
                 TranscriptCorrectionDB.segment_id == nonexistent_segment_id
             )
         )
-        assert count_result.scalar_one_or_none() is None, (
-            "No audit record must be created when segment does not exist"
-        )
+        assert (
+            count_result.scalar_one_or_none() is None
+        ), "No audit record must be created when segment does not exist"
 
     async def test_apply_correction_raises_for_identical_text(
         self,
@@ -506,7 +502,9 @@ class TestApplyCorrectionIntegration:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
         segment = await _seed_segment(
             db_session,
             video_id=video_id,
@@ -537,7 +535,9 @@ class TestApplyCorrectionIntegration:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
 
         segment_a = await _seed_segment(
             db_session,
@@ -665,7 +665,9 @@ class TestRevertCorrectionIntegration:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
         segment = await _seed_segment(
             db_session,
             video_id=video_id,
@@ -700,12 +702,12 @@ class TestRevertCorrectionIntegration:
             select(TranscriptSegmentDB).where(TranscriptSegmentDB.id == segment_id)
         )
         persisted_segment = segment_result.scalar_one()
-        assert persisted_segment.corrected_text is None, (
-            "After revert-to-original, segment.corrected_text must be None"
-        )
-        assert persisted_segment.has_correction is False, (
-            "After revert-to-original, segment.has_correction must be False"
-        )
+        assert (
+            persisted_segment.corrected_text is None
+        ), "After revert-to-original, segment.corrected_text must be None"
+        assert (
+            persisted_segment.has_correction is False
+        ), "After revert-to-original, segment.has_correction must be False"
 
         # Assert 3-5: transcript metadata reflects the revert
         transcript_result = await db_session.execute(
@@ -723,9 +725,9 @@ class TestRevertCorrectionIntegration:
             "FR-014a: transcript.correction_count must be decremented to 0 "
             f"after revert-to-original (got {persisted_transcript.correction_count})"
         )
-        assert persisted_transcript.last_corrected_at is not None, (
-            "FR-014c: transcript.last_corrected_at must be updated after revert"
-        )
+        assert (
+            persisted_transcript.last_corrected_at is not None
+        ), "FR-014c: transcript.last_corrected_at must be updated after revert"
 
         # Assert 6: revert audit record persisted
         revert_result = await db_session.execute(
@@ -734,15 +736,15 @@ class TestRevertCorrectionIntegration:
             )
         )
         persisted_revert = revert_result.scalar_one_or_none()
-        assert persisted_revert is not None, (
-            "Revert audit record must be persisted to the database"
-        )
-        assert persisted_revert.correction_type == "revert", (
-            "Revert audit record must have correction_type='revert'"
-        )
-        assert persisted_revert.version_number == 2, (
-            "Revert audit record must have version_number=2 (was v1 correction)"
-        )
+        assert (
+            persisted_revert is not None
+        ), "Revert audit record must be persisted to the database"
+        assert (
+            persisted_revert.correction_type == "revert"
+        ), "Revert audit record must have correction_type='revert'"
+        assert (
+            persisted_revert.version_number == 2
+        ), "Revert audit record must have version_number=2 (was v1 correction)"
         assert persisted_revert.original_text == "the quick brown fox", (
             "Revert audit original_text must be the text BEFORE the revert "
             "(i.e., the corrected text from v1)"
@@ -769,7 +771,9 @@ class TestRevertCorrectionIntegration:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
 
         segment_a = await _seed_segment(
             db_session,
@@ -881,7 +885,9 @@ class TestRevertCorrectionIntegration:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
         segment = await _seed_segment(
             db_session,
             video_id=video_id,
@@ -945,13 +951,13 @@ class TestRevertCorrectionIntegration:
         # Assert version chain integrity
         assert v1.version_number == 1
         assert v2.version_number == 2
-        assert v3.version_number == 3, (
-            "Revert audit record must have version_number = max_version + 1 = 3"
-        )
+        assert (
+            v3.version_number == 3
+        ), "Revert audit record must have version_number = max_version + 1 = 3"
 
-        assert v3.correction_type == "revert", (
-            "Revert audit record must have correction_type='revert'"
-        )
+        assert (
+            v3.correction_type == "revert"
+        ), "Revert audit record must have correction_type='revert'"
         assert v3.original_text == "The lazy dog.", (
             "v3.original_text must be what the segment had BEFORE the revert "
             f"(v2.corrected_text='The lazy dog.', got '{v3.original_text}')"
@@ -991,9 +997,9 @@ class TestRevertCorrectionIntegration:
             "transcript.has_corrections must remain True after revert-to-prior "
             "(segment still has an active correction)"
         )
-        assert final_transcript.last_corrected_at is not None, (
-            "FR-014c: transcript.last_corrected_at must be updated after revert"
-        )
+        assert (
+            final_transcript.last_corrected_at is not None
+        ), "FR-014c: transcript.last_corrected_at must be updated after revert"
 
 
 # ---------------------------------------------------------------------------
@@ -1080,7 +1086,9 @@ class TestRepositoryQueryIntegration:
 
         # Seed prerequisite rows
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
         segment = await _seed_segment(
             db_session,
             video_id=video_id,
@@ -1133,9 +1141,9 @@ class TestRepositoryQueryIntegration:
         )
 
         # Must return exactly three records
-        assert len(corrections) == 3, (
-            f"Expected 3 corrections for segment, got {len(corrections)}"
-        )
+        assert (
+            len(corrections) == 3
+        ), f"Expected 3 corrections for segment, got {len(corrections)}"
 
         # Must be ordered version_number DESC: [3, 2, 1]
         version_numbers = [c.version_number for c in corrections]
@@ -1165,7 +1173,9 @@ class TestRepositoryQueryIntegration:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
 
         # Seed 5 segments, each with a unique original text
         for seq in range(5):
@@ -1195,12 +1205,10 @@ class TestRepositoryQueryIntegration:
             limit=2,
         )
 
-        assert len(items) == 2, (
-            f"limit=2 must return exactly 2 items; got {len(items)}"
-        )
-        assert total == 5, (
-            f"total must reflect all 5 corrections in the transcript; got {total}"
-        )
+        assert len(items) == 2, f"limit=2 must return exactly 2 items; got {len(items)}"
+        assert (
+            total == 5
+        ), f"total must reflect all 5 corrections in the transcript; got {total}"
 
     # ------------------------------------------------------------------
     # Language-code isolation: get_by_video
@@ -1337,12 +1345,8 @@ class TestRepositoryQueryIntegration:
             db_session, video_id=video_id, language_code=es_code
         )
 
-        assert en_count == 3, (
-            f"count_by_video for 'en' must return 3; got {en_count}"
-        )
-        assert es_count == 2, (
-            f"count_by_video for 'es' must return 2; got {es_count}"
-        )
+        assert en_count == 3, f"count_by_video for 'en' must return 3; got {en_count}"
+        assert es_count == 2, f"count_by_video for 'es' must return 2; got {es_count}"
 
     # ------------------------------------------------------------------
     # Empty segment query
@@ -1364,7 +1368,9 @@ class TestRepositoryQueryIntegration:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
         segment = await _seed_segment(
             db_session,
             video_id=video_id,
@@ -1412,7 +1418,9 @@ class TestRepositoryQueryIntegration:
         correction_count = 100
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
         segment = await _seed_segment(
             db_session,
             video_id=video_id,
@@ -1537,7 +1545,9 @@ class TestDisplayTextAfterRevert:
         original_text = "teh orignal text"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
         segment = await _seed_segment(
             db_session,
             video_id=video_id,
@@ -1579,12 +1589,12 @@ class TestDisplayTextAfterRevert:
             f"original raw text '{original_text}', "
             f"got '{pydantic_segment.display_text}'"
         )
-        assert pydantic_segment.has_correction is False, (
-            "After revert-to-original, has_correction must be False"
-        )
-        assert pydantic_segment.corrected_text is None, (
-            "After revert-to-original, corrected_text must be None"
-        )
+        assert (
+            pydantic_segment.has_correction is False
+        ), "After revert-to-original, has_correction must be False"
+        assert (
+            pydantic_segment.corrected_text is None
+        ), "After revert-to-original, corrected_text must be None"
 
     async def test_display_text_returns_prior_correction_after_revert_to_prior(
         self,
@@ -1610,7 +1620,9 @@ class TestDisplayTextAfterRevert:
         second_correction = "the lazy dog"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
         segment = await _seed_segment(
             db_session,
             video_id=video_id,
@@ -1662,18 +1674,18 @@ class TestDisplayTextAfterRevert:
             f"first correction's text '{first_correction}', "
             f"got '{pydantic_segment.display_text}'"
         )
-        assert pydantic_segment.has_correction is True, (
-            "After revert-to-prior, has_correction must remain True"
-        )
+        assert (
+            pydantic_segment.has_correction is True
+        ), "After revert-to-prior, has_correction must remain True"
         assert pydantic_segment.corrected_text == first_correction, (
             "After revert-to-prior, corrected_text must be the first "
             f"correction's text '{first_correction}', "
             f"got '{pydantic_segment.corrected_text}'"
         )
         # Also verify raw text is still untouched
-        assert pydantic_segment.text == raw_text, (
-            "The original raw text must never be modified by corrections"
-        )
+        assert (
+            pydantic_segment.text == raw_text
+        ), "The original raw text must never be modified by corrections"
 
 
 # ---------------------------------------------------------------------------
@@ -1743,7 +1755,9 @@ class TestSearchContractIntegration:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
         segment = await _seed_segment(
             db_session,
             video_id=video_id,
@@ -1770,12 +1784,12 @@ class TestSearchContractIntegration:
             select(TranscriptSegmentDB).where(TranscriptSegmentDB.id == segment_id)
         )
         db_seg = segment_result.scalar_one()
-        assert db_seg.text == "teh quick brown fox", (
-            "Original text column must be preserved unchanged"
-        )
-        assert db_seg.corrected_text == "the quick brown fox", (
-            "corrected_text column must contain the corrected content"
-        )
+        assert (
+            db_seg.text == "teh quick brown fox"
+        ), "Original text column must be preserved unchanged"
+        assert (
+            db_seg.corrected_text == "the quick brown fox"
+        ), "corrected_text column must contain the corrected content"
 
         # Verify ILIKE on corrected_text finds the segment
         # This mirrors the search router's or_(text.ilike(...), corrected_text.ilike(...))
@@ -1805,9 +1819,9 @@ class TestSearchContractIntegration:
         )
         found_original = list(ilike_original.scalars().all())
         found_original_ids = [s.id for s in found_original]
-        assert segment_id in found_original_ids, (
-            "Search must also find the segment by its original (uncorrected) text"
-        )
+        assert (
+            segment_id in found_original_ids
+        ), "Search must also find the segment by its original (uncorrected) text"
 
 
 # ---------------------------------------------------------------------------
@@ -1879,7 +1893,9 @@ class TestDownstreamConsumerIntegration:
         corrected_text = "the cat sat on the mat"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
         segment = await _seed_segment(
             db_session,
             video_id=video_id,
@@ -1919,12 +1935,12 @@ class TestDownstreamConsumerIntegration:
             f"'{original_text}', got:\n{srt_output}"
         )
         # Verify SRT structure: sequence number, timestamps, and text
-        assert srt_output.startswith("1\n"), (
-            "SRT output must start with the sequence number"
-        )
-        assert "-->" in srt_output, (
-            "SRT output must contain the timestamp arrow separator"
-        )
+        assert srt_output.startswith(
+            "1\n"
+        ), "SRT output must start with the sequence number"
+        assert (
+            "-->" in srt_output
+        ), "SRT output must contain the timestamp arrow separator"
 
     async def test_api_inline_ternary_returns_corrected_text(
         self,
@@ -1949,7 +1965,9 @@ class TestDownstreamConsumerIntegration:
         corrected_text = "world peace"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
         segment = await _seed_segment(
             db_session,
             video_id=video_id,
@@ -2011,9 +2029,9 @@ class TestDownstreamConsumerIntegration:
             if uncorr_seg.has_correction and uncorr_seg.corrected_text
             else uncorr_seg.text
         )
-        assert uncorrected_display == "no corrections here", (
-            "Uncorrected segment must return raw text from the API ternary"
-        )
+        assert (
+            uncorrected_display == "no corrections here"
+        ), "Uncorrected segment must return raw text from the API ternary"
 
     async def test_transcript_metadata_after_correction(
         self,
@@ -2035,7 +2053,9 @@ class TestDownstreamConsumerIntegration:
         language_code = "en"
 
         await _seed_video(db_session, video_id=video_id)
-        await _seed_transcript(db_session, video_id=video_id, language_code=language_code)
+        await _seed_transcript(
+            db_session, video_id=video_id, language_code=language_code
+        )
         segment = await _seed_segment(
             db_session,
             video_id=video_id,
@@ -2065,28 +2085,28 @@ class TestDownstreamConsumerIntegration:
         transcript = transcript_result.scalar_one()
 
         # Assert metadata fields are set correctly
-        assert transcript.has_corrections is True, (
-            "GAP-5: has_corrections must be True after apply_correction"
-        )
+        assert (
+            transcript.has_corrections is True
+        ), "GAP-5: has_corrections must be True after apply_correction"
         assert transcript.correction_count == 1, (
             "GAP-5: correction_count must be 1 after one apply_correction call, "
             f"got {transcript.correction_count}"
         )
-        assert transcript.last_corrected_at is not None, (
-            "GAP-5: last_corrected_at must be set after apply_correction"
-        )
+        assert (
+            transcript.last_corrected_at is not None
+        ), "GAP-5: last_corrected_at must be set after apply_correction"
 
         # Verify the fields are accessible attributes on the ORM object
         # (confirming they'd be available for API serialization)
-        assert hasattr(transcript, "has_corrections"), (
-            "ORM object must have has_corrections attribute for API serialization"
-        )
-        assert hasattr(transcript, "correction_count"), (
-            "ORM object must have correction_count attribute for API serialization"
-        )
-        assert hasattr(transcript, "last_corrected_at"), (
-            "ORM object must have last_corrected_at attribute for API serialization"
-        )
+        assert hasattr(
+            transcript, "has_corrections"
+        ), "ORM object must have has_corrections attribute for API serialization"
+        assert hasattr(
+            transcript, "correction_count"
+        ), "ORM object must have correction_count attribute for API serialization"
+        assert hasattr(
+            transcript, "last_corrected_at"
+        ), "ORM object must have last_corrected_at attribute for API serialization"
 
         # Apply a second correction to another segment and verify count increments
         segment_b = await _seed_segment(

@@ -1,11 +1,11 @@
 site_name: chronovista
 site_description: Personal YouTube data analytics tool for comprehensive access to your YouTube engagement history
 site_author: chronovista Contributors
-site_url: https://docs.chronovista.dev
+site_url: https://aucontraire.github.io/chronovista/
 
-repo_name: chronovista/chronovista
-repo_url: https://github.com/chronovista/chronovista
-edit_uri: edit/main/docs/
+repo_name: aucontraire/chronovista
+repo_url: https://github.com/aucontraire/chronovista
+edit_uri: edit/master/docs/
 
 theme:
   name: material
@@ -165,13 +165,8 @@ nav:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/chronovista/chronovista
+      link: https://github.com/aucontraire/chronovista
       name: chronovista on GitHub
-  version:
-    provider: mike
-  analytics:
-    provider: google
-    property: G-XXXXXXXXXX  # Replace with actual GA4 property ID
   generator: false
 
 extra_css:

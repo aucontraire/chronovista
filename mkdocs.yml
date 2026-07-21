@@ -110,6 +110,11 @@ markdown_extensions:
       permalink: true
       toc_depth: 3
 
+# docs/README.md is a folder index for browsing the docs/ directory on GitHub;
+# it collides with index.md when built, so exclude it from the site.
+exclude_docs: |
+  README.md
+
 # Navigation is organized along the Diátaxis framework
 # (https://diataxis.fr): Tutorials (learning), How-to guides (tasks),
 # Reference (facts — largely generated from source), and Explanation

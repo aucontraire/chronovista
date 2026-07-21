@@ -6,6 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/aucontraire/chronovista/actions/workflows/test.yml"><img src="https://github.com/aucontraire/chronovista/actions/workflows/test.yml/badge.svg" alt="CI"></a>
+  <a href="https://aucontraire.github.io/chronovista/"><img src="https://img.shields.io/badge/docs-online-blue.svg" alt="Docs"></a>
   <img src="https://img.shields.io/badge/license-AGPL--3.0-green.svg" alt="License: AGPL-3.0">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/tests-11,400+-brightgreen.svg" alt="Tests: 11,400+">
@@ -20,7 +21,7 @@
   <a href="#usage">Usage</a> |
   <a href="#architecture">Architecture</a> |
   <a href="#development">Development</a> |
-  <a href="docs/README.md">Docs</a>
+  <a href="https://aucontraire.github.io/chronovista/">Docs</a>
 </p>
 
 ---
@@ -287,7 +288,7 @@ Import your complete YouTube history from [Google Takeout](https://takeout.googl
 chronovista takeout seed /path/to/takeout              # Full import
 chronovista takeout seed /path/to/takeout --dry-run    # Preview changes
 chronovista takeout seed /path/to/takeout --incremental # Safe re-run
-chronovista takeout analyze /path/to/takeout           # Analyze patterns
+chronovista takeout analyze --path /path/to/takeout     # Analyze patterns
 ```
 
 <details>
@@ -300,10 +301,9 @@ chronovista takeout analyze /path/to/takeout           # Analyze patterns
 
 **Analysis commands:**
 ```bash
-chronovista takeout peek /path/to/takeout --summary
-chronovista takeout analyze /path/to/takeout --type viewing-patterns
-chronovista takeout analyze /path/to/takeout --type channel-relationships
-chronovista takeout inspect /path/to/takeout --focus playlists
+chronovista takeout peek playlists --path /path/to/takeout
+chronovista takeout analyze --path /path/to/takeout
+chronovista takeout relationships channel-clusters --path /path/to/takeout
 ```
 
 **Combine with API data:**

@@ -18,9 +18,14 @@ import React, { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { ENTITY_TYPE_LABELS, ENTITY_TYPE_COLORS } from "../constants/entityTypes";
-import { useEntityVideos, useDeleteManualAssociation, useScanEntity } from "../hooks/useEntityMentions";
+import {
+  useEntityVideos,
+  useDeleteManualAssociation,
+  useScanEntity,
+  useUpdateEntity,
+} from "../hooks/useEntityMentions";
 import { apiFetch } from "../api/config";
-import type { EntityDetail, EntityAliasSummary } from "../api/entityMentions";
+import type { EntityDetail, EntityAliasSummary, UpdateEntityRequest } from "../api/entityMentions";
 import { createEntityAlias } from "../api/entityMentions";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PhoneticVariantsSection } from "../components/corrections/PhoneticVariantsSection";
@@ -106,6 +111,26 @@ function ArrowLeftIcon({ className }: { className?: string }) {
         strokeLinecap="round"
         strokeLinejoin="round"
         d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"
+      />
+    </svg>
+  );
+}
+
+function PencilIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125"
       />
     </svg>
   );
@@ -671,6 +696,331 @@ function AddAliasForm({ entityId, onCreated }: AddAliasFormProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Entity name & description editor (Feature 057)
+// ---------------------------------------------------------------------------
+
+/** Maximum length for an entity's canonical_name, matching backend validation. */
+const ENTITY_NAME_MAX_LENGTH = 500;
+
+interface EntityNameEditorProps {
+  entityId: string;
+  canonicalName: string;
+  description: string | null;
+  /** Rendered next to the name in read mode (the existing entity-type badge). */
+  typeBadge: React.ReactNode;
+}
+
+/**
+ * Inline editor for an entity's display name and description (Feature 057,
+ * FR-001/FR-002). Editing here never touches the tag(s) the entity is linked
+ * to (FR-003).
+ *
+ * Mirrors the `AddAliasForm` / `TranscriptSegments` `isEditing` toggle
+ * pattern: a read view with a keyboard-operable Edit button, and an edit
+ * view with labeled Name/Description inputs and Save/Cancel.
+ *
+ * Accessibility (FR-021/FR-022/FR-023):
+ * - The edit trigger is a native `<button>`, so Enter/Space activate it
+ *   without any custom key handling.
+ * - Escape (while editing) cancels and restores the read view.
+ * - Name/description inputs are labeled.
+ * - A `role="status" aria-live="polite"` region announces "Saving…" / a
+ *   success message; errors are announced via `role="alert"`.
+ * - Save is disabled (and shows a pending label) while the mutation is in
+ *   flight, preventing duplicate submissions.
+ * - On a 400/404/409 error the editor stays open and the user's edited
+ *   values are left untouched, so nothing is lost.
+ */
+function EntityNameEditor({
+  entityId,
+  canonicalName,
+  description,
+  typeBadge,
+}: EntityNameEditorProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [nameInput, setNameInput] = useState(canonicalName);
+  const [descriptionInput, setDescriptionInput] = useState(description ?? "");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const editButtonRef = useRef<HTMLButtonElement>(null);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const updateMutation = useUpdateEntity();
+
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current !== null) {
+        clearTimeout(successTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isEditing) {
+      nameInputRef.current?.focus();
+    }
+  }, [isEditing]);
+
+  function enterEditMode() {
+    setNameInput(canonicalName);
+    setDescriptionInput(description ?? "");
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    setIsEditing(true);
+  }
+
+  function exitEditMode() {
+    setIsEditing(false);
+    // Return focus to the trigger for keyboard users (WCAG 2.4.3).
+    requestAnimationFrame(() => editButtonRef.current?.focus());
+  }
+
+  function handleCancel() {
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    exitEditMode();
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      handleCancel();
+    }
+  }
+
+  function handleSave() {
+    if (updateMutation.isPending) return; // FR-023: no double-submit
+
+    const trimmedName = nameInput.trim();
+    if (trimmedName.length === 0) {
+      setErrorMsg("Name cannot be empty.");
+      return;
+    }
+    if (trimmedName.length > ENTITY_NAME_MAX_LENGTH) {
+      setErrorMsg(`Name must be ${ENTITY_NAME_MAX_LENGTH} characters or fewer.`);
+      return;
+    }
+
+    const payload: UpdateEntityRequest = {};
+    if (trimmedName !== canonicalName) {
+      payload.canonical_name = trimmedName;
+    }
+    if (descriptionInput !== (description ?? "")) {
+      payload.description = descriptionInput;
+    }
+
+    if (Object.keys(payload).length === 0) {
+      // Edge case: no-op save — nothing changed, just return to read view.
+      exitEditMode();
+      return;
+    }
+
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    updateMutation.mutate(
+      { entityId, data: payload },
+      {
+        onSuccess: () => {
+          setSuccessMsg("Saved.");
+          exitEditMode();
+          successTimerRef.current = setTimeout(() => setSuccessMsg(null), 3000);
+        },
+        onError: (err) => {
+          const status = (err as { status?: number } | null)?.status;
+          if (status === 409) {
+            setErrorMsg(
+              "Another entity of this type already has that name. Choose a different name."
+            );
+          } else if (status === 400) {
+            setErrorMsg(err.message || "Invalid name or description.");
+          } else if (status === 404) {
+            setErrorMsg("Entity not found. Please refresh the page.");
+          } else {
+            setErrorMsg("Failed to save changes. Please try again.");
+          }
+          // FR-022: editor stays open (isEditing untouched) and the user's
+          // input is preserved (nameInput/descriptionInput untouched).
+        },
+      }
+    );
+  }
+
+  if (!isEditing) {
+    return (
+      <>
+        <div className="flex flex-wrap items-start gap-3 mb-4">
+          <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">
+            {canonicalName}
+          </h1>
+          {typeBadge}
+          <button
+            ref={editButtonRef}
+            type="button"
+            onClick={enterEditMode}
+            aria-label={`Edit name and description for ${canonicalName}`}
+            className="
+              inline-flex items-center gap-1
+              min-h-[32px]
+              px-2.5 py-1
+              text-xs font-medium text-slate-600
+              bg-slate-100 hover:bg-slate-200
+              border border-slate-200
+              rounded-full
+              focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1
+              transition-colors
+            "
+          >
+            <PencilIcon className="w-3.5 h-3.5" />
+            Edit
+          </button>
+        </div>
+
+        {description ? (
+          <p className="text-gray-600 mb-4 max-w-3xl">{description}</p>
+        ) : (
+          <p className="text-gray-400 italic mb-4">No description available.</p>
+        )}
+
+        {successMsg && (
+          <p
+            role="status"
+            aria-live="polite"
+            className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-1.5 mb-4 inline-block"
+          >
+            {successMsg}
+          </p>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div
+      className="mb-4 p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3"
+      onKeyDown={handleKeyDown}
+    >
+      <div>
+        <label
+          htmlFor="entity-name-input"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
+          Name
+        </label>
+        <input
+          ref={nameInputRef}
+          id="entity-name-input"
+          type="text"
+          value={nameInput}
+          onChange={(e) => {
+            setNameInput(e.target.value);
+            if (errorMsg) setErrorMsg(null);
+          }}
+          disabled={updateMutation.isPending}
+          maxLength={ENTITY_NAME_MAX_LENGTH}
+          aria-invalid={errorMsg !== null ? "true" : "false"}
+          aria-describedby={errorMsg !== null ? "entity-name-error" : undefined}
+          className="
+            w-full px-3 py-2
+            text-sm text-gray-900
+            border border-slate-300 rounded-md
+            focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500
+            disabled:bg-slate-100 disabled:text-slate-500
+          "
+        />
+      </div>
+
+      <div>
+        <label
+          htmlFor="entity-description-input"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
+          Description
+        </label>
+        <textarea
+          id="entity-description-input"
+          value={descriptionInput}
+          onChange={(e) => {
+            setDescriptionInput(e.target.value);
+            if (errorMsg) setErrorMsg(null);
+          }}
+          disabled={updateMutation.isPending}
+          rows={3}
+          className="
+            w-full px-3 py-2
+            text-sm text-gray-900
+            border border-slate-300 rounded-md
+            resize-none
+            focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500
+            disabled:bg-slate-100 disabled:text-slate-500
+          "
+        />
+      </div>
+
+      {/* Pending status — announced to screen readers (FR-021) */}
+      {updateMutation.isPending && (
+        <p
+          role="status"
+          aria-live="polite"
+          className="text-sm text-slate-600 bg-slate-100 border border-slate-200 rounded-md px-3 py-1.5"
+        >
+          Saving…
+        </p>
+      )}
+
+      {/* Inline error — preserved with the editor open (FR-022) */}
+      {errorMsg && (
+        <p
+          id="entity-name-error"
+          role="alert"
+          className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-1.5"
+        >
+          {errorMsg}
+        </p>
+      )}
+
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={updateMutation.isPending}
+          aria-busy={updateMutation.isPending ? "true" : undefined}
+          className="
+            min-h-[44px] min-w-[44px]
+            px-4 py-2
+            text-sm font-medium text-white
+            bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400
+            rounded-md
+            focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1
+            disabled:cursor-not-allowed
+            transition-colors
+          "
+        >
+          {updateMutation.isPending ? "Saving…" : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={handleCancel}
+          className="
+            min-h-[44px] min-w-[44px]
+            px-4 py-2
+            text-sm font-medium text-slate-700
+            bg-white hover:bg-slate-50
+            border border-slate-300
+            rounded-md
+            focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1
+            transition-colors
+          "
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page component
 // ---------------------------------------------------------------------------
 
@@ -891,25 +1241,20 @@ export function EntityDetailPage() {
 
       {/* Entity header card */}
       <article className="bg-white rounded-xl shadow-md border border-gray-100 p-6 lg:p-8 mb-6">
-        {/* Name + type badge */}
-        <div className="flex flex-wrap items-start gap-3 mb-4">
-          <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">
-            {entity.canonical_name}
-          </h1>
-          <span
-            className={`inline-flex items-center px-3 py-1 text-sm font-medium rounded-full border ${getTypeBadgeClass(entity.entity_type)}`}
-            aria-label={`Entity type: ${getTypeLabel(entity.entity_type)}`}
-          >
-            {getTypeLabel(entity.entity_type)}
-          </span>
-        </div>
-
-        {/* Description */}
-        {entity.description ? (
-          <p className="text-gray-600 mb-4 max-w-3xl">{entity.description}</p>
-        ) : (
-          <p className="text-gray-400 italic mb-4">No description available.</p>
-        )}
+        {/* Name + type badge + description — inline editable (Feature 057) */}
+        <EntityNameEditor
+          entityId={entityId ?? ""}
+          canonicalName={entity.canonical_name}
+          description={entity.description}
+          typeBadge={
+            <span
+              className={`inline-flex items-center px-3 py-1 text-sm font-medium rounded-full border ${getTypeBadgeClass(entity.entity_type)}`}
+              aria-label={`Entity type: ${getTypeLabel(entity.entity_type)}`}
+            >
+              {getTypeLabel(entity.entity_type)}
+            </span>
+          }
+        />
 
         {/* Stats row */}
         <div className="flex flex-wrap items-center gap-6 text-sm text-gray-500">

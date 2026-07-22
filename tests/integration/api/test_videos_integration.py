@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import (
@@ -42,31 +42,42 @@ async def sort_test_session(
 
 
 @pytest.fixture
-async def sort_test_channel(sort_test_session: AsyncSession) -> Channel:
-    """Create a channel for sort/filter tests."""
+async def sort_test_channel(
+    sort_test_session: AsyncSession,
+) -> AsyncGenerator[Channel, None]:
+    """Create a channel for sort/filter tests (cleaned up on teardown)."""
     result = await sort_test_session.execute(
         select(Channel).where(Channel.channel_id == "UC_sort_test_chan_001_")
     )
     existing = result.scalar_one_or_none()
     if existing:
-        return existing
+        channel = existing
+    else:
+        channel = Channel(
+            channel_id="UC_sort_test_chan_001_",
+            title="Sort Test Channel",
+            description="A channel for sort/filter testing",
+        )
+        sort_test_session.add(channel)
+        await sort_test_session.commit()
+        await sort_test_session.refresh(channel)
 
-    channel = Channel(
-        channel_id="UC_sort_test_chan_001_",
-        title="Sort Test Channel",
-        description="A channel for sort/filter testing",
+    yield channel
+
+    # Teardown: remove the channel. Its videos are removed first by the
+    # sort_test_videos fixture teardown (which depends on this fixture, so it
+    # tears down earlier).
+    await sort_test_session.execute(
+        delete(Channel).where(Channel.channel_id == "UC_sort_test_chan_001_")
     )
-    sort_test_session.add(channel)
     await sort_test_session.commit()
-    await sort_test_session.refresh(channel)
-    return channel
 
 
 @pytest.fixture
 async def sort_test_videos(
     sort_test_session: AsyncSession,
     sort_test_channel: Channel,
-) -> list[Video]:
+) -> AsyncGenerator[list[Video], None]:
     """Create videos with distinct titles and upload dates for sort testing.
 
     Creates 3 videos:
@@ -104,7 +115,23 @@ async def sort_test_videos(
     await sort_test_session.commit()
     for v in videos:
         await sort_test_session.refresh(v)
-    return videos
+
+    yield videos
+
+    # Teardown: remove the sort videos and everything that references them
+    # (FK-dependents first) so nothing leaks into the shared integration DB.
+    sort_ids = ["sort_vid__a", "sort_vid__b", "sort_vid__c"]
+    await sort_test_session.execute(
+        delete(VideoTag).where(VideoTag.video_id.in_(sort_ids))
+    )
+    await sort_test_session.execute(
+        delete(UserVideo).where(UserVideo.video_id.in_(sort_ids))
+    )
+    await sort_test_session.execute(
+        delete(VideoTranscript).where(VideoTranscript.video_id.in_(sort_ids))
+    )
+    await sort_test_session.execute(delete(Video).where(Video.video_id.in_(sort_ids)))
+    await sort_test_session.commit()
 
 
 @pytest.fixture

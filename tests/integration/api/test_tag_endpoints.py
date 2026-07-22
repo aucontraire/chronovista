@@ -20,7 +20,13 @@ from httpx import AsyncClient
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.db.models import Channel, Video, VideoTag
+from chronovista.db.models import (
+    Channel,
+    UserVideo,
+    Video,
+    VideoTag,
+    VideoTranscript,
+)
 from tests.factories.id_factory import YouTubeIdFactory
 
 if TYPE_CHECKING:
@@ -167,6 +173,8 @@ class TestListTagsWithCounts:
         async with integration_session_factory() as session:
             # Clean up any existing test data
             await session.execute(delete(VideoTag))
+            await session.execute(delete(UserVideo))
+            await session.execute(delete(VideoTranscript))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
             await session.commit()
@@ -239,6 +247,8 @@ class TestListTagsWithCounts:
         # Cleanup
         async with integration_session_factory() as session:
             await session.execute(delete(VideoTag))
+            await session.execute(delete(UserVideo))
+            await session.execute(delete(VideoTranscript))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
             await session.commit()
@@ -263,6 +273,8 @@ class TestTagDetail:
         # Create test tag
         async with integration_session_factory() as session:
             await session.execute(delete(VideoTag))
+            await session.execute(delete(UserVideo))
+            await session.execute(delete(VideoTranscript))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
             await session.commit()
@@ -304,6 +316,8 @@ class TestTagDetail:
         # Cleanup
         async with integration_session_factory() as session:
             await session.execute(delete(VideoTag))
+            await session.execute(delete(UserVideo))
+            await session.execute(delete(VideoTranscript))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
             await session.commit()
@@ -338,6 +352,8 @@ class TestTagDetail:
         # Create test tag with special characters
         async with integration_session_factory() as session:
             await session.execute(delete(VideoTag))
+            await session.execute(delete(UserVideo))
+            await session.execute(delete(VideoTranscript))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
             await session.commit()
@@ -376,6 +392,8 @@ class TestTagDetail:
         # Cleanup
         async with integration_session_factory() as session:
             await session.execute(delete(VideoTag))
+            await session.execute(delete(UserVideo))
+            await session.execute(delete(VideoTranscript))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
             await session.commit()
@@ -417,6 +435,8 @@ class TestTagVideos:
         async with integration_session_factory() as session:
             # Clean up any existing test data
             await session.execute(delete(VideoTag))
+            await session.execute(delete(UserVideo))
+            await session.execute(delete(VideoTranscript))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
             await session.commit()
@@ -485,6 +505,8 @@ class TestTagVideos:
         # Create test data
         async with integration_session_factory() as session:
             await session.execute(delete(VideoTag))
+            await session.execute(delete(UserVideo))
+            await session.execute(delete(VideoTranscript))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
             await session.commit()
@@ -540,6 +562,8 @@ class TestTagVideos:
         # Cleanup
         async with integration_session_factory() as session:
             await session.execute(delete(VideoTag))
+            await session.execute(delete(UserVideo))
+            await session.execute(delete(VideoTranscript))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
             await session.commit()
@@ -553,6 +577,8 @@ class TestTagVideos:
         # Create test data with multiple videos
         async with integration_session_factory() as session:
             await session.execute(delete(VideoTag))
+            await session.execute(delete(UserVideo))
+            await session.execute(delete(VideoTranscript))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
             await session.commit()
@@ -611,6 +637,8 @@ class TestTagVideos:
         # Cleanup
         async with integration_session_factory() as session:
             await session.execute(delete(VideoTag))
+            await session.execute(delete(UserVideo))
+            await session.execute(delete(VideoTranscript))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
             await session.commit()
@@ -624,6 +652,8 @@ class TestTagVideos:
         # Create test data with multiple videos
         async with integration_session_factory() as session:
             await session.execute(delete(VideoTag))
+            await session.execute(delete(UserVideo))
+            await session.execute(delete(VideoTranscript))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
             await session.commit()
@@ -682,6 +712,8 @@ class TestTagVideos:
         # Cleanup
         async with integration_session_factory() as session:
             await session.execute(delete(VideoTag))
+            await session.execute(delete(UserVideo))
+            await session.execute(delete(VideoTranscript))
             await session.execute(delete(Video))
             await session.execute(delete(Channel))
             await session.commit()

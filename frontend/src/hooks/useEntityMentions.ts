@@ -18,6 +18,7 @@ import {
   classifyTag,
   checkEntityDuplicate,
   createEntity,
+  updateEntity,
   scanEntity,
   scanVideoEntities,
   getScanJob,
@@ -27,6 +28,7 @@ import type {
   VideoEntitiesResponse,
   EntityVideoResult,
   EntityListItem,
+  EntityDetail,
   EntityPaginationMeta,
   ManualAssociationResponse,
   ClassifyTagResponse,
@@ -35,6 +37,7 @@ import type {
   FetchEntitiesParams,
   CreateEntityRequest,
   CreateEntityResponse,
+  UpdateEntityRequest,
   ScanRequest,
   ScanResultResponse,
   ScanJob,
@@ -548,6 +551,12 @@ export interface ClassifyTagVariables {
   entity_type: string;
   /** Optional human-readable description */
   description?: string;
+  /**
+   * Optional entity display name, stored verbatim (no re-casing). Falls back
+   * to the backend's auto-derived (title-cased) name when omitted
+   * (Feature 057, FR-008/FR-009/FR-010).
+   */
+  display_name?: string;
 }
 
 /**
@@ -618,6 +627,59 @@ export function useCreateEntity() {
       void queryClient.invalidateQueries({ queryKey: ["entities"] });
       void queryClient.invalidateQueries({ queryKey: ["entitySearch"] });
       // Note: NO ["canonical-tags"] invalidation — standalone entities aren't linked to tags
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// useUpdateEntity
+// ---------------------------------------------------------------------------
+
+/** Variables passed to the entity update mutation. */
+export interface UpdateEntityVariables {
+  /** UUID of the named entity to update */
+  entityId: string;
+  /** Fields to update (at least one of canonical_name/description) */
+  data: UpdateEntityRequest;
+}
+
+/**
+ * Mutation hook for updating a named entity's display name and/or
+ * description (Feature 057). Never touches the tag(s) the entity is linked
+ * to.
+ *
+ * On success, invalidates caches for:
+ * - `entity-detail` (entity detail header/description refreshes)
+ * - `entities`      (entity list page refreshes)
+ * - `entity-videos` (entity's videos view refreshes, e.g. entity-name
+ *   highlighting in description context snippets)
+ *
+ * Error handling is left to the caller — use `mutation.isError` / the
+ * per-call `onError` callback to display inline 400/404/409 errors while
+ * keeping the editor open with the user's input preserved (FR-022).
+ *
+ * @returns UseMutationResult with `mutate({ entityId, data })`
+ *
+ * @example
+ * ```tsx
+ * const mutation = useUpdateEntity();
+ * mutation.mutate({ entityId, data: { canonical_name: "OpenAI" } });
+ * ```
+ */
+export function useUpdateEntity() {
+  const queryClient = useQueryClient();
+
+  return useMutation<EntityDetail, ApiError, UpdateEntityVariables>({
+    mutationFn: ({ entityId, data }) => updateEntity(entityId, data),
+
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: ["entity-detail", variables.entityId],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["entities"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["entity-videos", variables.entityId],
+      });
     },
   });
 }

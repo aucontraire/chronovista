@@ -275,6 +275,7 @@ class TagManagementService:
         alias_ids: list[uuid.UUID],
         reason: str | None,
         rollback_data: dict[str, Any],
+        actor: str = "cli",
     ) -> uuid.UUID:
         """
         Create a tag_operation_logs entry for an operation.
@@ -295,6 +296,11 @@ class TagManagementService:
             Human-readable reason for the operation.
         rollback_data : dict[str, Any]
             Self-contained data for reversing the operation.
+        actor : str
+            Actor string recorded as ``performed_by`` (default ``"cli"`` to
+            preserve existing CLI behavior). API/web callers pass the web
+            actor (e.g. ``"user:local"``) so operations are attributed to the
+            correct source (FR-018).
 
         Returns
         -------
@@ -314,7 +320,7 @@ class TagManagementService:
             affected_alias_ids=serialized_alias_ids,
             reason=reason,
             rollback_data=rollback_data,
-            performed_by="cli",
+            performed_by=actor,
         )
         log_entry = await self._operation_log_repo.create(session, obj_in=log_create)
         logger.info(
@@ -433,6 +439,7 @@ class TagManagementService:
         target_normalized_form: str,
         *,
         reason: str | None = None,
+        actor: str = "cli",
     ) -> MergeResult:
         """
         Merge one or more source canonical tags into a target.
@@ -551,6 +558,7 @@ class TagManagementService:
             alias_ids=all_moved_alias_ids,
             reason=reason,
             rollback_data=rollback_data,
+            actor=actor,
         )
 
         # FR-005a: entity hint if target is unclassified but sources had types
@@ -588,6 +596,7 @@ class TagManagementService:
         alias_raw_forms: list[str],
         *,
         reason: str | None = None,
+        actor: str = "cli",
     ) -> SplitResult:
         """
         Split specific aliases from a canonical tag into a new canonical tag.
@@ -729,6 +738,7 @@ class TagManagementService:
             alias_ids=moved_alias_ids,
             reason=reason,
             rollback_data=rollback_data,
+            actor=actor,
         )
 
         logger.info(
@@ -838,6 +848,7 @@ class TagManagementService:
         new_display_form: str,
         *,
         reason: str | None = None,
+        actor: str = "cli",
     ) -> RenameResult:
         """
         Rename a canonical tag's display form (canonical_form).
@@ -897,6 +908,7 @@ class TagManagementService:
             alias_ids=[],
             reason=reason,
             rollback_data=rollback_data,
+            actor=actor,
         )
 
         logger.info(
@@ -924,6 +936,8 @@ class TagManagementService:
         description: str | None = None,
         auto_case: bool = True,
         link_entity_id: uuid.UUID | None = None,
+        display_name: str | None = None,
+        actor: str = "cli",
     ) -> ClassifyResult:
         """
         Classify a canonical tag with an entity type.
@@ -950,6 +964,16 @@ class TagManagementService:
         auto_case : bool
             If True (default), auto-title-case the canonical form for
             entity-producing types when it is not already title-cased.
+        display_name : Optional[str]
+            Explicit entity display name (verbatim). When provided, the
+            created entity's ``canonical_name`` is this value exactly (no
+            ``str.title()`` re-casing), while the normalized form is still
+            derived from it so the tag link is matched case-insensitively
+            (FR-009/FR-011). When ``None``, the auto-derived name is used
+            (FR-010, backward compatible).
+        actor : str
+            Actor string recorded in the operation log (default ``"cli"``;
+            API/web callers pass ``"user:local"`` — FR-018).
 
         Returns
         -------
@@ -1020,10 +1044,29 @@ class TagManagementService:
         entity_created = False
 
         if entity_type in entity_producing_types:
-            # 3b. Auto-title-case for entity-producing types
-            if auto_case and not tag.canonical_form.istitle():
-                tag.canonical_form = tag.canonical_form.title()
-                session.add(tag)
+            from chronovista.services.tag_normalization import (
+                TagNormalizationService,
+            )
+
+            normalizer = TagNormalizationService()
+
+            # 3b. Determine the entity display name and its normalized form.
+            # When an explicit display_name is supplied (US2/FR-009), use it
+            # verbatim as the entity canonical_name and skip the auto-title-case
+            # block entirely — the tag's own canonical_form is left untouched
+            # (FR-003). The normalized form is still derived from the chosen
+            # name so the tag link/uniqueness stay case-insensitive (FR-011).
+            if display_name is not None:
+                entity_display_name = display_name
+                entity_display_normalized = (
+                    normalizer.normalize(display_name) or display_name.lower()
+                )
+            else:
+                if auto_case and not tag.canonical_form.istitle():
+                    tag.canonical_form = tag.canonical_form.title()
+                    session.add(tag)
+                entity_display_name = tag.canonical_form
+                entity_display_normalized = tag.normalized_form
 
             # 3c. --link-entity: link to a specific existing entity by ID
             if link_entity_id is not None:
@@ -1041,10 +1084,16 @@ class TagManagementService:
                 tag.entity_id = target_entity.id
                 linked_existing_entity_id = target_entity.id
             else:
-                # 4. Check if a named_entity already exists with same name/type
+                # 4. Check if a named_entity already exists with same name/type.
+                # Key the lookup on the SAME normalized value the entity will be
+                # stored with (``entity_display_normalized``) — when a custom
+                # display_name is supplied it may normalize differently from the
+                # tag, so matching on ``tag.normalized_form`` here could miss an
+                # existing entity and then hit the global-unique IntegrityError.
                 existing_entity_result = await session.execute(
                     select(NamedEntityDB).where(
-                        NamedEntityDB.canonical_name_normalized == tag.normalized_form,
+                        NamedEntityDB.canonical_name_normalized
+                        == entity_display_normalized,
                         NamedEntityDB.entity_type == entity_type.value,
                     )
                 )
@@ -1059,8 +1108,8 @@ class TagManagementService:
                     # Create new NamedEntity
                     entity_description = description or reason
                     entity_create = NamedEntityCreate(
-                        canonical_name=tag.canonical_form,
-                        canonical_name_normalized=tag.normalized_form,
+                        canonical_name=entity_display_name,
+                        canonical_name_normalized=entity_display_normalized,
                         entity_type=entity_type,
                         description=entity_description,
                         discovery_method=DiscoveryMethod.USER_CREATED,
@@ -1074,17 +1123,12 @@ class TagManagementService:
                     created_entity_id = new_entity.id
                     entity_created = True
 
-            # Create self-alias (canonical form as name_variant).
+            # Create self-alias (entity display name as name_variant).
             # Tag aliases are NOT copied — they represent YouTube tag
             # variations (show names, SEO tags), not entity name variants.
             entity_id_for_aliases = tag.entity_id
-            from chronovista.services.tag_normalization import (
-                TagNormalizationService,
-            )
-
-            normalizer = TagNormalizationService()
             self_norm = (
-                normalizer.normalize(tag.canonical_form) or tag.canonical_form.lower()
+                normalizer.normalize(entity_display_name) or entity_display_name.lower()
             )
 
             existing_result = await session.execute(
@@ -1098,7 +1142,7 @@ class TagManagementService:
             if existing_db is None:
                 ea_create = EntityAliasCreate(
                     entity_id=entity_id_for_aliases,
-                    alias_name=tag.canonical_form,
+                    alias_name=entity_display_name,
                     alias_name_normalized=self_norm,
                     alias_type=EntityAliasType.NAME_VARIANT,
                     occurrence_count=0,
@@ -1127,6 +1171,7 @@ class TagManagementService:
             "created_entity_alias_ids": [
                 str(ea_id) for ea_id in created_entity_alias_ids
             ],
+            "display_name": display_name,
         }
 
         # 7. Log operation
@@ -1138,6 +1183,7 @@ class TagManagementService:
             alias_ids=[],
             reason=reason,
             rollback_data=rollback_data,
+            actor=actor,
         )
 
         logger.info(
@@ -1302,6 +1348,8 @@ class TagManagementService:
         self,
         session: AsyncSession,
         canonical_tag_id: uuid.UUID,
+        *,
+        actor: str = "cli",
     ) -> uuid.UUID:
         """
         Log that a collision was reviewed and kept as-is.
@@ -1326,6 +1374,7 @@ class TagManagementService:
             alias_ids=[],
             reason="collision_reviewed",
             rollback_data={"canonical_id": str(canonical_tag_id)},
+            actor=actor,
         )
 
     async def deprecate(
@@ -1334,6 +1383,7 @@ class TagManagementService:
         normalized_form: str,
         *,
         reason: str | None = None,
+        actor: str = "cli",
     ) -> DeprecateResult:
         """
         Deprecate a canonical tag (soft delete).
@@ -1382,6 +1432,7 @@ class TagManagementService:
             alias_ids=[],
             reason=reason,
             rollback_data=rollback_data,
+            actor=actor,
         )
 
         logger.info(

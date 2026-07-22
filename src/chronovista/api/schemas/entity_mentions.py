@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from chronovista.api.schemas.responses import PaginationMeta
 
@@ -472,6 +472,11 @@ class ClassifyTagRequest(BaseModel):
         Must be one of the entity-producing types.
     description : str | None
         Optional entity description (max 5000 chars).
+    display_name : str | None
+        Optional verbatim entity display name (1-500 chars). When provided,
+        the created entity's ``canonical_name`` is this value exactly (no
+        auto re-casing); when omitted, the auto-derived name is used
+        (Feature 057, FR-008..FR-011).
     """
 
     model_config = ConfigDict(strict=True)
@@ -488,6 +493,12 @@ class ClassifyTagRequest(BaseModel):
         max_length=5000,
         description="Optional entity description",
     )
+    display_name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=500,
+        description="Optional verbatim entity display name",
+    )
 
     @field_validator("entity_type")
     @classmethod
@@ -499,6 +510,46 @@ class ClassifyTagRequest(BaseModel):
                 f"{', '.join(sorted(_ENTITY_PRODUCING_TYPES))}"
             )
         return v
+
+
+class UpdateEntityRequest(BaseModel):
+    """Request body for editing an entity's name and/or description.
+
+    PATCH semantics: an omitted field is left unchanged. ``description=""``
+    is a valid value that clears the description (distinct from an omitted
+    field). At least one of ``canonical_name`` / ``description`` must be
+    provided (Feature 057, FR-001, FR-002, FR-013).
+
+    Attributes
+    ----------
+    canonical_name : str | None
+        New verbatim display name (1-500 chars). Omit to leave unchanged.
+    description : str | None
+        New description (empty string clears it). Omit to leave unchanged.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    canonical_name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=500,
+        description="New verbatim entity display name",
+    )
+    description: str | None = Field(
+        default=None,
+        max_length=5000,
+        description="New entity description (empty string clears it)",
+    )
+
+    @model_validator(mode="after")
+    def at_least_one_field(self) -> UpdateEntityRequest:
+        """Require at least one editable field to be present."""
+        if self.canonical_name is None and self.description is None:
+            raise ValueError(
+                "At least one of 'canonical_name' or 'description' is required"
+            )
+        return self
 
 
 # ---------------------------------------------------------------------------

@@ -52,6 +52,7 @@ from chronovista.api.schemas.videos import (
 )
 from chronovista.db.models import CanonicalTag as CanonicalTagDB
 from chronovista.exceptions import NotFoundError
+from chronovista.models.correction_actors import ACTOR_USER_LOCAL
 from chronovista.repositories.canonical_tag_repository import CanonicalTagRepository
 from chronovista.services.tag_management import (
     TagManagementService,
@@ -713,6 +714,7 @@ async def merge_canonical_tags(
             payload.source_normalized_forms,
             payload.target_normalized_form,
             reason=payload.reason,
+            actor=ACTOR_USER_LOCAL,
         )
     except ValueError as exc:
         raise _map_merge_value_error(exc) from exc

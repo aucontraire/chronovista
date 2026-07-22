@@ -79,6 +79,20 @@ export interface CreateEntityModalProps {
 // ---------------------------------------------------------------------------
 
 /**
+ * Suggests a display name for a tag being promoted to an entity, mirroring
+ * the backend's default auto-derivation (title-casing the tag's canonical
+ * form) so the pre-filled value matches what would be created if the user
+ * leaves it untouched (Feature 057, FR-008/FR-010). Freely editable by the
+ * user afterward.
+ */
+function deriveSuggestedDisplayName(canonicalForm: string): string {
+  return canonicalForm
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+/**
  * Returns all keyboard-focusable elements inside a container element.
  * Used by the focus-trap logic.
  */
@@ -137,6 +151,10 @@ export default function CreateEntityModal({
   const [description, setDescription] = useState("");
   const [aliases, setAliases] = useState<string[]>([]);
   const [selectedTag, setSelectedTag] = useState<SelectedTag | null>(null);
+  // Feature 057 (US2): entity display name shown/edited only in "creating
+  // from tag" mode — pre-filled with the auto-derived suggestion, freely
+  // editable, sent verbatim as `display_name` on submit.
+  const [displayName, setDisplayName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -227,6 +245,7 @@ export default function CreateEntityModal({
     setDescription("");
     setAliases([]);
     setSelectedTag(null);
+    setDisplayName("");
     setIsSubmitting(false);
     setError(null);
     setShowDropdown(false);
@@ -343,6 +362,8 @@ export default function CreateEntityModal({
     (tag: SelectedTag) => {
       setName(tag.canonical_form);
       setSelectedTag(tag);
+      // FR-008: pre-fill with the auto-derived suggestion; user may edit freely.
+      setDisplayName(deriveSuggestedDisplayName(tag.canonical_form));
       setAliases([]);
       setShowDropdown(false);
       setHighlightedIndex(-1);
@@ -363,6 +384,7 @@ export default function CreateEntityModal({
       // FR-004 mode transition: any manual edit clears the selected tag.
       if (selectedTag !== null) {
         setSelectedTag(null);
+        setDisplayName("");
       }
     },
     [selectedTag]
@@ -443,7 +465,11 @@ export default function CreateEntityModal({
     name.trim() === "" ||
     entityType === "" ||
     isDuplicate ||
-    isDuplicateCheckPending;
+    isDuplicateCheckPending ||
+    // Feature 057: display name is required once a tag is selected — the
+    // field is pre-filled by handleTagSelect, so this only blocks a user who
+    // clears it entirely.
+    (selectedTag !== null && displayName.trim() === "");
 
   // aria-activedescendant value for keyboard navigation
   const activeDescendantId =
@@ -717,7 +743,8 @@ export default function CreateEntityModal({
 
             {/* ---- Tag chip or standalone label (FR-004 / FR-011) ---- */}
             {selectedTag !== null ? (
-              /* FR-004: "Creating from tag" chip when a tag is selected */
+              <>
+              {/* FR-004: "Creating from tag" chip when a tag is selected */}
               <div className="mt-2 flex items-center gap-2">
                 <span className="text-xs text-gray-500">Creating from tag</span>
                 <span className="
@@ -733,6 +760,7 @@ export default function CreateEntityModal({
                     type="button"
                     onClick={() => {
                       setSelectedTag(null);
+                      setDisplayName("");
                       nameInputRef.current?.focus();
                     }}
                     disabled={isSubmitting}
@@ -764,6 +792,43 @@ export default function CreateEntityModal({
                   </button>
                 </span>
               </div>
+
+              {/* Feature 057 (US2/FR-008): editable display-name field, pre-filled
+                  with the auto-derived suggestion, sent verbatim as display_name. */}
+              <div className="mt-3">
+                <label
+                  htmlFor="create-entity-display-name"
+                  className="block text-sm font-medium text-gray-700 mb-1.5"
+                >
+                  Display name{" "}
+                  <span className="text-red-500" aria-hidden="true">*</span>
+                  <span className="sr-only">(required)</span>
+                </label>
+                <input
+                  id="create-entity-display-name"
+                  type="text"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  disabled={isSubmitting}
+                  maxLength={500}
+                  placeholder="e.g. OpenAI"
+                  className="
+                    w-full
+                    px-3 py-2.5
+                    text-sm text-gray-900 placeholder-gray-400
+                    border border-gray-300 rounded-lg
+                    bg-white
+                    focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500
+                    disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed
+                    transition-colors
+                  "
+                />
+                <p className="mt-1.5 text-xs text-gray-400">
+                  This is the entity&rsquo;s name everywhere it&rsquo;s shown — independent
+                  of the tag&rsquo;s own casing.
+                </p>
+              </div>
+            </>
             ) : showStandaloneLabel ? (
               /* FR-011: "Creating standalone entity" when name has text but no tag */
               <p className="mt-1.5 text-xs text-gray-400">
@@ -1092,11 +1157,16 @@ export default function CreateEntityModal({
 
               setIsSubmitting(true);
               const trimmedDesc = description.trim();
+              const trimmedDisplayName = displayName.trim();
               classifyTagMutation.mutate(
                 {
                   normalized_form: selectedTag.normalized_form,
                   entity_type: entityType,
                   ...(trimmedDesc ? { description: trimmedDesc } : {}),
+                  // FR-009: sent verbatim, no re-casing.
+                  ...(trimmedDisplayName
+                    ? { display_name: trimmedDisplayName }
+                    : {}),
                 },
                 {
                   onSuccess: () => {

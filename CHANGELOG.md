@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - MkDocs documentation setup with Material theme
 - Comprehensive user guide and API reference
+- **Entity display-name control (Feature 057).** Edit a named entity's display name and description from the entity detail page, and choose the display name when promoting a tag to an entity — decoupled from the source tag (whose casing no longer flattens the entity name via `str.title()`). The tag→entity link still matches on the normalized (case-insensitive) form, so a differently-cased name never breaks it. Edits are recorded in a new `entity_operation_logs` table with rollback data and are undoable (`POST /api/v1/entities/operations/{id}/undo`), mirroring the tag operation-log pattern; web/API operations are now attributed to `user:local` instead of a hardcoded `cli`. New `PATCH /api/v1/entities/{id}`; `POST /api/v1/entities/classify` gains an optional `display_name`.
 
 ### Fixed
 - **Recover from stale lazy-loaded chunks after a redeploy.** Route pages are code-split with `React.lazy`; when the app is rebuilt, chunk filenames get new content hashes and old chunks 404, so a browser tab still on the previous build fails with "Failed to fetch dynamically imported module". The app now handles Vite's `vite:preloadError` by reloading once (guarded against loops), and the server serves `index.html` with `Cache-Control: no-cache` so the reload fetches HTML referencing the current hashes.

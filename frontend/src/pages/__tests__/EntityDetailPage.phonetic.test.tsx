@@ -49,6 +49,14 @@ vi.mock("../../hooks/useEntityMentions", () => ({
     data: null,
     reset: vi.fn(),
   })),
+  useUpdateEntity: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    isSuccess: false,
+    reset: vi.fn(),
+  })),
 }));
 
 vi.mock("@tanstack/react-query", async (importOriginal) => {

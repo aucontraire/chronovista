@@ -405,11 +405,12 @@ class TestStandaloneCreationEndToEnd:
         async_client: AsyncClient,
         integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """POST /entities creates an entity with title-cased name and aliases.
+        """POST /entities creates an entity storing the name verbatim.
 
-        Verifies:
+        Verifies (Feature 057 / FR-012 — the API no longer title-cases an
+        explicitly-provided name):
         - 201 response.
-        - canonical_name is title-cased ("Edward Snowden").
+        - canonical_name is stored verbatim ("edward snowden").
         - NamedEntity exists in DB with correct canonical_name and entity_type.
         - 3 EntityAlias rows exist: canonical name + 2 user-supplied aliases.
         """
@@ -435,10 +436,10 @@ class TestStandaloneCreationEndToEnd:
         assert "entity_type" in body, f"Missing entity_type in response: {body}"
         assert "alias_count" in body, f"Missing alias_count in response: {body}"
 
-        # canonical_name must be title-cased
+        # canonical_name must be stored verbatim (no title-casing) — FR-012
         assert (
-            body["canonical_name"] == "Edward Snowden"
-        ), f"Expected title-cased 'Edward Snowden', got: {body['canonical_name']}"
+            body["canonical_name"] == "edward snowden"
+        ), f"Expected verbatim 'edward snowden', got: {body['canonical_name']}"
         assert (
             body["entity_type"] == "person"
         ), f"Expected entity_type 'person', got: {body['entity_type']}"
@@ -451,7 +452,7 @@ class TestStandaloneCreationEndToEnd:
             db_entity = await session.get(NamedEntityDB, entity_uuid)
             assert db_entity is not None, f"NamedEntity {entity_id_str} not found in DB"
             assert (
-                db_entity.canonical_name == "Edward Snowden"
+                db_entity.canonical_name == "edward snowden"
             ), f"DB canonical_name mismatch: {db_entity.canonical_name}"
             assert db_entity.canonical_name_normalized == self._SNOWDEN_NORMALIZED, (
                 f"DB canonical_name_normalized mismatch: "
@@ -476,8 +477,8 @@ class TestStandaloneCreationEndToEnd:
 
             alias_names = {a.alias_name for a in aliases}
             assert (
-                "Edward Snowden" in alias_names
-            ), f"Canonical alias 'Edward Snowden' missing: {alias_names}"
+                "edward snowden" in alias_names
+            ), f"Canonical alias 'edward snowden' missing: {alias_names}"
             assert (
                 "Ed Snowden" in alias_names
             ), f"User alias 'Ed Snowden' missing: {alias_names}"

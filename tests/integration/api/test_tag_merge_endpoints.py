@@ -16,10 +16,22 @@ would get wrong.
 
 from __future__ import annotations
 
-from typing import Any
+import uuid
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+
+from chronovista.db.models import TagOperationLog as TagOperationLogDB
+from chronovista.repositories.canonical_tag_repository import CanonicalTagRepository
+from chronovista.repositories.entity_alias_repository import EntityAliasRepository
+from chronovista.repositories.named_entity_repository import NamedEntityRepository
+from chronovista.repositories.tag_alias_repository import TagAliasRepository
+from chronovista.repositories.tag_operation_log_repository import (
+    TagOperationLogRepository,
+)
+from chronovista.services.tag_management import TagManagementService
 
 # Reuse the seeding fixtures defined in the canonical-tags router test module.
 from tests.integration.api.test_canonical_tags_router import (  # noqa: F401
@@ -28,6 +40,9 @@ from tests.integration.api.test_canonical_tags_router import (  # noqa: F401
     sample_data,
     test_data_session,
 )
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 pytestmark = pytest.mark.asyncio
 
@@ -232,6 +247,67 @@ class TestCrossFeatureContract:
             )
             assert resolve.status_code == 200, resolve.text
             assert resolve.json()["data"]["normalized_form"] == "music"
+
+
+class TestMergeActor:
+    """FR-018: API merges log the web actor; CLI-path merges still log ``cli``."""
+
+    async def test_rest_merge_records_web_actor(
+        self,
+        async_client: AsyncClient,
+        sample_data: dict[str, Any],
+        cleanup_test_data: None,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """A merge via the REST endpoint records performed_by='user:local'."""
+        from unittest.mock import patch
+
+        with patch(_AUTH) as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            merge = await async_client.post(
+                "/api/v1/canonical-tags/merge",
+                json={
+                    "source_normalized_forms": ["new york"],
+                    "target_normalized_form": "music",
+                },
+            )
+        assert merge.status_code == 200, merge.text
+        op_id = uuid.UUID(merge.json()["data"]["operation_id"])
+
+        async with integration_session_factory() as session:
+            log = (
+                await session.execute(
+                    select(TagOperationLogDB).where(TagOperationLogDB.id == op_id)
+                )
+            ).scalar_one()
+            assert log.performed_by == "user:local"
+
+    async def test_cli_path_merge_records_cli_actor(
+        self,
+        sample_data: dict[str, Any],
+        cleanup_test_data: None,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """A merge through the service with the default actor still records 'cli'."""
+        service = TagManagementService(
+            canonical_tag_repo=CanonicalTagRepository(),
+            tag_alias_repo=TagAliasRepository(),
+            named_entity_repo=NamedEntityRepository(),
+            entity_alias_repo=EntityAliasRepository(),
+            operation_log_repo=TagOperationLogRepository(),
+        )
+        async with integration_session_factory() as session:
+            result = await service.merge(session, ["python"], "music")
+            await session.commit()
+            op_id = result.operation_id
+
+        async with integration_session_factory() as session:
+            log = (
+                await session.execute(
+                    select(TagOperationLogDB).where(TagOperationLogDB.id == op_id)
+                )
+            ).scalar_one()
+            assert log.performed_by == "cli"
 
 
 class TestUndo:

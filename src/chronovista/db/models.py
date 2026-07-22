@@ -1079,6 +1079,56 @@ class TagOperationLog(Base):
     )
 
 
+class EntityOperationLog(Base):
+    """Audit log for named-entity curation edits (name/description) — Feature 057."""
+
+    __tablename__ = "entity_operation_logs"
+
+    # Primary key (UUIDv7, time-ordered, application-generated)
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid7
+    )
+
+    # Edited entity (cascade delete: log rows die with their entity)
+    entity_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("named_entities.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # Operation details
+    operation_type: Mapped[str] = mapped_column(
+        String(30), nullable=False, server_default=text("'update'")
+    )
+    rollback_data: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+
+    # Attribution
+    performed_by: Mapped[str] = mapped_column(
+        String(100), nullable=False, server_default=text("'system'")
+    )
+    performed_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    # Rollback tracking
+    rolled_back: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    rolled_back_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Table constraints and indexes
+    __table_args__ = (
+        CheckConstraint(
+            "operation_type IN ('update')",
+            name="chk_entity_operation_type_valid",
+        ),
+        Index("idx_entity_operation_logs_entity_id", "entity_id"),
+        Index("idx_entity_operation_logs_performed_at", "performed_at"),
+    )
+
+
 class TranscriptCorrection(Base):
     """Append-only audit record for transcript segment corrections (Feature 033).
 

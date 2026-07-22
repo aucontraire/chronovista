@@ -309,6 +309,45 @@ export async function fetchEntityDetail(
   return res.data;
 }
 
+// ---------------------------------------------------------------------------
+// Entity update types (for PATCH /api/v1/entities/{entity_id})
+// ---------------------------------------------------------------------------
+
+/**
+ * Request body for PATCH /api/v1/entities/{entity_id} (Feature 057).
+ * PATCH semantics — at least one field is required. `canonical_name` is
+ * stored verbatim (no re-casing); an empty `description` clears it (distinct
+ * from omitting the field, which leaves it unchanged).
+ */
+export interface UpdateEntityRequest {
+  canonical_name?: string;
+  description?: string;
+}
+
+/**
+ * Updates a named entity's display name and/or description (Feature 057).
+ *
+ * Never modifies the tag(s) the entity is linked to. On a name change, the
+ * backend recomputes the normalized identity and re-checks
+ * `(canonical_name_normalized, entity_type)` uniqueness.
+ *
+ * @param entityId - UUID of the named entity
+ * @param data - Fields to update (at least one of canonical_name/description)
+ * @returns The updated EntityDetail
+ * @throws ApiError with status 400 (invalid/empty name), 404 (not found), or
+ *   409 (the new name collides with an existing same-type entity)
+ */
+export async function updateEntity(
+  entityId: string,
+  data: UpdateEntityRequest
+): Promise<EntityDetail> {
+  const res = await apiFetch<{ data: EntityDetail }>(`/entities/${entityId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+  return res.data;
+}
+
 /**
  * Fetches a paginated list of videos in which a given entity is mentioned,
  * including up to 5 mention previews per video.
@@ -602,6 +641,11 @@ export interface ClassifyTagResponse {
  * @param data.normalized_form - The canonical name / normalized tag text
  * @param data.entity_type - Entity type (e.g. "person", "organization", "place")
  * @param data.description - Optional human-readable description
+ * @param data.display_name - Optional entity display name, stored verbatim
+ *   (no re-casing). When omitted, the backend falls back to its existing
+ *   auto-derived (title-cased) name (Feature 057, FR-008/FR-009/FR-010).
+ *   The tag is still matched/linked by `normalized_form` regardless of this
+ *   value's casing (FR-011).
  * @returns ClassifyTagResponse with entity_id and operation metadata
  * @throws ApiError with status 409 if the tag is already classified as a different type
  */
@@ -609,6 +653,7 @@ export async function classifyTag(data: {
   normalized_form: string;
   entity_type: string;
   description?: string;
+  display_name?: string;
 }): Promise<ClassifyTagResponse> {
   return apiFetch<ClassifyTagResponse>("/entities/classify", {
     method: "POST",

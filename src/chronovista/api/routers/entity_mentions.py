@@ -40,6 +40,7 @@ from chronovista.api.schemas.entity_mentions import (
     ScanJobResponse,
     ScanRequest,
     ScanResultData,
+    UpdateEntityRequest,
     VideoEntitiesResponse,
     VideoEntitySummary,
 )
@@ -55,6 +56,7 @@ from chronovista.exceptions import (
     ConflictError,
     NotFoundError,
 )
+from chronovista.models.correction_actors import ACTOR_USER_LOCAL
 from chronovista.models.entity_alias import EntityAliasCreate
 from chronovista.models.enums import (
     DiscoveryMethod,
@@ -66,10 +68,21 @@ from chronovista.models.named_entity import NamedEntityCreate
 from chronovista.repositories.canonical_tag_repository import CanonicalTagRepository
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
+from chronovista.repositories.entity_operation_log_repository import (
+    EntityOperationLogRepository,
+)
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
 from chronovista.repositories.tag_alias_repository import TagAliasRepository
 from chronovista.repositories.tag_operation_log_repository import (
     TagOperationLogRepository,
+)
+from chronovista.services.entity_curation_service import (
+    EntityCurationService,
+    EntityNameCollisionError,
+    EntityNotFoundError,
+    InvalidEntityEditError,
+    OperationAlreadyUndoneError,
+    OperationNotFoundError,
 )
 from chronovista.services.entity_mention_scan_service import (
     EntityMentionScanService,
@@ -92,6 +105,10 @@ _tag_mgmt_service = TagManagementService(
     named_entity_repo=NamedEntityRepository(),
     entity_alias_repo=EntityAliasRepository(),
     operation_log_repo=TagOperationLogRepository(),
+)
+_entity_curation_service = EntityCurationService(
+    named_entity_repo=NamedEntityRepository(),
+    operation_log_repo=EntityOperationLogRepository(),
 )
 
 logger = logging.getLogger(__name__)
@@ -1231,6 +1248,8 @@ async def classify_tag(
             entity_type_enum,
             description=body.description,
             auto_case=True,
+            display_name=body.display_name,
+            actor=ACTOR_USER_LOCAL,
         )
     except ValueError as exc:
         error_msg = str(exc)
@@ -1366,8 +1385,9 @@ async def create_entity(
             details={"name": body.name},
         )
 
-    # 3. Auto-title-case
-    canonical_name = body.name.strip().title()
+    # 3. Store the provided name verbatim (only trim whitespace) — casing is a
+    # human decision and must not be flattened (Feature 057, FR-012).
+    canonical_name = body.name.strip()
 
     # 4. Check for duplicate (same normalized name + type + active status)
     dup_query = select(NamedEntityDB).where(
@@ -1442,6 +1462,140 @@ async def create_entity(
         "description": db_entity.description,
         "alias_count": len(seen_normalized),
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PATCH /entities/{entity_id} — Edit entity name / description (Feature 057)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.patch(
+    "/entities/{entity_id}",
+    status_code=200,
+    summary="Edit an entity's display name and/or description",
+)
+async def update_entity(
+    entity_id: str = Path(..., description="Named entity UUID"),
+    body: UpdateEntityRequest = Body(...),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Edit a named entity's display name and/or description.
+
+    Delegates to ``EntityCurationService.update_entity`` which validates,
+    recomputes the normalized identity together with the name (INV-1),
+    pre-checks same-type uniqueness, persists the change, and appends an
+    audit/rollback log entry attributed to the web actor. The entity's tag(s)
+    and aliases are never modified (FR-003, FR-015).
+
+    Parameters
+    ----------
+    entity_id : str
+        Named entity UUID (string representation).
+    body : UpdateEntityRequest
+        Optional ``canonical_name`` / ``description`` (at least one required).
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    dict
+        Updated entity detail wrapped in a ``data`` envelope.
+
+    Raises
+    ------
+    BadRequestError
+        Invalid input (empty / normalizes-to-empty name) — 400.
+    NotFoundError
+        The entity does not exist — 404.
+    ConflictError
+        The new normalized name collides with an existing same-type entity — 409.
+    """
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+
+    try:
+        updated = await _entity_curation_service.update_entity(
+            session,
+            parsed_entity_id,
+            canonical_name=body.canonical_name,
+            description=body.description,
+            actor=ACTOR_USER_LOCAL,
+        )
+    except EntityNotFoundError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+    except InvalidEntityEditError as exc:
+        raise BadRequestError(
+            message=str(exc), details={"entity_id": entity_id}
+        ) from exc
+    except EntityNameCollisionError as exc:
+        raise ConflictError(message=str(exc), details={"entity_id": entity_id}) from exc
+
+    await session.commit()
+    return await get_entity_detail(str(updated.id), session)
+
+
+@router.post(
+    "/entities/operations/{operation_id}/undo",
+    status_code=200,
+    summary="Undo a previously logged entity edit",
+)
+async def undo_entity_operation(
+    operation_id: uuid.UUID = Path(..., description="Entity operation ID to undo"),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Undo an entity name/description edit, restoring the previous values.
+
+    Delegates to ``EntityCurationService.undo_operation`` (mirrors the tag
+    ``operations/{id}/undo`` contract). Restores the ``before`` snapshot,
+    re-checks uniqueness on a restored name, and marks the log entry rolled
+    back. An already-rolled-back entry cannot be undone again.
+
+    Parameters
+    ----------
+    operation_id : uuid.UUID
+        The entity operation log entry to undo.
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    dict
+        Restored entity detail wrapped in a ``data`` envelope.
+
+    Raises
+    ------
+    NotFoundError
+        The operation (or its entity) does not exist — 404.
+    ConflictError
+        Already rolled back, or restoring would collide — 409.
+    """
+    try:
+        restored = await _entity_curation_service.undo_operation(
+            session,
+            operation_id,
+            actor=ACTOR_USER_LOCAL,
+        )
+    except OperationNotFoundError as exc:
+        raise NotFoundError(
+            resource_type="EntityOperation", identifier=str(operation_id)
+        ) from exc
+    except EntityNotFoundError as exc:
+        raise NotFoundError(
+            resource_type="Entity", identifier=str(exc.entity_id)
+        ) from exc
+    except InvalidEntityEditError as exc:
+        raise BadRequestError(
+            message=str(exc), details={"operation_id": str(operation_id)}
+        ) from exc
+    except (OperationAlreadyUndoneError, EntityNameCollisionError) as exc:
+        raise ConflictError(
+            message=str(exc), details={"operation_id": str(operation_id)}
+        ) from exc
+
+    await session.commit()
+    return await get_entity_detail(str(restored.id), session)
 
 
 # ---------------------------------------------------------------------------

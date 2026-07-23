@@ -2547,7 +2547,7 @@ class TestAliasRegexOrdering:
         pg = patterns[0].pg_pattern
         parts = pg.split("|")
         # The escaped longer alias must appear before the shorter one
-        long_escaped = re.escape("Jairo Calixto Albarrán")
+        long_escaped = re.escape("Jairo Calixto Albarran")
         short_escaped = re.escape("Jairo Calixto")
         long_idx = next(i for i, p in enumerate(parts) if p == long_escaped)
         short_idx = next(i for i, p in enumerate(parts) if p == short_escaped)
@@ -2567,7 +2567,7 @@ class TestAliasRegexOrdering:
             pg_pattern="|".join(
                 sorted(
                     [
-                        re.escape("Jairo Calixto Albarrán"),
+                        re.escape("Jairo Calixto Albarran"),
                         re.escape("Jairo Calixto"),
                     ],
                     key=len,
@@ -2654,3 +2654,291 @@ class TestFullRescanSourceScoping:
             "Full rescan must scope deletion to mention_source='transcript' "
             "to avoid wiping title/description mentions"
         )
+
+
+# ---------------------------------------------------------------------------
+# TestDiacriticFolding
+# ---------------------------------------------------------------------------
+
+
+def _make_pattern(
+    canonical_name: str,
+    names: list[str],
+    entity_id: uuid.UUID | None = None,
+    exclusion_patterns: list[str] | None = None,
+) -> Any:
+    """Build an _EntityPattern with a diacritic-folded, escaped alternation.
+
+    Mirrors the folding done by ``_load_entity_patterns`` so ``_scan_batch`` and
+    ``_match_text_for_video`` can be exercised directly.
+    """
+    from chronovista.services.entity_mention_scan_service import (
+        _EntityPattern,
+        _fold_diacritics,
+    )
+
+    folded_names = [f for f in (_fold_diacritics(n)[0] for n in names) if f]
+    escaped = sorted([re.escape(n) for n in folded_names], key=len, reverse=True)
+    return _EntityPattern(
+        entity_id=entity_id or _make_uuid(),
+        canonical_name=canonical_name,
+        entity_type="place",
+        pg_pattern="|".join(escaped),
+        alias_names=names,
+        exclusion_patterns=exclusion_patterns or [],
+    )
+
+
+async def _run_scan_batch(pattern: Any, effective_text: str) -> list[Any]:
+    """Call ``_scan_batch`` for one segment with a mocked (empty dedup) session."""
+    seg = _make_segment_row(seg_id=1, effective_text=effective_text)
+
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=_scalars_execute([]))
+
+    svc = _build_service(MagicMock())
+    mentions, _, _, _, ep_skips = await svc._scan_batch(
+        session,
+        batch_rows=[seg],
+        patterns=[pattern],
+        full_rescan=False,
+        dry_run=False,
+        limit=None,
+        current_preview_count=0,
+    )
+    return mentions
+
+
+class TestDiacriticFoldingHelper:
+    """Unit tests for the ``_fold_diacritics`` helper."""
+
+    def test_folds_accents_and_preserves_length_for_precomposed(self) -> None:
+        """Precomposed accented chars fold in place, one raw char per folded char."""
+        from chronovista.services.entity_mention_scan_service import _fold_diacritics
+
+        folded, offset_map = _fold_diacritics("México")
+        assert folded == "Mexico"
+        # Precomposed 'é' (U+00E9) → single folded 'e' at the same index.
+        assert offset_map == [0, 1, 2, 3, 4, 5]
+
+    def test_does_not_expand_ligatures_or_fractions_nfd_not_nfkd(self) -> None:
+        """NFD (not NFKD) leaves the 'ﬁ' ligature and '½' unchanged (no expansion)."""
+        from chronovista.services.entity_mention_scan_service import _fold_diacritics
+
+        folded, offset_map = _fold_diacritics("ﬁ½")
+        assert folded == "ﬁ½"
+        assert offset_map == [0, 1]
+
+    def test_dropped_combining_mark_shrinks_and_maps_offsets(self) -> None:
+        """A decomposed 'é' (e + U+0301) folds to 'e', shrinking the string.
+
+        The combining mark is dropped, so the folded string is shorter than the
+        raw string, and every folded position after the mark maps back to a
+        larger raw index.
+        """
+        from chronovista.services.entity_mention_scan_service import _fold_diacritics
+
+        raw = "cafe\u0301bar"  # decomposed accent (e + U+0301), then 'bar'
+        folded, offset_map = _fold_diacritics(raw)
+        assert folded == "cafebar"
+        assert len(folded) == len(raw) - 1
+        # 'b' is folded index 4 but raw index 5 (the U+0301 at raw index 4 dropped)
+        assert folded[4] == "b"
+        assert offset_map[4] == 5
+        assert raw[offset_map[4]] == "b"
+
+    def test_does_not_casefold(self) -> None:
+        """Case is preserved by the fold (case is handled by re.IGNORECASE)."""
+        from chronovista.services.entity_mention_scan_service import _fold_diacritics
+
+        folded, _ = _fold_diacritics("MÉXICO")
+        assert folded == "MEXICO"
+
+
+class TestDiacriticFoldingScanBatch:
+    """Transcript-path (``_scan_batch``) diacritic-insensitive matching."""
+
+    async def test_accented_occurrence_matched_with_ascii_alias(self) -> None:
+        """Alias 'Mexico' matches 'México' and stores the accented mention_text."""
+        raw = "una revolución de color aquí en México."
+        pattern = _make_pattern("Mexico", ["Mexico"])
+
+        mentions = await _run_scan_batch(pattern, raw)
+
+        assert len(mentions) == 1
+        m = mentions[0]
+        assert m.mention_text == "México"
+        assert raw[m.match_start : m.match_end] == "México"
+        # Offsets point exactly at "México" in the raw text.
+        assert raw.index("México") == m.match_start
+        assert m.match_end == m.match_start + len("México")
+
+    async def test_uppercase_accented_occurrence_matched(self) -> None:
+        """'MÉXICO' matches the ASCII alias 'Mexico' (case + accent insensitive)."""
+        raw = "VISITA MÉXICO HOY"
+        pattern = _make_pattern("Mexico", ["Mexico"])
+
+        mentions = await _run_scan_batch(pattern, raw)
+
+        assert len(mentions) == 1
+        assert mentions[0].mention_text == "MÉXICO"
+
+    async def test_plain_ascii_occurrence_still_matched(self) -> None:
+        """Plain ASCII 'Mexico' still matches (no regression)."""
+        raw = "welcome to Mexico today"
+        pattern = _make_pattern("Mexico", ["Mexico"])
+
+        mentions = await _run_scan_batch(pattern, raw)
+
+        assert len(mentions) == 1
+        assert mentions[0].mention_text == "Mexico"
+
+    async def test_offset_safety_length_changing_char_before_match(self) -> None:
+        """A decomposed 'é' before the match must not corrupt match offsets.
+
+        The word 'café' is written with a *decomposed* accent (e + U+0301). When
+        folded, that combining mark is dropped, so every character after it — the
+        entire "México" match — sits at a folded index one less than its raw
+        index.  Without the offset map, the mention would be sliced from the
+        wrong position.  This asserts the raw offsets (and mention_text) are
+        correct AND that they genuinely differ from the naive folded offsets.
+        """
+        raw = "cafe\u0301 M\u00e9xico aqui"  # decomposed accent precedes match
+        pattern = _make_pattern("Mexico", ["Mexico"])
+
+        # Sanity: this input really is length-changing under the fold.
+        from chronovista.services.entity_mention_scan_service import _fold_diacritics
+
+        folded, _ = _fold_diacritics(raw)
+        assert len(folded) == len(raw) - 1
+        naive_folded_start = folded.index("Mexico")
+        raw_start = raw.index("México")
+        assert naive_folded_start != raw_start, (
+            "Test is not exercising the length-changing case: folded and raw "
+            "offsets coincide"
+        )
+
+        mentions = await _run_scan_batch(pattern, raw)
+
+        assert len(mentions) == 1
+        m = mentions[0]
+        assert m.match_start == raw_start
+        assert raw[m.match_start : m.match_end] == "México"
+        assert m.mention_text == "México"
+
+    async def test_exclusion_pattern_suppresses_accented_match(self) -> None:
+        """An accent-free exclusion pattern suppresses an accented match."""
+        raw = "New México is a US state"
+        # Exclusion "New Mexico" (accent-free) overlaps the "México" match once
+        # both are folded, so the match must be suppressed.
+        pattern = _make_pattern("Mexico", ["Mexico"], exclusion_patterns=["New Mexico"])
+
+        mentions = await _run_scan_batch(pattern, raw)
+
+        assert mentions == []
+
+    async def test_longest_match_wins_with_overlapping_accented_alias(self) -> None:
+        """Longest-match-wins prefers the longer accented alias over a shorter one."""
+        entity_id = _make_uuid()
+        # One entity has both "Mexico" and "Mexico City" (accent-free aliases).
+        pattern = _make_pattern(
+            "Mexico City", ["Mexico City", "Mexico"], entity_id=entity_id
+        )
+        raw = "flying into México City tomorrow"
+
+        mentions = await _run_scan_batch(pattern, raw)
+
+        # Only the longest match survives, and it is the accented raw substring.
+        assert len(mentions) == 1
+        assert mentions[0].mention_text == "México City"
+        assert raw[mentions[0].match_start : mentions[0].match_end] == "México City"
+
+
+class TestDiacriticFoldingLoadPatterns:
+    """Pattern construction folds accents off alias names."""
+
+    async def test_accented_canonical_name_folded_in_pattern(self) -> None:
+        """An accented canonical name is folded before entering pg_pattern."""
+        entity_id = _make_uuid()
+        entity_row = _make_entity_row(
+            entity_id=entity_id, canonical_name="México", entity_type="place"
+        )
+
+        session = AsyncMock()
+        session.execute = AsyncMock(
+            side_effect=[
+                _scalars_execute([entity_row]),
+                _scalars_execute([]),
+            ]
+        )
+        svc = _build_service(MagicMock())
+        patterns = await svc._load_entity_patterns(
+            session, entity_type=None, new_entities_only=False
+        )
+
+        assert len(patterns) == 1
+        # Folded form is present; the accented form is not in the regex.
+        assert "Mexico" in patterns[0].pg_pattern
+        assert "México" not in patterns[0].pg_pattern
+        # The raw name is preserved in alias_names for reporting.
+        assert patterns[0].alias_names == ["México"]
+
+
+class TestDiacriticFoldingMetadata:
+    """Metadata-path (``_match_text_for_video``) diacritic-insensitive matching."""
+
+    def _compiled_for(self, pattern: Any) -> tuple[list[Any], dict[Any, Any]]:
+        compiled = [
+            (
+                pattern,
+                re.compile(r"\b(" + pattern.pg_pattern + r")\b", re.IGNORECASE),
+            )
+        ]
+        return compiled, {pattern.entity_id: pattern}
+
+    def test_accented_title_matched_by_metadata_scan(self) -> None:
+        """A title containing 'México' is matched by the ASCII alias 'Mexico'."""
+        from chronovista.models.enums import MentionSource
+
+        pattern = _make_pattern("Mexico", ["Mexico"])
+        compiled, by_entity = self._compiled_for(pattern)
+
+        svc = _build_service(MagicMock())
+        title = "A road trip through México"
+        mentions, _ = svc._match_text_for_video(
+            video_id="dQw4w9WgXcQ",
+            text=title,
+            mention_source=MentionSource.TITLE,
+            compiled_patterns=compiled,
+            pattern_by_entity=by_entity,
+            dry_run=False,
+        )
+
+        assert len(mentions) == 1
+        m = mentions[0]
+        assert m.mention_text == "México"
+        assert title[m.match_start : m.match_end] == "México"
+        assert m.mention_source == MentionSource.TITLE
+
+    def test_metadata_offset_safety_with_length_changing_char(self) -> None:
+        """Metadata path also maps offsets back correctly through a dropped mark."""
+        from chronovista.models.enums import MentionSource
+
+        pattern = _make_pattern("Mexico", ["Mexico"])
+        compiled, by_entity = self._compiled_for(pattern)
+
+        svc = _build_service(MagicMock())
+        desc = "cafe\u0301 in M\u00e9xico downtown"
+        mentions, _ = svc._match_text_for_video(
+            video_id="dQw4w9WgXcQ",
+            text=desc,
+            mention_source=MentionSource.DESCRIPTION,
+            compiled_patterns=compiled,
+            pattern_by_entity=by_entity,
+            dry_run=False,
+        )
+
+        assert len(mentions) == 1
+        m = mentions[0]
+        assert desc[m.match_start : m.match_end] == "México"
+        assert m.mention_text == "México"

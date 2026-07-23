@@ -9,7 +9,7 @@
  * 1. Renders the form: input, select, and Add button are present
  * 2. Button disabled when input is empty (initial state)
  * 3. Successful alias creation: API called, input cleared, success message shown
- * 4. Duplicate alias error (409): "This alias already exists for the entity." shown
+ * 4. Duplicate alias error (409): the accents-and-case-ignored message is shown
  * 5. 404 entity-not-found error: correct error message shown
  * 6. Generic error: fallback error message shown
  * 7. Alias type select contains all 5 types
@@ -349,7 +349,7 @@ describe("AddAliasForm (inside EntityDetailPage)", () => {
   // -------------------------------------------------------------------------
 
   describe("Test 4 — Duplicate alias error (409)", () => {
-    it("shows 'This alias already exists for the entity.' on a 409 error", async () => {
+    it("shows the accents-and-case-ignored message on a 409 error", async () => {
       vi.mocked(createEntityAlias).mockRejectedValue({ status: 409 });
 
       const user = userEvent.setup();
@@ -361,7 +361,7 @@ describe("AddAliasForm (inside EntityDetailPage)", () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText("This alias already exists for the entity.")
+          screen.getByText(/already covered by an existing alias/)
         ).toBeInTheDocument();
       });
     });
@@ -520,7 +520,7 @@ describe("AddAliasForm (inside EntityDetailPage)", () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText("This alias already exists for the entity.")
+          screen.getByText(/already covered by an existing alias/)
         ).toBeInTheDocument();
       });
 
@@ -528,7 +528,7 @@ describe("AddAliasForm (inside EntityDetailPage)", () => {
       await user.type(input, "x");
 
       expect(
-        screen.queryByText("This alias already exists for the entity.")
+        screen.queryByText(/already covered by an existing alias/)
       ).not.toBeInTheDocument();
     });
 

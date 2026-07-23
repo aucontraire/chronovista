@@ -546,6 +546,52 @@ class TestCreateEntityAliasConflict:
             "status" in body or "type" in body
         ), f"Expected RFC-7807 error body, got: {body}"
 
+    async def test_duplicate_alias_message_names_existing_and_explains_folding(
+        self,
+    ) -> None:
+        """409 message must name the existing alias and explain accent/case folding.
+
+        Adding ``México`` when ``Mexico`` already exists collides on the
+        normalized form.  The reworded conflict message must (a) reference the
+        existing colliding alias by name and (b) make clear that accents AND
+        case are ignored when matching, so the caller understands why the
+        seemingly-different variant is rejected.
+        """
+        entity_row = _make_named_entity_row()
+
+        # The dup-check must return the EXISTING alias row with a real name so
+        # the endpoint can name it in the message.
+        existing_alias = MagicMock()
+        existing_alias.alias_name = "Mexico"
+
+        mock_session = AsyncMock(spec=AsyncSession)
+        entity_result = MagicMock()
+        entity_result.scalar_one_or_none.return_value = entity_row
+        dup_result = MagicMock()
+        dup_result.scalar_one_or_none.return_value = existing_alias
+        mock_session.execute.side_effect = [entity_result, dup_result]
+
+        async for client in _build_client(mock_session):
+            with patch(
+                "chronovista.api.routers.entity_mentions._normalizer"
+            ) as mock_normalizer:
+                mock_normalizer.normalize.return_value = "mexico"
+
+                response = await client.post(
+                    _alias_url(),
+                    json={"alias_name": "México", "alias_type": "translated_name"},
+                )
+
+        assert response.status_code == 409, response.text
+        body = response.json()
+        detail = body.get("detail", "")
+        # Names the existing alias.
+        assert "Mexico" in detail, f"Message must name existing alias: {detail!r}"
+        # Explains that accents and case are both ignored when matching.
+        lowered = detail.lower()
+        assert "accent" in lowered, f"Message must mention accents: {detail!r}"
+        assert "case" in lowered, f"Message must mention case: {detail!r}"
+
     async def test_alias_normalizes_to_empty_returns_409(self) -> None:
         """Alias whose normalized form is None (empty string) → 409 Conflict.
 

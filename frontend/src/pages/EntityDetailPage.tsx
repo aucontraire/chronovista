@@ -625,7 +625,10 @@ function AddAliasForm({ entityId, onCreated }: AddAliasFormProps) {
     } catch (err: unknown) {
       const status = (err as { status?: number } | null)?.status;
       if (status === 409) {
-        setErrorMsg("This alias already exists for the entity.");
+        setErrorMsg(
+          "This name is already covered by an existing alias — accents and case " +
+            "are ignored when matching, so this spelling counts as the same."
+        );
       } else if (status === 404) {
         setErrorMsg("Entity not found. Please refresh the page.");
       } else {

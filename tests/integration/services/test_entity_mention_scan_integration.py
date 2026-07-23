@@ -1303,3 +1303,144 @@ class TestASRErrorAliasCounterExclusion:
             f"After full rescan: expected video_count=0 (ASR-error alias only), "
             f"got {entity.video_count}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Diacritic-insensitive scanning (accent-folding bug fix)
+# ---------------------------------------------------------------------------
+
+
+class TestDiacriticInsensitiveTranscriptScan:
+    """Accent-free aliases must match accented occurrences in transcript text."""
+
+    async def test_ascii_alias_matches_accented_occurrence(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Alias 'Mexico' matches 'México'; mention_text and offsets are the raw form."""
+        await _seed_channel(db_session)
+        await _seed_video(db_session, video_id(seed="dia_01"))
+        await _seed_transcript(db_session, video_id(seed="dia_01"))
+
+        raw = "una revolución de color aquí en México."
+        seg = await _seed_segment(db_session, video_id(seed="dia_01"), text=raw)
+        entity = await _seed_entity(db_session, "Mexico", entity_type="place")
+        await _seed_alias(db_session, entity.id, "Mexico")
+        await db_session.commit()
+
+        factory = _make_session_factory_from_session(db_session)
+        service = EntityMentionScanService(session_factory=factory)
+        result = await service.scan()
+
+        rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
+        assert len(rows) == 1, f"Expected 1 mention, got {len(rows)}"
+        m = rows[0]
+        assert m.segment_id == seg.id
+        assert m.mention_text == "México"
+        assert raw[m.match_start : m.match_end] == "México"
+        assert m.match_start == raw.index("México")
+        assert result.mentions_found == 1
+
+    async def test_uppercase_and_plain_ascii_both_match(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Both 'MÉXICO' (accented, uppercase) and plain 'Mexico' match the alias."""
+        await _seed_channel(db_session)
+        await _seed_video(db_session, video_id(seed="dia_02"))
+        await _seed_transcript(db_session, video_id(seed="dia_02"))
+
+        await _seed_segment(
+            db_session, video_id(seed="dia_02"), text="VIVA MÉXICO", seg_id=None
+        )
+        await _seed_segment(
+            db_session,
+            video_id(seed="dia_02"),
+            text="welcome to Mexico",
+            sequence_number=1,
+            start_time=5.0,
+        )
+        entity = await _seed_entity(db_session, "Mexico", entity_type="place")
+        await _seed_alias(db_session, entity.id, "Mexico")
+        await db_session.commit()
+
+        factory = _make_session_factory_from_session(db_session)
+        service = EntityMentionScanService(session_factory=factory)
+        await service.scan()
+
+        rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
+        texts = {r.mention_text for r in rows}
+        assert texts == {"MÉXICO", "Mexico"}, f"Got {texts}"
+
+    async def test_offset_safety_length_changing_char_before_match(
+        self, db_session: AsyncSession
+    ) -> None:
+        """A dropped combining mark before the match must not corrupt offsets.
+
+        'café' is written with a DECOMPOSED accent (e + U+0301). Folding drops
+        the combining mark, so the folded text is shorter than the raw text and
+        every character of the 'México' match sits at a folded index one less
+        than its raw index. The offset map must recover the correct raw offsets.
+        """
+        await _seed_channel(db_session)
+        await _seed_video(db_session, video_id(seed="dia_03"))
+        await _seed_transcript(db_session, video_id(seed="dia_03"))
+
+        raw = "cafe\u0301 M\u00e9xico aqui"  # decomposed accent, then precomposed 'México'
+        # Guard: this really is a length-changing input under the fold.
+        from chronovista.services.entity_mention_scan_service import _fold_diacritics
+
+        folded, _ = _fold_diacritics(raw)
+        assert len(folded) == len(raw) - 1
+        assert folded.index("Mexico") != raw.index("México")
+
+        await _seed_segment(db_session, video_id(seed="dia_03"), text=raw)
+        entity = await _seed_entity(db_session, "Mexico", entity_type="place")
+        await _seed_alias(db_session, entity.id, "Mexico")
+        await db_session.commit()
+
+        factory = _make_session_factory_from_session(db_session)
+        service = EntityMentionScanService(session_factory=factory)
+        await service.scan()
+
+        rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
+        assert len(rows) == 1
+        m = rows[0]
+        assert m.match_start == raw.index("México")
+        assert raw[m.match_start : m.match_end] == "México"
+        assert m.mention_text == "México"
+
+
+class TestDiacriticInsensitiveMetadataScan:
+    """Accent-free aliases must match accented occurrences in title/description."""
+
+    async def test_accented_title_matched(self, db_session: AsyncSession) -> None:
+        """A video title containing 'México' is matched by alias 'Mexico'."""
+        await _seed_channel(db_session)
+        vid = video_id(seed="dia_meta_01")
+        video = VideoDB(
+            video_id=vid,
+            channel_id=DEFAULT_CHANNEL_ID,
+            title="Un viaje por México",
+            description="",
+            upload_date=datetime(2024, 1, 1, tzinfo=UTC),
+            duration=120,
+            made_for_kids=False,
+            self_declared_made_for_kids=False,
+        )
+        db_session.add(video)
+        await db_session.flush()
+
+        entity = await _seed_entity(db_session, "Mexico", entity_type="place")
+        await _seed_alias(db_session, entity.id, "Mexico")
+        await db_session.commit()
+
+        factory = _make_session_factory_from_session(db_session)
+        service = EntityMentionScanService(session_factory=factory)
+        result = await service.scan_metadata(sources=["title"])
+
+        rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
+        assert len(rows) == 1, f"Expected 1 title mention, got {len(rows)}"
+        m = rows[0]
+        assert m.video_id == vid
+        assert m.mention_text == "México"
+        assert m.mention_source == "title"
+        assert result.mentions_found == 1

@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+import unicodedata
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -36,6 +37,48 @@ logger = logging.getLogger(__name__)
 
 # Minimum alias length before a warning is emitted.
 _MIN_ALIAS_LENGTH = 3
+
+
+def _fold_diacritics(raw: str) -> tuple[str, list[int]]:
+    """Fold accents off a string and map folded positions back to raw ones.
+
+    The fold decomposes each character with canonical (NFD) normalization and
+    drops non-spacing combining marks (Unicode category ``Mn``), so ``"México"``
+    folds to ``"Mexico"``.  Case is intentionally left untouched — callers keep
+    handling case with ``re.IGNORECASE``.  Compatibility decomposition (NFKD) is
+    deliberately avoided so characters such as ``"½"`` or the ``"ﬁ"`` ligature
+    are not expanded, which keeps the fold conservative.
+
+    The fold is not guaranteed to preserve length: a raw pre-composed character
+    may decompose into several folded characters, and a raw combining mark
+    disappears entirely.  The returned offset map therefore records, for every
+    folded-string position, the index of the RAW character that produced it, so
+    a match found in folded space can be sliced back out of the raw text with
+    correct offsets.
+
+    Parameters
+    ----------
+    raw : str
+        The original (possibly accented) string.
+
+    Returns
+    -------
+    tuple[str, list[int]]
+        A ``(folded_text, offset_map)`` pair.  ``offset_map`` has the same
+        length as ``folded_text``; ``offset_map[i]`` is the index in ``raw`` of
+        the character that produced ``folded_text[i]``.  A folded match spanning
+        ``[f_start, f_end)`` maps to raw ``[offset_map[f_start],
+        offset_map[f_end - 1] + 1)``.
+    """
+    folded_chars: list[str] = []
+    offset_map: list[int] = []
+    for raw_index, char in enumerate(raw):
+        for decomposed in unicodedata.normalize("NFD", char):
+            if unicodedata.category(decomposed) == "Mn":
+                continue
+            folded_chars.append(decomposed)
+            offset_map.append(raw_index)
+    return "".join(folded_chars), offset_map
 
 
 @dataclass
@@ -88,7 +131,7 @@ class _EntityPattern:
     entity_id: uuid.UUID
     canonical_name: str
     entity_type: str
-    pg_pattern: str  # PostgreSQL regex (unescaped \m / \M boundaries)
+    pg_pattern: str  # diacritic-folded, re.escaped alias alternation (no \b)
     alias_names: list[str]  # all raw names contributing to pattern
     exclusion_patterns: list[str] = field(default_factory=list)
 
@@ -792,16 +835,24 @@ class EntityMentionScanService:
         mentions: list[EntityMentionCreate] = []
         previews: list[dict[str, Any]] = []
 
-        # Step 1: Collect all matches
+        # Step 1: Collect all matches.  Matching runs against the diacritic-
+        # folded text and each folded match is mapped back to RAW offsets so the
+        # stored mention_text keeps its accents and offsets point into ``text``.
+        folded_text, offset_map = _fold_diacritics(text)
         raw_matches: list[tuple[uuid.UUID, int, int, str, _EntityPattern]] = []
         for pattern, py_regex in compiled_patterns:
-            for match in py_regex.finditer(text):
+            for match in py_regex.finditer(folded_text):
+                f_start, f_end = match.start(), match.end()
+                if f_end <= f_start:
+                    continue
+                raw_start = offset_map[f_start]
+                raw_end = offset_map[f_end - 1] + 1
                 raw_matches.append(
                     (
                         pattern.entity_id,
-                        match.start(),
-                        match.end(),
-                        match.group(0),
+                        raw_start,
+                        raw_end,
+                        text[raw_start:raw_end],
                         pattern,
                     )
                 )
@@ -1003,8 +1054,16 @@ class EntityMentionScanService:
                         name,
                     )
 
-            # Build PostgreSQL regex pattern: \m(alias1|alias2|...)\M
-            escaped_names = sorted([re.escape(n) for n in names], key=len, reverse=True)
+            # Build the diacritic-folded alternation: \b(alias1|alias2|...)\b.
+            # Alias names are folded (accents stripped) so the pattern matches
+            # accented occurrences in folded text — e.g. alias "Mexico" must
+            # match "México".  Case is still handled by re.IGNORECASE at compile
+            # time.  Names that fold to empty (pure combining marks) cannot match
+            # anything meaningful and are dropped to avoid an empty alternative.
+            folded_names = [f for f in (_fold_diacritics(n)[0] for n in names) if f]
+            escaped_names = sorted(
+                [re.escape(n) for n in folded_names], key=len, reverse=True
+            )
             pg_pattern = "|".join(escaped_names)
 
             patterns.append(
@@ -1157,17 +1216,27 @@ class EntityMentionScanService:
                 continue
 
             # ----------------------------------------------------------
-            # Step 1: Collect ALL (entity_id, start, end, text) via finditer
+            # Step 1: Collect ALL (entity_id, start, end, text) via finditer.
+            # Matching runs against the diacritic-folded text so accented
+            # occurrences match accent-free aliases; each folded match is then
+            # mapped back to RAW offsets so match_start/match_end/mention_text
+            # reference the real (accented) segment text.
             # ----------------------------------------------------------
+            folded_text, offset_map = _fold_diacritics(effective_text)
             raw_matches: list[tuple[uuid.UUID, int, int, str, _EntityPattern]] = []
             for pattern, py_regex in compiled_patterns:
-                for match in py_regex.finditer(effective_text):
+                for match in py_regex.finditer(folded_text):
+                    f_start, f_end = match.start(), match.end()
+                    if f_end <= f_start:
+                        continue
+                    raw_start = offset_map[f_start]
+                    raw_end = offset_map[f_end - 1] + 1
                     raw_matches.append(
                         (
                             pattern.entity_id,
-                            match.start(),
-                            match.end(),
-                            match.group(0),
+                            raw_start,
+                            raw_end,
+                            effective_text[raw_start:raw_end],
                             pattern,
                         )
                     )
@@ -1357,7 +1426,11 @@ class EntityMentionScanService:
         """Filter matches against entity exclusion patterns.
 
         For each surviving match, check if any of the entity's exclusion
-        patterns overlap the match position in the segment text.
+        patterns overlap the match position in the segment text.  Exclusion
+        matching is folded the same way as entity matching (accents stripped,
+        case-insensitive) and exclusion offsets are mapped back to the RAW
+        segment text, so overlap is compared in a single, consistent RAW offset
+        space against the (already RAW) match offsets.
 
         Parameters
         ----------
@@ -1380,15 +1453,24 @@ class EntityMentionScanService:
         final: list[tuple[uuid.UUID, int, int, str, _EntityPattern]] = []
         skip_count = 0
 
+        # Fold the segment text once; exclusion matches are found in folded
+        # space and mapped back to RAW offsets to compare against RAW match
+        # offsets.
+        folded_text, offset_map = _fold_diacritics(segment_text)
+
         for entity_id, m_start, m_end, matched_text, pattern in matches:
             ep = pattern_by_entity.get(entity_id)
             exclusions = ep.exclusion_patterns if ep else []
 
             suppressed = False
             for excl_pattern_text in exclusions:
-                # Find all case-insensitive occurrences of the exclusion pattern
+                # Find all accent- and case-insensitive occurrences of the
+                # exclusion pattern in the folded segment text.
+                folded_excl = _fold_diacritics(excl_pattern_text)[0]
+                if not folded_excl:
+                    continue
                 try:
-                    excl_regex = re.compile(re.escape(excl_pattern_text), re.IGNORECASE)
+                    excl_regex = re.compile(re.escape(folded_excl), re.IGNORECASE)
                 except re.error:
                     logger.warning(
                         "Invalid exclusion pattern '%s' for entity %s, skipping",
@@ -1397,9 +1479,12 @@ class EntityMentionScanService:
                     )
                     continue
 
-                for excl_match in excl_regex.finditer(segment_text):
-                    pattern_start = excl_match.start()
-                    pattern_end = excl_match.end()
+                for excl_match in excl_regex.finditer(folded_text):
+                    f_start, f_end = excl_match.start(), excl_match.end()
+                    if f_end <= f_start:
+                        continue
+                    pattern_start = offset_map[f_start]
+                    pattern_end = offset_map[f_end - 1] + 1
                     # Overlap check: pattern_start < match_end AND pattern_end > match_start
                     if pattern_start < m_end and pattern_end > m_start:
                         suppressed = True

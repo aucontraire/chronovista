@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.58.0] - 2026-07-22
+## [0.58.1] - 2026-07-22
+
+### Fixed
+- **Cross-segment candidate suggestions load again (batch corrections page).** The `GET /corrections/batch/cross-segment/candidates` endpoint had grown to ~20s and tripped the frontend's 10s request timeout, so the "Suggested Cross-Segment Candidates" panel showed "Failed to load…". Two causes: (1) the adjacency query filtered on a `CASE(has_correction, corrected_text, text)` expression, which is opaque to the existing `pg_trgm` GIN indexes and forced a full parallel seq-scan of the ~1.5M-row segment self-join — it now filters the raw `text`/`corrected_text` columns (a super-set candidate filter; the existing effective-text re-check preserves exact correctness), so the trigram indexes engage; (2) very short boundary splits (1-2 char fragments like `M`/`lo`) had almost no index selectivity and dominated cost — such splits are now skipped unless at least one side is a 4+ char anchor and neither side is a single character, which also removes low-quality noise candidates. End-to-end discovery dropped from ~20s to ~3s. No schema change (the trigram indexes already exist from migration `056`).
 
 ### Added
 - MkDocs documentation setup with Material theme

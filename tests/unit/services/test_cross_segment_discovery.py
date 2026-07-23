@@ -39,6 +39,7 @@ from chronovista.services.cross_segment_discovery import (
     _generate_splits,
     _generate_word_splits,
     _is_stopword_split,
+    _is_too_short_split,
 )
 
 # ---------------------------------------------------------------------------
@@ -1919,3 +1920,99 @@ class TestCrossSegmentCandidateDiscoverySource:
         kwargs["discovery_source"] = "custom_strategy"
         candidate = CrossSegmentCandidate(**kwargs)
         assert candidate.discovery_source == "custom_strategy"
+
+
+# ---------------------------------------------------------------------------
+# Performance-regression guard: the batched adjacency query must filter on the
+# RAW text/corrected_text columns (trigram-index friendly) and NOT a CASE
+# expression, which is opaque to idx_segments_text_trgm and forces a full
+# seq-scan of the ~1.5M-row self-join (~20s → endpoint timeout).
+# See cross_segment_discovery._find_adjacent_pairs_batched.
+# ---------------------------------------------------------------------------
+
+
+class TestBatchedQueryIsIndexFriendly:
+    """Lock in the trigram-index-friendly shape of the batched adjacency query."""
+
+    async def _compiled_sql(self) -> str:
+        from sqlalchemy.dialects import postgresql
+
+        discovery = CrossSegmentDiscovery(batch_service=_make_batch_service([]))
+        session = _make_mock_session()
+        result_mock = MagicMock()
+        result_mock.fetchall.return_value = []
+        session.execute = AsyncMock(return_value=result_mock)
+
+        await discovery._find_adjacent_pairs_batched(
+            session, [("Roy", "Cohn"), ("Matt", "Lee")]
+        )
+
+        stmt = session.execute.call_args.args[0]
+        return str(
+            stmt.compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True},
+            )
+        )
+
+    async def test_filters_on_raw_text_columns_not_case_expression(self) -> None:
+        """The ILIKE candidate filter targets raw text/corrected_text, never CASE."""
+        sql = await self._compiled_sql()
+        # Both raw columns participate in the filter (trigram indexes cover them).
+        assert "corrected_text" in sql
+        assert sql.count("ILIKE") >= 4  # 2 pairs × (text OR corrected_text) per side
+        # A CASE(has_correction, corrected_text, text) expression would defeat the
+        # pg_trgm GIN index — its reappearance here is the regression we guard against.
+        assert "CASE" not in sql.upper()
+
+    async def test_prefix_and_suffix_wildcards_preserved(self) -> None:
+        """Prefix match is a trailing-anchored '%prefix'; suffix is 'suffix%'."""
+        sql = await self._compiled_sql()
+        # literal_binds under the pyformat paramstyle doubles the '%' wildcard.
+        assert "'%Roy'" in sql or "'%%Roy'" in sql
+        assert "'Cohn%'" in sql or "'Cohn%%'" in sql
+
+
+class TestIsTooShortSplit:
+    """Boundary-split length guard: drops low-selectivity noise splits.
+
+    Rule: neither side may be a single char, AND at least one side must be a
+    substantial (>= 4 char) anchor so PostgreSQL can drive the self-join from a
+    small row set. This is a quality + performance filter (see
+    _is_too_short_split docstring).
+    """
+
+    @pytest.mark.parametrize(
+        "prefix,suffix",
+        [
+            ("Chomski", "is"),  # 7 + 2: long selective prefix, short suffix
+            ("El", "Musk"),  # 2 + 4: short prefix, selective suffix
+            ("Roy", "Cohn"),  # 3 + 4
+            ("Matt", "Lee"),  # 4 + 3
+        ],
+    )
+    def test_keeps_splits_with_a_selective_anchor(
+        self, prefix: str, suffix: str
+    ) -> None:
+        assert _is_too_short_split(prefix, suffix) is False
+
+    @pytest.mark.parametrize(
+        "prefix,suffix",
+        [
+            ("M", "lo"),  # 1 + 2: single-char side
+            ("l", "mosk"),  # 1 + 4: single-char side
+            ("fe", "de"),  # 2 + 2: no 4-char anchor
+            ("Roy", "K"),  # 3 + 1: single-char side
+            ("LA", "no"),  # 2 + 2: no 4-char anchor
+        ],
+    )
+    def test_drops_splits_without_a_selective_anchor(
+        self, prefix: str, suffix: str
+    ) -> None:
+        assert _is_too_short_split(prefix, suffix) is True
+
+    def test_strips_whitespace_before_measuring(self) -> None:
+        # "  Roy " -> "Roy" (3), " Cohn" -> "Cohn" (4): kept.
+        assert _is_too_short_split("  Roy ", " Cohn") is False
+        # " a " -> "a" (1): single-char after strip, dropped.
+        assert _is_too_short_split(" a ", "Musk") is True

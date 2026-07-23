@@ -255,6 +255,30 @@ def _is_stopword_split(prefix: str, suffix: str) -> bool:
     )
 
 
+# A boundary split is only worth querying when it has a selective anchor.
+# The batched adjacency query is dominated by splits where BOTH sides are
+# short: a 1-2 char fragment (e.g. "M" / "lo") has almost no trigram
+# selectivity and matches hundreds of thousands of segments. We therefore
+# require neither side to be a single character AND at least one side to be a
+# substantial (>= 4 char) anchor that lets PostgreSQL drive the self-join from
+# a small row set. This keeps precise splits like "Chomski"/"is" or
+# "El"/"Musk" while dropping noise like "M"/"lo" — cutting the batched query
+# from ~12s to ~1s on a ~1.5M-row segment table.
+_MIN_BOUNDARY_FRAGMENT_LEN = 2
+_MIN_BOUNDARY_ANCHOR_LEN = 4
+
+
+def _is_too_short_split(prefix: str, suffix: str) -> bool:
+    """Return True if a boundary split lacks a selective anchor.
+
+    Splits where both sides are short produce low-selectivity trigram scans
+    (huge candidate sets) and are poor ASR boundary-error indicators, so they
+    are skipped for both quality and performance.
+    """
+    shorter, longer = sorted((len(prefix.strip()), len(suffix.strip())))
+    return shorter < _MIN_BOUNDARY_FRAGMENT_LEN or longer < _MIN_BOUNDARY_ANCHOR_LEN
+
+
 def _effective_text(segment: Any) -> str:
     """Return the effective text for a segment (corrected if available)."""
     if segment.has_correction and segment.corrected_text:
@@ -466,6 +490,8 @@ class CrossSegmentDiscovery:
                 if _is_stopword_split(prefix, suffix):
                     skipped_stopword += 1
                     continue
+                if _is_too_short_split(prefix, suffix):
+                    continue
                 split_entries.append(
                     (prefix, suffix, alias_name, canonical_name, entity_type)
                 )
@@ -618,19 +644,25 @@ class CrossSegmentDiscovery:
         seg_n = TranscriptSegmentDB.__table__.alias("seg_n")
         seg_n1 = TranscriptSegmentDB.__table__.alias("seg_n1")
 
-        eff_text_n = case(
-            (seg_n.c.has_correction, seg_n.c.corrected_text),
-            else_=seg_n.c.text,
-        )
-        eff_text_n1 = case(
-            (seg_n1.c.has_correction, seg_n1.c.corrected_text),
-            else_=seg_n1.c.text,
-        )
-
+        # Candidate pre-filter on the RAW ``text``/``corrected_text`` columns so
+        # PostgreSQL can use the pg_trgm GIN indexes (``idx_segments_text_trgm`` /
+        # ``idx_segments_corrected_text_trgm``). A ``CASE(has_correction,
+        # corrected_text, text)`` expression is opaque to those indexes and forces a
+        # full parallel seq-scan of the ~1.5M-row self-join (~20s for the whole
+        # request). Matching either the original or the corrected text yields a
+        # strict super-set of the effective-text match; the ``_effective_text``
+        # re-check in the callers then enforces exact correctness, so this query is
+        # purely a fast candidate filter.
         or_conditions = [
             and_(
-                eff_text_n.ilike(f"%{prefix}"),
-                eff_text_n1.ilike(f"{suffix}%"),
+                or_(
+                    seg_n.c.text.ilike(f"%{prefix}"),
+                    seg_n.c.corrected_text.ilike(f"%{prefix}"),
+                ),
+                or_(
+                    seg_n1.c.text.ilike(f"{suffix}%"),
+                    seg_n1.c.corrected_text.ilike(f"{suffix}%"),
+                ),
             )
             for prefix, suffix in prefix_suffix_pairs
         ]
@@ -869,6 +901,8 @@ class CrossSegmentDiscovery:
                 if not prefix.strip() or not suffix.strip():
                     continue
                 if _is_stopword_split(prefix, suffix):
+                    continue
+                if _is_too_short_split(prefix, suffix):
                     continue
                 split_entries.append((prefix, suffix, pattern))
 

@@ -808,12 +808,18 @@ async def create_entity_alias(
         EntityAliasDB.alias_name_normalized == normalized_alias,
     )
     dup_result = await session.execute(dup_query)
-    if dup_result.scalar_one_or_none() is not None:
+    existing_alias = dup_result.scalar_one_or_none()
+    if existing_alias is not None:
         raise ConflictError(
-            message=f"Alias '{body.alias_name}' already exists for this entity",
+            message=(
+                f"Already covered by the existing alias "
+                f"'{existing_alias.alias_name}' — accents and case are ignored "
+                f"when matching, so this variant is treated as the same."
+            ),
             details={
                 "entity_id": entity_id,
                 "alias_name": body.alias_name,
+                "existing_alias_name": existing_alias.alias_name,
                 "normalized": normalized_alias,
             },
         )

@@ -182,15 +182,28 @@ function DataExportPath({
               dataExportDetected ? "text-green-700" : "text-amber-700",
             ].join(" ")}
           >
-            Expected path:{" "}
-            <code className="font-mono bg-white/60 px-1 py-0.5 rounded">
-              {dataExportPath}
-            </code>
+            {dataExportDetected ? (
+              <>
+                Reading from your{" "}
+                <code className="font-mono bg-white/60 px-1 py-0.5 rounded">
+                  takeout
+                </code>{" "}
+                folder in the project root.
+              </>
+            ) : (
+              <>
+                Place your Google Takeout export in the{" "}
+                <code className="font-mono bg-white/60 px-1 py-0.5 rounded">
+                  takeout
+                </code>{" "}
+                folder in the project root.
+              </>
+            )}
           </p>
 
           {!dataExportDetected && (
             <p className="text-xs text-amber-700 mt-1">
-              Download your YouTube data export from{" "}
+              Download your export from{" "}
               <a
                 href="https://takeout.google.com"
                 target="_blank"
@@ -198,10 +211,18 @@ function DataExportPath({
                 className="underline hover:text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-500 rounded"
               >
                 Google Takeout
-              </a>{" "}
-              and place the archive at the path above, then refresh this page.
+              </a>
+              , move the extracted folder into your{" "}
+              <code className="font-mono bg-white/60 px-1 py-0.5 rounded">
+                takeout
+              </code>{" "}
+              folder, then refresh this page.
             </p>
           )}
+
+          <p className="text-[11px] text-slate-400 mt-1 font-mono break-all">
+            app path: {dataExportPath}
+          </p>
         </div>
       </div>
     </div>

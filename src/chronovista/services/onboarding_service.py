@@ -7,6 +7,7 @@ operations to existing services via the TaskManager.
 
 from __future__ import annotations
 
+import datetime
 import logging
 import os
 from collections.abc import Callable, Coroutine
@@ -175,7 +176,15 @@ class OnboardingService:
             Full pipeline state including step statuses, counts, auth
             state, and any currently active task.
         """
-        counts, last_loaded_at = await self._get_counts_and_last_loaded()
+        counts, db_last_loaded_at = await self._get_counts_and_last_loaded()
+        # Prefer the most recent evidence of a load: an explicit load_data
+        # completion marker (advances even on an idempotent re-import) or the
+        # newest video row (covers legacy loads predating the marker).
+        marker_loaded_at = self._read_load_marker()
+        loaded_candidates = [
+            ts for ts in (marker_loaded_at, db_last_loaded_at) if ts is not None
+        ]
+        last_loaded_at = max(loaded_candidates) if loaded_candidates else None
         is_authenticated = self._check_auth()
         data_export_path = self._get_data_export_path()
         data_export_detected = self._detect_data_export(data_export_path)
@@ -420,13 +429,16 @@ class OnboardingService:
         Returns
         -------
         bool
-            ``True`` if the directory contains at least one file or
-            subdirectory.
+            ``True`` if the directory contains at least one non-hidden file
+            or subdirectory. Hidden entries (dotfiles such as macOS
+            ``.DS_Store``) are ignored — they are not export data.
         """
         if not export_path.is_dir():
             return False
         try:
-            return any(export_path.iterdir())
+            return any(
+                not entry.name.startswith(".") for entry in export_path.iterdir()
+            )
         except PermissionError:
             logger.warning("Cannot read data export directory: %s", export_path)
             return False
@@ -453,7 +465,15 @@ class OnboardingService:
         if not export_path.is_dir():
             return None
         try:
-            entries = list(export_path.iterdir())
+            # Ignore hidden entries (e.g. macOS ``.DS_Store``): they are not
+            # export data, and Finder re-touches them, which would otherwise
+            # spuriously advance the export mtime past the last load and keep
+            # the "new data available" signal stuck on.
+            entries = [
+                entry
+                for entry in export_path.iterdir()
+                if not entry.name.startswith(".")
+            ]
             if not entries:
                 return None
             return max(entry.stat().st_mtime for entry in entries)
@@ -501,6 +521,50 @@ class OnboardingService:
             return False
         # Only signal new data if export dir was modified after last load
         return not (last_loaded_at is not None and export_mtime <= last_loaded_at)
+
+    @staticmethod
+    def _load_marker_path() -> Path:
+        """Path of the marker file recording the last successful load_data run.
+
+        Stored in the writable data directory (not the read-only takeout
+        mount) so it survives across status polls and app restarts.
+        """
+        from chronovista.config.settings import settings
+
+        return settings.data_dir / "onboarding_last_load"
+
+    @staticmethod
+    def _read_load_marker() -> float | None:
+        """Return the epoch timestamp of the last recorded load, or ``None``.
+
+        Returns
+        -------
+        float | None
+            Epoch seconds parsed from the marker file, or ``None`` when the
+            marker is absent or unreadable.
+        """
+        try:
+            return float(OnboardingService._load_marker_path().read_text().strip())
+        except (FileNotFoundError, ValueError, OSError):
+            return None
+
+    @staticmethod
+    def _record_load_completion() -> None:
+        """Persist the completion time of a load_data run.
+
+        Recorded independently of whether new video rows were created, so the
+        "new data available" signal clears even for an idempotent re-import
+        (a Takeout whose videos are all already in the database). Without this,
+        ``last_loaded_at`` was inferred from ``MAX(video.created_at)``, which
+        never advances when a load inserts no new rows.
+        """
+        path = OnboardingService._load_marker_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            now = datetime.datetime.now(datetime.UTC).timestamp()
+            path.write_text(str(now))
+        except OSError as exc:
+            logger.warning("Could not record load completion marker: %s", exc)
 
     @staticmethod
     def _check_auth() -> bool:
@@ -947,6 +1011,10 @@ class OnboardingService:
 
                 progress_cb(100.0)
                 all_results.update(recovery_result_data)
+                # Record completion so the "new data available" signal clears
+                # even when this load created no new video rows (idempotent
+                # re-import of an already-loaded Takeout).
+                OnboardingService._record_load_completion()
                 return all_results
 
             return _run()

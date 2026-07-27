@@ -222,20 +222,27 @@ describe("OnboardingPage", () => {
   // T030-2: Shows data export path
   // -------------------------------------------------------------------------
   describe("shows data export path (T030-2)", () => {
-    it("renders the configured data export path", async () => {
+    it("renders the muted debug line with the actual data export path", async () => {
       await setupHooks({ status: mockStatus });
 
       renderPage();
 
-      expect(screen.getByText("/data/takeout")).toBeInTheDocument();
+      expect(
+        screen.getByText(/app path: \/data\/takeout/i)
+      ).toBeInTheDocument();
     });
 
-    it("renders the export path label text", async () => {
-      await setupHooks({ status: mockStatus });
+    it("renders takeout folder guidance when data_export_detected is true", async () => {
+      await setupHooks({
+        status: { ...mockStatus, data_export_detected: true },
+      });
 
       renderPage();
 
-      expect(screen.getByText(/Expected path:/i)).toBeInTheDocument();
+      expect(screen.getByText(/Reading from your/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/folder in the project root\./i)
+      ).toBeInTheDocument();
     });
 
     it("renders 'Data export detected' when data_export_detected is true", async () => {
@@ -452,7 +459,7 @@ describe("OnboardingPage", () => {
       expect(takeoutLink).toHaveAttribute("href", "https://takeout.google.com");
     });
 
-    it("renders guidance text with download instructions", async () => {
+    it("renders the takeout folder placement guidance when no export is detected", async () => {
       await setupHooks({
         status: { ...mockStatus, data_export_detected: false },
       });
@@ -460,11 +467,24 @@ describe("OnboardingPage", () => {
       renderPage();
 
       expect(
-        screen.getByText(/Download your YouTube data export/i)
+        screen.getByText(/Place your Google Takeout export in the/i)
       ).toBeInTheDocument();
     });
 
-    it("does not show the takeout guidance when export is detected", async () => {
+    it("renders guidance text with download instructions", async () => {
+      await setupHooks({
+        status: { ...mockStatus, data_export_detected: false },
+      });
+
+      renderPage();
+
+      expect(screen.getByText(/Download your export from/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/move the extracted folder into your/i)
+      ).toBeInTheDocument();
+    });
+
+    it("does not show the not-detected takeout guidance when export is detected", async () => {
       await setupHooks({
         status: { ...mockStatus, data_export_detected: true },
       });
@@ -472,7 +492,7 @@ describe("OnboardingPage", () => {
       renderPage();
 
       expect(
-        screen.queryByText(/Download your YouTube data export/i)
+        screen.queryByText(/Place your Google Takeout export in the/i)
       ).not.toBeInTheDocument();
     });
 

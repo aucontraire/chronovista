@@ -1138,6 +1138,9 @@ class TestReturningUser:
     def _make_export_entry(self, mtime: float = 1700000000.0) -> MagicMock:
         """Create a mock Path entry with a controllable stat().st_mtime."""
         entry = MagicMock(spec=Path)
+        # A real (non-hidden) name so the dotfile filter in
+        # _detect_data_export / _get_export_mtime keeps this entry.
+        entry.name = "YouTube and YouTube Music"
         stat_result = MagicMock()
         stat_result.st_mtime = mtime
         entry.stat.return_value = stat_result
@@ -1174,6 +1177,14 @@ class TestReturningUser:
             patch(
                 "pathlib.Path.iterdir",
                 side_effect=_iterdir_side_effect,
+            ),
+            # No load-completion marker recorded: exercise the export-mtime
+            # vs. DB fallback path these scenarios validate. (Isolates the
+            # test from any real marker file in the dev data dir.)
+            patch(
+                "chronovista.services.onboarding_service."
+                "OnboardingService._read_load_marker",
+                return_value=None,
             ),
         ):
             return await service.get_status()
@@ -1679,6 +1690,21 @@ class TestFactoryLoadData:
     our mock when called with the patched class, forwarding all other calls
     to the real ``object.__new__``.
     """
+
+    @pytest.fixture(autouse=True)
+    def _no_marker_write(self) -> Any:
+        """Prevent the load factory from writing a real completion marker.
+
+        ``_factory_load_data`` records a load-completion marker in the data
+        dir on success; running the factory in these unit tests must not
+        touch the real filesystem. The marker's own behaviour is covered by
+        ``TestLoadCompletionMarker``.
+        """
+        with patch(
+            "chronovista.services.onboarding_service."
+            "OnboardingService._record_load_completion"
+        ):
+            yield
 
     def _make_mock_dir_entry(self, name: str, is_dir: bool = True) -> MagicMock:
         """Build a mock filesystem directory entry.
@@ -2654,3 +2680,121 @@ class TestGetCountsAndLastLoadedGather:
 
         # No videos loaded yet and no timestamp -> no new data to flag
         assert status.new_data_available is False
+
+
+class TestExportScanIgnoresHiddenFiles:
+    """Hidden entries (e.g. macOS ``.DS_Store``) must not count as export data.
+
+    Regression: a ``.DS_Store`` file whose mtime is newer than the last load
+    kept ``new_data_available`` stuck on True, re-enabling the Start button
+    even though the user was fully caught up.
+    """
+
+    def test_detect_data_export_ignores_dotfiles(self, tmp_path: Path) -> None:
+        from chronovista.services.onboarding_service import OnboardingService
+
+        (tmp_path / ".DS_Store").write_text("junk")
+        # Only a hidden file present -> not treated as export data.
+        assert OnboardingService._detect_data_export(tmp_path) is False
+
+        (tmp_path / "YouTube and YouTube Music").mkdir()
+        # A real (non-hidden) entry now present -> export detected.
+        assert OnboardingService._detect_data_export(tmp_path) is True
+
+    def test_get_export_mtime_ignores_dotfiles(self, tmp_path: Path) -> None:
+        import os
+
+        from chronovista.services.onboarding_service import OnboardingService
+
+        real = tmp_path / "YouTube and YouTube Music"
+        real.mkdir()
+        dotfile = tmp_path / ".DS_Store"
+        dotfile.write_text("junk")
+
+        # Real data is OLDER; the hidden dotfile is NEWER (the bug scenario).
+        os.utime(real, (1_000_000.0, 1_000_000.0))
+        os.utime(dotfile, (2_000_000.0, 2_000_000.0))
+
+        mtime = OnboardingService._get_export_mtime(tmp_path)
+        # Must reflect the real data's mtime, not the newer dotfile's.
+        assert mtime == 1_000_000.0
+
+    def test_get_export_mtime_none_when_only_dotfiles(self, tmp_path: Path) -> None:
+        from chronovista.services.onboarding_service import OnboardingService
+
+        (tmp_path / ".DS_Store").write_text("junk")
+        assert OnboardingService._get_export_mtime(tmp_path) is None
+
+
+class TestLoadCompletionMarker:
+    """The load_data completion marker clears the signal on idempotent re-loads."""
+
+    def test_record_and_read_marker_roundtrip(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from chronovista.config.settings import settings
+        from chronovista.services.onboarding_service import OnboardingService
+
+        monkeypatch.setattr(settings, "data_dir", tmp_path)
+
+        before = datetime.now(UTC).timestamp()
+        OnboardingService._record_load_completion()
+        after = datetime.now(UTC).timestamp()
+
+        marker = OnboardingService._read_load_marker()
+        assert marker is not None
+        assert before <= marker <= after
+        # Written to the writable data dir, not the read-only takeout mount.
+        assert (tmp_path / "onboarding_last_load").is_file()
+
+    def test_read_marker_absent_returns_none(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from chronovista.config.settings import settings
+        from chronovista.services.onboarding_service import OnboardingService
+
+        monkeypatch.setattr(settings, "data_dir", tmp_path)
+        assert OnboardingService._read_load_marker() is None
+
+    def test_read_marker_corrupt_returns_none(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from chronovista.config.settings import settings
+        from chronovista.services.onboarding_service import OnboardingService
+
+        monkeypatch.setattr(settings, "data_dir", tmp_path)
+        (tmp_path / "onboarding_last_load").write_text("not-a-float")
+        assert OnboardingService._read_load_marker() is None
+
+    def test_marker_makes_new_data_false_after_idempotent_load(
+        self,
+    ) -> None:
+        """With a recent marker, an unchanged export no longer flags new data.
+
+        This is the deeper fix: even when MAX(video.created_at) predates the
+        export mtime (a re-import that created no new rows), a marker recorded
+        at load time clears the signal.
+        """
+        from chronovista.services.onboarding_service import OnboardingService
+
+        # Export modified after the newest video row (the stuck condition)...
+        assert (
+            OnboardingService._detect_new_data(
+                data_export_detected=True,
+                export_mtime=2_000_000.0,
+                videos_loaded=100,
+                last_loaded_at=1_000_000.0,
+            )
+            is True
+        )
+        # ...but once last_loaded_at reflects a completion marker AFTER the
+        # export mtime, no new data is signalled.
+        assert (
+            OnboardingService._detect_new_data(
+                data_export_detected=True,
+                export_mtime=2_000_000.0,
+                videos_loaded=100,
+                last_loaded_at=3_000_000.0,
+            )
+            is False
+        )

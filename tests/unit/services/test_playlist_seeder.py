@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chronovista.models.enums import PlaylistType
 from chronovista.models.playlist import PlaylistCreate
 from chronovista.models.takeout.takeout_data import TakeoutData
 from chronovista.repositories.playlist_repository import PlaylistRepository
@@ -932,3 +933,75 @@ class TestPlaylistSeederReseedWithCascade:
 
             # Should have created new playlist
             assert result.created == 1
+
+
+class TestPlaylistTypeClassificationOnImport:
+    """US1 (Feature 058): import classifies playlist_type on the create path."""
+
+    @pytest.fixture
+    def seeder(self) -> PlaylistSeeder:
+        repo = Mock(spec=PlaylistRepository)
+        repo.get_by_playlist_id = AsyncMock()
+        repo.create = AsyncMock()
+        return PlaylistSeeder(repo, user_id="test_user")
+
+    @pytest.mark.parametrize(
+        "name,youtube_id,expected",
+        [
+            ("Watch later", None, PlaylistType.WATCH_LATER),
+            ("History", None, PlaylistType.HISTORY),
+            ("Liked videos", None, PlaylistType.LIKED),
+            ("Favorites", None, PlaylistType.FAVORITES),
+            ("My AI Playlist", None, PlaylistType.REGULAR),
+            ("history", None, PlaylistType.HISTORY),  # case-insensitive
+            ("anything", "WL", PlaylistType.WATCH_LATER),  # canonical id precedence
+        ],
+    )
+    def test_transform_sets_playlist_type(
+        self,
+        seeder: PlaylistSeeder,
+        name: str,
+        youtube_id: str | None,
+        expected: PlaylistType,
+    ) -> None:
+        playlist = create_takeout_playlist(
+            name=name,
+            youtube_id=youtube_id,
+            file_path=Path("/test/pl.csv"),
+            videos=[],
+            video_count=0,
+        )
+        playlist_create = seeder._transform_playlist_to_create(playlist)
+        assert playlist_create.playlist_type is expected
+
+    @pytest.mark.asyncio
+    async def test_existing_playlist_type_not_modified_on_reimport(self) -> None:
+        """Seam (FR-005): the seeder update path is a no-op — re-importing an
+        existing playlist does NOT rewrite it (so a backfilled type is never
+        reset). Existing rows are counted as 'updated' but no write occurs.
+        """
+        repo = Mock(spec=PlaylistRepository)
+        repo.get_by_playlist_id = AsyncMock(return_value=Mock())  # row exists
+        repo.create = AsyncMock()
+        seeder = PlaylistSeeder(repo, user_id="test_user")
+        session = AsyncMock()
+        session.commit = AsyncMock()
+        data = create_takeout_data(
+            takeout_path=Path("/test/takeout"),
+            subscriptions=[],
+            watch_history=[],
+            playlists=[
+                create_takeout_playlist(
+                    name="Watch later",
+                    file_path=Path("/test/wl.csv"),
+                    videos=[],
+                    video_count=0,
+                ),
+            ],
+        )
+
+        result = await seeder.seed(session, data)
+
+        assert result.updated == 1
+        assert result.created == 0
+        repo.create.assert_not_called()  # no create for an existing row

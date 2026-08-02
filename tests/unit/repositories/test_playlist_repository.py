@@ -770,3 +770,52 @@ class TestPlaylistRepositoryIntegration:
         assert hasattr(repository, "get_playlist_statistics")
         assert hasattr(repository, "bulk_create_playlists")
         assert hasattr(repository, "find_similar_playlists")
+
+
+class TestPlaylistTypeReclassifyRepo:
+    """US2 (Feature 058): promote-only reclassify repository support."""
+
+    @pytest.fixture
+    def repository(self) -> PlaylistRepository:
+        return PlaylistRepository()
+
+    @pytest.mark.asyncio
+    async def test_get_playlists_by_type_filters_by_type(
+        self, repository: PlaylistRepository
+    ) -> None:
+        from chronovista.models.enums import PlaylistType
+
+        result_mock = MagicMock()
+        result_mock.scalars.return_value.all.return_value = []
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=result_mock)
+
+        await repository.get_playlists_by_type(session, PlaylistType.REGULAR)
+
+        stmt = session.execute.call_args.args[0]
+        sql = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        assert "playlist_type" in sql
+        assert "regular" in sql
+
+    @pytest.mark.asyncio
+    async def test_promote_playlist_type_update_sets_playlist_type_column(
+        self, repository: PlaylistRepository
+    ) -> None:
+        """Constitution Cross-Feature: the UPDATE's SET clause MUST include
+        playlist_type (not merely a return value)."""
+        from chronovista.models.enums import PlaylistType
+
+        session = AsyncMock()
+        session.execute = AsyncMock()
+
+        await repository.promote_playlist_type(
+            session, "PLxyz", PlaylistType.WATCH_LATER
+        )
+
+        stmt = session.execute.call_args.args[0]
+        sql = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        assert "UPDATE" in sql.upper()
+        assert "SET" in sql.upper()
+        assert "playlist_type" in sql  # column present in SET clause
+        assert "watch_later" in sql  # new value
+        assert "PLxyz" in sql  # scoped to the single target row

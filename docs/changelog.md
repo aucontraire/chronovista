@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.59.0] - 2026-08-02
+
+### Added
+- **Playlist type classification from Takeout (Feature 058).** Playlists imported from Google Takeout are now classified into their real `playlist_type` (`watch_later`, `history`, `liked`, `favorites`) instead of every playlist defaulting to `regular`. A single shared classifier keys off the canonical YouTube system-playlist id (`WL`/`HL`/`LL…`) when present, else a case-insensitive English name match ("Watch later", "History", "Liked videos", "Favorites"), else `regular`.
+  - **Import** sets `playlist_type` at creation time (new playlists only; the seeder's update path is a no-op for existing rows).
+  - **New CLI** `chronovista playlist reclassify [--dry-run]` backfills already-imported playlists. Promote-only (never downgrades a non-`regular` playlist), idempotent, interruption-safe, with per-type reporting.
+  - **API** `GET /api/v1/playlists` now includes `playlist_type` on each list item (detail already exposed it) and accepts an optional single-value `?playlist_type=` filter (invalid value → 422).
+  - Backend-only; **no schema migration** (the `playlists.playlist_type` column already existed), no new dependencies, no frontend changes. Watched-status derivation is unaffected. Prerequisite for the planned Overview Dashboard "saved but never watched" insight.
+
 ## [0.58.2] - 2026-07-27
 
 ### Fixed

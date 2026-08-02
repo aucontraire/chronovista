@@ -17,7 +17,7 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...models.enums import LanguageCode, PrivacyStatus
+from ...models.enums import LanguageCode, PrivacyStatus, classify_playlist_type
 from ...models.playlist import PlaylistCreate
 from ...models.takeout.takeout_data import TakeoutData, TakeoutPlaylist
 from ...repositories.playlist_repository import PlaylistRepository
@@ -237,6 +237,11 @@ class PlaylistSeeder(BaseSeeder):
             default_language=LanguageCode.ENGLISH,  # Default fallback
             privacy_status=privacy_status,
             published_at=takeout_playlist.created_at,
+            # Feature 058: classify system playlists (Watch Later / History / etc.)
+            # from the canonical id or English name; ordinary playlists → regular.
+            playlist_type=classify_playlist_type(
+                takeout_playlist.youtube_id, takeout_playlist.name
+            ),
         )
 
     def _map_visibility_to_privacy_status(

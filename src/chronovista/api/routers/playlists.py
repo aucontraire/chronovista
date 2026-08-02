@@ -36,7 +36,7 @@ from chronovista.db.models import (
 )
 from chronovista.db.models import Video as VideoDB
 from chronovista.exceptions import BadRequestError, NotFoundError
-from chronovista.models.enums import AvailabilityStatus
+from chronovista.models.enums import AvailabilityStatus, PlaylistType
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -104,6 +104,11 @@ async def list_playlists(
     unlinked: bool | None = Query(
         None,
         description="Filter for internal playlists (int_ prefix)",
+    ),
+    playlist_type: PlaylistType | None = Query(
+        None,
+        description="Filter by playlist type (regular, liked, watch_later, "
+        "history, favorites)",
     ),
     sort_by: PlaylistSortField = Query(
         PlaylistSortField.CREATED_AT,
@@ -183,6 +188,11 @@ async def list_playlists(
             | (PlaylistDB.playlist_id.like("WL%"))
             | (PlaylistDB.playlist_id.like("HL%"))
         )
+
+    # Apply playlist_type filter (Feature 058, US3). Added before the count
+    # query is derived so totals reflect the filter too.
+    if playlist_type is not None:
+        query = query.where(PlaylistDB.playlist_type == playlist_type.value)
 
     # Get total count (before pagination)
     count_query = select(func.count()).select_from(query.subquery())

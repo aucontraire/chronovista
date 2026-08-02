@@ -41,6 +41,24 @@ from chronovista.models.video_transcript import EnhancedVideoTranscriptBase
 pytestmark = [pytest.mark.integration]
 
 
+@pytest.fixture(autouse=True)
+def _mock_identity_resolver():  # type: ignore[no-untyped-def]
+    """Stub the canonical-identity resolver (Feature 060).
+
+    The sync command loads language preferences under the resolved identity
+    instead of a hardcoded ``default_user``. These tests supply preferences via
+    a mocked container repository, so the resolver — which issues a real query
+    against ``app_identities`` — is stubbed here. Resolver behaviour is covered
+    by tests/unit/services/test_identity_service.py and
+    tests/integration/test_identity_dedup.py.
+    """
+    with patch("chronovista.services.identity_service.IdentityService") as mock_cls:
+        mock_cls.return_value.resolve = AsyncMock(
+            return_value="UCtest_identity_00000000"
+        )
+        yield
+
+
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================

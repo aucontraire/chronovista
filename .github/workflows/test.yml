@@ -145,7 +145,10 @@ jobs:
           restore-keys: poetry-${{ runner.os }}-
 
       - name: Install dependencies
-        run: poetry install --no-interaction
+        # `--with database` pulls in psycopg2-binary (optional group). Alembic's
+        # env.py converts the async URL to a sync one, so the migration step
+        # below needs a sync driver; the app itself only ever uses asyncpg.
+        run: poetry install --no-interaction --with database
 
       - name: Verify Alembic migrations apply cleanly (FR-024)
         env:

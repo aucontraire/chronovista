@@ -22,10 +22,14 @@ class UserVideoSeeder(BaseSeeder):
     """Seeder for user-video relationships."""
 
     def __init__(
-        self, user_video_repo: UserVideoRepository, user_id: str = "takeout_user"
+        self,
+        user_video_repo: UserVideoRepository,
+        user_id: str | None = None,
     ):
         super().__init__(dependencies={"videos"})  # Depends on videos existing
         self.user_video_repo = user_video_repo
+        # The canonical identity is resolved by the caller (Feature 060); it must
+        # be set before seeding. No hardcoded placeholder default (FR-012).
         self.user_id = user_id
 
     def get_data_type(self) -> str:
@@ -40,6 +44,14 @@ class UserVideoSeeder(BaseSeeder):
         """Seed user-video relationships from watch history."""
         start_time = datetime.now()
         result = SeedResult()
+
+        # The canonical identity must be resolved before seeding (Feature 060).
+        if self.user_id is None:
+            raise ValueError(
+                "UserVideoSeeder.user_id must be resolved before seeding "
+                "user_videos."
+            )
+        user_id = self.user_id
 
         # Filter watch entries with timestamps
         watch_entries = [
@@ -56,7 +68,7 @@ class UserVideoSeeder(BaseSeeder):
                 if user_video_create:
                     # Check if relationship already exists
                     existing = await self.user_video_repo.get_by_composite_key(
-                        session, self.user_id, user_video_create.video_id
+                        session, user_id, user_video_create.video_id
                     )
 
                     if existing:
@@ -113,6 +125,13 @@ class UserVideoSeeder(BaseSeeder):
         # video_seeder skips these, so there's no video record to reference
         if not entry.video_id:
             return None
+
+        # The canonical identity must have been resolved before seeding.
+        if self.user_id is None:
+            raise ValueError(
+                "UserVideoSeeder.user_id is not set — the canonical identity "
+                "must be resolved before seeding user_videos."
+            )
 
         return UserVideoCreate(
             user_id=self.user_id,

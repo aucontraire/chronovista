@@ -12,9 +12,9 @@ import logging
 import os
 from collections.abc import Callable, Coroutine
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
-from sqlalchemy import CursorResult, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from chronovista.api.schemas.onboarding import (
@@ -917,28 +917,33 @@ class OnboardingService:
                     len(takeout_dirs),
                 )
 
-                # Resolve the real user ID when authenticated, so
-                # user_videos rows are stored under the actual channel
-                # ID instead of the "takeout_user" placeholder.
-                user_id = "takeout_user"
+                # Resolve the canonical local-user identity ONCE (persisted in
+                # app_identities) and seed all user-scoped rows under it
+                # (Feature 060, FR-012/FR-014). The authenticated channel id is
+                # only a *fetch target*; the resolver decides the identity and
+                # falls back to a persisted local constant when there is none.
+                from chronovista.services.identity_service import IdentityService
+
+                channel_id: str | None = None
                 if OnboardingService._check_auth():
                     try:
                         from chronovista.container import container
 
                         yt = container.youtube_service
                         my_ch = await yt.get_my_channel()
-                        if my_ch:
-                            user_id = my_ch.id
-                            logger.info(
-                                "Load data: using authenticated channel ID %s",
-                                user_id,
-                            )
+                        channel_id = my_ch.id if my_ch else None
                     except Exception as exc:
                         logger.warning(
-                            "Load data: could not resolve channel ID, "
-                            "falling back to 'takeout_user': %s",
+                            "Load data: could not resolve channel id (a local "
+                            "identity will be used): %s",
                             exc,
                         )
+
+                async with session_factory() as session:
+                    user_id = await IdentityService().resolve(
+                        session, authenticated_channel_id=channel_id
+                    )
+                    await session.commit()
 
                 # Parse and seed from each takeout directory
                 seeding_svc = TakeoutSeedingService(user_id=user_id)
@@ -1084,62 +1089,31 @@ class OnboardingService:
                         )
                 progress_cb(50.0)
 
-                # Step 2.5: Migrate any "takeout_user" rows to the real
-                # channel ID so likes sync and filters work correctly.
+                # Step 3: Sync liked videos. The WRITE identity comes from the
+                # canonical resolver (Feature 060, FR-012 / seam S2) — never from
+                # get_my_channel(); the channel is only a fetch target. The dead
+                # PR #98 "Step 2.5" skip-on-conflict migration was removed here
+                # (FR-014): it was a no-op that could never dedup and left the
+                # placeholder rows behind.
                 youtube_service = container.youtube_service
-                real_user_id: str | None = None
-                async with session_factory() as session:
-                    try:
-                        my_channel = await youtube_service.get_my_channel()
-                        if my_channel:
-                            real_user_id = my_channel.id
-                            from sqlalchemy import text
-
-                            # Migrate takeout_user → real channel ID,
-                            # skipping rows that already exist under
-                            # the real ID (avoids PK conflict).
-                            result = await session.execute(
-                                text(
-                                    """
-                                    UPDATE user_videos
-                                    SET user_id = :real_id
-                                    WHERE user_id = 'takeout_user'
-                                    AND video_id NOT IN (
-                                        SELECT video_id FROM user_videos
-                                        WHERE user_id = :real_id
-                                    )
-                                """
-                                ),
-                                {"real_id": real_user_id},
-                            )
-                            cursor = cast(CursorResult[Any], result)
-                            migrated = cursor.rowcount
-                            await session.commit()
-                            if migrated > 0:
-                                logger.info(
-                                    "Migrated %d user_videos rows from "
-                                    "'takeout_user' to '%s'",
-                                    migrated,
-                                    real_user_id,
-                                )
-                    except Exception as exc:
-                        logger.warning("User ID migration failed (non-fatal): %s", exc)
-                progress_cb(55.0)
-
-                # Step 3: Sync liked videos (--sync-likes)
                 likes_synced = 0
                 async with session_factory() as session:
                     try:
-                        # Reuse channel ID from migration step if available,
-                        # otherwise fetch it now.
-                        if real_user_id is None:
-                            logger.info("Likes sync: fetching authenticated channel...")
-                            ch = await youtube_service.get_my_channel()
-                            real_user_id = ch.id if ch else None
+                        from chronovista.services.identity_service import (
+                            IdentityService,
+                        )
 
-                        if real_user_id:
+                        my_channel = await youtube_service.get_my_channel()
+                        real_user_id = await IdentityService().resolve(
+                            session,
+                            authenticated_channel_id=(
+                                my_channel.id if my_channel else None
+                            ),
+                        )
+
+                        if my_channel:
                             logger.info(
-                                "Likes sync: channel=%s, fetching liked videos...",
+                                "Likes sync: identity=%s, fetching liked videos...",
                                 real_user_id,
                             )
                             liked_videos = await youtube_service.get_liked_videos()

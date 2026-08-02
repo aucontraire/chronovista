@@ -289,12 +289,16 @@ class YouTubeService(YouTubeServiceInterface):
         -------
         Optional[YouTubeChannelResponse]
             Channel information including id, title, description, statistics.
-            Returns None if no channel found.
+            Returns ``None`` when the authenticated account has no channel
+            (a viewer-only Google account) — "authenticated" does not imply
+            "has a channel", so this is a normal, non-error outcome.
 
         Raises
         ------
-        ValueError
-            If no channel is found for the authenticated user.
+        ValidationError
+            If the channel response cannot be parsed.
+        YouTubeAPIError / NetworkError
+            On genuine API or network failures (raised by the transport layer).
         """
         request = self.service.channels().list(
             part="id,snippet,statistics,contentDetails,status,brandingSettings,topicDetails",
@@ -303,11 +307,9 @@ class YouTubeService(YouTubeServiceInterface):
         response = await asyncio.to_thread(request.execute)
 
         if not response.get("items"):
-            raise YouTubeAPIError(
-                message="No channel found for authenticated user",
-                status_code=HTTP_NOT_FOUND,
-                error_reason="channelNotFound",
-            )
+            # No channel on this account — not an error; the caller decides
+            # what to do (the identity resolver falls back to a local constant).
+            return None
 
         try:
             return YouTubeChannelResponse.model_validate(response["items"][0])

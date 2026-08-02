@@ -660,6 +660,36 @@ class UserVideo(Base):
     video: Mapped[Video] = relationship("Video", back_populates="user_videos")
 
 
+class AppIdentity(Base):
+    """Singleton row holding the canonical local-user identity (Feature 060).
+
+    Only one row ever exists (enforced by ``CHECK (id = 1)``). It records the
+    resolved ``user_id`` and how it was resolved (``source``), so every writer
+    and reader of user-scoped data can obtain a single, persisted identity
+    instead of deriving one from ambient auth state.
+    """
+
+    __tablename__ = "app_identities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    source: Mapped[str] = mapped_column(String(20), nullable=False)
+
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    # Explicit, named constraint so create_all() (test schema) and the Alembic
+    # migration produce the same constraint name (uq_app_identities_user_id).
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_app_identities_user_id"),
+        CheckConstraint("id = 1", name="chk_app_identities_singleton"),
+    )
+
+
 class Playlist(Base):
     """Enhanced playlists with language support."""
 

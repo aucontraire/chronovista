@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import and_, delete, select
+from sqlalchemy import and_, delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.models import UserLanguagePreference as UserLanguagePreferenceDB
@@ -20,6 +20,10 @@ from ..models.user_language_preference import (
 )
 from ..models.youtube_types import UserId
 from .base import BaseSQLAlchemyRepository
+
+
+class RekeyCollisionError(Exception):
+    """Raised when re-keying language preferences would collide on the PK."""
 
 
 class UserLanguagePreferenceRepository(
@@ -367,6 +371,57 @@ class UserLanguagePreferenceRepository(
             delete(UserLanguagePreferenceDB).where(
                 UserLanguagePreferenceDB.user_id == user_id
             )
+        )
+        return result.rowcount
+
+    # ------------------------------------------------------------------
+    # Feature 060: canonical identity unification
+    # ------------------------------------------------------------------
+
+    async def list_distinct_user_ids(self, session: AsyncSession) -> list[str]:
+        """Return the distinct ``user_id`` values in ``user_language_preferences``."""
+        result = await session.execute(
+            select(UserLanguagePreferenceDB.user_id)
+            .distinct()
+            .order_by(UserLanguagePreferenceDB.user_id)
+        )
+        return [row[0] for row in result.all()]
+
+    async def rekey_user_id(
+        self, session: AsyncSession, *, from_user_id: str, to_user_id: str
+    ) -> int:
+        """Re-key preference rows from one identity to another (Feature 060).
+
+        Refuses (raises ``RekeyCollisionError``) on a primary-key collision —
+        i.e. ``to_user_id`` already has a row for a ``language_code`` present
+        under ``from_user_id`` — rather than overwriting or dropping data
+        (FR-019). Does not commit; the caller wraps this in a transaction.
+        """
+        from_langs = select(UserLanguagePreferenceDB.language_code).where(
+            UserLanguagePreferenceDB.user_id == from_user_id
+        )
+        collisions = [
+            row[0]
+            for row in (
+                await session.execute(
+                    select(UserLanguagePreferenceDB.language_code).where(
+                        UserLanguagePreferenceDB.user_id == to_user_id,
+                        UserLanguagePreferenceDB.language_code.in_(from_langs),
+                    )
+                )
+            ).all()
+        ]
+        if collisions:
+            raise RekeyCollisionError(
+                f"Cannot re-key language preferences to '{to_user_id}': it "
+                f"already has rows for language(s) {sorted(collisions)} also "
+                f"present under '{from_user_id}'."
+            )
+
+        result = await session.execute(
+            update(UserLanguagePreferenceDB)
+            .where(UserLanguagePreferenceDB.user_id == from_user_id)
+            .values(user_id=to_user_id)
         )
         return result.rowcount
 

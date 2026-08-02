@@ -3,7 +3,7 @@
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
 
-from fastapi import HTTPException, status
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
@@ -55,6 +55,38 @@ async def require_auth() -> None:
                 "message": "Not authenticated. Run: chronovista auth login",
             },
         )
+
+
+async def require_local_identity(
+    session: AsyncSession = Depends(get_db),
+) -> str:
+    """Return the canonical local-user identity, or 409 if none established.
+
+    Feature 060 (FR-020a): read/write endpoints resolve the persisted identity
+    instead of hardcoding a placeholder. A read request MUST NOT establish an
+    identity as a side effect — that belongs to the CLI/onboarding path — so
+    this raises 409 when none exists rather than minting one.
+
+    Raises
+    ------
+    HTTPException
+        409 Conflict if no canonical identity has been established.
+    """
+    from chronovista.services.identity_service import (
+        IdentityNotEstablishedError,
+        IdentityService,
+    )
+
+    try:
+        return await IdentityService().get_established_identity(session)
+    except IdentityNotEstablishedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "IDENTITY_NOT_ESTABLISHED",
+                "message": str(exc),
+            },
+        ) from exc
 
 
 def get_tag_management_service() -> "TagManagementService":

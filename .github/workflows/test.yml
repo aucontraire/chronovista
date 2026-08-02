@@ -147,5 +147,10 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
 
+      - name: Verify Alembic migrations apply cleanly (FR-024)
+        env:
+          DATABASE_URL: postgresql+asyncpg://dev_user:dev_password@localhost:5434/chronovista_integration_test
+        run: NO_COLOR=1 poetry run alembic upgrade head
+
       - name: Run integration tests
         run: NO_COLOR=1 poetry run pytest tests/integration/ -q -o "addopts=-v --strict-markers --strict-config" -m "not docker and not slow and not auth and not db"

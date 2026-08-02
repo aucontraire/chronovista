@@ -1290,15 +1290,16 @@ class TopicAnalyticsService:
         return []
 
     async def get_topic_insights(
-        self, user_id: str = "default_user", limit_per_category: int = 5
+        self, user_id: str | None = None, limit_per_category: int = 5
     ) -> TopicInsightCollection:
         """
         Generate personalized topic insights and recommendations for a user.
 
         Parameters
         ----------
-        user_id : str
-            User identifier for personalized analysis
+        user_id : str | None
+            User identifier for personalized analysis. When ``None`` (default),
+            the canonical local-user identity is resolved (Feature 060).
         limit_per_category : int
             Maximum number of insights per category
 
@@ -1307,6 +1308,14 @@ class TopicAnalyticsService:
         TopicInsightCollection
             Complete topic insights analysis with recommendations
         """
+        if user_id is None:
+            from .identity_service import IdentityService
+
+            async for _session in db_manager.get_session():
+                user_id = await IdentityService().resolve(_session)
+                break
+        assert user_id is not None  # resolved above (get_session always yields)
+
         cache_key = self._get_cache_key(
             "topic_insights", user_id, str(limit_per_category)
         )

@@ -86,6 +86,52 @@ class PlaylistType(str, Enum):
     FAVORITES = "favorites"  # Legacy Favorites playlist
 
 
+# Known English system-playlist names (normalized, case-insensitive) → type.
+# Name matching is English-only by design (accepted limitation, Feature 058).
+_SYSTEM_PLAYLIST_NAMES: dict[str, PlaylistType] = {
+    "watch later": PlaylistType.WATCH_LATER,
+    "history": PlaylistType.HISTORY,
+    "liked videos": PlaylistType.LIKED,
+    "favorites": PlaylistType.FAVORITES,
+}
+
+
+def classify_playlist_type(youtube_id: str | None, name: str) -> PlaylistType:
+    """Classify a playlist into its :class:`PlaylistType`.
+
+    Single source of truth used by both Takeout seeding and the reclassify
+    CLI. Precedence: (1) a canonical YouTube system-playlist identifier when
+    present, (2) a case-insensitive, whitespace-trimmed match of the English
+    system-playlist name, (3) otherwise ``REGULAR``. Total function — it
+    never raises.
+
+    Parameters
+    ----------
+    youtube_id : str | None
+        The playlist's YouTube identifier, if known. Canonical system ids are
+        ``WL`` (Watch Later), ``HL`` (History), and ``LL`` + channel suffix
+        (Liked videos). Ordinary playlists use ``PL…`` and fall through to the
+        name check.
+    name : str
+        The playlist's display name / title.
+
+    Returns
+    -------
+    PlaylistType
+        The classified type; ``PlaylistType.REGULAR`` when nothing matches.
+    """
+    if youtube_id:
+        if youtube_id == "WL":
+            return PlaylistType.WATCH_LATER
+        if youtube_id == "HL":
+            return PlaylistType.HISTORY
+        if youtube_id.startswith("LL"):
+            return PlaylistType.LIKED
+    if name:
+        return _SYSTEM_PLAYLIST_NAMES.get(name.strip().casefold(), PlaylistType.REGULAR)
+    return PlaylistType.REGULAR
+
+
 class ImageQuality(str, Enum):
     """YouTube thumbnail image quality levels.
 

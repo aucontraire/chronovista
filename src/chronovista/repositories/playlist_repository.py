@@ -9,11 +9,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import and_, case, desc, func, or_, select
+from sqlalchemy import and_, case, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from chronovista.db.models import Playlist as PlaylistDB
+from chronovista.models.enums import PlaylistType
 from chronovista.models.playlist import (
     PlaylistAnalytics,
     PlaylistCreate,
@@ -57,6 +58,57 @@ class PlaylistRepository(
     ) -> bool:
         """Check if playlist exists by playlist ID (alias for exists method)."""
         return await self.exists(session, playlist_id)
+
+    async def get_playlists_by_type(
+        self, session: AsyncSession, playlist_type: PlaylistType
+    ) -> list[PlaylistDB]:
+        """Return all playlists of a given ``playlist_type``, ordered by title.
+
+        Used by the reclassify CLI (Feature 058) to load the ``regular``
+        playlists that are candidates for promotion.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        playlist_type : PlaylistType
+            The type to filter by.
+
+        Returns
+        -------
+        list[PlaylistDB]
+            Matching playlists.
+        """
+        result = await session.execute(
+            select(PlaylistDB)
+            .where(PlaylistDB.playlist_type == playlist_type.value)
+            .order_by(PlaylistDB.title)
+        )
+        return list(result.scalars().all())
+
+    async def promote_playlist_type(
+        self, session: AsyncSession, playlist_id: str, new_type: PlaylistType
+    ) -> None:
+        """Set a single playlist's ``playlist_type`` (reclassify promotion).
+
+        Emits an independent single-row UPDATE, which makes the backfill
+        interruption-safe (Feature 058, FR-009): each promoted row is a
+        self-contained committed change.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        playlist_id : str
+            The playlist to update.
+        new_type : PlaylistType
+            The type to set.
+        """
+        await session.execute(
+            update(PlaylistDB)
+            .where(PlaylistDB.playlist_id == playlist_id)
+            .values(playlist_type=new_type.value)
+        )
 
     async def get_with_channel(
         self, session: AsyncSession, playlist_id: str

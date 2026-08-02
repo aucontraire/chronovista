@@ -512,3 +512,184 @@ class TestPlaylistVideoPaginationWithSort:
             total_filtered = resp_filtered.json()["pagination"]["total"]
 
             assert total_filtered < total_all
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# US3 (Feature 058): playlist_type exposure + filter
+# ═══════════════════════════════════════════════════════════════════════════
+
+_WL_PL_ID = "PLwltype058test0000000000000"
+_REG_PL_ID = "PLregtype058test000000000000"
+
+
+@pytest.fixture
+async def seed_typed_playlists(
+    integration_session_factory,
+) -> AsyncGenerator[None, None]:
+    """Seed one watch_later and one regular playlist for type-filter tests."""
+    ids = [_WL_PL_ID, _REG_PL_ID]
+    async with integration_session_factory() as session:
+        await session.execute(delete(PlaylistDB).where(PlaylistDB.playlist_id.in_(ids)))
+        await session.commit()
+        session.add(
+            PlaylistDB(
+                playlist_id=_WL_PL_ID,
+                title="Watch later",
+                privacy_status="private",
+                video_count=0,
+                playlist_type="watch_later",
+            )
+        )
+        session.add(
+            PlaylistDB(
+                playlist_id=_REG_PL_ID,
+                title="My AI Playlist",
+                privacy_status="private",
+                video_count=0,
+                playlist_type="regular",
+            )
+        )
+        await session.commit()
+    yield
+    async with integration_session_factory() as session:
+        await session.execute(delete(PlaylistDB).where(PlaylistDB.playlist_id.in_(ids)))
+        await session.commit()
+
+
+class TestPlaylistTypeApi:
+    """playlist_type surfaces in list + detail, and the filter is exact (US3)."""
+
+    async def test_list_items_include_playlist_type(
+        self, async_client: AsyncClient, seed_typed_playlists: None
+    ) -> None:
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/playlists?limit=100")
+            assert response.status_code == 200
+            by_id = {i["playlist_id"]: i for i in response.json()["data"]}
+            assert by_id[_WL_PL_ID]["playlist_type"] == "watch_later"
+            assert by_id[_REG_PL_ID]["playlist_type"] == "regular"
+
+    async def test_filter_returns_only_requested_type(
+        self, async_client: AsyncClient, seed_typed_playlists: None
+    ) -> None:
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(
+                "/api/v1/playlists?playlist_type=watch_later&limit=100"
+            )
+            assert response.status_code == 200
+            items = response.json()["data"]
+            ids = {i["playlist_id"] for i in items}
+            assert _WL_PL_ID in ids
+            assert _REG_PL_ID not in ids
+            assert all(i["playlist_type"] == "watch_later" for i in items)
+
+    async def test_detail_includes_playlist_type(
+        self, async_client: AsyncClient, seed_typed_playlists: None
+    ) -> None:
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get(f"/api/v1/playlists/{_WL_PL_ID}")
+            assert response.status_code == 200
+            assert response.json()["data"]["playlist_type"] == "watch_later"
+
+
+class TestCrossFeaturePlaylistType:
+    """Feature 058 constitution gates: import→classify→re-query, and that
+    playlist_type mutation does not touch watched-status."""
+
+    async def test_import_watch_later_classifies_and_surfaces_via_api(
+        self, async_client: AsyncClient, integration_session_factory
+    ) -> None:
+        """T013: seeding a NEW Watch Later playlist (create path) classifies it
+        as watch_later and the value surfaces end-to-end via the API; the
+        consumer identifies it by playlist_type alone (SC-005)."""
+        from pathlib import Path
+
+        from chronovista.models.enums import PlaylistType
+        from chronovista.repositories.playlist_repository import PlaylistRepository
+        from chronovista.services.seeding.playlist_seeder import (
+            PlaylistSeeder,
+            generate_internal_playlist_id,
+        )
+        from tests.factories.takeout_data_factory import create_takeout_data
+        from tests.factories.takeout_playlist_factory import create_takeout_playlist
+
+        new_id = generate_internal_playlist_id("Watch later")
+        repo = PlaylistRepository()
+
+        # Ensure the create path runs (row must not pre-exist).
+        async with integration_session_factory() as session:
+            await session.execute(
+                delete(PlaylistDB).where(PlaylistDB.playlist_id == new_id)
+            )
+            await session.commit()
+
+        data = create_takeout_data(
+            takeout_path=Path("/t"),
+            subscriptions=[],
+            watch_history=[],
+            playlists=[
+                create_takeout_playlist(
+                    name="Watch later",
+                    file_path=Path("/wl.csv"),
+                    videos=[],
+                    video_count=0,
+                ),
+            ],
+        )
+        try:
+            async with integration_session_factory() as session:
+                result = await PlaylistSeeder(repo, user_id="ctest").seed(session, data)
+                assert result.created == 1
+
+            # Stored type is watch_later (US1 create-path classification).
+            async with integration_session_factory() as session:
+                row = await repo.get_by_playlist_id(session, new_id)
+                assert row is not None
+                assert row.playlist_type == PlaylistType.WATCH_LATER.value
+
+            # Re-query via the API consumer path; SC-005: identified via type.
+            with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+                mock_oauth.is_authenticated.return_value = True
+                resp = await async_client.get(
+                    "/api/v1/playlists?playlist_type=watch_later&limit=100"
+                )
+                assert resp.status_code == 200
+                items = {i["playlist_id"]: i for i in resp.json()["data"]}
+                assert new_id in items
+                assert items[new_id]["playlist_type"] == "watch_later"
+        finally:
+            async with integration_session_factory() as session:
+                await session.execute(
+                    delete(PlaylistDB).where(PlaylistDB.playlist_id == new_id)
+                )
+                await session.commit()
+
+    async def test_reclassify_does_not_change_watched_counts(
+        self, integration_session_factory
+    ) -> None:
+        """T014 (SC-006): reclassify mutates playlist_type only — watched/unwatched
+        counts (user_videos.watched_at) are byte-for-byte unchanged."""
+        from sqlalchemy import func, select
+
+        from chronovista.cli.commands.playlist import _reclassify
+        from chronovista.db.models import UserVideo
+        from chronovista.repositories.playlist_repository import PlaylistRepository
+
+        repo = PlaylistRepository()
+
+        async def _watched_count(session) -> int:
+            result = await session.execute(
+                select(func.count())
+                .select_from(UserVideo)
+                .where(UserVideo.watched_at.is_not(None))
+            )
+            return int(result.scalar() or 0)
+
+        async with integration_session_factory() as session:
+            before = await _watched_count(session)
+            await _reclassify(session, repo, dry_run=False)
+            after = await _watched_count(session)
+            assert before == after

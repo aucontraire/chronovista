@@ -35,6 +35,10 @@ class PlaylistListItem(BaseModel):
         ..., description="Privacy status: public, private, unlisted"
     )
     is_linked: bool = Field(..., description="Whether playlist is linked to YouTube")
+    playlist_type: str = Field(
+        "regular",
+        description="Playlist type: regular, liked, watch_later, history, favorites",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -64,6 +68,7 @@ class PlaylistListItem(BaseModel):
                 "video_count": getattr(data, "video_count", 0),
                 "privacy_status": getattr(data, "privacy_status", "private"),
                 "is_linked": playlist_id.startswith(("PL", "LL", "WL", "HL")),
+                "playlist_type": getattr(data, "playlist_type", "regular"),
             }
         return data
 

@@ -375,3 +375,16 @@ class TestPlaylistItemStructure:
             for playlist in data["data"]:
                 assert playlist["is_linked"] is False
                 assert playlist["playlist_id"].startswith("int_")
+
+
+class TestPlaylistTypeFilter:
+    """US3 (Feature 058): playlist_type query-filter validation."""
+
+    async def test_invalid_playlist_type_returns_422(
+        self, async_client: AsyncClient
+    ) -> None:
+        """An unrecognized playlist_type value is rejected (FR-012)."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            response = await async_client.get("/api/v1/playlists?playlist_type=bogus")
+            assert response.status_code == 422

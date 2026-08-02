@@ -25,6 +25,7 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.cli.constants import (
     EXIT_CANCELLED,
@@ -35,6 +36,7 @@ from chronovista.cli.constants import (
 from chronovista.cli.errors import format_not_found_error
 from chronovista.config.database import DatabaseManager
 from chronovista.db.models import Playlist as PlaylistDB
+from chronovista.models.enums import PlaylistType, classify_playlist_type
 from chronovista.repositories.playlist_repository import PlaylistRepository
 
 console = Console()
@@ -462,3 +464,112 @@ def _display_playlist_details(playlist: PlaylistDB) -> None:
     # Print all details
     for line in details_lines:
         console.print(line)
+
+
+async def _reclassify(
+    session: AsyncSession,
+    repository: PlaylistRepository,
+    dry_run: bool,
+) -> dict[str, int]:
+    """Promote ``regular`` playlists to their classified system type.
+
+    Promote-only (Feature 058, FR-006): only playlists currently typed
+    ``regular`` are considered, so a playlist that already has a system type
+    is never altered. Each promotion is an independent single-row update,
+    making the operation interruption-safe (FR-009). Returns per-type counts
+    of the rows that were (or, in dry-run, would be) promoted.
+
+    Parameters
+    ----------
+    session : AsyncSession
+        Database session.
+    repository : PlaylistRepository
+        Playlist repository.
+    dry_run : bool
+        When True, compute counts without writing.
+
+    Returns
+    -------
+    dict[str, int]
+        Mapping of resulting ``playlist_type`` value → number of playlists
+        promoted to it.
+    """
+    regulars = await repository.get_playlists_by_type(session, PlaylistType.REGULAR)
+    counts: dict[str, int] = {}
+    for playlist in regulars:
+        target = classify_playlist_type(playlist.playlist_id, playlist.title)
+        if target is PlaylistType.REGULAR:
+            continue
+        counts[target.value] = counts.get(target.value, 0) + 1
+        if not dry_run:
+            await repository.promote_playlist_type(
+                session, playlist.playlist_id, target
+            )
+    if not dry_run and counts:
+        await session.commit()
+    return counts
+
+
+@playlist_app.command()
+def reclassify(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview what would change without writing to the database.",
+    ),
+) -> None:
+    """Reclassify existing ``regular`` playlists into their system type.
+
+    Detects Watch Later, History, Liked Videos, and Favorites among playlists
+    currently stored as ``regular`` and promotes them. Promote-only: playlists
+    that already have a system type are never changed. Idempotent and safe to
+    re-run.
+    """
+
+    async def reclassify_async() -> None:
+        repository = PlaylistRepository()
+        db_manager = DatabaseManager()
+
+        try:
+            async for session in db_manager.get_session(echo=False):
+                counts = await _reclassify(session, repository, dry_run=dry_run)
+                total = sum(counts.values())
+
+                if dry_run:
+                    console.print(
+                        Panel(
+                            "[bold]Reclassify (dry-run)[/bold] — no changes written",
+                            border_style="yellow",
+                        )
+                    )
+                else:
+                    console.print(
+                        Panel(
+                            "[bold]Reclassify[/bold] — applied",
+                            border_style="green",
+                        )
+                    )
+
+                if total == 0:
+                    console.print(
+                        "[dim]No regular playlists matched a system type — "
+                        "nothing to reclassify.[/dim]"
+                    )
+                    return
+
+                table = Table(show_header=True, header_style="bold")
+                table.add_column("Resulting type")
+                table.add_column("Count", justify="right")
+                for type_value, count in sorted(counts.items()):
+                    table.add_row(type_value, str(count))
+                console.print(table)
+
+                verb = "Would update" if dry_run else "Updated"
+                console.print(f"[bold]{verb} {total} playlist(s).[/bold]")
+                if dry_run:
+                    console.print("[dim]Re-run without --dry-run to apply.[/dim]")
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Operation cancelled by user[/yellow]")
+            sys.exit(1)
+
+    asyncio.run(reclassify_async())

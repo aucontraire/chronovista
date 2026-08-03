@@ -14,6 +14,7 @@ from chronovista.cli.category_commands import category_app
 from chronovista.cli.commands.api import api_app
 from chronovista.cli.commands.cache import app as cache_app
 from chronovista.cli.commands.enrich import app as enrich_app
+from chronovista.cli.commands.identity import identity_app
 from chronovista.cli.commands.playlist import playlist_app
 from chronovista.cli.commands.recover import recover_app
 from chronovista.cli.commands.seed import seed_app
@@ -48,6 +49,11 @@ app.add_typer(
     correction_app, name="corrections", help="🔧 Batch transcript correction tools"
 )
 app.add_typer(entity_app, name="entities", help="🧑 Named entity management")
+app.add_typer(
+    identity_app,
+    name="identity",
+    help="🪪 Canonical local-user identity (status, repair, reset)",
+)
 app.add_typer(
     enrich_app, name="enrich", help="🔄 Enrich video metadata from YouTube API"
 )

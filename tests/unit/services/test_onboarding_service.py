@@ -1692,6 +1692,22 @@ class TestFactoryLoadData:
     """
 
     @pytest.fixture(autouse=True)
+    def _mock_identity_resolver(self) -> Any:
+        """Stub the canonical-identity resolver (Feature 060).
+
+        The load factory resolves the identity once and passes it to the
+        seeders instead of defaulting to ``takeout_user``. These unit tests use
+        a mocked session, so the resolver — which queries ``app_identities`` —
+        is stubbed. Resolver behaviour is covered in
+        tests/unit/services/test_identity_service.py.
+        """
+        with patch("chronovista.services.identity_service.IdentityService") as mock_cls:
+            mock_cls.return_value.resolve = AsyncMock(
+                return_value="UCtest_identity_00000000"
+            )
+            yield
+
+    @pytest.fixture(autouse=True)
     def _no_marker_write(self) -> Any:
         """Prevent the load factory from writing a real completion marker.
 
@@ -2085,6 +2101,22 @@ class TestFactoryEnrichMetadata:
     - each step's failure does not prevent subsequent steps
     - likes sync path (my_channel, liked_videos, exists, update_like_status_batch)
     """
+
+    @pytest.fixture(autouse=True)
+    def _mock_identity_resolver(self) -> Any:
+        """Stub the canonical-identity resolver (Feature 060).
+
+        The likes-sync step now writes under the resolved identity rather than
+        the channel id fetched from the API. These unit tests use a mocked
+        session, so the resolver — which queries ``app_identities`` — is
+        stubbed. Resolver behaviour is covered in
+        tests/unit/services/test_identity_service.py.
+        """
+        with patch("chronovista.services.identity_service.IdentityService") as mock_cls:
+            mock_cls.return_value.resolve = AsyncMock(
+                return_value="UCtest_identity_00000000"
+            )
+            yield
 
     def _make_enrichment_summary(
         self,

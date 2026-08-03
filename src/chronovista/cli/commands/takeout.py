@@ -2173,8 +2173,11 @@ def seed_database(
         "--skip",
         help="Skip specific data types (comma-separated): channels,videos,playlists,user_videos,playlist_memberships",
     ),
-    user_id: str = typer.Option(
-        "takeout_user", "--user-id", "-u", help="User ID for seeding user-specific data"
+    user_id: str | None = typer.Option(
+        None,
+        "--user-id",
+        "-u",
+        help="User ID for seeding (default: the resolved canonical identity)",
     ),
     batch_size: int = typer.Option(
         100, "--batch-size", "-b", help="Batch size for processing (default: 100)"

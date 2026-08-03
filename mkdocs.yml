@@ -53,6 +53,7 @@ plugins:
       scripts:
         - scripts/gen_cli_ref.py
         - scripts/gen_api_ref.py
+        - scripts/gen_schema_ref.py
         - scripts/gen_ref_pages.py
   - literate-nav:
       nav_file: SUMMARY.md

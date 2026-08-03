@@ -41,6 +41,23 @@ def runner() -> CliRunner:
     return CliRunner()
 
 
+@pytest.fixture(autouse=True)
+def _mock_identity_resolver():  # type: ignore[no-untyped-def]
+    """Stub the canonical-identity resolver (Feature 060).
+
+    The command now loads language preferences under the resolved identity
+    instead of a hardcoded ``default_user``. These are unit tests with a mocked
+    container and session, so the resolver — which issues a real query against
+    ``app_identities`` — is stubbed here. Resolver behaviour itself is covered
+    in tests/unit/services/test_identity_service.py.
+    """
+    with patch("chronovista.services.identity_service.IdentityService") as mock_cls:
+        mock_cls.return_value.resolve = AsyncMock(
+            return_value="UCtest_identity_00000000"
+        )
+        yield
+
+
 @pytest.fixture
 def mock_video_db() -> MagicMock:
     """Create a mock Video database model."""

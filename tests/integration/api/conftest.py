@@ -344,6 +344,16 @@ async def async_client(
     # Override the dependency
     app.dependency_overrides[get_db] = override_get_db
 
+    # Feature 060: endpoints resolve the canonical identity via
+    # require_local_identity. Default it to a test identity so existing API
+    # tests need no identity setup; tests exercising the no-identity 409 path
+    # override or clear this explicitly.
+    from chronovista.api.deps import require_local_identity
+
+    app.dependency_overrides[require_local_identity] = (
+        lambda: "UCtest_identity_00000000"
+    )
+
     try:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:

@@ -145,7 +145,15 @@ jobs:
           restore-keys: poetry-${{ runner.os }}-
 
       - name: Install dependencies
-        run: poetry install --no-interaction
+        # `--with database` pulls in psycopg2-binary (optional group). Alembic's
+        # env.py converts the async URL to a sync one, so the migration step
+        # below needs a sync driver; the app itself only ever uses asyncpg.
+        run: poetry install --no-interaction --with database
+
+      - name: Verify Alembic migrations apply cleanly (FR-024)
+        env:
+          DATABASE_URL: postgresql+asyncpg://dev_user:dev_password@localhost:5434/chronovista_integration_test
+        run: NO_COLOR=1 poetry run alembic upgrade head
 
       - name: Run integration tests
         run: NO_COLOR=1 poetry run pytest tests/integration/ -q -o "addopts=-v --strict-markers --strict-config" -m "not docker and not slow and not auth and not db"

@@ -15,8 +15,28 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
+# Feature 060: DEFAULT_USER_ID was removed from language_commands (identity is
+# resolved via IdentityService). Tests use this as an arbitrary mock user_id.
+DEFAULT_USER_ID = "UClangtestidentity00000"
+
+
+@pytest.fixture(autouse=True)
+def _mock_identity_resolver(monkeypatch):  # type: ignore[no-untyped-def]
+    """Stub the canonical-identity resolver in language-command unit tests.
+
+    Feature 060: commands resolve the identity via IdentityService. That path is
+    covered by test_identity_service; here we isolate the command logic by
+    returning a fixed identity (these tests mock db/repo, not app_identities).
+    """
+    import chronovista.cli.language_commands as _mod
+
+    monkeypatch.setattr(_mod, "_current_user_id", lambda: DEFAULT_USER_ID)
+    monkeypatch.setattr(
+        _mod, "_resolve_user_id", AsyncMock(return_value=DEFAULT_USER_ID)
+    )
+
+
 from chronovista.cli.language_commands import (
-    DEFAULT_USER_ID,
     LANGUAGE_NAMES,
     OutputFormat,
     _get_terminal_width,
@@ -1607,9 +1627,12 @@ class TestLanguageSetCommandFlags:
 class TestLanguageConstants:
     """Tests for language command constants."""
 
-    def test_default_user_id_defined(self) -> None:
-        """Test DEFAULT_USER_ID is defined."""
-        assert DEFAULT_USER_ID == "default_user"
+    def test_identity_is_resolved_not_hardcoded(self) -> None:
+        """Feature 060: the module resolves identity instead of a default_user literal."""
+        import chronovista.cli.language_commands as _mod
+
+        assert hasattr(_mod, "_current_user_id")
+        assert not hasattr(_mod, "DEFAULT_USER_ID")
 
     def test_output_format_enum(self) -> None:
         """Test OutputFormat enum values."""

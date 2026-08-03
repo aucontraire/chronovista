@@ -2916,8 +2916,11 @@ def topic_trends_analysis(
 
 @topic_app.command("insights")
 def topic_insights_analysis(
-    user_id: str = typer.Option(
-        "default_user", "--user-id", "-u", help="User ID for personalized insights"
+    user_id: str | None = typer.Option(
+        None,
+        "--user-id",
+        "-u",
+        help="User ID (default: the resolved canonical identity)",
     ),
     limit_per_category: int = typer.Option(
         5, "--limit", "-l", help="Number of insights per category to show"
@@ -2947,7 +2950,7 @@ def topic_insights_analysis(
                 console=console,
             ) as progress:
                 progress.add_task(
-                    f"Analyzing personalized insights for user '{user_id}'...",
+                    f"Analyzing personalized insights for user '{user_id or 'the current user'}'...",
                     total=None,
                 )
                 insights = await analytics_service.get_topic_insights(
@@ -2957,7 +2960,7 @@ def topic_insights_analysis(
             if insights.topics_explored == 0:
                 console.print(
                     Panel(
-                        f"[yellow]📊 No user data found for user '{user_id}'[/yellow]\n\n"
+                        f"[yellow]📊 No user data found for user '{user_id or 'the current user'}'[/yellow]\n\n"
                         "Personalized insights require:\n"
                         "• User watch history with video interactions\n"
                         "• Video-topic associations\n"

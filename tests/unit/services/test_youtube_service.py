@@ -294,7 +294,11 @@ class TestYouTubeService:
 
     @pytest.mark.asyncio
     async def test_get_my_channel_no_items(self, youtube_service, mock_service_client):
-        """Test get_my_channel when no channel found."""
+        """Feature 060 (T012): a channel-less account returns None, not a raise.
+
+        "authenticated" does not imply "has a channel"; the identity resolver
+        relies on None to fall back to a local constant.
+        """
         youtube_service._service = mock_service_client
 
         mock_response: dict[str, Any] = {"items": []}
@@ -302,10 +306,9 @@ class TestYouTubeService:
         mock_request.execute.return_value = mock_response
         mock_service_client.channels.return_value.list.return_value = mock_request
 
-        with pytest.raises(
-            YouTubeAPIError, match="No channel found for authenticated user"
-        ):
-            await youtube_service.get_my_channel()
+        result = await youtube_service.get_my_channel()
+
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_get_channel_details_success(
@@ -834,7 +837,11 @@ class TestYouTubeServiceEdgeCases:
     async def test_get_my_channel_malformed_response(
         self, youtube_service, mock_service_client
     ):
-        """Test get_my_channel with malformed API response."""
+        """Feature 060 (T012): a response with no 'items' returns None.
+
+        Whether ``items`` is empty or the key is absent, there is no channel —
+        a non-error outcome (the resolver falls back to a local constant).
+        """
         youtube_service._service = mock_service_client
 
         # Response missing 'items' key
@@ -843,10 +850,9 @@ class TestYouTubeServiceEdgeCases:
         mock_request.execute.return_value = mock_response
         mock_service_client.channels.return_value.list.return_value = mock_request
 
-        with pytest.raises(
-            YouTubeAPIError, match="No channel found for authenticated user"
-        ):
-            await youtube_service.get_my_channel()
+        result = await youtube_service.get_my_channel()
+
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_multiple_service_method_calls(

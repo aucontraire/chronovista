@@ -67,6 +67,7 @@ import yaml
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config.database import db_manager
 from ..models.enums import LanguageCode, LanguagePreferenceType
@@ -181,9 +182,31 @@ language_app = typer.Typer(
 )
 
 # Constants
-DEFAULT_USER_ID = "default_user"
 DEFAULT_TERMINAL_WIDTH = 80
 MIN_GOAL_COLUMN_WIDTH = 20
+
+
+async def _resolve_user_id(session: AsyncSession) -> str:
+    """Resolve the canonical local-user identity using an open session."""
+    from ..services.identity_service import IdentityService
+
+    return await IdentityService().resolve(session)
+
+
+def _current_user_id() -> str:
+    """Resolve the canonical identity from a sync (CLI) context.
+
+    Feature 060: language preferences are stored under the canonical identity,
+    not a hardcoded placeholder literal.
+    """
+
+    async def _run() -> str:
+        async for session in db_manager.get_session():
+            return await _resolve_user_id(session)
+        raise RuntimeError("no database session available")
+
+    return asyncio.run(_run())
+
 
 # -------------------------------------------------------------------------
 # Module-Level Session State (T080 - US8)
@@ -539,7 +562,7 @@ async def _get_preferences(user_id: str) -> list[UserLanguagePreference]:
 
     Examples
     --------
-    >>> prefs = await _get_preferences("default_user")
+    >>> prefs = await _get_preferences("UCabc123def456")
     >>> len(prefs)
     3
     """
@@ -581,7 +604,7 @@ async def _list_preferences(
 
     Examples
     --------
-    >>> grouped = await _list_preferences("default_user")
+    >>> grouped = await _list_preferences("UCabc123def456")
     >>> len(grouped[LanguagePreferenceType.FLUENT])
     2
     """
@@ -990,7 +1013,7 @@ def list_preferences(
 
     # Fetch and group preferences
     try:
-        grouped = asyncio.run(_list_preferences(DEFAULT_USER_ID, preference_type))
+        grouped = asyncio.run(_list_preferences(_current_user_id(), preference_type))
 
         # Format output based on selected format
         if format == OutputFormat.TABLE:
@@ -1307,7 +1330,7 @@ async def _save_preferences(
 
     Examples
     --------
-    >>> await _save_preferences("default_user", grouped_prefs, {"it": "B2"})
+    >>> await _save_preferences("UCabc123def456", grouped_prefs, {"it": "B2"})
     """
     goals_map = goals_dict or {}
     preferences_to_save: list[UserLanguagePreferenceCreate] = []
@@ -1428,7 +1451,7 @@ def _handle_interactive_setup() -> None:
     # Save preferences synchronously using asyncio.run
     asyncio.run(
         _save_preferences(
-            DEFAULT_USER_ID, interactive_prefs_dict, interactive_goals_dict
+            _current_user_id(), interactive_prefs_dict, interactive_goals_dict
         )
     )
 
@@ -1461,7 +1484,7 @@ async def check_and_prompt_language_preferences(user_id: str) -> list[str]:
 
     Examples
     --------
-    >>> languages = await check_and_prompt_language_preferences("default_user")
+    >>> languages = await check_and_prompt_language_preferences("UCabc123def456")
     >>> if not languages:
     ...     # Use system locale or English fallback
     ...     languages = [detect_system_locale().value]
@@ -1677,7 +1700,7 @@ def set(
             }
 
             # Save preferences
-            asyncio.run(_save_preferences(DEFAULT_USER_ID, prefs_dict))
+            asyncio.run(_save_preferences(_current_user_id(), prefs_dict))
 
             # Show confirmation
             _show_confirmation_summary(prefs_dict)
@@ -1751,7 +1774,7 @@ def set(
             # Handle --append mode (T040, T046)
             if append:
                 # Get existing preferences
-                existing_prefs = asyncio.run(_get_preferences(DEFAULT_USER_ID))
+                existing_prefs = asyncio.run(_get_preferences(_current_user_id()))
 
                 # Build existing preferences dict
                 existing_dict: dict[LanguagePreferenceType, list[str]] = {
@@ -1783,7 +1806,7 @@ def set(
                     flag_prefs_dict[pref_type] = merged
 
             # Save preferences
-            asyncio.run(_save_preferences(DEFAULT_USER_ID, flag_prefs_dict))
+            asyncio.run(_save_preferences(_current_user_id(), flag_prefs_dict))
 
             # Show confirmation
             _show_confirmation_summary(flag_prefs_dict)
@@ -1818,7 +1841,7 @@ def set(
             # Save preferences
             asyncio.run(
                 _save_preferences(
-                    DEFAULT_USER_ID, interactive_prefs_dict, interactive_goals_dict
+                    _current_user_id(), interactive_prefs_dict, interactive_goals_dict
                 )
             )
 
@@ -2096,7 +2119,7 @@ def add(
 
         # 2. Check if language already exists
         existing_type = asyncio.run(
-            _check_language_exists(DEFAULT_USER_ID, validated_code.value)
+            _check_language_exists(_current_user_id(), validated_code.value)
         )
         if existing_type:
             display_name = get_language_display_name(validated_code.value)
@@ -2124,7 +2147,7 @@ def add(
         # 4. Add the preference with all operations in a single async call
         calculated_priority, auto_download = asyncio.run(
             _add_language_preference(
-                DEFAULT_USER_ID,
+                _current_user_id(),
                 validated_code,
                 preference_type,
                 priority,
@@ -2168,7 +2191,7 @@ async def _compact_priorities(user_id: str, pref_type: LanguagePreferenceType) -
 
     Examples
     --------
-    >>> await _compact_priorities("default_user", LanguagePreferenceType.LEARNING)
+    >>> await _compact_priorities("UCabc123def456", LanguagePreferenceType.LEARNING)
     # Priorities [1, 3, 5] become [1, 2, 3]
     """
     repo = UserLanguagePreferenceRepository()
@@ -2226,7 +2249,7 @@ def remove(
         async for session in db_manager.get_session():
             # Get existing preference
             existing = await repo.get_by_composite_key(
-                session, DEFAULT_USER_ID, lang_code
+                session, await _resolve_user_id(session), lang_code
             )
 
             if not existing:
@@ -2248,7 +2271,7 @@ def remove(
 
             # Delete the preference
             deleted = await repo.delete_user_preference(
-                session, DEFAULT_USER_ID, lang_code
+                session, await _resolve_user_id(session), lang_code
             )
 
             if not deleted:
@@ -2273,7 +2296,7 @@ def remove(
 
     # Compact priorities for the affected preference type
     if pref_type:
-        asyncio.run(_compact_priorities(DEFAULT_USER_ID, pref_type))
+        asyncio.run(_compact_priorities(_current_user_id(), pref_type))
 
     # Show success message
     console.print(f"Removed '{lang_code}' ({display_name})")
@@ -2317,7 +2340,9 @@ def reset(
             repo = UserLanguagePreferenceRepository()
             async for session in db_manager.get_session():
                 # Get count of existing preferences
-                existing = await repo.get_user_preferences(session, DEFAULT_USER_ID)
+                existing = await repo.get_user_preferences(
+                    session, await _resolve_user_id(session)
+                )
                 count = len(existing)
 
                 # If no preferences, show message and exit
@@ -2335,7 +2360,7 @@ def reset(
 
                 # Delete all preferences
                 deleted_count = await repo.delete_all_user_preferences(
-                    session, DEFAULT_USER_ID
+                    session, await _resolve_user_id(session)
                 )
                 await session.commit()
                 return (deleted_count, True)
@@ -2387,7 +2412,9 @@ def reset(
                     goals_dict = _prompt_learning_goals(learning_langs)
 
                 # Save new preferences
-                asyncio.run(_save_preferences(DEFAULT_USER_ID, prefs_dict, goals_dict))
+                asyncio.run(
+                    _save_preferences(_current_user_id(), prefs_dict, goals_dict)
+                )
                 _show_confirmation_summary(prefs_dict, goals_dict)
 
     except typer.Exit:

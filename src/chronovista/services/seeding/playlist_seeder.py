@@ -54,11 +54,11 @@ def generate_internal_playlist_id(seed: str) -> str:
 class PlaylistSeeder(BaseSeeder):
     """Seeder for playlists from takeout data."""
 
-    def __init__(
-        self, playlist_repo: PlaylistRepository, user_id: str = "takeout_user"
-    ):
+    def __init__(self, playlist_repo: PlaylistRepository, user_id: str | None = None):
         super().__init__(dependencies=set())
         self.playlist_repo = playlist_repo
+        # Vestigial (playlists have no user_id column); kept for signature
+        # stability but defaults to None — no hardcoded placeholder (FR-012).
         self.user_id = user_id
 
     def get_data_type(self) -> str:

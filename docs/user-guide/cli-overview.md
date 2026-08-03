@@ -21,8 +21,8 @@ chronovista [OPTIONS] COMMAND [ARGS]...
 ## Command Groups
 
 chronovista organizes its commands into these groups: `auth`, `sync`, `topics`,
-`categories`, `tags`, `playlist`, `enrich`, `takeout`, `languages`, `recover`,
-`entities`, `corrections`, and `api`.
+`categories`, `tags`, `playlist`, `enrich`, `takeout`, `languages`, `transcript`,
+`recover`, `entities`, `corrections`, `identity`, `seed`, `cache`, and `api`.
 
 The complete, always-current list of every command, argument, and option is
 generated from the Typer application — see the
@@ -299,6 +299,35 @@ chronovista corrections export --format json --output corrections-backup.json
 # 7. If a correction was wrong, batch revert it
 chronovista corrections batch-revert --pattern "Chomsky" --dry-run
 ```
+
+### Identity Repair (v0.60.0+)
+
+Your watch history and language preferences are stored under a single canonical
+user identity, resolved once and reused by every writer. Older databases can
+contain more than one identity — a Takeout import performed before authenticating
+wrote a placeholder, and a later import after authenticating wrote your real
+channel ID, splitting the history in two. `identity repair` merges them.
+
+```bash
+# Check whether more than one identity is present
+chronovista identity status
+
+# Preview the merge — runs the real code path, then rolls back
+chronovista identity repair --dry-run
+
+# Apply it
+chronovista identity repair
+
+# If you first loaded data offline and have since authenticated,
+# fold the offline identity into your real channel
+chronovista identity reset --dry-run
+```
+
+The merge keeps the strongest value per field (latest watch, likes and playlist
+saves OR'd together, highest rewatch count), runs in a single transaction, and
+verifies integrity totals before and after — aborting and rolling back if anything
+would be lost. It writes a JSON pre-image of every row it changes under
+`data/backups/` first, and it is idempotent, so re-running it is safe.
 
 ## Exit Codes
 

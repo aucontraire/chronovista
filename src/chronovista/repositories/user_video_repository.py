@@ -11,11 +11,13 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, delete, desc, func, select, update
+from sqlalchemy import and_, delete, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from ..db.models import PlaylistMembership as PlaylistMembershipDB
 from ..db.models import UserVideo as UserVideoDB
+from ..models.app_identity import IdentityInvariants, MergeStats
 from ..models.user_video import (
     GoogleTakeoutWatchHistoryItem,
     UserVideoCreate,
@@ -756,3 +758,200 @@ class UserVideoRepository(
         )
 
         return result.rowcount
+
+    # ------------------------------------------------------------------
+    # Feature 060: canonical identity dedup (merge-then-delete, set-based)
+    # ------------------------------------------------------------------
+
+    async def list_distinct_user_ids(self, session: AsyncSession) -> list[str]:
+        """Return the distinct ``user_id`` values present in ``user_videos``."""
+        result = await session.execute(
+            select(UserVideoDB.user_id).distinct().order_by(UserVideoDB.user_id)
+        )
+        return [row[0] for row in result.all()]
+
+    async def count_identity_invariants(
+        self, session: AsyncSession
+    ) -> IdentityInvariants:
+        """Compute integrity totals over the whole ``user_videos`` table.
+
+        These are compared before and after the merge to guarantee the repair
+        loses nothing. All three are computed **per distinct video** so they
+        exactly mirror the merge's collapse semantics (``GREATEST``/``OR`` over
+        rows sharing a ``video_id``); raw table aggregates would over-count when
+        the same video is present under two identities and falsely trip the
+        regression guard even though the merge is lossless.
+        """
+        # Distinct videos with a watch, and distinct videos liked on any row.
+        result = await session.execute(
+            select(
+                func.count(func.distinct(UserVideoDB.video_id)).filter(
+                    UserVideoDB.watched_at.is_not(None)
+                ),
+                func.count(func.distinct(UserVideoDB.video_id)).filter(
+                    UserVideoDB.liked.is_(True)
+                ),
+            )
+        )
+        watched, liked = result.one()
+
+        # Sum of the per-video max rewatch_count — invariant under a GREATEST
+        # merge (raw SUM would drop by min(a, b) for a video counted twice).
+        per_video_max = (
+            select(func.max(UserVideoDB.rewatch_count).label("mx"))
+            .group_by(UserVideoDB.video_id)
+            .subquery()
+        )
+        rewatch = (
+            await session.execute(
+                select(func.coalesce(func.sum(per_video_max.c.mx), 0))
+            )
+        ).scalar_one()
+
+        return IdentityInvariants(
+            distinct_watched_videos=int(watched or 0),
+            liked_count=int(liked or 0),
+            rewatch_sum=int(rewatch or 0),
+        )
+
+    async def dump_merge_pre_image(
+        self,
+        session: AsyncSession,
+        *,
+        survivor_user_id: str,
+        placeholder_user_ids: list[str],
+    ) -> list[dict[str, Any]]:
+        """Return every ``user_videos`` row the merge will change, as plain dicts.
+
+        This is **both sides of the merge**, not only the rows that disappear:
+
+        - every row under ``placeholder_user_ids`` (deleted or re-keyed), and
+        - the ``survivor_user_id`` rows that overlap them, because step 1 of
+          :meth:`merge_user_identity` overwrites those in place via
+          ``GREATEST``/``OR``.
+
+        Capturing only the placeholder side would leave the pre-image unable to
+        reconstruct the pre-merge state: a survivor row whose ``watched_at``
+        loses to a newer placeholder timestamp has its original value written
+        over, and that value then exists nowhere else.
+
+        ``watched_at`` is ISO-formatted for JSON safety; rows are ordered by
+        ``(user_id, video_id)`` so successive pre-images are diffable.
+        """
+        if not placeholder_user_ids:
+            return []
+        placeholder_videos = select(UserVideoDB.video_id).where(
+            UserVideoDB.user_id.in_(placeholder_user_ids)
+        )
+        result = await session.execute(
+            select(UserVideoDB)
+            .where(
+                or_(
+                    UserVideoDB.user_id.in_(placeholder_user_ids),
+                    and_(
+                        UserVideoDB.user_id == survivor_user_id,
+                        UserVideoDB.video_id.in_(placeholder_videos),
+                    ),
+                )
+            )
+            .order_by(UserVideoDB.user_id, UserVideoDB.video_id)
+        )
+        rows: list[dict[str, Any]] = []
+        for uv in result.scalars().all():
+            rows.append(
+                {
+                    "user_id": uv.user_id,
+                    "video_id": uv.video_id,
+                    "watched_at": (
+                        uv.watched_at.isoformat() if uv.watched_at else None
+                    ),
+                    "rewatch_count": uv.rewatch_count,
+                    "liked": uv.liked,
+                    "saved_to_playlist": uv.saved_to_playlist,
+                }
+            )
+        return rows
+
+    async def merge_user_identity(
+        self,
+        session: AsyncSession,
+        *,
+        from_user_id: str,
+        to_user_id: str,
+    ) -> MergeStats:
+        """Merge all ``from_user_id`` rows into ``to_user_id`` (survivor).
+
+        Set-based, three steps (research R2), never skip-on-conflict:
+        1. Merge overlapping rows into the survivor — per shared video, keep the
+           latest ``watched_at`` (``GREATEST`` ignores NULL in PostgreSQL),
+           logical-OR of ``liked``/``saved_to_playlist``, and the greatest
+           ``rewatch_count``.
+        2. Delete the now-merged (overlapping) placeholder rows.
+        3. Re-key the remaining (non-overlapping) placeholder rows to the
+           survivor.
+
+        Does not commit — the caller wraps this in a transaction with
+        before/after invariant checks and a pre-image (see IdentityService).
+        """
+        placeholder = aliased(UserVideoDB)
+
+        def _from_col(col: Any) -> Any:
+            return (
+                select(col)
+                .where(
+                    placeholder.user_id == from_user_id,
+                    placeholder.video_id == UserVideoDB.video_id,
+                )
+                .scalar_subquery()
+            )
+
+        overlap_exists = (
+            select(placeholder.video_id)
+            .where(
+                placeholder.user_id == from_user_id,
+                placeholder.video_id == UserVideoDB.video_id,
+            )
+            .exists()
+        )
+
+        # Step 1: merge overlaps into the survivor.
+        merge_result = await session.execute(
+            update(UserVideoDB)
+            .where(UserVideoDB.user_id == to_user_id, overlap_exists)
+            .values(
+                watched_at=func.greatest(
+                    UserVideoDB.watched_at, _from_col(placeholder.watched_at)
+                ),
+                liked=or_(UserVideoDB.liked, _from_col(placeholder.liked)),
+                saved_to_playlist=or_(
+                    UserVideoDB.saved_to_playlist,
+                    _from_col(placeholder.saved_to_playlist),
+                ),
+                rewatch_count=func.greatest(
+                    UserVideoDB.rewatch_count, _from_col(placeholder.rewatch_count)
+                ),
+            )
+        )
+        merged = merge_result.rowcount
+
+        # Step 2: delete the overlapping placeholder rows (already merged in).
+        survivor_video_ids = select(UserVideoDB.video_id).where(
+            UserVideoDB.user_id == to_user_id
+        )
+        delete_result = await session.execute(
+            delete(UserVideoDB).where(
+                UserVideoDB.user_id == from_user_id,
+                UserVideoDB.video_id.in_(survivor_video_ids),
+            )
+        )
+        deleted = delete_result.rowcount
+
+        # Step 3: re-key the remaining (non-overlapping) placeholder rows.
+        rekey_result = await session.execute(
+            update(UserVideoDB)
+            .where(UserVideoDB.user_id == from_user_id)
+            .values(user_id=to_user_id)
+        )
+        rekeyed = rekey_result.rowcount
+
+        return MergeStats(merged=merged, deleted=deleted, rekeyed=rekeyed)

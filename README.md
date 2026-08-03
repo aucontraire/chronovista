@@ -1,7 +1,9 @@
 <h1 align="center">chronovista</h1>
 
 <p align="center">
-  <strong>A CLI + web dashboard for your YouTube history. Sync watch history, search transcripts by timestamp, recover deleted videos, and canonicalize messy tags — all stored privately in local PostgreSQL.</strong>
+  <strong>A local-first research instrument for your own YouTube history.</strong><br>
+  Archive watch history and transcripts, search by timestamp, recover deleted videos from the Wayback Machine,
+  and canonicalize a decade of messy tags — entirely in PostgreSQL on your machine.
 </p>
 
 <p align="center">
@@ -14,8 +16,8 @@
 </p>
 
 <p align="center">
-  <a href="#engineering-highlights">Engineering</a> |
-  <a href="#features">Features</a> |
+  <a href="#why-this-exists">Why</a> |
+  <a href="#what-it-does">Features</a> |
   <a href="#quick-start">Quick Start</a> |
   <a href="#usage">Usage</a> |
   <a href="#architecture">Architecture</a> |
@@ -29,352 +31,221 @@
   <img src="docs/images/dashboard-video-detail.png" alt="chronovista — Video detail with embedded player, transcript segments, and entity mentions" width="800">
 </p>
 
-## Engineering Highlights
-
-- **11,400+ tests** (7,761 backend + 3,641 frontend) across 229 backend source files with **mypy strict mode, zero errors**
-- **57 releases** under a versioned constitutional engineering framework — strict typing (zero `Any`), minimal-diff discipline, and the Rule of Three enforced as project law
-- **Async-first architecture** with full `async/await` through 79 FastAPI endpoints (asyncpg, httpx) and 94 CLI commands
-- **Tag canonicalization** — a 9-step Unicode pipeline (case, accent, and hashtag folding) collapses raw tag variants into canonical forms while preserving semantic distinctions (Mexico ≠ Mexican), with fuzzy trigram search, alias tracking, and reversible curation (merge / split / classify / deprecate)
-- **Named entity detection** — finds known people, places, and organizations across transcripts, titles, descriptions, and tags, with alias matching, longest-match-wins disambiguation, and exclusion patterns
-- **Wayback Machine recovery** via CDX API for metadata of deleted YouTube videos — three-tier overwrite policy, retry with backoff, era-anchored search
-- **Transcript correction system** — append-only audit trail with inline edit/revert/history, batch find-replace, and ASR error-pattern detection
-- **Multi-language transcripts** — segments stored with a quality hierarchy (manual CC > professional > auto-synced > ASR) and per-language download preferences
-- **Full-stack TypeScript strict** — React 19 + TypeScript 5.7 strict + TanStack Query v5 + Tailwind CSS 4
-- **Repository pattern** with composite key support, isolating all DB access from business logic across 24 tables and 34 Alembic migrations
-- **CI/CD** via GitHub Actions — 4-job pipeline (unit tests, mypy strict + ruff + black, frontend tests + TS check, integration tests with PostgreSQL)
-
 ## Why This Exists
 
-I built chronovista as the data infrastructure layer for a larger research project: extracting and synthesizing knowledge from YouTube interview transcripts across politics, economics, history, and technology. To do that reliably, I needed accurate transcripts (YouTube ASR has errors — I've manually corrected 3,800+ so far), complete metadata (Google Takeout is sparse and doesn't preserve deleted videos), and normalized tagging across hundreds of channels.
+I built chronovista as the data infrastructure for a larger research project: extracting and synthesizing knowledge from YouTube interview transcripts across politics, economics, history, and technology.
 
-Every feature exists because I hit a real limitation while doing that research. The transcript correction system came from manually fixing the same ASR errors repeatedly. The Wayback Machine recovery came from needing context on channels whose old content had disappeared. The tag normalization came from realizing that "mejico", "mexiko", and "Mexico" all needed to map to the same canonical entity. The named entity detection came from wanting to see every video where a specific person was mentioned — across transcripts, titles, descriptions, and tags — without manually searching each source. Build-as-you-need rather than design-up-front, across 57 incremental releases.
+Doing that reliably turned out to be harder than expected, for reasons that are structural rather than incidental:
 
-## Features
+- **YouTube's API forgets.** A [2025 audit in *Information, Communication & Society*](https://doi.org/10.1080/1369118X.2025.2591767) measured the decay: retrievable videos fall from roughly 450/day in the first 20 days after publication to about 20/day in the tail, and a case study repeated ten weeks later returned **76–92% fewer results** — for videos still live on the platform. If you want the record, you have to keep it yourself.
+- **ASR transcripts are wrong in ways that matter.** Proper nouns especially. I've manually corrected more than 3,800 segments, which is what motivated an append-only correction system with a full audit trail rather than destructive edits.
+- **Google Takeout is sparse**, and the videos that vanish are often the ones you most need context on — hence Wayback Machine recovery.
+- **Tags are chaos.** "mejico", "mexiko", and "Mexico" all point at one thing; "Mexico" and "Mexican" do not. That distinction has to survive normalization, which rules out naive case-folding.
 
-| Category | Capabilities |
-|----------|-------------|
-| **Local-First Privacy** | All data in local PostgreSQL — no cloud sync, complete data ownership |
-| **Multi-Language Transcripts** | Per-language download preferences (fluent, learning, curious, exclude) across every transcript language |
-| **Transcript Search** | Timestamp-based queries with context windows — find what was said at any moment |
-| **Transcript Corrections** | Inline edit/revert with append-only audit trail, batch find-replace, ASR error detection |
-| **Tag Canonicalization** | Collapse raw tag variants into canonical forms; fuzzy search, alias tracking, and reversible curation (merge / split / classify / deprecate) |
-| **Named Entity Detection** | Multi-source entity mentions (transcript + title + description + tag), alias matching, exclusion patterns |
-| **Channel Analytics** | Per-channel subscription tracking, keyword extraction, and topic analysis |
-| **Google Takeout** | Import complete YouTube history including deleted/private videos |
-| **Deleted Video Recovery** | Recover metadata for unavailable videos via the Wayback Machine CDX API |
-| **REST API + Web UI** | FastAPI server (79 endpoints) with React dashboard for browsing, filtering, and entity exploration |
-| **One-Command Deploy** | `docker compose up` — full stack with guided onboarding, no Python/Node.js required |
-| **Data Export** | Per-command CSV/JSON output (`--format`/`--output`) plus correction-audit export |
+Every feature exists because I hit one of these while doing the actual research. Build-as-you-need rather than design-up-front, across 61 tagged releases.
 
 ### What This Isn't
 
-chronovista is not a multi-user service, not cloud-hosted, and not a YouTube analytics competitor. It's a personal research instrument — a single-user local tool for deep analysis of your own YouTube engagement data.
+Not a multi-user service, not cloud-hosted, not a YouTube analytics competitor. It's a single-user local instrument for deep analysis of your own engagement data — no multi-tenancy, no per-user isolation, no cloud sync. That shapes the schema, and it isn't a gap to be filled later. If you want channel growth analytics, [vidIQ](https://vidiq.com/) and [TubeBuddy](https://www.tubebuddy.com/) solve a different problem well.
+
+## What It Does
+
+| Category | Capabilities |
+|----------|-------------|
+| **Local-First Privacy** | All data in local PostgreSQL — no cloud sync, complete ownership |
+| **Transcript Search** | Timestamp-based queries with context windows — find what was said at any moment |
+| **Transcript Corrections** | Inline edit/revert with an append-only audit trail, batch find-replace, ASR error-pattern detection |
+| **Tag Canonicalization** | Collapse raw tag variants into canonical forms; fuzzy search, alias tracking, reversible curation (merge / split / classify / deprecate) |
+| **Named Entity Mentions** | Alias-matched mentions across transcript, title, description, and tags, with longest-match disambiguation and exclusion patterns |
+| **Deleted Video Recovery** | Reconstruct metadata for unavailable videos via the Wayback Machine CDX API |
+| **Multi-Language Transcripts** | Per-language download preferences across a quality hierarchy (manual CC > professional > auto-synced > ASR) |
+| **Channel Analytics** | Per-channel subscription tracking, keyword extraction, and topic analysis |
+| **Google Takeout Import** | Full history including deleted and private videos |
+| **Data Export** | Per-command CSV/JSON output (`--format`/`--output`) plus correction-audit export |
+| **REST API + Web UI** | FastAPI server (81 endpoints) with a React dashboard for browsing, filtering, and entity exploration |
+| **One-Command Deploy** | `docker compose up` — full stack with guided onboarding, no Python or Node.js required |
 
 ### Tech Stack
 
 - **Backend:** Python 3.11+, FastAPI, SQLAlchemy 2.0 (async), Alembic, Typer, Pydantic V2
 - **Frontend:** React 19, TypeScript 5.7 (strict), TanStack Query v5, Tailwind CSS 4
-- **Database:** PostgreSQL 15 via asyncpg (24 tables, 34 migrations)
+- **Database:** PostgreSQL 15 via asyncpg — 25 tables, 37 migrations
 - **Auth:** Google OAuth 2.0 with progressive scope management
-- **CI:** GitHub Actions (mypy strict, ruff, black, pytest, vitest, TypeScript check)
+- **CI:** GitHub Actions — mypy strict, ruff, black, pytest, vitest, TypeScript check, integration tests against real PostgreSQL
+
+## Scope and Limitations
+
+Deliberate boundaries, stated up front:
+
+- **Entity detection is alias matching, not statistical NER.** It finds entities you've registered — high precision, no discovery. The tradeoff is intentional for research use, where a false positive costs more than a miss, but it means the corpus can't surface people you didn't already know to look for. Statistical NER is [on the roadmap](#roadmap) as a complement.
+- **Transcript retrieval uses an unofficial endpoint.** `youtube-transcript-api` reads `timedtext` rather than the Data API, because the official captions endpoint only exposes transcripts for videos you own or where third-party access is explicitly enabled — which most creators don't. It's rate-limited by IP in practice, so bulk retrieval needs pacing.
 
 ## Quick Start
 
 ```bash
-# Clone
 git clone https://github.com/aucontraire/chronovista.git
 cd chronovista
-
-# Configure
-cp .env.example .env  # Add YouTube API credentials
-
-# One-time OAuth setup (must run natively)
-pip install .  # from the cloned repo (not yet on PyPI); or: poetry install
-chronovista auth login
-
-# Start the stack
-make docker-setup
-# Opens http://localhost:8765/onboarding
-```
-
-<details>
-<summary>Development Setup (alternative)</summary>
-
-```bash
-# Clone and install
-git clone https://github.com/aucontraire/chronovista.git
-cd chronovista && poetry install
-
-# Setup database (Docker Compose, port 5434)
-make dev-db-up
-cp .env.example .env  # Add YouTube API credentials, set DEVELOPMENT_MODE=true
-make dev-migrate
-
-# Authenticate and sync
-poetry run chronovista auth login
-poetry run chronovista sync all
-# Or activate the virtualenv first: poetry shell
-```
-</details>
-
-## Installation
-
-### Docker (Recommended)
-
-The fastest way to get running. No Python or Node.js installation required.
-
-**Prerequisites:** Docker with Compose, [YouTube Data API credentials](https://console.cloud.google.com/) (API key + OAuth client).
-
-**One-time OAuth setup:** The container handles token refresh, but the initial OAuth login requires a native install so the browser redirect works:
-
-```bash
-pip install .  # from the cloned repo (not yet on PyPI); or: poetry install
-chronovista auth login
-```
-
-**Start the stack:**
-
-```bash
 cp .env.example .env       # Add YouTube API credentials
-make docker-setup          # Validates, builds, starts, health check
+
+# One-time OAuth setup — must run natively so the browser redirect reaches localhost
+pip install .              # from the cloned repo (not yet on PyPI); or: poetry install
+chronovista auth login
+
+make docker-setup          # Validates, builds, starts, health-checks
 # Opens http://localhost:8765/onboarding
 ```
 
-The guided onboarding wizard walks you through a 4-step pipeline:
+The onboarding wizard walks through a four-step pipeline: seed reference data → load your Takeout export → enrich metadata from the YouTube API → normalize tags.
 
-1. **Seed Reference Data** — load topic categories and region mappings
-2. **Load Data Export** — import your Google Takeout YouTube history
-3. **Enrich Metadata** — fetch current metadata from the YouTube API
-4. **Normalize Tags** — build canonical tag mappings from raw tag variations
+**Prerequisites:** Docker with Compose, and [YouTube Data API credentials](https://console.cloud.google.com/) (API key + OAuth client).
 
-**Run CLI commands inside the container:**
+Setting up the Google Cloud project is the fiddliest step — the **[full setup guide](https://aucontraire.github.io/chronovista/getting-started/youtube-api-setup/)** covers consent screen configuration, test users, and the common authentication errors. Your `.env` needs three values:
 
-```bash
-make docker-shell          # Opens bash inside the container
-chronovista sync all       # Run any CLI command
-```
-
-**Other Makefile commands:** `make docker-up`, `make docker-down`, `make docker-restart`, `make docker-logs`, `make docker-status`, `make docker-db-shell`, `make docker-clean`.
-
-**Adding new Takeout data:** Drop the export into `./takeout/`, refresh the onboarding page, and click Start. Data persists in Docker volumes; the OAuth token persists in `./data/`.
-
-See [Migrating from Native to Docker](docs/guides/migrating-to-docker.md) for a detailed migration guide.
-
-### What Runs Where
-
-Docker is for **using** chronovista. Native Python is for **developing** chronovista. The `chronovista auth` commands are the one exception — they must always run natively because the OAuth flow requires a browser redirect to `localhost` on your machine.
-
-| Command | Where | Why |
-|---------|-------|-----|
-| `chronovista auth login/logout/status` | **Host (natively)** | Browser redirect needs host access |
-| All other `chronovista` commands | **Container** (`make docker-shell`) | Full stack runs inside Docker |
-| `make docker-*` commands | **Host** | Docker management |
-| `make dev`, `make test`, `make quality` | **Host (natively)** | Development workflow |
-
-> **Note:** If you're only using chronovista (not developing it), you only need Docker and a one-time native `chronovista auth login`. Everything else happens through the web UI or `make docker-shell`.
-
-### Development Prerequisites
-
-For local development (contributors, not end users):
-
-- Python 3.11+
-- [Poetry](https://python-poetry.org/)
-- Docker (with Compose, for the development database)
-- [YouTube Data API credentials](https://console.cloud.google.com/) (API key + OAuth client)
-
-### Install
-
-```bash
-git clone https://github.com/aucontraire/chronovista.git
-cd chronovista
-poetry install
-```
-
-### Database Setup
-
-```bash
-# Start development database (Docker Compose, port 5434)
-make dev-db-up
-
-# Configure environment
-cp .env.example .env  # Add YouTube API credentials, set DEVELOPMENT_MODE=true
-
-# Run migrations
-make dev-migrate
-```
-
-### YouTube API Setup
-
-You'll need a Google Cloud project with YouTube Data API v3 enabled and OAuth 2.0 credentials.
-
-**[Full setup guide](https://aucontraire.github.io/chronovista/getting-started/youtube-api-setup/)** — covers consent screen configuration, test user setup, and common authentication errors.
-
-Quick reference for `.env`:
 ```env
 YOUTUBE_API_KEY=your_api_key
 YOUTUBE_CLIENT_ID=your_client_id
 YOUTUBE_CLIENT_SECRET=your_client_secret
 ```
 
-## Usage
+<details>
+<summary><b>Development setup (contributors)</b></summary>
 
-A few representative commands — see the **[How-to guides](https://aucontraire.github.io/chronovista/)** and the **[CLI reference](https://aucontraire.github.io/chronovista/reference/cli/)** for the complete command set.
+```bash
+git clone https://github.com/aucontraire/chronovista.git
+cd chronovista && poetry install
+
+make dev-db-up             # Dev PostgreSQL via Docker Compose, port 5434
+cp .env.example .env       # Add credentials, set DEVELOPMENT_MODE=true
+make dev-migrate
+
+poetry run chronovista auth login
+poetry run chronovista sync all
+```
+
+Requires Python 3.11+, [Poetry](https://python-poetry.org/), and Docker.
+</details>
+
+<details>
+<summary><b>What runs where</b></summary>
+
+Docker is for **using** chronovista; native Python is for **developing** it. The `auth` commands are the one exception — they always run natively, because the OAuth flow needs a browser redirect to `localhost` on your machine.
+
+| Command | Where | Why |
+|---------|-------|-----|
+| `chronovista auth login/logout/status` | Host | Browser redirect needs host access |
+| All other `chronovista` commands | Container (`make docker-shell`) | Full stack runs in Docker |
+| `make docker-*` | Host | Docker management |
+| `make dev`, `make test`, `make quality` | Host | Development workflow |
+
+**Adding new Takeout data:** drop the export into `./takeout/`, refresh the onboarding page, click Start. Data persists in Docker volumes; the OAuth token persists in `./data/`.
+
+See [Migrating from Native to Docker](docs/guides/migrating-to-docker.md) for details.
+</details>
+
+## Usage
 
 ```bash
 # Authenticate, then sync your account
 chronovista auth login
 chronovista sync all
 
-# Search transcripts by timestamp — find what was said at any moment
-chronovista transcript context VIDEO_ID 5:00           # 30s context window
-chronovista transcript range VIDEO_ID 1:00 5:00 --format srt
+# Read what was said at a given moment, with surrounding context
+chronovista transcript context dQw4w9WgXcQ 5:30
 
 # Normalize and curate tags
-chronovista tags normalize --incremental
-chronovista tags merge mejico mexiko --into mexico     # merge spelling variants
+chronovista tags normalize
+chronovista tags merge "mejico" "mexiko" --into "Mexico" --reason "spelling variants"
 
-# Detect named entities across transcripts, titles, and descriptions
-chronovista entities scan --sources transcript,title,description
+# Detect named entity mentions across transcripts, titles, descriptions, and tags
+chronovista entities scan --full
 
 # Recover deleted videos from the Wayback Machine
-chronovista recover video --all --limit 50
+chronovista recover video --all --start-year 2018
 
-# Import a Google Takeout export
-chronovista takeout seed /path/to/takeout --incremental
+# Collapse duplicate user identities (preview first)
+chronovista identity repair --dry-run
 
-# Start the REST API (interactive docs at /docs)
+# Start the REST API — interactive docs at /docs
 chronovista api start --port 8765
 ```
 
-The web dashboard — video browsing with tag/category/topic filters, transcript search with inline corrections, entity detail pages, and a guided onboarding wizard — runs at `http://localhost:8766` via `make dev`.
+The web dashboard — video browsing with tag/category/topic filters, transcript search with inline corrections, entity detail pages, and guided onboarding — runs at `http://localhost:8766` via `make dev`.
+
+The full [CLI, REST API, and code reference](https://aucontraire.github.io/chronovista/reference/) is generated from source.
 
 ## Architecture
 
 ```
 chronovista/
-├── api/              # FastAPI REST API: 79 endpoints, RFC 7807 errors, rate limiting
-├── cli/              # Typer CLI: 94 commands (auth, sync, topics, recovery, tags, entities)
+├── api/              # FastAPI REST API: 81 endpoints, RFC 7807 errors, rate limiting
+├── cli/              # Typer CLI: 98 commands (auth, sync, topics, recovery, tags, entities)
 ├── services/         # Business logic: sync orchestration, tag normalization, entity detection
 │   ├── enrichment/   # YouTube API enrichment with priority-tier selection
 │   └── recovery/     # Wayback Machine recovery: CDX client, HTML parser, orchestrator
 ├── repositories/     # Async SQLAlchemy DAL: all DB access, composite key support
-├── models/           # Pydantic V2 domain models (separate from ORM models in db/)
-├── db/               # SQLAlchemy ORM models + 34 Alembic migrations across 24 tables
+├── models/           # Pydantic V2 domain models (deliberately separate from ORM models)
+├── db/               # SQLAlchemy ORM models + 37 Alembic migrations across 25 tables
 └── auth/             # OAuth 2.0 with progressive scope management
 ```
 
-**Key design decisions:**
-- Async-first with full async/await (asyncpg, httpx)
-- Strict type safety: Pydantic V2 models + mypy strict mode (zero errors)
-- Repository pattern isolating all database access
-- Layered architecture: CLI/API -> Services -> Repositories -> DB
+**Design decisions:**
 
-See [Architecture Overview](https://aucontraire.github.io/chronovista/architecture/overview/) for details.
+- **Async throughout** — full `async`/`await` over asyncpg and httpx, because this is an I/O-bound workload dominated by API calls and database round-trips.
+- **Pydantic domain models separate from ORM models.** More boilerplate, but it keeps validation at the boundary and stops SQLAlchemy session semantics leaking into business logic.
+- **Repository pattern** isolating all database access, generically typed including the primary key (`BaseSQLAlchemyRepository[Model, Create, Update, IdType]`) so composite keys stay type-safe.
+- **Layered:** CLI/API → Services → Repositories → DB, with no upward dependencies.
 
-## Engineering Practice
+See the [Architecture Overview](https://aucontraire.github.io/chronovista/architecture/overview/) for detail.
 
-chronovista is built under a versioned constitutional engineering framework that enforces production standards on AI-collaborated code: strict typing (mypy strict, zero `Any`), Pydantic-first data modeling, repository pattern, test-driven quality gates, and explicit anti-slop constraints (minimal-diff principle, file/abstraction budgets, the Rule of Three for premature abstraction).
+### Engineering Practice
 
-The constitution is a versioned governance document that evolved through real post-mortems — for example, v1.1.0 added Cross-Feature Data Contract Verification after integration bugs in Features 030–032 revealed a gap at the seam between features. A multi-tier sub-agent review workflow enforces compliance at PR time.
+The codebase is governed by a versioned constitution that enforces production standards on AI-collaborated code: strict typing (mypy strict, zero `Any`), Pydantic-first modeling, the repository pattern, and explicit anti-slop constraints — minimal-diff, file and abstraction budgets, and the Rule of Three against premature abstraction.
+
+It is a living document shaped by post-mortems rather than written up front: v1.1.0 added Cross-Feature Data Contract Verification after integration bugs in Features 030–032 exposed a gap at the seam *between* features, and a multi-tier sub-agent review enforces compliance at PR time.
 
 ## Development
 
-### Workflow
-
 ```bash
-# Install dev dependencies
 poetry install --with dev
-
-# Start the full local stack
-make dev               # Backend on :8765, frontend on :8766
-
-# Before committing — run all checks
-make quality           # format + lint + type-check
+make dev                   # Backend on :8765, frontend on :8766
+make quality               # format + lint + type-check — run before committing
 ```
 
 ### Testing
 
-Integration tests require the development database (`postgres-dev` on port 5434):
+Integration tests run against real PostgreSQL (`postgres-dev` on port 5434), not mocks or SQLite.
 
 ```bash
-make dev-db-up         # Start dev database (required for integration tests)
-
-make test              # All backend tests (7,761)
-make test-cov          # With coverage
-make test-fast         # Quick run
-
-# Frontend tests (3,641)
-cd frontend && npm test
+make dev-db-up             # Required for integration tests
+make test                  # Backend suite
+make test-cov              # With coverage
+cd frontend && npm test    # Frontend suite
 ```
 
-**Total: 11,400+ tests** (7,761 backend + 3,641 frontend).
+**11,800+ tests** across 239 backend source files, with **mypy strict passing at zero errors**. CI runs four jobs on every PR: backend unit tests, mypy strict + ruff + black, frontend tests + TypeScript check, and integration tests against a live PostgreSQL service container.
 
-### Code Quality
+<details>
+<summary><b>Other commands</b></summary>
 
 ```bash
 make format            # black + isort
 make lint              # ruff
-make type-check        # mypy (strict, 0 errors across 229 source files)
-```
-
-### Database
-
-```bash
+make type-check        # mypy --strict
 make db-upgrade        # Run migrations
-make db-revision       # Create new migration
+make db-revision       # Create a migration
+make dev-backend       # Backend only (:8765)
+make dev-frontend      # Frontend only (:8766)
+make generate-api      # Regenerate the TypeScript client after backend model changes
+make help              # Everything else
 ```
 
-### Frontend Development
-
-```bash
-make dev-backend       # Backend only (port 8765)
-make dev-frontend      # Frontend only (port 8766)
-make generate-api      # Regenerate TypeScript API client after backend model changes
-```
-
-See [`frontend/README.md`](frontend/README.md) for detailed frontend documentation.
-
-<details>
-<summary>All Makefile Commands</summary>
-
-```bash
-make help              # Show all commands
-make install-dev       # Dev dependencies
-make install-all       # All dependencies
-make shell             # Poetry shell
-make clean             # Clean artifacts
-make env-info          # Environment info
-make dev-db-admin      # Start pgAdmin (localhost:8081)
-```
+See [`frontend/README.md`](frontend/README.md) for frontend specifics and the [development docs](https://aucontraire.github.io/chronovista/development/) for the full workflow.
 </details>
 
 <details>
-<summary>Integration Testing</summary>
+<summary><b>Troubleshooting</b></summary>
 
-```bash
-# Full setup
-make dev-full-setup
-
-# Authenticate (one-time)
-poetry run chronovista auth login
-
-# Run integration tests
-poetry run pytest tests/integration/api/ -v
-
-# Reset if needed
-make dev-full-reset
-```
-
-Tests validate the complete flow: YouTube API -> Pydantic models -> Database persistence.
-</details>
-
-<details>
-<summary>Troubleshooting</summary>
-
-**"No module named mypy":**
-```bash
-poetry install --with dev
-```
+**"No module named mypy":** `poetry install --with dev`
 
 **Poetry not found:**
 ```bash
@@ -384,28 +255,22 @@ export PATH="$HOME/.local/bin:$PATH"
 
 **Virtual environment issues:**
 ```bash
-poetry env info
-poetry env remove python
-poetry install
+poetry env info && poetry env remove python && poetry install
 ```
 </details>
 
 ## Roadmap
 
-- [ ] Knowledge graph extraction layer over normalized transcript + tag + entity data
+- [ ] Knowledge graph extraction over normalized transcript, tag, and entity data
 - [ ] Semantic transcript search using embeddings (currently full-text ILIKE with GIN trigram indexes)
-- [ ] Transcript refresh — re-download improved YouTube ASR with correction reconciliation ([#126](https://github.com/aucontraire/chronovista/issues/126))
-- [ ] Write operations — create playlists, rate videos, and manage subscriptions via OAuth write scopes
-- [ ] Browser extension for real-time watch history capture
+- [ ] Statistical NER to complement alias matching, so unknown entities can be discovered
+- [ ] Transcript refresh — re-download improved ASR with correction reconciliation ([#126](https://github.com/aucontraire/chronovista/issues/126))
+- [ ] Write operations — create playlists, rate videos, manage subscriptions via OAuth write scopes
+- [ ] Migration drift gate in CI ([#155](https://github.com/aucontraire/chronovista/issues/155))
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Run `make quality` before committing
-4. Submit a pull request
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Fork, branch, run `make quality`, open a PR. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

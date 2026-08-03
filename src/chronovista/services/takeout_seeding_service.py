@@ -32,7 +32,10 @@ class TakeoutSeedingService:
     New architecture with improved dependency resolution and progress tracking.
     """
 
-    def __init__(self, user_id: str = "takeout_user"):
+    def __init__(self, user_id: str | None = None):
+        # The canonical identity (Feature 060). When None, it is resolved from
+        # the persisted app_identities row inside ``seed_database`` (which has a
+        # session). No hardcoded placeholder default (FR-012).
         self.user_id = user_id
         self.orchestrator = SeedingOrchestrator()
         self._setup_seeders()
@@ -45,13 +48,13 @@ class TakeoutSeedingService:
         user_video_repo = UserVideoRepository()
         playlist_repo = PlaylistRepository()
 
-        # Register all seeders
+        # Register all seeders. Keep a handle to the user-video seeder so its
+        # canonical identity can be filled in once resolved (see seed_database).
+        self._user_video_seeder = UserVideoSeeder(user_video_repo, self.user_id)
         self.orchestrator.register_seeder(ChannelSeeder(channel_repo))
         self.orchestrator.register_seeder(VideoSeeder(video_repo))
-        self.orchestrator.register_seeder(
-            UserVideoSeeder(user_video_repo, self.user_id)
-        )
-        self.orchestrator.register_seeder(PlaylistSeeder(playlist_repo, self.user_id))
+        self.orchestrator.register_seeder(self._user_video_seeder)
+        self.orchestrator.register_seeder(PlaylistSeeder(playlist_repo))
         self.orchestrator.register_seeder(PlaylistMembershipSeeder())
 
         logger.info(
@@ -88,6 +91,15 @@ class TakeoutSeedingService:
             Results for each data type processed
         """
         start_time = datetime.now()
+
+        # Resolve the canonical identity if the caller did not supply one
+        # (Feature 060). This is where a session is available. Never mints a
+        # placeholder — the resolver persists app_identities.
+        if self.user_id is None:
+            from .identity_service import IdentityService
+
+            self.user_id = await IdentityService().resolve(session)
+            self._user_video_seeder.user_id = self.user_id
 
         # Determine which types to process
         available_types = self.orchestrator.get_available_types()

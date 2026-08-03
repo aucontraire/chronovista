@@ -277,6 +277,11 @@ cache/
 *.sql.bak
 *.dump
 
+# Identity-merge pre-images and legacy DB dumps (personal data — Feature 060)
+# Note: the repair's pre-image lives under data_dir/backups (already covered by data/ above);
+# this ignores the pre-existing repo-root backups/ directory.
+backups/
+
 # Performance profiling output
 *.prof
 *.pstats

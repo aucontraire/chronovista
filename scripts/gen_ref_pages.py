@@ -77,11 +77,12 @@ def main() -> None:
     with mkdocs_gen_files.open("reference/code/SUMMARY.md", "w") as fd:
         fd.write("\n".join(summary_lines) + "\n")
 
-    # Top-level Reference literate-nav: wires CLI, API, and Code subtrees.
+    # Top-level Reference literate-nav: wires CLI, API, Schema, and Code subtrees.
     # `api/` and `code/` are expanded from their own SUMMARY.md files.
     with mkdocs_gen_files.open("reference/SUMMARY.md", "w") as fd:
         fd.write("* [CLI](cli.md)\n")
         fd.write("* [REST API](api/)\n")
+        fd.write("* [Database Schema](schema.md)\n")
         fd.write("* [Code](code/)\n")
 
 

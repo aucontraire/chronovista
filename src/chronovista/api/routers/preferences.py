@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import get_db, require_auth, require_local_identity
 from chronovista.api.routers.responses import LIST_ERRORS, UPDATE_ERRORS
 from chronovista.api.schemas.preferences import (
     LanguagePreferenceItem,
@@ -17,9 +17,6 @@ from chronovista.models.enums import LanguageCode, LanguagePreferenceType
 from chronovista.models.user_language_preference import UserLanguagePreferenceCreate
 
 router = APIRouter(dependencies=[Depends(require_auth)])
-
-# Default user_id for single-user app
-DEFAULT_USER_ID = "default_user"
 
 
 def validate_language_code(code: str) -> bool:
@@ -47,6 +44,7 @@ def validate_preference_type(pref_type: str) -> bool:
 )
 async def get_language_preferences(
     session: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_local_identity),
 ) -> LanguagePreferencesResponse:
     """
     Get current language preferences.
@@ -55,7 +53,7 @@ async def get_language_preferences(
     Empty list if no preferences configured.
     """
     repo = container.create_user_language_preference_repository()
-    prefs = await repo.get_user_preferences(session, DEFAULT_USER_ID)
+    prefs = await repo.get_user_preferences(session, user_id)
 
     items = [
         LanguagePreferenceItem(
@@ -78,6 +76,7 @@ async def get_language_preferences(
 async def update_language_preferences(
     request: LanguagePreferencesUpdateRequest,
     session: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_local_identity),
 ) -> LanguagePreferencesResponse:
     """
     Update language preferences.
@@ -135,7 +134,7 @@ async def update_language_preferences(
             priority = pref.priority if pref.priority is not None else idx + 1
             creates.append(
                 UserLanguagePreferenceCreate(
-                    user_id=DEFAULT_USER_ID,
+                    user_id=user_id,
                     language_code=LanguageCode(pref.language_code),
                     preference_type=LanguagePreferenceType(pref.preference_type),
                     priority=priority,
@@ -148,13 +147,13 @@ async def update_language_preferences(
     repo = container.create_user_language_preference_repository()
 
     # Delete existing preferences
-    await repo.delete_all_user_preferences(session, DEFAULT_USER_ID)
+    await repo.delete_all_user_preferences(session, user_id)
 
     # Create new preferences
     if creates:
-        await repo.save_preferences(session, DEFAULT_USER_ID, creates)
+        await repo.save_preferences(session, user_id, creates)
 
     await session.commit()
 
     # Return updated preferences
-    return await get_language_preferences(session)
+    return await get_language_preferences(session, user_id)

@@ -795,14 +795,17 @@ def transcripts(
         # Create preference filter
         transcript_filter = PreferenceAwareTranscriptFilter()
 
-        # Load user preferences (use "default" as user_id for now)
+        # Load user preferences under the canonical identity (Feature 060).
         user_preferences: list[UserLanguagePreference] = []
         using_preferences = False
         language_override = len(language) > 0 and language != ["en"]
 
         async for session in db_manager.get_session():
+            from chronovista.services.identity_service import IdentityService
+
+            user_id = await IdentityService().resolve(session)
             prefs_db = await user_language_pref_repository.get_user_preferences(
-                session, UserId("default_user")
+                session, user_id
             )
             # Convert DB models to Pydantic models
             user_preferences = [

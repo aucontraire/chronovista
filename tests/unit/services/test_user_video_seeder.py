@@ -33,11 +33,15 @@ class TestUserVideoSeederInitialization:
         return repo
 
     def test_initialization_default_user(self, mock_user_video_repo: Mock) -> None:
-        """Test seeder initialization with default user."""
+        """Test seeder initialization with no user id (Feature 060: default None).
+
+        The canonical identity is resolved by the caller and set before seeding;
+        there is no hardcoded placeholder default.
+        """
         seeder = UserVideoSeeder(mock_user_video_repo)
 
         assert seeder.user_video_repo == mock_user_video_repo
-        assert seeder.user_id == "takeout_user"
+        assert seeder.user_id is None
         assert seeder.get_dependencies() == {"videos"}  # Depends on videos
         assert seeder.get_data_type() == "user_videos"
 

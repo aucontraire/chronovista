@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import get_db, require_auth, require_local_identity
 from chronovista.api.routers.responses import (
     CONFLICT_RESPONSE,
     GET_ITEM_ERRORS,
@@ -77,9 +77,6 @@ _transcript_service = TranscriptService()
 _transcript_repo = VideoTranscriptRepository()
 _pref_repo = UserLanguagePreferenceRepository()
 _pref_filter = PreferenceAwareTranscriptFilter()
-
-# Default user_id for single-user app
-DEFAULT_USER_ID = "default_user"
 
 
 def get_language_name(code: str) -> str:
@@ -437,6 +434,7 @@ async def download_transcript(
         None, description="BCP-47 language code (default: user's preferred language)"
     ),
     session: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_local_identity),
 ) -> (
     ApiResponse[TranscriptDownloadResponse]
     | ApiResponse[MultiTranscriptDownloadResponse]
@@ -522,7 +520,7 @@ async def download_transcript(
             )
 
         # --- Check for user preferences ---
-        user_prefs = await _pref_repo.get_user_preferences(session, DEFAULT_USER_ID)
+        user_prefs = await _pref_repo.get_user_preferences(session, user_id)
 
         # --- Path C: No preferences → preserve existing default behavior (FR-013) ---
         if not user_prefs:

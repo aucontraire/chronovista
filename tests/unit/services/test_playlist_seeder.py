@@ -77,11 +77,11 @@ class TestPlaylistSeederInitialization:
         return repo
 
     def test_initialization_default_user(self, mock_playlist_repo: Mock) -> None:
-        """Test seeder initialization with default user."""
+        """Test seeder initialization with no user id (Feature 060: default None)."""
         seeder = PlaylistSeeder(mock_playlist_repo)
 
         assert seeder.playlist_repo == mock_playlist_repo
-        assert seeder.user_id == "takeout_user"
+        assert seeder.user_id is None
         assert seeder.get_dependencies() == set()
         assert seeder.get_data_type() == "playlists"
 

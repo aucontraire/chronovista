@@ -29,7 +29,10 @@ from fastapi import HTTPException, status
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import get_db, require_auth, require_local_identity
+
+# Canonical identity supplied to the endpoint under test (Feature 060).
+TEST_USER_ID = "UCtest_identity_00000000"
 from chronovista.api.main import app
 from chronovista.services.transcript_service import (
     TranscriptNotFoundError,
@@ -153,10 +156,13 @@ def mock_session() -> AsyncMock:
 
 @pytest.fixture
 async def client(mock_session: AsyncMock) -> AsyncGenerator[AsyncClient, None]:
-    """FastAPI test client with DB and auth dependencies overridden.
+    """FastAPI test client with DB, auth, and identity dependencies overridden.
 
-    Both get_db and require_auth are overridden so tests run entirely
-    in-process without a real database or OAuth token.
+    get_db, require_auth, and require_local_identity are overridden so tests
+    run entirely in-process without a real database or OAuth token. The
+    identity override is required because the endpoint resolves the canonical
+    user identity (Feature 060) — against a mocked session the real resolver
+    would read a MagicMock instead of a row.
     """
 
     async def _get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -167,6 +173,7 @@ async def client(mock_session: AsyncMock) -> AsyncGenerator[AsyncClient, None]:
 
     app.dependency_overrides[get_db] = _get_db
     app.dependency_overrides[require_auth] = _require_auth
+    app.dependency_overrides[require_local_identity] = lambda: TEST_USER_ID
 
     try:
         transport = ASGITransport(app=app)
@@ -200,6 +207,7 @@ async def unauth_client(mock_session: AsyncMock) -> AsyncGenerator[AsyncClient, 
 
     app.dependency_overrides[get_db] = _get_db
     app.dependency_overrides[require_auth] = _require_auth_fail
+    app.dependency_overrides[require_local_identity] = lambda: TEST_USER_ID
 
     try:
         transport = ASGITransport(app=app)

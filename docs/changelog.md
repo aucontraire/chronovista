@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.61.0] - 2026-08-03
+
+### Added
+- **Watched vs. saved, in-context and in aggregate (Feature 061).** "Watched" and "saved in a playlist" are independent facts, and the UI could not tell them apart. Watched-status derives **solely** from `user_videos.watched_at` and is never inferred from playlist membership — YouTube does not remove watched videos from Watch Later, so a playlist legitimately holds a mix.
+  - **Per-playlist stats and filtering.** Each playlist detail page gains a `total / watched / unwatched` header and an All / Watched / Unwatched filter. The header describes the whole playlist and deliberately does **not** move with the filter, while the result count does — two quantities that are asserted separately, because conflating them is the easy bug. The filter lives in the address as `?watched_status=`, so a filtered view is shareable and the dashboard can deep-link into it. Each row carries its own watched state, batch-loaded per page.
+  - **New Overview Dashboard** at `/overview`, headlined by **Saved & Forgotten** — videos saved to a curated playlist and never watched (609 on the author's library) — plus Watch Later depth, a playlist inventory by type, and library-wide rollups. One request serves every figure, so the numbers cannot disagree with each other.
+  - **New `GET /api/v1/overview`**; `GET /api/v1/playlists/{id}/videos` gains `watched_status` and a `stats` object with `watched: bool` per item; `GET /api/v1/videos` gains `saved_unwatched`.
+  - Read-only throughout: no migration, no schema change, no write path, no CLI change.
+
+### Fixed
+- **The History playlist is not "trivially all-watched".** It holds 2,997 videos of which 116 have no watch record — the Takeout playlist export and the watch-history import are separate sources and need not agree. A non-empty Unwatched view for History is correct output, not a bug to be "fixed" by inferring watched-status from membership.
+
+### Performance
+- **Query shape, not indexes, is what matters here** — a third instance of the same lesson in this repo. Measured against production (89,465 memberships, 51,271 watch rows), each pair returning *identical numbers*, so value-only tests cannot tell them apart:
+  - playlist header: correlated `EXISTS` **25,676 ms** → non-correlated `IN` **69 ms**
+  - dashboard: `LEFT JOIN LATERAL` per membership row **50,893 ms** → CTE form **131 ms**
+- Under a watched filter the per-page watched lookup is skipped entirely: the page's rows already satisfy the `WHERE` clause, so re-querying would ask the database to rediscover what it just proved.
+- The dashboard CTEs are deliberately **not** `MATERIALIZED`. Each is referenced once, so PostgreSQL inlines and plans across the boundary; forcing materialisation measured *slower* (~134 ms vs ~85 ms). The win over the LATERAL form came from removing the per-row correlation, not from an optimisation fence.
+- Measured: `/overview` **98 ms** (budget 2 s); playlist page **50–99 ms** across all three filter values (budget 1 s).
+
+### Accessibility
+- The filter is a keyboard-operable tablist with arrow/Home/End and an exposed selected value; result-count changes are announced through a live region; watched state is carried by **text**, never colour alone; every dashboard figure is bound to its label via `dl`/`dt`/`dd`; system lists are marked with the words "System list" rather than styling.
+
+### Internal
+- Saved & Forgotten has exactly **one** derivation, consumed by both the dashboard and the videos-list filter, so the two cannot drift — an equality test guards it as a backstop rather than doing the job of the mechanism. "Curated" is tested **positively** as `playlist_type = 'regular'`, so `liked` and `favorites` — types the upstream enum defines but this feature never names — are excluded automatically; `is_system` is likewise derived as "not regular" rather than from a hardcoded pair. The playlist inventory is produced by `GROUP BY` over whatever exists, which makes a newly-introduced playlist type visible instead of silently absent.
+- `StatGrid` extracted from Settings' database-statistics grid on its third call site.
+- Filed during this work: **#160** (`make quality` cannot pass and diverges from CI), **#161** (`user_videos` lacks an index on `video_id`).
+
 ## [0.60.0] - 2026-08-02
 
 ### Fixed

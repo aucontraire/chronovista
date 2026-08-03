@@ -20,6 +20,9 @@ import { AppShell } from "../components/layout";
 import { NotFoundPage } from "../pages/NotFoundPage";
 
 // Lazy-loaded page components (downloaded on first navigation)
+const OverviewPage = lazy(() =>
+  import("../pages/OverviewPage").then((m) => ({ default: m.OverviewPage })),
+);
 const HomePage = lazy(() =>
   import("../pages/HomePage").then((m) => ({ default: m.HomePage })),
 );
@@ -149,6 +152,10 @@ export const router = createBrowserRouter([
       {
         index: true,
         element: <Navigate to="/videos" replace />,
+      },
+      {
+        path: "overview",
+        element: lazySuspense(<OverviewPage />),
       },
       {
         path: "videos",

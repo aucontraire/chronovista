@@ -125,6 +125,32 @@ export interface PlaylistVideoItem {
   position: number;
   /** Content availability status */
   availability_status: string;
+  /**
+   * Whether a watch-history record exists for this video (Feature 061).
+   *
+   * Derived from watch history only — never from playlist membership. A video
+   * can sit in Watch Later and still be watched.
+   */
+  watched: boolean;
+}
+
+/**
+ * Watched/unwatched breakdown for one playlist (Feature 061).
+ *
+ * `playlist_total` is deliberately NOT called `total`: the same response also
+ * carries `pagination.total`, which is the **result count** for the current
+ * view. The two differ whenever the watched filter is not "all" — on a
+ * 4,973-video Watch Later filtered to Unwatched, `playlist_total` stays 4,973
+ * while `pagination.total` is 2,392. Both are correct; they answer different
+ * questions.
+ */
+export interface PlaylistWatchStats {
+  /** Distinct videos in the playlist under the current non-watched filters */
+  playlist_total: number;
+  /** Of those, distinct videos with a watch-history record */
+  watched: number;
+  /** Of those, distinct videos with no watch-history record */
+  unwatched: number;
 }
 
 /**
@@ -169,8 +195,10 @@ export interface PlaylistDetailResponse {
 export interface PlaylistVideoListResponse {
   /** Array of video items with playlist positions */
   data: PlaylistVideoItem[];
-  /** Pagination metadata */
+  /** Pagination metadata — `total` here is the RESULT COUNT */
   pagination: PaginationMeta;
+  /** Watched breakdown — `playlist_total` here is NOT the result count */
+  stats: PlaylistWatchStats;
 }
 
 /**

@@ -19,15 +19,13 @@ import { useCallback } from "react";
 
 import { useAppInfo } from "../../hooks/useAppInfo";
 import type { DatabaseStats } from "../../api/settings";
+import { StatGrid, type StatGridItem } from "../StatGrid";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface StatItem {
-  label: string;
-  value: number;
-}
+type StatItem = StatGridItem;
 
 interface SyncItem {
   key: string;
@@ -245,33 +243,13 @@ function DatabaseStatsGrid({ stats }: DatabaseStatsGridProps) {
   }));
 
   return (
-    <div>
-      <h4
-        id="about-db-stats-heading"
-        className="text-sm font-semibold text-slate-700 mb-3"
-      >
-        Database Statistics
-      </h4>
-
-      <dl
-        aria-labelledby="about-db-stats-heading"
-        className="grid grid-cols-2 sm:grid-cols-3 gap-3"
-      >
-        {items.map(({ label, value }) => (
-          <div
-            key={label}
-            className="bg-slate-50 border border-slate-100 rounded-lg px-4 py-3"
-          >
-            <dt className="text-xs font-medium text-slate-500 mb-0.5">
-              {label}
-            </dt>
-            <dd className="text-xl font-semibold text-slate-900 tabular-nums">
-              {value.toLocaleString()}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </div>
+    <StatGrid
+      items={items}
+      heading="Database Statistics"
+      headingId="about-db-stats-heading"
+      headingLevel="h4"
+      skeletonCount={DB_STAT_LABELS.length}
+    />
   );
 }
 

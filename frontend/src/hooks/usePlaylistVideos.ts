@@ -13,7 +13,16 @@ import type { SortOrder } from "../types/filters";
 import type {
   PlaylistVideoItem,
   PlaylistVideoListResponse,
+  PlaylistWatchStats,
 } from "../types/playlist";
+
+/**
+ * Watched-status filter values (Feature 061).
+ *
+ * Mirrors the backend `WatchedStatus` enum and the `watched_status` URL/query
+ * parameter — one name end to end, so the address and the API cannot drift.
+ */
+export type WatchedStatus = "all" | "watched" | "unwatched";
 
 /**
  * Default number of videos to fetch per page.
@@ -38,6 +47,7 @@ async function fetchPlaylistVideos(
   likedOnly?: boolean,
   hasTranscript?: boolean,
   unavailableOnly?: boolean,
+  watchedStatus?: WatchedStatus,
   signal?: AbortSignal
 ): Promise<PlaylistVideoListResponse> {
   const params = new URLSearchParams({
@@ -60,6 +70,10 @@ async function fetchPlaylistVideos(
   }
   if (unavailableOnly) {
     params.set("unavailable_only", "true");
+  }
+  // Omit at the default so the request matches the URL, which also omits it.
+  if (watchedStatus && watchedStatus !== "all") {
+    params.set("watched_status", watchedStatus);
   }
 
   // FR-004/FR-005: externalSignal combines with the internal timeout guard.
@@ -86,13 +100,26 @@ export interface UsePlaylistVideosOptions {
   hasTranscript?: boolean;
   /** Filter to show only unavailable videos */
   unavailableOnly?: boolean;
+  /** Watched-status filter: all (default), watched, or unwatched */
+  watchedStatus?: WatchedStatus;
 }
 
 interface UsePlaylistVideosReturn {
   /** All loaded video items flattened */
   videos: PlaylistVideoItem[];
-  /** Total number of videos available in the playlist */
+  /**
+   * Result count for the current view — the basis for pagination.
+   *
+   * NOT the playlist size: when `watchedStatus` is "watched" or "unwatched"
+   * this shrinks while `stats.playlist_total` stays put.
+   */
   total: number | null;
+  /**
+   * Watched breakdown for the playlist, unaffected by `watchedStatus`.
+   *
+   * Null until the first page resolves.
+   */
+  stats: PlaylistWatchStats | null;
   /** Number of videos currently loaded */
   loadedCount: number;
   /** Whether the initial load is in progress */
@@ -149,6 +176,7 @@ export function usePlaylistVideos(
     likedOnly,
     hasTranscript,
     unavailableOnly,
+    watchedStatus,
   } = options;
 
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -173,6 +201,7 @@ export function usePlaylistVideos(
       likedOnly,
       hasTranscript,
       unavailableOnly,
+      watchedStatus,
     ],
     queryFn: async ({ pageParam, signal }) => {
       // FR-004/FR-005: TanStack Query provides signal; cancelled on key change or unmount.
@@ -186,6 +215,7 @@ export function usePlaylistVideos(
         likedOnly,
         hasTranscript,
         unavailableOnly,
+        watchedStatus,
         signal
       );
     },
@@ -207,6 +237,7 @@ export function usePlaylistVideos(
   // Get total count from the last page's pagination
   const lastPage = data?.pages[data.pages.length - 1];
   const total = lastPage?.pagination?.total ?? null;
+  const stats = lastPage?.stats ?? null;
   const loadedCount = videos.length;
 
   // Memoized fetch function for intersection observer
@@ -249,6 +280,7 @@ export function usePlaylistVideos(
   return {
     videos,
     total,
+    stats,
     loadedCount,
     isLoading,
     isError,

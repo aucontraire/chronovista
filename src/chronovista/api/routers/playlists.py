@@ -23,6 +23,7 @@ from chronovista.api.schemas.playlists import (
     PlaylistListResponse,
     PlaylistVideoListItem,
     PlaylistVideoListResponse,
+    PlaylistWatchStats,
 )
 from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.sorting import SortOrder
@@ -36,7 +37,8 @@ from chronovista.db.models import (
 )
 from chronovista.db.models import Video as VideoDB
 from chronovista.exceptions import BadRequestError, NotFoundError
-from chronovista.models.enums import AvailabilityStatus, PlaylistType
+from chronovista.models.enums import AvailabilityStatus, PlaylistType, WatchedStatus
+from chronovista.repositories.user_video_repository import watched_video_ids
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -332,6 +334,13 @@ async def get_playlist_videos(
         False,
         description="Filter to show only unavailable videos",
     ),
+    watched_status: WatchedStatus = Query(
+        WatchedStatus.ALL,
+        description=(
+            "Filter by watched status (all, watched, unwatched). Watched-status "
+            "comes from watch history, never from playlist membership."
+        ),
+    ),
     session: AsyncSession = Depends(get_db),
 ) -> PlaylistVideoListResponse:
     """Get videos in a playlist with sorting and filtering.
@@ -361,6 +370,11 @@ async def get_playlist_videos(
         If True, only return videos with transcripts (default: False).
     unavailable_only : bool
         If True, only return unavailable videos (default: False).
+    watched_status : WatchedStatus
+        Restrict results to watched or unwatched videos (default: all). Watched
+        means a watch-history record exists; it is never inferred from playlist
+        membership. Narrows ``pagination.total`` but deliberately not ``stats``,
+        which always describes the whole playlist.
     session : AsyncSession
         Database session from dependency.
 
@@ -420,6 +434,15 @@ async def get_playlist_videos(
         )
         query = query.where(VideoDB.video_id.in_(transcript_subquery))
 
+    # Apply watched_status filter (Feature 061) — non-correlated IN-subquery,
+    # matching the liked_only pattern above. The correlated EXISTS equivalent
+    # measured 25,676 ms against production data where this measures 69 ms, for
+    # identical results (research R1).
+    if watched_status is WatchedStatus.WATCHED:
+        query = query.where(VideoDB.video_id.in_(watched_video_ids()))
+    elif watched_status is WatchedStatus.UNWATCHED:
+        query = query.where(VideoDB.video_id.not_in(watched_video_ids()))
+
     # Build count query with the same filters
     count_base_query = (
         select(PlaylistMembership)
@@ -450,6 +473,40 @@ async def get_playlist_videos(
         )
         count_base_query = count_base_query.where(
             VideoDB.video_id.in_(transcript_count_subquery)
+        )
+
+    # The stats header (FR-004) is computed from the filter context *before* the
+    # watched filter narrows it, so switching All/Watched/Unwatched changes the
+    # listed videos and the result count but never the three header figures
+    # (FR-005b). Counting DISTINCT video_id keeps it duplicate-safe (FR-002).
+    stats_subquery = count_base_query.subquery()
+    stats_result = await session.execute(
+        select(
+            func.count(func.distinct(stats_subquery.c.video_id)),
+            func.count(func.distinct(stats_subquery.c.video_id)).filter(
+                stats_subquery.c.video_id.in_(watched_video_ids())
+            ),
+        ).select_from(stats_subquery)
+    )
+    stats_total, stats_watched = stats_result.one()
+    stats = PlaylistWatchStats(
+        playlist_total=int(stats_total or 0),
+        watched=int(stats_watched or 0),
+        unwatched=int(stats_total or 0) - int(stats_watched or 0),
+    )
+
+    # Now apply the watched filter to the count query so pagination.total is the
+    # RESULT COUNT — a different quantity from stats.playlist_total (FR-005c).
+    # playlists.py rebuilds its count query by hand rather than deriving it from
+    # `query`, so the filter must be applied in both places or the list narrows
+    # while the total does not (research R8).
+    if watched_status is WatchedStatus.WATCHED:
+        count_base_query = count_base_query.where(
+            VideoDB.video_id.in_(watched_video_ids())
+        )
+    elif watched_status is WatchedStatus.UNWATCHED:
+        count_base_query = count_base_query.where(
+            VideoDB.video_id.not_in(watched_video_ids())
         )
 
     count_query = select(func.count()).select_from(count_base_query.subquery())
@@ -493,6 +550,34 @@ async def get_playlist_videos(
         corrections_result = await session.execute(corrections_query)
         videos_with_corrections = {row[0] for row in corrections_result.fetchall()}
 
+    # Which videos on this page have been watched (FR-010).
+    #
+    # Under a watched filter the answer is already settled by the WHERE clause
+    # applied above — every row on a `watched` page passed
+    # `video_id IN watched_video_ids()`, and every row on an `unwatched` page
+    # failed it. Re-asking the database would scan `user_videos` again to
+    # rediscover what the query just proved. Only the unfiltered case can hold a
+    # mix and needs the lookup.
+    #
+    # That lookup is one query per page, never one per row, mirroring the
+    # corrections batch above; it is bounded by page size, so it does not
+    # interact with R1's scaling.
+    watched_ids: set[str] = set()
+    if watched_status is WatchedStatus.WATCHED:
+        watched_ids = set(video_ids)
+    elif watched_status is WatchedStatus.UNWATCHED:
+        watched_ids = set()
+    elif video_ids:
+        watched_result = await session.execute(
+            select(UserVideo.video_id)
+            .where(
+                UserVideo.video_id.in_(video_ids),
+                UserVideo.watched_at.is_not(None),
+            )
+            .distinct()
+        )
+        watched_ids = {row[0] for row in watched_result.fetchall()}
+
     # Transform to response items
     items: list[PlaylistVideoListItem] = []
     for membership, video in rows:
@@ -514,6 +599,7 @@ async def get_playlist_videos(
                 transcript_summary=transcript_summary,
                 position=membership.position,
                 availability_status=video.availability_status,
+                watched=video.video_id in watched_ids,
             )
         )
 
@@ -525,4 +611,4 @@ async def get_playlist_videos(
         has_more=(offset + limit) < total,
     )
 
-    return PlaylistVideoListResponse(data=items, pagination=pagination)
+    return PlaylistVideoListResponse(data=items, pagination=pagination, stats=stats)

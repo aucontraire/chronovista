@@ -4,6 +4,7 @@
  * Covers:
  * - Sort dropdown renders 3 options with correct labels
  * - Filter toggles render (unavailable_only, liked_only, has_transcript)
+ * - Watched filter tabs render (all/watched/unwatched, Feature 061)
  * - URL state persistence on refresh
  * - Empty state messages (single-filter specific + multi-filter combined)
  * - Focus remains on control after change
@@ -110,6 +111,14 @@ function setupDefaultMocks(options: {
   mockUsePlaylistVideos.mockReturnValue({
     videos,
     total,
+    // Feature 061: the stats header. These describe the playlist and stay
+    // fixed as the watched filter moves (FR-005b), unlike `total`, which is
+    // the result count for the current view.
+    stats: {
+      playlist_total: videos.length,
+      watched: 0,
+      unwatched: videos.length,
+    },
     loadedCount: videos.length,
     isLoading,
     isError: false,

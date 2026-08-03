@@ -45,6 +45,7 @@ describe("usePlaylistVideos", () => {
         },
         position: 0,
         availability_status: "available",
+        watched: false,
       },
       {
         video_id: "unavail123",
@@ -62,6 +63,7 @@ describe("usePlaylistVideos", () => {
         },
         position: 1,
         availability_status: "deleted",
+        watched: false,
       },
       {
         video_id: "private456",
@@ -79,6 +81,7 @@ describe("usePlaylistVideos", () => {
         },
         position: 2,
         availability_status: "private",
+        watched: false,
       },
     ],
     pagination: {
@@ -87,6 +90,7 @@ describe("usePlaylistVideos", () => {
       offset: 0,
       has_more: false,
     },
+        stats: { playlist_total: 0, watched: 0, unwatched: 0 },
   };
 
   beforeEach(() => {
@@ -179,6 +183,7 @@ describe("usePlaylistVideos", () => {
           offset: 0,
           has_more: false,
         },
+        stats: { playlist_total: 0, watched: 0, unwatched: 0 },
       };
 
       vi.mocked(apiConfig.apiFetch).mockResolvedValueOnce(availableOnlyResponse);
@@ -297,6 +302,7 @@ describe("usePlaylistVideos", () => {
           offset: 0,
           has_more: true,
         },
+        stats: { playlist_total: 0, watched: 0, unwatched: 0 },
       };
 
       vi.mocked(apiConfig.apiFetch).mockResolvedValueOnce(responseWithMore);

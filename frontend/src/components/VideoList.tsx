@@ -120,6 +120,8 @@ interface VideoListProps {
   likedOnly?: boolean;
   /** Filter to videos with transcripts (Feature 027) */
   hasTranscript?: boolean;
+  /** Filter to videos saved in a curated playlist and never watched */
+  savedUnwatched?: boolean;
 }
 
 /**
@@ -136,6 +138,7 @@ export function VideoList({
   sortOrder,
   likedOnly = false,
   hasTranscript,
+  savedUnwatched,
 }: VideoListProps = {}) {
   const {
     videos,
@@ -159,6 +162,7 @@ export function VideoList({
     ...(sortBy !== undefined && { sortBy }),
     ...(sortOrder !== undefined && { sortOrder }),
     ...(hasTranscript !== undefined && { hasTranscript }),
+    ...(savedUnwatched !== undefined && { savedUnwatched }),
   });
 
   // Initial loading state

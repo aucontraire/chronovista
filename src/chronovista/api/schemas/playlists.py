@@ -156,6 +156,13 @@ class PlaylistVideoListItem(BaseModel):
         ...,
         description="Video availability status (included to preserve position integrity)",
     )
+    watched: bool = Field(
+        ...,
+        description=(
+            "Whether a watch-history record exists for this video. Derived from "
+            "watch history, never from playlist membership."
+        ),
+    )
 
 
 class PlaylistListResponse(BaseModel):
@@ -175,6 +182,31 @@ class PlaylistDetailResponse(BaseModel):
     data: PlaylistDetail
 
 
+class PlaylistWatchStats(BaseModel):
+    """Watched/unwatched breakdown for one playlist (Feature 061).
+
+    The field is named ``playlist_total`` rather than ``total`` on purpose. The
+    same response also carries ``pagination.total``, which is the **result
+    count** — the number of videos in the current view — and the two differ
+    whenever the watched filter is not ``all``. Under ``watched_status=unwatched``
+    on a 4,973-video Watch Later, ``playlist_total`` is 4,973 while
+    ``pagination.total`` is 2,392. Distinct names make that impossible to
+    conflate in code.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    playlist_total: int = Field(
+        ..., description="Distinct videos in the playlist under the current filters"
+    )
+    watched: int = Field(
+        ..., description="Of those, distinct videos with a watch-history record"
+    )
+    unwatched: int = Field(
+        ..., description="Of those, distinct videos with no watch-history record"
+    )
+
+
 class PlaylistVideoListResponse(BaseModel):
     """Response wrapper for playlist video list."""
 
@@ -182,3 +214,4 @@ class PlaylistVideoListResponse(BaseModel):
 
     data: list[PlaylistVideoListItem]
     pagination: PaginationMeta
+    stats: PlaylistWatchStats

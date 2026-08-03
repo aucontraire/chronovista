@@ -50,6 +50,11 @@ export function HomePage() {
   const sortOrder = (searchParams.get("sort_order") as SortOrder) || undefined;
   const likedOnly = searchParams.get("liked_only") === "true";
   const hasTranscript = searchParams.get("has_transcript") === "true";
+  // Feature 061 (FR-018d): URL-backed, using the same name as the API query
+  // parameter so the address and the request cannot drift. This is also what
+  // makes the dashboard's pre-filtered deep link possible (FR-018, FR-025) —
+  // component state would leave that link with nothing to target.
+  const savedUnwatched = searchParams.get("saved_unwatched") === "true";
 
   // Get total count for filters display (using the same hook with all filters)
   const { total } = useVideos({
@@ -74,7 +79,7 @@ export function HomePage() {
   // Scroll to top when filter or sort changes (FR-031)
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [tags, canonicalTags, category, topicIds, includeUnavailable, sortBy, sortOrder, likedOnly, hasTranscript]);
+  }, [tags, canonicalTags, category, topicIds, includeUnavailable, sortBy, sortOrder, likedOnly, hasTranscript, savedUnwatched]);
 
   return (
     <div className="p-6 lg:p-8">
@@ -106,6 +111,10 @@ export function HomePage() {
           {/* Boolean Filter Toggles */}
           <FilterToggle paramKey="liked_only" label="Liked only" />
           <FilterToggle paramKey="has_transcript" label="Has transcripts" />
+          <FilterToggle
+            paramKey="saved_unwatched"
+            label="Saved but never watched"
+          />
         </div>
       </section>
 
@@ -137,6 +146,7 @@ export function HomePage() {
           sortOrder={sortOrder}
           likedOnly={likedOnly}
           hasTranscript={hasTranscript}
+          savedUnwatched={savedUnwatched}
         />
       </section>
     </div>

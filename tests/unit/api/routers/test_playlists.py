@@ -37,8 +37,13 @@ def _make_mock_session() -> AsyncMock:
     """
     mock_session = AsyncMock(spec=AsyncSession)
 
-    # Create a mock result that handles playlist lookup (scalar_one_or_none)
-    # and video query (all)
+    # The first execute() is always the playlist existence check; every later
+    # one is configured with a safe empty answer for each accessor the endpoint
+    # might use. Dispatching purely on call *number* made this fixture brittle:
+    # Feature 061 inserted a stats aggregate before the count query and shifted
+    # every subsequent case by one, breaking 14 tests that had nothing to do
+    # with the change. Answering by accessor instead of by position means adding
+    # a query no longer renumbers anything.
     call_count = 0
 
     async def mock_execute(query, *args, **kwargs):
@@ -48,15 +53,17 @@ def _make_mock_session() -> AsyncMock:
         result = MagicMock()
 
         if call_count == 1:
-            # First call: playlist existence check
+            # Playlist existence check
             result.scalar_one_or_none.return_value = "PLtest1234567890abcdefgh"
-        elif call_count == 2:
-            # Second call: count query
-            result.scalar.return_value = 0
-        else:
-            # Third call: main query -> empty result
-            result.all.return_value = []
+            return result
 
+        # Aggregate row, e.g. the watched stats header: (playlist_total, watched)
+        result.one.return_value = (0, 0)
+        # Scalar count query
+        result.scalar.return_value = 0
+        # Row-returning queries
+        result.all.return_value = []
+        result.fetchall.return_value = []
         return result
 
     mock_session.execute = AsyncMock(side_effect=mock_execute)

@@ -74,6 +74,13 @@ export type NavEntry = NavRoute | NavGroupRoute | NavSeparator;
 export const navRoutes: NavEntry[] = [
   {
     kind: "route",
+    path: "/overview",
+    label: "Overview",
+    tooltip: "Library overview and Saved & Forgotten",
+    icon: ChartBarIcon,
+  },
+  {
+    kind: "route",
     path: "/videos",
     label: "Videos",
     tooltip: "Browse your video library",

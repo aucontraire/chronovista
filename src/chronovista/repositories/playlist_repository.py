@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from chronovista.db.models import Playlist as PlaylistDB
+from chronovista.db.models import PlaylistMembership as PlaylistMembershipDB
+from chronovista.db.models import UserVideo as UserVideoDB
 from chronovista.models.enums import PlaylistType
 from chronovista.models.playlist import (
     PlaylistAnalytics,
@@ -23,6 +25,218 @@ from chronovista.models.playlist import (
     PlaylistUpdate,
 )
 from chronovista.repositories.base import BaseSQLAlchemyRepository
+from chronovista.repositories.user_video_repository import watched_video_ids
+
+
+def saved_forgotten_video_ids() -> Any:
+    """Return a subquery of every distinct "saved & forgotten" video id.
+
+    Saved & Forgotten (Feature 061) means: the video sits in at least one
+    *curated* playlist and has no watch-history record.
+
+    **This is the single derivation of that concept.** Both the dashboard
+    headline and the videos-list filter consume it, rather than each expressing
+    it independently — FR-029b requires exactly one definition so the two
+    consumers cannot drift, and FR-029c asserts their equality as a backstop
+    rather than as the mechanism.
+
+    Two details are load-bearing:
+
+    - **"Curated" is tested positively** as ``playlist_type == 'regular'``, so
+      every other type is excluded automatically — including ``liked`` and
+      ``favorites``, which the upstream enum defines but this feature never
+      names. A negative test against a list of known system types would leak a
+      newly-introduced type into the count.
+    - **``.not_in()`` against a non-correlated, DISTINCT subquery.** Safe here
+      because ``user_videos.video_id`` and ``playlist_memberships.video_id`` are
+      both NOT NULL — a NULL anywhere in a ``NOT IN`` subquery would make it
+      return zero rows silently, reporting 0 forgotten videos as if that were a
+      real answer.
+
+    Returns
+    -------
+    Any
+        A selectable of distinct video ids, usable as
+        ``VideoDB.video_id.in_(saved_forgotten_video_ids())``.
+    """
+    return (
+        select(PlaylistMembershipDB.video_id)
+        .join(PlaylistDB, PlaylistDB.playlist_id == PlaylistMembershipDB.playlist_id)
+        .where(
+            PlaylistDB.playlist_type == PlaylistType.REGULAR.value,
+            PlaylistMembershipDB.video_id.not_in(watched_video_ids()),
+        )
+        .distinct()
+    )
+
+
+async def get_library_overview(session: AsyncSession) -> dict[str, Any]:
+    """Compute every Overview Dashboard figure.
+
+    Query shape is the whole problem here (research R1). Measured against
+    production data — 89,465 memberships, 51,271 watch rows:
+
+    - ``LEFT JOIN LATERAL (SELECT 1 FROM user_videos ... LIMIT 1)`` per
+      membership row: **50,893 ms**
+    - the CTE form below: **131 ms**
+
+    Both return identical numbers, so a test asserting only values cannot tell
+    them apart. The CTE form expresses the watched set and the distinct
+    (type, video) membership set once, then answers the depth figures with
+    conditional aggregates over a single join — no per-row subquery anywhere.
+
+    These CTEs are deliberately **not** ``MATERIALIZED``. Each is referenced once,
+    so PostgreSQL 12+ inlines them and plans across the boundary. Forcing
+    materialisation was measured against production and is *slower*: ~134 ms
+    versus ~85 ms. The win over the LATERAL form came from removing the per-row
+    correlation, not from an optimisation fence, so do not add the hint on the
+    theory that it must help.
+
+    Sequential queries, never ``asyncio.gather`` — ``AsyncSession`` raises
+    ``IllegalStateChangeError`` under concurrent use (research R2, and see the
+    note at ``api/routers/settings.py``). Keeping the figure count low matters
+    precisely because the queries cannot overlap.
+
+    Parameters
+    ----------
+    session : AsyncSession
+        Database session.
+
+    Returns
+    -------
+    dict[str, Any]
+        Keys: ``saved_and_forgotten``, ``watch_later`` (None when absent),
+        ``playlist_inventory``, ``rollup``.
+    """
+    watched = (
+        select(UserVideoDB.video_id.label("video_id"))
+        .where(UserVideoDB.watched_at.is_not(None))
+        .distinct()
+        .cte("watched")
+    )
+    membership = (
+        select(
+            PlaylistDB.playlist_type.label("playlist_type"),
+            PlaylistMembershipDB.video_id.label("video_id"),
+        )
+        .join(PlaylistDB, PlaylistDB.playlist_id == PlaylistMembershipDB.playlist_id)
+        .distinct()
+        .cte("membership")
+    )
+
+    regular = PlaylistType.REGULAR.value
+    watch_later_type = PlaylistType.WATCH_LATER.value
+    unwatched = watched.c.video_id.is_(None)
+
+    counts = (
+        await session.execute(
+            select(
+                func.count()
+                .filter(membership.c.playlist_type == regular)
+                .label("saved_curated_videos"),
+                func.count()
+                .filter(membership.c.playlist_type == watch_later_type)
+                .label("wl_total"),
+                func.count()
+                .filter(
+                    and_(
+                        membership.c.playlist_type == watch_later_type,
+                        unwatched,
+                    )
+                )
+                .label("wl_unwatched"),
+            ).select_from(
+                membership.outerjoin(
+                    watched, watched.c.video_id == membership.c.video_id
+                )
+            )
+        )
+    ).one()
+
+    # FR-021: group over whatever types exist. Never iterate a fixed list — this
+    # is the tripwire that makes a newly-introduced playlist type visible.
+    #
+    # `min(playlist_id)` rides along so FR-025 can deep-link Watch Later without
+    # a second round trip. It is only meaningful when the type has exactly one
+    # playlist, which is enforced where it is consumed below.
+    inventory_rows = (
+        await session.execute(
+            select(
+                PlaylistDB.playlist_type,
+                func.count(),
+                func.min(PlaylistDB.playlist_id),
+            )
+            .group_by(PlaylistDB.playlist_type)
+            .order_by(PlaylistDB.playlist_type)
+        )
+    ).all()
+
+    # FR-029b: Saved & Forgotten has **one** derivation, and this is the
+    # dashboard consuming it. Expressing it here a second time as a conditional
+    # aggregate over the membership CTE would agree numerically today and make
+    # the equality test (FR-029c) a coincidence rather than a consequence — the
+    # backstop would be doing the job the mechanism is supposed to do. The extra
+    # round trip costs ~30 ms against production, well inside the SC-010 budget.
+    saved_and_forgotten = await session.scalar(
+        select(func.count()).select_from(saved_forgotten_video_ids().subquery())
+    )
+
+    watched_videos = await session.scalar(
+        select(func.count(func.distinct(UserVideoDB.video_id))).where(
+            UserVideoDB.watched_at.is_not(None)
+        )
+    )
+    liked_videos = await session.scalar(
+        select(func.count(func.distinct(UserVideoDB.video_id))).where(
+            UserVideoDB.liked.is_(True)
+        )
+    )
+
+    # FR-020a: absence of a Watch Later playlist is distinct from an empty one.
+    watch_later_row = next(
+        (row for row in inventory_rows if row[0] == watch_later_type), None
+    )
+
+    # FR-025: the depth aggregates over every Watch Later playlist, but a link
+    # can only target one. Offer an id only when the target is unambiguous —
+    # with two such playlists the figure spans both and linking to either would
+    # send the user somewhere whose count does not match what they clicked. The
+    # frontend renders a non-interactive figure when this is null, which FR-025
+    # explicitly permits.
+    watch_later_playlist_id = (
+        str(watch_later_row[2])
+        if watch_later_row is not None and int(watch_later_row[1] or 0) == 1
+        else None
+    )
+
+    return {
+        "saved_and_forgotten": int(saved_and_forgotten or 0),
+        "watch_later": (
+            {
+                "total": int(counts.wl_total or 0),
+                "unwatched": int(counts.wl_unwatched or 0),
+                "playlist_id": watch_later_playlist_id,
+            }
+            if watch_later_row is not None
+            else None
+        ),
+        "playlist_inventory": [
+            {
+                "playlist_type": row[0],
+                "playlist_count": int(row[1] or 0),
+                # row[2] (min playlist_id) is deliberately not surfaced here;
+                # it exists only for the Watch Later deep link above.
+                # Derived, not enumerated (FR-022).
+                "is_system": row[0] != regular,
+            }
+            for row in inventory_rows
+        ],
+        "rollup": {
+            "watched_videos": int(watched_videos or 0),
+            "saved_curated_videos": int(counts.saved_curated_videos or 0),
+            "liked_videos": int(liked_videos or 0),
+        },
+    }
 
 
 class PlaylistRepository(

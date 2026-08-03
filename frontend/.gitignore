@@ -12,6 +12,7 @@ src/api/*.ts
 !src/api/entityMentions.ts
 !src/api/onboarding.ts
 !src/api/settings.ts
+!src/api/overview.ts
 
 # Environment
 .env

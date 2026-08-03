@@ -64,6 +64,7 @@ from chronovista.repositories.canonical_tag_repository import (
 from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
 )
+from chronovista.repositories.playlist_repository import saved_forgotten_video_ids
 
 logger = logging.getLogger(__name__)
 
@@ -562,6 +563,13 @@ async def list_videos(
         SortOrder.DESC,
         description="Sort order (asc or desc)",
     ),
+    saved_unwatched: bool = Query(
+        False,
+        description=(
+            "Filter to videos saved in at least one curated playlist and never "
+            "watched (the dashboard's Saved & Forgotten set)"
+        ),
+    ),
     liked_only: bool = Query(
         False,
         description="Filter to only liked videos",
@@ -750,6 +758,14 @@ async def list_videos(
             .scalar_subquery()
         )
         query = query.where(VideoDB.video_id.in_(liked_subquery))
+
+    # Saved & Forgotten filter (Feature 061) — imports the SAME derivation the
+    # dashboard headline uses, rather than re-expressing it here, so the two
+    # figures cannot drift (FR-029b). Applied to `query` only: the count is
+    # derived from `query.subquery()` below, unlike playlists.py which rebuilds
+    # its count by hand (research R8).
+    if saved_unwatched:
+        query = query.where(VideoDB.video_id.in_(saved_forgotten_video_ids()))
 
     # T099: Execute query with timeout (FR-036: 10s timeout)
     try:

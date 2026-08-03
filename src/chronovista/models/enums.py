@@ -86,6 +86,18 @@ class PlaylistType(str, Enum):
     FAVORITES = "favorites"  # Legacy Favorites playlist
 
 
+class WatchedStatus(str, Enum):
+    """Watched-status filter for playlist video listings (Feature 061).
+
+    Watched-status derives solely from ``user_videos.watched_at`` and is never
+    inferred from playlist membership.
+    """
+
+    ALL = "all"
+    WATCHED = "watched"
+    UNWATCHED = "unwatched"
+
+
 # Known English system-playlist names (normalized, case-insensitive) → type.
 # Name matching is English-only by design (accepted limitation, Feature 058).
 _SYSTEM_PLAYLIST_NAMES: dict[str, PlaylistType] = {

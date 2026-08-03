@@ -31,7 +31,14 @@ import { FilterToggle } from "../components/FilterToggle";
 import { LoadingState } from "../components/LoadingState";
 import { PlaylistVideoCard } from "../components/PlaylistVideoCard";
 import { SortDropdown } from "../components/SortDropdown";
-import { usePlaylistDetail, usePlaylistVideos, useUrlParamBoolean } from "../hooks";
+import { WatchedFilterTabs } from "../components/WatchedFilterTabs";
+import {
+  usePlaylistDetail,
+  usePlaylistVideos,
+  useUrlParam,
+  useUrlParamBoolean,
+} from "../hooks";
+import type { WatchedStatus } from "../hooks/usePlaylistVideos";
 import { cardPatterns } from "../styles";
 import type { PlaylistVideoSortField, SortOption, SortOrder } from "../types/filters";
 import type { PlaylistPrivacyStatus } from "../types/playlist";
@@ -307,13 +314,26 @@ export function PlaylistDetailPage() {
   const [likedOnly] = useUrlParamBoolean("liked_only");
   const [hasTranscript] = useUrlParamBoolean("has_transcript");
   const [unavailableOnly] = useUrlParamBoolean("unavailable_only");
+  // Feature 061: watched filter lives in the URL under the same name the API
+  // uses (FR-007a), so a filtered view is shareable and the dashboard's
+  // pre-filtered deep link has a target (FR-025). useUrlParam falls back to
+  // "all" for an invalid value (FR-007e) and omits the param at the default
+  // (FR-007c). Sort and the watched filter are independent params, so changing
+  // one preserves the other (FR-007d).
+  const [watchedStatus, setWatchedStatus] = useUrlParam<WatchedStatus>(
+    "watched_status",
+    "all",
+    ["all", "watched", "unwatched"] as const
+  );
 
   // Determine if any filter is active
-  const hasActiveFilter = likedOnly || hasTranscript || unavailableOnly;
+  const hasActiveFilter =
+    likedOnly || hasTranscript || unavailableOnly || watchedStatus !== "all";
 
   const {
     videos,
     total,
+    stats,
     isLoading: videosLoading,
     isError: videosError,
     hasNextPage,
@@ -326,6 +346,7 @@ export function PlaylistDetailPage() {
     likedOnly,
     hasTranscript,
     unavailableOnly,
+    watchedStatus,
   });
 
   // Description truncation state (CHK041)
@@ -563,6 +584,55 @@ export function PlaylistDetailPage() {
       <div>
         <h2 className="text-2xl font-bold text-gray-900 mb-4">Videos</h2>
 
+        {/* Watched stats header (FR-004). These three figures describe the
+            playlist under the *other* active filters and do NOT change as the
+            watched filter moves (FR-005b) — only the list and its result count
+            do. */}
+        {videosError ? (
+          <div
+            role="alert"
+            className="mb-6 p-4 bg-white border border-red-200 rounded-lg text-sm text-red-700"
+          >
+            Could not load watch statistics for this playlist.
+          </div>
+        ) : videosLoading || stats === null ? (
+          <div
+            className="mb-6 p-4 bg-white border border-gray-200 rounded-lg"
+            aria-busy="true"
+          >
+            <span className="sr-only">Loading watch statistics…</span>
+            <div className="grid grid-cols-3 gap-4" aria-hidden="true">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="animate-pulse">
+                  <div className="h-3 w-16 bg-slate-200 rounded mb-2" />
+                  <div className="h-6 w-12 bg-slate-200 rounded" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <dl className="grid grid-cols-3 gap-4 mb-6 p-4 bg-white border border-gray-200 rounded-lg">
+            <div>
+              <dt className="text-xs font-medium text-slate-500">Total</dt>
+              <dd className="text-xl font-semibold text-slate-900 tabular-nums">
+                {stats.playlist_total.toLocaleString()}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium text-slate-500">Watched</dt>
+              <dd className="text-xl font-semibold text-slate-900 tabular-nums">
+                {stats.watched.toLocaleString()}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium text-slate-500">Unwatched</dt>
+              <dd className="text-xl font-semibold text-slate-900 tabular-nums">
+                {stats.unwatched.toLocaleString()}
+              </dd>
+            </div>
+          </dl>
+        )}
+
         {/* Sort & Filter Toolbar */}
         <div className="flex flex-wrap items-center gap-4 mb-6 p-4 bg-white border border-gray-200 rounded-lg">
           <SortDropdown<PlaylistVideoSortField>
@@ -575,6 +645,20 @@ export function PlaylistDetailPage() {
           <FilterToggle paramKey="unavailable_only" label="Unavailable only" />
           <FilterToggle paramKey="liked_only" label="Liked only" />
           <FilterToggle paramKey="has_transcript" label="Has transcript" />
+          <div className="h-6 w-px bg-gray-200" aria-hidden="true" />
+          <WatchedFilterTabs
+            currentFilter={watchedStatus}
+            onFilterChange={setWatchedStatus}
+            {...(stats
+              ? {
+                  counts: {
+                    all: stats.playlist_total,
+                    watched: stats.watched,
+                    unwatched: stats.unwatched,
+                  },
+                }
+              : {})}
+          />
         </div>
 
         {/* ARIA live region announcing filtered count (FR-005) */}

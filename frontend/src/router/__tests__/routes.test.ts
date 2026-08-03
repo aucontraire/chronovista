@@ -44,66 +44,43 @@ function findGroup(entries: NavEntry[], label: string): NavGroupRoute | undefine
 // ---------------------------------------------------------------------------
 
 describe("navRoutes — top-level structure", () => {
-  it("has exactly 10 top-level entries", () => {
-    expect(navRoutes).toHaveLength(10);
+  // Asserted as one explicit ordered list rather than per-index tests. The
+  // previous form checked navRoutes[0..6] individually, so inserting an entry
+  // renumbered every later assertion and broke 12 tests at once — the same
+  // brittleness as a mock that dispatches by call number. Order is still
+  // covered, but a deliberate change now edits one list.
+  it("has the expected top-level entries in order", () => {
+    const shape = navRoutes.map((e) =>
+      e.kind === "route"
+        ? `route:${e.path}`
+        : e.kind === "group"
+          ? `group:${e.label}`
+          : "separator"
+    );
+
+    expect(shape).toEqual([
+      // Feature 061: an ADDITIONAL destination. `/` still redirects to /videos,
+      // so the landing page is unchanged (FR-014a).
+      "route:/overview",
+      "route:/videos",
+      "group:Transcripts",
+      "route:/channels",
+      "route:/playlists",
+      "route:/entities",
+      "group:Tags",
+      "route:/search",
+      "separator",
+      "route:/onboarding",
+      "route:/settings",
+    ]);
   });
 
-  it("first entry is Videos flat route", () => {
-    const entry = navRoutes[0];
-    expect(entry?.kind).toBe("route");
-    if (entry?.kind === "route") {
-      expect(entry.path).toBe("/videos");
-      expect(entry.label).toBe("Videos");
-    }
-  });
-
-  it("second entry is the Transcripts group", () => {
-    const entry = navRoutes[1];
-    expect(entry?.kind).toBe("group");
-    if (entry?.kind === "group") {
-      expect(entry.label).toBe("Transcripts");
-    }
-  });
-
-  it("third entry is Channels flat route", () => {
-    const entry = navRoutes[2];
-    expect(entry?.kind).toBe("route");
-    if (entry?.kind === "route") {
-      expect(entry.path).toBe("/channels");
-    }
-  });
-
-  it("fourth entry is Playlists flat route", () => {
-    const entry = navRoutes[3];
-    expect(entry?.kind).toBe("route");
-    if (entry?.kind === "route") {
-      expect(entry.path).toBe("/playlists");
-    }
-  });
-
-  it("fifth entry is Entities flat route", () => {
-    const entry = navRoutes[4];
-    expect(entry?.kind).toBe("route");
-    if (entry?.kind === "route") {
-      expect(entry.path).toBe("/entities");
-    }
-  });
-
-  it("sixth entry is the Tags group", () => {
-    const entry = navRoutes[5];
-    expect(entry?.kind).toBe("group");
-    if (entry?.kind === "group") {
-      expect(entry.label).toBe("Tags");
-    }
-  });
-
-  it("seventh entry is Search flat route", () => {
-    const entry = navRoutes[6];
-    expect(entry?.kind).toBe("route");
-    if (entry?.kind === "route") {
-      expect(entry.path).toBe("/search");
-      expect(entry.label).toBe("Search");
-    }
+  it("Overview is a flat route with label and icon", () => {
+    const route = findRoute(navRoutes, "/overview");
+    expect(route).toBeDefined();
+    expect(route?.label).toBe("Overview");
+    expect(route?.tooltip).toBeTruthy();
+    expect(route?.icon).toBeDefined();
   });
 });
 
@@ -148,12 +125,16 @@ describe("navRoutes — flat NavRoute entries", () => {
 });
 
 describe("navRoutes — config section order", () => {
-  it("separator appears at index 7", () => {
-    expect(navRoutes[7]?.kind).toBe("separator");
+  // Positions are expressed relative to the separator rather than as absolute
+  // indices, so inserting a content route above it does not renumber these.
+  const separatorIndex = () => navRoutes.findIndex((e) => e.kind === "separator");
+
+  it("has exactly one separator", () => {
+    expect(navRoutes.filter((e) => e.kind === "separator")).toHaveLength(1);
   });
 
-  it("Setup route appears at index 8, after the separator", () => {
-    const entry = navRoutes[8];
+  it("Setup route appears immediately after the separator", () => {
+    const entry = navRoutes[separatorIndex() + 1];
     expect(entry?.kind).toBe("route");
     if (entry?.kind === "route") {
       expect(entry.path).toBe("/onboarding");
@@ -161,8 +142,8 @@ describe("navRoutes — config section order", () => {
     }
   });
 
-  it("Settings route appears at index 9, after Setup", () => {
-    const entry = navRoutes[9];
+  it("Settings route appears after Setup", () => {
+    const entry = navRoutes[separatorIndex() + 2];
     expect(entry?.kind).toBe("route");
     if (entry?.kind === "route") {
       expect(entry.path).toBe("/settings");

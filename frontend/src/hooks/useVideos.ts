@@ -46,6 +46,8 @@ interface UseVideosOptions {
   likedOnly?: boolean;
   /** Filter to videos with transcripts (Feature 027) */
   hasTranscript?: boolean;
+  /** Filter to videos saved in a curated playlist and never watched */
+  savedUnwatched?: boolean;
 }
 
 interface UseVideosReturn {
@@ -104,6 +106,7 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
     sortOrder,
     likedOnly = false,
     hasTranscript,
+    savedUnwatched,
   } = options;
 
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -118,7 +121,7 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
     fetchNextPage,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["videos", { limit, tags, canonicalTags, category, topicIds, includeUnavailable, sortBy, sortOrder, likedOnly, hasTranscript }],
+    queryKey: ["videos", { limit, tags, canonicalTags, category, topicIds, includeUnavailable, sortBy, sortOrder, likedOnly, hasTranscript, savedUnwatched }],
     queryFn: async ({ pageParam, signal }) => {
       const params = new URLSearchParams({
         offset: pageParam.toString(),
@@ -143,6 +146,7 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
       if (sortOrder) params.set('sort_order', sortOrder);
       if (likedOnly) params.set('liked_only', 'true');
       if (hasTranscript) params.set('has_transcript', 'true');
+      if (savedUnwatched) params.set('saved_unwatched', 'true');
 
       // FR-004/FR-005: Pass TanStack Query signal as externalSignal so it is
       // combined with the internal timeout guard via AbortSignal.any().

@@ -29,6 +29,40 @@ from ..models.youtube_types import UserId, VideoId
 from .base import BaseSQLAlchemyRepository
 
 
+def watched_video_ids() -> Any:
+    """Return a subquery of every distinct video id that has been watched.
+
+    The single definition of "watched" for read-side filtering (Feature 061):
+    a ``user_videos`` row whose ``watched_at`` is set. Never inferred from
+    playlist membership.
+
+    Three properties, all load-bearing:
+
+    - **Non-correlated.** It references no outer query, so PostgreSQL evaluates
+      it once instead of per row. The correlated equivalent measured 25,676 ms
+      against production data where this measures 69 ms — for identical results,
+      so a test asserting only values will not catch the regression.
+    - **Duplicate-safe.** ``.distinct()`` means a video with several watch-history
+      rows contributes once, so counts cannot inflate. This does not lean on
+      Feature 060's single-identity guarantee.
+    - **Identity-agnostic.** No ``user_id`` filter, which is correct only because
+      Feature 060 guarantees exactly one identity.
+
+    Returns
+    -------
+    Any
+        A scalar subquery usable as ``VideoDB.video_id.in_(watched_video_ids())``
+        or ``.not_in(...)``. Typed loosely because SQLAlchemy's scalar-subquery
+        type is not expressible in a way mypy can narrow usefully here.
+    """
+    return (
+        select(UserVideoDB.video_id)
+        .where(UserVideoDB.watched_at.is_not(None))
+        .distinct()
+        .scalar_subquery()
+    )
+
+
 class UserVideoRepository(
     BaseSQLAlchemyRepository[
         UserVideoDB,

@@ -15,6 +15,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import { Sidebar } from "../Sidebar";
+import { navRoutes } from "../../../router/routes";
 
 // ---------------------------------------------------------------------------
 // Mock useNavigate (NavGroup uses it internally)
@@ -162,9 +163,11 @@ describe("Sidebar — Tags group", () => {
 });
 
 describe("Sidebar — total top-level nav item count", () => {
-  it("top-level list contains 10 entries (Videos, Transcripts group, Channels, Playlists, Entities, Tags group, Search, separator, Setup, Settings)", () => {
+  it("renders one top-level item per navRoutes entry", () => {
     renderSidebar();
-    // The outer <ul role="list"> has 10 children (6 flat routes + 2 groups + 1 separator + 2 config routes)
+    // Derived from navRoutes rather than hardcoded, so adding a destination
+    // does not require editing a magic number here as well as in routes.test.ts.
+    // The ordered contents are asserted in src/router/__tests__/routes.test.ts.
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
     // The direct child ul has role="list" — query it within the nav
     const outerList = nav.querySelector("ul[role='list']");
@@ -172,6 +175,6 @@ describe("Sidebar — total top-level nav item count", () => {
     const directLiChildren = outerList
       ? Array.from(outerList.children).filter((el) => el.tagName === "LI")
       : [];
-    expect(directLiChildren).toHaveLength(10);
+    expect(directLiChildren).toHaveLength(navRoutes.length);
   });
 });

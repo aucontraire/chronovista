@@ -56,6 +56,7 @@ export function PlaylistVideoCard({ video }: PlaylistVideoCardProps) {
     transcript_summary,
     position,
     availability_status,
+    watched,
   } = video;
 
   // Convert 0-indexed position to 1-indexed display format
@@ -113,6 +114,20 @@ export function PlaylistVideoCard({ video }: PlaylistVideoCardProps) {
               </h3>
               <AvailabilityBadge status={availability_status} className="flex-shrink-0" />
             </div>
+
+            {/* Watched indicator (Feature 061, FR-009).
+                FR-032: the state is carried by the badge's text, not by colour
+                or icon alone, so it is available to a screen reader and to a
+                user who cannot distinguish the two colours. */}
+            <span
+              className={`inline-flex items-center px-2 py-0.5 mb-1 rounded text-xs font-medium ${
+                watched
+                  ? "bg-emerald-100 text-emerald-800"
+                  : "bg-slate-100 text-slate-700"
+              }`}
+            >
+              {watched ? "Watched" : "Unwatched"}
+            </span>
 
             {/* Channel Name */}
             <p className={`text-sm text-${colorTokens.text.secondary}`}>

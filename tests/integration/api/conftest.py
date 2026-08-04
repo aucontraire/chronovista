@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import AsyncGenerator, Awaitable
+from collections.abc import AsyncGenerator, Awaitable, Generator
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -81,6 +82,28 @@ def integration_test_db_url():
             "postgresql+asyncpg://dev_user:dev_password@localhost:5434/chronovista_integration_test",
         ),
     )
+
+
+@pytest.fixture(autouse=True)
+def authenticated_by_default() -> Generator[None, None, None]:
+    """Treat the API as authenticated unless a test says otherwise.
+
+    Every router except health sits behind ``require_auth``, which calls
+    ``youtube_oauth.is_authenticated()`` — a real check against OAuth token
+    files on disk. That makes the result environment-dependent: it passes on a
+    developer machine that has logged in and returns 401 in CI, which has no
+    tokens. A test suite whose outcome depends on the developer's login state
+    is not testing anything reliably.
+
+    Individual tests already patch this per-request to assert their endpoint is
+    protected. Those patches are context managers, so they nest over this and
+    still win inside their ``with`` block — which is why this is a patch rather
+    than a ``dependency_overrides`` entry. Overriding the dependency would
+    bypass ``require_auth`` entirely and silently break every 401 test.
+    """
+    with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+        mock_oauth.is_authenticated.return_value = True
+        yield
 
 
 @pytest.fixture(autouse=True)

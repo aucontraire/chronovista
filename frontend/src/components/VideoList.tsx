@@ -3,6 +3,7 @@
  */
 
 import { useVideos } from "../hooks/useVideos";
+import type { ApiError } from "../types/video";
 import { EmptyState } from "./EmptyState";
 import { ErrorState } from "./ErrorState";
 import { LoadingState } from "./LoadingState";
@@ -122,6 +123,12 @@ interface VideoListProps {
   hasTranscript?: boolean;
   /** Filter to videos saved in a curated playlist and never watched */
   savedUnwatched?: boolean;
+  /** Required entity UUIDs — AND logic across all of them (Feature 062) */
+  entityIds?: string[];
+  /** Excluded entity UUIDs — a video mentioning ANY is removed (Feature 062) */
+  excludedEntityIds?: string[];
+  /** Restrict which mentions qualify; omit for all three sources (Feature 062) */
+  minEvidence?: "transcript" | undefined;
 }
 
 /**
@@ -129,6 +136,9 @@ interface VideoListProps {
  * Includes infinite scroll with Intersection Observer and fallback Load More button.
  */
 export function VideoList({
+  entityIds = [],
+  excludedEntityIds = [],
+  minEvidence,
   tags = [],
   canonicalTags = [],
   category = null,
@@ -153,6 +163,9 @@ export function VideoList({
     retry,
     loadMoreRef,
   } = useVideos({
+    entityIds,
+    excludedEntityIds,
+    ...(minEvidence !== undefined && { minEvidence }),
     tags,
     canonicalTags,
     category,
@@ -174,13 +187,80 @@ export function VideoList({
     );
   }
 
-  // Error state
+  // A 4xx rejection is the user's filter being unacceptable, not the page
+  // being broken. FR-016a: present it as a RECOVERABLE state that names the
+  // offending value and leaves the rest of the filter intact, rather than the
+  // retry-oriented ErrorState, which offers an action that cannot help --
+  // retrying an invalid request just fails again.
+  // `error` is typed `unknown` by the hook, so narrow before reading it
+  // rather than asserting a shape the runtime may not have.
+  const apiError: ApiError | null =
+    error !== null && typeof error === "object" ? (error as ApiError) : null;
+  const rejectionStatus = apiError?.status;
+  const isRejection =
+    isError &&
+    rejectionStatus !== undefined &&
+    rejectionStatus >= 400 &&
+    rejectionStatus < 500;
+
+  if (isRejection) {
+    return (
+      <div
+        role="alert"
+        className="rounded-lg border border-amber-200 bg-amber-50 p-6"
+        data-testid="filter-rejected"
+      >
+        <h3 className="text-sm font-semibold text-amber-900">
+          This filter can&apos;t be applied
+        </h3>
+        <p className="mt-1 text-sm text-amber-800">
+          {apiError?.detail ??
+            "One of the active filters was rejected. Remove it to continue."}
+        </p>
+        <p className="mt-2 text-xs text-amber-700">
+          Your other filters are still active — remove the offending one from
+          the filter pills above.
+        </p>
+      </div>
+    );
+  }
+
+  // Error state — genuine failures, where retrying is a sensible offer.
   if (isError) {
     return <ErrorState error={error} onRetry={retry} />;
   }
 
-  // Empty state
+  // Empty state. FR-012 requires the filtered-empty case to be
+  // distinguishable from an error AND from an unfiltered library: "no videos
+  // at all" and "no videos matching these entities" are different facts and
+  // suggest different next actions.
   if (videos.length === 0) {
+    const hasEntityFilter =
+      entityIds.length > 0 || excludedEntityIds.length > 0;
+    if (hasEntityFilter) {
+      return (
+        <div
+          role="status"
+          className="rounded-lg border border-slate-200 bg-white p-12 text-center"
+          data-testid="empty-intersection"
+        >
+          <h3 className="text-sm font-semibold text-slate-800">
+            No videos mention all of these entities
+          </h3>
+          <p className="mt-1 text-sm text-slate-600">
+            {entityIds.length > 1
+              ? "Each entity you add narrows the result. Try removing one."
+              : "Try a different entity, or widen the evidence scope."}
+          </p>
+          {minEvidence === "transcript" && (
+            <p className="mt-2 text-xs text-slate-500">
+              Transcript-only is active — title and description mentions are
+              being excluded.
+            </p>
+          )}
+        </div>
+      );
+    }
     return <EmptyState />;
   }
 

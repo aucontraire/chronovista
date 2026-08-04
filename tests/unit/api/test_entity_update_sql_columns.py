@@ -1,8 +1,9 @@
 """
 Mock SQL-column (SET-clause) test for entity edits (Feature 057, T008; INV-1).
 
-The constitution's Cross-Feature Data Contract Verification requires that an
-entity name change writes BOTH ``canonical_name`` and
+A test for an UPDATE must inspect the SQL SET clause, not merely the return
+value — a column silently absent from SET returns success while writing
+nothing. An entity name change must write BOTH ``canonical_name`` and
 ``canonical_name_normalized`` (never one without the other), and that a
 description change writes ``description``.
 

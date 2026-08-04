@@ -114,6 +114,29 @@ Project-specific terminology used throughout chronovista documentation and code.
 **Diacritic Collision**
 :   A canonical tag group where raw forms differ by accents that were stripped during Tier 1 normalization. For example, "café" and "cafe" both normalize to "cafe" and get merged. The `tags collisions` command identifies these for manual review — most are correct merges, but some may need splitting.
 
+## Entity Intersection Concepts
+
+**Intersection**
+:   The set of videos in which *every* requested entity has at least one qualifying mention. An AND across entities — adding one always narrows the result. Distinct from the single-entity filter, which asks about one entity at a time.
+
+**Required entity**
+:   An entity that must be present for a video to appear in the result. Qualification and all counts are per distinct video and per distinct entity, so duplicate mention rows cannot make a video qualify for an entity it never mentions.
+
+**Excluded entity**
+:   An entity whose presence disqualifies a video, regardless of the required set. An OR across the excluded set, in deliberate contrast to the AND of the required one. Works with an empty required set, which answers "everything that isn't about this".
+
+**Evidence scope**
+:   The constraint on which mentions count toward an intersection. Expressed over mention **source** only — transcript, title, description — never detection method. The two are orthogonal: every manually added and user-corrected mention is transcript-sourced, so restricting to transcript retains all of them rather than discarding the highest-trust evidence in the system. Exposed as `min_evidence`, named for the graded confidence threshold it may later become.
+
+**Qualifying mention**
+:   A mention satisfying the active evidence scope. One definition applied to both sides of a filter: under a restricted scope, a video whose only mention of an excluded entity falls outside that scope is not disqualified.
+
+**Relevance ordering**
+:   Ranking by combined mention volume across the requested entities, tiebroken by video id so the order is total and pagination cannot duplicate or drop a row. Auto-selected when an entity filter is active and no sort was chosen; an explicit choice is never overridden. Favours longer videos, which is accepted as the honest reading of "most about these entities".
+
+**Co-occurrence**
+:   The count of distinct videos two entities share, powering the "appears with" panel. Computed over the same video population the videos list shows, so the count displayed equals the total of the intersection it opens.
+
 ## Transcript Correction Concepts
 
 **Transcript Correction**

@@ -40,6 +40,7 @@ All endpoints except `/health` require authentication. The API shares OAuth toke
 | `/videos/{id}/transcript/segments/{seg_id}/corrections/revert` | POST | Revert latest segment correction |
 | `/videos/{id}/playlists` | GET | Playlists containing video |
 | `/videos/{id}/entities` | GET | Entity mentions in video |
+| `/videos?entity_id=` | GET | Videos mentioning **all** listed entities (repeat the key; add `exclude_entity_id` and `min_evidence`) |
 | `/videos/{id}/alternative-url` | PATCH | Set alternative URL for unavailable video |
 | `/channels` | GET | List channels |
 | `/channels/{id}` | GET | Get channel details |
@@ -64,6 +65,7 @@ All endpoints except `/health` require authentication. The API shares OAuth toke
 | `/entities/{id}` | GET | Get entity details |
 | `/entities/{id}/videos` | GET | Videos mentioning entity |
 | `/entities/{id}/aliases` | POST | Add alias to entity |
+| `/entities/{id}/co-occurring` | GET | Entities sharing videos with this entity |
 | `/corrections/batch/preview` | POST | Preview batch find-replace matches |
 | `/corrections/batch/apply` | POST | Apply batch corrections to selected segments |
 | `/corrections/batch/rebuild-text` | POST | Rebuild transcript text for affected videos |

@@ -143,7 +143,20 @@ export async function apiFetch<T>(
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      throw createApiError(null, response);
+      // Read the problem-details body before discarding the response, so a
+      // client-correctable rejection can say WHICH value was rejected.
+      // Best-effort: a non-JSON or empty body simply leaves `detail` unset.
+      let detail: string | undefined;
+      try {
+        const body = (await response.clone().json()) as { detail?: unknown };
+        if (typeof body.detail === "string") {
+          detail = body.detail;
+        }
+      } catch {
+        detail = undefined;
+      }
+      const apiError = createApiError(null, response);
+      throw detail === undefined ? apiError : { ...apiError, detail };
     }
 
     // HTTP 204 No Content (and 205 Reset Content) have no body.

@@ -118,6 +118,15 @@ export const FILTER_LIMITS = {
   MAX_TOPICS: 10,
   /** Maximum number of categories (always 1 - single selection) */
   MAX_CATEGORIES: 1,
+  /**
+   * Maximum entities per set (Feature 062, FR-002a).
+   *
+   * Applied SEPARATELY to the required and excluded sets, matching MAX_TAGS
+   * for interface consistency. Note MAX_TOTAL below still binds across all
+   * filter types, so this per-set ceiling is a sub-cap and is not always
+   * reachable.
+   */
+  MAX_ENTITIES: 10,
   /** Maximum total number of filters across all types */
   MAX_TOTAL: 15,
 } as const;

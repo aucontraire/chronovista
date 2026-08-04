@@ -24,6 +24,8 @@ from sqlalchemy.orm import selectinload
 from chronovista.api.deps import get_db, require_auth
 from chronovista.api.schemas.entity_mentions import (
     ClassifyTagRequest,
+    CooccurringEntitiesResponse,
+    CooccurringEntity,
     CreateEntityAliasRequest,
     CreateEntityRequest,
     DuplicateCheckResponse,
@@ -62,6 +64,7 @@ from chronovista.models.enums import (
     DiscoveryMethod,
     EntityAliasType,
     EntityType,
+    EvidenceScope,
     TagStatus,
 )
 from chronovista.models.named_entity import NamedEntityCreate
@@ -96,6 +99,11 @@ router = APIRouter(dependencies=[Depends(require_auth)])
 
 # Module-level repository / service instantiation (singleton pattern)
 _mention_repo = EntityMentionRepository()
+
+# Ceiling for the appears-with panel (FR-023a). The default of 12 fills a
+# column without scrolling; this bound exists so "reveal more" cannot walk the
+# list to an unbounded size on a hub entity with hundreds of partners.
+MAX_COOCCURRING_LIMIT = 50
 _alias_repo = EntityAliasRepository()
 _entity_repo = NamedEntityRepository()
 _normalizer = TagNormalizationService()
@@ -630,6 +638,87 @@ async def get_entity_detail(
             "exclusion_patterns": list(entity.exclusion_patterns or []),
         }
     }
+
+
+@router.get(
+    "/entities/{entity_id}/co-occurring",
+    response_model=CooccurringEntitiesResponse,
+    status_code=200,
+    summary="Entities that share videos with this entity",
+)
+async def get_cooccurring_entities(
+    entity_id: str = Path(..., description="Named entity UUID"),
+    limit: int = Query(
+        default=12,
+        ge=1,
+        le=MAX_COOCCURRING_LIMIT,
+        description=(
+            "Maximum partners to return. Bounded rather than unbounded: a "
+            "handful of entities co-occur with hundreds of others, and an "
+            "unbounded list would be unusable and slow (FR-023a)."
+        ),
+    ),
+    min_evidence: EvidenceScope = Query(
+        EvidenceScope.ANY,
+        description=(
+            "Which mentions count as co-occurrence. Must match the scope of "
+            "the surrounding view, or the count shown and the intersection it "
+            "opens will disagree (FR-024a)."
+        ),
+    ),
+    session: AsyncSession = Depends(get_db),
+) -> CooccurringEntitiesResponse:
+    """Get the entities most often appearing alongside this one.
+
+    Powers the "appears with" panel on the entity detail page. Each partner's
+    ``shared_video_count`` equals the total the videos list reports when
+    filtered to that pair under the same evidence scope (FR-024b).
+
+    Parameters
+    ----------
+    entity_id : str
+        Named entity UUID (string representation).
+    limit : int
+        Maximum partners returned, bounded by ``MAX_COOCCURRING_LIMIT``
+        (default 12).
+    min_evidence : EvidenceScope
+        Evidence scope to compute co-occurrence under.
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    CooccurringEntitiesResponse
+        Partners ordered by shared-video count descending, tiebroken by id.
+
+    Raises
+    ------
+    NotFoundError
+        If the entity does not exist (404).
+    """
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+
+    entity_exists = await session.execute(
+        select(NamedEntityDB.id).where(NamedEntityDB.id == parsed_entity_id)
+    )
+    if not entity_exists.scalar_one_or_none():
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    partners = await _mention_repo.get_cooccurring_entities(
+        session,
+        entity_id=parsed_entity_id,
+        limit=limit,
+        evidence_scope=min_evidence,
+    )
+
+    # An entity with no co-occurrences returns an empty list, not an error
+    # (FR-024): "nothing appears alongside this" is an answer, not a failure.
+    return CooccurringEntitiesResponse(
+        data=[CooccurringEntity(**partner) for partner in partners]
+    )
 
 
 @router.get(

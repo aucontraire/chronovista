@@ -7,6 +7,7 @@ import { Link } from "react-router-dom";
 import { cardPatterns, colorTokens } from "../styles";
 import type { VideoListItem } from "../types/video";
 import { AvailabilityBadge } from "./AvailabilityBadge";
+import { EntityName } from "./EntityName";
 import { isVideoUnavailable } from "../utils/availability";
 import { API_BASE_URL } from "../api/config";
 
@@ -177,6 +178,43 @@ export function VideoCard({ video }: VideoCardProps) {
         {/* View Count */}
         <span>{formatViewCount(view_count)}</span>
       </div>
+
+      {/* Per-entity evidence (Feature 062, FR-008a).
+
+          Rendered only when an entity filter is active. `entity_matches` is
+          null with no filter and an EMPTY array for an exclusion-only filter,
+          and neither should draw a section. */}
+      {video.entity_matches != null && video.entity_matches.length > 0 && (
+        <div className={`mt-3 pt-3 border-t border-${colorTokens.border}`}>
+          <ul className="flex flex-wrap gap-x-3 gap-y-1.5 text-sm">
+            {video.entity_matches.map((match) => (
+              <li
+                key={match.entity_id}
+                className="inline-flex items-center gap-1.5"
+              >
+                <EntityName
+                  name={match.canonical_name}
+                  entityType={match.entity_type}
+                  count={match.mention_count}
+                />
+                {/* Omitted entirely — never rendered as 0:00 — when the entity
+                    appears only in the title or description and therefore has
+                    no position in time. */}
+                {match.first_timestamp !== null && (
+                  <span
+                    className="text-slate-400"
+                    aria-label={`First mentioned at ${formatDuration(
+                      Math.floor(match.first_timestamp)
+                    )}`}
+                  >
+                    {`from ${formatDuration(Math.floor(match.first_timestamp))}`}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Transcript Info */}
       {transcript_summary.count > 0 && (

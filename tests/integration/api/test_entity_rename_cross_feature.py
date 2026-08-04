@@ -1,6 +1,7 @@
 """Cross-feature integration test for an entity rename (Feature 057, T010).
 
-Per the constitution's Cross-Feature Data Contract Verification: after an
+A mutation that changes an entity's identity must be verified through every
+downstream consumer path, not only at its source: after an
 identity-changing rename, re-query every consumer of the entity's name and
 assert the NEW name appears everywhere it should — list, detail, search,
 entity->videos, and video->entities (the last for an entity that has a manual

@@ -30,6 +30,7 @@
 
 import { useState, useRef, useEffect, useId } from "react";
 import { useEntitySearch } from "../../hooks/useEntitySearch";
+import { ENTITY_TYPE_LABELS } from "../../constants/entityTypes";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -69,16 +70,11 @@ export interface EntityAutocompleteProps {
 // Entity type badge label map
 // ---------------------------------------------------------------------------
 
-const ENTITY_TYPE_LABELS: Record<string, string> = {
-  person: "Person",
-  organization: "Organization",
-  place: "Place",
-  event: "Event",
-  work: "Work",
-  technical_term: "Technical term",
-};
-
 function entityTypeLabel(type: string): string {
+  // Was a private map here, missing `concept` and `other` entirely and
+  // spelling technical_term as "Technical term" against the shared
+  // constant's "Technical Term" — a live divergence from the convention the
+  // entities page teaches. FR-029 wants one definition point.
   return ENTITY_TYPE_LABELS[type] ?? type;
 }
 

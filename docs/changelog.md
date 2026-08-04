@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.62.0] - 2026-08-04
+
+### Added
+- **Entity intersection — find the videos where several entities all appear (Feature 062).** Entity filtering was single-entity only, so the library could tell you everything mentioning one person but not what two people had in **common** — the entry point to most relationship-oriented questions it can answer.
+  - **Set filter on the videos list.** "Mentions all of" accepts several entities and returns only the videos where every one of them has a qualifying mention. An AND across entities, so adding one always narrows. Sets of three and four are ordinary rather than exceptional: 7,062 videos in a real library carry three or more distinct entities. Each result row shows, per entity, its mention count and the timestamp of its **first** mention — and shows nothing rather than a misleading `0:00` when an entity appears only in a title or description and therefore has no position in time.
+  - **Exclusion.** An OR across excluded entities, in deliberate contrast to the required set's AND: a video mentioning any of them is removed regardless of how many required entities it matches. Works with an empty required set, which answers a different question — "everything that isn't about this". An entity present in both sets is rejected with an explanation rather than silently returning nothing.
+  - **Evidence scope (`min_evidence`).** A "transcript only" toggle requiring the entity was actually *said*, not merely listed in metadata. Expressed over mention **source** only, never detection method: the two are orthogonal, and every manually added or user-corrected mention is transcript-sourced, so restricting to transcript retains all of them rather than discarding the highest-trust evidence in the system. The scope applies symmetrically to exclusion — measured against production, excluding the most-mentioned entity removes 8,496 videos under the default scope and 870 under transcript-only, so applying it to one side and not the other would mean a single request in which the same video both does and does not mention an entity.
+  - **"Appears with" panel.** On each entity's detail page, the entities sharing the most videos with it. Activating one opens that exact pairing on the videos list. **The count shown equals the total landed on** — both derive from the same qualification rule *and* the same video population, which is what makes the promise hold. Loads independently of the page, since it is the slowest query in the feature and computing it synchronously would penalise precisely the well-connected entities people open most.
+  - **Relevance ordering.** Ranks by combined mention volume, tiebroken by video id so pagination cannot duplicate or drop a row. Auto-selected only when an entity filter is active *and* no sort was chosen; an explicit choice always wins.
+  - **Shareable addresses.** Required entities, exclusions and the evidence scope all live in the URL, so a filtered view survives refresh, back-navigation and copy-paste. Entity names are re-fetched from the ids on load, so a bookmarked link shows names rather than UUIDs.
+
+### Changed
+- **Entity type colours are now uniform across every surface.** One pill shape with two contents: the Entities page and entity detail header put the *type* in it (the legend that teaches the convention), and every other surface puts the entity's *name* in the same colour. The video-page mention chips previously rendered **every** entity in indigo regardless of type, directly contradicting the convention the Entities page teaches — a place, an organization and a person looked identical. The palette now has one definition point, consumed by four call sites; two components and one page previously carried private copies, one of which was missing two types and mis-cased a third.
+- `sort_by` on `GET /api/v1/videos` now carries a distinct unset state so "caller sent nothing" is distinguishable from "caller explicitly chose upload_date". Behaviour for existing callers is unchanged; the OpenAPI default moves from `"upload_date"` to a nullable schema.
+- `ApiError` now carries the server's RFC 7807 `detail`, so a rejected filter can name the value it rejected instead of showing a generic message.
+
+### Fixed
+- Entity filter changes did not refresh the videos list — the request URL was correct but the TanStack Query key omitted the entity parameters, so a cached unfiltered result was served until a hard reload. The filter-panel count had the same shape of bug from a separate call that omitted several filters entirely.
+- The "appears with" panel linked to `/?entity_id=…`, and the root is an index route whose redirect carries no query string, so every parameter was dropped on landing.
+
+
 ## [0.61.0] - 2026-08-03
 
 ### Added

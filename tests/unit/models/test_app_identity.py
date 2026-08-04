@@ -22,7 +22,7 @@ class TestAppIdentitySource:
         assert AppIdentitySource.LOCAL_CONSTANT.value == "local_constant"
 
     def test_is_str_enum(self) -> None:
-        # (str, Enum) for JSON-serialization safety (constitution II)
+        # (str, Enum) for JSON-serialization safety
         assert isinstance(AppIdentitySource.CHANNEL, str)
 
 

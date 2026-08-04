@@ -164,6 +164,16 @@ Transcript segments load in batches (50 initial, then 25 per page) using `useInf
 ### Deep Link Navigation
 Search results link to specific transcript timestamps via URL parameters (`?t=90&lang=en`). The `seekToTimestamp` function uses the backend's `start_time` filter for precise segment loading without offset estimation.
 
+### Entity Type Identity — one pill, two contents
+Entity type colours live in exactly one place (`constants/entityTypes.ts`) and reach every surface through two components, chosen by what the surface is *doing*:
+
+- **`EntityTypeBadge`** puts the **type** in the pill ("Person", "Place"). Used where the type is the subject — the entities list, the entity detail header. These are the legend: they teach the convention.
+- **`EntityName`** puts the entity's **name** in the same pill, in that type's colour. Used everywhere the entity is an attribute of something else — filter pills, result rows, the appears-with panel, the video-page mention chips.
+
+Both resolve colour through a shared `entityTypeColors()` helper rather than inlining `COLORS[x] ?? FALLBACK`, because that inline expression is how a palette forks: one site forgets the fallback, or picks a different neutral.
+
+The tradeoff is deliberate and recorded: on shorthand surfaces the type is carried by colour plus visually-hidden text, so screen readers keep it everywhere but greyscale users lose the distinction away from the legend pages.
+
 ### API Client Strategy
 The project uses a hybrid approach:
 - **Orval** generates typed hooks from the OpenAPI spec for stable endpoints

@@ -350,6 +350,9 @@ export function TagAutocomplete({
           ref={inputRef}
           id={comboboxId}
           type="text"
+          // See EntityMultiSelect: the component owns its listbox, so the
+          // browser's form-history dropdown must not stack on top of it.
+          autoComplete="off"
           role="combobox"
           aria-labelledby={labelId}
           aria-describedby={descriptionId}

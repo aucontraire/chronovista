@@ -166,6 +166,10 @@ export function EntityMultiSelect({
       <input
         id={inputId}
         type="text"
+        // The component owns its suggestion listbox. Without this the browser
+        // stacks its own form-history dropdown on top of it — two competing
+        // lists, and the native one leaks whatever was typed here before.
+        autoComplete="off"
         role="combobox"
         aria-expanded={showSuggestions && options.length > 0}
         aria-controls={listboxId}

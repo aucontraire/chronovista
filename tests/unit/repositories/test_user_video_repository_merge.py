@@ -2,7 +2,8 @@
 
 Mock strategy: ``MagicMock(spec=AsyncSession)`` with ``AsyncMock`` execute —
 we capture and compile the emitted statements to inspect the SET/DELETE shape,
-not just return values (constitution: Cross-Feature Data Contract Verification).
+not just return values — a column absent from SET returns success while
+writing nothing.
 
 NOTE: the substring assertions below are coupled to SQLAlchemy's compiler output
 (e.g. ``liked=(user_videos.liked or (select``) and a SQLAlchemy version bump can

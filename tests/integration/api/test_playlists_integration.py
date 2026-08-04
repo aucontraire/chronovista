@@ -596,7 +596,7 @@ class TestPlaylistTypeApi:
 
 
 class TestCrossFeaturePlaylistType:
-    """Feature 058 constitution gates: import→classify→re-query, and that
+    """Feature 058 cross-feature gates: import→classify→re-query, and that
     playlist_type mutation does not touch watched-status."""
 
     async def test_import_watch_later_classifies_and_surfaces_via_api(

@@ -17,7 +17,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
-import { ENTITY_TYPE_LABELS, ENTITY_TYPE_COLORS } from "../constants/entityTypes";
+import { CooccurringPanel } from "../components/entity/CooccurringPanel";
+import { EntityTypeBadge } from "../components/EntityTypeBadge";
 import {
   useEntityVideos,
   useDeleteManualAssociation,
@@ -49,15 +50,7 @@ interface NamedEntityDetailResponse {
 // Helper functions
 // ---------------------------------------------------------------------------
 
-function getTypeLabel(entityType: string): string {
-  return ENTITY_TYPE_LABELS[entityType] ?? entityType;
-}
 
-function getTypeBadgeClass(entityType: string): string {
-  return (
-    ENTITY_TYPE_COLORS[entityType] ?? "bg-slate-100 text-slate-700 border-slate-200"
-  );
-}
 
 /** Format a timestamp in seconds to MM:SS display. */
 function formatTimestamp(seconds: number): string {
@@ -1250,12 +1243,7 @@ export function EntityDetailPage() {
           canonicalName={entity.canonical_name}
           description={entity.description}
           typeBadge={
-            <span
-              className={`inline-flex items-center px-3 py-1 text-sm font-medium rounded-full border ${getTypeBadgeClass(entity.entity_type)}`}
-              aria-label={`Entity type: ${getTypeLabel(entity.entity_type)}`}
-            >
-              {getTypeLabel(entity.entity_type)}
-            </span>
+            <EntityTypeBadge entityType={entity.entity_type} size="md" />
           }
         />
 
@@ -1424,6 +1412,20 @@ export function EntityDetailPage() {
             </select>
           </div>
         </div>
+
+        {/* Appears-with panel (Feature 062, US3).
+
+            Rendered unconditionally rather than gated on the video list's
+            loading state, and fetching through its own query — it must not
+            block this page's initial render (FR-037). It is the feature's
+            slowest query, so making the page wait on it would penalise
+            exactly the entities users open most. A failure inside it degrades
+            to a panel-level message and leaves this page usable (FR-038). */}
+        {entityId && (
+          <div className="mb-6">
+            <CooccurringPanel entityId={entityId} />
+          </div>
+        )}
 
         {/* Loading skeleton for video list — T067: dropdown stays interactive */}
         {videosLoading && (

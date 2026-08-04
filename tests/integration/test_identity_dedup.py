@@ -2,8 +2,8 @@
 
 Real-DB proof that the merge is lossless, idempotent, and preserves the
 watched-video set that downstream watch-based metrics (e.g. the "Saved &
-Forgotten" dashboard, feature 059) depend on — the constitution-mandated
-cross-feature mutation-impact re-query.
+Forgotten" dashboard, feature 059) depend on — the cross-feature
+mutation-impact re-query.
 """
 
 from __future__ import annotations

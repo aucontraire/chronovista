@@ -33,6 +33,26 @@ export interface TopicSummary {
 /**
  * Video item as returned by the list API endpoint.
  */
+/**
+ * One required entity's evidence within a qualifying video (Feature 062).
+ */
+export interface VideoEntityMatch {
+  /** Named entity UUID. */
+  entity_id: string;
+  /** Entity type, carried so the badge renders without a second lookup. */
+  entity_type: string;
+  /** Canonical display name. */
+  canonical_name: string;
+  /** Qualifying mentions of this entity in this video. */
+  mention_count: number;
+  /**
+   * Earliest transcript position in seconds, or null when the entity appears
+   * only in the title or description — those have no segment and therefore
+   * no time. Null must render as absent, never as 0:00.
+   */
+  first_timestamp: number | null;
+}
+
 export interface VideoListItem {
   /** 11-character YouTube video ID */
   video_id: string;
@@ -56,6 +76,17 @@ export interface VideoListItem {
   category_id: string | null;
   /** Human-readable category name */
   category_name: string | null;
+  /**
+   * Per-required-entity evidence (Feature 062).
+   *
+   * Null when no entity filter of either kind is active, so pre-existing
+   * callers see an unchanged shape. Present and EMPTY for an exclusion-only
+   * filter, which IS an active filter. Otherwise one element per required
+   * entity.
+   */
+  entity_matches?: VideoEntityMatch[] | null;
+  /** Qualifying mentions summed across required entities; the relevance key. */
+  total_mentions?: number | null;
   /** Associated topics with hierarchy */
   topics: TopicSummary[];
   /** Content availability status */
@@ -164,4 +195,14 @@ export interface ApiError {
   type: ApiErrorType;
   message: string;
   status?: number | undefined;
+  /**
+   * Server-supplied explanation from the RFC 7807 problem-details body.
+   *
+   * The generic `message` above is keyed off the error TYPE and cannot name
+   * what actually went wrong. When the API rejects a request for a reason the
+   * user can act on — an entity id it does not recognise, a limit it exceeded
+   * — that reason arrives here, so the UI can present a recoverable state
+   * rather than a dead end (Feature 062, FR-016a).
+   */
+  detail?: string | undefined;
 }

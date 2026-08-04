@@ -8,10 +8,14 @@ for the entity_mentions table.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import (
+    ScalarSelect,
+    Select,
     String,
+    Subquery,
     and_,
     delete,
     distinct,
@@ -56,7 +60,12 @@ from chronovista.db.models import (
 )
 from chronovista.exceptions import APIValidationError, ConflictError, NotFoundError
 from chronovista.models.entity_mention import EntityMentionCreate
-from chronovista.models.enums import EntityAliasType
+from chronovista.models.enums import (
+    AvailabilityStatus,
+    EntityAliasType,
+    EvidenceScope,
+    MentionSource,
+)
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 from chronovista.services.tag_normalization import TagNormalizationService
 
@@ -948,6 +957,333 @@ class EntityMentionRepository(
         paginated = sorted_results[offset : offset + limit]
 
         return paginated, filtered_total if source_filter is not None else total_count
+
+    def build_entity_qualification_subquery(
+        self,
+        entity_ids: Sequence[uuid.UUID],
+        evidence_scope: EvidenceScope = EvidenceScope.ANY,
+    ) -> Subquery:
+        """
+        Build the qualification subquery for an entity intersection.
+
+        Produces ``(video_id, total_mentions)`` for exactly those videos in
+        which **every** requested entity has at least one qualifying mention.
+
+        Duplicate-safe by construction. ``entity_mentions`` holds multiple rows
+        per ``(entity_id, video_id)`` by design -- across sources, and within a
+        source. Qualification counts *distinct* entity ids, so row multiplicity
+        can neither make a video qualify for an entity it does not mention nor
+        raise the bar for one it does (FR-003, FR-004).
+
+        ``transcript_segments`` is deliberately NOT joined here. Joining it
+        before pagination returns byte-identical results at roughly eight times
+        the cost (research R1). Timestamps are fetched for the returned page
+        only, by :meth:`get_page_entity_matches`.
+
+        Parameters
+        ----------
+        entity_ids : Sequence[uuid.UUID]
+            Required entities. Deduplicated internally, so requesting the same
+            entity twice is idempotent and does not raise the bar.
+        evidence_scope : EvidenceScope
+            Which mentions qualify. ``ANY`` accepts all three sources;
+            ``TRANSCRIPT`` restricts to transcript-sourced mentions, which
+            inherently retains every human-added mention (FR-020c).
+
+        Returns
+        -------
+        Subquery
+            Joinable subquery exposing ``video_id`` and ``total_mentions``.
+        """
+        distinct_ids = list(dict.fromkeys(entity_ids))
+        stmt = select(
+            EntityMentionDB.video_id.label("video_id"),
+            # Raw row count, deliberately NOT count(distinct(segment_id)) as
+            # get_video_entity_summary uses. Each row is a distinct mention
+            # event -- a different segment, or the same entity in the title AND
+            # the transcript -- and relevance ranks by mention VOLUME. The two
+            # fields are both called a mention count and are computed
+            # differently on purpose; see FR-009 and research R3.
+            func.count().label("total_mentions"),
+        ).where(EntityMentionDB.entity_id.in_(distinct_ids))
+
+        if evidence_scope is EvidenceScope.TRANSCRIPT:
+            stmt = stmt.where(
+                EntityMentionDB.mention_source == MentionSource.TRANSCRIPT.value
+            )
+
+        return (
+            stmt.group_by(EntityMentionDB.video_id)
+            .having(
+                func.count(distinct(EntityMentionDB.entity_id)) == len(distinct_ids)
+            )
+            .subquery()
+        )
+
+    def build_entity_exclusion_subquery(
+        self,
+        entity_ids: Sequence[uuid.UUID],
+        evidence_scope: EvidenceScope = EvidenceScope.ANY,
+    ) -> ScalarSelect[str]:
+        """
+        Build the set of video ids disqualified by an excluded-entity filter.
+
+        A video mentioning **any** of the excluded entities is disqualified,
+        regardless of how many required entities it matches (FR-014). This is
+        OR semantics, in deliberate contrast to the AND semantics of
+        qualification.
+
+        The evidence scope is applied symmetrically with qualification: under
+        ``TRANSCRIPT``, a video whose only mention of an excluded entity is in
+        its title is **not** disqualified, because that mention does not
+        qualify. "Qualifying mention" is one definition, and applying it to one
+        side of the filter but not the other would mean the same video both
+        does and does not mention the entity within a single request.
+
+        Parameters
+        ----------
+        entity_ids : Sequence[uuid.UUID]
+            Excluded entities. Deduplicated internally.
+        evidence_scope : EvidenceScope
+            Which mentions count as mentioning. Must match the scope used for
+            qualification.
+
+        Returns
+        -------
+        ScalarSelect[str]
+            Scalar subquery of ``video_id`` suitable for ``notin_()``.
+        """
+        stmt = select(EntityMentionDB.video_id).where(
+            EntityMentionDB.entity_id.in_(list(dict.fromkeys(entity_ids)))
+        )
+        if evidence_scope is EvidenceScope.TRANSCRIPT:
+            stmt = stmt.where(
+                EntityMentionDB.mention_source == MentionSource.TRANSCRIPT.value
+            )
+        return stmt.distinct().scalar_subquery()
+
+    def build_cooccurrence_query(
+        self,
+        entity_id: uuid.UUID,
+        limit: int = 12,
+        evidence_scope: EvidenceScope = EvidenceScope.ANY,
+    ) -> Select[Any]:
+        """
+        Return the entities sharing the most videos with ``entity_id``.
+
+        Powers the appears-with panel (US3). Ordered by shared-video count
+        descending, tiebroken by partner id ascending -- the tiebreak makes a
+        bounded list deterministic, so two partners with equal counts cannot
+        swap between requests and make the panel look unstable (R5).
+
+        **Availability is not incidental here.** The count this returns is
+        promised to equal the videos list's ``pagination.total`` for the same
+        pair (FR-024b), and that list excludes unavailable videos by default.
+        Counting every shared video would inflate this figure -- measured
+        against production, one popular pair differs by nine -- and the user
+        would be shown one number and land on another. The join to ``videos``
+        below is what keeps the promise.
+
+        Parameters
+        ----------
+        entity_id : uuid.UUID
+            The subject entity.
+        limit : int
+            Maximum partners to return.
+        evidence_scope : EvidenceScope
+            Which mentions count as co-occurrence. Must match the scope the
+            surrounding view is using, or the panel and the intersection it
+            opens will disagree (FR-024a).
+
+        Returns
+        -------
+        Select[Any]
+            The unexecuted statement, so callers and tests can inspect it.
+        """
+        # The scope narrows the SUBJECT's videos before the partner select is
+        # built, so both sides of the co-occurrence are computed under one
+        # definition. Chained rather than rebuilt: two copies of this column
+        # list would let the scoped and unscoped forms drift apart silently.
+        subject_videos = select(EntityMentionDB.video_id).where(
+            EntityMentionDB.entity_id == entity_id
+        )
+        if evidence_scope is EvidenceScope.TRANSCRIPT:
+            subject_videos = subject_videos.where(
+                EntityMentionDB.mention_source == MentionSource.TRANSCRIPT.value
+            )
+
+        partner = select(
+            EntityMentionDB.entity_id.label("partner_id"),
+            func.count(distinct(EntityMentionDB.video_id)).label("shared"),
+        ).where(
+            EntityMentionDB.entity_id != entity_id,
+            EntityMentionDB.video_id.in_(subject_videos),
+        )
+        if evidence_scope is EvidenceScope.TRANSCRIPT:
+            partner = partner.where(
+                EntityMentionDB.mention_source == MentionSource.TRANSCRIPT.value
+            )
+
+        # Restrict to the same video population the videos list uses, so the
+        # count shown equals the count landed on (FR-024b).
+        available = select(VideoDB.video_id).where(
+            VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+        )
+        partner = partner.where(EntityMentionDB.video_id.in_(available))
+
+        grouped = partner.group_by(EntityMentionDB.entity_id).subquery()
+
+        stmt = (
+            select(
+                grouped.c.partner_id,
+                grouped.c.shared,
+                NamedEntityDB.canonical_name,
+                NamedEntityDB.entity_type,
+            )
+            .join(NamedEntityDB, NamedEntityDB.id == grouped.c.partner_id)
+            .order_by(grouped.c.shared.desc(), grouped.c.partner_id.asc())
+            .limit(limit)
+        )
+
+        return stmt
+
+    async def get_cooccurring_entities(
+        self,
+        session: AsyncSession,
+        *,
+        entity_id: uuid.UUID,
+        limit: int = 12,
+        evidence_scope: EvidenceScope = EvidenceScope.ANY,
+    ) -> list[dict[str, Any]]:
+        """
+        Execute :meth:`build_cooccurrence_query` and shape the rows.
+
+        The query is built separately so it can be compiled and inspected
+        without a database. The ordering tiebreak that keeps a bounded list
+        stable (R5) cannot be verified from returned rows -- Postgres happens
+        to return small groups in ascending-id order whether or not the
+        ``ORDER BY`` asks for it -- so the only way to assert it is to look at
+        the statement.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        entity_id : uuid.UUID
+            The subject entity.
+        limit : int
+            Maximum partners to return.
+        evidence_scope : EvidenceScope
+            Which mentions count as co-occurrence.
+
+        Returns
+        -------
+        list[dict[str, Any]]
+            Dicts with ``entity_id``, ``entity_type``, ``canonical_name``, and
+            ``shared_video_count``.
+        """
+        result = await session.execute(
+            self.build_cooccurrence_query(entity_id, limit, evidence_scope)
+        )
+        return [
+            {
+                "entity_id": row.partner_id,
+                "entity_type": row.entity_type,
+                "canonical_name": row.canonical_name,
+                "shared_video_count": row.shared,
+            }
+            for row in result
+        ]
+
+    async def get_page_entity_matches(
+        self,
+        session: AsyncSession,
+        *,
+        video_ids: Sequence[str],
+        entity_ids: Sequence[uuid.UUID],
+        evidence_scope: EvidenceScope = EvidenceScope.ANY,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """
+        Fetch per-entity evidence for the videos on the returned page only.
+
+        This is the sole place ``transcript_segments`` is joined. Restricting
+        it to the page (at most ``limit`` videos) rather than the full
+        qualifying set is the 806 ms -> 98 ms optimization recorded in research
+        R1, and the two steps must not be recombined.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_ids : Sequence[str]
+            Videos on the page being returned. Pass only the page.
+        entity_ids : Sequence[uuid.UUID]
+            Required entities, matching the qualification subquery.
+        evidence_scope : EvidenceScope
+            Must match the scope used for qualification, or counts will
+            disagree with the set they describe.
+
+        Returns
+        -------
+        dict[str, list[dict[str, Any]]]
+            Keyed by ``video_id``. Each value holds one dict per required
+            entity with ``entity_id``, ``entity_type``, ``canonical_name``,
+            ``mention_count``, and ``first_timestamp`` (``None`` when the
+            entity appears only in the title or description).
+        """
+        if not video_ids or not entity_ids:
+            return {}
+
+        stmt = (
+            select(
+                EntityMentionDB.video_id,
+                EntityMentionDB.entity_id,
+                NamedEntityDB.canonical_name,
+                NamedEntityDB.entity_type,
+                func.count().label("mention_count"),
+                func.min(TranscriptSegmentDB.start_time).label("first_timestamp"),
+            )
+            .join(NamedEntityDB, NamedEntityDB.id == EntityMentionDB.entity_id)
+            # Outer join: segment_id is nullable, since title and description
+            # mentions have no segment and therefore no timestamp.
+            .outerjoin(
+                TranscriptSegmentDB,
+                TranscriptSegmentDB.id == EntityMentionDB.segment_id,
+            )
+            .where(
+                EntityMentionDB.video_id.in_(list(video_ids)),
+                EntityMentionDB.entity_id.in_(list(dict.fromkeys(entity_ids))),
+            )
+            .group_by(
+                EntityMentionDB.video_id,
+                EntityMentionDB.entity_id,
+                NamedEntityDB.canonical_name,
+                NamedEntityDB.entity_type,
+            )
+        )
+
+        if evidence_scope is EvidenceScope.TRANSCRIPT:
+            stmt = stmt.where(
+                EntityMentionDB.mention_source == MentionSource.TRANSCRIPT.value
+            )
+
+        result = await session.execute(stmt)
+        matches: dict[str, list[dict[str, Any]]] = {}
+        for row in result:
+            matches.setdefault(row.video_id, []).append(
+                {
+                    "entity_id": row.entity_id,
+                    "entity_type": row.entity_type,
+                    "canonical_name": row.canonical_name,
+                    "mention_count": row.mention_count,
+                    "first_timestamp": (
+                        float(row.first_timestamp)
+                        if row.first_timestamp is not None
+                        else None
+                    ),
+                }
+            )
+        return matches
 
     async def get_combined_video_count(
         self,

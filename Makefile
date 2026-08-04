@@ -82,12 +82,6 @@ help:
 	@echo "  dev-migrate       - Run migrations on development database"
 	@echo "  dev-revision      - Create migration using development database"
 	@echo ""
-	@echo "Schema Validation:"
-	@echo "  test-models       - Test database models (use DEVELOPMENT_MODE=true for dev DB)"
-	@echo "  test-models-dev   - Test models using development database"
-	@echo "  validate-schema   - Validate schema with real YouTube API data"
-	@echo "  validate-schema-takeout - Validate using Takeout + API data"
-	@echo ""
 	@echo "CI/CD:"
 	@echo "  ci                - Run full CI pipeline (quality + tests)"
 	@echo "  ci-quality        - Run quality checks with CI-friendly output"
@@ -372,30 +366,6 @@ dev-full-reset: dev-db-reset dev-migrate
 	@echo "🧪 Test database: postgresql://dev_user:dev_password@localhost:5434/chronovista_integration_test"
 
 # Test database models
-test-models:
-	@echo "🧪 Testing database models..."
-	@echo "💡 Use: DEVELOPMENT_MODE=true make test-models (for development database)"
-	python scripts/test_models.py
-
-test-models-dev:
-	@echo "🧪 Testing database models with development database..."
-	DEVELOPMENT_MODE=true python scripts/test_models.py
-
-validate-schema:
-	@echo "🔍 Validating database schema with real YouTube API data..."
-	@echo "💡 This will use your development database and real YouTube API data"
-	@echo "📋 Make sure you're authenticated: poetry run chronovista auth login"
-	@echo ""
-	DEVELOPMENT_MODE=true $(POETRY_RUN) python scripts/validate_database_schema.py
-
-validate-schema-takeout:
-	@echo "🔍 Enhanced validation using Takeout data + YouTube API..."
-	@echo "💡 This combines your Google Takeout data with YouTube API data"
-	@echo "📋 Make sure you're authenticated: poetry run chronovista auth login"
-	@echo "📊 Using recommended channels from Takeout analysis"
-	@echo ""
-	DEVELOPMENT_MODE=true $(POETRY_RUN) python scripts/validate_schema_with_takeout.py
-
 # Documentation targets
 install-docs:
 	@echo "📚 Installing documentation dependencies..."

@@ -870,3 +870,45 @@ export async function getScanJob(
   });
   return res.data;
 }
+
+// ---------------------------------------------------------------------------
+// Appears-with panel (Feature 062, US3)
+// ---------------------------------------------------------------------------
+
+/** An entity sharing videos with the subject entity. */
+export interface CooccurringEntity {
+  entity_id: string;
+  entity_type: string;
+  canonical_name: string;
+  /**
+   * Distinct videos in which both entities have a qualifying mention.
+   *
+   * Equals the videos list's `pagination.total` for the same pair under the
+   * same evidence scope (FR-024b) — so the number shown here and the number
+   * landed on after clicking are the same number.
+   */
+  shared_video_count: number;
+}
+
+/**
+ * Fetch the entities co-occurring with a subject entity.
+ *
+ * @param entityId - UUID of the subject entity
+ * @param limit - Maximum partners to return (server-bounded)
+ * @param minEvidence - Evidence scope; must match the surrounding view's
+ * @param signal - Abort signal, so a scope change discards an in-flight result
+ */
+export async function fetchCooccurringEntities(
+  entityId: string,
+  limit: number,
+  minEvidence?: "transcript",
+  signal?: AbortSignal
+): Promise<CooccurringEntity[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (minEvidence) params.set("min_evidence", minEvidence);
+  const res = await apiFetch<{ data: CooccurringEntity[] }>(
+    `/entities/${entityId}/co-occurring?${params.toString()}`,
+    signal ? { externalSignal: signal } : {}
+  );
+  return res.data;
+}

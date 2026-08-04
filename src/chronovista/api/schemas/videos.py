@@ -1,6 +1,7 @@
 """Video API response schemas."""
 
 from datetime import datetime
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,6 +19,36 @@ class TranscriptSummary(BaseModel):
     languages: list[str]  # Available language codes (BCP-47)
     has_manual: bool  # Any manual/CC transcripts?
     has_corrections: bool = False  # Any segments with user corrections?
+
+
+class VideoEntityMatch(BaseModel):
+    """One required entity's evidence within a qualifying video (Feature 062).
+
+    Attributes
+    ----------
+    entity_id : UUID
+        The required entity this evidence belongs to.
+    entity_type : str
+        Entity type, carried so a client can render the type badge without a
+        second lookup per entity (FR-031).
+    canonical_name : str
+        Display name for the badge label.
+    mention_count : int
+        Qualifying mentions of this entity in this video, respecting the
+        active evidence scope.
+    first_timestamp : float | None
+        Earliest transcript position, in seconds. ``None`` when the entity
+        appears only in the title or description, which have no segment and
+        therefore no time (FR-008).
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    entity_id: UUID
+    entity_type: str
+    canonical_name: str
+    mention_count: int
+    first_timestamp: float | None = None
 
 
 class VideoListItem(BaseModel):
@@ -74,6 +105,34 @@ class VideoListItem(BaseModel):
         default_factory=list, description="Associated topics"
     )
     availability_status: str = Field(..., description="Video availability status")
+
+    # Entity intersection fields (Feature 062).
+    #
+    # These live on the *item* rather than on the response wrappers because
+    # both VideoListResponse and VideoListResponseWithWarnings wrap
+    # list[VideoListItem]. Carrying them here makes it structurally impossible
+    # for one response shape to expose them and the other not, which is what
+    # FR-007a requires: entity data must not be lost because an unrelated
+    # filter emitted a warning.
+    #
+    # None (not []) when no entity filter of either kind is active, so existing
+    # callers see an unchanged shape. An exclusion-only filter IS active and
+    # yields an empty list with total_mentions 0 (FR-015a).
+    entity_matches: list[VideoEntityMatch] | None = Field(
+        default=None,
+        description=(
+            "Per-required-entity evidence. One element per required entity "
+            "(FR-003a); empty for an exclusion-only filter; null when no "
+            "entity filter is active."
+        ),
+    )
+    total_mentions: int | None = Field(
+        default=None,
+        description=(
+            "Qualifying mentions summed across required entities; the "
+            "relevance sort key."
+        ),
+    )
 
 
 class VideoListResponse(ApiResponse[list[VideoListItem]]):

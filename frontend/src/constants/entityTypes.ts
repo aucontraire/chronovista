@@ -49,6 +49,32 @@ export const ENTITY_TYPE_COLORS: Record<string, string> = {
   other: "bg-slate-100 text-slate-700 border-slate-200",
 };
 
+/**
+ * Neutral badge treatment for an unrecognised or missing entity_type.
+ *
+ * Defined here so it has exactly one definition point (FR-029). It was
+ * previously inlined identically at each call site, which is how a palette
+ * forks.
+ */
+export const ENTITY_TYPE_FALLBACK_COLOR =
+  "bg-slate-100 text-slate-700 border-slate-200";
+
+/** Label shown for an unrecognised or missing entity_type. */
+export const ENTITY_TYPE_FALLBACK_LABEL = "Unknown";
+
+/**
+ * Pill colour classes for an entity type, with the neutral fallback applied.
+ *
+ * The `ENTITY_TYPE_COLORS[x] ?? ENTITY_TYPE_FALLBACK_COLOR` resolution was
+ * being written out at each call site, which is how a palette forks: one site
+ * forgets the fallback, or picks a different neutral. FR-029 wants one
+ * definition point for the fallback as well as for the colours.
+ */
+export function entityTypeColors(entityType: string | null | undefined): string {
+  return ENTITY_TYPE_COLORS[entityType ?? ""] ?? ENTITY_TYPE_FALLBACK_COLOR;
+}
+
+
 // ---------------------------------------------------------------------------
 // Tabs
 // ---------------------------------------------------------------------------

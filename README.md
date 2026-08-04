@@ -199,9 +199,9 @@ See the [Architecture Overview](https://aucontraire.github.io/chronovista/archit
 
 ### Engineering Practice
 
-The codebase is governed by a versioned constitution that enforces production standards on AI-collaborated code: strict typing (mypy strict, zero `Any`), Pydantic-first modeling, the repository pattern, and explicit anti-slop constraints — minimal-diff, file and abstraction budgets, and the Rule of Three against premature abstraction.
+The codebase holds production standards for AI-collaborated code, enforced in CI: strict typing (mypy strict, zero `Any` in public APIs), Pydantic-first modeling, the repository pattern with async I/O throughout, `black` and `ruff` formatting gates, and >90% test coverage. Anti-slop constraints are explicit — minimal diffs, file and abstraction budgets, and the Rule of Three against premature abstraction.
 
-It is a living document shaped by post-mortems rather than written up front: v1.1.0 added Cross-Feature Data Contract Verification after integration bugs in Features 030–032 exposed a gap at the seam *between* features, and a multi-tier sub-agent review enforces compliance at PR time.
+The standard that took longest to learn is **cross-feature data contract verification**. A mutation that changes data ownership must be re-queried through every downstream consumer path, and a mock test for an UPDATE must inspect the SQL `SET` clause rather than the return value — a column silently absent from `SET` returns success while writing nothing. This was added after integration bugs in Features 030–032 exposed a gap at the seam *between* features, where each side was individually correct. The tests enforcing it are in `tests/unit/api/test_entity_update_sql_columns.py` and `tests/integration/api/test_entity_rename_cross_feature.py`.
 
 ## Development
 

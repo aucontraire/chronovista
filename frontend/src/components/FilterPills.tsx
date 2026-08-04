@@ -43,6 +43,7 @@
  */
 
 import { useRef, useId, useState, useEffect } from 'react';
+import { entityTypeColors } from '../constants/entityTypes';
 import { filterColors } from '../styles/tokens';
 
 /**
@@ -58,7 +59,14 @@ const MAX_FILTER_TEXT_LENGTH = 25;
 const MAX_CANONICAL_TAG_TEXT_LENGTH = 25;
 
 /** Supported filter pill types. */
-export type FilterPillType = 'tag' | 'category' | 'topic' | 'boolean' | 'canonical_tag';
+export type FilterPillType =
+  | 'tag'
+  | 'category'
+  | 'topic'
+  | 'boolean'
+  | 'canonical_tag'
+  | 'entity'
+  | 'excluded_entity';
 
 export interface FilterPill {
   /** Type of filter (determines color scheme) */
@@ -75,6 +83,15 @@ export interface FilterPill {
    * When alias_count = 1 or omitted, no variation badge is shown.
    */
   aliasCount?: number | undefined;
+  /**
+   * Entity type, for 'entity' and 'excluded_entity' pills only.
+   *
+   * When present the pill takes its colour from the shared entity palette
+   * rather than the generic filter palette, so an entity looks the same here
+   * as it does everywhere else (FR-025). The required/excluded distinction is
+   * then carried by the symbol and the spoken prefix, not by hue (FR-030).
+   */
+  entityType?: string | undefined;
 }
 
 export interface FilterPillsProps {
@@ -108,6 +125,24 @@ function truncateText(text: string, maxLength: number): string {
 /**
  * Gets the appropriate emoji icon for a filter type.
  */
+/**
+ * Human-readable prefix announced to screen readers before the pill label.
+ *
+ * Only the compound slugs are mapped. 'tag', 'topic', and 'category' already
+ * read as English when spoken, and existing suites assert on them verbatim;
+ * 'excluded_entity' does not, and FR-030 requires the required/excluded
+ * distinction to reach a screen reader — the icon that carries it visually is
+ * aria-hidden, so the text is the only channel that survives.
+ */
+const FILTER_TYPE_SR_LABELS: Partial<Record<FilterPillType, string>> = {
+  entity: 'Required entity',
+  excluded_entity: 'Excluded entity',
+};
+
+function filterTypeSrLabel(type: FilterPillType): string {
+  return FILTER_TYPE_SR_LABELS[type] ?? type;
+}
+
 function getFilterIcon(type: FilterPillType): string {
   switch (type) {
     case 'tag':
@@ -120,6 +155,14 @@ function getFilterIcon(type: FilterPillType): string {
       return '\u{2705}';
     case 'canonical_tag':
       return '\u{1F3F7}\uFE0F';
+    // Feature 062: required vs excluded must be distinguishable by something
+    // other than colour, since entity pills already carry entity-type colour
+    // (FR-030). These two symbols differ in greyscale and are announced
+    // distinctly by screen readers.
+    case 'entity':
+      return '\u{1F3AF}';
+    case 'excluded_entity':
+      return '\u{1F6AB}';
   }
 }
 
@@ -278,6 +321,14 @@ export function FilterPills({
         {/* gap-2 = 8px minimum spacing between interactive elements (T094) */}
         {filters.map((filter, index) => {
           const colorScheme = filterColors[filter.type];
+          // Entity pills use the shared entity palette (Tailwind classes)
+          // instead of the generic filter palette (inline hex). Branching here
+          // rather than duplicating the palette in hex keeps FR-029's single
+          // definition point intact.
+          const entityClasses =
+            filter.entityType !== undefined
+              ? entityTypeColors(filter.entityType)
+              : null;
           const maxLength =
             filter.type === 'canonical_tag'
               ? MAX_CANONICAL_TAG_TEXT_LENGTH
@@ -300,12 +351,18 @@ export function FilterPills({
             <div
               key={`${filter.type}-${filter.value}`}
               role="listitem"
-              className="inline-flex items-center gap-1.5 px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 rounded-full text-sm font-medium border transition-colors"
-              style={{
-                backgroundColor: colorScheme.background,
-                color: colorScheme.text,
-                borderColor: colorScheme.border,
-              }}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 rounded-full text-sm font-medium border transition-colors ${
+                entityClasses ?? ''
+              }`.trim()}
+              style={
+                entityClasses
+                  ? undefined
+                  : {
+                      backgroundColor: colorScheme.background,
+                      color: colorScheme.text,
+                      borderColor: colorScheme.border,
+                    }
+              }
               title={isTruncated ? tooltipText : undefined}
             >
               {/* Filter icon */}
@@ -313,7 +370,9 @@ export function FilterPills({
 
               {/* Filter label */}
               <span className="inline-flex items-baseline gap-1">
-                <span className="sr-only">{filter.type}: </span>
+                <span className="sr-only">
+                  {filterTypeSrLabel(filter.type)}:{' '}
+                </span>
                 <span>{displayText}</span>
                 {/* Variation badge: "{N} var." shown only when alias_count > 1 */}
                 {showVariationBadge && (
@@ -333,9 +392,11 @@ export function FilterPills({
                 }}
                 type="button"
                 onClick={() => handleRemoveWithFocus(filter.type, filter.value, index)}
-                aria-label={`Remove ${filter.type} filter: ${filter.label}`}
+                aria-label={`Remove ${filterTypeSrLabel(
+                  filter.type
+                )} filter: ${filter.label}`}
                 className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[24px] sm:min-h-[24px] -my-2 sm:my-0 -me-2 sm:me-0 rounded-full hover:bg-black/10 dark:hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
-                style={{ color: colorScheme.text }}
+                style={entityClasses ? undefined : { color: colorScheme.text }}
               >
                 <svg
                   className="w-4 h-4 sm:w-3 sm:h-3"

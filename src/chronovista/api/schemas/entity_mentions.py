@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -774,3 +775,42 @@ class ScanJobResponse(BaseModel):
     model_config = ConfigDict(strict=True)
 
     data: ScanJobData
+
+
+class CooccurringEntity(BaseModel):
+    """An entity that shares videos with the subject entity (Feature 062).
+
+    Attributes
+    ----------
+    entity_id : UUID
+        The co-occurring partner.
+    entity_type : str
+        Carried so the badge renders without a second lookup (FR-031).
+    canonical_name : str
+        Display name.
+    shared_video_count : int
+        Distinct videos in which BOTH entities have a qualifying mention.
+
+        This MUST equal the ``pagination.total`` the videos list returns when
+        filtered to the same pair under the same evidence scope (FR-024b). The
+        two derive from the same qualification rule, but only agree if both
+        also apply the same video population -- the videos list excludes
+        unavailable videos by default, so this count must too. Showing "261
+        shared videos" and then landing on a page that says 258 is the same
+        class of defect as two endpoints disagreeing about a video count.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    entity_id: UUID
+    entity_type: str
+    canonical_name: str
+    shared_video_count: int
+
+
+class CooccurringEntitiesResponse(BaseModel):
+    """Response envelope for the appears-with panel."""
+
+    model_config = ConfigDict(strict=True)
+
+    data: list[CooccurringEntity]

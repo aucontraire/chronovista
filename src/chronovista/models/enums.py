@@ -404,6 +404,27 @@ class MentionSource(str, Enum):
     DESCRIPTION = "description"
 
 
+class EvidenceScope(str, Enum):
+    """Which mentions qualify toward an entity intersection.
+
+    Expressed over mention **source** only, never detection method (FR-020d).
+    The two are orthogonal: every manually added and user-corrected mention is
+    transcript-sourced, so restricting to ``TRANSCRIPT`` retains all of them
+    rather than excluding the highest-trust evidence in the system.
+
+    Named for what it will become, but a graded confidence model MUST arrive as
+    a separate parameter rather than as new members here. A confidence
+    threshold and a mention source are two dimensions; admitting both into one
+    enum is precisely the defect recorded in GitHub #172, where
+    ``?source=`` accepts three mention sources, one detection method, and one
+    relation that is not a mention at all. The name is stable so saved
+    addresses survive (FR-020); the vocabulary stays one-dimensional (FR-020d).
+    """
+
+    ANY = "any"
+    TRANSCRIPT = "transcript"
+
+
 class TaskStatus(str, Enum):
     """Status of a background task."""
 

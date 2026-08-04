@@ -8,6 +8,7 @@ include_unavailable, tag, category, topic_id).
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
@@ -106,12 +107,22 @@ class TestVideoSortFieldEnum:
         """Verify title enum value matches API parameter."""
         assert VideoSortField.TITLE.value == "title"
 
-    def test_enum_has_exactly_two_members(self) -> None:
-        """Verify enum has only upload_date and title (no date_added)."""
+    def test_enum_holds_exactly_the_supported_sorts(self) -> None:
+        """Verify the enum holds exactly the supported sorts, and no date_added.
+
+        The count is not the point -- the guard is that no ``date_added`` member
+        appears. The frontend label "Date Added" maps to ``upload_date``
+        (FR-017), so a separate member would silently duplicate it. Asserted
+        explicitly here rather than implied by a member count, which Feature
+        062 legitimately changed by adding ``relevance``.
+        """
         members = list(VideoSortField)
-        assert len(members) == 2
-        assert VideoSortField.UPLOAD_DATE in members
-        assert VideoSortField.TITLE in members
+        assert set(members) == {
+            VideoSortField.UPLOAD_DATE,
+            VideoSortField.TITLE,
+            VideoSortField.RELEVANCE,
+        }
+        assert not any(member.value == "date_added" for member in members)
 
     def test_is_string_enum(self) -> None:
         """Verify VideoSortField is a str enum for FastAPI query param parsing."""
@@ -140,6 +151,157 @@ class TestDefaultSort:
         body = response.json()
         assert "data" in body
         assert "pagination" in body
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Unset-vs-explicit sort, and the relevance guard (Feature 062)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestSortUnsetState:
+    """``sort_by`` carries a distinct unset state (FR-009e).
+
+    The parameter default moved off the signature and into the body so the
+    endpoint can tell "caller sent nothing" from "caller explicitly chose
+    upload_date". Feature 062 needs that distinction to auto-select relevance
+    only when the caller expressed no preference (FR-009b). These tests pin the
+    externally visible half of it: existing callers must see no change.
+    """
+
+    async def test_omitting_sort_by_still_succeeds(
+        self, async_client: AsyncClient
+    ) -> None:
+        """No sort_by behaves exactly as it did when the default was on the param."""
+        response = await async_client.get("/api/v1/videos")
+        assert response.status_code == 200
+
+    async def test_explicit_upload_date_still_succeeds(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Explicitly requesting the former default is still accepted."""
+        response = await async_client.get("/api/v1/videos?sort_by=upload_date")
+        assert response.status_code == 200
+
+    async def test_relevance_without_entity_filter_is_rejected(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Relevance has no meaning without a required entity set.
+
+        Must be a 400 that explains itself -- not a 422 from enum validation,
+        and emphatically not a 500 from an unmapped sort column. ``RELEVANCE``
+        is deliberately absent from ``_VIDEO_SORT_COLUMN_MAP`` because its
+        ordering comes from the entity qualification subquery, so an unguarded
+        request would raise KeyError.
+        """
+        response = await async_client.get("/api/v1/videos?sort_by=relevance")
+        assert response.status_code == 400
+        assert "relevance" in response.text.lower()
+
+    async def test_unknown_sort_value_still_422(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Adding an enum member must not turn unknown values into 400s."""
+        response = await async_client.get("/api/v1/videos?sort_by=not_a_sort")
+        assert response.status_code == 422
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Entity filter validation (Feature 062)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestEntityFilterValidation:
+    """Every rejection the entity filter can produce.
+
+    Each of these is a 400 rather than a silently-empty 200 or an ignored
+    filter. That diverges from this endpoint's convention for tag / topic /
+    category, which ignore unrecognised values and report them in ``warnings``.
+    The divergence is deliberate (FR-016b): the entity filter is CONJUNCTIVE,
+    so silently dropping a required entity BROADENS the result -- a
+    three-entity intersection quietly answered as a two-entity one returns
+    more videos, presenting a wrong answer confidently. Dropping one value
+    from an OR-filter narrows instead, which is self-evident to the user.
+    """
+
+    async def test_unknown_entity_id_is_rejected(
+        self, async_client: AsyncClient
+    ) -> None:
+        """FR-016b: never a silent empty result."""
+        unknown = uuid.uuid4()
+        response = await async_client.get(f"/api/v1/videos?entity_id={unknown}")
+        assert response.status_code == 400
+        assert str(unknown) in response.text
+
+    async def test_unknown_excluded_entity_id_is_rejected(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Exclusion gets the same treatment as inclusion."""
+        unknown = uuid.uuid4()
+        response = await async_client.get(f"/api/v1/videos?exclude_entity_id={unknown}")
+        assert response.status_code == 400
+
+    async def test_required_and_excluded_overlap_is_rejected(
+        self, async_client: AsyncClient
+    ) -> None:
+        """FR-016: an entity cannot be both required and excluded.
+
+        Checked before entity existence, so the conflict is reported even for
+        ids that do not exist -- the request is incoherent either way.
+        """
+        same = uuid.uuid4()
+        response = await async_client.get(
+            f"/api/v1/videos?entity_id={same}&exclude_entity_id={same}"
+        )
+        assert response.status_code == 400
+        assert str(same) in response.text
+
+    async def test_required_set_over_ceiling_is_rejected(
+        self, async_client: AsyncClient
+    ) -> None:
+        """FR-002a/FR-002b: explained, not silently truncated."""
+        params = "&".join(f"entity_id={uuid.uuid4()}" for _ in range(11))
+        response = await async_client.get(f"/api/v1/videos?{params}")
+        assert response.status_code == 400
+        assert "10" in response.text
+
+    async def test_excluded_set_over_ceiling_is_rejected(
+        self, async_client: AsyncClient
+    ) -> None:
+        """The ceiling applies to each set SEPARATELY (FR-002a)."""
+        params = "&".join(f"exclude_entity_id={uuid.uuid4()}" for _ in range(11))
+        response = await async_client.get(f"/api/v1/videos?{params}")
+        assert response.status_code == 400
+
+    async def test_ten_per_set_is_within_the_per_set_ceiling(
+        self, async_client: AsyncClient
+    ) -> None:
+        """Ten required and ten excluded is twenty entities in one request.
+
+        Each set is inside its own ceiling of 10 (FR-002a), so the per-set rule
+        does not reject it -- but both sets count toward the global filter cap
+        of 15 (FR-002d), which does. The request must fail on the GLOBAL limit,
+        naming it, rather than on a per-set limit neither set exceeded.
+        """
+        params = "&".join(
+            [f"entity_id={uuid.uuid4()}" for _ in range(10)]
+            + [f"exclude_entity_id={uuid.uuid4()}" for _ in range(10)]
+        )
+        response = await async_client.get(f"/api/v1/videos?{params}")
+        assert response.status_code == 400
+        assert "15" in response.text
+
+    async def test_unrecognised_min_evidence_is_rejected(
+        self, async_client: AsyncClient
+    ) -> None:
+        """FR-018a: rejected, never silently defaulted.
+
+        422 rather than 400: an enum-typed parameter rejects at the validation
+        layer, which is what this endpoint already does for an unknown
+        ``sort_by``. FR-018a requires rejection with an explanation, not a
+        particular status code.
+        """
+        response = await async_client.get("/api/v1/videos?min_evidence=bogus")
+        assert response.status_code == 422
 
 
 # ═══════════════════════════════════════════════════════════════════════════

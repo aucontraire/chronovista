@@ -11,6 +11,7 @@ import pytest
 # Import integration fixtures to make them available to performance tests
 # These need to be in module scope for pytest to discover them as fixtures
 from tests.integration.api.conftest import (
+    async_client,
     integration_db_engine,
     integration_db_schema_setup,
     integration_db_session,
@@ -21,6 +22,7 @@ from tests.integration.api.conftest import (
 
 # Re-export fixtures so pytest discovers them
 __all__ = [
+    "async_client",
     "integration_db_engine",
     "integration_db_schema_setup",
     "integration_db_session",

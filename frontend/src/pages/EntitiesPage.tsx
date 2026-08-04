@@ -23,9 +23,8 @@ import { SkipLink } from "../components/SkipLink";
 import { CreateEntityModal } from "../components/entity/CreateEntityModal";
 import { useEntities } from "../hooks/useEntityMentions";
 import type { EntityListItem } from "../api/entityMentions";
+import { EntityTypeBadge } from "../components/EntityTypeBadge";
 import {
-  ENTITY_TYPE_LABELS,
-  ENTITY_TYPE_COLORS,
   ENTITY_TYPE_TABS,
 } from "../constants/entityTypes";
 
@@ -43,15 +42,6 @@ const SORT_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "name", label: "Name (A-Z)" },
 ];
 
-function getTypeBadgeClass(entityType: string): string {
-  return (
-    ENTITY_TYPE_COLORS[entityType] ?? "bg-slate-100 text-slate-700 border-slate-200"
-  );
-}
-
-function getTypeLabel(entityType: string): string {
-  return ENTITY_TYPE_LABELS[entityType] ?? entityType;
-}
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -110,11 +100,7 @@ function EntityCard({ entity }: { entity: EntityListItem }) {
       aria-label={`${entity.canonical_name} — ${entity.mention_count} mention${entity.mention_count === 1 ? "" : "s"} in ${entity.video_count} video${entity.video_count === 1 ? "" : "s"}`}
     >
       {/* Type badge */}
-      <span
-        className={`inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full border mb-3 ${getTypeBadgeClass(entity.entity_type)}`}
-      >
-        {getTypeLabel(entity.entity_type)}
-      </span>
+      <EntityTypeBadge entityType={entity.entity_type} className="mb-3" />
 
       {/* Entity name */}
       <h3 className="text-base font-semibold text-gray-900 mb-2 line-clamp-2">

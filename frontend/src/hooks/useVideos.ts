@@ -44,6 +44,12 @@ interface UseVideosOptions {
   sortOrder?: SortOrder;
   /** Filter to liked videos only (Feature 027) */
   likedOnly?: boolean;
+  /** Required entity UUIDs — AND logic across all of them (Feature 062) */
+  entityIds?: string[];
+  /** Excluded entity UUIDs — a video mentioning ANY is removed (Feature 062) */
+  excludedEntityIds?: string[];
+  /** Restrict which mentions qualify; omit for all three sources (Feature 062) */
+  minEvidence?: "transcript" | undefined;
   /** Filter to videos with transcripts (Feature 027) */
   hasTranscript?: boolean;
   /** Filter to videos saved in a curated playlist and never watched */
@@ -105,6 +111,9 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
     sortBy,
     sortOrder,
     likedOnly = false,
+    entityIds = [],
+    excludedEntityIds = [],
+    minEvidence,
     hasTranscript,
     savedUnwatched,
   } = options;
@@ -121,7 +130,29 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
     fetchNextPage,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["videos", { limit, tags, canonicalTags, category, topicIds, includeUnavailable, sortBy, sortOrder, likedOnly, hasTranscript, savedUnwatched }],
+    // EVERY input the queryFn reads must appear here. React Query caches on
+    // this key alone, so a filter missing from it produces a stale result that
+    // only corrects on a hard reload — the queryFn builds the right URL but is
+    // never re-invoked.
+    queryKey: [
+      "videos",
+      {
+        limit,
+        tags,
+        canonicalTags,
+        category,
+        topicIds,
+        includeUnavailable,
+        sortBy,
+        sortOrder,
+        likedOnly,
+        hasTranscript,
+        savedUnwatched,
+        entityIds,
+        excludedEntityIds,
+        minEvidence,
+      },
+    ],
     queryFn: async ({ pageParam, signal }) => {
       const params = new URLSearchParams({
         offset: pageParam.toString(),
@@ -147,6 +178,10 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
       if (likedOnly) params.set('liked_only', 'true');
       if (hasTranscript) params.set('has_transcript', 'true');
       if (savedUnwatched) params.set('saved_unwatched', 'true');
+      // Repeated keys, matching tag / canonical_tag / topic_id above.
+      entityIds.forEach(id => params.append('entity_id', id));
+      excludedEntityIds.forEach(id => params.append('exclude_entity_id', id));
+      if (minEvidence) params.set('min_evidence', minEvidence);
 
       // FR-004/FR-005: Pass TanStack Query signal as externalSignal so it is
       // combined with the internal timeout guard via AbortSignal.any().

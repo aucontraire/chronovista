@@ -137,6 +137,7 @@ nav:
       - Work with transcripts: user-guide/transcripts.md
       - Correct transcripts: user-guide/corrections.md
       - Analyze topics: user-guide/topic-analytics.md
+      - Find entity intersections: user-guide/entity-intersection.md
       - CLI workflows: user-guide/cli-overview.md
       - Run the REST API: user-guide/rest-api.md
       - Deploy with Docker: guides/migrating-to-docker.md

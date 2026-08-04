@@ -58,6 +58,10 @@
  */
 
 import { useSearchParams } from 'react-router-dom';
+
+import { EntityMultiSelect } from './EntityMultiSelect';
+import { fetchEntityDetail } from '../api/entityMentions';
+import type { SelectedEntity } from './EntityMultiSelect';
 import { useEffect, useState, useId, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -99,9 +103,22 @@ function calculateTotalFilters(
   tags: string[],
   category: string | null,
   topicIds: string[],
-  canonicalTags: string[]
+  canonicalTags: string[],
+  entityIds: string[] = [],
+  excludedEntityIds: string[] = []
 ): number {
-  return tags.length + (category ? 1 : 0) + topicIds.length + canonicalTags.length;
+  // Entities count toward the global cap on the same terms as every other
+  // filter type (FR-002d). The backend enforces this in
+  // _validate_filter_limits; if the panel omitted them it would understate the
+  // total and let the user build a request the API then rejects.
+  return (
+    tags.length +
+    (category ? 1 : 0) +
+    topicIds.length +
+    canonicalTags.length +
+    entityIds.length +
+    excludedEntityIds.length
+  );
 }
 
 /**
@@ -181,15 +198,85 @@ export function VideoFilters({
    * Maps normalized_form → { canonical_form, alias_count }.
    * Populated on autocomplete selection and bookmark hydration.
    */
+  // Entity display names for pill labels. The URL carries ids only, so a
+  // restored address shows the id until the user re-picks — the same tradeoff
+  // canonical tags already make with displayNameCache below.
+  const [entityNameCache, setEntityNameCache] = useState<
+    Map<string, SelectedEntity>
+  >(new Map());
+
   const [displayNameCache, setDisplayNameCache] = useState<
     Map<string, CanonicalTagCacheEntry>
   >(new Map());
 
   // Calculate filter counts (include boolean filters in active count)
-  const totalFilters = calculateTotalFilters(tags, category, topicIds, canonicalTags);
+  const totalFilters = calculateTotalFilters(
+    tags,
+    category,
+    topicIds,
+    canonicalTags,
+    searchParams.getAll('entity_id'),
+    searchParams.getAll('exclude_entity_id')
+  );
   const booleanFilterCount = (likedOnly ? 1 : 0) + (hasTranscript ? 1 : 0);
   const hasActiveFilters = totalFilters > 0 || booleanFilterCount > 0;
   const approachingLimit = isApproachingLimit(tags, category, topicIds, canonicalTags);
+
+  /**
+   * Hydrate entity display names for entity_id / exclude_entity_id URL params.
+   *
+   * The address carries ids, not names, so a bookmarked or shared link arrives
+   * with nothing to label the pills — they would read as raw UUIDs, which tells
+   * the user nothing about what their own filter is doing. Same bookmark
+   * scenario the canonical tags solve below, same shape of fix.
+   */
+  useEffect(() => {
+    const missing = [
+      ...searchParams.getAll('entity_id'),
+      ...searchParams.getAll('exclude_entity_id'),
+    ].filter((id) => !entityNameCache.has(id));
+    if (missing.length === 0) return;
+
+    let cancelled = false;
+    void Promise.all(
+      missing.map(async (entityId) => {
+        try {
+          const detail = await fetchEntityDetail(entityId);
+          // Validate before caching. An unexpected or malformed response would
+          // otherwise put `undefined` in the pill label, which crashes the
+          // whole FilterPills render — one bad entity taking down every filter
+          // the user has active.
+          if (typeof detail?.canonical_name !== 'string' || !detail.canonical_name) {
+            return null;
+          }
+          return {
+            entity_id: entityId,
+            canonical_name: detail.canonical_name,
+            entity_type:
+              typeof detail.entity_type === 'string' ? detail.entity_type : 'other',
+          } satisfies SelectedEntity;
+        } catch {
+          // A deleted or malformed id leaves the pill showing the raw value
+          // rather than failing the panel — the API rejects the query itself
+          // and the list surfaces that separately (FR-016a).
+          return null;
+        }
+      })
+    ).then((resolved) => {
+      if (cancelled) return;
+      const found = resolved.filter((e): e is SelectedEntity => e !== null);
+      if (found.length === 0) return;
+      setEntityNameCache((prev) => {
+        const next = new Map(prev);
+        found.forEach((entity) => next.set(entity.entity_id, entity));
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, entityNameCache]);
 
   /**
    * Hydrate display names for canonical_tag URL params on page load (bookmark scenario).
@@ -463,6 +550,12 @@ export function VideoFilters({
       case 'topic':
         handleTopicRemove(value);
         break;
+      case 'entity':
+        removeEntity('entity_id')(value);
+        break;
+      case 'excluded_entity':
+        removeEntity('exclude_entity_id')(value);
+        break;
       case 'boolean': {
         // Remove the boolean URL param (e.g., liked_only, has_transcript)
         const newParams = new URLSearchParams(searchParams);
@@ -474,11 +567,89 @@ export function VideoFilters({
   };
 
   // Build filter pills data (including boolean pills for Feature 027 and canonical_tag pills for US2)
+  // ---------------------------------------------------------------------
+  // Entity intersection (Feature 062)
+  // ---------------------------------------------------------------------
+  //
+  // Display names are cached the same way canonical tags are: the URL carries
+  // ids, and a restored address has no names until the user re-picks. The
+  // cache is populated on selection and read back for the pill label.
+  // Deduplicated on read, matching the API: requesting the same entity twice
+  // is idempotent there (Edge Cases), so a hand-edited or double-appended link
+  // must not consume two slots here either — otherwise the panel's "N of 10"
+  // drifts from the ceiling the server actually enforces.
+  const entityIds = Array.from(new Set(searchParams.getAll('entity_id')));
+  const excludedEntityIds = Array.from(
+    new Set(searchParams.getAll('exclude_entity_id'))
+  );
+  const transcriptOnly = searchParams.get('min_evidence') === 'transcript';
+
+  const selectedEntities: SelectedEntity[] = entityIds.map(
+    (id) =>
+      entityNameCache.get(id) ?? {
+        entity_id: id,
+        canonical_name: id,
+        entity_type: 'other',
+      }
+  );
+  const selectedExcludedEntities: SelectedEntity[] = excludedEntityIds.map(
+    (id) =>
+      entityNameCache.get(id) ?? {
+        entity_id: id,
+        canonical_name: id,
+        entity_type: 'other',
+      }
+  );
+
+  const addEntity = (key: 'entity_id' | 'exclude_entity_id') => (
+    entity: SelectedEntity
+  ) => {
+    setEntityNameCache((prev) => new Map(prev).set(entity.entity_id, entity));
+    const newParams = new URLSearchParams(searchParams);
+    newParams.append(key, entity.entity_id);
+    setSearchParams(newParams);
+  };
+
+  const removeEntity = (key: 'entity_id' | 'exclude_entity_id') => (
+    entityId: string
+  ) => {
+    const newParams = new URLSearchParams(searchParams);
+    const remaining = newParams.getAll(key).filter((id) => id !== entityId);
+    newParams.delete(key);
+    remaining.forEach((id) => newParams.append(key, id));
+    setSearchParams(newParams);
+  };
+
+  const handleTranscriptOnlyToggle = (next: boolean) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (next) {
+      newParams.set('min_evidence', 'transcript');
+    } else {
+      newParams.delete('min_evidence');
+    }
+    setSearchParams(newParams);
+  };
+
   const filterPills = [
     ...tags.map((tag) => ({
       type: 'tag' as const,
       value: tag,
       label: tag,
+    })),
+    // Entity pills (Feature 062). Required and excluded are separate pill
+    // types so they are distinguishable by symbol and text, not colour alone
+    // (FR-030) — both already carry entity-type colour.
+    ...selectedEntities.map((entity) => ({
+      type: 'entity' as const,
+      value: entity.entity_id,
+      label: entity.canonical_name,
+      entityType: entity.entity_type,
+    })),
+    ...selectedExcludedEntities.map((entity) => ({
+      type: 'excluded_entity' as const,
+      value: entity.entity_id,
+      label: entity.canonical_name,
+      entityType: entity.entity_type,
     })),
     // Canonical tag pills (US2): use display name cache, fall back to normalized form
     ...canonicalTags.map((normalizedForm) => {
@@ -539,6 +710,51 @@ export function VideoFilters({
             onTagRemove={handleCanonicalTagRemove}
             maxTags={FILTER_LIMITS.MAX_TAGS}
           />
+        </div>
+
+        {/* Entity intersection picker (Feature 062, FR-006a) */}
+        <div className="w-full">
+          <EntityMultiSelect
+            selected={selectedEntities}
+            onSelect={addEntity('entity_id')}
+            onRemove={removeEntity('entity_id')}
+            max={FILTER_LIMITS.MAX_ENTITIES}
+            label="Mentions all of"
+            placeholder="Search entities…"
+            unavailableIds={excludedEntityIds}
+          />
+        </div>
+
+        {/* Entity exclusion (Feature 062, FR-013) */}
+        <div className="w-full">
+          <EntityMultiSelect
+            selected={selectedExcludedEntities}
+            onSelect={addEntity('exclude_entity_id')}
+            onRemove={removeEntity('exclude_entity_id')}
+            max={FILTER_LIMITS.MAX_ENTITIES}
+            label="Excluding"
+            placeholder="Search entities to exclude…"
+            unavailableIds={entityIds}
+          />
+        </div>
+
+        {/* Evidence scope — exactly ONE affordance in this release (FR-020b).
+            A general scope selector waits for a graded confidence model. */}
+        <div className="w-full flex items-end">
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={transcriptOnly}
+              onChange={(e) => handleTranscriptOnlyToggle(e.target.checked)}
+              className="rounded border-slate-300"
+            />
+            <span>
+              Transcript only
+              <span className="block text-xs text-slate-500">
+                Excludes title and description mentions
+              </span>
+            </span>
+          </label>
         </div>
 
         {/* Category Dropdown */}

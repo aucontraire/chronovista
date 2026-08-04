@@ -24,6 +24,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { entityTypeColors } from "../constants/entityTypes";
+
 import type { VideoEntitySummary } from "../api/entityMentions";
 import { useEntitySearch } from "../hooks/useEntitySearch";
 import {
@@ -65,8 +67,15 @@ export interface EntityMentionsPanelProps {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Human-readable label for each entity_type value from the backend. */
-const ENTITY_TYPE_LABELS: Record<string, string> = {
+/**
+ * PLURAL section headings for this panel's grouped layout.
+ *
+ * Deliberately separate from `constants/entityTypes`' singular badge labels —
+ * these title a group ("People"), those name one entity's type ("Person"). The
+ * COLOURS come from the shared constant, so the convention taught on the
+ * entities page holds here too (FR-025, FR-029).
+ */
+const ENTITY_TYPE_SECTION_LABELS: Record<string, string> = {
   person: "People",
   organization: "Organizations",
   place: "Places",
@@ -90,7 +99,7 @@ const ENTITY_TYPE_ORDER = [
 ];
 
 function getTypeLabel(entityType: string): string {
-  return ENTITY_TYPE_LABELS[entityType] ?? entityType;
+  return ENTITY_TYPE_SECTION_LABELS[entityType] ?? entityType;
 }
 
 /** Group entity summaries by entity_type. */
@@ -813,17 +822,16 @@ function EntityChip({
         <Link
           to={`/entities/${entity.entity_id}`}
           onClick={handleClick}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full hover:bg-indigo-100 hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border rounded-full hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors ${
+            entityTypeColors(entity.entity_type)
+          }`}
           aria-label={buildAriaLabel(entity)}
         >
           <span>{entity.canonical_name}</span>
 
           {/* Transcript mention tally — hidden when mention_count is 0 */}
           {entity.mention_count > 0 && (
-            <span
-              className="text-xs font-normal text-indigo-500"
-              aria-hidden="true"
-            >
+            <span className="text-xs font-normal opacity-70" aria-hidden="true">
               ({entity.mention_count})
             </span>
           )}

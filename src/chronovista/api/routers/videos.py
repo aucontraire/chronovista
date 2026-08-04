@@ -9,6 +9,7 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, Path, Query, Request
 from fastapi.responses import JSONResponse
@@ -33,6 +34,7 @@ from chronovista.api.schemas.videos import (
     TranscriptSummary,
     VideoDetail,
     VideoDetailResponse,
+    VideoEntityMatch,
     VideoListItem,
     VideoListResponse,
     VideoListResponseWithWarnings,
@@ -40,6 +42,9 @@ from chronovista.api.schemas.videos import (
     VideoPlaylistsResponse,
     VideoRecoveryResponse,
     VideoRecoveryResultData,
+)
+from chronovista.db.models import (
+    NamedEntity as NamedEntityDB,
 )
 from chronovista.db.models import (
     TopicCategory,
@@ -57,10 +62,11 @@ from chronovista.exceptions import (
     ConflictError,
     NotFoundError,
 )
-from chronovista.models.enums import AvailabilityStatus
+from chronovista.models.enums import AvailabilityStatus, EvidenceScope
 from chronovista.repositories.canonical_tag_repository import (
     CanonicalTagRepository,
 )
+from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
 )
@@ -78,6 +84,9 @@ class VideoSortField(str, Enum):
 
     UPLOAD_DATE = "upload_date"
     TITLE = "title"
+    RELEVANCE = "relevance"  # Feature 062: ordering comes from the entity
+    # qualification subquery, not a VideoDB column, so it is deliberately
+    # absent from _VIDEO_SORT_COLUMN_MAP below.
 
 
 # Mapping from VideoSortField enum to actual SQLAlchemy column references.
@@ -92,6 +101,9 @@ MAX_TAGS = 10
 MAX_CANONICAL_TAGS = 10
 MAX_TOPICS = 10
 MAX_TOTAL_FILTERS = 15
+# Feature 062: applied SEPARATELY to the required and excluded sets (FR-002a),
+# while both sets also count toward MAX_TOTAL_FILTERS above (FR-002d).
+MAX_ENTITIES = 10
 
 # Rate limiting configuration (T097)
 # In-memory rate limiter - requests per minute per client
@@ -223,6 +235,8 @@ def _validate_filter_limits(
     canonical_tags: list[str],
     topic_ids: list[str],
     category: str | None,
+    entity_ids: list[UUID] | None = None,
+    excluded_entity_ids: list[UUID] | None = None,
 ) -> None:
     """
     Validate filter limits per FR-034.
@@ -289,9 +303,37 @@ def _validate_filter_limits(
             },
         )
 
-    # Check total filter count
+    # Entity ceilings (Feature 062). Applied to each set SEPARATELY rather than
+    # to their combined size (FR-002a): requiring five entities and excluding
+    # five is two five-item decisions, not one ten-item one.
+    required = entity_ids or []
+    excluded = excluded_entity_ids or []
+    for field, values in (("entity_id", required), ("exclude_entity_id", excluded)):
+        if len(values) > MAX_ENTITIES:
+            raise BadRequestError(
+                message=(
+                    f"Maximum {MAX_ENTITIES} entities allowed per set, "
+                    f"received {len(values)}. "
+                    f"Remove {len(values) - MAX_ENTITIES} to continue."
+                ),
+                details={
+                    "field": field,
+                    "max_allowed": MAX_ENTITIES,
+                    "received": len(values),
+                    "excess": len(values) - MAX_ENTITIES,
+                },
+            )
+
+    # Check total filter count. Entities count toward the global cap on the
+    # same terms as every other filter type (FR-002d), so the per-set ceiling
+    # above is a sub-cap: with other filters active, neither set reaches 10.
     total_filters = (
-        len(tags) + len(canonical_tags) + len(topic_ids) + (1 if category else 0)
+        len(tags)
+        + len(canonical_tags)
+        + len(topic_ids)
+        + (1 if category else 0)
+        + len(required)
+        + len(excluded)
     )
     if total_filters > MAX_TOTAL_FILTERS:
         raise BadRequestError(
@@ -555,9 +597,14 @@ async def list_videos(
         False,
         description="Include unavailable records in results",
     ),
-    sort_by: VideoSortField = Query(
-        VideoSortField.UPLOAD_DATE,
-        description="Sort field (upload_date or title)",
+    sort_by: VideoSortField | None = Query(
+        None,
+        description=(
+            "Sort field (upload_date, title, or relevance). Defaults to "
+            "upload_date. Left unset here rather than defaulted at the "
+            "parameter layer so the endpoint can distinguish 'caller sent "
+            "nothing' from 'caller explicitly chose upload_date' (FR-009e)."
+        ),
     ),
     sort_order: SortOrder = Query(
         SortOrder.DESC,
@@ -573,6 +620,34 @@ async def list_videos(
     liked_only: bool = Query(
         False,
         description="Filter to only liked videos",
+    ),
+    # Entity intersection (Feature 062). Repeated keys, matching the binding
+    # already used by tag / canonical_tag / topic_id (research R4).
+    entity_id: list[UUID] = Query(
+        default=[],
+        description=(
+            "Required entity UUID(s) - AND logic. A video qualifies only if "
+            "EVERY listed entity has at least one qualifying mention. Max 10."
+        ),
+    ),
+    exclude_entity_id: list[UUID] = Query(
+        default=[],
+        description=(
+            "Excluded entity UUID(s). A video mentioning ANY of these is "
+            "removed regardless of required matches. Max 10."
+        ),
+    ),
+    min_evidence: EvidenceScope = Query(
+        EvidenceScope.ANY,
+        description=(
+            "Which mentions qualify. 'any' counts transcript, title, and "
+            "description; 'transcript' restricts to transcript-sourced "
+            "mentions, which inherently retains every human-added mention. "
+            "Accepted and ignored when no entity filter is present, since "
+            "there is nothing being qualified — unlike sort_by=relevance, "
+            "which rejects under the same condition because it would have to "
+            "invent an ordering it cannot compute."
+        ),
     ),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
@@ -646,8 +721,91 @@ async def list_videos(
     # T100: Performance logging - start timing
     query_start_time = time.perf_counter()
 
-    # Validate filter limits (FR-034)
-    _validate_filter_limits(tag, canonical_tag, topic_id, category)
+    # FR-009e: apply the sort default here rather than at the parameter layer,
+    # so "unset" stays distinguishable from an explicit choice of the same
+    # value. Feature 062 needs that distinction to auto-select relevance only
+    # when the caller expressed no preference (FR-009b).
+    # FR-009b: relevance is auto-selected when an entity filter is active AND
+    # the caller expressed no preference. FR-009c: an explicit choice is never
+    # overridden. The unset state (FR-009e) is what makes the distinction
+    # possible -- a default applied at the parameter layer would make
+    # "sent nothing" indistinguishable from "explicitly chose upload_date".
+    if sort_by is not None:
+        effective_sort_by = sort_by
+    elif entity_id:
+        effective_sort_by = VideoSortField.RELEVANCE
+    else:
+        effective_sort_by = VideoSortField.UPLOAD_DATE
+    if effective_sort_by is VideoSortField.RELEVANCE and not entity_id:
+        # Relevance ranks by mention volume across the required entities, so it
+        # has no meaning without a required set (FR-009d).
+        raise BadRequestError(
+            message=(
+                "sort_by=relevance requires at least one entity filter. "
+                "Add an entity to sort by relevance, or choose another sort."
+            ),
+            details={"field": "sort_by", "invalid_value": "relevance"},
+        )
+
+    # Deduplicate the entity sets before anything counts or queries them.
+    # Requesting an entity twice is idempotent and must not raise the
+    # qualification bar or consume two slots against the ceiling.
+    required_entity_ids = list(dict.fromkeys(entity_id))
+    excluded_entity_ids = list(dict.fromkeys(exclude_entity_id))
+
+    # Validate filter limits (FR-034, and FR-002a/FR-002d for entities)
+    _validate_filter_limits(
+        tag,
+        canonical_tag,
+        topic_id,
+        category,
+        required_entity_ids,
+        excluded_entity_ids,
+    )
+
+    # The two entity sets must be disjoint. Rejected with the offending entity
+    # named, never a silently empty result (FR-016).
+    overlap = set(required_entity_ids) & set(excluded_entity_ids)
+    if overlap:
+        raise BadRequestError(
+            message=(
+                "An entity cannot be both required and excluded: "
+                f"{', '.join(str(e) for e in sorted(overlap, key=str))}."
+            ),
+            details={
+                "field": "entity_id",
+                "conflicting_entity_ids": [str(e) for e in sorted(overlap, key=str)],
+            },
+        )
+
+    # Unknown entity ids are rejected, not ignored-with-a-warning like this
+    # endpoint's other multi-value filters. The divergence is deliberate
+    # (FR-016b): the entity filter is conjunctive, so silently dropping a
+    # required entity BROADENS the result -- a three-entity intersection
+    # quietly answered as a two-entity one returns more videos, presenting a
+    # wrong answer confidently. Dropping a disjunct narrows visibly instead.
+    all_entity_ids = required_entity_ids + excluded_entity_ids
+    if all_entity_ids:
+        known = set(
+            (
+                await session.execute(
+                    select(NamedEntityDB.id).where(NamedEntityDB.id.in_(all_entity_ids))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        unknown = [e for e in all_entity_ids if e not in known]
+        if unknown:
+            raise BadRequestError(
+                message=(
+                    "Unknown entity id(s): " f"{', '.join(str(e) for e in unknown)}."
+                ),
+                details={
+                    "field": "entity_id",
+                    "unknown_entity_ids": [str(e) for e in unknown],
+                },
+            )
 
     # Validate filter values and collect warnings (FR-042 through FR-045)
     all_warnings: list[FilterWarning] = []
@@ -767,6 +925,25 @@ async def list_videos(
     if saved_unwatched:
         query = query.where(VideoDB.video_id.in_(saved_forgotten_video_ids()))
 
+    # Entity intersection (Feature 062). Both mutate `query`, so the count
+    # derived from `query.subquery()` below inherits them automatically -- the
+    # same guarantee every other filter here already has (FR-033, research R9).
+    # Building a parallel query or a hand-rolled count would produce correct
+    # rows with a wrong total, which no row-inspecting test detects.
+    entity_repo = EntityMentionRepository()
+    qualification = None
+    if required_entity_ids:
+        qualification = entity_repo.build_entity_qualification_subquery(
+            required_entity_ids, min_evidence
+        )
+        query = query.join(qualification, VideoDB.video_id == qualification.c.video_id)
+
+    if excluded_entity_ids:
+        excluded_videos = entity_repo.build_entity_exclusion_subquery(
+            excluded_entity_ids, min_evidence
+        )
+        query = query.where(VideoDB.video_id.notin_(excluded_videos))
+
     # T099: Execute query with timeout (FR-036: 10s timeout)
     try:
 
@@ -780,11 +957,20 @@ async def list_videos(
             total = total_result.scalar() or 0
 
             # Apply sorting (Feature 027) with deterministic secondary sort (FR-029)
-            sort_column = _VIDEO_SORT_COLUMN_MAP[sort_by]
-            if sort_order == SortOrder.ASC:
-                order_clause = sort_column.asc()
+            # Relevance orders by the joined qualification subquery's mention
+            # total, not a VideoDB column, which is why RELEVANCE is
+            # deliberately absent from _VIDEO_SORT_COLUMN_MAP. The guard
+            # earlier guarantees `qualification` exists whenever it is active.
+            ascending = sort_order == SortOrder.ASC
+            if effective_sort_by is VideoSortField.RELEVANCE:
+                assert qualification is not None
+                relevance_col = qualification.c.total_mentions
+                order_clause = (
+                    relevance_col.asc() if ascending else relevance_col.desc()
+                )
             else:
-                order_clause = sort_column.desc()
+                sort_col = _VIDEO_SORT_COLUMN_MAP[effective_sort_by]
+                order_clause = sort_col.asc() if ascending else sort_col.desc()
             paginated_query = (
                 query.order_by(order_clause, VideoDB.video_id.asc())
                 .offset(offset)
@@ -853,6 +1039,19 @@ async def list_videos(
         )
 
     # Transform to response items with classification data
+    # Per-entity evidence for the RETURNED PAGE ONLY (research R1). This is the
+    # single place transcript_segments is joined; doing it before pagination
+    # instead returns byte-identical output at roughly 8x the cost, a
+    # regression no value-based assertion can detect. Only timing can.
+    page_entity_matches: dict[str, list[dict[str, Any]]] = {}
+    if required_entity_ids:
+        page_entity_matches = await entity_repo.get_page_entity_matches(
+            session,
+            video_ids=[v.video_id for v in videos],
+            entity_ids=required_entity_ids,
+            evidence_scope=min_evidence,
+        )
+
     items: list[VideoListItem] = []
     for video in videos:
         transcript_summary = build_transcript_summary(
@@ -860,6 +1059,34 @@ async def list_videos(
             has_corrections=video.video_id in videos_with_corrections,
         )
         channel_title = video.channel.title if video.channel else None
+
+        # Entity intersection fields (Feature 062). None when no entity filter
+        # of either kind is active, so existing callers see an unchanged shape;
+        # present-and-empty for an exclusion-only filter, which IS an active
+        # filter (FR-015a).
+        video_entity_matches: list[VideoEntityMatch] | None = None
+        video_total_mentions: int | None = None
+        if required_entity_ids or excluded_entity_ids:
+            raw_matches = page_entity_matches.get(video.video_id, [])
+            # Ordered by the caller's required-set sequence. Without this the
+            # order is whatever the GROUP BY returned, so per-entity badges on
+            # one video can reorder between requests and two pages of one
+            # result set can present the same entities differently. The
+            # co-occurrence query got a tiebreak for exactly this reason; this
+            # path needs the same determinism.
+            by_id = {m["entity_id"]: m for m in raw_matches}
+            raw_matches = [by_id[eid] for eid in required_entity_ids if eid in by_id]
+            video_entity_matches = [
+                VideoEntityMatch(
+                    entity_id=m["entity_id"],
+                    entity_type=m["entity_type"],
+                    canonical_name=m["canonical_name"],
+                    mention_count=m["mention_count"],
+                    first_timestamp=m["first_timestamp"],
+                )
+                for m in raw_matches
+            ]
+            video_total_mentions = sum(m.mention_count for m in video_entity_matches)
 
         # Extract tags
         video_tags = [t.tag for t in video.tags] if video.tags else []
@@ -898,6 +1125,8 @@ async def list_videos(
                 category_name=category_name,
                 topics=topics_list,
                 availability_status=video.availability_status,
+                entity_matches=video_entity_matches,
+                total_mentions=video_total_mentions,
             )
         )
 

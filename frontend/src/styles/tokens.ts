@@ -318,6 +318,24 @@ export const filterColors = {
     /** Medium orange border (#FDBA74) */
     border: '#FDBA74',
   },
+  /**
+   * Entity pills draw their colour from the shared entity palette
+   * (`constants/entityTypes`), not from here — an entity must look the same in
+   * a filter pill as it does everywhere else (FR-025). These two entries were
+   * added and then never rendered, because entity pills always carry an
+   * `entityType`. Kept only as a type-total fallback for a pill that somehow
+   * arrives without one.
+   */
+  entity: {
+    background: '#E0E7FF',
+    text: '#3730A3',
+    border: '#C7D2FE',
+  },
+  excluded_entity: {
+    background: '#FFE4E6',
+    text: '#9F1239',
+    border: '#FECDD3',
+  },
   /** Boolean filter colors - slate/gray scheme with 7.0:1+ contrast (Feature 027) */
   boolean: {
     /** Light slate background (#F1F5F9) */

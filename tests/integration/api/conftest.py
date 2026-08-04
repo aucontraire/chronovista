@@ -20,6 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from chronovista.api.deps import get_db
 from chronovista.api.main import app
+from chronovista.api.routers.canonical_tags import (
+    _request_counts as _canonical_tags_request_counts,
+)
+from chronovista.api.routers.videos import (
+    _filter_request_counts as _videos_request_counts,
+)
 from chronovista.auth.oauth_service import YouTubeOAuthService
 from chronovista.config.settings import get_settings
 from chronovista.db.models import Base
@@ -75,6 +81,26 @@ def integration_test_db_url():
             "postgresql+asyncpg://dev_user:dev_password@localhost:5434/chronovista_integration_test",
         ),
     )
+
+
+@pytest.fixture(autouse=True)
+def reset_api_rate_limit_counters() -> None:
+    """Clear every router's in-memory rate-limit counter before each test.
+
+    The counters are module-level ``defaultdict(list)`` state that survives
+    between tests, so requests accumulate across an entire session. Individual
+    tests stay well under the limits; a *suite* does not. Once the window fills,
+    every subsequent test hitting that endpoint gets a 429 — and the failures
+    land on whichever tests happen to run last, not on whichever test made the
+    requests. That is a confusing, order-dependent failure that passes when the
+    file is run alone.
+
+    ``test_canonical_tags_router.py`` already resets its own router's counter
+    for this reason. Doing it here covers every endpoint and every test file,
+    so the next suite to grow past a limit does not rediscover this.
+    """
+    _videos_request_counts.clear()
+    _canonical_tags_request_counts.clear()
 
 
 @pytest.fixture(scope="session", autouse=True)

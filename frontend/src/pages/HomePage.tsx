@@ -107,9 +107,23 @@ export function HomePage() {
   }, []);
 
   // Scroll to top when filter or sort changes (FR-031)
+  //
+  // These must be JOINED, not listed as arrays. `searchParams.getAll()` returns
+  // a fresh array on every render, and React compares deps by identity — so
+  // depending on the arrays directly made this effect run on EVERY render, not
+  // only when a filter changed. The re-render that an infinite-scroll page
+  // triggers was enough to fire it, yanking the reader from wherever they had
+  // scrolled back up to the top. NUL is the separator because it cannot occur
+  // in a tag or an id, so ["a,b"] and ["a","b"] stay distinguishable.
+  const tagKey = tags.join("\0");
+  const canonicalTagKey = canonicalTags.join("\0");
+  const topicIdKey = topicIds.join("\0");
+  const entityKey = entityIds.join("\0");
+  const excludedEntityKey = excludedEntityIds.join("\0");
+
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [tags, canonicalTags, category, topicIds, includeUnavailable, sortBy, sortOrder, likedOnly, hasTranscript, savedUnwatched]);
+  }, [tagKey, canonicalTagKey, category, topicIdKey, includeUnavailable, sortBy, sortOrder, likedOnly, hasTranscript, savedUnwatched, entityKey, excludedEntityKey, minEvidence]);
 
   return (
     <div className="p-6 lg:p-8">

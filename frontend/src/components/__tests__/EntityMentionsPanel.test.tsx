@@ -300,38 +300,38 @@ describe("EntityMentionsPanel", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Scan for Entity Mentions button (T012, Feature 052)
+  // Rescan Entity Mentions button (T012, Feature 052)
   // ---------------------------------------------------------------------------
 
-  describe("Scan for Entity Mentions button (T012)", () => {
+  describe("Rescan Entity Mentions button (T012)", () => {
     it("renders the scan button when hasTranscript is true", () => {
       renderPanel({ entities: [], hasTranscript: true });
       expect(
-        screen.getByRole("button", { name: /scan for entity mentions/i })
+        screen.getByRole("button", { name: /rescan entity mentions/i })
       ).toBeInTheDocument();
     });
 
     it("does not render the scan button when hasTranscript is false", () => {
       renderPanel({ entities: [], hasTranscript: false });
       expect(
-        screen.queryByRole("button", { name: /scan for entity mentions/i })
+        screen.queryByRole("button", { name: /rescan entity mentions/i })
       ).not.toBeInTheDocument();
     });
 
     it("does not render the scan button when hasTranscript is omitted (default)", () => {
       renderPanel({ entities: [] });
       expect(
-        screen.queryByRole("button", { name: /scan for entity mentions/i })
+        screen.queryByRole("button", { name: /rescan entity mentions/i })
       ).not.toBeInTheDocument();
     });
 
     it("scan button is enabled in idle state", () => {
       renderPanel({ entities: [], hasTranscript: true });
-      const button = screen.getByRole("button", { name: /scan for entity mentions/i });
+      const button = screen.getByRole("button", { name: /rescan entity mentions/i });
       expect(button).not.toBeDisabled();
     });
 
-    it("shows 'Scanning...' and disables the button when isPending is true", () => {
+    it("shows 'Rescanning...' and disables the button when isPending is true", () => {
       (useScanVideoEntities as Mock).mockReturnValue({
         mutate: vi.fn(),
         isPending: true,
@@ -377,7 +377,7 @@ describe("EntityMentionsPanel", () => {
 
       renderPanel({ entities: [], videoId: VIDEO_ID, hasTranscript: true });
 
-      fireEvent.click(screen.getByRole("button", { name: /scan for entity mentions/i }));
+      fireEvent.click(screen.getByRole("button", { name: /rescan entity mentions/i }));
 
       expect(mockMutate).toHaveBeenCalledOnce();
       expect(mockMutate).toHaveBeenCalledWith(
@@ -386,7 +386,51 @@ describe("EntityMentionsPanel", () => {
       );
     });
 
-    it("shows success message 'Found N entities with M mentions' after scan finds results", () => {
+    it("always requests a rebuild, never an incremental scan", () => {
+      // The behaviour, as distinct from the label. An incremental scan only
+      // ADDS, so the action a user takes immediately after curating an entity
+      // — adding an exclusion pattern, registering a longer competing entity —
+      // cannot retract the mentions that motivated the curation. The scan then
+      // reports success while the wrong rows survive, which is worse than an
+      // error. Renaming the button passes every other test in this file.
+      const mockMutate = vi.fn();
+      (useScanVideoEntities as Mock).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+        isError: false,
+        error: null,
+        data: null,
+        reset: vi.fn(),
+      });
+
+      renderPanel({ entities: [], videoId: VIDEO_ID, hasTranscript: true });
+      fireEvent.click(screen.getByRole("button", { name: /rescan entity mentions/i }));
+
+      const [variables] = mockMutate.mock.calls[0] as [
+        { options?: { full_rescan?: boolean; sources?: string[] } },
+      ];
+      expect(variables.options?.full_rescan).toBe(true);
+      // All three sources, or a "rebuild" silently skips two of them.
+      expect(variables.options?.sources).toEqual([
+        "transcript",
+        "title",
+        "description",
+      ]);
+    });
+
+    it("tells the user hand-curated mentions survive the rebuild", () => {
+      // The delete is scoped to detection_method='rule_match', so manual and
+      // correction-derived mentions are preserved — but nobody can infer that
+      // from a button labelled "Rescan", and the cost of guessing wrong is
+      // that they never press it.
+      renderPanel({ entities: [], hasTranscript: true });
+
+      expect(
+        screen.getByText(/added or corrected by hand are kept/i)
+      ).toBeInTheDocument();
+    });
+
+    it("shows success message 'Rebuilt M mentions across N entities' after scan finds results", () => {
       const mockMutate = vi.fn().mockImplementation((_vars, callbacks) => {
         callbacks?.onSuccess?.({
           data: {
@@ -412,9 +456,9 @@ describe("EntityMentionsPanel", () => {
 
       renderPanel({ entities: [], hasTranscript: true });
 
-      fireEvent.click(screen.getByRole("button", { name: /scan for entity mentions/i }));
+      fireEvent.click(screen.getByRole("button", { name: /rescan entity mentions/i }));
 
-      expect(screen.getByText(/found 4 entities with 12 mentions/i)).toBeInTheDocument();
+      expect(screen.getByText(/rebuilt 12 mentions across 4 entities/i)).toBeInTheDocument();
     });
 
     it("shows 'No entity mentions found' when scan returns zero results", () => {
@@ -443,7 +487,7 @@ describe("EntityMentionsPanel", () => {
 
       renderPanel({ entities: [], hasTranscript: true });
 
-      fireEvent.click(screen.getByRole("button", { name: /scan for entity mentions/i }));
+      fireEvent.click(screen.getByRole("button", { name: /rescan entity mentions/i }));
 
       expect(screen.getByText(/no entity mentions found/i)).toBeInTheDocument();
     });
@@ -474,7 +518,7 @@ describe("EntityMentionsPanel", () => {
 
       renderPanel({ entities: [], hasTranscript: true });
 
-      fireEvent.click(screen.getByRole("button", { name: /scan for entity mentions/i }));
+      fireEvent.click(screen.getByRole("button", { name: /rescan entity mentions/i }));
 
       expect(screen.getByRole("status")).toBeInTheDocument();
     });
@@ -495,7 +539,7 @@ describe("EntityMentionsPanel", () => {
 
       renderPanel({ entities: [], hasTranscript: true });
 
-      fireEvent.click(screen.getByRole("button", { name: /scan for entity mentions/i }));
+      fireEvent.click(screen.getByRole("button", { name: /rescan entity mentions/i }));
 
       const alert = screen.getByRole("alert");
       expect(alert).toBeInTheDocument();
@@ -528,9 +572,9 @@ describe("EntityMentionsPanel", () => {
 
       renderPanel({ entities: [], hasTranscript: true });
 
-      fireEvent.click(screen.getByRole("button", { name: /scan for entity mentions/i }));
+      fireEvent.click(screen.getByRole("button", { name: /rescan entity mentions/i }));
 
-      expect(screen.getByText(/found 1 entity with 1 mention/i)).toBeInTheDocument();
+      expect(screen.getByText(/rebuilt 1 mention across 1 entity/i)).toBeInTheDocument();
     });
 
     it("error message persists (does not auto-dismiss) after failed scan", () => {
@@ -550,7 +594,7 @@ describe("EntityMentionsPanel", () => {
 
       renderPanel({ entities: [], hasTranscript: true });
 
-      fireEvent.click(screen.getByRole("button", { name: /scan for entity mentions/i }));
+      fireEvent.click(screen.getByRole("button", { name: /rescan entity mentions/i }));
 
       // Advance timers past the 3-second auto-dismiss window
       vi.advanceTimersByTime(5000);
@@ -577,7 +621,7 @@ describe("EntityMentionsPanel", () => {
 
       renderPanel({ entities: [], hasTranscript: true });
 
-      fireEvent.click(screen.getByRole("button", { name: /scan for entity mentions/i }));
+      fireEvent.click(screen.getByRole("button", { name: /rescan entity mentions/i }));
 
       expect(screen.getByRole("alert")).toHaveTextContent(/already running/i);
     });
@@ -598,7 +642,7 @@ describe("EntityMentionsPanel", () => {
 
       renderPanel({ entities: [], hasTranscript: true });
 
-      fireEvent.click(screen.getByRole("button", { name: /scan for entity mentions/i }));
+      fireEvent.click(screen.getByRole("button", { name: /rescan entity mentions/i }));
 
       expect(screen.getByRole("alert")).toHaveTextContent("Transcript fetch timed out");
     });

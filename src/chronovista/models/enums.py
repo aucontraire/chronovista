@@ -353,6 +353,10 @@ class TagOperationType(str, Enum):
     RENAME = "rename"
     DELETE = "delete"
     CREATE = "create"
+    # Completes a merge that left aliases behind on the deprecated source.
+    # Distinct from MERGE so the audit trail says what actually happened —
+    # these repairs correct earlier damage rather than expressing a decision.
+    REPAIR = "repair"
 
 
 class CorrectionType(str, Enum):

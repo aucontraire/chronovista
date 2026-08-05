@@ -2942,3 +2942,162 @@ class TestDiacriticFoldingMetadata:
         m = mentions[0]
         assert desc[m.match_start : m.match_end] == "México"
         assert m.mention_text == "México"
+
+
+class TestTranscriptMentionContext:
+    """Transcript mentions carry a context snippet (#176).
+
+    Context is the evidence a reviewer judges a match by. Transcript is the
+    largest source in a real corpus, and it stored NULL for every row — so the
+    mentions most in need of review were the ones that could not be reviewed.
+
+    A transcript mention is recoverable through ``segment_id``, but only by
+    joining and re-slicing by offset. These tests pin that the snippet is
+    stored in place.
+    """
+
+    @staticmethod
+    def _pattern(name: str) -> object:
+        from chronovista.services.entity_mention_scan_service import _EntityPattern
+
+        return _EntityPattern(
+            entity_id=_make_uuid(),
+            canonical_name=name,
+            entity_type="person",
+            pg_pattern=re.escape(name),
+            alias_names=[name],
+        )
+
+    async def _scan_one(self, text: str, name: str) -> list:
+        pattern = self._pattern(name)
+        seg = _make_segment_row(effective_text=text)
+
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=_scalars_execute([]))
+
+        svc = _build_service(MagicMock())
+        mentions, _, _, _, _ = await svc._scan_batch(
+            session,
+            batch_rows=[seg],
+            patterns=[pattern],
+            full_rescan=False,
+            dry_run=False,
+            limit=None,
+            current_preview_count=0,
+        )
+        return mentions
+
+    async def test_transcript_mention_stores_context(self) -> None:
+        mentions = await self._scan_one(
+            "Earlier today Tesla announced a new car in Berlin", "Tesla"
+        )
+
+        assert len(mentions) == 1
+        assert mentions[0].mention_context is not None
+        assert "Tesla" in mentions[0].mention_context
+
+    async def test_context_includes_surrounding_text_not_just_the_match(self) -> None:
+        # The whole point: the snippet must show what was said AROUND the
+        # match, or it adds nothing over mention_text.
+        mentions = await self._scan_one(
+            "Earlier today Tesla announced a new car in Berlin", "Tesla"
+        )
+
+        context = mentions[0].mention_context
+        assert context is not None
+        assert "Earlier today" in context
+        assert "announced a new car" in context
+
+    async def test_context_is_bounded(self) -> None:
+        # ~75 chars either side plus the match, so a long segment does not
+        # store the entire transcript on every row.
+        long_text = ("filler word " * 60) + "Tesla" + (" trailing word" * 60)
+        mentions = await self._scan_one(long_text, "Tesla")
+
+        context = mentions[0].mention_context
+        assert context is not None
+        assert len(context) < 200
+        assert len(context) < len(long_text)
+
+    async def test_context_preserves_accents_from_the_raw_text(self) -> None:
+        # Matching folds diacritics, but the stored snippet must read as it
+        # was written — folded text would show "Peru" where "México" was
+        # said, which is a different claim about the source.
+        mentions = await self._scan_one(
+            "Hoy en México se discutió el acuerdo comercial", "Peru"
+        )
+
+        assert len(mentions) == 1
+        context = mentions[0].mention_context
+        assert context is not None
+        assert "México" in context
+        assert "discutió" in context
+
+
+class TestScanUsesCorrectedTranscriptText:
+    """The scan reads corrected transcript text where a correction exists.
+
+    This governs both what gets matched and — since #176 — what is stored as
+    ``mention_context``. A snippet taken from the original text while offsets
+    were computed against the corrected text would be silently garbled, and
+    only on corrected segments.
+
+    The unit tests above fake ``effective_text`` directly, so the CASE
+    expression that produces it is invisible to them. This asserts the emitted
+    SQL, which is the only layer where that decision is actually made.
+    """
+
+    async def test_query_selects_corrected_text_when_a_correction_exists(self) -> None:
+        captured: dict[str, object] = {}
+
+        async def _capture(stmt: object) -> object:
+            captured["stmt"] = stmt
+            result = MagicMock()
+            result.all.return_value = []
+            return result
+
+        session = AsyncMock()
+        session.execute = _capture
+
+        svc = _build_service(MagicMock())
+        await svc._fetch_segment_batch(
+            session,
+            video_ids=None,
+            language_code=None,
+            batch_size=10,
+            offset=0,
+        )
+
+        sql = str(captured["stmt"])
+        assert "has_correction" in sql
+        assert "corrected_text" in sql
+        # Corrected text must be preferred, with the original as the fallback
+        # branch — not the other way around.
+        assert "THEN transcript_segments.corrected_text" in sql
+        assert "ELSE transcript_segments.text" in sql
+
+    async def test_query_skips_segments_whose_correction_is_empty(self) -> None:
+        # A correction flagged but blank would otherwise yield an empty
+        # effective_text, dropping real mentions rather than surfacing them.
+        captured: dict[str, object] = {}
+
+        async def _capture(stmt: object) -> object:
+            captured["stmt"] = stmt
+            result = MagicMock()
+            result.all.return_value = []
+            return result
+
+        session = AsyncMock()
+        session.execute = _capture
+
+        svc = _build_service(MagicMock())
+        await svc._fetch_segment_batch(
+            session,
+            video_ids=None,
+            language_code=None,
+            batch_size=10,
+            offset=0,
+        )
+
+        sql = str(captured["stmt"])
+        assert "corrected_text IS NULL" in sql or "corrected_text = ''" in sql

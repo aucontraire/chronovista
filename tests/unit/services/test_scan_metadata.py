@@ -198,7 +198,11 @@ class TestScanMetadataTitle:
         assert mention.segment_id is None
         assert mention.video_id == "vid00100001"
         assert mention.mention_text == "Ada Lovelace"
-        assert mention.mention_context is None  # No context for title mentions
+        # Title mentions carry context too (#176). Previously this asserted
+        # None, which pinned the omission rather than a decision: a reviewer
+        # judging a match needs the surrounding text whatever the source.
+        assert mention.mention_context is not None
+        assert "Ada Lovelace" in mention.mention_context
 
     async def test_t014_title_scan_applies_exclusion_patterns(self) -> None:
         """T014: Title scanning with exclusion pattern 'New Peru' skips

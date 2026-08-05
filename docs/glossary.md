@@ -114,6 +114,23 @@ Project-specific terminology used throughout chronovista documentation and code.
 **Diacritic Collision**
 :   A canonical tag group where raw forms differ by accents that were stripped during Tier 1 normalization. For example, "café" and "cafe" both normalize to "cafe" and get merged. The `tags collisions` command identifies these for manual review — most are correct merges, but some may need splitting.
 
+## Entity Curation Concepts
+
+**Alias**
+:   An alternative surface form for an entity — nickname, abbreviation, translation, former name. Matched alongside the canonical name when scanning. Aliases are what make detection work and also what makes it over-match.
+
+**Mention context**
+:   The ~150 characters of surrounding text stored with each machine-detected mention. It is the only basis for judging whether a match was correct, because the matched text alone cannot distinguish a name from an identical ordinary word. Taken from the *corrected* transcript where a correction exists, with accents preserved as written.
+
+**Case-sensitive alias**
+:   An alias restricted to its exact capitalisation, set per alias and defaulting to off. Useful where casing separates a name from the ordinary word it collides with — but only where the stored contexts show that it does. Automatic transcription drops capitalisation from proper nouns often enough that lowercase occurrences are frequently the name rather than the word, in which case enabling it discards real mentions.
+
+**Exclusion pattern**
+:   A phrase that suppresses a match when it overlaps one. Suited to a handful of known collocations; unsuited to an alias that is simply an ordinary word, since the constructions it appears in cannot be enumerated.
+
+**Full rescan**
+:   Deleting and regenerating an entity's machine-detected mentions. Required after any *subtractive* rule change, because an incremental scan only adds and never retracts what an earlier rule matched. Mentions added or corrected by hand are never touched.
+
 ## Entity Intersection Concepts
 
 **Intersection**

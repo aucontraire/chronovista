@@ -121,6 +121,7 @@ curl "http://localhost:8765/api/v1/entities/<id>/co-occurring"
 
 ## See also
 
+- [Fix an over-matching entity](entity-curation.md) — when an entity claims videos it shouldn't
 - [Work with transcripts](transcripts.md) — where transcript mentions come from
 - [Correct transcripts](corrections.md) — fixing a misheard name so its mentions are found
 - [Analyze topics](topic-analytics.md) — the other axis for slicing your library

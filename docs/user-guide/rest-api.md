@@ -519,6 +519,45 @@ curl -X POST http://localhost:8000/api/v1/entities \
   -d '{"name": "Ada Lovelace", "entity_type": "person", "aliases": ["Chomsky", "N. Chomsky"]}'
 ```
 
+#### Alias Matching Behaviour
+
+An alias that is also an ordinary word matches every occurrence of that word.
+Setting `case_sensitive` restricts that one alias to its exact capitalisation.
+
+```bash
+# Match this alias only at its exact casing
+curl -X PATCH http://localhost:8000/api/v1/entities/01936c8a-1234-7000-8000-000000000001/aliases/01936c8a-5678-7000-8000-000000000002 \
+  -H "Content-Type: application/json" \
+  -d '{"case_sensitive": true}'
+
+# Back to matching any casing
+curl -X PATCH http://localhost:8000/api/v1/entities/01936c8a-1234-7000-8000-000000000001/aliases/01936c8a-5678-7000-8000-000000000002 \
+  -H "Content-Type: application/json" \
+  -d '{"case_sensitive": false}'
+```
+
+The flag defaults to `false` and applies to a single alias — an entity's other
+aliases, and its canonical name, are unaffected.
+
+!!! warning "The change takes effect on the next rescan"
+    Matching rules are applied when a scan runs, so the flag alone does not
+    alter existing mentions. Follow it with a **full** rescan of the entity:
+
+    ```bash
+    curl -X POST http://localhost:8000/api/v1/entities/01936c8a-1234-7000-8000-000000000001/scan \
+      -H "Content-Type: application/json" \
+      -d '{"sources": ["transcript", "title", "description"], "full_rescan": true}'
+    ```
+
+    An incremental scan (`full_rescan: false`) only *adds* mentions, so it would
+    never retract the ones the previous rule matched.
+
+Whether case is the right discriminator differs per alias and is not
+predictable from the alias text — decide it by reading the `mention_context`
+of existing mentions, since automatic transcription drops capitalisation from
+proper nouns often enough that lowercase occurrences are frequently the name
+rather than the ordinary word.
+
 #### Recover Video Metadata
 
 ```bash

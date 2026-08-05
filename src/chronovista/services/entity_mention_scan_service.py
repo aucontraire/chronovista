@@ -134,6 +134,26 @@ class _EntityPattern:
     pg_pattern: str  # diacritic-folded, re.escaped alias alternation (no \b)
     alias_names: list[str]  # all raw names contributing to pattern
     exclusion_patterns: list[str] = field(default_factory=list)
+    # True when at least one alias opted into case-sensitive matching (#177).
+    # The pattern then carries per-alternative `(?i:...)` scopes and MUST be
+    # compiled without the global IGNORECASE flag, which would override them.
+    has_case_sensitive_alias: bool = False
+
+
+def _compile_entity_regex(pattern: _EntityPattern) -> re.Pattern[str]:
+    """Compile an entity's alias alternation with the right case behaviour.
+
+    Transcript and metadata scanning compile the same pattern independently.
+    Setting the flag in one and not the other would silently make an alias
+    case-sensitive in transcripts but not in titles — a divergence no test
+    asserting counts would notice — so both call this.
+
+    The global ``IGNORECASE`` is dropped only when an alias opted in, because
+    a global flag overrides the per-alternative ``(?i:...)`` scopes that carry
+    the distinction.
+    """
+    flags = re.NOFLAG if pattern.has_case_sensitive_alias else re.IGNORECASE
+    return re.compile(r"\b(" + pattern.pg_pattern + r")\b", flags)
 
 
 class EntityMentionScanService:
@@ -563,10 +583,7 @@ class EntityMentionScanService:
             compiled_patterns: list[tuple[_EntityPattern, re.Pattern[str]]] = []
             for pattern in patterns:
                 try:
-                    py_regex = re.compile(
-                        r"\b(" + pattern.pg_pattern + r")\b",
-                        re.IGNORECASE,
-                    )
+                    py_regex = _compile_entity_regex(pattern)
                     compiled_patterns.append((pattern, py_regex))
                 except re.error:
                     logger.warning(
@@ -1026,23 +1043,30 @@ class EntityMentionScanService:
         alias_result = await session.execute(alias_stmt)
         all_aliases = list(alias_result.scalars().all())
 
-        # Group aliases by entity_id
-        alias_map: dict[uuid.UUID, list[str]] = {}
+        # Group aliases by entity_id, carrying each alias's case-sensitivity.
+        alias_map: dict[uuid.UUID, list[tuple[str, bool]]] = {}
         for alias in all_aliases:
-            alias_map.setdefault(alias.entity_id, []).append(alias.alias_name)
+            alias_map.setdefault(alias.entity_id, []).append(
+                (alias.alias_name, bool(alias.case_sensitive))
+            )
 
         patterns: list[_EntityPattern] = []
         for entity in entities:
             names: list[str] = []
+            # Names matched only at their exact casing (#177). The canonical
+            # name is never here — it is not an alias and has no flag to set.
+            case_sensitive_names: set[str] = set()
 
             # Add canonical name
             names.append(entity.canonical_name)
 
             # Add aliases (may include canonical name again, dedup below)
             entity_aliases = alias_map.get(entity.id, [])
-            for alias_name in entity_aliases:
+            for alias_name, alias_cs in entity_aliases:
                 if alias_name not in names:
                     names.append(alias_name)
+                if alias_cs:
+                    case_sensitive_names.add(alias_name)
 
             # Warn about short aliases
             for name in names:
@@ -1061,11 +1085,32 @@ class EntityMentionScanService:
             # match "México".  Case is still handled by re.IGNORECASE at compile
             # time.  Names that fold to empty (pure combining marks) cannot match
             # anything meaningful and are dropped to avoid an empty alternative.
-            folded_names = [f for f in (_fold_diacritics(n)[0] for n in names) if f]
-            escaped_names = sorted(
-                [re.escape(n) for n in folded_names], key=len, reverse=True
-            )
-            pg_pattern = "|".join(escaped_names)
+            #
+            # Case sensitivity is per ALIAS, but the alternation is per ENTITY,
+            # and Python picks the first alternative that matches — which is why
+            # the list is sorted longest-first. Splitting into a case-sensitive
+            # group and a case-insensitive one would break that ordering, so
+            # each alternative carries its own scoped flag instead and the
+            # single length-sorted order survives intact.
+            #
+            # When nothing on this entity opted in — every entity, until
+            # someone sets the flag — the pattern and the global IGNORECASE
+            # are built exactly as before, so the default path is unchanged.
+            folded_pairs = [
+                (folded, n in case_sensitive_names)
+                for n, folded in ((n, _fold_diacritics(n)[0]) for n in names)
+                if folded
+            ]
+            folded_pairs.sort(key=lambda p: len(p[0]), reverse=True)
+
+            any_case_sensitive = any(cs for _, cs in folded_pairs)
+            if any_case_sensitive:
+                pg_pattern = "|".join(
+                    re.escape(f) if cs else f"(?i:{re.escape(f)})"
+                    for f, cs in folded_pairs
+                )
+            else:
+                pg_pattern = "|".join(re.escape(f) for f, _ in folded_pairs)
 
             patterns.append(
                 _EntityPattern(
@@ -1075,6 +1120,7 @@ class EntityMentionScanService:
                     pg_pattern=pg_pattern,
                     alias_names=names,
                     exclusion_patterns=list(entity.exclusion_patterns or []),
+                    has_case_sensitive_alias=any_case_sensitive,
                 )
             )
 
@@ -1194,10 +1240,7 @@ class EntityMentionScanService:
         compiled_patterns: list[tuple[_EntityPattern, re.Pattern[str]]] = []
         for pattern in patterns:
             try:
-                py_regex = re.compile(
-                    r"\b(" + pattern.pg_pattern + r")\b",
-                    re.IGNORECASE,
-                )
+                py_regex = _compile_entity_regex(pattern)
                 compiled_patterns.append((pattern, py_regex))
             except re.error:
                 logger.warning(

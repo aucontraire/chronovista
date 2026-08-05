@@ -896,6 +896,13 @@ class EntityAlias(Base):
         String(30), nullable=False, default="name_variant"
     )
 
+    # Matching behaviour. False (the default, and every alias historically)
+    # means case-insensitive. True restricts this one alias to the exact
+    # casing in alias_name — for aliases that collide with an ordinary word.
+    case_sensitive: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+
     # Usage statistics
     occurrence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 

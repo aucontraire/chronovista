@@ -208,9 +208,11 @@ beforeEach(() => {
 
   // Default: createEntityAlias resolves successfully.
   vi.mocked(createEntityAlias).mockResolvedValue({
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     alias_name: "Chomsky",
     alias_type: "name_variant",
     occurrence_count: 0,
+    case_sensitive: false,
   });
 });
 
@@ -610,7 +612,13 @@ describe("AddAliasForm (inside EntityDetailPage)", () => {
       expect(screen.getByRole("button", { name: /adding/i })).toBeInTheDocument();
 
       // Settle the promise to avoid unhandled rejections.
-      resolveFn({ alias_name: "pending-alias", alias_type: "name_variant", occurrence_count: 0 });
+      resolveFn({
+        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        alias_name: "pending-alias",
+        alias_type: "name_variant",
+        occurrence_count: 0,
+        case_sensitive: false,
+      });
     });
   });
 
@@ -636,7 +644,13 @@ describe("AddAliasForm (inside EntityDetailPage)", () => {
 
       expect(input).toBeDisabled();
 
-      resolveFn({ alias_name: "pending-alias", alias_type: "name_variant", occurrence_count: 0 });
+      resolveFn({
+        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        alias_name: "pending-alias",
+        alias_type: "name_variant",
+        occurrence_count: 0,
+        case_sensitive: false,
+      });
     });
 
     it("disables the alias type select while the request is pending", async () => {
@@ -657,7 +671,13 @@ describe("AddAliasForm (inside EntityDetailPage)", () => {
       const select = screen.getByRole("combobox", { name: /alias type/i });
       expect(select).toBeDisabled();
 
-      resolveFn({ alias_name: "pending-alias", alias_type: "name_variant", occurrence_count: 0 });
+      resolveFn({
+        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        alias_name: "pending-alias",
+        alias_type: "name_variant",
+        occurrence_count: 0,
+        case_sensitive: false,
+      });
     });
   });
 

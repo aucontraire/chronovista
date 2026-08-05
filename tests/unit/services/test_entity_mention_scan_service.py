@@ -3032,3 +3032,72 @@ class TestTranscriptMentionContext:
         assert context is not None
         assert "México" in context
         assert "discutió" in context
+
+
+class TestScanUsesCorrectedTranscriptText:
+    """The scan reads corrected transcript text where a correction exists.
+
+    This governs both what gets matched and — since #176 — what is stored as
+    ``mention_context``. A snippet taken from the original text while offsets
+    were computed against the corrected text would be silently garbled, and
+    only on corrected segments.
+
+    The unit tests above fake ``effective_text`` directly, so the CASE
+    expression that produces it is invisible to them. This asserts the emitted
+    SQL, which is the only layer where that decision is actually made.
+    """
+
+    async def test_query_selects_corrected_text_when_a_correction_exists(self) -> None:
+        captured: dict[str, object] = {}
+
+        async def _capture(stmt: object) -> object:
+            captured["stmt"] = stmt
+            result = MagicMock()
+            result.all.return_value = []
+            return result
+
+        session = AsyncMock()
+        session.execute = _capture
+
+        svc = _build_service(MagicMock())
+        await svc._fetch_segment_batch(
+            session,
+            video_ids=None,
+            language_code=None,
+            batch_size=10,
+            offset=0,
+        )
+
+        sql = str(captured["stmt"])
+        assert "has_correction" in sql
+        assert "corrected_text" in sql
+        # Corrected text must be preferred, with the original as the fallback
+        # branch — not the other way around.
+        assert "THEN transcript_segments.corrected_text" in sql
+        assert "ELSE transcript_segments.text" in sql
+
+    async def test_query_skips_segments_whose_correction_is_empty(self) -> None:
+        # A correction flagged but blank would otherwise yield an empty
+        # effective_text, dropping real mentions rather than surfacing them.
+        captured: dict[str, object] = {}
+
+        async def _capture(stmt: object) -> object:
+            captured["stmt"] = stmt
+            result = MagicMock()
+            result.all.return_value = []
+            return result
+
+        session = AsyncMock()
+        session.execute = _capture
+
+        svc = _build_service(MagicMock())
+        await svc._fetch_segment_batch(
+            session,
+            video_ids=None,
+            language_code=None,
+            batch_size=10,
+            offset=0,
+        )
+
+        sql = str(captured["stmt"])
+        assert "corrected_text IS NULL" in sql or "corrected_text = ''" in sql

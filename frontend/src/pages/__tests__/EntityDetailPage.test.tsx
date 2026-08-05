@@ -13,13 +13,13 @@
  * - "All N videos loaded" message at end of list
  * - Loads more videos when hasNextPage is true (via hook)
  *
- * Coverage (Feature 052, T008 — Scan for Mentions button):
- * - Renders "Scan for Mentions" button
- * - Button is disabled and shows "Scanning..." during pending state
+ * Coverage (Feature 052, T008 — Rescan Mentions button):
+ * - Renders "Rescan Mentions" button
+ * - Button is disabled and shows "Rescanning..." during pending state
  * - Button has aria-busy="true" during pending state
  * - Button has title tooltip "A scan is already running" during pending state
  * - Success message with mention/video counts appears after scan
- * - Zero-result success message "No new mentions found." appears
+ * - Zero-result success message "No mentions found for this entity." appears
  * - Error message appears and uses role="alert" for persistence
  * - Scan button triggers the mutation when clicked
  */
@@ -578,24 +578,78 @@ describe("EntityDetailPage", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Scan for Mentions button (Feature 052, T008)
+  // Rescan Mentions button (Feature 052, T008)
   // ---------------------------------------------------------------------------
 
-  describe("Scan for Mentions button", () => {
-    it("renders a 'Scan for Mentions' button in the entity header", () => {
+  describe("Rescan Mentions button", () => {
+    it("renders a 'Rescan Mentions' button in the entity header", () => {
       renderPage();
       expect(
-        screen.getByRole("button", { name: /scan for mentions/i })
+        screen.getByRole("button", { name: /rescan mentions/i })
+      ).toBeInTheDocument();
+    });
+
+    it("always requests a full rebuild, never an incremental scan", () => {
+      // The behaviour, as opposed to the label. An incremental scan only ADDS
+      // mentions, so any subtractive edit — removing an alias, adding an
+      // exclusion pattern, and later enabling case-sensitivity — leaves the
+      // matches it should have retracted in place. The scan then reports
+      // success while the wrong mentions survive, which is worse than an
+      // error. Renaming the button would pass every other test in this file.
+      const mockMutate = vi.fn();
+      vi.mocked(useScanEntity).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+        isError: false,
+        error: null,
+        data: undefined,
+        reset: vi.fn(),
+        mutateAsync: vi.fn(),
+        isSuccess: false,
+        isIdle: true,
+        status: "idle",
+        variables: undefined,
+        context: undefined,
+        failureCount: 0,
+        failureReason: null,
+        isPaused: false,
+        submittedAt: 0,
+      } as ReturnType<typeof useScanEntity>);
+
+      renderPage();
+      fireEvent.click(screen.getByRole("button", { name: /rescan mentions/i }));
+
+      expect(mockMutate).toHaveBeenCalledTimes(1);
+      const [variables] = mockMutate.mock.calls[0] as [
+        { options?: { full_rescan?: boolean; sources?: string[] } },
+      ];
+      expect(variables.options?.full_rescan).toBe(true);
+      // All three sources, or a "rebuild" silently skips two of them.
+      expect(variables.options?.sources).toEqual([
+        "transcript",
+        "title",
+        "description",
+      ]);
+    });
+
+    it("tells the user hand-curated mentions survive the rebuild", () => {
+      // The delete is scoped to detection_method='rule_match', so manual and
+      // correction-derived mentions are preserved — but nobody can infer that
+      // from a button labelled "Rescan", and the cost of guessing wrong is
+      // that they never press it.
+      renderPage();
+      expect(
+        screen.getByText(/added or corrected by hand are kept/i)
       ).toBeInTheDocument();
     });
 
     it("button is enabled in idle state", () => {
       renderPage();
-      const button = screen.getByRole("button", { name: /scan for mentions/i });
+      const button = screen.getByRole("button", { name: /rescan mentions/i });
       expect(button).not.toBeDisabled();
     });
 
-    it("button is disabled and shows 'Scanning...' text when isPending is true", () => {
+    it("button is disabled and shows 'Rescanning...' text when isPending is true", () => {
       vi.mocked(useScanEntity).mockReturnValue({
         mutate: vi.fn(),
         isPending: true,
@@ -677,7 +731,7 @@ describe("EntityDetailPage", () => {
 
     it("button does not have title tooltip in idle state", () => {
       renderPage();
-      const button = screen.getByRole("button", { name: /scan for mentions/i });
+      const button = screen.getByRole("button", { name: /rescan mentions/i });
       expect(button).not.toHaveAttribute("title");
     });
 
@@ -704,7 +758,7 @@ describe("EntityDetailPage", () => {
 
       renderPage("entity-uuid-001");
 
-      const button = screen.getByRole("button", { name: /scan for mentions/i });
+      const button = screen.getByRole("button", { name: /rescan mentions/i });
       fireEvent.click(button);
 
       expect(mockMutate).toHaveBeenCalledOnce();
@@ -718,7 +772,7 @@ describe("EntityDetailPage", () => {
       // Simulate the component having received scan result data by rendering
       // with a mutate that immediately calls onSuccess in the click handler.
       // We verify the component shows success message text patterns that match
-      // the actual implementation strings: "Found N new mention(s) across M video(s)."
+      // the actual implementation strings: "Rebuilt N mention(s) across M video(s)."
       const mockMutate = vi.fn().mockImplementation((_vars, callbacks) => {
         // Simulate an immediate onSuccess callback
         callbacks?.onSuccess?.({
@@ -755,13 +809,13 @@ describe("EntityDetailPage", () => {
 
       renderPage();
 
-      const button = screen.getByRole("button", { name: /scan for mentions/i });
+      const button = screen.getByRole("button", { name: /rescan mentions/i });
       fireEvent.click(button);
 
-      expect(screen.getByText(/found 7 new mentions across 3 videos/i)).toBeInTheDocument();
+      expect(screen.getByText(/rebuilt 7 mentions across 3 videos/i)).toBeInTheDocument();
     });
 
-    it("success message 'No new mentions found.' appears when scan returns zero results", () => {
+    it("success message 'No mentions found for this entity.' appears when scan returns zero results", () => {
       const mockMutate = vi.fn().mockImplementation((_vars, callbacks) => {
         callbacks?.onSuccess?.({
           data: {
@@ -797,10 +851,10 @@ describe("EntityDetailPage", () => {
 
       renderPage();
 
-      const button = screen.getByRole("button", { name: /scan for mentions/i });
+      const button = screen.getByRole("button", { name: /rescan mentions/i });
       fireEvent.click(button);
 
-      expect(screen.getByText(/no new mentions found/i)).toBeInTheDocument();
+      expect(screen.getByText(/no mentions found for this entity/i)).toBeInTheDocument();
     });
 
     it("success message uses role='status' for polite announcement", () => {
@@ -839,7 +893,7 @@ describe("EntityDetailPage", () => {
 
       renderPage();
 
-      fireEvent.click(screen.getByRole("button", { name: /scan for mentions/i }));
+      fireEvent.click(screen.getByRole("button", { name: /rescan mentions/i }));
 
       const statusEl = screen.getByRole("status");
       expect(statusEl).toBeInTheDocument();
@@ -871,7 +925,7 @@ describe("EntityDetailPage", () => {
 
       renderPage();
 
-      fireEvent.click(screen.getByRole("button", { name: /scan for mentions/i }));
+      fireEvent.click(screen.getByRole("button", { name: /rescan mentions/i }));
 
       const alertEl = screen.getByRole("alert");
       expect(alertEl).toBeInTheDocument();
@@ -904,7 +958,7 @@ describe("EntityDetailPage", () => {
 
       renderPage();
 
-      fireEvent.click(screen.getByRole("button", { name: /scan for mentions/i }));
+      fireEvent.click(screen.getByRole("button", { name: /rescan mentions/i }));
 
       expect(screen.getByRole("alert")).toHaveTextContent(/entity not found/i);
     });
@@ -935,7 +989,7 @@ describe("EntityDetailPage", () => {
 
       renderPage();
 
-      fireEvent.click(screen.getByRole("button", { name: /scan for mentions/i }));
+      fireEvent.click(screen.getByRole("button", { name: /rescan mentions/i }));
 
       expect(screen.getByRole("alert")).toHaveTextContent(/already running/i);
     });
@@ -968,7 +1022,7 @@ describe("EntityDetailPage", () => {
 
       renderPage();
 
-      fireEvent.click(screen.getByRole("button", { name: /scan for mentions/i }));
+      fireEvent.click(screen.getByRole("button", { name: /rescan mentions/i }));
 
       expect(screen.getByRole("alert")).toHaveTextContent(
         "Database connection lost during scan"

@@ -1076,14 +1076,27 @@ export function EntityDetailPage() {
       scanTimerRef.current = null;
     }
     scanMutation.mutate(
-      { entityId, options: { sources: ["transcript", "title", "description"] } },
+      {
+        entityId,
+        options: {
+          sources: ["transcript", "title", "description"],
+          // Always a full rebuild, never incremental. An incremental scan only
+          // ADDS, so any subtractive edit — removing an alias, adding an
+          // exclusion pattern — leaves the mentions it should have retracted
+          // in place, and the user sees a scan "succeed" while the wrong
+          // matches survive. The delete is scoped to detection_method
+          // 'rule_match', so manual and correction-derived mentions are
+          // untouched, and the whole delete-and-rebuild is one transaction.
+          full_rescan: true,
+        },
+      },
       {
         onSuccess: (data) => {
           const { mentions_found, unique_videos } = data.data;
           const msg =
             mentions_found === 0
-              ? "No new mentions found."
-              : `Found ${mentions_found.toLocaleString()} new mention${mentions_found === 1 ? "" : "s"} across ${unique_videos.toLocaleString()} video${unique_videos === 1 ? "" : "s"}.`;
+              ? "No mentions found for this entity."
+              : `Rebuilt ${mentions_found.toLocaleString()} mention${mentions_found === 1 ? "" : "s"} across ${unique_videos.toLocaleString()} video${unique_videos === 1 ? "" : "s"}.`;
           setScanMessage(msg);
           setScanMessageType("success");
           scanTimerRef.current = setTimeout(() => {
@@ -1298,13 +1311,21 @@ export function EntityDetailPage() {
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                   />
                 </svg>
-                Scanning...
-                <span className="sr-only">Scanning for mentions...</span>
+                Rescanning...
+                <span className="sr-only">Rebuilding mentions for this entity...</span>
               </>
             ) : (
-              "Scan for Mentions"
+              "Rescan Mentions"
             )}
           </button>
+
+          {!scanMutation.isPending && (
+            <p className="text-sm text-slate-500">
+              Rebuilds every detected mention from the entity's current aliases
+              and exclusion patterns. Mentions you added or corrected by hand
+              are kept.
+            </p>
+          )}
 
           {scanMutation.isPending && (
             <p

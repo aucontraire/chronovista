@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.63.0] - 2026-08-05
+
+Entity curation. Everything here serves one workflow: seeing why a mention matched, deciding it was wrong, and rebuilding without it.
+
+### Added
+- **Per-alias case-sensitive matching (#177).** An alias that is also an ordinary English word matches every occurrence of that word, and exclusion patterns cannot close the set — the word appears in arbitrary constructions. A **Match case** switch on each alias row restricts that one alias to its exact capitalisation.
+  - **Per-alias, and deliberately not a rule.** Measured on real data, one entity's lowercase occurrences were almost entirely the common noun, while another's were mostly the person — automatic transcription had simply failed to capitalise a proper noun. The two want *opposite* settings and nothing in the schema predicts which, so a heuristic like "case-sensitive when the alias is a dictionary word" would get the second one backwards. Only a human reading the mention contexts can decide, which is why #176 is a prerequisite rather than a convenience.
+  - **Defaults to off**, exactly how every alias has always matched. No backfill, and no existing alias changes meaning on upgrade.
+  - **Toggling rebuilds mentions**, because matching rules are applied when a scan runs. Without that the switch would appear to do nothing.
+  - New `PATCH /api/v1/entities/{entity_id}/aliases/{alias_id}`. Alias responses gain `id` and `case_sensitive`.
+
+### Fixed
+- **Transcript and title mentions had no stored context (#176).** `mention_context` was populated for description mentions only — **114,397 mentions on a real corpus, 67% of all rule-matched mentions**, with no record of why they matched. Judging one meant re-fetching the segment or video and re-slicing by offset, which blocked curation generally and blocked it hardest where it was needed most. The snippet comes from the *corrected* transcript where a correction exists, and preserves accents: it reads as written, so `"México"` is never quoted back as `"Mexico"`. Existing rows stay `NULL` until an `entities scan --full` backfills them.
+- **The entity scan button added mentions instead of rebuilding them (#179).** An incremental scan only ever adds, so removing an alias or adding an exclusion pattern left the matches it should have retracted in place — and the scan then reported success while the wrong mentions survived. It now always rebuilds, which is also free: transcript segments are not indexed by entity, so an incremental scan walks all of them anyway. Renamed **Rescan Mentions**, with a line stating that hand-curated mentions are kept — true, since the delete is scoped to machine-detected matches.
+- **The browser drew a second dropdown over every combobox (#175).** Four components declared the ARIA combobox pattern without `autoComplete="off"`, so the browser's form-history dropdown stacked on top of the component's own suggestion list — two competing lists over one input, with the native one replaying previously typed values on a surface the app cannot style or clear.
+
 ## [0.62.0] - 2026-08-04
 
 ### Added

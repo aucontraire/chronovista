@@ -672,7 +672,24 @@ export function EntityMentionsPanel({
                 setScanMessage(null);
                 scanMutation.reset();
                 scanMutation.mutate(
-                  { videoId, options: { sources: ["transcript", "title", "description"] } },
+                  {
+                    videoId,
+                    options: {
+                      sources: ["transcript", "title", "description"],
+                      // Always a rebuild, never incremental. An incremental
+                      // scan only ADDS, so the action a user takes right after
+                      // curating an entity — adding an exclusion pattern,
+                      // registering a longer competing entity — cannot remove
+                      // the mentions that motivated the curation. The scan then
+                      // reports success while the wrong rows survive.
+                      //
+                      // Scoped to this video: the delete filters on
+                      // video_id IN (…) AND detection_method='rule_match', so
+                      // other videos are untouched and hand-curated mentions
+                      // survive everywhere.
+                      full_rescan: true,
+                    },
+                  },
                   {
                     onSuccess: (result) => {
                       const { unique_entities, mentions_found } = result.data;
@@ -680,7 +697,7 @@ export function EntityMentionsPanel({
                         setScanMessage({ text: "No entity mentions found", kind: "success" });
                       } else {
                         setScanMessage({
-                          text: `Found ${unique_entities} ${unique_entities === 1 ? "entity" : "entities"} with ${mentions_found} ${mentions_found === 1 ? "mention" : "mentions"}`,
+                          text: `Rebuilt ${mentions_found} ${mentions_found === 1 ? "mention" : "mentions"} across ${unique_entities} ${unique_entities === 1 ? "entity" : "entities"}`,
                           kind: "success",
                         });
                       }
@@ -705,14 +722,22 @@ export function EntityMentionsPanel({
               {scanMutation.isPending ? (
                 <>
                   <SpinnerIcon className="w-4 h-4 mr-2 animate-spin" />
-                  Scanning...
-                  <span className="sr-only">Scanning for mentions...</span>
+                  Rescanning...
+                  <span className="sr-only">Rebuilding mentions for this video...</span>
                 </>
               ) : (
-                "Scan for Entity Mentions"
+                "Rescan Entity Mentions"
               )}
             </button>
           </span>
+
+          {!scanMutation.isPending && (
+            <p className="text-sm text-slate-500">
+              Rebuilds this video's detected mentions from every entity's
+              current aliases and exclusion patterns. Mentions you added or
+              corrected by hand are kept.
+            </p>
+          )}
 
           {/* In-progress announcement — separate from the button so screen
               readers not focused on the button still hear it via aria-live. */}

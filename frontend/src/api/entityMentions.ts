@@ -98,10 +98,17 @@ export interface EntityVideoResponse {
 
 /** Summary of a single alias for a named entity (genuine aliases only — asr_error excluded). */
 export interface EntityAliasSummary {
+  /** Alias identifier — needed to address a single alias for update. */
+  id: string;
   alias_name: string;
   /** name_variant | abbreviation | nickname | translated_name | former_name */
   alias_type: string;
   occurrence_count: number;
+  /**
+   * When true this alias matches only its exact casing. False (the default)
+   * matches any casing, which is how every alias has always behaved.
+   */
+  case_sensitive: boolean;
 }
 
 /** A single item in the entity list response. */
@@ -288,6 +295,46 @@ export async function createEntityAlias(
     `/entities/${entityId}/aliases`,
     {
       method: "POST",
+      body: JSON.stringify(body),
+    }
+  );
+  return res.data;
+}
+
+/** Request body for PATCH /api/v1/entities/{entity_id}/aliases/{alias_id} */
+export interface UpdateEntityAliasRequest {
+  case_sensitive: boolean;
+}
+
+/** Response envelope for PATCH /api/v1/entities/{entity_id}/aliases/{alias_id} */
+export interface UpdateEntityAliasResponse {
+  data: EntityAliasSummary;
+}
+
+/**
+ * Sets whether an alias matches case-sensitively.
+ *
+ * The change does not retroactively alter existing mentions — matching rules
+ * are applied when a scan runs, so callers must follow this with a full
+ * rescan of the entity for it to take effect.
+ *
+ * @param entityId - UUID of the named entity that owns the alias
+ * @param aliasId - UUID of the alias to update
+ * @param caseSensitive - New matching behaviour
+ * @returns The updated EntityAliasSummary
+ * @throws ApiError with status 404 if the entity or alias is not found, or if
+ *   the alias does not belong to that entity
+ */
+export async function updateEntityAlias(
+  entityId: string,
+  aliasId: string,
+  caseSensitive: boolean
+): Promise<EntityAliasSummary> {
+  const body: UpdateEntityAliasRequest = { case_sensitive: caseSensitive };
+  const res = await apiFetch<UpdateEntityAliasResponse>(
+    `/entities/${entityId}/aliases/${aliasId}`,
+    {
+      method: "PATCH",
       body: JSON.stringify(body),
     }
   );

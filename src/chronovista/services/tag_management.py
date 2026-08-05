@@ -64,6 +64,45 @@ class MergeResult:
 
 
 @dataclass
+class OrphanRepair:
+    """One alias moved off a merged canonical tag onto its merge target."""
+
+    alias_id: uuid.UUID
+    raw_form: str
+    from_canonical_tag_id: uuid.UUID
+    to_canonical_tag_id: uuid.UUID
+    from_normalized_form: str
+    to_normalized_form: str
+
+
+@dataclass
+class OrphanSkip:
+    """An orphan left alone, with the reason it could not be repaired."""
+
+    alias_id: uuid.UUID
+    raw_form: str
+    reason: str
+
+
+@dataclass
+class OrphanRepairReport:
+    """Result of an orphaned-alias repair (dry-run or applied)."""
+
+    dry_run: bool
+    repaired: list[OrphanRepair]
+    skipped: list[OrphanSkip]
+    operation_id: uuid.UUID | None = None
+
+    @property
+    def repaired_count(self) -> int:
+        return len(self.repaired)
+
+    @property
+    def skipped_count(self) -> int:
+        return len(self.skipped)
+
+
+@dataclass
 class SplitResult:
     """Result of a split operation."""
 
@@ -761,6 +800,152 @@ class TagManagementService:
             operation_id=operation_id,
         )
 
+    async def repair_orphaned_aliases(
+        self,
+        session: AsyncSession,
+        *,
+        dry_run: bool,
+        actor: str = "cli",
+    ) -> OrphanRepairReport:
+        """Re-point aliases stranded on merged canonical tags at their target.
+
+        A merge reassigns the source's aliases to the target and rewrites their
+        ``normalized_form``. Aliases that were never moved sit on a deprecated
+        tag: the canonical relationship cannot reach them, because a merged tag
+        holds no ``entity_id``, while anything matching on
+        ``tag_aliases.normalized_form`` still finds them. The two entity
+        association paths therefore disagree by exactly the videos those rows
+        reach — and the rows are invisible in the UI, since canonical-tag search
+        filters to ``status = 'active'``.
+
+        Completing the move is what a merge would have done. Each tag records
+        ``merged_into_id``, so the destination is read rather than inferred; an
+        orphan whose target is missing or itself merged is reported and left
+        alone rather than guessed at.
+
+        Idempotent: a second run finds nothing. One transaction, rolled back
+        entirely on ``dry_run``.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        dry_run : bool
+            Compute the report without writing.
+        actor : str
+            Recorded as ``performed_by`` on the operation log.
+
+        Returns
+        -------
+        OrphanRepairReport
+            What was (or would be) moved, plus what was skipped and why.
+        """
+        orphan_rows = (
+            await session.execute(
+                select(TagAliasDB, CanonicalTagDB)
+                .join(CanonicalTagDB, CanonicalTagDB.id == TagAliasDB.canonical_tag_id)
+                .where(CanonicalTagDB.status == "merged")
+                .order_by(TagAliasDB.id)
+            )
+        ).all()
+
+        repairs: list[OrphanRepair] = []
+        skipped: list[OrphanSkip] = []
+
+        for alias, source_tag in orphan_rows:
+            target_id = source_tag.merged_into_id
+            if target_id is None:
+                skipped.append(
+                    OrphanSkip(
+                        alias_id=alias.id,
+                        raw_form=alias.raw_form,
+                        reason="source tag is merged but records no merged_into_id",
+                    )
+                )
+                continue
+
+            target = await session.get(CanonicalTagDB, target_id)
+            if target is None:
+                skipped.append(
+                    OrphanSkip(
+                        alias_id=alias.id,
+                        raw_form=alias.raw_form,
+                        reason=f"merge target {target_id} no longer exists",
+                    )
+                )
+                continue
+            if target.status == "merged":
+                # Chasing a chain of merges would need cycle detection and a
+                # decision about which link is authoritative. Surface it.
+                skipped.append(
+                    OrphanSkip(
+                        alias_id=alias.id,
+                        raw_form=alias.raw_form,
+                        reason="merge target is itself merged (chained merge)",
+                    )
+                )
+                continue
+
+            repairs.append(
+                OrphanRepair(
+                    alias_id=alias.id,
+                    raw_form=alias.raw_form,
+                    from_canonical_tag_id=source_tag.id,
+                    to_canonical_tag_id=target.id,
+                    from_normalized_form=alias.normalized_form,
+                    to_normalized_form=target.normalized_form,
+                )
+            )
+
+        operation_id: uuid.UUID | None = None
+
+        if repairs and not dry_run:
+            for r in repairs:
+                await session.execute(
+                    update(TagAliasDB)
+                    .where(TagAliasDB.id == r.alias_id)
+                    .values(
+                        canonical_tag_id=r.to_canonical_tag_id,
+                        normalized_form=r.to_normalized_form,
+                    )
+                )
+
+            # The orphans exist because something skipped the operation log.
+            # Repairing them without one would repeat that mistake, and there
+            # would be no way to reverse this.
+            operation_id = await self._log_operation(
+                session,
+                operation_type=TagOperationType.REPAIR.value,
+                source_ids=sorted({r.from_canonical_tag_id for r in repairs}),
+                target_id=None,
+                alias_ids=[r.alias_id for r in repairs],
+                reason="Re-point aliases stranded on merged canonical tags",
+                rollback_data={
+                    "aliases": [
+                        {
+                            "alias_id": str(r.alias_id),
+                            "previous_canonical_tag_id": str(r.from_canonical_tag_id),
+                            "previous_normalized_form": r.from_normalized_form,
+                        }
+                        for r in repairs
+                    ]
+                },
+                actor=actor,
+            )
+            await session.commit()
+        elif not dry_run:
+            # Idempotent no-op: nothing to move, nothing to log.
+            await session.commit()
+        else:
+            await session.rollback()
+
+        return OrphanRepairReport(
+            dry_run=dry_run,
+            repaired=repairs,
+            skipped=skipped,
+            operation_id=operation_id,
+        )
+
     async def undo(
         self,
         session: AsyncSession,
@@ -812,6 +997,8 @@ class TagManagementService:
             details = await self._undo_classify(session, log_entry)
         elif op_type == TagOperationType.DELETE.value:
             details = await self._undo_deprecate(session, log_entry)
+        elif op_type == TagOperationType.REPAIR.value:
+            details = await self._undo_repair(session, log_entry)
         else:
             raise ValueError(f"Unknown operation type: {op_type}")
 
@@ -1754,6 +1941,43 @@ class TagManagementService:
             f"Unclassified '{tag.normalized_form}' "
             f"(removed type '{new_entity_type}')"
         )
+
+    async def _undo_repair(
+        self, session: AsyncSession, log_entry: TagOperationLogDB
+    ) -> str:
+        """Reverse an orphaned-alias repair.
+
+        Puts each alias back on the merged canonical tag it was stranded on,
+        restoring its previous ``normalized_form``. That reinstates the broken
+        state, which is the point of an undo — the repair may have been run
+        against data someone was mid-way through fixing by hand.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        log_entry : TagOperationLogDB
+            The operation log entry with rollback_data.
+
+        Returns
+        -------
+        str
+            Human-readable description of what was reversed.
+        """
+        entries = (log_entry.rollback_data or {}).get("aliases", [])
+        restored = 0
+        for entry in entries:
+            await session.execute(
+                update(TagAliasDB)
+                .where(TagAliasDB.id == uuid.UUID(entry["alias_id"]))
+                .values(
+                    canonical_tag_id=uuid.UUID(entry["previous_canonical_tag_id"]),
+                    normalized_form=entry["previous_normalized_form"],
+                )
+            )
+            restored += 1
+
+        return f"Restored {restored} alias(es) to their previous canonical tag"
 
     async def _undo_deprecate(
         self, session: AsyncSession, log_entry: TagOperationLogDB

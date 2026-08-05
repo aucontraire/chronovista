@@ -31,6 +31,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func, text
 from uuid_utils import uuid7
 
+from chronovista.models.enums import TagOperationType
+
 
 class Base(DeclarativeBase):
     """Base class for all database models."""
@@ -1110,7 +1112,13 @@ class TagOperationLog(Base):
     # Table constraints
     __table_args__ = (
         CheckConstraint(
-            "operation_type IN ('merge', 'split', 'rename', 'delete', 'create')",
+            # Built from TagOperationType rather than restated. The same list
+            # lived here, in the Pydantic validator, and in the migration DDL;
+            # adding a member updated one and left writes failing at the two
+            # others, each from a layer far from the change.
+            "operation_type IN ("
+            + ", ".join(f"'{t.value}'" for t in TagOperationType)
+            + ")",
             name="chk_tag_operation_type_valid",
         ),
     )

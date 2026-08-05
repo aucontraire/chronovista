@@ -13,7 +13,12 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-ALLOWED_OPERATION_TYPES = {"merge", "split", "rename", "delete", "create"}
+from chronovista.models.enums import TagOperationType
+
+# Derived from the enum rather than restated. These were two independent lists,
+# so adding a member to TagOperationType left this validator rejecting it — a
+# failure that surfaces only at write time, from a model far from the change.
+ALLOWED_OPERATION_TYPES = {t.value for t in TagOperationType}
 
 
 class TagOperationLogBase(BaseModel):

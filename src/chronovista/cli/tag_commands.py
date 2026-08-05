@@ -1623,3 +1623,85 @@ def review_collisions(
                 console.print()  # blank line between groups
 
     asyncio.run(_run())
+
+
+@tag_app.command("repair-orphans")
+def repair_orphaned_aliases(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview the repair without writing to the database.",
+    ),
+) -> None:
+    """Re-point aliases stranded on merged canonical tags at their target.
+
+    A merge moves the source's aliases to the target. Aliases that were never
+    moved sit on a deprecated tag where the canonical relationship cannot reach
+    them, while name-based matching still can — so entity association counts
+    disagree, and the rows are invisible in the UI because canonical-tag search
+    only returns active tags.
+
+    Each merged tag records its ``merged_into_id``, so the destination is read
+    rather than guessed. Idempotent and safe to re-run.
+    """
+
+    async def _run() -> None:
+        from chronovista.services.tag_management import OrphanRepairReport
+
+        service = _create_tag_management_service()
+
+        async for session in db_manager.get_session(echo=False):
+            # The service owns the transaction here: a dry run has to roll back
+            # inside, so the CLI must not commit on its behalf.
+            report: OrphanRepairReport = await service.repair_orphaned_aliases(
+                session, dry_run=dry_run
+            )
+
+            title = (
+                "Orphaned aliases (dry-run) — no changes written"
+                if report.dry_run
+                else "Orphaned aliases repaired"
+            )
+
+            if report.repaired_count == 0 and report.skipped_count == 0:
+                console.print(
+                    Panel(
+                        "No aliases are stranded on merged canonical tags.",
+                        title="Nothing to repair",
+                        border_style="green",
+                    )
+                )
+                return
+
+            if report.repaired:
+                table = Table(show_header=True, header_style="bold")
+                table.add_column("Alias")
+                table.add_column("Now belongs to")
+                for r in report.repaired:
+                    table.add_row(r.raw_form, r.to_normalized_form)
+                console.print(table)
+
+            for skip in report.skipped:
+                console.print(
+                    f"[yellow]Skipped[/yellow] '{skip.raw_form}': {skip.reason}"
+                )
+
+            lines = [
+                f"[bold]Repaired:[/bold] {report.repaired_count}",
+                f"[bold]Skipped:[/bold] {report.skipped_count}",
+            ]
+            if report.operation_id is not None:
+                lines.append(f"[bold]Operation ID:[/bold] {report.operation_id}")
+                lines.append(
+                    f"[dim]Reverse with: chronovista tags undo "
+                    f"{report.operation_id}[/dim]"
+                )
+            console.print(
+                Panel(
+                    "\n".join(lines),
+                    title=title,
+                    border_style="yellow" if report.dry_run else "green",
+                )
+            )
+
+    asyncio.run(_run())

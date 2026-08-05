@@ -2942,3 +2942,93 @@ class TestDiacriticFoldingMetadata:
         m = mentions[0]
         assert desc[m.match_start : m.match_end] == "México"
         assert m.mention_text == "México"
+
+
+class TestTranscriptMentionContext:
+    """Transcript mentions carry a context snippet (#176).
+
+    Context is the evidence a reviewer judges a match by. Transcript is the
+    largest source in a real corpus, and it stored NULL for every row — so the
+    mentions most in need of review were the ones that could not be reviewed.
+
+    A transcript mention is recoverable through ``segment_id``, but only by
+    joining and re-slicing by offset. These tests pin that the snippet is
+    stored in place.
+    """
+
+    @staticmethod
+    def _pattern(name: str) -> object:
+        from chronovista.services.entity_mention_scan_service import _EntityPattern
+
+        return _EntityPattern(
+            entity_id=_make_uuid(),
+            canonical_name=name,
+            entity_type="person",
+            pg_pattern=re.escape(name),
+            alias_names=[name],
+        )
+
+    async def _scan_one(self, text: str, name: str) -> list:
+        pattern = self._pattern(name)
+        seg = _make_segment_row(effective_text=text)
+
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=_scalars_execute([]))
+
+        svc = _build_service(MagicMock())
+        mentions, _, _, _, _ = await svc._scan_batch(
+            session,
+            batch_rows=[seg],
+            patterns=[pattern],
+            full_rescan=False,
+            dry_run=False,
+            limit=None,
+            current_preview_count=0,
+        )
+        return mentions
+
+    async def test_transcript_mention_stores_context(self) -> None:
+        mentions = await self._scan_one(
+            "Earlier today Tesla announced a new car in Berlin", "Tesla"
+        )
+
+        assert len(mentions) == 1
+        assert mentions[0].mention_context is not None
+        assert "Tesla" in mentions[0].mention_context
+
+    async def test_context_includes_surrounding_text_not_just_the_match(self) -> None:
+        # The whole point: the snippet must show what was said AROUND the
+        # match, or it adds nothing over mention_text.
+        mentions = await self._scan_one(
+            "Earlier today Tesla announced a new car in Berlin", "Tesla"
+        )
+
+        context = mentions[0].mention_context
+        assert context is not None
+        assert "Earlier today" in context
+        assert "announced a new car" in context
+
+    async def test_context_is_bounded(self) -> None:
+        # ~75 chars either side plus the match, so a long segment does not
+        # store the entire transcript on every row.
+        long_text = ("filler word " * 60) + "Tesla" + (" trailing word" * 60)
+        mentions = await self._scan_one(long_text, "Tesla")
+
+        context = mentions[0].mention_context
+        assert context is not None
+        assert len(context) < 200
+        assert len(context) < len(long_text)
+
+    async def test_context_preserves_accents_from_the_raw_text(self) -> None:
+        # Matching folds diacritics, but the stored snippet must read as it
+        # was written — folded text would show "Mexico" where "México" was
+        # said, which is a different claim about the source.
+        mentions = await self._scan_one(
+            "Hoy en México se discutió el acuerdo comercial", "Mexico"
+        )
+
+        assert len(mentions) == 1
+        context = mentions[0].mention_context
+        assert context is not None
+        assert "México" in context
+        assert "discutió" in context

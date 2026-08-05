@@ -883,10 +883,11 @@ class EntityMentionScanService:
                     continue
                 seen_entities.add(entity_id)
 
-            # Extract context snippet for description mentions
-            context: str | None = None
-            if mention_source == MentionSource.DESCRIPTION:
-                context = self._extract_context_snippet(text, m_start, m_end)
+            # Context is the evidence a reviewer judges a match by, so every
+            # source stores it — not only description. `text` is the raw
+            # (unfolded) source and m_start/m_end are already mapped back to
+            # raw offsets above, so the snippet reads as it was written.
+            context = self._extract_context_snippet(text, m_start, m_end)
 
             mention = EntityMentionCreate(
                 entity_id=entity_id,
@@ -1302,6 +1303,13 @@ class EntityMentionScanService:
                     confidence=1.0,
                     match_start=m_start,
                     match_end=m_end,
+                    # A transcript mention is recoverable via segment_id, but
+                    # only by joining and re-slicing by offset. Storing the
+                    # snippet is what makes a match reviewable in place — and
+                    # transcript is the largest source by a wide margin.
+                    mention_context=self._extract_context_snippet(
+                        effective_text, m_start, m_end
+                    ),
                 )
                 new_mentions.append(mention)
 

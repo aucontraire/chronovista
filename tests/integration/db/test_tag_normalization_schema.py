@@ -37,6 +37,7 @@ from chronovista.db.models import (
     TagAlias,
     TagOperationLog,
 )
+from chronovista.models.enums import TagOperationType
 
 # CRITICAL: This line ensures async tests work with coverage
 # Note: This applies to ALL tests in the module, including sync tests
@@ -250,6 +251,28 @@ class TestCheckConstraints:
             await db_session.flush()
 
         assert "chk_tag_operation_type_valid" in str(exc_info.value).lower()
+        await db_session.rollback()
+
+    async def test_tag_operation_log_accepts_every_declared_type(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Every TagOperationType member must satisfy the CHECK constraint.
+
+        The permitted list was written out by hand in the constraint, so adding
+        an enum member left writes failing at the database with the enum and the
+        Pydantic validator both accepting the value — a mismatch that surfaced
+        only on a real run, after the work had already been done. Driving this
+        from the enum means a new member fails here instead.
+        """
+        for operation_type in TagOperationType:
+            operation = TagOperationLog(
+                id=uuid7(),
+                operation_type=operation_type.value,
+                performed_by="system",
+            )
+            db_session.add(operation)
+            await db_session.flush()
+
         await db_session.rollback()
 
     async def test_entity_alias_invalid_alias_type(

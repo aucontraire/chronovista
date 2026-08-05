@@ -59,11 +59,19 @@ def _make_entity_row(
     return row
 
 
-def _make_alias_row(entity_id: uuid.UUID, alias_name: str) -> MagicMock:
-    """Create a mock ORM EntityAlias row."""
+def _make_alias_row(
+    entity_id: uuid.UUID, alias_name: str, case_sensitive: bool = False
+) -> MagicMock:
+    """Create a mock ORM EntityAlias row.
+
+    ``case_sensitive`` must be set explicitly: an unset MagicMock attribute is
+    truthy, which would quietly make every alias in every test case-sensitive
+    and change what the compiled pattern means.
+    """
     row = MagicMock()
     row.entity_id = entity_id
     row.alias_name = alias_name
+    row.case_sensitive = case_sensitive
     return row
 
 
@@ -3101,3 +3109,189 @@ class TestScanUsesCorrectedTranscriptText:
 
         sql = str(captured["stmt"])
         assert "corrected_text IS NULL" in sql or "corrected_text = ''" in sql
+
+
+class TestPerAliasCaseSensitivity:
+    """Per-alias case sensitivity (#177).
+
+    An alias that is also an ordinary word matches every occurrence of that
+    word. Case is sometimes the discriminator and sometimes not — measured on
+    real data, one entity's lowercase hits were almost all the common noun
+    while another's were mostly the person, with automatic transcription simply
+    failing to capitalise. So this is a per-alias opt-in, never a default and
+    never inferred.
+
+    The hard part is that case sensitivity is per ALIAS while the compiled
+    alternation is per ENTITY. These tests pin the mixed case, which is the one
+    that a naive two-group implementation gets wrong.
+    """
+
+    @staticmethod
+    def _pattern(names_and_flags: list[tuple[str, bool]]) -> Any:
+        from chronovista.services.entity_mention_scan_service import _EntityPattern
+
+        folded = sorted(names_and_flags, key=lambda p: len(p[0]), reverse=True)
+        any_cs = any(cs for _, cs in folded)
+        if any_cs:
+            pg = "|".join(
+                re.escape(n) if cs else f"(?i:{re.escape(n)})" for n, cs in folded
+            )
+        else:
+            pg = "|".join(re.escape(n) for n, _ in folded)
+        return _EntityPattern(
+            entity_id=_make_uuid(),
+            canonical_name=folded[0][0],
+            entity_type="person",
+            pg_pattern=pg,
+            alias_names=[n for n, _ in folded],
+            has_case_sensitive_alias=any_cs,
+        )
+
+    def _matches(self, names_and_flags: list[tuple[str, bool]], text: str) -> list[str]:
+        from chronovista.services.entity_mention_scan_service import (
+            _compile_entity_regex,
+        )
+
+        rx = _compile_entity_regex(self._pattern(names_and_flags))
+        return [m.group(1) for m in rx.finditer(text)]
+
+    def test_default_stays_case_insensitive(self) -> None:
+        # Every alias today. This path must be byte-for-byte the old behaviour.
+        found = self._matches([("Tesla", False)], "TESLA and tesla and Tesla all count")
+        assert found == ["TESLA", "tesla", "Tesla"]
+
+    def test_case_sensitive_alias_matches_only_its_own_casing(self) -> None:
+        found = self._matches(
+            [("Destiny", True)],
+            "Destiny said so, but our destiny is shared, and DESTINY shouted",
+        )
+        assert found == ["Destiny"]
+
+    def test_mixed_aliases_each_keep_their_own_rule(self) -> None:
+        # The case a two-group implementation breaks: one entity, one
+        # alternation, two different rules inside it.
+        found = self._matches(
+            [("Steven Bonnell", False), ("Destiny", True)],
+            "steven bonnell aka Destiny; our destiny is elsewhere",
+        )
+        assert "steven bonnell" in found  # insensitive alias still folds case
+        assert "Destiny" in found  # sensitive alias matched exactly
+        assert "destiny" not in found  # and the common noun did not
+
+    def test_longest_first_ordering_survives_mixed_flags(self) -> None:
+        # Python alternation is first-match-wins, so the length ordering is
+        # load-bearing. Grouping by case would reorder it and let a short alias
+        # claim text belonging to a longer one.
+        found = self._matches(
+            [("Ada", True), ("Ada Lovelace", False)],
+            "Ada Lovelace wrote the notes",
+        )
+        assert found == ["Ada Lovelace"]
+
+    def test_a_global_flag_would_defeat_the_scoped_ones(self) -> None:
+        # Guards the specific mistake the helper exists to prevent: compiling
+        # the mixed pattern with re.IGNORECASE makes every alias insensitive
+        # again, silently.
+        pattern = self._pattern([("Steven Bonnell", False), ("Destiny", True)])
+        wrong = re.compile(r"\b(" + pattern.pg_pattern + r")\b", re.IGNORECASE)
+        assert wrong.search("our destiny is shared") is not None
+
+        from chronovista.services.entity_mention_scan_service import (
+            _compile_entity_regex,
+        )
+
+        assert _compile_entity_regex(pattern).search("our destiny is shared") is None
+
+    def test_case_sensitive_alias_still_matches_across_accents(self) -> None:
+        # Folding strips accents but preserves case, so the two features
+        # compose: an exact-cased alias still matches an accented occurrence.
+        from chronovista.services.entity_mention_scan_service import (
+            _fold_diacritics,
+        )
+
+        folded_text = _fold_diacritics("Hoy en México se discutio")[0]
+        found = self._matches([("Mexico", True)], folded_text)
+        assert found == ["Mexico"]
+
+        assert self._matches([("Mexico", True)], _fold_diacritics("méxico")[0]) == []
+
+
+class TestCaseSensitivityReachesTheCompiledPattern:
+    """The flag survives the trip from alias row to compiled regex (#177).
+
+    The tests above exercise `_compile_entity_regex` against a hand-built
+    pattern. That leaves the real assembly in `_load_entity_patterns`
+    unverified — the step that reads `alias.case_sensitive` off the row and
+    decides how to escape each alternative. A break there produces patterns
+    that compile and match, just under the wrong rule.
+    """
+
+    async def _load(self, entity_row: MagicMock, alias_rows: list[MagicMock]) -> Any:
+        session = AsyncMock()
+        session.execute = AsyncMock(
+            side_effect=[_scalars_execute([entity_row]), _scalars_execute(alias_rows)]
+        )
+        svc = _build_service(MagicMock())
+        patterns: list[Any] = await svc._load_entity_patterns(
+            session, entity_type=None, new_entities_only=False
+        )
+        return patterns[0]
+
+    async def test_all_insensitive_produces_the_original_pattern_shape(self) -> None:
+        # No opt-in anywhere means the pattern must not gain scoped flags, so
+        # the overwhelmingly common path is unchanged rather than merely
+        # equivalent.
+        entity_id = _make_uuid()
+        pattern = await self._load(
+            _make_entity_row(entity_id=entity_id, canonical_name="Tesla"),
+            [_make_alias_row(entity_id=entity_id, alias_name="Tesla Motors")],
+        )
+
+        assert pattern.has_case_sensitive_alias is False
+        assert "(?i:" not in pattern.pg_pattern
+
+    async def test_opted_in_alias_becomes_case_sensitive_end_to_end(self) -> None:
+        from chronovista.services.entity_mention_scan_service import (
+            _compile_entity_regex,
+        )
+
+        entity_id = _make_uuid()
+        pattern = await self._load(
+            _make_entity_row(entity_id=entity_id, canonical_name="Steven Bonnell"),
+            [
+                _make_alias_row(
+                    entity_id=entity_id, alias_name="Destiny", case_sensitive=True
+                )
+            ],
+        )
+
+        assert pattern.has_case_sensitive_alias is True
+        rx = _compile_entity_regex(pattern)
+        assert rx.search("Destiny said so") is not None
+        assert rx.search("our destiny is shared") is None
+        # The canonical name has no flag of its own and stays insensitive.
+        assert rx.search("steven bonnell was there") is not None
+
+    async def test_one_opted_in_alias_does_not_bind_the_others(self) -> None:
+        from chronovista.services.entity_mention_scan_service import (
+            _compile_entity_regex,
+        )
+
+        entity_id = _make_uuid()
+        pattern = await self._load(
+            _make_entity_row(entity_id=entity_id, canonical_name="Kareem Dennis"),
+            [
+                _make_alias_row(
+                    entity_id=entity_id, alias_name="Lowkey", case_sensitive=True
+                ),
+                _make_alias_row(
+                    entity_id=entity_id, alias_name="K Dennis", case_sensitive=False
+                ),
+            ],
+        )
+
+        rx = _compile_entity_regex(pattern)
+        assert rx.search("Lowkey performed") is not None
+        assert rx.search("I lowkey agree") is None
+        # The sibling alias keeps its own rule rather than inheriting.
+        assert rx.search("k dennis performed") is not None

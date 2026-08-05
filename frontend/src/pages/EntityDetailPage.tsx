@@ -27,7 +27,7 @@ import {
 } from "../hooks/useEntityMentions";
 import { apiFetch } from "../api/config";
 import type { EntityDetail, EntityAliasSummary, UpdateEntityRequest } from "../api/entityMentions";
-import { createEntityAlias } from "../api/entityMentions";
+import { createEntityAlias, updateEntityAlias } from "../api/entityMentions";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PhoneticVariantsSection } from "../components/corrections/PhoneticVariantsSection";
 import { ExclusionPatternsSection } from "../components/corrections/ExclusionPatternsSection";
@@ -533,11 +533,65 @@ function EntityVideoCard({
 // Alias row
 // ---------------------------------------------------------------------------
 
-function AliasRow({ alias }: { alias: EntityAliasSummary }) {
+interface AliasRowProps {
+  alias: EntityAliasSummary;
+  entityId: string;
+  /** Called after the flag is persisted, so the caller can rebuild mentions. */
+  onCaseSensitivityChanged: () => void;
+}
+
+function AliasRow({ alias, entityId, onCaseSensitivityChanged }: AliasRowProps) {
+  const [caseSensitive, setCaseSensitive] = useState(alias.case_sensitive);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const toggleId = `alias-case-${alias.id}`;
+
+  async function handleToggle(next: boolean) {
+    // Optimistic, because the switch is the feedback — a checkbox that lags
+    // behind the click reads as broken.
+    setCaseSensitive(next);
+    setIsSaving(true);
+    setError(null);
+    try {
+      await updateEntityAlias(entityId, alias.id, next);
+      onCaseSensitivityChanged();
+    } catch {
+      setCaseSensitive(!next);
+      setError("Could not save. Try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
     <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-slate-50 transition-colors">
       <span className="text-sm font-medium text-gray-800">{alias.alias_name}</span>
       <div className="flex items-center gap-3">
+        <label
+          htmlFor={toggleId}
+          className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer"
+          title={
+            `Match "${alias.alias_name}" only with this exact capitalisation. ` +
+            "Use when the alias is also an ordinary word and casing tells them " +
+            "apart — check the mentions first, since automatic transcripts " +
+            "often drop capitals from names."
+          }
+        >
+          <input
+            id={toggleId}
+            type="checkbox"
+            checked={caseSensitive}
+            disabled={isSaving}
+            onChange={(e) => void handleToggle(e.target.checked)}
+            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
+          />
+          Match case
+        </label>
+        {error !== null && (
+          <span role="alert" className="text-xs text-red-600">
+            {error}
+          </span>
+        )}
         <span
           className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded border ${getAliasTypeBadgeClass(alias.alias_type)}`}
         >
@@ -1369,7 +1423,16 @@ export function EntityDetailPage() {
           {entity.aliases.length > 0 ? (
             <div className="divide-y divide-slate-100">
               {entity.aliases.map((alias) => (
-                <AliasRow key={alias.alias_name} alias={alias} />
+                <AliasRow
+                  key={alias.id}
+                  alias={alias}
+                  entityId={entityId ?? ""}
+                  // Changing the flag changes nothing until mentions are
+                  // rebuilt: an incremental scan only adds, so it would never
+                  // retract what the previous rule matched. Firing the rescan
+                  // here is what makes the toggle mean something.
+                  onCaseSensitivityChanged={handleScanClick}
+                />
               ))}
             </div>
           ) : (

@@ -42,6 +42,7 @@ from chronovista.api.schemas.entity_mentions import (
     ScanJobResponse,
     ScanRequest,
     ScanResultData,
+    UpdateEntityAliasRequest,
     UpdateEntityRequest,
     VideoEntitiesResponse,
     VideoEntitySummary,
@@ -606,9 +607,11 @@ async def get_entity_detail(
     # name_variant, abbreviation, nickname, translated_name, former_name.
     genuine_aliases = [
         EntityAliasSummary(
+            id=a.id,
             alias_name=a.alias_name,
             alias_type=a.alias_type,
             occurrence_count=a.occurrence_count,
+            case_sensitive=a.case_sensitive,
         )
         for a in entity.aliases
         if a.alias_type != "asr_error"
@@ -927,9 +930,82 @@ async def create_entity_alias(
 
     return {
         "data": EntityAliasSummary(
+            id=db_alias.id,
             alias_name=db_alias.alias_name,
             alias_type=db_alias.alias_type,
             occurrence_count=db_alias.occurrence_count,
+            case_sensitive=db_alias.case_sensitive,
+        ).model_dump()
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PATCH /entities/{entity_id}/aliases/{alias_id}
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.patch(
+    "/entities/{entity_id}/aliases/{alias_id}",
+    status_code=200,
+    summary="Update an alias's matching behaviour",
+)
+async def update_entity_alias(
+    entity_id: uuid.UUID = Path(..., description="Named entity UUID"),
+    alias_id: uuid.UUID = Path(..., description="Alias UUID"),
+    body: UpdateEntityAliasRequest = Body(...),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Set whether an alias matches case-sensitively.
+
+    Changing the flag does not retroactively alter existing mentions — matching
+    rules are applied when a scan runs. A caller that wants the change
+    reflected must follow this with a full rescan of the entity; an incremental
+    scan only adds, so it would never retract the mentions the previous rule
+    produced.
+
+    Parameters
+    ----------
+    entity_id : uuid.UUID
+        Named entity that owns the alias.
+    alias_id : uuid.UUID
+        Alias to update.
+    body : UpdateEntityAliasRequest
+        New matching behaviour.
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    dict
+        The updated alias wrapped in a ``data`` envelope.
+
+    Raises
+    ------
+    NotFoundError
+        If the entity does not exist, or the alias does not exist on it (404).
+    """
+    entity = await session.get(NamedEntityDB, entity_id)
+    if entity is None:
+        raise NotFoundError(resource_type="Entity", identifier=str(entity_id))
+
+    alias = await session.get(EntityAliasDB, alias_id)
+    # The entity_id check is what makes the path meaningful: without it, an
+    # alias could be updated through any entity's URL, and a 404 for a
+    # mismatched pair would instead silently succeed.
+    if alias is None or alias.entity_id != entity_id:
+        raise NotFoundError(resource_type="Alias", identifier=str(alias_id))
+
+    alias.case_sensitive = body.case_sensitive
+    await session.commit()
+    await session.refresh(alias)
+
+    return {
+        "data": EntityAliasSummary(
+            id=alias.id,
+            alias_name=alias.alias_name,
+            alias_type=alias.alias_type,
+            occurrence_count=alias.occurrence_count,
+            case_sensitive=alias.case_sensitive,
         ).model_dump()
     }
 

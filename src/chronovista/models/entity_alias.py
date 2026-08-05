@@ -31,6 +31,18 @@ class EntityAliasBase(BaseModel):
         default=EntityAliasType.NAME_VARIANT,
         description="Type of alias relationship",
     )
+    case_sensitive: bool = Field(
+        default=False,
+        description=(
+            "When true, this alias matches only the exact casing stored in "
+            "alias_name. Defaults to false, which is how every alias has "
+            "always matched. Intended for an alias that is also an ordinary "
+            "word, where casing distinguishes the name from the word — but "
+            "only where a human has confirmed it does, since automatic "
+            "transcription drops capitalisation often enough that the "
+            "opposite can be true."
+        ),
+    )
 
     model_config = ConfigDict(
         validate_assignment=True,
@@ -58,6 +70,7 @@ class EntityAliasUpdate(BaseModel):
     alias_type: EntityAliasType | None = None
     entity_id: uuid.UUID | None = None
     occurrence_count: int | None = Field(default=None, ge=0)
+    case_sensitive: bool | None = None
 
     model_config = ConfigDict(
         validate_assignment=True,

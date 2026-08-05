@@ -324,9 +324,11 @@ describe("PhoneticVariantsSection", () => {
 
   it("calls createEntityAlias with correct args when Register as Alias is clicked", async () => {
     mockedCreateEntityAlias.mockResolvedValueOnce({
+      id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
       alias_name: "chomski",
       alias_type: "name_variant",
       occurrence_count: 1,
+      case_sensitive: false,
     });
     const match = makePhoneticMatch({
       original_text: "chomski",
@@ -352,9 +354,11 @@ describe("PhoneticVariantsSection", () => {
 
   it("shows 'Registered' checkmark state after successful alias creation", async () => {
     mockedCreateEntityAlias.mockResolvedValueOnce({
+      id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
       alias_name: "chomski",
       alias_type: "name_variant",
       occurrence_count: 1,
+      case_sensitive: false,
     });
     const match = makePhoneticMatch({ original_text: "chomski" });
     mockedUsePhoneticMatches.mockReturnValue(makeSuccessHook([match]));

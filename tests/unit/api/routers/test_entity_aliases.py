@@ -86,6 +86,7 @@ def _make_alias_db_row(
     alias_name: str = "Musk",
     alias_type: str = "name_variant",
     occurrence_count: int = 0,
+    case_sensitive: bool = False,
 ) -> MagicMock:
     """Create a minimal mock EntityAliasDB row that the repo returns after create().
 
@@ -97,6 +98,10 @@ def _make_alias_db_row(
         The alias type string.
     occurrence_count : int
         Number of times this alias has been observed.
+    case_sensitive : bool
+        Whether the alias matches only its exact casing. Must be set
+        explicitly: an unset MagicMock attribute is truthy, and the response
+        model rejects a non-bool under strict validation.
 
     Returns
     -------
@@ -108,6 +113,7 @@ def _make_alias_db_row(
     row.alias_name = alias_name
     row.alias_type = alias_type
     row.occurrence_count = occurrence_count
+    row.case_sensitive = case_sensitive
     row.first_seen_at = datetime(2024, 1, 15, tzinfo=UTC)
     row.last_seen_at = datetime(2024, 1, 15, tzinfo=UTC)
     return row

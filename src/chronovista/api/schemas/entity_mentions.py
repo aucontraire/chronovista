@@ -173,6 +173,8 @@ class EntityAliasSummary(BaseModel):
 
     Attributes
     ----------
+    id : UUID
+        Alias identifier, needed to address a single alias for update.
     alias_name : str
         The alias text as stored.
     alias_type : str
@@ -180,10 +182,13 @@ class EntityAliasSummary(BaseModel):
         or former_name.
     occurrence_count : int
         Number of times this alias form has been observed.
+    case_sensitive : bool
+        Whether this alias matches only its exact casing.
     """
 
     model_config = ConfigDict(strict=True)
 
+    id: UUID = Field(..., description="Alias identifier")
     alias_name: str = Field(..., description="Alias text")
     alias_type: str = Field(
         ...,
@@ -194,6 +199,35 @@ class EntityAliasSummary(BaseModel):
     )
     occurrence_count: int = Field(
         ..., description="Number of observed occurrences of this alias form"
+    )
+    case_sensitive: bool = Field(
+        default=False,
+        description=(
+            "When true, this alias matches only the exact casing shown in "
+            "alias_name. False (the default) matches any casing."
+        ),
+    )
+
+
+class UpdateEntityAliasRequest(BaseModel):
+    """PATCH body for a single alias.
+
+    Only ``case_sensitive`` is settable. Renaming an alias would change what
+    it matches and orphan the mentions it produced, so it is deliberately not
+    offered here.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    case_sensitive: bool = Field(
+        ...,
+        description=(
+            "Match only the exact casing stored in alias_name. Intended for "
+            "an alias that is also an ordinary word, where casing separates "
+            "the name from the word — but only where that has been confirmed "
+            "against real occurrences, since automatic transcription drops "
+            "capitalisation often enough that the opposite can hold."
+        ),
     )
 
 

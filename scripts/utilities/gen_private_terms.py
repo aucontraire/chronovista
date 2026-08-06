@@ -56,8 +56,11 @@ ALLOWLIST = {
     "Claude Code",
     "GraphRAG",
     "Knowledge Graph",
+    "Knowledge Graphs",
     "Large Language Model",
+    "Large Language Models",
     "LLM",
+    "LLMs",
     "Obsidian",
     "OpenAI",
     "Vector Database",
@@ -70,10 +73,13 @@ ALLOWLIST = {
 # identifies a person. Listed separately from ALLOWLIST because the reason is
 # different: these are not this project's subject matter, they are collisions.
 COMMON_WORD_ALIASES = {
+    "Crystal",
     "Fork",
+    "Hack",
+    "John",
     "Mate",
     "Peek",
-    "Johnsm",
+    "Sham",
     "Web",
 }
 

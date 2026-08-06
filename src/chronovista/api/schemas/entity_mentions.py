@@ -13,6 +13,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from chronovista.api.schemas.responses import PaginationMeta
+from chronovista.models.enums import EntityType
 
 
 class VideoEntitySummary(BaseModel):
@@ -578,6 +579,8 @@ class UpdateEntityRequest(BaseModel):
         New verbatim display name (1-500 chars). Omit to leave unchanged.
     description : str | None
         New description (empty string clears it). Omit to leave unchanged.
+    entity_type : EntityType | None
+        New entity type. Omit to leave unchanged.
     """
 
     model_config = ConfigDict(strict=True)
@@ -593,13 +596,22 @@ class UpdateEntityRequest(BaseModel):
         max_length=5000,
         description="New entity description (empty string clears it)",
     )
+    entity_type: EntityType | None = Field(
+        default=None,
+        description="New entity type (e.g. correcting a place filed as a person)",
+    )
 
     @model_validator(mode="after")
     def at_least_one_field(self) -> UpdateEntityRequest:
         """Require at least one editable field to be present."""
-        if self.canonical_name is None and self.description is None:
+        if (
+            self.canonical_name is None
+            and self.description is None
+            and self.entity_type is None
+        ):
             raise ValueError(
-                "At least one of 'canonical_name' or 'description' is required"
+                "At least one of 'canonical_name', 'description' or "
+                "'entity_type' is required"
             )
         return self
 

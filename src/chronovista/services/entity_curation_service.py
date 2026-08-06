@@ -26,6 +26,7 @@ from chronovista.models.entity_operation_log import (
     EntityEditSnapshot,
     EntityOperationLogCreate,
 )
+from chronovista.models.enums import EntityType
 from chronovista.models.named_entity import NamedEntityUpdate
 from chronovista.repositories.entity_operation_log_repository import (
     EntityOperationLogRepository,
@@ -104,18 +105,25 @@ class EntityCurationService:
         *,
         canonical_name: str | None = None,
         description: str | None = None,
+        entity_type: str | None = None,
         actor: str,
     ) -> NamedEntityDB:
         """
-        Edit an entity's display name and/or description.
+        Edit an entity's display name, description, and/or type.
 
         PATCH semantics: an omitted argument (``None``) leaves that field
         unchanged. Passing ``description=""`` clears the description (a valid,
         distinct value — FR-013). ``canonical_name`` is stored verbatim (only
         leading/trailing whitespace trimmed — FR-013); its normalized form is
-        recomputed together with it (INV-1). A name change that would duplicate
-        an existing same-type entity is rejected (FR-005). Aliases and mentions
-        are never touched (FR-015, FR-020).
+        recomputed together with it (INV-1). Aliases and mentions are never
+        touched (FR-015, FR-020).
+
+        Uniqueness is a property of the **pair** ``(canonical_name_normalized,
+        entity_type)``, so the collision pre-check runs against the values as
+        they will be *after* the edit. Checking a renamed entity against its old
+        type — or a retyped entity against its old name — would let a duplicate
+        through the pre-check and fail at flush time with an IntegrityError
+        (→ 500) instead of a clean 409.
 
         Parameters
         ----------
@@ -127,6 +135,9 @@ class EntityCurationService:
             New display name (verbatim). Omit to leave unchanged.
         description : str, optional
             New description (empty string clears it). Omit to leave unchanged.
+        entity_type : str, optional
+            New entity type. Must be a valid ``EntityType``. Omit to leave
+            unchanged.
         actor : str
             Actor string recorded in the audit log (e.g. ``"user:local"``).
 
@@ -138,16 +149,18 @@ class EntityCurationService:
         Raises
         ------
         InvalidEntityEditError
-            No fields provided, or the name is empty / too long / normalizes
-            to empty.
+            No fields provided, the name is empty / too long / normalizes to
+            empty, or the entity type is not a valid ``EntityType``.
         EntityNotFoundError
             The entity does not exist.
         EntityNameCollisionError
-            The new normalized name collides with an existing same-type entity.
+            The resulting ``(normalized name, entity type)`` pair collides with
+            an existing entity.
         """
-        if canonical_name is None and description is None:
+        if canonical_name is None and description is None and entity_type is None:
             raise InvalidEntityEditError(
-                "At least one of 'canonical_name' or 'description' is required."
+                "At least one of 'canonical_name', 'description' or "
+                "'entity_type' is required."
             )
 
         entity = await self._entity_repo.get(session, entity_id)
@@ -160,6 +173,14 @@ class EntityCurationService:
         after = EntityEditSnapshot()
         changed_fields: list[str] = []
         update_fields: dict[str, Any] = {}
+
+        # The values the entity will hold after this edit. Both feed one
+        # collision check below, because uniqueness is on the pair.
+        effective_normalized = entity.canonical_name_normalized
+        effective_type = entity.entity_type
+        name_changed = False
+        type_changed = False
+        trimmed = ""
 
         if canonical_name is not None:
             trimmed = canonical_name.strip()
@@ -176,25 +197,49 @@ class EntityCurationService:
                 raise InvalidEntityEditError(
                     "Entity name normalizes to an empty value."
                 )
-
-            if (
+            name_changed = (
                 trimmed != entity.canonical_name
                 or normalized != entity.canonical_name_normalized
-            ):
-                await self._assert_no_collision(
-                    session,
-                    normalized=normalized,
-                    entity_type=entity.entity_type,
-                    exclude_id=entity.id,
+            )
+            if name_changed:
+                effective_normalized = normalized
+
+        if entity_type is not None:
+            valid_types = {t.value for t in EntityType}
+            if entity_type not in valid_types:
+                raise InvalidEntityEditError(
+                    f"Entity type must be one of {sorted(valid_types)}, "
+                    f"got {entity_type!r}."
                 )
-                before.canonical_name = entity.canonical_name
-                before.canonical_name_normalized = entity.canonical_name_normalized
-                after.canonical_name = trimmed
-                after.canonical_name_normalized = normalized
-                changed_fields.append("canonical_name")
-                # INV-1: both columns always move together.
-                update_fields["canonical_name"] = trimmed
-                update_fields["canonical_name_normalized"] = normalized
+            type_changed = entity_type != entity.entity_type
+            if type_changed:
+                effective_type = entity_type
+
+        # One check, on the pair as it will be. A rename validated against the
+        # old type, or a retype validated against the old name, both miss.
+        if name_changed or type_changed:
+            await self._assert_no_collision(
+                session,
+                normalized=effective_normalized,
+                entity_type=effective_type,
+                exclude_id=entity.id,
+            )
+
+        if name_changed:
+            before.canonical_name = entity.canonical_name
+            before.canonical_name_normalized = entity.canonical_name_normalized
+            after.canonical_name = trimmed
+            after.canonical_name_normalized = effective_normalized
+            changed_fields.append("canonical_name")
+            # INV-1: both columns always move together.
+            update_fields["canonical_name"] = trimmed
+            update_fields["canonical_name_normalized"] = effective_normalized
+
+        if type_changed:
+            before.entity_type = entity.entity_type
+            after.entity_type = effective_type
+            changed_fields.append("entity_type")
+            update_fields["entity_type"] = effective_type
 
         if description is not None and description != entity.description:
             before.description = entity.description
@@ -291,22 +336,46 @@ class EntityCurationService:
         before = rollback.before
         update_fields: dict[str, Any] = {}
 
+        # Resolve both restored values before checking, for the same reason the
+        # forward edit does: the constraint is on the pair. An undo that
+        # restores name and type together must be checked against both.
+        restored_normalized = entity.canonical_name_normalized
+        restored_type = entity.entity_type
+
         if "canonical_name" in rollback.changed_fields:
-            restored_name = before.canonical_name
-            restored_normalized = before.canonical_name_normalized
-            if restored_name is None or restored_normalized is None:
+            if (
+                before.canonical_name is None
+                or before.canonical_name_normalized is None
+            ):
                 raise InvalidEntityEditError(
                     "Rollback data is missing the previous name."
                 )
-            if restored_normalized != entity.canonical_name_normalized:
-                await self._assert_no_collision(
-                    session,
-                    normalized=restored_normalized,
-                    entity_type=entity.entity_type,
-                    exclude_id=entity.id,
+            restored_normalized = before.canonical_name_normalized
+
+        if "entity_type" in rollback.changed_fields:
+            if before.entity_type is None:
+                raise InvalidEntityEditError(
+                    "Rollback data is missing the previous entity type."
                 )
-            update_fields["canonical_name"] = restored_name
+            restored_type = before.entity_type
+
+        if (
+            restored_normalized != entity.canonical_name_normalized
+            or restored_type != entity.entity_type
+        ):
+            await self._assert_no_collision(
+                session,
+                normalized=restored_normalized,
+                entity_type=restored_type,
+                exclude_id=entity.id,
+            )
+
+        if "canonical_name" in rollback.changed_fields:
+            update_fields["canonical_name"] = before.canonical_name
             update_fields["canonical_name_normalized"] = restored_normalized
+
+        if "entity_type" in rollback.changed_fields:
+            update_fields["entity_type"] = restored_type
 
         if "description" in rollback.changed_fields:
             update_fields["description"] = before.description

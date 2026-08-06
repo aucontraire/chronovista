@@ -11,7 +11,7 @@
  * 2. Edit mode: labeled Name input + Description textarea, pre-filled
  * 3. Cancel restores read view without calling the mutation
  * 4. Escape key cancels the edit
- * 5. Save sends only the changed field(s) to useUpdateEntity
+ * 5. Save sends only the changed field(s) to useUpdateEntity, including entity_type
  * 6. Successful save returns to read view and announces "Saved." via role="status"
  * 7. Pending state disables Save/inputs and announces "Saving…" via role="status"
  * 8. Client-side validation blocks an empty name without calling the mutation
@@ -338,6 +338,69 @@ describe("EntityNameEditor (inside EntityDetailPage)", () => {
       );
     });
 
+    it("sends only entity_type when only the type changed", async () => {
+      // The reason this control exists: picking the wrong type at creation is
+      // easy, and the only previous remedy was a direct database UPDATE, which
+      // skipped both the audit log and the collision pre-check.
+      const mockMutate = vi.fn();
+      vi.mocked(useUpdateEntity).mockReturnValue(makeUpdateEntityMock(mockMutate));
+      const user = userEvent.setup();
+      renderPage();
+
+      await user.click(
+        screen.getByRole("button", { name: /edit name and description/i })
+      );
+      await user.selectOptions(
+        screen.getByRole("combobox", { name: /^type$/i }),
+        "place"
+      );
+
+      await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+      expect(mockMutate).toHaveBeenCalledWith(
+        { entityId: ENTITY_ID, data: { entity_type: "place" } },
+        expect.objectContaining({
+          onSuccess: expect.any(Function),
+          onError: expect.any(Function),
+        })
+      );
+    });
+
+    it("does not send entity_type when the type was left alone", async () => {
+      const mockMutate = vi.fn();
+      vi.mocked(useUpdateEntity).mockReturnValue(makeUpdateEntityMock(mockMutate));
+      const user = userEvent.setup();
+      renderPage();
+
+      await user.click(
+        screen.getByRole("button", { name: /edit name and description/i })
+      );
+      const nameInput = screen.getByRole("textbox", { name: /^name$/i });
+      await user.clear(nameInput);
+      await user.type(nameInput, "Anthropic");
+      await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+      const payload = mockMutate.mock.calls[0]?.[0] as { data: object };
+      expect(payload.data).not.toHaveProperty("entity_type");
+    });
+
+    it("pre-fills the type select with the entity's current type", async () => {
+      const user = userEvent.setup();
+      renderPage();
+
+      await user.click(
+        screen.getByRole("button", { name: /edit name and description/i })
+      );
+
+      const select = screen.getByRole("combobox", { name: /^type$/i });
+      expect(select).toHaveValue("organization");
+      // Options come from the shared label map, so they cannot drift from the
+      // types the database accepts.
+      expect(
+        screen.getByRole("option", { name: "Place" })
+      ).toBeInTheDocument();
+    });
+
     it("sends only description when only the description changed", async () => {
       const mockMutate = vi.fn();
       vi.mocked(useUpdateEntity).mockReturnValue(makeUpdateEntityMock(mockMutate));
@@ -481,8 +544,10 @@ describe("EntityNameEditor (inside EntityDetailPage)", () => {
         expect(screen.getByRole("alert")).toBeInTheDocument();
       });
 
+      // Wording covers a type change too: the collision is on the
+      // (name, type) pair, not the name alone.
       expect(screen.getByRole("alert")).toHaveTextContent(
-        /already has that name/i
+        /already has this name/i
       );
       // Editor remains open with the user's input preserved (FR-022).
       expect(screen.getByRole("textbox", { name: /^name$/i })).toHaveValue(

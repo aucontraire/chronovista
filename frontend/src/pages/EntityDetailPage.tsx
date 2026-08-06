@@ -19,6 +19,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { CooccurringPanel } from "../components/entity/CooccurringPanel";
 import { EntityTypeBadge } from "../components/EntityTypeBadge";
+import { ENTITY_TYPE_LABELS } from "../constants/entityTypes";
 import {
   useEntityVideos,
   useDeleteManualAssociation,
@@ -756,6 +757,7 @@ interface EntityNameEditorProps {
   entityId: string;
   canonicalName: string;
   description: string | null;
+  entityType: string;
   /** Rendered next to the name in read mode (the existing entity-type badge). */
   typeBadge: React.ReactNode;
 }
@@ -785,11 +787,13 @@ function EntityNameEditor({
   entityId,
   canonicalName,
   description,
+  entityType,
   typeBadge,
 }: EntityNameEditorProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [nameInput, setNameInput] = useState(canonicalName);
   const [descriptionInput, setDescriptionInput] = useState(description ?? "");
+  const [typeInput, setTypeInput] = useState(entityType);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -815,6 +819,7 @@ function EntityNameEditor({
   function enterEditMode() {
     setNameInput(canonicalName);
     setDescriptionInput(description ?? "");
+    setTypeInput(entityType);
     setErrorMsg(null);
     setSuccessMsg(null);
     setIsEditing(true);
@@ -859,6 +864,9 @@ function EntityNameEditor({
     if (descriptionInput !== (description ?? "")) {
       payload.description = descriptionInput;
     }
+    if (typeInput !== entityType) {
+      payload.entity_type = typeInput;
+    }
 
     if (Object.keys(payload).length === 0) {
       // Edge case: no-op save — nothing changed, just return to read view.
@@ -881,7 +889,7 @@ function EntityNameEditor({
           const status = (err as { status?: number } | null)?.status;
           if (status === 409) {
             setErrorMsg(
-              "Another entity of this type already has that name. Choose a different name."
+              "Another entity of that type already has this name. Choose a different name or type."
             );
           } else if (status === 400) {
             setErrorMsg(err.message || "Invalid name or description.");
@@ -979,6 +987,39 @@ function EntityNameEditor({
             disabled:bg-slate-100 disabled:text-slate-500
           "
         />
+      </div>
+
+      <div>
+        <label
+          htmlFor="entity-type-select"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
+          Type
+        </label>
+        <select
+          id="entity-type-select"
+          value={typeInput}
+          onChange={(e) => {
+            setTypeInput(e.target.value);
+            if (errorMsg) setErrorMsg(null);
+          }}
+          disabled={updateMutation.isPending}
+          className="
+            w-full px-3 py-2
+            text-sm text-gray-900
+            border border-slate-300 rounded-md
+            focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500
+            disabled:bg-slate-100 disabled:text-slate-500
+          "
+        >
+          {/* Driven from the shared label map so the options can never drift
+              from the types the database actually accepts. */}
+          {Object.entries(ENTITY_TYPE_LABELS).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div>
@@ -1309,6 +1350,7 @@ export function EntityDetailPage() {
           entityId={entityId ?? ""}
           canonicalName={entity.canonical_name}
           description={entity.description}
+          entityType={entity.entity_type}
           typeBadge={
             <EntityTypeBadge entityType={entity.entity_type} size="md" />
           }

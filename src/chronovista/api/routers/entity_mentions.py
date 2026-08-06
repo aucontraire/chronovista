@@ -1643,14 +1643,14 @@ async def create_entity(
 @router.patch(
     "/entities/{entity_id}",
     status_code=200,
-    summary="Edit an entity's display name and/or description",
+    summary="Edit an entity's display name, description, and/or type",
 )
 async def update_entity(
     entity_id: str = Path(..., description="Named entity UUID"),
     body: UpdateEntityRequest = Body(...),
     session: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Edit a named entity's display name and/or description.
+    """Edit a named entity's display name, description, and/or type.
 
     Delegates to ``EntityCurationService.update_entity`` which validates,
     recomputes the normalized identity together with the name (INV-1),
@@ -1663,7 +1663,8 @@ async def update_entity(
     entity_id : str
         Named entity UUID (string representation).
     body : UpdateEntityRequest
-        Optional ``canonical_name`` / ``description`` (at least one required).
+        Optional ``canonical_name`` / ``description`` / ``entity_type``
+        (at least one required).
     session : AsyncSession
         Database session (injected).
 
@@ -1679,7 +1680,8 @@ async def update_entity(
     NotFoundError
         The entity does not exist — 404.
     ConflictError
-        The new normalized name collides with an existing same-type entity — 409.
+        The resulting ``(normalized name, entity type)`` pair collides with an
+        existing entity — 409.
     """
     try:
         parsed_entity_id = uuid.UUID(entity_id)
@@ -1692,6 +1694,9 @@ async def update_entity(
             parsed_entity_id,
             canonical_name=body.canonical_name,
             description=body.description,
+            entity_type=(
+                body.entity_type.value if body.entity_type is not None else None
+            ),
             actor=ACTOR_USER_LOCAL,
         )
     except EntityNotFoundError as exc:

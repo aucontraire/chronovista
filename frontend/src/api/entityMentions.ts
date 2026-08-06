@@ -369,20 +369,22 @@ export async function fetchEntityDetail(
 export interface UpdateEntityRequest {
   canonical_name?: string;
   description?: string;
+  /** Corrects an entity filed under the wrong type (e.g. a place saved as a person). */
+  entity_type?: string;
 }
 
 /**
- * Updates a named entity's display name and/or description (Feature 057).
+ * Updates a named entity's display name, description, and/or type.
  *
  * Never modifies the tag(s) the entity is linked to. On a name change, the
  * backend recomputes the normalized identity and re-checks
  * `(canonical_name_normalized, entity_type)` uniqueness.
  *
  * @param entityId - UUID of the named entity
- * @param data - Fields to update (at least one of canonical_name/description)
+ * @param data - Fields to update (at least one of canonical_name/description/entity_type)
  * @returns The updated EntityDetail
  * @throws ApiError with status 400 (invalid/empty name), 404 (not found), or
- *   409 (the new name collides with an existing same-type entity)
+ *   409 (the resulting name+type pair collides with an existing entity)
  */
 export async function updateEntity(
   entityId: string,
